@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -37,6 +38,23 @@ function connectedPersonalCodexProvider(): ModelProviderResponse {
     ...stalePersonalCodexProvider(),
     needsReconnect: false,
     lastRefreshErrorCode: null,
+  };
+}
+
+function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
+  return {
+    id: "00000000-0000-4000-a000-000000000302",
+    type: "claude-code-oauth-token",
+    framework: "claude-code",
+    secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+    authMethod: null,
+    secretNames: null,
+    isDefault: false,
+    selectedModel: null,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-20T00:00:00Z",
   };
 }
 
@@ -71,6 +89,36 @@ async function openModelSettings(): Promise<void> {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
   });
+}
+
+function dialogContaining(element: HTMLElement): HTMLElement {
+  const dialog = element.closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error("Containing dialog not found");
+  }
+  return dialog;
+}
+
+async function findLatestClaudeCodeInput(): Promise<HTMLInputElement> {
+  const inputs = await screen.findAllByTestId("claude-code-device-auth-code");
+  const input = inputs.at(-1);
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("Claude Code authorization code input not found");
+  }
+  return input;
+}
+
+function closeClaudeCodeDialogs(): void {
+  const dialogs = new Set(
+    screen.queryAllByTestId("claude-code-device-auth-code").map((input) => {
+      return dialogContaining(input);
+    }),
+  );
+  for (const dialog of dialogs) {
+    if (document.body.contains(dialog)) {
+      click(within(dialog).getByLabelText("Close"));
+    }
+  }
 }
 
 describe("personal model providers settings", () => {
@@ -118,6 +166,106 @@ describe("personal model providers settings", () => {
     );
     expect(authorizationCodeInputs).not.toHaveLength(0);
     expect(screen.getAllByText("Connect Claude Code")).not.toHaveLength(0);
+    closeClaudeCodeDialogs();
+    await waitFor(() => {
+      expect(
+        screen.queryAllByTestId("claude-code-device-auth-code"),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("connects personal Claude Code after the user corrects the authorization code", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([]);
+    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+      return respond(200, {
+        sessionToken: "mock-personal-claude-code-session",
+        type: "claude-code",
+        status: "pending",
+        scope: "personal",
+        browserUrl: "https://claude.ai/oauth/authorize",
+        expiresIn: 30,
+      });
+    });
+    context.mocks.api(
+      zeroClaudeCodeDeviceAuthContract.complete,
+      ({ body, respond }) => {
+        if (body.authorizationCode !== "claude-auth-code") {
+          return respond(400, {
+            error: {
+              message: "Invalid Claude Code authorization code",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          });
+        }
+        const provider = connectedPersonalClaudeCodeProvider();
+        context.mocks.data.personalModelProviders([provider]);
+        return respond(200, {
+          status: "complete",
+          provider,
+          created: true,
+        });
+      },
+    );
+
+    await openModelSettings();
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    const connectButton = queryAllByRoleFast("button", claudeCodeRow).find(
+      (button) => {
+        return (
+          button.getAttribute("aria-label") === "Connect Claude Code OAuth"
+        );
+      },
+    );
+    if (!connectButton) {
+      throw new Error("Connect Claude Code OAuth button not found");
+    }
+    click(connectButton);
+
+    const codeInput = await findLatestClaudeCodeInput();
+    const deviceAuthDialog = dialogContaining(codeInput);
+    click(
+      within(deviceAuthDialog).getByTestId("claude-code-device-auth-submit"),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(deviceAuthDialog).getByText(
+          "Paste the Claude Code authorization code to continue.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    await fill(codeInput, "wrong-code");
+    click(
+      within(deviceAuthDialog).getByTestId("claude-code-device-auth-submit"),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(deviceAuthDialog).getByText(
+          "Invalid Claude Code authorization code",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    await fill(codeInput, "claude-auth-code");
+    click(
+      within(deviceAuthDialog).getByTestId("claude-code-device-auth-submit"),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
+      expect(within(claudeCodeRow).getByText("Connected")).toBeInTheDocument();
+    });
   });
 
   it("opens reconnect login from a stale personal Codex credential", async () => {

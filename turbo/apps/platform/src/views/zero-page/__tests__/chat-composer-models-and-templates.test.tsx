@@ -385,6 +385,23 @@ function chatClipboardHtml(payload: {
   )}"></div>`;
 }
 
+function oversizedFile(name: string, type: string): File {
+  const file = new File(["oversized"], name, { type });
+  Object.defineProperty(file, "size", {
+    configurable: true,
+    value: 1024 * 1024 * 1024 + 1,
+  });
+  return file;
+}
+
+function composerElementFrom(textarea: HTMLElement): HTMLElement {
+  const composer = textarea.closest(".zero-composer");
+  if (!(composer instanceof HTMLElement)) {
+    throw new Error("Composer element not found");
+  }
+  return composer;
+}
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
@@ -825,6 +842,51 @@ describe("chat composer models", () => {
       expect(
         screen.queryByLabelText("Open image preview for copied-image.png"),
       ).not.toBeInTheDocument();
+      expect(
+        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
+          .length,
+      ).toBeGreaterThan(0);
+    });
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/plain" ? "Do not insert oversized paste" : "";
+        },
+        items: [
+          {
+            kind: "file",
+            getAsFile: () => {
+              return oversizedFile("oversized-paste.txt", "text/plain");
+            },
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("oversized-paste.txt exceeds the 1 GB limit"),
+      ).toBeInTheDocument();
+      expect(textarea).toHaveValue("Use the copied launch brief");
+    });
+
+    const composer = composerElementFrom(textarea);
+    fireEvent.dragOver(composer);
+    fireEvent.dragLeave(composer, { relatedTarget: document.body });
+    fireEvent.drop(composer, {
+      dataTransfer: {
+        files: [
+          new File(["dropped image"], "dropped.png", { type: "image/png" }),
+          oversizedFile("oversized-drop.txt", "text/plain"),
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("oversized-drop.txt exceeds the 1 GB limit"),
+      ).toBeInTheDocument();
       expect(
         screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
           .length,

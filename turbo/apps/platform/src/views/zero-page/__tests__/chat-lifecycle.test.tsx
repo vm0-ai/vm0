@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
@@ -364,6 +364,24 @@ function queryButtonByText(text: string): HTMLElement | null {
   );
 }
 
+function chatScrollContainer(): HTMLElement {
+  const element = document.querySelector("[data-scroll-container]");
+  if (!(element instanceof HTMLElement)) {
+    throw new Error("Chat scroll container not found");
+  }
+  return element;
+}
+
+function setScrollMetrics(
+  element: HTMLElement,
+  metrics: { scrollHeight: number; clientHeight: number },
+): void {
+  Object.defineProperties(element, {
+    scrollHeight: { configurable: true, value: metrics.scrollHeight },
+    clientHeight: { configurable: true, value: metrics.clientHeight },
+  });
+}
+
 function mockFailedAssistantThread({
   threadId,
   error,
@@ -713,6 +731,75 @@ describe("chat lifecycle", () => {
       expect(screen.getByText(olderReply)).toBeInTheDocument();
       expect(queryButtonByText("Load history")).not.toBeInTheDocument();
     });
+  });
+
+  it("keeps chat scroll controls visible while browsing older messages", async () => {
+    const olderReply = "Scroll back to the planning notes.";
+    mockChatLifecycle(context, {
+      threadId: "scroll-history-thread",
+      threadTitle: "Scroll history",
+      historyMessages: [
+        {
+          role: "assistant",
+          content: olderReply,
+          runId: undefined,
+          createdAt: "2026-06-02T10:00:00Z",
+        },
+      ],
+      chatMessages: Array.from({ length: 8 }, (_, index) => {
+        return makeMessage(
+          `scroll-message-${index}`,
+          `Visible launch update ${index}`,
+        );
+      }),
+    });
+
+    detachedSetupPage({ context, path: "/chats/scroll-history-thread" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Visible launch update 7")).toBeInTheDocument();
+      expect(buttonByText("Load history")).toBeInTheDocument();
+    });
+
+    const scrollContainer = chatScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1200,
+      clientHeight: 300,
+    });
+    scrollContainer.scrollTop = 900;
+    fireEvent.scroll(scrollContainer);
+    fireEvent.wheel(scrollContainer);
+    scrollContainer.scrollTop = 520;
+    fireEvent.scroll(scrollContainer);
+
+    const scrollToBottom = await screen.findByLabelText("Scroll to bottom");
+    click(scrollToBottom);
+    expect(scrollContainer.scrollTop).toBe(1200);
+    fireEvent.scroll(scrollContainer);
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Scroll to bottom")).toBeNull();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "ArrowUp", ctrlKey: true });
+    expect(scrollContainer.scrollTop).toBe(0);
+    fireEvent.scroll(scrollContainer);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Load history"));
+    await waitFor(() => {
+      expect(screen.getByText(olderReply)).toBeInTheDocument();
+    });
+
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1500,
+      clientHeight: 300,
+    });
+    fireEvent.keyDown(threadRegion, { key: "ArrowDown", ctrlKey: true });
+    expect(scrollContainer.scrollTop).toBe(1500);
   });
 
   it("opens run logs from assistant message actions", async () => {

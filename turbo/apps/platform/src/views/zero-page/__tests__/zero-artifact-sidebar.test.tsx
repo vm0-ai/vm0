@@ -271,14 +271,19 @@ function completePresentationPptxExport(
   );
 }
 
-function setupPresentationArtifactThread(presentationUrl: string): void {
+function setupPresentationArtifactThread(
+  presentationUrl: string,
+  html = presentationHtml(),
+): void {
+  const filename =
+    new URL(presentationUrl).pathname.split("/").pop() ?? "presentation.html";
   context.mocks.http.get(presentationUrl, () => {
-    return new Response(presentationHtml(), {
+    return new Response(html, {
       headers: { "Content-Type": "text/html" },
     });
   });
   context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-    return new Response(presentationHtml(), {
+    return new Response(html, {
       headers: { "Content-Type": "text/html" },
     });
   });
@@ -286,7 +291,7 @@ function setupPresentationArtifactThread(presentationUrl: string): void {
     artifactFiles: [
       artifactFile(presentationUrl, {
         id: "artifact-quarterly-roadmap",
-        filename: "quarterly-roadmap.html",
+        filename,
         contentType: "text/html",
         artifactKind: "presentation-html",
         size: 1024,
@@ -298,6 +303,24 @@ function setupPresentationArtifactThread(presentationUrl: string): void {
     },
     path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
   });
+}
+
+function assetBackedPresentationHtml(assetUrl: string): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Asset backed deck</title>
+    <style>
+      .slide-bg { background-image: url("${assetUrl}"); }
+    </style>
+  </head>
+  <body>
+    <section data-vm0-slide data-slide-id="asset-slide" class="slide-bg" style="border-image: url('${assetUrl}') 30">
+      <h1 data-vm0-editable="text" data-vm0-edit-id="title">Asset backed deck</h1>
+      <img src="${assetUrl}" alt="Roadmap cover" />
+    </section>
+  </body>
+</html>`;
 }
 
 function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
@@ -681,6 +704,128 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("renders inline previews from assistant artifact links without breaking markdown tables or code blocks", async () => {
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/run-2/chart.png";
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/run-2/demo.mp4";
+    const markdownUrl = "https://cdn.vm7.io/artifacts/test/run-2/notes.md";
+    const htmlUrl = "https://cdn.vm7.io/artifacts/test/run-2/site.html";
+    const fileUrl = "/artifacts/test/run-2/archive.bin";
+
+    setupChatThread({
+      content: `Artifacts are ready.
+
+| Item | Link |
+| ---- | ---- |
+| Table keeps URLs as text | ${imageUrl} |
+
+\`\`\`
+${videoUrl}
+\`\`\`
+
+${imageUrl}
+${videoUrl}
+[Release notes](${markdownUrl})
+[Launch site](${htmlUrl})
+Download the archive here: ${fileUrl}.`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Table keeps URLs as text")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
+      expect(screen.getByTestId("attachment-preview-markdown")).toHaveAttribute(
+        "aria-label",
+        "Open markdown preview for notes.md",
+      );
+      expect(screen.getByTestId("attachment-preview-html")).toHaveAttribute(
+        "aria-label",
+        "Open html preview for Launch site",
+      );
+      expect(screen.getByTestId("attachment-preview-file")).toHaveAttribute(
+        "aria-label",
+        "Download archive.bin",
+      );
+    });
+  });
+
+  it("shows a presentation editor error when the source deck cannot be loaded", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/missing-roadmap.html";
+    context.mocks.http.get(presentationUrl, () => {
+      return new Response(null, { status: 503 });
+    });
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(null, { status: 503 });
+    });
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(presentationUrl, {
+          id: "artifact-missing-roadmap",
+          filename: "missing-roadmap.html",
+          contentType: "text/html",
+          artifactKind: "presentation-html",
+          size: 1024,
+        }),
+      ],
+      content: `[Missing roadmap](${presentationUrl})`,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Edit presentation"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to fetch presentation HTML (503)"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("downloads an asset-backed presentation without speaker notes", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/asset-backed-deck.html";
+    const assetUrl = "https://assets.test/roadmap-cover.png";
+    const downloads = captureDownloads(context.signal);
+    context.mocks.http.get(assetUrl, () => {
+      return new Response(new Blob(["png"], { type: "image/png" }));
+    });
+    setupPresentationArtifactThread(
+      presentationUrl,
+      assetBackedPresentationHtml(assetUrl),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
+    });
+    click(menuItemByText("Download (.pptx)"));
+
+    const exportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+
+    await waitFor(() => {
+      expect(downloads).toContain("asset-backed-deck.pptx");
+      expect(
+        document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("edits and downloads a presentation artifact from the editor", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     const downloads = captureDownloads(context.signal);
@@ -734,6 +879,43 @@ describe("zero artifact sidebar", () => {
       expect(screen.getByLabelText("Speaker notes")).toHaveValue(
         "Explain the hiring plan.",
       );
+    });
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument =
+      previewFrame.contentDocument ??
+      document.implementation.createHTMLDocument("presentation preview");
+    Object.defineProperty(previewFrame, "contentDocument", {
+      configurable: true,
+      value: previewDocument,
+    });
+    previewDocument.body.innerHTML = [
+      '<h1 data-vm0-editor-slide-id="slide-plan" data-vm0-editor-edit-id="plan">Hiring Plan</h1>',
+      '<p data-vm0-editor-slide-id="slide-plan">Missing edit id</p>',
+    ].join("");
+    fireEvent.load(previewFrame);
+    const editableTitle = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="plan"]',
+    );
+    if (!(editableTitle instanceof HTMLElement)) {
+      throw new Error("Presentation editable title not found");
+    }
+    await waitFor(() => {
+      expect(editableTitle.getAttribute("contenteditable")).toBe("true");
+      expect(editableTitle.getAttribute("role")).toBe("textbox");
+    });
+    editableTitle.textContent = "Revised Hiring Plan";
+    editableTitle.dispatchEvent(new Event("input", { bubbles: true }));
+    editableTitle.dispatchEvent(new FocusEvent("blur"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     });
 
     await fill(
