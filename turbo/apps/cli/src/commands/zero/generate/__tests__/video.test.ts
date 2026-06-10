@@ -201,6 +201,17 @@ describe("zero generate video command", () => {
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--first-frame-image-url");
     expect(helpOutput).toContain("--last-frame-image-url");
+    expect(helpOutput).toContain(
+      "If no explicit video style template is provided",
+    );
+    expect(helpOutput).toContain("visual");
+    expect(helpOutput).toContain("camera style");
+    expect(helpOutput).toContain("editing pace");
+    expect(helpOutput).toContain("narrative mode");
+    expect(helpOutput).toContain("production type");
+    expect(helpOutput).toContain(
+      "decisions naturally into the --prompt text passed to this command",
+    );
     expect(helpOutput).not.toContain("--json");
   });
 

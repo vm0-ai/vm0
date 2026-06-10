@@ -367,6 +367,10 @@ Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
   - Uses BytePlus ModelArk and fal.ai video models with configured usage pricing
+  - If no explicit video style template is provided, decide the video's visual
+    tone, camera style, editing pace, narrative mode, production type,
+    emotional tone, and style reference from the user's prompt, then write those
+    decisions naturally into the --prompt text passed to this command
 
 Models:
   - Dreamina Seedance 2.0: dreamina-seedance-2.0,
