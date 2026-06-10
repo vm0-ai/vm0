@@ -26,7 +26,7 @@ function testRefreshSignal(): AbortSignal {
 
 describe("connector/providers/google-cloud", () => {
   describe("googleCloudProvider", () => {
-    it("buildAuthUrl builds Google OAuth URL with Google Cloud and userinfo scopes", () => {
+    it("buildAuthUrl builds Google OAuth URL with gcloud login scopes", () => {
       const url = googleCloudProvider.grant.buildAuthUrl({
         authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
           "google-cloud",
@@ -51,12 +51,21 @@ describe("connector/providers/google-cloud", () => {
       expect(url).toContain("access_type=offline");
       expect(url).toContain("prompt=consent");
       expect(url).toContain("accounts.google.com/o/oauth2/v2/auth");
-      expect(scopes.has("https://www.googleapis.com/auth/cloud-platform")).toBe(
-        true,
-      );
+      expect(scopes.has("openid")).toBe(true);
       expect(scopes.has("https://www.googleapis.com/auth/userinfo.email")).toBe(
         true,
       );
+      expect(scopes.has("https://www.googleapis.com/auth/cloud-platform")).toBe(
+        true,
+      );
+      expect(
+        scopes.has("https://www.googleapis.com/auth/appengine.admin"),
+      ).toBe(true);
+      expect(
+        scopes.has("https://www.googleapis.com/auth/sqlservice.login"),
+      ).toBe(true);
+      expect(scopes.has("https://www.googleapis.com/auth/compute")).toBe(true);
+      expect(scopes.size).toBe(6);
     });
 
     it("resolves the OAuth client from Google env names", () => {
@@ -117,7 +126,7 @@ describe("connector/providers/google-cloud", () => {
           refresh_token: "google-cloud-refresh-token",
           expires_in: 3600,
           scope:
-            "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email",
+            "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/appengine.admin https://www.googleapis.com/auth/sqlservice.login https://www.googleapis.com/auth/compute",
         });
       });
       const userInfoHandler = http.get(USER_INFO_URL, () => {
@@ -150,8 +159,12 @@ describe("connector/providers/google-cloud", () => {
         },
         expiresIn: 3600,
         scopes: [
-          "https://www.googleapis.com/auth/cloud-platform",
+          "openid",
           "https://www.googleapis.com/auth/userinfo.email",
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/appengine.admin",
+          "https://www.googleapis.com/auth/sqlservice.login",
+          "https://www.googleapis.com/auth/compute",
         ],
         userInfo: {
           id: "google-user-123",

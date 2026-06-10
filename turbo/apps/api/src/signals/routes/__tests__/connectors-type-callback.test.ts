@@ -698,7 +698,7 @@ function mockGoogleWorkspaceProvider(
 ): void {
   const scope =
     options.type === "google-cloud"
-      ? "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email"
+      ? "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/appengine.admin https://www.googleapis.com/auth/sqlservice.login https://www.googleapis.com/auth/compute"
       : "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email";
   server.use(
     mockJsonTokenEndpoint(

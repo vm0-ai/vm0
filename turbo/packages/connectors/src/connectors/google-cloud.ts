@@ -34,8 +34,12 @@ export const googleCloud = {
         grant: {
           kind: "auth-code",
           scopes: [
-            "https://www.googleapis.com/auth/cloud-platform",
+            "openid",
             "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/appengine.admin",
+            "https://www.googleapis.com/auth/sqlservice.login",
+            "https://www.googleapis.com/auth/compute",
           ],
           outputs: {
             accessToken: "$secrets.GOOGLE_CLOUD_ACCESS_TOKEN",

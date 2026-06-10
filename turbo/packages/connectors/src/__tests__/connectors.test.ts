@@ -4009,12 +4009,16 @@ describe("getConnectorAuthMethodGrantScopes - google-meet scopes", () => {
 });
 
 describe("getConnectorAuthMethodGrantScopes - google-cloud scopes", () => {
-  it("uses cloud-platform and userinfo.email for google cloud oauth scopes", () => {
+  it("uses gcloud auth login default scopes for google cloud oauth", () => {
     const scopes = getConnectorAuthMethodGrantScopes("google-cloud", "oauth");
 
     expect(scopes).toStrictEqual([
-      "https://www.googleapis.com/auth/cloud-platform",
+      "openid",
       "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/appengine.admin",
+      "https://www.googleapis.com/auth/sqlservice.login",
+      "https://www.googleapis.com/auth/compute",
     ]);
   });
 });

@@ -207,12 +207,21 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       `${WEB_ORIGIN}/api/connectors/google-cloud/callback`,
     );
+    expect(scopes.has("openid")).toBeTruthy();
+    expect(
+      scopes.has("https://www.googleapis.com/auth/userinfo.email"),
+    ).toBeTruthy();
     expect(
       scopes.has("https://www.googleapis.com/auth/cloud-platform"),
     ).toBeTruthy();
     expect(
-      scopes.has("https://www.googleapis.com/auth/userinfo.email"),
+      scopes.has("https://www.googleapis.com/auth/appengine.admin"),
     ).toBeTruthy();
+    expect(
+      scopes.has("https://www.googleapis.com/auth/sqlservice.login"),
+    ).toBeTruthy();
+    expect(scopes.has("https://www.googleapis.com/auth/compute")).toBeTruthy();
+    expect(scopes.size).toBe(6);
     const state = authorizationUrl.searchParams.get("state");
     expect(state).toMatch(/^[0-9a-f]{64}$/);
 
