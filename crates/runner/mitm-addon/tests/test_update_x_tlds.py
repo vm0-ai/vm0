@@ -438,6 +438,47 @@ def test_check_source_cli_reports_invalid_utf8_source_without_traceback(
     assert "Traceback" not in captured.err
 
 
+def test_check_source_cli_reports_missing_source_file_without_traceback(
+    tmp_path, monkeypatch, capsys
+):
+    source = tmp_path / "missing-tlds.txt"
+    output = tmp_path / "x_tlds.py"
+    _write_generated_snapshot(output)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(_UPDATE_SCRIPT), "--check-source", "--source-file", str(source)],
+    )
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert str(source) in captured.err
+    assert "failed to read IANA TLD source file" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_check_source_cli_does_not_hide_invalid_generated_snapshot(tmp_path, monkeypatch):
+    source = tmp_path / "tlds.txt"
+    source.write_text(_source_text("1", {"com"}), encoding="utf-8")
+    output = tmp_path / "x_tlds.py"
+    output.write_text(
+        'IANA_TLD_VERSION = ""\nIANA_TLDS = frozenset({"com"})\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(_UPDATE_SCRIPT), "--check-source", "--source-file", str(source)],
+    )
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    with pytest.raises(ValueError, match="invalid IANA_TLD_VERSION"):
+        update_x_tlds.main()
+
+
 def test_check_source_cli_requires_source_file():
     completed = _run_update_script("--check-source")
 
