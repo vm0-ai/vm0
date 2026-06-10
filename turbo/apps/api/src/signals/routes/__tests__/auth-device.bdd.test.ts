@@ -1,7 +1,9 @@
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createAuthDeviceApiActions } from "./helpers/api-bdd-auth-device";
 
@@ -288,6 +290,164 @@ describe("AUTH-02: platform realtime token", () => {
 });
 
 describe("MODEL-PROVIDER: device auth boundaries", () => {
+  it("starts, polls, and cancels a Codex device auth session through public APIs", async () => {
+    let userCodeRequests = 0;
+    let tokenPollRequests = 0;
+    server.use(
+      http.post(
+        "https://auth.openai.com/api/accounts/deviceauth/usercode",
+        async ({ request }) => {
+          userCodeRequests += 1;
+          const body: unknown = await request.json();
+          expect(body).toMatchObject({
+            client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
+          });
+          return HttpResponse.json({
+            device_auth_id: "device-auth-bdd",
+            user_code: "CODEX-BDD",
+            interval: 7,
+          });
+        },
+      ),
+      http.post(
+        "https://auth.openai.com/api/accounts/deviceauth/token",
+        async ({ request }) => {
+          tokenPollRequests += 1;
+          const body: unknown = await request.json();
+          expect(body).toStrictEqual({
+            device_auth_id: "device-auth-bdd",
+            user_code: "CODEX-BDD",
+          });
+          return HttpResponse.text("authorization pending", { status: 403 });
+        },
+      ),
+    );
+
+    const admin = bdd.user();
+    const started = await authDevice.requestCodexStart(
+      admin,
+      "personal",
+      [200],
+    );
+    if (started.status !== 200) {
+      throw new Error(
+        `Expected Codex device auth start, got ${started.status}`,
+      );
+    }
+    expect(started.body).toMatchObject({
+      type: "codex",
+      status: "pending",
+      scope: "personal",
+      browserUrl: "https://auth.openai.com/codex/device",
+      verificationCode: "CODEX-BDD",
+      interval: 7,
+    });
+    expect(started.body.sessionToken).toStrictEqual(expect.any(String));
+    expect(userCodeRequests).toBe(1);
+
+    const pending = await authDevice.requestCodexComplete(
+      admin,
+      started.body.sessionToken,
+      [200],
+    );
+    expect(pending.body).toStrictEqual({
+      status: "pending",
+      errorMessage: null,
+    });
+    expect(tokenPollRequests).toBe(1);
+
+    const otherUser = bdd.user({ orgId: admin.orgId });
+    const crossUserCancel = await authDevice.requestCodexCancel(
+      otherUser,
+      started.body.sessionToken,
+      [404],
+    );
+    expectApiError(crossUserCancel.body);
+    expect(crossUserCancel.body.error.code).toBe("NOT_FOUND");
+
+    const cancelled = await authDevice.requestCodexCancel(
+      admin,
+      started.body.sessionToken,
+      [200],
+    );
+    expect(cancelled.body).toStrictEqual({ status: "cancelled" });
+
+    const afterCancel = await authDevice.requestCodexComplete(
+      admin,
+      started.body.sessionToken,
+      [200],
+    );
+    expect(afterCancel.body).toStrictEqual({
+      status: "pending",
+      errorMessage: "Codex device auth session was cancelled",
+    });
+  });
+
+  it("starts and cancels a Claude Code device auth session through public APIs", async () => {
+    const admin = bdd.user();
+
+    const started = await authDevice.requestClaudeCodeStart(
+      admin,
+      "personal",
+      [200],
+    );
+    if (started.status !== 200) {
+      throw new Error(
+        `Expected Claude Code device auth start, got ${started.status}`,
+      );
+    }
+    expect(started.body).toMatchObject({
+      type: "claude-code",
+      status: "pending",
+      scope: "personal",
+      expiresIn: expect.any(Number),
+    });
+    expect(started.body.sessionToken).toStrictEqual(expect.any(String));
+    const browserUrl = new URL(started.body.browserUrl);
+    expect(browserUrl.origin).toBe("https://claude.com");
+    expect(browserUrl.pathname).toBe("/cai/oauth/authorize");
+    expect(browserUrl.searchParams.get("response_type")).toBe("code");
+    expect(browserUrl.searchParams.get("scope")).toBe("user:inference");
+
+    const wrongState = await authDevice.requestClaudeCodeComplete(
+      admin,
+      started.body.sessionToken,
+      "claude-code-bdd#wrong-state",
+      [400],
+    );
+    expectApiError(wrongState.body);
+    expect(wrongState.body.error.message).toBe(
+      "Claude Code authorization code belongs to another session",
+    );
+
+    const otherUser = bdd.user({ orgId: admin.orgId });
+    const crossUserCancel = await authDevice.requestClaudeCodeCancel(
+      otherUser,
+      started.body.sessionToken,
+      [404],
+    );
+    expectApiError(crossUserCancel.body);
+    expect(crossUserCancel.body.error.code).toBe("NOT_FOUND");
+
+    const cancelled = await authDevice.requestClaudeCodeCancel(
+      admin,
+      started.body.sessionToken,
+      [200],
+    );
+    expect(cancelled.body).toStrictEqual({ status: "cancelled" });
+
+    const afterCancel = await authDevice.requestClaudeCodeComplete(
+      admin,
+      started.body.sessionToken,
+      "claude-code-bdd",
+      [400],
+    );
+    expectApiError(afterCancel.body);
+    expect(afterCancel.body.error.message).toBe(
+      "Claude Code device auth session is not ready",
+    );
+  });
+
   it("enforces authentication, active organization, and admin scope boundaries", async () => {
     const noOrg = bdd.user({ orgId: null });
     const member = bdd.user({ orgRole: "org:member" });

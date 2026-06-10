@@ -5,7 +5,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
-import { env, mockEnv } from "../../../lib/env";
+import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createBddApi } from "./helpers/api-bdd";
@@ -179,6 +179,12 @@ function githubConnectSignature(args: {
 
 describe("INT-01: Slack integration and Slack app routes", () => {
   it("keeps signed Slack Events API URL verification boundaries visible through APIs", async () => {
+    mockOptionalEnv("SLACK_SIGNING_SECRET", undefined);
+    const unconfigured = await integrations.requestSlackEvent("{}", {}, [503]);
+    expect(unconfigured.body).toStrictEqual({
+      error: "Slack integration is not configured",
+    });
+
     integrations.configureSlackSigningSecret();
     const body = JSON.stringify({
       type: "url_verification",
@@ -214,6 +220,94 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     expect(verified.body).toStrictEqual({
       challenge: "slack-bdd-challenge",
     });
+
+    const invalidJson = await integrations.requestSlackEvent(
+      "not-json",
+      integrations.signedSlackIngressHeaders("not-json"),
+      [400],
+    );
+    expect(invalidJson.body).toStrictEqual({
+      error: "Invalid JSON payload",
+    });
+
+    const eventCallbackBody = (event: unknown) => {
+      return JSON.stringify({
+        type: "event_callback",
+        team_id: "TBDD_EVENT",
+        event,
+      });
+    };
+
+    const retryBody = eventCallbackBody({
+      type: "app_mention",
+      user: "UBDD_EVENT",
+      text: "@Zero retry",
+      ts: "1710000000.000200",
+      channel: "CBDD_EVENT",
+      channel_type: "channel",
+    });
+    const retried = await integrations.requestSlackEvent(
+      retryBody,
+      {
+        ...integrations.signedSlackIngressHeaders(retryBody),
+        "x-slack-retry-num": "1",
+      },
+      [200],
+    );
+    expect(retried.body).toBe("OK");
+
+    const appHomeBody = eventCallbackBody({
+      type: "app_home_opened",
+      user: "UBDD_EVENT",
+      tab: "home",
+      channel: "DBDD_EVENT",
+    });
+    const appHome = await integrations.requestSlackEvent(
+      appHomeBody,
+      integrations.signedSlackIngressHeaders(appHomeBody),
+      [200],
+    );
+    expect(appHome.body).toBe("OK");
+
+    const messagesTabBody = eventCallbackBody({
+      type: "app_home_opened",
+      user: "UBDD_EVENT",
+      tab: "messages",
+      channel: "DBDD_EVENT",
+    });
+    const messagesTab = await integrations.requestSlackEvent(
+      messagesTabBody,
+      integrations.signedSlackIngressHeaders(messagesTabBody),
+      [200],
+    );
+    expect(messagesTab.body).toBe("OK");
+
+    const uninstalledBody = eventCallbackBody({ type: "app_uninstalled" });
+    const uninstalled = await integrations.requestSlackEvent(
+      uninstalledBody,
+      integrations.signedSlackIngressHeaders(uninstalledBody),
+      [200],
+    );
+    expect(uninstalled.body).toBe("OK");
+
+    const tokenRevokedBody = eventCallbackBody({
+      type: "tokens_revoked",
+      tokens: { bot: ["UBOT_BDD_EVENT"] },
+    });
+    const tokenRevoked = await integrations.requestSlackEvent(
+      tokenRevokedBody,
+      integrations.signedSlackIngressHeaders(tokenRevokedBody),
+      [200],
+    );
+    expect(tokenRevoked.body).toBe("OK");
+
+    const ignoredBody = JSON.stringify({ type: "team_join" });
+    const ignored = await integrations.requestSlackEvent(
+      ignoredBody,
+      integrations.signedSlackIngressHeaders(ignoredBody),
+      [200],
+    );
+    expect(ignored.body).toBe("OK");
   });
 
   it("keeps signed Slack command and interactive payload boundaries visible through APIs", async () => {

@@ -447,6 +447,24 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     );
     expect(unmentionedComment.body).toBe("OK");
 
+    const mentionedCommentWithoutInstallBody = JSON.stringify({
+      action: "created",
+      issue,
+      comment: { id: 459, body: "@Zero please help", user },
+      repository,
+      installation,
+      sender: user,
+    });
+    const mentionedCommentWithoutInstall = await api.requestGithubWebhook(
+      mentionedCommentWithoutInstallBody,
+      api.signedGithubWebhookHeaders(
+        mentionedCommentWithoutInstallBody,
+        "issue_comment",
+      ),
+      [200],
+    );
+    expect(mentionedCommentWithoutInstall.body).toBe("OK");
+
     const ignoredInstallationBody = JSON.stringify({
       action: "suspend",
       installation: {
@@ -461,6 +479,36 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       [200],
     );
     expect(ignoredInstallation.body).toBe("OK");
+
+    const createdInstallationBody = JSON.stringify({
+      action: "created",
+      installation: {
+        id: 67_891,
+        account: { id: 98_765, login: "vm0-ai", type: "Organization" },
+      },
+      sender: { id: 42, login: "bdd-user" },
+    });
+    const createdInstallation = await api.requestGithubWebhook(
+      createdInstallationBody,
+      api.signedGithubWebhookHeaders(createdInstallationBody, "installation"),
+      [200],
+    );
+    expect(createdInstallation.body).toBe("OK");
+
+    const deletedInstallationBody = JSON.stringify({
+      action: "deleted",
+      installation: {
+        id: 67_892,
+        account: { id: 98_765, login: "vm0-ai", type: "Organization" },
+      },
+      sender: { id: 42, login: "bdd-user" },
+    });
+    const deletedInstallation = await api.requestGithubWebhook(
+      deletedInstallationBody,
+      api.signedGithubWebhookHeaders(deletedInstallationBody, "installation"),
+      [200],
+    );
+    expect(deletedInstallation.body).toBe("OK");
   });
 });
 
