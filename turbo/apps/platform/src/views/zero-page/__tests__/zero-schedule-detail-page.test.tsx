@@ -201,5 +201,25 @@ describe("zero schedule detail page", () => {
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
     });
+
+    click(buttonByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
+      expect(screen.getByText("View activity")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Delete schedule"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Delete"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Schedule deleted")).toBeInTheDocument();
+      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    });
   });
 });
