@@ -1232,3 +1232,19 @@ First USAGE-family reduce.
 - Reduced `zero-onboarding-status.test.ts` (9 -> 5, dropped the orphaned
   `randomUUID` import) and `zero-onboarding-setup.test.ts` (14 -> 11).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 55 — GITHUB INSTALLATION DELETE/PATCH REJECTIONS (CHAIN-GITHUB-MUTATIONS-REJECTIONS, reduce-legacy)
+
+- Reused the existing `githubIntegration` client's `deleteInstallation` and
+  `updateInstallation` methods (no helper change needed).
+- Added `integrations-github-mutations-rejections.bdd.test.ts`: delete rejects
+  unauthenticated callers (401) and 404s a missing installation ("No GitHub
+  installation found"); patch rejects unauthenticated callers (401), rejects an
+  empty `agentName` (400), and 404s a valid body with no installation.
+- Deleting / patching an actual installation and the admin-mismatch 403 variants
+  need a seeded installation row (GAP-GITHUB-INSTALL); the missing-field and
+  malformed-JSON 400s need a raw request the ts-rest client cannot send. Those
+  stay in the kept legacy.
+- Reduced `integrations-github-delete.test.ts` (8 -> 6) and
+  `integrations-github-patch.test.ts` (12 -> 9).
+- Coverage verified (source-only): no regressions vs `main`.

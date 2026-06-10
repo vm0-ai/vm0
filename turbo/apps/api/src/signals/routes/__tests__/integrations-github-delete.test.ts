@@ -136,35 +136,6 @@ describe("DELETE /api/integrations/github", () => {
     }
   });
 
-  it("returns 401 when no user is authenticated", async () => {
-    const app = createApp({ signal: context.signal });
-
-    const response = await app.request(ROUTE_PATH, { method: "DELETE" });
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 404 when the authenticated user has no GitHub installation", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-    const app = createApp({ signal: context.signal });
-
-    const response = await app.request(ROUTE_PATH, {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: "No GitHub installation found",
-        code: "NOT_FOUND",
-      },
-    });
-  });
-
   it("deletes the linked admin installation and returns ok", async () => {
     const fixture = await seedGithubInstallation({});
     fixtures.push(fixture);

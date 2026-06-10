@@ -158,17 +158,6 @@ describe("PATCH /api/integrations/github", () => {
     }
   });
 
-  it("returns 401 when no user is authenticated", async () => {
-    const response = await patchGithub(
-      JSON.stringify({ agentName: "test-agent" }),
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
   it("returns 400 when agentName is missing", async () => {
     const fixture = await seedGithubInstallation({});
     fixtures.push(fixture);
@@ -192,39 +181,6 @@ describe("PATCH /api/integrations/github", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "agentName is required", code: "BAD_REQUEST" },
-    });
-  });
-
-  it("returns 400 when agentName is empty", async () => {
-    const fixture = await seedGithubInstallation({});
-    fixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await patchGithub(
-      JSON.stringify({ agentName: "" }),
-      authHeaders(),
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "agentName is required", code: "BAD_REQUEST" },
-    });
-  });
-
-  it("returns 404 when the authenticated user has no GitHub installation", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const response = await patchGithub(
-      JSON.stringify({ agentName: "test-agent" }),
-      authHeaders(),
-    );
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: "No GitHub installation found",
-        code: "NOT_FOUND",
-      },
     });
   });
 
