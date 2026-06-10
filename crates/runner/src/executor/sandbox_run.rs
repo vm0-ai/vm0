@@ -24,9 +24,7 @@ use crate::network_log_manager::NetworkLogSession;
 use crate::proxy;
 use crate::telemetry::JobTelemetry;
 use crate::types::ExecutionContext;
-use crate::workspace_image_cache::{
-    SessionWorkspaceCache, WorkspaceImageLease, WorkspaceImagePrepareRequest,
-};
+use crate::workspace_image_cache::{WorkspaceImageLease, WorkspaceImagePrepareRequest};
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -153,12 +151,6 @@ pub(super) async fn prepare_workspace_image(
     telemetry: &mut JobTelemetry,
 ) -> Option<WorkspaceImageLease> {
     let cache = config.workspace_cache.as_ref()?;
-
-    if !context.session_workspace_image_cache_enabled() {
-        invalidate_disabled_workspace_cache_baselines(context, cache).await;
-        return None;
-    }
-
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
             run_id: context.run_id,
@@ -172,26 +164,6 @@ pub(super) async fn prepare_workspace_image(
         .await;
     record_workspace_cache_result(telemetry, lease.result());
     Some(lease)
-}
-
-pub(super) async fn invalidate_disabled_workspace_cache_baselines(
-    context: &ExecutionContext,
-    cache: &SessionWorkspaceCache,
-) {
-    if let Err(e) = cache
-        .invalidate_current_images_for_session(
-            context.run_id,
-            context.session_id(),
-            "workspace image cache disabled by feature flag",
-        )
-        .await
-    {
-        warn!(
-            run_id = %context.run_id,
-            error = %e,
-            "failed to invalidate disabled workspace image cache baselines"
-        );
-    }
 }
 
 pub(super) fn workspace_image_promotable(
