@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.8.0...desktop-v0.9.0) (2026-06-10)
+
+
+### Features
+
+* show desktop auth success after completion ([#17092](https://github.com/vm0-ai/vm0/issues/17092)) ([dae5585](https://github.com/vm0-ai/vm0/commit/dae5585e94d6fa49535529b1c38c79d0914fb207))
+
 ## [0.8.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.7.0...desktop-v0.8.0) (2026-06-10)
 
 
