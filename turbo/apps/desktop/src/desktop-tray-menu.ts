@@ -334,6 +334,11 @@ export function buildDesktopTrayMenuItems(
 ): readonly DesktopTrayMenuItem[] {
   return [
     { label: "Show Main Window", click: actions.showMainWindow },
+    separator(),
+    {
+      label: `Computer Use: ${computerUseStatusLabel(state)}`,
+      submenu: buildComputerUseSubmenu(state, actions),
+    },
     {
       label: "Keep Mac Awake",
       type: "checkbox",
@@ -341,11 +346,6 @@ export function buildDesktopTrayMenuItems(
       click: () => {
         actions.setKeepAwakeEnabled(!state.computerUse.keepAwake.enabled);
       },
-    },
-    separator(),
-    {
-      label: `Computer Use: ${computerUseStatusLabel(state)}`,
-      submenu: buildComputerUseSubmenu(state, actions),
     },
     {
       label: authStatusLabel(state),
