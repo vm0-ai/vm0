@@ -13,6 +13,7 @@ use crate::paths;
 use agent_diagnostics::FailureReason;
 use guest_common::{log_error, log_info};
 use serde_json::{Map, Value, json};
+use std::path::{Component, Path};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
@@ -433,7 +434,7 @@ fn write_session_history_marker(history_path_payload: &str) {
 
 fn history_path_payload_for_session_id(session_id: &str) -> Option<String> {
     match Framework::from_env() {
-        Framework::ClaudeCode => Some(claude_history_path_payload(session_id)),
+        Framework::ClaudeCode => claude_history_path_payload(session_id),
         Framework::Codex => {
             let thread_id = crate::session_history::canonical_codex_thread_id(session_id)?;
             Some(codex_history_marker_payload(&thread_id))
@@ -453,20 +454,39 @@ fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
     if session_id.is_empty() {
         return None;
     }
+    let history_path_payload = claude_history_path_payload(session_id)?;
 
-    Some((
-        session_id.to_string(),
-        claude_history_path_payload(session_id),
-    ))
+    Some((session_id.to_string(), history_path_payload))
 }
 
-fn claude_history_path_payload(session_id: &str) -> String {
+fn claude_history_path_payload(session_id: &str) -> Option<String> {
+    if !is_valid_session_history_id(session_id) {
+        return None;
+    }
+
     let home = env::home_dir();
     let project_name = paths::CANONICAL_WORKING_DIR
         .strip_prefix('/')
         .unwrap_or(paths::CANONICAL_WORKING_DIR)
         .replace('/', "-");
-    format!("{home}/.claude/projects/-{project_name}/{session_id}.jsonl")
+    Some(format!(
+        "{home}/.claude/projects/-{project_name}/{session_id}.jsonl"
+    ))
+}
+
+fn is_valid_session_history_id(session_id: &str) -> bool {
+    if session_id.is_empty()
+        || session_id == "."
+        || session_id == ".."
+        || session_id.contains('/')
+        || session_id.contains('\\')
+        || session_id.chars().any(char::is_control)
+    {
+        return false;
+    }
+
+    let mut components = Path::new(session_id).components();
+    matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
 }
 
 /// Codex variant — matches `thread.started` and emits a `CODEX_SEARCH:`
