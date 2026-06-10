@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
   zeroSkillsCollectionContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 import { setupApp, type TestContext } from "../../../../__tests__/test-helpers";
 import { now } from "../../../../lib/time";
@@ -47,6 +49,14 @@ export function createBddApi(context: TestContext) {
     /** ts-rest client for `/api/zero/skills` (create), used to build the
      * `customSkills` precondition through the public API. */
     skills: setupApp({ context })(zeroSkillsCollectionContract),
+    /** ts-rest client for `/api/zero/custom-connectors` (create), used to build
+     * the org custom-connector precondition through the public API. */
+    customConnectors: setupApp({ context })(zeroCustomConnectorsContract),
+    /** ts-rest client for `/api/zero/agents/:id/custom-connectors`
+     * (get/update the connectors enabled on an agent). */
+    agentCustomConnectors: setupApp({ context })(
+      zeroAgentCustomConnectorsContract,
+    ),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,

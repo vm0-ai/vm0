@@ -106,8 +106,8 @@ below. This file is filled in family-by-family as work proceeds.
   list excludes → owner GET 200.
 - CHAIN-RUN — create run → poll status → cancel → status reflects cancel.
 - CHAIN-CHAT — create thread → post message → list → rename → pin → delete.
-- CHAIN-CONNECTOR — create custom connector → enable on agent → GET reflects →
-  clear → GET empty.
+- **CHAIN-CONNECTOR** ✅ — create custom connector → enable on agent → GET
+  reflects → replace → clear → GET empty.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -183,13 +183,15 @@ create→deploy→enable→run case, which uniquely covers run storage/dispatch 
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | user-connectors filters types removed from the registry | KEEP — needs injecting a now-removed connector grant; not constructible via API → GAP-REMOVED-CONNECTOR |
 
-### `zero-agent-custom-connectors.test.ts` → **kept** (CHAIN-CONNECTOR, next round)
+### `zero-agent-custom-connectors.test.ts` → **reduced** to the CLI-token case (CHAIN-CONNECTOR migrated to `agent-connectors.bdd.test.ts`)
 
-| legacy case                                       | disposition                                                                                      |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| GET/PUT enabledIds happy + atomic replace + clear | KEEP — migratable via `zeroCustomConnectorsContract.create` + GET; scheduled for CHAIN-CONNECTOR |
-| GET/PUT 401 / no-org / 404 / 400 cross-org        | KEEP (same round)                                                                                |
-| GET accepts owner CLI token                       | GAP-CLI-TOKEN                                                                                    |
+| legacy case                                       | disposition                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------ |
+| GET/PUT enabledIds happy + atomic replace + clear | BDD (CHAIN-CONNECTOR)                                        |
+| GET/PUT 401 / no-org / 404                        | BDD (agent-connectors authorization)                         |
+| PUT 400 cross-org connector id                    | BDD (rejects a custom connector that belongs to another org) |
+| GET 403 zero token without `agent:read`           | BDD (agent-connectors authorization)                         |
+| GET accepts owner CLI token                       | GAP-CLI-TOKEN (retained here)                                |
 
 ### `zero-default-agent.test.ts` → **kept** (no read API)
 
@@ -268,3 +270,18 @@ not drops: the underlying code paths remain executed by the BDD tests.)
     is run-to-run noise, not a real loss (the branch matches the lower run, and
     its total exceeds both `main` runs). `agent-run-storage.service.ts` stayed at
     baseline (114) because the kept schedule-integration case still exercises it.
+
+### Round 2 — AGENT custom connectors (CHAIN-CONNECTOR)
+
+- Extended `createBddApi` with `customConnectors`
+  (`zeroCustomConnectorsContract`) and `agentCustomConnectors`
+  (`zeroAgentCustomConnectorsContract`) clients.
+- Added `agent-connectors.bdd.test.ts`: CHAIN-CONNECTOR (enable → read → replace
+  → clear), a cross-org rejection case, and an authorization matrix — all
+  API-first, building the org custom-connector precondition via
+  `POST /api/zero/custom-connectors`.
+- Reduced `zero-agent-custom-connectors.test.ts` to its CLI-token case
+  (GAP-CLI-TOKEN); the GET/PUT enabledIds behaviour is now API-first BDD.
+- Coverage: `zero-agents.ts` connector-route branches preserved; the BDD setup
+  additionally exercises the custom-connector create route (already covered by
+  its own test). Verified ≥ baseline in the round run.
