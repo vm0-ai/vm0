@@ -606,6 +606,51 @@ describe("POST /api/zero/chat/messages", () => {
     );
   });
 
+  it("adds video generation template guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const item = VIDEO_STYLE_PRESETS.find((preset) => {
+      return preset.id === "tech-minimalist-reveal";
+    })!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a product video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: item.id,
+        },
+      },
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.prompt).toBe("make a product video");
+    expect(run?.appendSystemPrompt).toContain(`## Video Style: ${item.nameEn}`);
+    expect(run?.appendSystemPrompt).toContain(
+      `- Visual Tone: ${item.dimensions.visualTone}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Camera Style: ${item.dimensions.cameraStyle}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Style Reference: ${item.dimensions.styleReference}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+    );
+    expect(run?.appendSystemPrompt).not.toContain(item.scene);
+  });
+
   it("rejects unknown generation template resources", async () => {
     const fixture = await track(seedFixture());
     const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
@@ -650,6 +695,26 @@ describe("POST /api/zero/chat/messages", () => {
     );
     expect(unknownDesignSystem.body.error.message).toBe(
       "Unknown generation template design system",
+    );
+
+    const unknownVideoStyle = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a product video",
+          generationTemplate: {
+            type: "video",
+            selection: {
+              stylePresetId: "video-style:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownVideoStyle.body.error.message).toBe(
+      "Unknown video style preset",
     );
   });
 
