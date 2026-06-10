@@ -1191,6 +1191,41 @@ mod tests {
         );
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn closed_message_channel_stops_before_decoding_payload() {
+        let (event_tx, event_rx) = mpsc::channel(1);
+        drop(event_rx);
+        let mut state = test_event_loop_state(event_tx);
+        let (_close_tx, mut close_rx) = oneshot::channel();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let action = handle_message(
+            &mut state,
+            ProtocolMessage {
+                action: action::MESSAGE,
+                channel: Some("ch".to_string()),
+                messages: Some(vec![AblyMessage {
+                    data: Some(serde_json::json!("{not-json")),
+                    encoding: Some("json".to_string()),
+                    ..Default::default()
+                }]),
+                ..Default::default()
+            },
+            &mut close_rx,
+        )
+        .await;
+
+        assert_eq!(action, LoopAction::Stop);
+        assert_eq!(state.dropped_messages, 0);
+        let events = captured.entries();
+        assert!(
+            !captured_contains(&events, "Failed to decode JSON encoding layer"),
+            "payload was decoded before closed-channel stop; events={events:#?}"
+        );
+    }
+
     #[tokio::test]
     async fn detached_reattach_missing_transport_leaves_disconnected_event_pending() {
         let (event_tx, mut event_rx) = mpsc::channel(4);
