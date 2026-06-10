@@ -1242,7 +1242,7 @@ async fn gc_versions(
             .to_string();
         let service_lock = if dry_run {
             let service_lock_parent = host_file::file_parent(&service_lock_path);
-            match std::fs::symlink_metadata(service_lock_parent) {
+            match tokio::fs::symlink_metadata(service_lock_parent).await {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
                 Ok(_) => match probe_existing_lock(&service_lock_path) {
                     ExistingLockProbe::Free(lock) => Some(lock),
@@ -1959,7 +1959,7 @@ async fn remove_storage_lock_after_eviction(
         return;
     };
 
-    match std::fs::symlink_metadata(lock_path) {
+    match tokio::fs::symlink_metadata(lock_path).await {
         Ok(path_meta)
             if path_meta.dev() == lock_meta.dev() && path_meta.ino() == lock_meta.ino() => {}
         Ok(_) => return,
