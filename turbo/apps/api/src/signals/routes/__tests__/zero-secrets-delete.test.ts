@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
-import { zeroSecretsByNameContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import {
+  zeroSecretsByNameContract,
+  zeroSecretsContract,
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import { secrets } from "@vm0/db/schema/secret";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -14,7 +17,6 @@ import {
 } from "./helpers/zero-route-test";
 import {
   deleteUserData$,
-  seedOtherSecret$,
   seedSecrets$,
   type UserDataFixture,
 } from "./helpers/zero-user-data";
@@ -23,8 +25,60 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+interface UserSecretRouteFixture {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}
+
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+async function createSecretThroughApi(
+  fixture: UserSecretRouteFixture,
+): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  const client = setupApp({ context })(zeroSecretsContract);
+  await accept(
+    client.set({
+      headers: authHeaders(),
+      body: {
+        name: fixture.name,
+        value: `value-${fixture.name}`,
+      },
+    }),
+    [200, 201],
+  );
+}
+
+async function deleteSecretThroughApi(
+  fixture: UserSecretRouteFixture,
+): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  const client = setupApp({ context })(zeroSecretsByNameContract);
+  await accept(
+    client.delete({
+      params: { name: fixture.name },
+      headers: authHeaders(),
+    }),
+    [204, 404],
+  );
+}
+
+async function listSecretsThroughApi() {
+  const client = setupApp({ context })(zeroSecretsContract);
+  const response = await accept(client.list({ headers: authHeaders() }), [200]);
+  return response.body.secrets;
+}
+
 describe("DELETE /api/zero/secrets/:name", () => {
-  const track = createFixtureTracker<UserDataFixture>((fixture) => {
+  const trackSecret = createFixtureTracker<UserSecretRouteFixture>(
+    (fixture) => {
+      return deleteSecretThroughApi(fixture);
+    },
+  );
+  const trackLegacy = createFixtureTracker<UserDataFixture>((fixture) => {
     return store.set(deleteUserData$, fixture, context.signal);
   });
 
@@ -46,7 +100,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
     const response = await accept(
       client.delete({
         params: { name: "ANY_KEY" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [401],
     );
@@ -55,47 +109,35 @@ describe("DELETE /api/zero/secrets/:name", () => {
     });
   });
 
-  it("deletes a secret successfully and removes the row", async () => {
-    const fixture = await track(
-      store.set(
-        seedSecrets$,
-        [{ name: "DELETE_ME", type: "user" }],
-        context.signal,
-      ),
+  it("deletes a secret successfully and removes it from the list", async () => {
+    const fixture = await trackSecret(
+      Promise.resolve({
+        orgId: `org_${randomUUID()}`,
+        userId: `user_${randomUUID()}`,
+        name: "DELETE_ME",
+      }),
     );
+    await createSecretThroughApi(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroSecretsByNameContract);
     const response = await client.delete({
       params: { name: "DELETE_ME" },
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
     expect(response.status).toBe(204);
 
-    // Row removed
-    const writeDb = store.set(writeDb$);
-    const remaining = await writeDb
-      .select({ id: secrets.id })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.userId, fixture.userId),
-          eq(secrets.name, "DELETE_ME"),
-        ),
-      );
-    expect(remaining).toStrictEqual([]);
+    await expect(listSecretsThroughApi()).resolves.toStrictEqual([]);
   });
 
   it("returns 404 for a nonexistent secret", async () => {
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroSecretsByNameContract);
     const response = await accept(
       client.delete({
         params: { name: "NONEXISTENT" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -108,16 +150,22 @@ describe("DELETE /api/zero/secrets/:name", () => {
   });
 
   it("returns 404 for a secret owned by another user (cross-user isolation)", async () => {
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    // Another user in the same org has the secret named OTHER_USER_SECRET.
-    await store.set(seedOtherSecret$, fixture, context.signal);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const orgId = `org_${randomUUID()}`;
+    const owner = await trackSecret(
+      Promise.resolve({
+        orgId,
+        userId: `user_${randomUUID()}`,
+        name: "OTHER_USER_SECRET",
+      }),
+    );
+    await createSecretThroughApi(owner);
+    mocks.clerk.session(`user_${randomUUID()}`, orgId);
 
     const client = setupApp({ context })(zeroSecretsByNameContract);
     const response = await accept(
       client.delete({
         params: { name: "OTHER_USER_SECRET" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -125,28 +173,21 @@ describe("DELETE /api/zero/secrets/:name", () => {
       error: { code: "NOT_FOUND" },
     });
 
-    // Sanity: the victim row is still there (not silently deleted).
-    const writeDb = store.set(writeDb$);
-    const victim = await writeDb
-      .select({ id: secrets.id })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.name, "OTHER_USER_SECRET"),
-        ),
-      );
-    expect(victim).toHaveLength(1);
+    mocks.clerk.session(owner.userId, owner.orgId);
+    await expect(listSecretsThroughApi()).resolves.toMatchObject([
+      { name: "OTHER_USER_SECRET", type: "user" },
+    ]);
   });
 
   it("returns 404 for a secret in another org (cross-org isolation)", async () => {
-    const orgAFixture = await track(
-      store.set(
-        seedSecrets$,
-        [{ name: "ORG_A_SECRET", type: "user" }],
-        context.signal,
-      ),
+    const orgAFixture = await trackSecret(
+      Promise.resolve({
+        orgId: `org_${randomUUID()}`,
+        userId: `user_${randomUUID()}`,
+        name: "ORG_A_SECRET",
+      }),
     );
+    await createSecretThroughApi(orgAFixture);
 
     // Authenticate as a different user in a different org.
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
@@ -155,7 +196,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
     const response = await accept(
       client.delete({
         params: { name: "ORG_A_SECRET" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -163,23 +204,14 @@ describe("DELETE /api/zero/secrets/:name", () => {
       error: { code: "NOT_FOUND" },
     });
 
-    // Sanity: the victim row is still there in org A.
-    const writeDb = store.set(writeDb$);
-    const victim = await writeDb
-      .select({ id: secrets.id, orgId: secrets.orgId })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, orgAFixture.orgId),
-          eq(secrets.name, "ORG_A_SECRET"),
-        ),
-      );
-    expect(victim).toHaveLength(1);
-    expect(victim[0]?.orgId).toBe(orgAFixture.orgId);
+    mocks.clerk.session(orgAFixture.userId, orgAFixture.orgId);
+    await expect(listSecretsThroughApi()).resolves.toMatchObject([
+      { name: "ORG_A_SECRET", type: "user" },
+    ]);
   });
 
   it("does NOT delete non-user-type secrets (type filter regression guard)", async () => {
-    const fixture = await track(
+    const fixture = await trackLegacy(
       store.set(
         seedSecrets$,
         [{ name: "CONNECTOR_SECRET", type: "connector" }],
@@ -192,7 +224,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
     const response = await accept(
       client.delete({
         params: { name: "CONNECTOR_SECRET" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
