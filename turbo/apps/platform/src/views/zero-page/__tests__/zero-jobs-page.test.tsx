@@ -161,7 +161,7 @@ describe("zero jobs page", () => {
     });
   });
 
-  it("creates public and private agents, supports Enter submit, cancel, and card navigation", async () => {
+  it("creates public and private agents, customizes avatars, supports Enter submit, cancel, and card navigation", async () => {
     let team: TeamComposeItem[] = [createDefaultAgent()];
     mockAgentsPage(team);
     context.mocks.api(zeroTeamContract.list, ({ respond }) => {
@@ -221,10 +221,41 @@ describe("zero jobs page", () => {
       screen.getByPlaceholderText("e.g. Research Assistant"),
       "Marketing Bot",
     );
+    click(screen.getByLabelText("Customize avatar"));
+    const avatarDialog = await screen.findByRole("dialog", {
+      name: "Give your agent a face",
+    });
+    expect(screen.getByText("Angle")).toBeInTheDocument();
+    click(screen.getByLabelText("Randomize avatar"));
+    click(screen.getByLabelText("Next step"));
+    await waitFor(() => {
+      expect(screen.getByText("Skin")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Next step"));
+    click(screen.getByLabelText("Next step"));
+    click(screen.getByLabelText("Next step"));
+    click(screen.getByLabelText("Next step"));
+    await waitFor(() => {
+      expect(screen.getByText("Mood")).toBeInTheDocument();
+      expect(screen.getByText("Chill")).toBeInTheDocument();
+      expect(screen.getByText("Normal")).toBeInTheDocument();
+      expect(screen.getByText("Hyped")).toBeInTheDocument();
+    });
+    click(screen.getByText("Chill"));
+    click(screen.getByText("Use this avatar"));
+    await waitFor(() => {
+      expect(avatarDialog).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("img", { name: "New agent" }),
+      ).toBeInTheDocument();
+    });
     click(dialogCreateButton(dialog));
 
     await waitFor(() => {
       expect(screen.getByText("Marketing Bot")).toBeInTheDocument();
+      expect(
+        screen.getByRole("img", { name: "Marketing Bot" }),
+      ).toBeInTheDocument();
     });
 
     dialog = await openCreateDialog("Private");
