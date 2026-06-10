@@ -1450,3 +1450,45 @@ prior round.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm -F api exec vitest run` all clean.
+
+### Round 34 — AGENT-01 zero-runs (cancel) BDD + legacy cleanup
+
+Migrates `zero-runs-cancel.test.ts` (17 legacy
+`it()`s) into 5 BDD `it()`s: (a) auth boundary (401
+unauth → 401 no-org → 403 sandbox without
+`agent-run:write` capability), (b) 404 + 400 chain
+(404 unknown → 400 RUN_NOT_CANCELLABLE for completed),
+(c) 200 success + state + concurrent + idempotent +
+drain chain (200 cancels running + publishes + GET
+verifies the cancelled status → 200 concurrent cancel
+publishes only once → 200 deletes pending runner job
+→ 200 deletes queued run queue entry → 200
+already-cancelled is a no-op with no publish → 200
+drains the org queue and promotes the next queued run
+to pending), (d) credits reconciliation chain (200
+processes pending usage_event + deducts credits → 200
+does NOT reconcile on the idempotent path), (e)
+Stripe auto-recharge chain (200 triggers Stripe when
+balance crosses threshold → 200 no Stripe above
+threshold → 200 no Stripe for stale free-tier → 200
+no Stripe when claim is already pending).
+
+Service-Level Exceptions: `agentRunQueue` /
+`runnerJobQueue` row removal, the `usageEvent`
+reconciliation, the queue-drain `agentRuns.status`
+promotion, and the `orgMetadata.autoRechargePendingAt`
+state are all internal service state with no public
+read API. They are recorded as Open Helper Gaps and
+verified by direct DB SELECTs because no user-reachable
+endpoint exposes them. The run status itself is
+verified via the public `zeroRunsByIdContract.getById`
+response (no direct DB read of `agentRuns`).
+
+Net test count: 17 legacy `it()`s → 5 BDD `it()`s
+(71% reduction). No per-file coverage regression for
+the cancel route file.
+
+Deletes the now-redundant `zero-runs-cancel.test.ts`.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm -F api exec vitest run` all clean.
