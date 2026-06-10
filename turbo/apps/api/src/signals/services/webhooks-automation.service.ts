@@ -7,7 +7,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, count, eq, gte } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -72,6 +72,30 @@ async function verifySignature(args: {
 }
 
 /**
+ * Bounded per-automation throttle: counts recent webhook runs in the
+ * automation's linked thread within the rolling window.
+ */
+async function isWebhookRateLimited(
+  db: Db,
+  chatThreadId: string,
+  apiStartTime: number,
+): Promise<boolean> {
+  const windowStart = new Date(apiStartTime - RATE_LIMIT_WINDOW_MS);
+  const [recent] = await db
+    .select({ value: count() })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, chatThreadId),
+        eq(zeroRuns.triggerSource, "webhook"),
+        gte(agentRuns.createdAt, windowStart),
+      ),
+    );
+  return (recent?.value ?? 0) >= RATE_LIMIT_MAX_RUNS;
+}
+
+/**
  * Dispatch an inbound webhook: resolve the automation by trigger token, verify
  * the HMAC signature, enforce the per-automation rate limit, then interpret the
  * request into an agent run via the default interpreter (webhook trigger event)
@@ -99,6 +123,7 @@ export const dispatchAutomationWebhook$ = command(
         agentId: automations.agentId,
         chatThreadId: automations.chatThreadId,
         instruction: automations.instruction,
+        appendSystemPrompt: automations.appendSystemPrompt,
         orgId: automations.orgId,
         userId: automations.userId,
         enabled: automations.enabled,
@@ -135,20 +160,13 @@ export const dispatchAutomationWebhook$ = command(
       return { kind: "unauthorized" };
     }
 
-    const windowStart = new Date(args.apiStartTime - RATE_LIMIT_WINDOW_MS);
-    const [recent] = await db
-      .select({ value: count() })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(
-        and(
-          eq(zeroRuns.chatThreadId, row.chatThreadId),
-          eq(zeroRuns.triggerSource, "webhook"),
-          gte(agentRuns.createdAt, windowStart),
-        ),
-      );
+    const rateLimited = await isWebhookRateLimited(
+      db,
+      row.chatThreadId,
+      args.apiStartTime,
+    );
     signal.throwIfAborted();
-    if ((recent?.value ?? 0) >= RATE_LIMIT_MAX_RUNS) {
+    if (rateLimited) {
       log.warn("Automation webhook rate limited", {
         automationId: row.automationId,
       });
@@ -162,6 +180,7 @@ export const dispatchAutomationWebhook$ = command(
       userId: row.userId,
       chatThreadId: row.chatThreadId,
       instruction: row.instruction,
+      appendSystemPrompt: row.appendSystemPrompt,
     });
     const triggerEvent: WebhookTriggerEvent = {
       kind: "webhook",

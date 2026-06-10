@@ -40,6 +40,10 @@ export const automations = pgTable(
     // The user intent the interpreter turns into a run prompt.
     instruction: text("instruction").notNull(),
 
+    // Optional extra system-prompt context appended to the agent run (mirrors
+    // zero_agent_schedules.append_system_prompt; carried by the dual-write).
+    appendSystemPrompt: text("append_system_prompt"),
+
     agentId: uuid("agent_id")
       .notNull()
       .references(

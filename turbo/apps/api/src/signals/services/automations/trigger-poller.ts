@@ -47,6 +47,7 @@ interface DueTrigger {
     readonly userId: string;
     readonly chatThreadId: string;
     readonly instruction: string;
+    readonly appendSystemPrompt: string | null;
   };
 }
 
@@ -272,6 +273,7 @@ const runTriggerNow$ = command(
         userId: automation.userId,
         chatThreadId: automation.chatThreadId,
         instruction: automation.instruction,
+        appendSystemPrompt: automation.appendSystemPrompt,
         triggerType: trigger.kind as "cron" | "once" | "loop",
         cronExpression: trigger.cronExpression,
         timezone: trigger.timezone,
@@ -375,6 +377,7 @@ export const executeDueTriggers$ = command(
         userId: automations.userId,
         chatThreadId: automations.chatThreadId,
         instruction: automations.instruction,
+        appendSystemPrompt: automations.appendSystemPrompt,
         automationEnabled: automations.enabled,
       })
       .from(automationTriggers)
@@ -417,6 +420,7 @@ export const executeDueTriggers$ = command(
           userId: row.userId,
           chatThreadId: row.chatThreadId,
           instruction: row.instruction,
+          appendSystemPrompt: row.appendSystemPrompt,
         },
       };
 

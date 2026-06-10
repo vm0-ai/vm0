@@ -30,6 +30,22 @@ const BACKFILL_SQL = readFileSync(
   "utf8",
 );
 
+// 0444 adds automations.append_system_prompt and carries it into mirrors that
+// predate the column. The DDL already ran via db:migrate; only the data UPDATE
+// (everything after the first statement-breakpoint) is re-runnable here.
+const APPEND_PROMPT_CARRY_SQL = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../../../../../../packages/db/src/migrations/0444_nebulous_rockslide.sql",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+)
+  .split("--> statement-breakpoint")
+  .slice(1)
+  .join(";");
+
 const track = createFixtureTracker<SchedulesFixture>((fixture) => {
   return store.set(deleteSchedulesScenario$, fixture, context.signal);
 });
@@ -37,6 +53,11 @@ const track = createFixtureTracker<SchedulesFixture>((fixture) => {
 async function runBackfill(): Promise<void> {
   const db = store.set(writeDb$);
   await db.execute(sql.raw(BACKFILL_SQL));
+}
+
+async function runAppendPromptCarry(): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.execute(sql.raw(APPEND_PROMPT_CARRY_SQL));
 }
 
 async function mirrorsForSchedules(
@@ -69,6 +90,7 @@ describe("backfill schedules into events-first tables", () => {
               cronExpression: "0 9 * * *",
               prompt: "Existing cron prompt",
               description: "cron desc",
+              appendSystemPrompt: "Existing cron append prompt",
               enabled: true,
               nextRunAt: new Date("2099-01-01T09:00:00.000Z"),
               consecutiveFailures: 1,
@@ -121,6 +143,9 @@ describe("backfill schedules into events-first tables", () => {
     expect(cronAutomation.agentId).toBe(fixture.composeId);
     expect(cronAutomation.instruction).toBe("Existing cron prompt");
     expect(cronAutomation.description).toBe("cron desc");
+    // 0442 predates append_system_prompt; the 0444 data carry covers it (its
+    // own test below).
+    expect(cronAutomation.appendSystemPrompt).toBeNull();
     expect(cronAutomation.enabled).toBeTruthy();
     expect(loopAutomation.enabled).toBeFalsy();
 
@@ -159,6 +184,29 @@ describe("backfill schedules into events-first tables", () => {
       .from(agentRuns)
       .where(eq(agentRuns.orgId, fixture.orgId));
     expect(runs).toHaveLength(0);
+  });
+
+  it("carries append_system_prompt into mirrors that predate the column (0444)", async () => {
+    // Simulate a pre-0444 mirror: backfill, then null the column as if the
+    // mirror had been written before append_system_prompt existed.
+    await runBackfill();
+    const db = store.set(writeDb$);
+    await db.execute(
+      sql`UPDATE "automations" SET "append_system_prompt" = NULL WHERE "source_schedule_id" IS NOT NULL`,
+    );
+
+    await runAppendPromptCarry();
+
+    const mirrors = await mirrorsForSchedules(fixture.scheduleIds);
+    const cronMirror = mirrors.find((row) => {
+      return row.instruction === "Existing cron prompt";
+    });
+    const loopMirror = mirrors.find((row) => {
+      return row.instruction === "Existing loop prompt";
+    });
+    expect(cronMirror?.appendSystemPrompt).toBe("Existing cron append prompt");
+    // Sources without an append prompt stay null.
+    expect(loopMirror?.appendSystemPrompt).toBeNull();
   });
 
   it("is a no-op on re-run (no duplicate mirrors)", async () => {
