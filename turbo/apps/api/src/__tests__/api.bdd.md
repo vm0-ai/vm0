@@ -120,6 +120,8 @@ below. This file is filled in family-by-family as work proceeds.
   (DELETE) → GET empty.
 - **CHAIN-API-KEY** ✅ — create PAT (token once) → list (prefix only) → create
   2nd → list newest-first → delete → list excludes → delete again 404.
+- **CHAIN-PERSONAL-MODEL-PROVIDER** ✅ (delete) — upsert provider → list →
+  delete → list excludes → delete again 404.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -444,3 +446,22 @@ calc. Services tests outside this list migrate to route-level BDD.
   expressible via the API) and deleted `zero-api-keys-delete.test.ts` whole.
 - Coverage verified (source-only): `zero-api-keys.ts` (23/2) and
   `zero-api-keys-delete.ts` (11/2) unchanged vs the `main` baseline.
+
+### Round 10 — PERSONAL MODEL PROVIDERS (delete)
+
+- Extended `createBddApi` with `personalModelProviders`
+  (`zeroPersonalModelProvidersMainContract`) and `personalModelProviderByType`
+  (`zeroPersonalModelProvidersByTypeContract`) clients.
+- Added `zero-me-model-providers.bdd.test.ts`: a real upsert → list → delete
+  chain (covers the delete handler's 204/404 branches and the list's model-first
+  branch) plus unauthenticated / no-org boundaries.
+- Deleted `zero-me-model-providers-delete.test.ts` whole. Kept
+  `zero-me-model-providers-list.test.ts` (its registry-filter branch needs a
+  `codex-oauth-token` provider, which requires the complex OAuth/auth.json
+  upsert — GAP-CODEX-UPSERT) and the full `-upsert.test.ts`.
+- Coverage verified (source-only): `zero-me-model-providers-delete.ts` (10/2),
+  `-list.ts` (8/2) and `-upsert.ts` (28/18) all unchanged vs the `main`
+  baseline.
+- Also cleaned 60 leftover sentinel `model_stat` rows that an earlier
+  interrupted coverage run had left in the shared test DB (caused an unrelated
+  `model-stats.test.ts` duplicate-key failure; not a code issue).

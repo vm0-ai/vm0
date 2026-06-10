@@ -5,6 +5,10 @@ import {
   apiKeysContract,
 } from "@vm0/api-contracts/contracts/api-keys";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import {
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
@@ -89,6 +93,14 @@ export function createBddApi(context: TestContext) {
     apiKeys: setupApp({ context })(apiKeysContract),
     /** ts-rest client for `/api/zero/api-keys/:id` (delete a token). */
     apiKeyById: setupApp({ context })(apiKeysByIdContract),
+    /** ts-rest client for `/api/zero/me/model-providers` (list/upsert). */
+    personalModelProviders: setupApp({ context })(
+      zeroPersonalModelProvidersMainContract,
+    ),
+    /** ts-rest client for `/api/zero/me/model-providers/:type` (delete). */
+    personalModelProviderByType: setupApp({ context })(
+      zeroPersonalModelProvidersByTypeContract,
+    ),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
