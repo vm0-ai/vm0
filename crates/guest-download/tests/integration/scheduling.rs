@@ -1,6 +1,7 @@
 use crate::support::{create_tar_gz, run_guest_download, write_manifest};
 use httpmock::prelude::*;
 use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
+use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
@@ -22,6 +23,12 @@ fn error_response(status: u16, body: String) -> HttpMockResponse {
         .status(status)
         .body(body)
         .build()
+}
+
+fn path_to_string(path: &Path) -> std::io::Result<String> {
+    path.to_str().map(str::to_owned).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "path is not valid UTF-8")
+    })
 }
 
 #[derive(Clone)]
@@ -337,10 +344,7 @@ fn create_numbered_storages(
         }
 
         let mount = dir.path().join(format!("mount_{i}"));
-        storages.push((
-            mount.to_string_lossy().into_owned(),
-            server.url("/storage.tar.gz"),
-        ));
+        storages.push((path_to_string(&mount)?, server.url("/storage.tar.gz")));
         servers.push(server);
     }
 
@@ -359,7 +363,7 @@ fn spawn_guest_download(
         .map(|(mount, url)| (mount.as_str(), Some(url.as_str())))
         .collect();
     let manifest = write_manifest(dir, &storage_refs, None)?;
-    let manifest_path = manifest.to_string_lossy().into_owned();
+    let manifest_path = path_to_string(&manifest)?;
     Ok(std::thread::spawn(move || {
         run_guest_download(&manifest_path)
     }))
@@ -490,10 +494,10 @@ fn queued_conflict_does_not_block_later_independent_download() {
     let url_child = child_server.url("/child.tar.gz");
     let url_independent = independent_server.url("/independent.tar.gz");
     let storages = vec![
-        (parent_mount.to_string_lossy().into_owned(), url_parent),
-        (child_mount.to_string_lossy().into_owned(), url_child),
+        (parent_mount.to_str().unwrap().to_owned(), url_parent),
+        (child_mount.to_str().unwrap().to_owned(), url_child),
         (
-            independent_mount.to_string_lossy().into_owned(),
+            independent_mount.to_str().unwrap().to_owned(),
             url_independent,
         ),
     ];
@@ -578,8 +582,8 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
     let url_parent = parent_server.url("/parent.tar.gz");
     let url_child = child_server.url("/child.tar.gz");
     let storages = vec![
-        (parent_mount.to_string_lossy().into_owned(), url_parent),
-        (child_mount.to_string_lossy().into_owned(), url_child),
+        (parent_mount.to_str().unwrap().to_owned(), url_parent),
+        (child_mount.to_str().unwrap().to_owned(), url_child),
     ];
     let handle = spawn_guest_download(&dir, &storages).unwrap();
 
