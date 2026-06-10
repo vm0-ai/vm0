@@ -22,6 +22,7 @@ import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list"
 import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import {
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
@@ -183,6 +184,10 @@ export function createBddApi(context: TestContext) {
     orgLogo: setupApp({ context })(zeroOrgLogoContract),
     /** ts-rest client for `/api/zero/team` (list the org's agents/composes). */
     team: setupApp({ context })(zeroTeamContract),
+    /** ts-rest client for `/api/zero/runs` (create a run). The funded happy path
+     * needs seeded credits with no API surface; only the pre-admission
+     * rejections (auth/validation/credits/ownership) are reachable. */
+    zeroRuns: setupApp({ context })(zeroRunsMainContract),
     /** ts-rest client for `/api/zero/attribution/signup` (record first-touch
      * signup attribution into Clerk private metadata). */
     attribution: setupApp({ context })(zeroAttributionContract),

@@ -860,3 +860,24 @@ so there is no API-first way to exercise just the mapping.
   (DROP-TEAM-STANDALONE-COMPOSE).
 - Coverage verified (source-only): `zero-team.ts` (8/2/1) unchanged vs `main`.
   No regressions.
+
+### Round 33 — RUN CREATE REJECTIONS (CHAIN-RUN-CREATE-REJECTIONS, reduce-legacy)
+
+First reduce-legacy on a gap family. A probe established that an API-created
+agent in a fresh org returns 402 INSUFFICIENT*CREDITS — the funded happy path
+needs credits granted via billing/redeem webhooks (no public API), so the run
+happy path and all downstream run operations stay gap-blocked (GAP-RUN-CREDITS).
+But every rejection \_before* the credit check is reachable.
+
+- Extended `createBddApi` with the `zeroRuns` client.
+- Added `zero-runs-create.bdd.test.ts`: unauthenticated 401; a zero token
+  without `agent-run:write` and a plain sandbox token both 403; body validation
+  (missing agentId 400, caller permissionPolicies 400, ambiguous Claude tool
+  entries 400); unknown sessionId 404; a fresh-org VM0 run 402
+  INSUFFICIENT_CREDITS; and a non-owner running a private agent 403.
+- Reduced `zero-runs-create.test.ts` from 54 to 46 cases by removing the 8
+  seedless rejection cases now covered by the BDD (and their orphaned
+  `generateZeroToken` import + `sandboxToken` helper); kept the seeded-credit and
+  connector/secret/model happy-path cases (GAP-RUN-CREDITS).
+- Coverage verified (source-only): no regression; `agent-run-create.service.ts`
+  561 -> 563 branches (the fresh-org admission path is newly covered).

@@ -44,11 +44,7 @@ import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  generateZeroToken,
-  signSandboxJwtForTests,
-  verifyZeroToken,
-} from "../../auth/tokens";
+import { signSandboxJwtForTests, verifyZeroToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { mockNow } from "../../../lib/time";
@@ -447,21 +443,6 @@ async function seedExpiredCredits(args: {
   });
 }
 
-function sandboxToken(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): string {
-  const seconds = Math.floor(now() / 1000);
-  return signSandboxJwtForTests({
-    scope: "sandbox",
-    userId: args.userId,
-    orgId: args.orgId,
-    runId: `run_${randomUUID()}`,
-    iat: seconds,
-    exp: seconds + 60,
-  });
-}
-
 function zeroTokenWithWrite(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -480,117 +461,6 @@ function zeroTokenWithWrite(args: {
 }
 
 describe("POST /api/zero/runs", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: {},
-        body: { prompt: "hello", agentId: randomUUID() },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("rejects sandbox-scoped credentials without agent-run:write", async () => {
-    const fx = await fixture();
-    const token = generateZeroToken(fx.userId, randomUUID(), fx.orgId);
-
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: { prompt: "hello", agentId: randomUUID() },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toContain(
-      "Missing required capability: agent-run:write",
-    );
-  });
-
-  it("returns 400 when neither agentId nor sessionId is provided", async () => {
-    await fixture();
-
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { prompt: "hello" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.message).toBe("agentId is required");
-  });
-
-  it("rejects caller-provided permission policies", async () => {
-    await fixture();
-
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          prompt: "hello",
-          agentId: randomUUID(),
-          permissionPolicies: {
-            x: {
-              policies: { "tweet.write": "allow" },
-            },
-          },
-        } as never,
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-    expect(response.body.error.message).toContain("permissionPolicies");
-  });
-
-  it("rejects ambiguous Claude tool list entries", async () => {
-    await fixture();
-    const cases: {
-      readonly tools: string[];
-    }[] = [
-      { tools: [""] },
-      { tools: ["   "] },
-      { tools: ["Bash,Read"] },
-      { tools: ["--help"] },
-      { tools: [" -x"] },
-    ];
-
-    for (const testCase of cases) {
-      const response = await accept(
-        zeroRunsClient().create({
-          headers: { authorization: "Bearer clerk-session" },
-          body: {
-            prompt: "hello",
-            agentId: randomUUID(),
-            tools: testCase.tools,
-          },
-        }),
-        [400],
-      );
-
-      expect(response.body.error.code).toBe("BAD_REQUEST");
-      expect(response.body.error.message).toContain("tools");
-      expect(response.body.error.message).toContain("Claude tool name");
-    }
-  });
-
-  it("returns 404 when session inference cannot find a session", async () => {
-    await fixture();
-
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { prompt: "hello", sessionId: randomUUID() },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Session not found");
-  });
-
   it("creates a zero run and injects zero-specific runner context", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({
@@ -3298,47 +3168,5 @@ describe("POST /api/zero/runs", () => {
     expect(run?.sessionId).toBe(sessionId);
     expect(run?.continuedFromSessionId).toBe(sessionId);
     expect(run?.vars).toStrictEqual({ ZERO_AGENT_ID: agent.agentId });
-  });
-
-  it("prevents non-owners from running private zero agents", async () => {
-    const fx = await fixture();
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      owner: `other_${randomUUID()}`,
-      visibility: "private",
-    });
-
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { prompt: "hello", agentId: agent.agentId },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Only the private agent owner can run this agent",
-    );
-  });
-
-  it("keeps plain sandbox tokens out of the route", async () => {
-    const fx = await fixture();
-
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: {
-          authorization: `Bearer ${sandboxToken({
-            userId: fx.userId,
-            orgId: fx.orgId,
-          })}`,
-        },
-        body: { prompt: "hello", agentId: randomUUID() },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toContain(
-      "Missing required capability: agent-run:write",
-    );
   });
 });
