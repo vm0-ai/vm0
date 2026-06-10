@@ -242,6 +242,22 @@ kill_workspace_holder_pids() {
   done
 }
 
+wait_for_workspace_holders_to_clear() {
+  grace_seconds=$1
+  attempts=$((grace_seconds * 10))
+  [ "$attempts" -gt 0 ] || attempts=1
+
+  while [ "$attempts" -gt 0 ]; do
+    if [ -z "$(workspace_holder_pids)" ]; then
+      return 0
+    fi
+    attempts=$((attempts - 1))
+    sleep 0.1
+  done
+
+  [ -z "$(workspace_holder_pids)" ]
+}
+
 echo "workspace drive unmount failed; diagnosing holders under $workspace_dir" >&2
 holder_pids="$(workspace_holder_pids)"
 if [ -z "$holder_pids" ]; then
@@ -249,14 +265,14 @@ if [ -z "$holder_pids" ]; then
 else
   log_workspace_holders
   term_workspace_holder_pids "$holder_pids"
-  sleep "$WORKSPACE_HOLDER_TERM_GRACE_SECONDS"
+  wait_for_workspace_holders_to_clear "$WORKSPACE_HOLDER_TERM_GRACE_SECONDS" || true
 
   remaining_holder_pids="$(workspace_holder_pids)"
   if [ -n "$remaining_holder_pids" ]; then
     echo "workspace holders remain after TERM; sending KILL" >&2
     log_workspace_holders
     kill_workspace_holder_pids "$remaining_holder_pids"
-    sleep "$WORKSPACE_HOLDER_KILL_GRACE_SECONDS"
+    wait_for_workspace_holders_to_clear "$WORKSPACE_HOLDER_KILL_GRACE_SECONDS" || true
   fi
 fi
 
