@@ -16,6 +16,18 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 
+// BDD migration of the legacy `device-token.test.ts`. The
+// 5 legacy `it()`s collapse into 3 BDD `it()`s: (1)
+// device-token create chain (200 creates a 10-minute bb0
+// device code with the expected response shape + DB row
+// written), (2) device-token poll chain (202 returns
+// pending before confirm → 200 returns approved
+// credentials after confirm with DB rows for cliTokens +
+// chatThreads + deviceCodes updated → 404 returns invalid
+// for a wrong poll token → 410 returns expired after
+// device code expires), (3) bb0 confirm chain (401
+// requires a user session → 400 requires a default agent).
+
 const store = createStore();
 const context = testContext();
 
@@ -99,35 +111,79 @@ async function createDeviceCode(): Promise<DeviceCodeFixture> {
   };
 }
 
-describe("POST /api/device-token", () => {
-  const deviceCodesToDelete: string[] = [];
+function createDeviceTokenHarness(): {
+  readonly deviceCodesToDelete: string[];
+  readonly agentsToDelete: AgentFixture[];
+  readonly usersToDelete: string[];
+} {
+  return {
+    deviceCodesToDelete: [],
+    agentsToDelete: [],
+    usersToDelete: [],
+  };
+}
+
+async function cleanupHarness(
+  harness: ReturnType<typeof createDeviceTokenHarness>,
+): Promise<void> {
+  while (harness.deviceCodesToDelete.length > 0) {
+    const code = harness.deviceCodesToDelete.pop();
+    if (code) {
+      await deleteDeviceCode(code);
+    }
+  }
+  while (harness.usersToDelete.length > 0) {
+    const userId = harness.usersToDelete.pop();
+    if (userId) {
+      await deleteUserRows(userId);
+    }
+  }
+  while (harness.agentsToDelete.length > 0) {
+    const fixture = harness.agentsToDelete.pop();
+    if (fixture) {
+      await deleteAgentFixture(fixture);
+    }
+  }
+}
+
+async function createTrackedDeviceCode(
+  harness: ReturnType<typeof createDeviceTokenHarness>,
+): Promise<DeviceCodeFixture> {
+  const fixture = await createDeviceCode();
+  harness.deviceCodesToDelete.push(fixture.deviceCode);
+  return fixture;
+}
+
+describe("BDD POST /api/device-token — create chain", () => {
+  const harness = createDeviceTokenHarness();
 
   afterEach(async () => {
-    while (deviceCodesToDelete.length > 0) {
-      const code = deviceCodesToDelete.pop();
-      if (code) {
-        await deleteDeviceCode(code);
-      }
-    }
+    await cleanupHarness(harness);
   });
 
-  it("creates a ten minute bb0 device code and device-only poll token", async () => {
+  it("gwt-wt-wt: 200 creates a 10-minute bb0 device code with the expected response shape + DB row written", async () => {
+    // Given: no auth required to create a device code.
+
+    // When + Then: 200 — the response carries the
+    // expected code shape + 10-minute expiry + 3s poll
+    // interval.
     const client = setupApp({ context })(deviceTokenContract);
     const response = await accept(
       client.create({
-        body: {
-          device_type: "bb0",
-        },
+        body: { device_type: "bb0" },
       }),
       [200],
     );
-    deviceCodesToDelete.push(response.body.device_code);
+    harness.deviceCodesToDelete.push(response.body.device_code);
 
     expect(response.body.device_code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     expect(response.body.poll_token).toHaveLength(43);
     expect(response.body.expires_in).toBe(600);
     expect(response.body.interval).toBe(3);
 
+    // Then: the DB row is written with purpose=bb0 +
+    // status=pending + 3s poll interval + expiresAt is
+    // ~10 minutes from now.
     const db = store.set(writeDb$);
     const [row] = await db
       .select()
@@ -145,43 +201,28 @@ describe("POST /api/device-token", () => {
   });
 });
 
-describe("POST /api/device-token/poll", () => {
-  const deviceCodesToDelete: string[] = [];
-  const agentsToDelete: AgentFixture[] = [];
-  const usersToDelete: string[] = [];
+describe("BDD POST /api/device-token/poll — poll chain", () => {
+  const harness = createDeviceTokenHarness();
 
-  afterEach(async () => {
-    while (deviceCodesToDelete.length > 0) {
-      const code = deviceCodesToDelete.pop();
-      if (code) {
-        await deleteDeviceCode(code);
-      }
-    }
-    while (usersToDelete.length > 0) {
-      const userId = usersToDelete.pop();
-      if (userId) {
-        await deleteUserRows(userId);
-      }
-    }
-    while (agentsToDelete.length > 0) {
-      const fixture = agentsToDelete.pop();
-      if (fixture) {
-        await deleteAgentFixture(fixture);
-      }
-    }
+  beforeEach(() => {
+    context.mocks.clerk.authenticateRequest.mockReset();
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
   });
 
-  async function createTrackedDeviceCode(): Promise<DeviceCodeFixture> {
-    const fixture = await createDeviceCode();
-    deviceCodesToDelete.push(fixture.deviceCode);
-    return fixture;
-  }
+  afterEach(async () => {
+    await cleanupHarness(harness);
+  });
 
-  it("returns pending before the user confirms the code", async () => {
-    const fixture = await createTrackedDeviceCode();
+  it("gwt-wt-wt: 202 returns pending before confirm → 200 returns approved credentials after confirm with DB rows for cliTokens + chatThreads + deviceCodes updated → 404 returns invalid for a wrong poll token → 410 returns expired after device code expires", async () => {
+    // Given: a fresh device code.
+
+    // When + Then: 202 — pending with a 3s interval.
+    const fixture = await createTrackedDeviceCode(harness);
     const client = setupApp({ context })(deviceTokenContract);
 
-    const response = await accept(
+    const pendingResponse = await accept(
       client.poll({
         body: {
           device_code: fixture.deviceCode,
@@ -190,36 +231,32 @@ describe("POST /api/device-token/poll", () => {
       }),
       [202],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(pendingResponse.body).toStrictEqual({
       status: "pending",
       interval: 3,
     });
-  });
 
-  it("returns approved credentials after the user confirms the code", async () => {
+    // Given: a session for a user with a default agent
+    // + the same device code.
     const agent = await seedDefaultAgent();
-    agentsToDelete.push(agent);
-    usersToDelete.push(agent.userId);
+    harness.agentsToDelete.push(agent);
+    harness.usersToDelete.push(agent.userId);
     mockSession(agent.userId, agent.orgId);
 
-    const fixture = await createTrackedDeviceCode();
+    // When + Then: 200 — confirm returns approved + poll
+    // returns the credentials + DB rows are written.
     const confirmClient = setupApp({ context })(bb0DeviceConfirmContract);
-    const pollClient = setupApp({ context })(deviceTokenContract);
-
     const confirmResponse = await accept(
       confirmClient.confirm({
         headers: { authorization: "Bearer clerk-session" },
-        body: {
-          device_code: fixture.deviceCode,
-        },
+        body: { device_code: fixture.deviceCode },
       }),
       [200],
     );
     expect(confirmResponse.body).toStrictEqual({ status: "approved" });
 
     const pollResponse = await accept(
-      pollClient.poll({
+      client.poll({
         body: {
           device_code: fixture.deviceCode,
           poll_token: fixture.pollToken,
@@ -227,7 +264,6 @@ describe("POST /api/device-token/poll", () => {
       }),
       [200],
     );
-
     expect(pollResponse.body.status).toBe("approved");
     expect(pollResponse.body.api_token).toMatch(/^vm0_pat_/);
     expect(pollResponse.body.thread_id).toMatch(
@@ -267,121 +303,93 @@ describe("POST /api/device-token/poll", () => {
       chatThreadId: pollResponse.body.thread_id,
     });
     expect(deviceCode?.consumedAt).toBeInstanceOf(Date);
-  });
 
-  it("returns invalid for a wrong poll token", async () => {
-    const fixture = await createTrackedDeviceCode();
-    const client = setupApp({ context })(deviceTokenContract);
+    // Given: a fresh device code + a wrong poll token.
 
-    const response = await accept(
+    // When + Then: 404 — invalid.
+    const wrongFixture = await createTrackedDeviceCode(harness);
+    const wrongResponse = await accept(
       client.poll({
         body: {
-          device_code: fixture.deviceCode,
+          device_code: wrongFixture.deviceCode,
           poll_token: "wrong_poll_token_12345678901234567890",
         },
       }),
       [404],
     );
+    expect(wrongResponse.body).toStrictEqual({ status: "invalid" });
 
-    expect(response.body).toStrictEqual({ status: "invalid" });
-  });
+    // Given: a fresh device code whose `expiresAt` is
+    // in the past.
 
-  it("returns expired after the device code expires", async () => {
-    const fixture = await createTrackedDeviceCode();
-    const db = store.set(writeDb$);
-    await db
+    // When + Then: 410 — expired.
+    const expiredFixture = await createTrackedDeviceCode(harness);
+    const writeDb = store.set(writeDb$);
+    await writeDb
       .update(deviceCodes)
       .set({ expiresAt: new Date(now() - 1000) })
-      .where(eq(deviceCodes.code, fixture.deviceCode));
+      .where(eq(deviceCodes.code, expiredFixture.deviceCode));
 
-    const client = setupApp({ context })(deviceTokenContract);
-    const response = await accept(
+    const expiredResponse = await accept(
       client.poll({
         body: {
-          device_code: fixture.deviceCode,
-          poll_token: fixture.pollToken,
+          device_code: expiredFixture.deviceCode,
+          poll_token: expiredFixture.pollToken,
         },
       }),
       [410],
     );
-
-    expect(response.body).toStrictEqual({ status: "expired" });
+    expect(expiredResponse.body).toStrictEqual({ status: "expired" });
   });
 });
 
-describe("POST /api/zero/devices/bb0/confirm", () => {
-  const deviceCodesToDelete: string[] = [];
-  const agentsToDelete: AgentFixture[] = [];
-  const usersToDelete: string[] = [];
+describe("BDD POST /api/zero/devices/bb0/confirm — confirm chain", () => {
+  const harness = createDeviceTokenHarness();
 
   beforeEach(() => {
+    context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
   });
 
   afterEach(async () => {
-    while (deviceCodesToDelete.length > 0) {
-      const code = deviceCodesToDelete.pop();
-      if (code) {
-        await deleteDeviceCode(code);
-      }
-    }
-    while (usersToDelete.length > 0) {
-      const userId = usersToDelete.pop();
-      if (userId) {
-        await deleteUserRows(userId);
-      }
-    }
-    while (agentsToDelete.length > 0) {
-      const fixture = agentsToDelete.pop();
-      if (fixture) {
-        await deleteAgentFixture(fixture);
-      }
-    }
+    await cleanupHarness(harness);
   });
 
-  async function createTrackedDeviceCode(): Promise<DeviceCodeFixture> {
-    const fixture = await createDeviceCode();
-    deviceCodesToDelete.push(fixture.deviceCode);
-    return fixture;
-  }
+  it("gwt-wt-wt: 401 requires a user session → 400 requires a default agent", async () => {
+    // Given: no authenticated session.
 
-  it("requires a user session", async () => {
-    const fixture = await createTrackedDeviceCode();
+    // When + Then: 401 — unauthorized.
+    const fixture = await createTrackedDeviceCode(harness);
     const client = setupApp({ context })(bb0DeviceConfirmContract);
 
-    const response = await accept(
+    const noAuthResponse = await accept(
       client.confirm({
         headers: {},
-        body: {
-          device_code: fixture.deviceCode,
-        },
+        body: { device_code: fixture.deviceCode },
       }),
       [401],
     );
+    expect(noAuthResponse.body.error.code).toBe("UNAUTHORIZED");
 
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
+    // Given: a session for a user with no default agent.
 
-  it("requires a default agent", async () => {
+    // When + Then: 400 — "No default agent configured".
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mockSession(userId, orgId);
 
-    const fixture = await createTrackedDeviceCode();
-    const client = setupApp({ context })(bb0DeviceConfirmContract);
-
-    const response = await accept(
+    const noAgentFixture = await createTrackedDeviceCode(harness);
+    const noAgentResponse = await accept(
       client.confirm({
         headers: { authorization: "Bearer clerk-session" },
-        body: {
-          device_code: fixture.deviceCode,
-        },
+        body: { device_code: noAgentFixture.deviceCode },
       }),
       [400],
     );
-
-    expect(response.body.error.message).toBe("No default agent configured");
+    expect(noAgentResponse.body.error.message).toBe(
+      "No default agent configured",
+    );
   });
 });
