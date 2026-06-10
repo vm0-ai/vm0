@@ -251,6 +251,53 @@ describe("chat drafts", () => {
     });
   });
 
+  it("uploads dropped files and reports oversized drops", async () => {
+    const threadId = "thread-uploads";
+    const oversizedFile = new File(["video"], "launch-recording.mov", {
+      type: "video/quicktime",
+    });
+    Object.defineProperty(oversizedFile, "size", {
+      value: 1024 * 1024 * 1024 + 1,
+    });
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.upload.success({
+      id: "drop-notes-upload",
+      filename: "drop-notes.txt",
+      contentType: "text/plain",
+      size: 10,
+      url: "https://example.com/drop-notes.txt",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const input = await waitFor(() => {
+      return textarea();
+    });
+
+    fireEvent.drop(input, {
+      dataTransfer: {
+        files: [
+          new File(["drop notes"], "drop-notes.txt", { type: "text/plain" }),
+          oversizedFile,
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Remove drop-notes.txt"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("launch-recording.mov exceeds the 1 GB limit"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("restores copied chat text and attachments from the clipboard", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "thread-copied-attachment";
