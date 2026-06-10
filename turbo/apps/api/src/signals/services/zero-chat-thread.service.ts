@@ -107,6 +107,7 @@ type ChatMessageRow = {
   readonly role: string;
   readonly content: string | null;
   readonly runId: string | null;
+  readonly runEventId: string | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
   readonly sequenceNumber: number | null;
@@ -212,6 +213,7 @@ const messageColumns = {
   role: chatMessages.role,
   content: chatMessages.content,
   runId: effectiveChatMessageRunId(),
+  runEventId: chatMessages.runEventId,
   error: chatMessages.error,
   runLifecycleEvent: chatMessages.runLifecycleEvent,
   sequenceNumber: chatMessages.sequenceNumber,
@@ -635,6 +637,7 @@ function toPagedMessage(
       role,
       content: row.content,
       runId: row.runId ?? undefined,
+      runEventId: row.runEventId ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: effectiveError,

@@ -1509,9 +1509,14 @@ describe("zero chat thread page display - attachment video preview", () => {
     expect(video).toHaveAttribute("controls");
     expect((video as HTMLVideoElement).autoplay).toBeTruthy();
     expect(within(lightbox).getByLabelText("Share")).toBeInTheDocument();
-    expect(
-      within(lightbox).getByLabelText("Download options"),
-    ).toBeInTheDocument();
+    const downloadOptions = within(lightbox).getByLabelText("Download options");
+    expect(downloadOptions).toBeInTheDocument();
+    await userEvent.hover(downloadOptions);
+    expect(queryRoleByText("menuitem", "Download")).toBeUndefined();
+    await userEvent.click(downloadOptions);
+    await waitFor(() => {
+      expect(getRoleByText("menuitem", "Download")).toBeInTheDocument();
+    });
   });
 
   it("uses the padded artifact dialog stage for video previews", async () => {
@@ -2386,12 +2391,24 @@ describe("zero chat thread page display - artifact sidebar", () => {
 
     const downloadButton = screen.getByLabelText("Download artifact");
     await user.hover(downloadButton);
+    expect(
+      queryRoleByText("menuitem", "Upload to Google Drive"),
+    ).toBeUndefined();
+
+    await user.click(downloadButton);
     await waitFor(() => {
       expect(
         getRoleByText("menuitem", "Upload to Google Drive"),
       ).toBeInTheDocument();
     });
     fireEvent.pointerLeave(downloadButton);
+    await waitFor(() => {
+      expect(
+        getRoleByText("menuitem", "Upload to Google Drive"),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(downloadButton);
     await waitFor(() => {
       expect(
         queryRoleByText("menuitem", "Upload to Google Drive"),
@@ -2474,6 +2491,65 @@ describe("zero chat thread page display - artifact sidebar", () => {
       expect(queryRoleByText("menuitem", "Download")).toBeInTheDocument();
     });
     expect(queryRoleByText("menuitem", "Download (.pptx)")).toBeUndefined();
+  });
+
+  it("closes the artifact download menu from the dismiss layer above iframe previews", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://example.com/report.html";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Generated report",
+          runId: "run-html-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-html-artifact",
+              files: [
+                {
+                  id: fileUrl,
+                  filename: "report.html",
+                  contentType: "text/html",
+                  size: 1024,
+                  url: fileUrl,
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    await user.click(await screen.findByLabelText("Open artifact report.html"));
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    const openExternal = within(sidebar).getByLabelText("Open in new tab");
+    expect(openExternal).toHaveAttribute("href", fileUrl);
+    expect(openExternal).toHaveAttribute("target", "_blank");
+    await user.click(within(sidebar).getByLabelText("Download artifact"));
+
+    await waitFor(() => {
+      expect(queryRoleByText("menuitem", "Download")).toBeInTheDocument();
+    });
+    await user.click(
+      screen.getByTestId("artifact-download-menu-dismiss-layer"),
+    );
+    await waitFor(() => {
+      expect(queryRoleByText("menuitem", "Download")).toBeUndefined();
+    });
   });
 
   it("ignores presentation editor query when the feature switch is disabled", async () => {

@@ -1476,6 +1476,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/host/presentation-html/redeploy"),
     ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/host/sites/demo-site-a1b2c3d4-release-01/files",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/host/sites/demo-site-a1b2c3d4-release-01/files/extra",
+      ),
+    ).toBe(false);
   });
 
   it("matches the email unsubscribe rewrite path exactly", () => {

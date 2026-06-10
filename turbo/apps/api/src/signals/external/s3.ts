@@ -300,8 +300,24 @@ export function generatePresignedGetUrl(
   filename?: string,
   usePublicEndpoint = false,
 ): Computed<Promise<string>> {
+  return generatePresignedGetUrlWithClient(
+    s3ClientForBucket(bucket, usePublicEndpoint),
+    bucket,
+    key,
+    expiresIn,
+    filename,
+  );
+}
+
+function generatePresignedGetUrlWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+  expiresIn: number,
+  filename?: string,
+): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
-    const client = get(s3ClientForBucket(bucket, usePublicEndpoint));
+    const client = get(client$);
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,

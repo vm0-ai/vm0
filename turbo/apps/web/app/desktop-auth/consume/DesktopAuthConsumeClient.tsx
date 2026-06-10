@@ -6,6 +6,7 @@ import { useSignIn } from "@clerk/nextjs/legacy";
 interface DesktopAuthConsumeClientProps {
   readonly code?: string;
   readonly errorMessage?: string;
+  readonly handoffId?: string;
 }
 
 interface ConsumeResponse {
@@ -16,6 +17,15 @@ interface ConsumeResponse {
 }
 
 const DESKTOP_AUTH_TOKEN_PATH = "/desktop-auth/token";
+
+function desktopAuthTokenPath(handoffId: string | undefined): string {
+  if (!handoffId) {
+    return DESKTOP_AUTH_TOKEN_PATH;
+  }
+
+  const params = new URLSearchParams({ handoffId });
+  return `${DESKTOP_AUTH_TOKEN_PATH}?${params.toString()}`;
+}
 
 async function exchangeDesktopAuthCode(code: string): Promise<string> {
   const response = await fetch("/api/desktop-auth/consume", {
@@ -40,6 +50,7 @@ async function exchangeDesktopAuthCode(code: string): Promise<string> {
 export function DesktopAuthConsumeClient({
   code,
   errorMessage,
+  handoffId,
 }: DesktopAuthConsumeClientProps) {
   const { signIn, setActive, isLoaded } = useSignIn();
   const [error, setError] = useState(errorMessage ?? "");
@@ -58,7 +69,7 @@ export function DesktopAuthConsumeClient({
       .then((result) => {
         if (result.status === "complete" && result.createdSessionId) {
           return setActive({ session: result.createdSessionId }).then(() => {
-            window.location.href = DESKTOP_AUTH_TOKEN_PATH;
+            window.location.href = desktopAuthTokenPath(handoffId);
           });
         }
         throw new Error(`Unexpected status: ${result.status}`);
@@ -66,7 +77,7 @@ export function DesktopAuthConsumeClient({
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Sign-in failed");
       });
-  }, [code, errorMessage, isLoaded, signIn, setActive]);
+  }, [code, errorMessage, handoffId, isLoaded, signIn, setActive]);
 
   if (error) {
     return (

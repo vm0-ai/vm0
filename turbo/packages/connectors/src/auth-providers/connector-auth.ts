@@ -74,6 +74,7 @@ import { googleCalendarProvider } from "./connectors/google-calendar/provider";
 import { googleDocsProvider } from "./connectors/google-docs/provider";
 import { googleDriveProvider } from "./connectors/google-drive/provider";
 import { googleMeetProvider } from "./connectors/google-meet/provider";
+import { googleSearchConsoleProvider } from "./connectors/google-search-console/provider";
 import { googleSheetsProvider } from "./connectors/google-sheets/provider";
 import { larkProvider } from "./connectors/lark/provider";
 import { linearProvider } from "./connectors/linear/provider";
@@ -458,6 +459,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   },
   "google-meet": {
     oauth: authCodeRefreshProviderEntry(googleMeetProvider),
+  },
+  "google-search-console": {
+    oauth: authCodeRefreshProviderEntry(googleSearchConsoleProvider),
   },
   "google-sheets": {
     oauth: authCodeRefreshProviderEntry(googleSheetsProvider),

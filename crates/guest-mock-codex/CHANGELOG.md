@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.3...guest-mock-codex-v0.2.4) (2026-06-10)
+
+
+### Bug Fixes
+
+* harden mock codex session persistence ([#16940](https://github.com/vm0-ai/vm0/issues/16940)) ([39374df](https://github.com/vm0-ai/vm0/commit/39374df46e1f7e42e51cc00cab388c10d39107c4))
+
 ## [0.2.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.2...guest-mock-codex-v0.2.3) (2026-06-09)
 
 

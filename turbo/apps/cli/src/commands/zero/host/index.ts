@@ -6,9 +6,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-host";
 import { withErrorHandler } from "../../../lib/command";
 import { publishStaticSite } from "../../../lib/host/publish-static-site";
+import { cloneHostedSiteCommand } from "./clone";
 
 interface HostOptions {
-  readonly site: string;
+  readonly site?: string;
   readonly slugSuffix?: string;
   readonly artifactKind?: HostedArtifactKind;
   readonly spa?: boolean;
@@ -27,9 +28,9 @@ function formatBytes(bytes: number): string {
 
 export const zeroHostCommand = new Command()
   .name("host")
-  .description("Publish a built static site and print its public URL")
+  .description("Publish static sites and clone owned hosted site files")
   .argument("<dir>", "Static build directory, for example ./dist")
-  .requiredOption("--site <slug>", "Public site slug, e.g. my-product-demo")
+  .option("--site <slug>", "Public site slug, e.g. my-product-demo")
   .option("--slug-suffix <suffix>", "Reuse a generated site URL suffix")
   .option(
     "--artifact-kind <kind>",
@@ -38,22 +39,27 @@ export const zeroHostCommand = new Command()
   )
   .option("--spa", "Serve unknown HTML navigation paths from index.html")
   .option("--json", "Output only the final result as JSON")
+  .addCommand(cloneHostedSiteCommand)
   .addHelpText(
     "after",
     `
 Examples:
   Publish a Vite build:  zero host ./dist --site my-product-demo --spa
   Redeploy a URL:       zero host ./dist --site my-product-demo --slug-suffix a1b2c3d4 --spa
+  Clone a hosted site:   zero host clone my-product-demo-a1b2c3d4-release-01 ./site
   Machine readable:     zero host ./dist --site my-product-demo --spa --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires host:write capability)
+  - Authenticates via ZERO_TOKEN (publish requires host:write; clone requires host:read)
   - Reusing both --site and --slug-suffix keeps the same URL
   - The directory must include index.html
   - Local HTML/CSS asset references must point at files inside the directory`,
   )
   .action(
     withErrorHandler(async (dir: string, options: HostOptions) => {
+      if (!options.site) {
+        throw new Error("--site is required when publishing a hosted site");
+      }
       const result = await publishStaticSite({
         dir,
         site: options.site,

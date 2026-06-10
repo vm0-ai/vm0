@@ -1,4 +1,5 @@
 import type { DesktopAuthState } from "./desktop-bridge";
+import type { DesktopAuthCallback } from "./desktop-auth";
 import {
   headersWithSessionCookies,
   type DesktopSessionCookieSource,
@@ -44,8 +45,8 @@ interface DesktopAuthSessionOptions {
   readonly cookieSource: DesktopSessionCookieSource;
   /** `buildDesktopAuthTokenUrl(webUrl)`. */
   readonly tokenUrl: string;
-  /** `buildDesktopAuthConsumeUrl(webUrl, code)`. */
-  readonly consumeUrl: (code: string) => string;
+  /** `buildDesktopAuthConsumeUrl(webUrl, code, handoffId)`. */
+  readonly consumeUrl: (code: string, handoffId: string | null) => string;
   /** `buildDesktopAuthSelectOrgUrl(webUrl, true)`. */
   readonly selectOrgUrl: string;
   readonly runAuthWindow: RunAuthWindow;
@@ -85,7 +86,10 @@ export class DesktopAuthSession {
   private readonly cookieUrls: readonly URL[];
   private readonly cookieSource: DesktopSessionCookieSource;
   private readonly tokenUrl: string;
-  private readonly consumeUrl: (code: string) => string;
+  private readonly consumeUrl: (
+    code: string,
+    handoffId: string | null,
+  ) => string;
   private readonly selectOrgUrl: string;
   private readonly runAuthWindow: RunAuthWindow;
   private readonly onChange: () => void;
@@ -93,7 +97,7 @@ export class DesktopAuthSession {
 
   private token: string | null = null;
   private tokenRefresh: Promise<string | null> | null = null;
-  private pendingCode: string | null = null;
+  private pendingCallback: DesktopAuthCallback | null = null;
   private signingIn = false;
   private acceptsSignInCompletions = true;
 
@@ -194,18 +198,21 @@ export class DesktopAuthSession {
   signOut(): void {
     this.token = null;
     this.tokenRefresh = null;
-    this.pendingCode = null;
+    this.pendingCallback = null;
     this.signingIn = false;
     this.acceptsSignInCompletions = false;
     this.onChange();
   }
 
-  async consumeCode(code: string): Promise<void> {
+  async consumeCode(
+    code: string,
+    handoffId: string | null = null,
+  ): Promise<void> {
     this.acceptsSignInCompletions = true;
     this.setSigningIn(true);
     try {
       await this.runAuthWindow({
-        url: this.consumeUrl(code),
+        url: this.consumeUrl(code, handoffId),
         visible: false,
         allowInteractiveFallbacks: true,
       });
@@ -226,14 +233,14 @@ export class DesktopAuthSession {
     await this.onAuthCompleted();
   }
 
-  queuePendingCode(code: string): void {
-    this.pendingCode = code;
+  queuePendingCallback(callback: DesktopAuthCallback): void {
+    this.pendingCallback = callback;
   }
 
-  takePendingCode(): string | null {
-    const code = this.pendingCode;
-    this.pendingCode = null;
-    return code;
+  takePendingCallback(): DesktopAuthCallback | null {
+    const callback = this.pendingCallback;
+    this.pendingCallback = null;
+    return callback;
   }
 
   private async refresh(): Promise<string | null> {

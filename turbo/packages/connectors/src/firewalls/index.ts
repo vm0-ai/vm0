@@ -59,6 +59,7 @@ import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { atlascloudFirewall } from "./atlascloud.generated";
 import { aviationstackFirewall } from "./aviationstack.generated";
+import { awsFirewall } from "./aws.generated";
 // NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
 // mathpix/nyne/openrouter/openweather/reducto were added in the same
 // Sponge-catalog batch and are wired below.
@@ -135,6 +136,7 @@ import { googleMapsFirewall } from "./google-maps.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleMeetFirewall } from "./google-meet.generated";
+import { googleSearchConsoleFirewall } from "./google-search-console.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
 import { greenhouseFirewall } from "./greenhouse.generated";
@@ -327,6 +329,7 @@ const CONNECTOR_FIREWALLS = {
   attio: attioFirewall,
   atlassian: atlassianFirewall,
   atlascloud: atlascloudFirewall,
+  aws: awsFirewall,
   axiom: axiomFirewall,
   base44: base44Firewall,
   bentoml: bentomlFirewall,
@@ -400,6 +403,7 @@ const CONNECTOR_FIREWALLS = {
   "google-docs": googleDocsFirewall,
   "google-drive": googleDriveFirewall,
   "google-meet": googleMeetFirewall,
+  "google-search-console": googleSearchConsoleFirewall,
   "google-sheets": googleSheetsFirewall,
   granola: granolaFirewall,
   greenhouse: greenhouseFirewall,
@@ -722,10 +726,6 @@ export function groupPermissionsByCategory<T extends { name: string }>(
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Signature-based auth — requires computing signatures, not simple header injection
-  // AWS SigV4 signing is supported by firewall auth, but AWS stays out of the
-  // builtin firewall registry until a reviewed AWS firewall config is added.
-  | "aws"
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other

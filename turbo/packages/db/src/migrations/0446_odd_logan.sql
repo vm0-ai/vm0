@@ -1,1 +1,0 @@
-ALTER TABLE "automation_triggers" DROP COLUMN "retry_started_at";

@@ -15,6 +15,7 @@ import { intervalsIcu } from "./connectors/intervals-icu";
 import { vercel } from "./connectors/vercel";
 import { strava } from "./connectors/strava";
 import { googleMeet } from "./connectors/google-meet";
+import { googleSearchConsole } from "./connectors/google-search-console";
 import { hubspot } from "./connectors/hubspot";
 import { sentry } from "./connectors/sentry";
 import { todoist } from "./connectors/todoist";
@@ -993,6 +994,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...vercel,
   ...strava,
   ...googleMeet,
+  ...googleSearchConsole,
   ...hubspot,
   ...sentry,
   ...todoist,

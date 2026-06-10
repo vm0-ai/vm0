@@ -272,6 +272,9 @@ const UPDATERS: Updater[] = [
   staticUpdater("google-meet", [
     "https://meet.googleapis.com/$discovery/rest?version=v2",
   ]),
+  staticUpdater("google-search-console", [
+    "https://searchconsole.googleapis.com/$discovery/rest?version=v1",
+  ]),
   staticUpdater("google-sheets", [
     "https://sheets.googleapis.com/$discovery/rest?version=v4",
   ]),

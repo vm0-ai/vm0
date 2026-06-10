@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.125.0](https://github.com/vm0-ai/vm0/compare/api-v1.124.0...api-v1.125.0) (2026-06-10)
+
+
+### Features
+
+* add enterprise zero maps places fieldsets ([#17024](https://github.com/vm0-ai/vm0/issues/17024)) ([9d38554](https://github.com/vm0-ai/vm0/commit/9d38554464b72359bc97dc3dfdca93d44717f9d5))
+* add google search console connector ([#17020](https://github.com/vm0-ai/vm0/issues/17020)) ([9cb2db5](https://github.com/vm0-ai/vm0/commit/9cb2db5f763ad3a2aed9cf25963472c38b05875e))
+
+
+### Bug Fixes
+
+* filter slack agent switch options ([#17031](https://github.com/vm0-ai/vm0/issues/17031)) ([23b951b](https://github.com/vm0-ai/vm0/commit/23b951bd757e781a06673cdd265647c280184abb))
+* surface claude rate limits in integrations ([#17014](https://github.com/vm0-ai/vm0/issues/17014)) ([364da26](https://github.com/vm0-ai/vm0/commit/364da26df9f8c3457ec35f9233eaf3e69aaab85d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.79.0
+    * @vm0/connectors bumped to 1.61.0
+    * @vm0/core bumped to 8.323.0
+    * @vm0/db bumped to 1.41.0
+
 ## [1.124.0](https://github.com/vm0-ai/vm0/compare/api-v1.123.0...api-v1.124.0) (2026-06-10)
 
 

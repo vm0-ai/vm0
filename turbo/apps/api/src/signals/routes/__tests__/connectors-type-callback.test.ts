@@ -1109,6 +1109,7 @@ function mockProviderOAuth(options: ProviderMockOptions): void {
     "google-docs": mockGoogleWorkspaceProvider,
     "google-drive": mockGoogleWorkspaceProvider,
     "google-calendar": mockGoogleWorkspaceProvider,
+    "google-search-console": mockGoogleWorkspaceProvider,
     linear: mockLinearProvider,
     docusign: mockDocusignProvider,
     figma: mockFigmaProvider,
@@ -1324,6 +1325,12 @@ const providerSuccessCases = [
   },
   {
     type: "google-calendar",
+    externalId: "google-user-123",
+    externalUsername: "Google User",
+    externalEmail: "user@gmail.com",
+  },
+  {
+    type: "google-search-console",
     externalId: "google-user-123",
     externalUsername: "Google User",
     externalEmail: "user@gmail.com",

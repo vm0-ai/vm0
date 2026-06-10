@@ -138,6 +138,14 @@ describe("desktop tray menu", () => {
       trayActions(),
     );
 
+    expect(menu.map((item) => item.label).filter((label) => label)).toEqual([
+      "Show Main Window",
+      "Computer Use: Online",
+      "Keep Mac Awake",
+      "Workspace: Max & Zoe",
+      "No Recent Commands",
+      "Quit",
+    ]);
     expect(findItem(menu, "Show Main Window")).toBeDefined();
     expect(findItem(menu, "Keep Mac Awake")).toStrictEqual({
       label: "Keep Mac Awake",

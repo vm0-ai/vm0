@@ -199,6 +199,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_config_rejects_overlong_runner_dirname() {
+        let dirname = "a".repeat(crate::runner_dirname::MAX_NAME_BYTES + 1);
+        let err = run_config(args_with_dirname(&dirname)).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+        assert!(
+            msg.contains(&format!(
+                "at most {} bytes",
+                crate::runner_dirname::MAX_NAME_BYTES
+            )),
+            "got: {msg}"
+        );
+        assert!(
+            !msg.contains(&dirname),
+            "overlong dirname should be previewed, not echoed in full: {msg}"
+        );
+    }
+
+    #[tokio::test]
     async fn run_config_rejects_mismatched_profile_arg_lengths() {
         let cases = [
             (

@@ -19,10 +19,10 @@ import { createFixtureTracker } from "../../../routes/__tests__/helpers/zero-rou
 const context = testContext();
 const store = createStore();
 
-// The one-time, idempotent backfill data migration under test. 0442 ran while
-// automation_triggers still had retry_started_at (added 0440, dropped 0446);
-// strip those references so the historical SQL replays against the current
-// schema — fresh databases run the chain in order and are unaffected.
+// The one-time, idempotent backfill data migration under test. The replay
+// strips retry_started_at references: the column is vestigial (no production
+// writer since the runtime mirror-sync landed) and is dropped together with
+// the refresh-backfill migration, so the historical SQL must run without it.
 const BACKFILL_SQL = readFileSync(
   fileURLToPath(
     new URL(

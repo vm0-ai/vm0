@@ -23,6 +23,7 @@ import { generate as generateAttio } from "./attio";
 import { generate as generateAtlassian } from "./atlassian";
 import { generate as generateAtlascloud } from "./atlascloud";
 import { generate as generateAviationstack } from "./aviationstack";
+import { generate as generateAws } from "./aws";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBase44 } from "./base44";
 import { generate as generateBentoml } from "./bentoml";
@@ -269,6 +270,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   attio: generateAttio,
   atlassian: generateAtlassian,
   atlascloud: generateAtlascloud,
+  aws: generateAws,
   axiom: generateAxiom,
   base44: generateBase44,
   bentoml: generateBentoml,

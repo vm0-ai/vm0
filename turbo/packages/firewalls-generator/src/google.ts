@@ -95,6 +95,7 @@ const SCOPELESS_METHODS = new Set([
   "youtube.thirdPartyLinks.insert",
   "youtube.thirdPartyLinks.update",
   "youtube.thirdPartyLinks.delete",
+  "searchconsole.urlTestingTools.mobileFriendlyTest.run",
 ]);
 
 const RULE_PATTERN = /^(GET|HEAD|POST|PUT|PATCH|DELETE) \//;
@@ -193,6 +194,13 @@ interface ApiEntry {
   permissions: PermissionGroup[];
 }
 
+function clonePermissions(permissions: PermissionGroup[]): PermissionGroup[] {
+  return permissions.map((permission) => ({
+    ...permission,
+    rules: [...permission.rules],
+  }));
+}
+
 // ── TypeScript generation ────────────────────────────────────────────────
 
 function generateTypeScript(
@@ -283,6 +291,8 @@ interface GoogleFirewallConfig {
   discoveryUrls: string[];
   /** Base URL: domain + service path, no version (e.g. "https://www.googleapis.com/drive"). */
   baseUrl: string;
+  /** Additional equivalent API roots that should expose the same generated rules. */
+  additionalBaseUrls?: string[];
   /**
    * Upload base URLs for APIs with media upload support (simple + resumable).
    * Required if Discovery API reports supportsMediaUpload on any method.
@@ -397,11 +407,16 @@ async function generateGoogleFirewall(
   uploadPermissions.sort((a, b) => a.name.localeCompare(b.name));
 
   // Build API entries
-  const apis: ApiEntry[] = [
-    { base: config.baseUrl, permissions: allPermissions },
-  ];
+  const apiBaseUrls = [config.baseUrl, ...(config.additionalBaseUrls ?? [])];
+  const apis: ApiEntry[] = apiBaseUrls.map((base) => ({
+    base,
+    permissions: clonePermissions(allPermissions),
+  }));
   for (const uploadBase of config.uploadBaseUrls ?? []) {
-    apis.push({ base: uploadBase, permissions: uploadPermissions });
+    apis.push({
+      base: uploadBase,
+      permissions: clonePermissions(uploadPermissions),
+    });
   }
 
   // Apply permission overrides (e.g. remove send rules from gmail.compose)
@@ -604,6 +619,19 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     placeholderKey: "GOOGLE_MEET_TOKEN",
     placeholderValue: OAUTH_PLACEHOLDER,
     auth: bearerAuth("GOOGLE_MEET_TOKEN"),
+  },
+  "google-search-console": {
+    discoveryUrls: [
+      "https://searchconsole.googleapis.com/$discovery/rest?version=v1",
+    ],
+    baseUrl: "https://searchconsole.googleapis.com",
+    additionalBaseUrls: ["https://www.googleapis.com"],
+    stripPrefix: "",
+    serviceName: "google-search-console",
+    serviceDescription: "Google Search Console API",
+    placeholderKey: "GOOGLE_SEARCH_CONSOLE_TOKEN",
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("GOOGLE_SEARCH_CONSOLE_TOKEN"),
   },
   "google-sheets": {
     discoveryUrls: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],

@@ -1,5 +1,5 @@
 {
-  "id": "0a89490f-24a5-409e-8a1d-42a4a382cec5",
+  "id": "12723f23-fa2f-45c8-81e9-2f62a0155aa3",
   "prevId": "6c8f296a-fad8-452a-b703-8dde2b013b30",
   "version": "7",
   "dialect": "postgresql",
@@ -1684,6 +1684,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "retry_started_at": {
+          "name": "retry_started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         },
         "enabled": {
           "name": "enabled",
@@ -5068,6 +5074,12 @@
         },
         "consumed_at": {
           "name": "consumed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
