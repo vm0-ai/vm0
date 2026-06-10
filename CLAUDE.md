@@ -252,8 +252,6 @@ The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial, 8 minutes f
 
 ## Presentation Generation
 
-When generating presentations, always use `zero generate presentation` and follow the resource-selection packet it returns (select template → fetch SKILL.md → author per spec).
-
 **Always publish with the `--artifact-kind presentation-html` flag:**
 ```bash
 zero host <dir> --site <slug> --artifact-kind presentation-html
