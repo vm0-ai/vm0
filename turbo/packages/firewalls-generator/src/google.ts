@@ -625,7 +625,6 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
       "https://searchconsole.googleapis.com/$discovery/rest?version=v1",
     ],
     baseUrl: "https://searchconsole.googleapis.com",
-    additionalBaseUrls: ["https://www.googleapis.com"],
     stripPrefix: "",
     serviceName: "google-search-console",
     serviceDescription: "Google Search Console API",

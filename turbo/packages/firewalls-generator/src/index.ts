@@ -94,6 +94,7 @@ import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGemini } from "./gemini";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
+import { generate as generateGoogleCloud } from "./google-cloud";
 import { generate as generateGranola } from "./granola";
 import { generate as generateGreenhouse } from "./greenhouse";
 import { generate as generateGroq } from "./groq";
@@ -342,6 +343,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
   gitlab: generateGitlab,
   "google-ads": generateGoogleAds,
+  "google-cloud": generateGoogleCloud,
   granola: generateGranola,
   greenhouse: generateGreenhouse,
   groq: generateGroq,

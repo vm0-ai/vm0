@@ -234,6 +234,44 @@ describe("GET /api/zero/connectors/search", () => {
     expect(connector?.authMethods).toStrictEqual(["oauth", "api"]);
   });
 
+  it("matches connector tags while preserving feature-switch visibility", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const disabledResponse = await accept(
+      client.search({
+        query: { keyword: "gcp" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      disabledResponse.body.connectors.some((connector) => {
+        return connector.id === "google-cloud";
+      }),
+    ).toBeFalsy();
+
+    seededFeatureSwitches.push({ orgId, userId });
+    await enableFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.GoogleCloudConnector]: true,
+    });
+
+    const enabledResponse = await accept(
+      client.search({
+        query: { keyword: "gcp" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const connector = enabledResponse.body.connectors.find((candidate) => {
+      return candidate.id === "google-cloud";
+    });
+    expect(connector).toBeDefined();
+    expect(connector?.authMethods).toStrictEqual(["oauth"]);
+  });
+
   it("shows Base44 as a connector without a feature switch", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 

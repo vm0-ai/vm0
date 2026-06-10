@@ -72,6 +72,7 @@ import { gmailProvider } from "./connectors/gmail/provider";
 import { hubspotProvider } from "./connectors/hubspot/provider";
 import { googleAdsProvider } from "./connectors/google-ads/provider";
 import { googleCalendarProvider } from "./connectors/google-calendar/provider";
+import { googleCloudProvider } from "./connectors/google-cloud/provider";
 import { googleDocsProvider } from "./connectors/google-docs/provider";
 import { googleDriveProvider } from "./connectors/google-drive/provider";
 import { googleMeetProvider } from "./connectors/google-meet/provider";
@@ -455,6 +456,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   "google-ads": { oauth: authCodeRefreshProviderEntry(googleAdsProvider) },
   "google-calendar": {
     oauth: authCodeRefreshProviderEntry(googleCalendarProvider),
+  },
+  "google-cloud": {
+    oauth: authCodeRefreshProviderEntry(googleCloudProvider),
   },
   "google-docs": {
     oauth: authCodeRefreshProviderEntry(googleDocsProvider),
