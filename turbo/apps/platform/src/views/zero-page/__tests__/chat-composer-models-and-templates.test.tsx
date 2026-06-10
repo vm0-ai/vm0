@@ -370,6 +370,21 @@ function templateLabel(
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+function chatClipboardHtml(payload: {
+  text: string;
+  attachments: {
+    id: string | null;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[];
+}): string {
+  return `<div data-vm0-chat-message="${encodeURIComponent(
+    JSON.stringify(payload),
+  )}"></div>`;
+}
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
@@ -768,6 +783,52 @@ describe("chat composer models", () => {
       expect(
         screen.queryByLabelText("Open image preview for pasted.png"),
       ).not.toBeInTheDocument();
+    });
+
+    await fill(textarea, "");
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return chatClipboardHtml({
+              text: "Use the copied launch brief",
+              attachments: [
+                {
+                  id: "copied-brief",
+                  url: "https://cdn.vm7.io/artifacts/test/copied/copied-brief.md",
+                  filename: "copied-brief.md",
+                  contentType: "text/markdown",
+                  size: 42,
+                },
+                {
+                  id: "copied-image",
+                  url: "https://cdn.vm7.io/artifacts/test/copied/copied-image.png",
+                  filename: "copied-image.png",
+                  contentType: "image/png",
+                  size: 420,
+                },
+              ],
+            });
+          }
+          return "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(textarea).toHaveValue("Use the copied launch brief");
+      expect(
+        screen.getByLabelText("Remove copied-brief.md"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Open image preview for copied-image.png"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
+          .length,
+      ).toBeGreaterThan(0);
     });
   });
 

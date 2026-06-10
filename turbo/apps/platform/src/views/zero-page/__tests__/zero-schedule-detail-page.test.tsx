@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   logsListContract,
   type LogsListResponse,
@@ -53,6 +54,30 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
+}
+
+function normalizeText(element: Element): string {
+  return element.textContent?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function selectOptionByLabel(
+  label: string,
+  option: string | RegExp,
+  container: HTMLElement = document.body,
+): void {
+  click(within(container).getByLabelText(label));
+  click(screen.getByRole("option", { name: option }));
+}
+
+function selectComboboxByText(currentText: string, option: string): void {
+  const trigger = screen.getAllByRole("combobox").find((candidate) => {
+    return normalizeText(candidate) === currentText;
+  });
+  if (!trigger) {
+    throw new Error(`${currentText} combobox not found`);
+  }
+  click(trigger);
+  click(screen.getByRole("option", { name: option }));
 }
 
 function mockScheduleDetailStory(): void {
@@ -124,6 +149,91 @@ function mockScheduleDetailStory(): void {
 }
 
 describe("zero schedule detail page", () => {
+  it("shows a removed schedule state", async () => {
+    context.mocks.data.team([createZeroAgent()]);
+    context.mocks.data.schedules([]);
+
+    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Schedule not found")).toBeInTheDocument();
+      expect(
+        screen.getByText("This schedule doesn't exist or was removed."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Back to scheduled tasks")).toBeInTheDocument();
+    });
+  });
+
+  it("edits and discards schedule instructions", async () => {
+    const user = userEvent.setup();
+    mockScheduleDetailStory();
+
+    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Morning brief" }),
+      ).toBeInTheDocument();
+    });
+
+    click(tabByText("Instructions"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "This instruction runs each time this schedule executes.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Send morning brief to the team channel"),
+      ).toBeInTheDocument();
+    });
+
+    const editor = document.querySelector('[contenteditable="true"]');
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("schedule instructions editor not found");
+    }
+
+    await user.click(editor);
+    await user.keyboard("{Control>}a{/Control}Send a concise launch brief");
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Discard"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Send morning brief to the team channel"),
+      ).toBeInTheDocument();
+    });
+
+    const resetEditor = document.querySelector('[contenteditable="true"]');
+    if (!(resetEditor instanceof HTMLElement)) {
+      throw new Error("reset schedule instructions editor not found");
+    }
+
+    await user.click(resetEditor);
+    await user.keyboard("{Control>}a{/Control}Send a concise launch brief");
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Schedule updated")).toBeInTheDocument();
+      expect(
+        screen.getByText("Send a concise launch brief"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("updates schedule settings", async () => {
     mockScheduleDetailStory();
 
@@ -155,6 +265,28 @@ describe("zero schedule detail page", () => {
     });
 
     await fill(screen.getByDisplayValue("Morning brief"), "Team morning brief");
+    selectOptionByLabel("Time", "Loop");
+
+    await waitFor(() => {
+      expect(screen.getByText("Every")).toBeInTheDocument();
+      expect(screen.getByText("15 minutes")).toBeInTheDocument();
+    });
+
+    selectOptionByLabel("Every", "60 minutes");
+    expect(screen.getByText("60 minutes")).toBeInTheDocument();
+
+    selectOptionByLabel("Time", "Once");
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-06-12" },
+    });
+    expect(screen.getByDisplayValue("2026-06-12")).toBeInTheDocument();
+    selectComboboxByText("14", "16");
+    selectComboboxByText("30", "45");
+    selectOptionByLabel(
+      "Timezone",
+      /^\(GMT[+-]\d{2}:\d{2}\) Eastern Time \(ET\)$/u,
+    );
+    expect(screen.getByText(/Eastern Time \(ET\)/u)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
@@ -215,7 +347,84 @@ describe("zero schedule detail page", () => {
     });
   });
 
+  it("paginates schedule run history", async () => {
+    mockScheduleDetailStory();
+    context.mocks.api(logsListContract.list, ({ query, respond }) => {
+      const cursor = query.cursor ?? null;
+      const startedAt =
+        cursor === "page-2" ? "2026-03-10T14:35:01Z" : "2026-03-10T14:30:01Z";
+      const completedAt =
+        cursor === "page-2" ? "2026-03-10T14:35:03Z" : "2026-03-10T14:30:02Z";
+      return respond(200, {
+        data: [
+          {
+            id:
+              cursor === "page-2"
+                ? "a0000000-0000-4000-a000-000000000212"
+                : "a0000000-0000-4000-a000-000000000211",
+            sessionId:
+              cursor === "page-2" ? "session-page-2" : "session-page-1",
+            agentId,
+            displayName: "Zero",
+            framework: "claude-code",
+            triggerSource: "schedule",
+            triggerAgentName: null,
+            scheduleId,
+            status: cursor === "page-2" ? "failed" : "completed",
+            prompt: "Send morning brief to the team channel",
+            createdAt: startedAt,
+            startedAt,
+            completedAt,
+          },
+        ],
+        pagination: {
+          hasMore: cursor !== "page-2",
+          nextCursor: cursor === "page-2" ? null : "page-2",
+          totalPages: 2,
+        },
+        filters: {
+          statuses: ["completed", "failed"],
+          sources: ["schedule"],
+          agents: [agentId],
+        },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Morning brief" }),
+      ).toBeInTheDocument();
+    });
+
+    click(tabByText("Run History"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+      expect(screen.getByText("Done")).toBeInTheDocument();
+      expect(screen.getByText("1.0s")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Next page"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+      expect(screen.getByText("Failed")).toBeInTheDocument();
+      expect(screen.getByText("2.0s")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Previous page"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+      expect(screen.getByText("Done")).toBeInTheDocument();
+      expect(screen.getByText("1.0s")).toBeInTheDocument();
+    });
+  });
+
   it("pauses a schedule and cancels deletion", async () => {
+    const user = userEvent.setup();
     mockScheduleDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
@@ -240,6 +449,18 @@ describe("zero schedule detail page", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+    });
+
+    click(buttonByText("Delete schedule"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
 
     click(buttonByText("Cancel"));
 

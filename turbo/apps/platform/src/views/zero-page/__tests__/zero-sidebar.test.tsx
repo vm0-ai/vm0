@@ -535,6 +535,55 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("cancels and confirms deleting a regular chat from the sidebar", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+
+    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+    });
+
+    openThreadMenu("Release plan");
+    click(menuItemByText("Delete chat"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete chat?",
+    });
+    expect(
+      within(dialog).getByText(
+        "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone.",
+      ),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Cancel", dialog));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    openThreadMenu("Release plan");
+    click(menuItemByText("Delete chat"));
+
+    const confirmDialog = await screen.findByRole("dialog", {
+      name: "Delete chat?",
+    });
+    click(buttonByText("Delete", confirmDialog));
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).queryByText("Release plan"),
+      ).not.toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+    });
+  });
+
   it("pins an agent from the conversation picker and starts that agent chat", async () => {
     prepareAgentTeam();
     const createDeferred = context.mocks.deferred<void>();

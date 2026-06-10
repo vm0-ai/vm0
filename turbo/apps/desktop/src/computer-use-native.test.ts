@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 
 const execFileAsync = promisify(execFile);
@@ -14,6 +14,8 @@ const desktopRoot = path.resolve(
 );
 const cliPath = path.join(desktopRoot, "dist", "vm0-computer.js");
 const screenshotBytes = Buffer.from("abc123", "base64");
+let platformShimDir: string | null = null;
+let platformShimPath: string | null = null;
 
 async function createHelper(
   response: unknown,
@@ -233,7 +235,20 @@ async function createDaemonDir(): Promise<string> {
 }
 
 function daemonEnv(daemonDir: string): NodeJS.ProcessEnv {
-  return { ...process.env, VM0_COMPUTER_DAEMON_DIR: daemonDir };
+  return {
+    ...process.env,
+    VM0_COMPUTER_DAEMON_DIR: daemonDir,
+    ...(platformShimPath
+      ? {
+          NODE_OPTIONS: [
+            process.env.NODE_OPTIONS,
+            `--require=${platformShimPath}`,
+          ]
+            .filter((value): value is string => Boolean(value))
+            .join(" "),
+        }
+      : {}),
+  };
 }
 
 async function startDaemon(
@@ -260,8 +275,22 @@ async function stopDaemon(daemonDir: string): Promise<void> {
 
 describe("computer use native backend", () => {
   beforeAll(async () => {
+    platformShimDir = await mkdtemp(
+      path.join(tmpdir(), "computer-use-platform-"),
+    );
+    platformShimPath = path.join(platformShimDir, "darwin-platform.cjs");
+    await writeFile(
+      platformShimPath,
+      'Object.defineProperty(process, "platform", { value: "darwin" });\n',
+    );
     await execFileAsync("pnpm", ["build:cli"], { cwd: desktopRoot });
   }, 30_000);
+
+  afterAll(async () => {
+    if (platformShimDir) {
+      await rm(platformShimDir, { recursive: true, force: true });
+    }
+  });
 
   it("reads permissions from the native helper", async () => {
     const helper = await createHelper({

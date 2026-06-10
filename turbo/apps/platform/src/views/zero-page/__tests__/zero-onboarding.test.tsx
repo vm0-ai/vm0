@@ -81,6 +81,36 @@ describe("zero onboarding", () => {
     await waitFor(() => {
       expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
       expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+      expect(
+        screen.getByText("Workflows that run themselves"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Show Website preview"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Websites that look hand-designed"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Landing pages, brand sites, launch microsites"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Show Illustration preview"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Illustrations in your brand voice"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Editorial covers, hero art, mascots"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Show Workflow preview"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Workflows that run themselves"),
+      ).toBeInTheDocument();
     });
   });
 

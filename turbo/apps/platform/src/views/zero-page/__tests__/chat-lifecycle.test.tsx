@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
+  chatThreadArtifactsContract,
   chatThreadGithubPrsContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
@@ -794,6 +795,122 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows scheduled run messages as schedule links in chat history", async () => {
+    const threadId = "thread-scheduled-message";
+    const scheduleId = "f0000001-0000-4000-a000-000000000721";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Scheduled message",
+      chatMessages: [
+        {
+          id: "msg-scheduled-user",
+          role: "user",
+          content: "Review launch risks",
+          scheduleId,
+          scheduleSnapshot: {
+            id: scheduleId,
+            title: "Launch risk review",
+            description: "Launch review",
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-scheduled-assistant",
+          role: "assistant",
+          content: "I'll review the launch risks on schedule.",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled message")).toBeInTheDocument();
+      expect(screen.getByText("Launch review")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open schedule Launch review"),
+      ).toHaveAttribute("href", `/schedules/${scheduleId}`);
+      expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
+    });
+  });
+
+  it("copies a user message with legacy inline attachments from chat history", async () => {
+    const clipboard = context.mocks.browser.clipboardWrite();
+    const threadId = "legacy-attachment-copy";
+    const imageUrl = "/f/test-user/attachment-chart/chart.png";
+    const videoUrl = "/f/test-user/attachment-demo/demo.mp4";
+    const audioUrl = "/f/test-user/attachment-briefing/briefing.mp3";
+    const markdownUrl = "/f/test-user/attachment-notes/notes.md";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-legacy-attachments",
+          role: "user",
+          content: [
+            "Review the launch assets",
+            `[Attached file: chart.png](${imageUrl})`,
+            `[Attached file: demo.mp4](${videoUrl})`,
+            `[Attached file: briefing.mp3](${audioUrl})`,
+            `[Attached file: notes.md](${markdownUrl})`,
+          ].join("\n"),
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Review the launch assets")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open audio preview for briefing.mp3"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open markdown preview for notes.md"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Copy message"));
+
+    await waitFor(() => {
+      expect(clipboard.writes).toHaveLength(1);
+      expect(clipboard.writes[0]).toHaveLength(1);
+    });
+  });
+
+  it("shows an empty artifact inbox from the chat header", async () => {
+    mockChatLifecycle(context, {
+      threadId: HISTORY_THREAD_ID,
+      threadTitle: "Artifact inventory",
+      chatMessages: [
+        {
+          id: "msg-empty-artifacts",
+          role: "assistant",
+          content: "No files were produced for this request.",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: [] });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${HISTORY_THREAD_ID}` });
+
+    click(await screen.findByLabelText("Open artifacts"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
+      expect(
+        screen.getByText("No uploaded files in this chat yet."),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("opens GitHub PR tracking from the dock", async () => {
     setupGithubPrTrackingPage();
     await openGithubPrTracking();
@@ -826,6 +943,26 @@ describe("chat lifecycle", () => {
       expect(
         screen.queryByLabelText("GitHub PR tracking"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows an empty GitHub PR tracking state", async () => {
+    mockGithubPrTrackingThread();
+    context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
+      return respond(200, { prs: [] });
+    });
+    detachedSetupPage({
+      context,
+      path: `/chats/${GITHUB_PR_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    await openGithubPrTracking();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No GitHub PRs found in this chat."),
+      ).toBeInTheDocument();
     });
   });
 
@@ -1126,6 +1263,33 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows a computer use empty state when host listing is unavailable", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-forbidden";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "Computer Use is unavailable",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+
+    await waitFor(() => {
+      expect(screen.getByText("No online computers")).toBeInTheDocument();
+      expect(screen.getByText("Connect my computer")).toBeInTheDocument();
+    });
+  });
+
   it("transcribes voice input into the composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-thread";
@@ -1167,6 +1331,73 @@ describe("chat lifecycle", () => {
         screen.getByText("Upgrade to Pro to run Zero"),
       ).toBeInTheDocument();
       expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+    });
+  });
+
+  it("shows admin-only billing guidance when a member runs out of credits", async () => {
+    const threadId = "failed-guidance-member-credits";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Upgrade to Pro to run Zero"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero.",
+        ),
+      ).toBeInTheDocument();
+      expect(queryButtonByText("Upgrade to Pro")).toBeNull();
+    });
+  });
+
+  it("shows that chat can continue when credits become available", async () => {
+    const threadId = "failed-guidance-restored-credits";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        credits: 1500,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Credits available")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Your credits have been added. You can continue chatting with Zero.",
+        ),
+      ).toBeInTheDocument();
+      expect(queryButtonByText("Upgrade to Pro")).toBeNull();
     });
   });
 

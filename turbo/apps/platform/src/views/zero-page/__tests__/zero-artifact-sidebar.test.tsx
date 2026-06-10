@@ -426,10 +426,33 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("shows an unavailable pane for unsupported artifact deep links", async () => {
+    setupChatThread({
+      content: "Artifacts are ready.",
+      path: `${THREAD_PATH}?artifact=image%3Agenerated-1&artifact-fullscreen=1`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("Artifact unavailable")).toBeInTheDocument();
+      expect(
+        screen.getByText("Unsupported artifact reference."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close artifact"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    });
+  });
+
   it("shares an artifact and exposes download destinations from the sidebar", async () => {
     const user = userEvent.setup({ delay: null });
     const markdownUrl =
       "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
+    const downloads = captureDownloads(context.signal);
     context.mocks.browser.clipboardWriteText();
     context.mocks.data.connectors([]);
     context.mocks.http.get(markdownUrl, () => {
@@ -458,6 +481,81 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(screen.getByText("Download")).toBeInTheDocument();
       expect(screen.getByText("Connect Google Drive")).toBeInTheDocument();
+    });
+
+    click(menuItemByText("Download"));
+
+    await waitFor(() => {
+      expect(downloads).toContain("release-notes.md");
+    });
+  });
+
+  it("uploads an artifact to connected Google Drive from the sidebar", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/drive-release-notes.md";
+    const artifactFiles = [
+      artifactFile(markdownUrl, {
+        id: "artifact-drive-release-notes",
+        filename: "drive-release-notes.md",
+      }),
+    ];
+    context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Release notes\n\nThe artifact is ready.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    context.mocks.api(
+      chatThreadArtifactsContract.syncGoogleDrive,
+      ({ respond }) => {
+        artifactFiles[0] = {
+          ...artifactFiles[0]!,
+          googleDriveSync: {
+            status: "synced",
+            id: "drive-file-release-notes",
+            name: "drive-release-notes.md",
+            webViewLink: "https://drive.test/drive-release-notes",
+          },
+        };
+        return respond(200, {
+          id: "drive-file-release-notes",
+          name: "drive-release-notes.md",
+          webViewLink: "https://drive.test/drive-release-notes",
+        });
+      },
+    );
+    setupChatThread({
+      artifactFiles,
+      content: `[Release notes](${markdownUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("The artifact is ready.")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Upload to Google Drive")).toBeInTheDocument();
+    });
+    click(menuItemByText("Upload to Google Drive"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
+    });
+
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Synced to Google Drive"),
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Synced to Google Drive")).toBeInTheDocument();
     });
   });
 

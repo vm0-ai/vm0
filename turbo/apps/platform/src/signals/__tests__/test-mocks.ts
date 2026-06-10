@@ -60,6 +60,10 @@ interface ClipboardWriteMock {
   writes: string[];
 }
 
+interface ClipboardRichWriteMock {
+  writes: ClipboardItem[][];
+}
+
 interface Bb0BluetoothRequestDeviceOptions {
   readonly acceptAllDevices?: boolean;
   readonly filters?: readonly {
@@ -248,6 +252,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       clipboardWriteText: (): ClipboardWriteMock => {
         return mockClipboardWriteText(getSignal());
       },
+      clipboardWrite: (): ClipboardRichWriteMock => {
+        return mockClipboardWrite(getSignal());
+      },
       webBluetoothSupport: (): void => {
         mockSupportedWebBluetooth(getSignal());
       },
@@ -339,6 +346,20 @@ function mockClipboardWriteText(signal: AbortSignal): ClipboardWriteMock {
     .spyOn(navigator.clipboard, "writeText")
     .mockImplementation((text) => {
       writes.push(text);
+      return Promise.resolve();
+    });
+  restoreOnAbort(signal, () => {
+    spy.mockRestore();
+  });
+  return { writes };
+}
+
+function mockClipboardWrite(signal: AbortSignal): ClipboardRichWriteMock {
+  const writes: ClipboardItem[][] = [];
+  const spy = vi
+    .spyOn(navigator.clipboard, "write")
+    .mockImplementation((items) => {
+      writes.push(items);
       return Promise.resolve();
     });
   restoreOnAbort(signal, () => {
