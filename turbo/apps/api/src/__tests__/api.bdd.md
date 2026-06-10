@@ -977,3 +977,20 @@ But every rejection \_before* the credit check is reachable.
   not-member checks, Clerk update/leave success (GAP-ORG-STATE).
 - Coverage verified (source-only): `zero-org-read.ts` (40/13) unchanged;
   `zero-org-data.service.ts` 199/106 -> 204/118. No regressions.
+
+### Round 40 — BILLING CHECKOUT REJECTIONS (CHAIN-BILLING-CHECKOUT-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `billingCheckout` client.
+- Added `zero-billing-checkout-rejections.bdd.test.ts`: unauthenticated 401,
+  no-org 401, non-admin 403, invalid-tier 400, and Stripe-not-configured 503 —
+  all of which reject before the Stripe price lookup.
+- Reduced `zero-billing-checkout.test.ts` from 28 to 23 cases, removing the five
+  reachable create-block rejections (kept the complete-checkout block's separate
+  non-admin 403). The kept cases drive funded success, tier transitions, trial,
+  completion and credit checkouts that need seeded org/Stripe state
+  (GAP-STRIPE-CUSTOMER / GAP-ORG-TIER). The three `beforeEach` blocks now prime
+  `mockStripeClient(context.mocks.stripe)` so the kept Stripe cases self-prime
+  the per-call SDK override instead of relying on test-ordering.
+- Coverage verified (source-only): `zero-billing-checkout.ts` (51/27),
+  `billing.service.ts` (28/31), and `zero-billing-checkout.service.ts` (84/47)
+  unchanged vs `main`. No regressions.

@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockStripeClient } from "../../external/stripe-client";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
@@ -102,6 +103,9 @@ describe("POST /api/zero/billing/checkout", () => {
 
   beforeEach(() => {
     setZeroPrice();
+    mockStripeClient(
+      context.mocks.stripe as unknown as Parameters<typeof mockStripeClient>[0],
+    );
   });
 
   afterEach(async () => {
@@ -138,94 +142,6 @@ describe("POST /api/zero/billing/checkout", () => {
     createdOrgIds.push(fixture.orgId);
     return fixture;
   }
-
-  it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
-    mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
-
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await accept(
-      client.create({
-        body: {
-          tier: "pro",
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: {},
-      }),
-      [503],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Billing not configured",
-        code: "PROVIDER_UNAVAILABLE",
-      },
-    });
-  });
-
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await accept(
-      client.create({
-        body: {
-          tier: "pro",
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.status).toBe(401);
-  });
-
-  it("returns 400 for invalid tier", async () => {
-    const fixture = await trackedSeed();
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await client.create({
-      body: {
-        // ts-rest contract z.enum(["pro","team"]) rejects this at parse time
-        tier: "enterprise" as "pro",
-        successUrl: `${APP_ORIGIN}/billing?billing=success`,
-        cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-      },
-      headers: { authorization: "Bearer clerk-session" },
-    });
-
-    expect(response.status).toBe(400);
-  });
-
-  it("returns 403 for non-admin org member", async () => {
-    const fixture = await trackedSeed();
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await accept(
-      client.create({
-        body: {
-          tier: "pro",
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only org admins can manage billing",
-        code: "FORBIDDEN",
-      },
-    });
-  });
 
   it("returns checkout URL on success", async () => {
     const fixture = await trackedSeed();
@@ -637,27 +553,6 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
-  it("returns 401 when caller has no org", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await accept(
-      client.create({
-        body: {
-          tier: "pro",
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.status).toBe(401);
-  });
-
   it("returns 400 when ZERO_PRICE is unset for the tier", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -695,6 +590,9 @@ describe("POST /api/zero/billing/checkout/complete", () => {
 
   beforeEach(() => {
     setZeroPrice();
+    mockStripeClient(
+      context.mocks.stripe as unknown as Parameters<typeof mockStripeClient>[0],
+    );
   });
 
   afterEach(async () => {
@@ -1028,6 +926,9 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
   beforeEach(() => {
     setZeroPrice();
+    mockStripeClient(
+      context.mocks.stripe as unknown as Parameters<typeof mockStripeClient>[0],
+    );
   });
 
   afterEach(async () => {

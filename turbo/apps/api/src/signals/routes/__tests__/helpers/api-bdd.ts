@@ -20,6 +20,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import {
+  zeroBillingCheckoutContract,
   zeroBillingInvoicesContract,
   zeroBillingPortalContract,
   zeroBillingRedeemCodeContract,
@@ -205,6 +206,10 @@ export function createBddApi(context: TestContext) {
      * Stripe customer the list is empty; the funded cases need a seeded
      * customer. */
     billingInvoices: setupApp({ context })(zeroBillingInvoicesContract),
+    /** ts-rest client for `/api/zero/billing/checkout`. The funded success +
+     * tier-transition cases need seeded org/Stripe state; only the
+     * auth/validation/config rejections before the price check are reachable. */
+    billingCheckout: setupApp({ context })(zeroBillingCheckoutContract),
     /** ts-rest client for `/api/zero/org/logo` (get/delete; POST is multipart
      * and is issued as a raw request by the test). */
     orgLogo: setupApp({ context })(zeroOrgLogoContract),
