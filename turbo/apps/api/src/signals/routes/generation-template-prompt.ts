@@ -38,9 +38,9 @@ export function buildGenerationTemplatePrompt(
   }
 
   if (generationTemplate.type === "video") {
-    const preset = VIDEO_STYLE_PRESETS.find(
-      (p) => p.id === generationTemplate.selection.stylePresetId,
-    );
+    const preset = VIDEO_STYLE_PRESETS.find((p) => {
+      return p.id === generationTemplate.selection.stylePresetId;
+    });
     if (!preset) {
       return { status: "invalid", message: "Unknown video style preset" };
     }
