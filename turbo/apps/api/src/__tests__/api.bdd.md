@@ -116,6 +116,8 @@ below. This file is filled in family-by-family as work proceeds.
   delete → list excludes → delete again 404.
 - **CHAIN-USER-PREFERENCES** ✅ — GET defaults → set all fields → GET → partial
   updates (timezone / pins / sendMode / capture) each preserve the rest.
+- **CHAIN-FEATURE-SWITCH** ✅ — GET empty → set → merge → override → GET → clear
+  (DELETE) → GET empty.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -411,3 +413,17 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified on **source files only** (the raw `total` also counts test
   code, which the migration legitimately removes): source-wide covered
   statements 25039 → 25044, `zero-user-preferences.ts` 16/4/2 unchanged.
+
+### Round 8 — FEATURE SWITCHES (CHAIN-FEATURE-SWITCH)
+
+- Extended `createBddApi` with the `featureSwitches`
+  (`zeroFeatureSwitchesContract`) client.
+- Added `zero-feature-switches.bdd.test.ts`: CHAIN-FEATURE-SWITCH (GET empty →
+  set → merge → override → GET → DELETE clears → GET empty) plus unauthenticated
+  / no-org boundaries for all three routes.
+- Deleted `zero-feature-switches.test.ts` and the now-orphaned
+  `helpers/zero-feature-switches.ts`. Fully API-reachable (GET/POST/DELETE), so
+  nothing was retained.
+- Coverage verified (source-only): `zero-feature-switches.ts` (18/1/3) and
+  `feature-switches.service.ts` (22/4/8) unchanged; source-wide covered
+  statements 25039 → 25043.

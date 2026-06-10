@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -78,6 +79,8 @@ export function createBddApi(context: TestContext) {
     secretByName: setupApp({ context })(zeroSecretsByNameContract),
     /** ts-rest client for `/api/zero/user-preferences` (get/update). */
     userPreferences: setupApp({ context })(zeroUserPreferencesContract),
+    /** ts-rest client for `/api/zero/feature-switches` (get/update/delete). */
+    featureSwitches: setupApp({ context })(zeroFeatureSwitchesContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
