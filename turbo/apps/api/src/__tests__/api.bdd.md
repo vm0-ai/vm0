@@ -112,6 +112,8 @@ below. This file is filled in family-by-family as work proceeds.
   reflects → replace → dedupe → clear → GET empty.
 - **CHAIN-VARIABLE** ✅ — set variable → list → update (no dup) → list sorted →
   delete → list excludes → delete again 404.
+- **CHAIN-SECRET** ✅ — set secret → list metadata → update → list sorted →
+  delete → list excludes → delete again 404.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -279,6 +281,15 @@ calc. Services tests outside this list migrate to route-level BDD.
   Verified: deleting both files left `zero-secrets.ts` (28/4/4) and
   `zero-variables-delete.ts` (11/2/1) unchanged vs baseline. Dropped along with
   their `seedVariables$`/`seedOtherVariable$` helpers.
+- **Connector-/other-user secret filtering and encrypted-storage assertions**
+  (`zero-secrets.test.ts` / `zero-secrets-delete.test.ts`). Same shape as
+  variables: the `type = "user"` / per-user filters are SQL `WHERE` clauses with
+  no unique branch, and the encrypted value is never returned by the API. The
+  `set` path still executes the encryption, and the crypto itself is a
+  service-level exception (`crypto.utils.test.ts`, 80/26/20 unchanged). Verified
+  coverage-neutral: `zero-secrets.ts` (28/4/4) and `zero-secrets-delete.ts`
+  (11/2/1) unchanged. Dropped with their `seedSecrets$`/`seedOtherSecret$`
+  helpers.
 - Compose-internal / S3-manifest assertions are recorded as GAPs above, not
   drops: the underlying code paths remain executed by the BDD tests.
 
@@ -369,3 +380,18 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified: `zero-secrets.ts` (28/4/4, shared with the SECRET family)
   and `zero-variables-delete.ts` (11/2/1) unchanged vs the `main` baseline;
   total covered statements 26850 → 26859.
+
+### Round 6 — SECRETS (CHAIN-SECRET)
+
+- Extended `createBddApi` with `secrets` (`zeroSecretsContract`) and
+  `secretByName` (`zeroSecretsByNameContract`) clients.
+- Added `zero-secrets.bdd.test.ts`: CHAIN-SECRET (set → list metadata → update →
+  sort → delete → 404) plus invalid-name / empty-value / unauthenticated /
+  no-org boundaries.
+- Deleted `zero-secrets.test.ts` and `zero-secrets-delete.test.ts` whole and
+  removed their now-orphaned `seedSecrets$` / `seedOtherSecret$` helpers (the
+  connector-/other-user/encrypted-storage cases are coverage-neutral drops).
+- Coverage verified: `zero-secrets.ts` (28/4/4), `zero-secrets-delete.ts`
+  (11/2/1) and `crypto.utils.ts` (80/26/20) unchanged vs the `main` baseline.
+  The only per-file deltas are the established noise files (`utils.ts` 62↔59,
+  `internal-callbacks-chat.ts` 316↔315).

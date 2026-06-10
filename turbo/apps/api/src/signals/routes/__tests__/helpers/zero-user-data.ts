@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import type { SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { command } from "ccstate";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
@@ -21,14 +20,6 @@ interface UserPreferencesSeedValues {
   readonly pinnedAgentIds?: readonly string[];
   readonly sendMode?: SendMode;
   readonly captureNetworkBodiesRemaining?: number | null;
-}
-
-interface SecretSeedValues {
-  readonly name: string;
-  readonly description?: string | null;
-  readonly type?: SecretType;
-  readonly createdAt?: Date;
-  readonly updatedAt?: Date;
 }
 
 function createUserDataFixture(): UserDataFixture {
@@ -58,54 +49,6 @@ export const seedUserPreferences$ = command(
     signal.throwIfAborted();
 
     return fixture;
-  },
-);
-
-export const seedSecrets$ = command(
-  async (
-    { set },
-    rows: readonly SecretSeedValues[],
-    signal: AbortSignal,
-  ): Promise<UserDataFixture> => {
-    const fixture = createUserDataFixture();
-    const writeDb = set(writeDb$);
-
-    if (rows.length > 0) {
-      await writeDb.insert(secrets).values(
-        rows.map((row) => {
-          return {
-            orgId: fixture.orgId,
-            userId: fixture.userId,
-            name: row.name,
-            encryptedValue: `encrypted_${row.name}`,
-            description: row.description ?? null,
-            type: row.type ?? "user",
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-          };
-        }),
-      );
-      signal.throwIfAborted();
-    }
-
-    return fixture;
-  },
-);
-
-export const seedOtherSecret$ = command(
-  async (
-    { set },
-    fixture: UserDataFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb.insert(secrets).values({
-      orgId: fixture.orgId,
-      userId: `user_${randomUUID()}`,
-      name: "OTHER_USER_SECRET",
-      encryptedValue: "encrypted_other_user",
-    });
-    signal.throwIfAborted();
   },
 );
 

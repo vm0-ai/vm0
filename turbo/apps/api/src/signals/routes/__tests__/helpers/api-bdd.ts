@@ -10,6 +10,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
+  zeroSecretsByNameContract,
+  zeroSecretsContract,
   zeroVariablesByNameContract,
   zeroVariablesContract,
 } from "@vm0/api-contracts/contracts/zero-secrets";
@@ -69,6 +71,10 @@ export function createBddApi(context: TestContext) {
     variables: setupApp({ context })(zeroVariablesContract),
     /** ts-rest client for `/api/zero/variables/:name` (delete a variable). */
     variableByName: setupApp({ context })(zeroVariablesByNameContract),
+    /** ts-rest client for `/api/zero/secrets` (list/set user secrets). */
+    secrets: setupApp({ context })(zeroSecretsContract),
+    /** ts-rest client for `/api/zero/secrets/:name` (delete a secret). */
+    secretByName: setupApp({ context })(zeroSecretsByNameContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
