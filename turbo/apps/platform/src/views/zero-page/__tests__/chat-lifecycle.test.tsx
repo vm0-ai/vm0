@@ -329,6 +329,48 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("opens run logs from assistant message actions", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "message-run-logs-thread";
+    const runId = "a0000000-0000-4000-a000-000000000001";
+    const assistantReply = "The launch summary is ready to share.";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Run logs message",
+      chatMessages: [
+        {
+          id: "msg-run-logs-user",
+          role: "user",
+          content: "Summarize the launch update",
+          runId,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-run-logs-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId,
+          status: "completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText(assistantReply)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("View run logs"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "zero" })).toBeInTheDocument();
+      expect(screen.getByText("Steps")).toBeInTheDocument();
+    });
+  });
+
   it("opens a linked schedule from the chat header", async () => {
     mockChatLifecycle(context, {
       threadId: SCHEDULE_THREAD_ID,

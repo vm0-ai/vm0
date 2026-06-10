@@ -574,6 +574,21 @@ describe("zero artifact sidebar", () => {
         });
       },
     );
+    context.mocks.api(
+      zeroHostContract.generatePresentationSpeakerNotes,
+      ({ respond }) => {
+        return respond(200, {
+          kind: "presentation-speaker-notes-patch",
+          version: 1,
+          slides: [
+            {
+              slideId: "slide-plan",
+              speakerNotes: "Generated hiring notes.",
+            },
+          ],
+        });
+      },
+    );
     setupPresentationArtifactThread(presentationUrl);
 
     await waitFor(() => {
@@ -607,19 +622,28 @@ describe("zero artifact sidebar", () => {
       expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Download edited HTML"));
+    await fill(screen.getByLabelText("Speaker notes"), " ");
+    click(screen.getByLabelText("Generate PPT script"));
+
     await waitFor(() => {
-      expect(downloads).toContain("quarterly-roadmap.html");
-      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+      expect(
+        screen.getByText("Added speaker notes to 1 slide"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
+        "Generated hiring notes.",
+      );
     });
     toast.dismiss();
     await waitFor(() => {
       expect(
-        screen.queryByText("Presentation updated"),
+        screen.queryByText("Added speaker notes to 1 slide"),
       ).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Download edited PPTX"));
+    await waitFor(() => {
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
     const exportFrame = await waitFor(() => {
       const frame = document.querySelector(
         'iframe[title="Presentation PPTX export"]',
@@ -632,6 +656,12 @@ describe("zero artifact sidebar", () => {
       expect(downloads).toContain("quarterly-roadmap.pptx");
       expect(
         document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Presentation updated"),
       ).not.toBeInTheDocument();
     });
 

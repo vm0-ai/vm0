@@ -45,8 +45,59 @@ globalThis.IDBRequest = IDBRequest;
 globalThis.IDBTransaction = IDBTransaction;
 globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
+type StderrWriteArgs = [
+  chunk: string | Uint8Array,
+  encodingOrCallback?: string | ((error?: Error | null) => void),
+  callback?: (error?: Error | null) => void,
+];
+
+type StderrWrite = (...args: StderrWriteArgs) => boolean;
+
+type PatchedStderr = {
+  write: StderrWrite;
+  vm0OriginalWrite?: StderrWrite;
+  vm0HappyDomIframeNoisePatched?: true;
+};
+
+const nodeProcess = (
+  globalThis as typeof globalThis & {
+    process: { stderr: PatchedStderr };
+  }
+).process;
+const originalStderrWrite =
+  nodeProcess.stderr.vm0OriginalWrite ??
+  nodeProcess.stderr.write.bind(nodeProcess.stderr);
+
+function isDisabledIframePageLoadingLog(chunk: string | Uint8Array): boolean {
+  const text =
+    typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+  return (
+    text.includes("DOMException [NotSupportedError]") &&
+    text.includes("Iframe page loading is disabled")
+  );
+}
+
+function writeStderrWithoutHappyDomIframeNoise(
+  ...args: StderrWriteArgs
+): boolean {
+  const [chunk] = args;
+  if (isDisabledIframePageLoadingLog(chunk)) {
+    return true;
+  }
+  return originalStderrWrite(...args);
+}
+
+if (!nodeProcess.stderr.vm0HappyDomIframeNoisePatched) {
+  nodeProcess.stderr.vm0OriginalWrite = originalStderrWrite;
+  nodeProcess.stderr.write = writeStderrWithoutHappyDomIframeNoise;
+  nodeProcess.stderr.vm0HappyDomIframeNoisePatched = true;
+}
+
 // vitest.config.ts sets disableIframePageLoading: true so happy-dom does not
 // make real TCP connections when an iframe src is set to an external URL.
+// happy-dom logs the NotSupportedError to its virtual console before emitting
+// an iframe error event; Vitest forwards that virtual-console error to stderr.
+// Keep the stderr filter narrowly scoped so other test errors stay visible.
 // happy-dom dispatches the resulting NotSupportedError as a window error event
 // (not console.error), which vitest would re-emit as process.uncaughtException
 // and fail the test run. This listener suppresses that specific error.
