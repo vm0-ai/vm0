@@ -1542,3 +1542,36 @@ contains 3248 passing tests across 253 files.
 Quality gates: `pnpm -F api lint` (0 warnings, 0
 errors), `pnpm -F api check-types`, `pnpm -F api exec
 vitest run` (3248 tests passed).
+
+### Round 36 — AGENT-01 zero-billing (portal + invoices) BDD + legacy cleanup
+
+Migrates 2 legacy route tests into 5 BDD `it()`s:
+
+- `zero-billing-portal.test.ts` (7→3): 503 chain (no
+  Stripe → 503), auth + 400 + 403 chain (401 no auth →
+  400 missing returnUrl → 400 invalid returnUrl → 403
+  non-admin → 400 admin returnUrl origin does not match
+  APP_URL), 200 success chain (admin + valid returnUrl →
+  200 portal URL + Stripe billingPortal.sessions.create
+  called with the right customer + return_url).
+- `zero-billing-invoices.test.ts` (6→2): auth boundary
+  (401 unauth → 401 no-org → 403 non-admin), 200
+  success chain (admin with active subscription returns
+  2 invoices + Stripe called with the right customer id
+  → admin with no Stripe customer returns empty list
+  without calling Stripe → admin with a customer but no
+  invoices returns empty list).
+
+The 503 chain is isolated because the route short-circuits
+on `optionalEnv("STRIPE_SECRET_KEY")` BEFORE the auth
+check, so chaining a 401 after a 503 would still return 503.
+
+Net test count: 13 legacy `it()`s → 5 BDD `it()`s (62%
+reduction). No per-file coverage regression for the
+portal/invoices route files.
+
+Deletes the now-redundant `zero-billing-portal.test.ts`
+and `zero-billing-invoices.test.ts`.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm -F api exec vitest run` all clean.
