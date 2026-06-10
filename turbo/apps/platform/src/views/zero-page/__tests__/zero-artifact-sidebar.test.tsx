@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -562,6 +562,12 @@ describe("zero artifact sidebar", () => {
   it("edits and downloads a presentation artifact from the editor", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     const downloads = captureDownloads(context.signal);
+    let generatedSlides: { slideId: string; speakerNotes: string }[] = [
+      {
+        slideId: "slide-plan",
+        speakerNotes: "Generated hiring notes.",
+      },
+    ];
     context.mocks.api(
       zeroHostContract.redeployPresentationHtml,
       ({ respond }) => {
@@ -580,12 +586,7 @@ describe("zero artifact sidebar", () => {
         return respond(200, {
           kind: "presentation-speaker-notes-patch",
           version: 1,
-          slides: [
-            {
-              slideId: "slide-plan",
-              speakerNotes: "Generated hiring notes.",
-            },
-          ],
+          slides: generatedSlides,
         });
       },
     );
@@ -640,6 +641,41 @@ describe("zero artifact sidebar", () => {
       ).not.toBeInTheDocument();
     });
 
+    click(screen.getByLabelText("Generate PPT script"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("All speaker notes are filled"),
+      ).toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("All speaker notes are filled"),
+      ).not.toBeInTheDocument();
+    });
+
+    generatedSlides = [
+      {
+        slideId: "missing-slide",
+        speakerNotes: "This should not apply.",
+      },
+    ];
+    await fill(screen.getByLabelText("Speaker notes"), " ");
+    click(screen.getByLabelText("Generate PPT script"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No speaker notes were added"),
+      ).toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("No speaker notes were added"),
+      ).not.toBeInTheDocument();
+    });
+
     click(screen.getByLabelText("Download edited PPTX"));
     await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
@@ -667,13 +703,56 @@ describe("zero artifact sidebar", () => {
 
     await fill(
       screen.getByLabelText("Speaker notes"),
+      "Try a failing PPTX export.",
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download edited PPTX"));
+    await waitFor(() => {
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+    const failedExportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          message: "Export failed",
+          status: "error",
+          type: "vm0-presentation-pptx-export",
+        },
+        source: failedExportFrame.contentWindow,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("PPTX download failed")).toBeInTheDocument();
+      expect(
+        document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("PPTX download failed"),
+      ).not.toBeInTheDocument();
+    });
+
+    await fill(
+      screen.getByLabelText("Speaker notes"),
       "Close with the onboarding capacity decision.",
     );
     await waitFor(() => {
       expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Done editing presentation"));
+    click(screen.getByLabelText("Close presentation editor"));
 
     await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
@@ -692,6 +771,12 @@ describe("zero artifact sidebar", () => {
       "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
     const imageUrl =
       "https://www.vm0.ai/f/36PnTFtD4dBQ9zg5jj6E5r918aV/24b42fb4-4b7b-4521-800f-defc356ae7b4/chart.png";
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/run-1/launch-demo.mp4";
+    const audioUrl = "https://cdn.vm7.io/artifacts/test/run-1/voice-note.mp3";
+    const htmlUrl = "https://cdn.vm7.io/artifacts/test/run-1/launch-site.html";
+    const pdfUrl = "https://cdn.vm7.io/artifacts/test/run-1/rollout-plan.pdf";
+    const csvUrl = "https://cdn.vm7.io/artifacts/test/run-1/metrics.csv";
+    const logUrl = "https://cdn.vm7.io/artifacts/test/run-1/debug.log";
     context.mocks.http.get(markdownUrl, () => {
       return new Response(
         "# Release notes\n\nOpened from the artifact inbox.",
@@ -709,6 +794,42 @@ describe("zero artifact sidebar", () => {
           contentType: "image/png",
           size: 128,
         }),
+        artifactFile(videoUrl, {
+          id: "artifact-video",
+          filename: "launch-demo.mp4",
+          contentType: "video/mp4",
+          size: 2_048_000,
+        }),
+        artifactFile(audioUrl, {
+          id: "artifact-audio",
+          filename: "voice-note.mp3",
+          contentType: "audio/mpeg",
+          size: 512_000,
+        }),
+        artifactFile(htmlUrl, {
+          id: "artifact-site",
+          filename: "launch-site.html",
+          contentType: "text/html",
+          size: 4096,
+        }),
+        artifactFile(pdfUrl, {
+          id: "artifact-pdf",
+          filename: "rollout-plan.pdf",
+          contentType: "application/pdf",
+          size: 8192,
+        }),
+        artifactFile(csvUrl, {
+          id: "artifact-csv",
+          filename: "metrics.csv",
+          contentType: "text/csv",
+          size: 2048,
+        }),
+        artifactFile(logUrl, {
+          id: "artifact-log",
+          filename: "debug.log",
+          contentType: "application/octet-stream",
+          size: 1024,
+        }),
       ],
       content: "Artifacts are ready.",
     });
@@ -723,14 +844,42 @@ describe("zero artifact sidebar", () => {
       const element = screen.getByTestId("artifact-inbox");
       expect(screen.getByText("release-notes.md")).toBeInTheDocument();
       expect(screen.getByText("launch-chart.png")).toBeInTheDocument();
+      expect(screen.getByText("launch-demo.mp4")).toBeInTheDocument();
+      expect(screen.getByText("voice-note.mp3")).toBeInTheDocument();
+      expect(screen.getByText("launch-site.html")).toBeInTheDocument();
+      expect(screen.getByText("rollout-plan.pdf")).toBeInTheDocument();
+      expect(screen.getByText("metrics.csv")).toBeInTheDocument();
+      expect(screen.getByText("debug.log")).toBeInTheDocument();
       return element;
     });
+    expect(screen.getByText("Video")).toBeInTheDocument();
+    expect(screen.getByText("Audio")).toBeInTheDocument();
+    expect(screen.getByText("Hosted site")).toBeInTheDocument();
+    expect(screen.getAllByText("PDF").length).toBeGreaterThan(0);
+    expect(screen.getByText("Data")).toBeInTheDocument();
+    expect(screen.getByText("Text")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-video-preview-badge"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-html-preview-badge"),
+    ).toBeInTheDocument();
 
     click(getArtifactTab(inbox, "Media"));
 
     await waitFor(() => {
       expect(screen.getByText("launch-chart.png")).toBeInTheDocument();
+      expect(screen.getByText("launch-demo.mp4")).toBeInTheDocument();
+      expect(screen.getByText("voice-note.mp3")).toBeInTheDocument();
       expect(screen.queryByText("release-notes.md")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-site.html")).not.toBeInTheDocument();
+    });
+
+    click(getArtifactTab(inbox, "Sites"));
+
+    await waitFor(() => {
+      expect(screen.getByText("launch-site.html")).toBeInTheDocument();
+      expect(screen.queryByText("launch-chart.png")).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Search artifacts"));
@@ -742,11 +891,18 @@ describe("zero artifact sidebar", () => {
       ).toBeInTheDocument();
     });
 
+    fireEvent.change(screen.getByPlaceholderText("Search"), {
+      target: { value: "" },
+    });
     click(getArtifactTab(inbox, "Docs"));
 
     await waitFor(() => {
       expect(screen.getByText("release-notes.md")).toBeInTheDocument();
+      expect(screen.getByText("rollout-plan.pdf")).toBeInTheDocument();
+      expect(screen.getByText("metrics.csv")).toBeInTheDocument();
+      expect(screen.getByText("debug.log")).toBeInTheDocument();
       expect(screen.queryByText("launch-chart.png")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-site.html")).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open artifact release-notes.md"));

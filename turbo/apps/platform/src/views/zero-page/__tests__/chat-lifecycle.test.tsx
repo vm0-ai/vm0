@@ -232,6 +232,76 @@ function mockGithubPrTrackingThread(): void {
             },
           ],
         },
+        {
+          repo: "vm0-ai/vm0",
+          number: 124,
+          title: "Stabilize deploy preview checks",
+          url: "https://github.com/vm0-ai/vm0/pull/124",
+          state: "open",
+          headSha: "def456",
+          mergeStatus: "blocked",
+          rollup: "pending",
+          checks: [
+            {
+              name: "lint",
+              status: "completed",
+              conclusion: "success",
+              url: "https://github.com/vm0-ai/vm0/actions/runs/2",
+              startedAt: "2026-06-09T10:06:00Z",
+              completedAt: "2026-06-09T10:07:00Z",
+            },
+            {
+              name: "security review",
+              status: "in_progress",
+              conclusion: null,
+              url: null,
+              startedAt: "invalid-date",
+              completedAt: null,
+            },
+          ],
+        },
+        {
+          repo: "vm0-ai/vm0",
+          number: 125,
+          title: "Draft data cleanup",
+          url: "https://github.com/vm0-ai/vm0/pull/125",
+          state: "open",
+          headSha: "ghi789",
+          mergeStatus: "draft",
+          rollup: "none",
+          checks: [],
+        },
+        {
+          repo: "vm0-ai/vm0",
+          number: 126,
+          title: "Ready coverage update",
+          url: "https://github.com/vm0-ai/vm0/pull/126",
+          state: "open",
+          headSha: "jkl012",
+          mergeStatus: "ready",
+          rollup: "success",
+          checks: [
+            {
+              name: "coverage",
+              status: "completed",
+              conclusion: "success",
+              url: "https://github.com/vm0-ai/vm0/actions/runs/3",
+              startedAt: "2026-06-09T10:08:00Z",
+              completedAt: "2026-06-09T10:11:00Z",
+            },
+          ],
+        },
+        {
+          repo: "vm0-ai/vm0",
+          number: 127,
+          title: "External checks unavailable",
+          url: "https://github.com/vm0-ai/vm0/pull/127",
+          state: "open",
+          headSha: "mno345",
+          mergeStatus: null,
+          rollup: "unknown",
+          checks: [],
+        },
       ],
     });
   });
@@ -289,6 +359,38 @@ function queryButtonByText(text: string): HTMLElement | null {
       return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
     }) ?? null
   );
+}
+
+function mockFailedAssistantThread({
+  threadId,
+  error,
+}: {
+  threadId: string;
+  error: string;
+}): void {
+  mockChatLifecycle(context, {
+    threadId,
+    threadTitle: "Failed guidance",
+    chatMessages: [
+      {
+        id: `${threadId}-user`,
+        role: "user",
+        content: "Run the task",
+        runId: `${threadId}-run`,
+        createdAt: "2026-06-09T10:00:00Z",
+      },
+      {
+        id: `${threadId}-assistant`,
+        role: "assistant",
+        content: null,
+        runId: `${threadId}-run`,
+        status: "failed",
+        error,
+        runLifecycleEvent: "failed",
+        createdAt: "2026-06-09T10:00:01Z",
+      },
+    ],
+  });
 }
 
 describe("chat lifecycle", () => {
@@ -617,6 +719,20 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Conflicts")).toBeInTheDocument();
       expect(screen.getByText("unit tests")).toBeInTheDocument();
       expect(screen.getByText("deploy preview")).toBeInTheDocument();
+      expect(
+        screen.getByText("Stabilize deploy preview checks"),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
+      expect(screen.getByText("security review")).toBeInTheDocument();
+      expect(screen.getByText("Draft data cleanup")).toBeInTheDocument();
+      expect(screen.getByText("Draft")).toBeInTheDocument();
+      expect(screen.getByText("Ready coverage update")).toBeInTheDocument();
+      expect(screen.getByText("Ready to merge")).toBeInTheDocument();
+      expect(
+        screen.getByText("External checks unavailable"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Unknown")).toBeInTheDocument();
+      expect(screen.getAllByText("No GitHub Actions checks.")).toHaveLength(2);
     });
 
     click(screen.getByLabelText("Close GitHub PR tracking"));
@@ -748,6 +864,25 @@ describe("chat lifecycle", () => {
               generationType: "presentation",
             },
             {
+              prompt: "Generate hero image",
+              kind: "generate",
+              generationType: "image",
+            },
+            {
+              prompt: "Generate launch video",
+              kind: "generate",
+              generationType: "video",
+            },
+            {
+              prompt: "Generate launch website",
+              kind: "generate",
+              generationType: "website",
+            },
+            {
+              prompt: "Generate launch artifact",
+              kind: "generate",
+            },
+            {
               prompt: "Draft launch copy",
               kind: "talk",
             },
@@ -767,6 +902,11 @@ describe("chat lifecycle", () => {
       expect(screen.getByText(assistantReply)).toBeInTheDocument();
       expect(screen.getByText("Keep going")).toBeInTheDocument();
       expect(buttonByText(followupPrompt)).toBeInTheDocument();
+      expect(buttonByText("Generate hero image")).toBeInTheDocument();
+      expect(buttonByText("Generate launch video")).toBeInTheDocument();
+      expect(buttonByText("Generate launch website")).toBeInTheDocument();
+      expect(buttonByText("Generate launch artifact")).toBeInTheDocument();
+      expect(buttonByText("Draft launch copy")).toBeInTheDocument();
     });
 
     click(buttonByText(followupPrompt));
@@ -775,6 +915,90 @@ describe("chat lifecycle", () => {
       expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
       expect(screen.getByText(followupPrompt)).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
+  it("shows billing recovery guidance when credits are depleted", async () => {
+    const threadId = "failed-guidance-credits";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Upgrade to Pro to run Zero"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+    });
+  });
+
+  it("shows model-provider setup guidance from failed assistant messages", async () => {
+    const threadId = "failed-guidance-provider";
+    mockFailedAssistantThread({
+      threadId,
+      error: "No model provider configured",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No model provider configured yet/u),
+      ).toBeInTheDocument();
+      expect(
+        buttonByText("Set one up in Workspace Settings"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows restart guidance for incompatible provider sessions", async () => {
+    const threadId = "failed-guidance-incompatible";
+    mockFailedAssistantThread({
+      threadId,
+      error: "Cannot continue session with the selected provider",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/started with a different model provider/u),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Start a new session")).toBeInTheDocument();
+    });
+  });
+
+  it("shows restart guidance for deleted provider sessions", async () => {
+    const threadId = "failed-guidance-deleted";
+    mockFailedAssistantThread({
+      threadId,
+      error: "Model provider unavailable",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /model provider used by this thread has been deleted/u,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Start a new chat thread")).toBeInTheDocument();
+    });
+  });
+
+  it("renders generic assistant failures as markdown", async () => {
+    const threadId = "failed-guidance-generic";
+    mockFailedAssistantThread({
+      threadId,
+      error: "Unexpected **tool** failure",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Unexpected.*failure/u)).toBeInTheDocument();
+      expect(screen.getByText("tool")).toBeInTheDocument();
     });
   });
 

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -72,6 +72,39 @@ function findSectionCreateButton(sectionName: "Public" | "Private"): Element {
     throw new Error(`${sectionName} create button not found`);
   }
   return createButton;
+}
+
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function menuItemByText(text: string): HTMLElement {
+  const item = queryAllByRoleFast("menuitem").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!item) {
+    throw new Error(`${text} menu item not found`);
+  }
+  return item;
+}
+
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
 }
 
 async function openCreateDialog(
@@ -281,10 +314,234 @@ describe("zero jobs page", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(dialog).not.toBeInTheDocument();
 
-    click(screen.getByText("Marketing Bot"));
+    const marketingBotLink = queryAllByRoleFast("link").find((link) => {
+      return (
+        link.getAttribute("href") ===
+        "/agents/a0000000-0000-4000-a000-000000000201"
+      );
+    });
+    if (!marketingBotLink) {
+      throw new Error("Marketing Bot detail link not found");
+    }
+    click(marketingBotLink);
 
     await waitFor(() => {
       expect(document.title).toContain("Marketing Bot");
+    });
+  });
+
+  it("switches through agent detail tabs from a loaded agent page", async () => {
+    const agentId = "a0000000-0000-4000-a000-000000000301";
+    mockAgentsPage([
+      createDefaultAgent(),
+      {
+        id: agentId,
+        ownerId: "test-user-123",
+        displayName: "Research Agent",
+        description: "Finds launch risks",
+        sound: "professional",
+        avatarUrl: null,
+        customSkills: [],
+        visibility: "public",
+        headVersionId: "version_4",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    context.mocks.data.schedules([
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000301",
+        agentId,
+        name: "weekday-risk-digest",
+        cronExpression: "30 14 * * 1-5",
+        description: "Research digest",
+        prompt: "Summarize launch risks",
+      }),
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000302",
+        agentId,
+        name: "office-climate-loop",
+        triggerType: "loop",
+        cronExpression: null,
+        intervalSeconds: 2700,
+        description: "Office AC",
+        prompt: "Turn on the office air conditioning",
+      }),
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000303",
+        agentId,
+        name: "wednesday-risk-review",
+        cronExpression: "15 14 * * 3",
+        description: "Wednesday risks",
+        prompt: "Review launch risks every Wednesday",
+      }),
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000304",
+        agentId,
+        name: "monthly-risk-audit",
+        cronExpression: "5 12 12 * *",
+        description: "Billing audit",
+        prompt: "Review monthly billing anomalies",
+      }),
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000305",
+        agentId,
+        name: "launch-readiness-check",
+        triggerType: "once",
+        cronExpression: null,
+        atTime: "2026-06-12T18:45:00Z",
+        description: "Release checklist",
+        prompt: "Run the launch readiness checklist",
+      }),
+    ]);
+    context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, {
+        content: "Summarize risks with concise bullets.",
+        filename: "AGENTS.md",
+      });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${agentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Chat with Research Agent"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Finds launch risks")).toBeInTheDocument();
+    });
+
+    expect(tabByText("Authorization")).toHaveAttribute("aria-selected", "true");
+
+    click(tabByText("Scheduled"));
+    await waitFor(() => {
+      expect(screen.getAllByText("Research digest").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Office AC").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Wednesday risks").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Billing audit").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Release checklist").length).toBeGreaterThan(
+        0,
+      );
+      expect(screen.getByText("Add schedule")).toBeInTheDocument();
+    });
+    expect(
+      screen.getAllByText("Every weekday at 2:30 PM")[0],
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Every 45 minutes")[0]).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Every week on Wednesday at 2:15 PM")[0],
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Every month on day 12 at 12:05 PM")[0],
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Once on 2026-06-12 at 6:45 PM")[0],
+    ).toBeInTheDocument();
+
+    click(tabByText("Calendar"));
+    await waitFor(() => {
+      expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
+    });
+
+    click(tabByText("List"));
+    await waitFor(() => {
+      expect(screen.getByText("Instruction")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Add schedule"));
+    const createScheduleDialog = await screen.findByRole("dialog", {
+      name: "Add schedule",
+    });
+    await fill(screen.getByLabelText("Prompt"), "Prepare launch summary");
+    click(buttonByText("Create", createScheduleDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Prepare launch summary")).toBeInTheDocument();
+    });
+
+    click(
+      screen.getAllByLabelText(
+        "More actions for Every week on Wednesday at 2:15 PM",
+      )[0],
+    );
+    click(menuItemByText("Edit"));
+    const editScheduleDialog = await screen.findByRole("dialog", {
+      name: "Edit schedule",
+    });
+    expect(
+      within(editScheduleDialog).getByText("Day of week"),
+    ).toBeInTheDocument();
+    await fill(
+      screen.getByLabelText(/Description/u),
+      "Updated Wednesday risks",
+    );
+    click(buttonByText("Save", editScheduleDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Updated Wednesday risks")[0],
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
+      expect(screen.getByText("View activity")).toBeInTheDocument();
+    });
+
+    click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0],
+      ).toBeInTheDocument();
+    });
+
+    click(
+      screen.getAllByLabelText(
+        "More actions for Every month on day 12 at 12:05 PM",
+      )[0],
+    );
+    click(menuItemByText("Delete"));
+    const deleteScheduleDialog = await screen.findByRole("dialog");
+    expect(
+      within(deleteScheduleDialog).getByText("Delete schedule?"),
+    ).toBeInTheDocument();
+    expect(
+      within(deleteScheduleDialog).getByText("monthly-risk-audit"),
+    ).toBeInTheDocument();
+    click(buttonByText("Cancel", deleteScheduleDialog));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+    });
+
+    click(
+      screen.getAllByLabelText(
+        "More actions for Every month on day 12 at 12:05 PM",
+      )[0],
+    );
+    click(menuItemByText("Delete"));
+    const confirmDeleteDialog = await screen.findByRole("dialog");
+    click(buttonByText("Delete", confirmDeleteDialog));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Billing audit")).not.toBeInTheDocument();
+    });
+
+    click(tabByText("Profile"));
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Research Agent")).toBeInTheDocument();
+      expect(
+        screen.getByDisplayValue("Finds launch risks"),
+      ).toBeInTheDocument();
+    });
+
+    click(tabByText("Instructions"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize risks with concise bullets."),
+      ).toBeInTheDocument();
     });
   });
 });

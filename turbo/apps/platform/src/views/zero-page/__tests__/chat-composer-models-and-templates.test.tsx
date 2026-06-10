@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -720,6 +720,34 @@ describe("chat composer models", () => {
     await expect(
       screen.findByLabelText("Remove notes.txt"),
     ).resolves.toBeInTheDocument();
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(textarea);
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        getData: (type: string) => {
+          return type === "text/plain" ? "Keep this pasted caption" : "";
+        },
+        items: [
+          {
+            kind: "file",
+            getAsFile: () => {
+              return new File(["pasted image"], "pasted.png", {
+                type: "image/png",
+              });
+            },
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(textarea).toHaveValue("Keep this pasted caption");
+      expect(
+        screen.queryByLabelText("Open image preview for pasted.png"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("manages agent connector access from the composer", async () => {
@@ -755,6 +783,25 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Add connectors"));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/Available connectors to connect/u),
+    ).toBeInTheDocument();
+
+    await fill(
+      within(dialog).getByPlaceholderText("Find connectors..."),
+      "notion",
+    );
+
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Connect Notion"),
+      ).toBeInTheDocument();
+      expect(within(dialog).queryByLabelText("Connect Gmail")).toBeNull();
     });
   });
 });

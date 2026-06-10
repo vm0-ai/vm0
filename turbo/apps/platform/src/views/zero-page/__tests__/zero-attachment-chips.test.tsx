@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -336,8 +336,27 @@ describe("zero attachment chips", () => {
     const audioUrl =
       "https://cdn.vm7.io/artifacts/test/body-audio/briefing.mp3";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/body-video/demo.mp4";
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/body-markdown/release-notes.md";
+    const csvUrl =
+      "https://cdn.vm7.io/artifacts/test/body-csv/launch-metrics.csv";
+    const pdfUrl =
+      "https://cdn.vm7.io/artifacts/test/body-pdf/rollout-plan.pdf";
+    const htmlUrl =
+      "https://cdn.vm7.io/artifacts/test/body-html/launch-site.html";
     const archiveUrl =
       "https://cdn.vm7.io/artifacts/test/body-file/archive.bin";
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Release notes\n\nBody link rollout is ready.", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(csvUrl, () => {
+      return new Response("metric,value\nactivation,87", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
     context.mocks.http.get(archiveUrl, () => {
       return new Response(null, { status: 500 });
     });
@@ -347,7 +366,7 @@ describe("zero attachment chips", () => {
         {
           id: "msg-body-preview-links",
           role: "assistant",
-          content: `Generated preview links:\n\n${audioUrl}\n${videoUrl}\n${archiveUrl}`,
+          content: `Generated preview links:\n\n${audioUrl}\n${videoUrl}\n${imageUrl}\n${markdownUrl}\n${csvUrl}\n${pdfUrl}\n[Launch site](${htmlUrl})\n${archiveUrl}`,
           runId: "run-body-previews",
           status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
@@ -363,6 +382,19 @@ describe("zero attachment chips", () => {
         screen.getByLabelText("Open audio preview for briefing.mp3"),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open markdown preview for release-notes.md"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open csv preview for launch-metrics.csv"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open pdf preview for rollout-plan.pdf"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open html preview for Launch site"),
+      ).toBeInTheDocument();
       expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
     });
 
@@ -385,6 +417,87 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(
         screen.getByLabelText("Video preview for demo.mp4"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.load(screen.getByAltText("chart.png"));
+    click(screen.getByLabelText("Preview chart.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open markdown preview for release-notes.md"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(
+        screen.getByText("Body link rollout is ready."),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open csv preview for launch-metrics.csv"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText("activation")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open pdf preview for rollout-plan.pdf"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-document-frame"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for Launch site"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-body-html"),
       ).toBeInTheDocument();
     });
 

@@ -139,6 +139,21 @@ describe("zero schedule detail page", () => {
     expect(screen.getByDisplayValue("Morning brief")).toBeInTheDocument();
     expect(screen.getByText("Danger zone")).toBeInTheDocument();
 
+    await fill(screen.getByDisplayValue("Morning brief"), "Draft update");
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Discard"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue("Morning brief")).toBeInTheDocument();
+    });
+
     await fill(screen.getByDisplayValue("Morning brief"), "Team morning brief");
 
     await waitFor(() => {
