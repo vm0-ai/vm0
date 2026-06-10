@@ -22,6 +22,7 @@ import {
   zeroComposesByIdContract,
   zeroComposesListContract,
   zeroComposesMainContract,
+  zeroComposesMetadataContract,
 } from "@vm0/api-contracts/contracts/zero-composes";
 import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -112,6 +113,8 @@ export function createBddApi(context: TestContext) {
     composesList: setupApp({ context })(zeroComposesListContract),
     /** ts-rest client for `/api/zero/composes` getByName. */
     composesMain: setupApp({ context })(zeroComposesMainContract),
+    /** ts-rest client for `/api/zero/composes/:id/metadata` (update). */
+    composesMetadata: setupApp({ context })(zeroComposesMetadataContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,

@@ -128,6 +128,8 @@ below. This file is filled in family-by-family as work proceeds.
   list excludes → GET 404.
 - **CHAIN-COMPOSE-BY-NAME** ✅ — create agent → read its compose by name → 404
   for unknown / cross-org.
+- **CHAIN-COMPOSE-METADATA** ✅ — create agent → update compose metadata (full +
+  partial) → agent GET reflects it → same-org member update → 404s.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -510,3 +512,18 @@ calc. Services tests outside this list migrate to route-level BDD.
   `main` baseline. (An unrelated flaky `cron-summarize-memory` "idempotent on
   rerun" test failed once mid-verification and passed on re-run — not a code
   issue.)
+
+### Round 14 — COMPOSE METADATA (CHAIN-COMPOSE-METADATA)
+
+- Extended `createBddApi` with the `composesMetadata`
+  (`zeroComposesMetadataContract`) client.
+- Extended `zero-composes-by-id.bdd.test.ts` with metadata-update chains: create
+  agent → update metadata (full, then partial preserving the other field) →
+  verify through the agent GET → same-org member update → unknown/cross-org 404
+  - unauthenticated/no-org 401.
+- Reduced `zero-composes-metadata-update.test.ts` to the "fresh zero_agents row"
+  case (the upsert INSERT branch, only reachable from a compose with no
+  `zero_agents` row; API agents always provision it — GAP-STANDALONE-COMPOSE).
+- Coverage verified (source-only): `zero-composes.ts` (45/13) unchanged. This
+  completes the COMPOSE family in BDD except the two documented gaps
+  (409-pending-run delete, fresh-row INSERT).

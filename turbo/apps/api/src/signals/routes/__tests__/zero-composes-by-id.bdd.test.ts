@@ -281,4 +281,112 @@ describe("compose read by id (API-first BDD)", () => {
     );
     expect(owner.orgId).toStrictEqual(expect.any(String));
   });
+
+  it("updates compose metadata (full + partial), allows same-org members, and 404s", async () => {
+    const api = createBddApi(context);
+    api.allowInstructionsStorage();
+    const orgId = `org_${randomUUID()}`;
+    const owner = api.actAsMember({ userId: `user_${randomUUID()}`, orgId });
+
+    // Given an agent (compose) created by an org member.
+    const created = await accept(
+      api.agents.create({
+        headers: SESSION_AUTH,
+        body: { displayName: "Initial", description: "Initial desc" },
+      }),
+      [201],
+    );
+    const id = created.body.agentId;
+
+    // When metadata is fully updated. Then a follow-up agent GET reflects it.
+    const updated = await accept(
+      api.composesMetadata.update({
+        params: { id },
+        headers: SESSION_AUTH,
+        body: { displayName: "Updated Name", description: "Updated desc" },
+      }),
+      [200],
+    );
+    expect(updated.body).toStrictEqual({ ok: true });
+    const afterFull = await accept(
+      api.agentsById.get({ params: { id }, headers: SESSION_AUTH }),
+      [200],
+    );
+    expect(afterFull.body).toMatchObject({
+      displayName: "Updated Name",
+      description: "Updated desc",
+    });
+
+    // When only the display name is updated. Then the description is preserved.
+    await accept(
+      api.composesMetadata.update({
+        params: { id },
+        headers: SESSION_AUTH,
+        body: { displayName: "Name Only" },
+      }),
+      [200],
+    );
+    const afterPartial = await accept(
+      api.agentsById.get({ params: { id }, headers: SESSION_AUTH }),
+      [200],
+    );
+    expect(afterPartial.body).toMatchObject({
+      displayName: "Name Only",
+      description: "Updated desc",
+    });
+
+    // When a different member of the same org updates it. Then it is allowed.
+    api.actAsMember({ userId: `user_${randomUUID()}`, orgId });
+    await accept(
+      api.composesMetadata.update({
+        params: { id },
+        headers: SESSION_AUTH,
+        body: { description: "Edited by another member" },
+      }),
+      [200],
+    );
+
+    // Then unknown and cross-org composes are not found.
+    api.actAsMember({ userId: owner.userId, orgId });
+    await accept(
+      api.composesMetadata.update({
+        params: { id: randomUUID() },
+        headers: SESSION_AUTH,
+        body: { displayName: "x" },
+      }),
+      [404],
+    );
+    api.actAsAdmin();
+    await accept(
+      api.composesMetadata.update({
+        params: { id },
+        headers: SESSION_AUTH,
+        body: { displayName: "x" },
+      }),
+      [404],
+    );
+  });
+
+  it("rejects unauthenticated and no-organization metadata updates", async () => {
+    const api = createBddApi(context);
+    const id = randomUUID();
+
+    await accept(
+      api.composesMetadata.update({
+        params: { id },
+        headers: {},
+        body: { displayName: "x" },
+      }),
+      [401],
+    );
+    api.actAsNoOrg();
+    await accept(
+      api.composesMetadata.update({
+        params: { id },
+        headers: SESSION_AUTH,
+        body: { displayName: "Test" },
+      }),
+      [401],
+    );
+  });
 });
