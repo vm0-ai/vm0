@@ -881,3 +881,20 @@ But every rejection \_before* the credit check is reachable.
   connector/secret/model happy-path cases (GAP-RUN-CREDITS).
 - Coverage verified (source-only): no regression; `agent-run-create.service.ts`
   561 -> 563 branches (the fresh-org admission path is newly covered).
+
+### Round 34 — BILLING PORTAL REJECTIONS (CHAIN-BILLING-PORTAL, reduce-legacy)
+
+- Extended `createBddApi` with the `billingPortal` client.
+- Added `zero-billing-portal.bdd.test.ts`: unauthenticated 401; non-admin 403;
+  Stripe-not-configured 503 (env-driven, done last as it mutates env); and
+  returnUrl validation (missing 400, malformed 400, foreign-origin 400). The
+  Stripe-config check runs after auth + role, so the env-mutating case is
+  ordered last.
+- Reduced `zero-billing-portal.test.ts` from 7 to 1 case, keeping only the
+  funded success path (opens a Stripe portal for the org's existing
+  `stripeCustomerId`, which needs a DB-seeded customer — GAP-STRIPE-CUSTOMER).
+  The kept success case now calls `mockStripeClient(context.mocks.stripe)`
+  explicitly (the per-call Stripe SDK override) so it self-primes instead of
+  relying on test-ordering — a latent coupling the original masked.
+- Coverage verified (source-only): `zero-billing-portal.ts` (18/8/1) and
+  `billing.service.ts` (28/31/4) unchanged vs `main`. No regressions.

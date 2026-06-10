@@ -19,7 +19,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
-import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingPortalContract,
+  zeroBillingRedeemCodeContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
@@ -179,6 +182,10 @@ export function createBddApi(context: TestContext) {
     ),
     /** ts-rest client for `/api/zero/billing/redeem-code` (consume a code). */
     billingRedeemCode: setupApp({ context })(zeroBillingRedeemCodeContract),
+    /** ts-rest client for `/api/zero/billing/portal` (open the Stripe portal).
+     * The funded success path needs a seeded Stripe customer with no API
+     * surface; only the auth/validation/config rejections are reachable. */
+    billingPortal: setupApp({ context })(zeroBillingPortalContract),
     /** ts-rest client for `/api/zero/org/logo` (get/delete; POST is multipart
      * and is issued as a raw request by the test). */
     orgLogo: setupApp({ context })(zeroOrgLogoContract),
