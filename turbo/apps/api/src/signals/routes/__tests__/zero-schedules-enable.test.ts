@@ -11,6 +11,10 @@ import {
   seedSchedulesScenario$,
 } from "./helpers/zero-schedules";
 import {
+  authHeaders,
+  getZeroScheduleThroughApi,
+} from "./helpers/zero-schedule-routes";
+import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
@@ -51,7 +55,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
 
     const response = await accept(
       client().enable({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "to-enable" },
         body: { agentId: fixture.composeId },
       }),
@@ -62,6 +66,16 @@ describe("POST /api/zero/schedules/:name/enable", () => {
     expect(response.body.retryStartedAt).toBeNull();
     expect(response.body.consecutiveFailures).toBe(0);
     expect(response.body.nextRunAt).not.toBeNull();
+
+    const schedule = await getZeroScheduleThroughApi(context, "to-enable");
+    expect(schedule).toMatchObject({
+      name: "to-enable",
+      agentId: fixture.composeId,
+      enabled: true,
+      retryStartedAt: null,
+      consecutiveFailures: 0,
+      nextRunAt: expect.any(String),
+    });
   });
 
   it("returns 404 for non-existent schedule", async () => {
@@ -72,7 +86,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
 
     const response = await accept(
       client().enable({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "non-existent" },
         body: { agentId: fixture.composeId },
       }),
@@ -104,7 +118,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
 
     const response = await accept(
       client().enable({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "enable-agentid" },
         body: { agentId: fixture.composeId },
       }),
@@ -112,6 +126,13 @@ describe("POST /api/zero/schedules/:name/enable", () => {
     );
 
     expect(response.body.enabled).toBeTruthy();
+
+    const schedule = await getZeroScheduleThroughApi(context, "enable-agentid");
+    expect(schedule).toMatchObject({
+      name: "enable-agentid",
+      agentId: fixture.composeId,
+      enabled: true,
+    });
   });
 
   it("returns 400 for invalid body", async () => {
@@ -121,7 +142,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await client().enable({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       params: { name: "any" },
       body: {} as { agentId: string },
     });
@@ -166,7 +187,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
 
     const response = await accept(
       client().enable({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "past-once" },
         body: { agentId: fixture.composeId },
       }),
@@ -177,6 +198,14 @@ describe("POST /api/zero/schedules/:name/enable", () => {
         message: "Schedule time has already passed",
         code: "SCHEDULE_PAST",
       },
+    });
+
+    const schedule = await getZeroScheduleThroughApi(context, "past-once");
+    expect(schedule).toMatchObject({
+      name: "past-once",
+      agentId: fixture.composeId,
+      enabled: false,
+      nextRunAt: null,
     });
   });
 });

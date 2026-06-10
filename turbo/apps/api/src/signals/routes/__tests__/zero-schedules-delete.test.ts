@@ -12,6 +12,10 @@ import {
   seedSchedulesScenario$,
 } from "./helpers/zero-schedules";
 import {
+  authHeaders,
+  getZeroScheduleThroughApi,
+} from "./helpers/zero-schedule-routes";
+import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
@@ -70,7 +74,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await accept(
       client().delete({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "to-delete" },
         query: { agentId: fixture.composeId },
       }),
@@ -78,10 +82,13 @@ describe("DELETE /api/zero/schedules/:name", () => {
     );
 
     expect(response.body).toBeUndefined();
+    await expect(
+      getZeroScheduleThroughApi(context, "to-delete"),
+    ).resolves.toBeUndefined();
 
     const repeatResponse = await accept(
       client().delete({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "to-delete" },
         query: { agentId: fixture.composeId },
       }),
@@ -100,7 +107,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await accept(
       client().delete({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "non-existent" },
         query: { agentId: fixture.composeId },
       }),
@@ -132,7 +139,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await accept(
       client().delete({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "del-agent-id" },
         query: { agentId: fixture.composeId },
       }),
@@ -140,6 +147,9 @@ describe("DELETE /api/zero/schedules/:name", () => {
     );
 
     expect(response.status).toBe(204);
+    await expect(
+      getZeroScheduleThroughApi(context, "del-agent-id"),
+    ).resolves.toBeUndefined();
   });
 
   it("returns 400 for an invalid query", async () => {
@@ -149,7 +159,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await client().delete({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       params: { name: "any" },
       query: { agentId: "not-a-uuid" },
     });
@@ -208,6 +218,16 @@ describe("DELETE /api/zero/schedules/:name", () => {
         message: "Missing required capability: schedule:delete",
         code: "FORBIDDEN",
       },
+    });
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const schedule = await getZeroScheduleThroughApi(
+      context,
+      "agent-cant-delete",
+    );
+    expect(schedule).toMatchObject({
+      name: "agent-cant-delete",
+      agentId: fixture.composeId,
     });
   });
 });

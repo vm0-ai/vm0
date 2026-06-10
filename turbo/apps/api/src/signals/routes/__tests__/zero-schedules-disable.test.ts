@@ -10,6 +10,10 @@ import {
   seedSchedulesScenario$,
 } from "./helpers/zero-schedules";
 import {
+  authHeaders,
+  getZeroScheduleThroughApi,
+} from "./helpers/zero-schedule-routes";
+import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
@@ -48,7 +52,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
 
     const response = await accept(
       client().disable({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "to-disable" },
         body: { agentId: fixture.composeId },
       }),
@@ -57,6 +61,14 @@ describe("POST /api/zero/schedules/:name/disable", () => {
 
     expect(response.body.enabled).toBeFalsy();
     expect(response.body.retryStartedAt).toBeNull();
+
+    const schedule = await getZeroScheduleThroughApi(context, "to-disable");
+    expect(schedule).toMatchObject({
+      name: "to-disable",
+      agentId: fixture.composeId,
+      enabled: false,
+      retryStartedAt: null,
+    });
   });
 
   it("returns 404 for non-existent schedule", async () => {
@@ -67,7 +79,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
 
     const response = await accept(
       client().disable({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "non-existent" },
         body: { agentId: fixture.composeId },
       }),
@@ -99,7 +111,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
 
     const response = await accept(
       client().disable({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         params: { name: "dis-agentid" },
         body: { agentId: fixture.composeId },
       }),
@@ -107,6 +119,13 @@ describe("POST /api/zero/schedules/:name/disable", () => {
     );
 
     expect(response.body.enabled).toBeFalsy();
+
+    const schedule = await getZeroScheduleThroughApi(context, "dis-agentid");
+    expect(schedule).toMatchObject({
+      name: "dis-agentid",
+      agentId: fixture.composeId,
+      enabled: false,
+    });
   });
 
   it("returns 400 for invalid body", async () => {
@@ -116,7 +135,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await client().disable({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       params: { name: "any" },
       body: {} as { agentId: string },
     });
