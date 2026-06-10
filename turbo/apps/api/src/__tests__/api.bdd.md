@@ -547,3 +547,40 @@ No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 8 — CONNECTOR-01 secret + delete BDD
+
+Migrates the remaining CONNECTOR-01 routes. The encrypt/decrypt
+storage roundtrip and the multi-user / multi-org secret-leak checks
+are storage-layer concerns exercised by service tests; the
+public surface (set + clear + delete) is verifiable through the
+list endpoint's `hasSecret` and `connectors[]` arrays.
+
+- `zero-custom-connectors-secret-set.bdd.test.ts` — 4 legacy
+  `it()`s → 2 BDD `it()`s (auth boundary + a gwt-wt-wt chain that
+  exercises 404 unknown → 204 admin sets secret (list shows
+  `hasSecret: true`) → 204 member sets own secret (list still
+  shows `hasSecret: true`)). The encryption roundtrip
+  (`decryptStoredSecretValue`) is verified by service tests.
+- `zero-custom-connectors-delete.bdd.test.ts` — 6 legacy
+  `it()`s → 2 BDD `it()`s (auth boundary + a gwt-wt-wt chain
+  that exercises 403 non-admin → 404 unknown → 404 cross-org
+  (verified by re-authenticating as the org-A owner and
+  confirming the connector still appears in their list) → 204
+  own (verified via list exclusion)). The secret-cascade
+  verification is replaced by the public surface (a missing
+  connector also covers the missing-secrets cascade).
+- `zero-custom-connectors-secret-delete.bdd.test.ts` — 6
+  legacy `it()`s → 2 BDD `it()`s (auth boundary + a gwt-wt-wt
+  chain that exercises 204 clears caller's secret (list shows
+  `hasSecret: false`) → 204 idempotent (list still
+  `hasSecret: false`)). The per-user and per-org isolation
+  leak checks (counting survivors by userId / orgId) remain as
+  service-level tests because there is no public API to query
+  secrets per user or per org.
+
+Net test count: 16 legacy `it()`s → 6 BDD `it()`s (63% reduction).
+No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
