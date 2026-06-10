@@ -42,7 +42,7 @@ migrated.
 | CHAIN-TEST-TELEGRAM     | `/api/test/telegram-state`                  | POST seed Telegram state -> GET diagnostic state -> POST idempotent seed -> GET stable link -> DELETE cleanup         |
 | CHAIN-API-KEYS          | `/api/zero/api-keys`                        | POST create key -> GET list without token -> DELETE key -> GET list without key -> DELETE foreign key returns 404     |
 | CHAIN-CUSTOM-CONNECTOR  | `/api/zero/custom-connectors`               | POST create connector -> GET list -> PATCH rename -> PUT secret -> DELETE secret/connector -> GET visible state       |
-| CHAIN-CHAT-THREAD-META  | `/api/zero/chat-threads/*`                  | POST create agent -> POST create thread -> POST pin/rename/unpin -> GET list visible thread metadata                  |
+| CHAIN-CHAT-THREAD-META  | `/api/zero/chat-threads/*`                  | POST create agent -> POST create thread -> POST pin/rename/model-selection/unpin -> GET list/detail visible metadata  |
 
 ## Migration Audit Table
 
@@ -58,6 +58,7 @@ migrated.
 | API-KEYS-01          | Create, list, delete, and foreign-owner delete behavior                                 | CHAIN-API-KEYS              | partial  | `zero-api-keys.test.ts` and `zero-api-keys-delete.test.ts` create keys through POST, verify persisted state through GET list, and verify delete/foreign-owner behavior through DELETE plus follow-up GET list.                             |
 | CUSTOM-CONNECTOR-01  | Connector creation, rename, delete, and per-user secret flags                           | CHAIN-CUSTOM-CONNECTOR      | partial  | The custom connector create/patch/delete and secret set/delete suites create connectors through POST, mutate them through route calls, and verify visibility/per-user `hasSecret` through GET list.                                        |
 | CHAT-THREAD-META-01  | Pin, unpin, rename, idempotency, and cross-user no-leak behavior                        | CHAIN-CHAT-THREAD-META      | migrated | `zero-chat-threads-pin.test.ts`, `zero-chat-threads-unpin.test.ts`, and `zero-chat-threads-rename.test.ts` create agents/threads through route calls and verify `pinnedAt`, `renamedAt`, title, and list placement through GET list.       |
+| CHAT-THREAD-MODEL-01 | Model selection set, clear, validation, and cross-user no-leak behavior                 | CHAIN-CHAT-THREAD-META      | migrated | `zero-chat-threads-model-selection.test.ts` creates agents/threads through route calls, mutates model selection through POST, and verifies `modelProviderId`/`selectedModel` through GET detail responses.                                 |
 
 ## Open Helper Gaps
 

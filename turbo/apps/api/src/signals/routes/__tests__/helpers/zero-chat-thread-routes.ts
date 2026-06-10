@@ -123,3 +123,18 @@ export async function listZeroChatThreadsThroughApi(context: TestContext) {
   );
   return response.body;
 }
+
+export async function getZeroChatThreadThroughApi(
+  context: TestContext,
+  threadId: string,
+) {
+  const client = setupApp({ context })(chatThreadByIdContract);
+  const response = await accept(
+    client.get({
+      params: { id: threadId },
+      headers: authHeaders(),
+    }),
+    [200],
+  );
+  return response.body;
+}
