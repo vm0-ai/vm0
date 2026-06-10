@@ -32,7 +32,7 @@ pub(crate) struct SessionState {
     /// Next suspended-channel reattach attempt. It is scheduled from a
     /// suspended channel while the connection can send events, then cleared
     /// when consumed, superseded by a new attach, reset by reconnect/suspended
-    /// retry, or dropped on failure.
+    /// retry, or dropped by explicit channel/connection failure cleanup.
     channel_retry_at: Option<Instant>,
     /// Backoff counter used when scheduling suspended-channel retries. It
     /// resets after a successful channel attach, and reconnect commits reset it
@@ -41,12 +41,13 @@ pub(crate) struct SessionState {
     /// Optional deadline tracked for a started channel attach operation. This
     /// is separate from `channel_retry_at`: operation deadlines time out active
     /// attaches, while retry deadlines start the next attach attempt.
-    /// Reconnect, suspended retry, and failure cleanup clear stale attach
-    /// deadlines.
+    /// Reconnect, suspended retry, and explicit channel/connection failure
+    /// cleanup clear stale attach deadlines.
     channel_operation_deadline: Option<Instant>,
     /// A reconnect can restore the transport while channel attach is still
     /// suspended. In that case `Event::Connected` is held for a later `ATTACHED`
-    /// message unless failed or suspended cleanup clears the pending marker.
+    /// message unless channel failure or suspended cleanup clears the pending
+    /// marker.
     connected_event_pending: bool,
 }
 
@@ -289,7 +290,7 @@ impl SessionState {
     // readiness. If the channel reattaches during reconnect, the caller can
     // emit `Event::Connected` immediately. If the transport reconnects but the
     // channel is suspended, hold that event for a later ATTACHED message unless
-    // cleanup clears the pending marker first.
+    // channel failure or suspended cleanup clears the pending marker first.
     pub(super) fn commit_reconnect_attached(
         &mut self,
         connected_msg: &ProtocolMessage,
