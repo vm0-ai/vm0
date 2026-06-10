@@ -9,9 +9,11 @@ import {
   IconCode,
   IconExternalLink,
   IconHistory,
+  IconLogout,
   IconMaximize,
   IconPhoto,
   IconPlayerPlay,
+  IconPlayerStop,
   IconRefresh,
   IconShieldCheck,
   IconUserCircle,
@@ -35,8 +37,11 @@ import {
   refreshComputerUse$,
   requestAccessibilityPermission$,
   requestScreenRecordingPermission$,
+  setKeepAwakeEnabled$,
+  signOutDesktop$,
   setupComputerUseBridge$,
   startComputerUse$,
+  stopComputerUse$,
 } from "./computer-use-state";
 
 type HostStatus = DesktopComputerUseState["host"]["status"];
@@ -125,6 +130,40 @@ function IconButton({
       {icon}
       <span>{children}</span>
     </button>
+  );
+}
+
+function CheckboxRow({
+  checked,
+  disabled,
+  meta,
+  onChange,
+  subtitle,
+  title,
+}: {
+  readonly checked: boolean;
+  readonly disabled?: boolean;
+  readonly meta: string;
+  readonly onChange: (checked: boolean) => void;
+  readonly subtitle: string;
+  readonly title: string;
+}) {
+  return (
+    <label className="checkbox-row">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => {
+          onChange(event.currentTarget.checked);
+        }}
+      />
+      <span className="checkbox-row-copy">
+        <span className="row-title">{title}</span>
+        <span className="row-meta">{subtitle}</span>
+      </span>
+      <span className="checkbox-row-meta">{meta}</span>
+    </label>
   );
 }
 
@@ -424,8 +463,11 @@ function RuntimePanel({
   readonly state: DesktopComputerUseState;
 }) {
   const [startLoadable, start] = useLoadableSet(startComputerUse$);
+  const [stopLoadable, stop] = useLoadableSet(stopComputerUse$);
   const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
   const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
+  const [keepAwakeLoadable, setKeepAwakeEnabled] =
+    useLoadableSet(setKeepAwakeEnabled$);
   const [orgSelectionLoadable, selectOrg] = useLoadableSet(
     openDesktopOrgSelection$,
   );
@@ -445,6 +487,8 @@ function RuntimePanel({
     state.host.status === "connecting" ||
     state.host.status === "online" ||
     startLoadable.state === "loading";
+  const stopDisabled =
+    state.host.status !== "online" || stopLoadable.state === "loading";
 
   return (
     <Panel title="Runtime" icon={<IconActivityHeartbeat size={18} />}>
@@ -468,6 +512,16 @@ function RuntimePanel({
           <strong>{formatTimestamp(state.host.lastCommandAt)}</strong>
         </div>
       </div>
+      <CheckboxRow
+        title="Keep Mac awake"
+        subtitle="Prevents automatic system sleep. Display may still turn off."
+        meta={state.keepAwake.active ? "Active" : "Off"}
+        checked={state.keepAwake.enabled}
+        disabled={keepAwakeLoadable.state === "loading"}
+        onChange={(enabled) => {
+          void setKeepAwakeEnabled(enabled);
+        }}
+      />
       {state.host.lastError && (
         <div className="inline-alert">
           <IconAlertCircle size={16} />
@@ -484,6 +538,16 @@ function RuntimePanel({
           disabled={startDisabled}
         >
           Start
+        </IconButton>
+        <IconButton
+          tone="danger"
+          icon={<IconPlayerStop size={15} />}
+          onClick={() => {
+            void stop();
+          }}
+          disabled={stopDisabled}
+        >
+          Stop
         </IconButton>
         <IconButton
           icon={<IconRefresh size={15} />}
@@ -943,15 +1007,19 @@ function AccountMenu({
   loading,
   onSelectOrg,
   onSignIn,
+  onSignOut,
   orgSelectionLoading,
   signInLoading,
+  signOutLoading,
 }: {
   readonly authState: DesktopAuthState | null;
   readonly loading: boolean;
   readonly onSelectOrg: () => void;
   readonly onSignIn: () => void;
+  readonly onSignOut: () => void;
   readonly orgSelectionLoading: boolean;
   readonly signInLoading: boolean;
+  readonly signOutLoading: boolean;
 }) {
   if (
     !authState ||
@@ -1005,11 +1073,11 @@ function AccountMenu({
         <button
           type="button"
           className="account-menu-item"
-          onClick={onSignIn}
-          disabled={signInLoading}
+          onClick={onSignOut}
+          disabled={signOutLoading}
         >
-          <IconExternalLink size={15} />
-          <span>Sign in again</span>
+          <IconLogout size={15} />
+          <span>Sign out</span>
         </button>
       </div>
     </details>
@@ -1022,6 +1090,7 @@ function Header() {
   const [orgSelectionLoadable, selectOrg] = useLoadableSet(
     openDesktopOrgSelection$,
   );
+  const [signOutLoadable, signOut] = useLoadableSet(signOutDesktop$);
   const authState = authLoadable.state === "hasData" ? authLoadable.data : null;
   const authLoading = authLoadable.state === "loading";
   return (
@@ -1037,11 +1106,15 @@ function Header() {
             onSignIn={() => {
               void signIn();
             }}
+            onSignOut={() => {
+              void signOut();
+            }}
             onSelectOrg={() => {
               void selectOrg();
             }}
             orgSelectionLoading={orgSelectionLoadable.state === "loading"}
             signInLoading={signInLoadable.state === "loading"}
+            signOutLoading={signOutLoadable.state === "loading"}
           />
         )}
       </div>

@@ -32,6 +32,7 @@ export interface DesktopAuthApi {
   readonly getState: () => Promise<DesktopAuthState>;
   readonly openSignIn: () => Promise<void>;
   readonly openOrgSelection: () => Promise<void>;
+  readonly signOut: () => Promise<void>;
   readonly completeSignIn: (params: {
     readonly token: string;
   }) => Promise<void>;
@@ -41,9 +42,15 @@ export interface DesktopAuthApi {
 export interface DesktopComputerUseApi {
   readonly getState: () => Promise<DesktopComputerUseState>;
   readonly refreshPermissions: () => Promise<DesktopComputerUseState>;
-  readonly start: () => Promise<DesktopComputerUseState>;
+  readonly start: (options?: {
+    readonly userInitiated?: boolean;
+  }) => Promise<DesktopComputerUseState>;
+  readonly stop: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
   readonly requestScreenRecordingPermission: () => Promise<DesktopComputerUseState>;
+  readonly setKeepAwakeEnabled: (
+    enabled: boolean,
+  ) => Promise<DesktopComputerUseState>;
   readonly openAccessibilitySettings: () => Promise<void>;
   readonly openScreenRecordingSettings: () => Promise<void>;
   readonly subscribe: (callback: () => void) => () => void;

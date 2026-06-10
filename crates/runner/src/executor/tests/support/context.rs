@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG};
+use crate::types::ExecutionContext;
 
 pub(in crate::executor::tests) fn minimal_context() -> ExecutionContext {
     ExecutionContext {
@@ -43,13 +43,4 @@ pub(in crate::executor::tests) fn context_with_env(
     let mut ctx = minimal_context();
     ctx.environment = Some(environment);
     ctx
-}
-
-pub(in crate::executor::tests) fn set_session_workspace_image_cache_flag(
-    ctx: &mut ExecutionContext,
-    enabled: bool,
-) {
-    ctx.feature_flags
-        .get_or_insert_with(HashMap::new)
-        .insert(SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(), enabled);
 }

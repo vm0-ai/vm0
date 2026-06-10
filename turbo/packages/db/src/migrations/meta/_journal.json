@@ -3102,6 +3102,13 @@
       "when": 1781003860014,
       "tag": "0442_backfill_schedules_to_automations",
       "breakpoints": true
+    },
+    {
+      "idx": 443,
+      "version": "7",
+      "when": 1781059781293,
+      "tag": "0443_backfill_claude_fable_5_model_policies",
+      "breakpoints": true
     }
   ]
 }

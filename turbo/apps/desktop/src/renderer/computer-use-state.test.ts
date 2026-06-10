@@ -14,6 +14,10 @@ function computerUseState(
     platform: "darwin",
     supported: true,
     permissions: { accessibility: true, screenRecording: true },
+    keepAwake: {
+      enabled: false,
+      active: false,
+    },
     host: {
       status: "idle",
       hostId: null,
@@ -93,6 +97,9 @@ describe("shouldAutoStartComputerUse", () => {
         computerUseState({ supported: false }),
         signedInAuth,
       ),
+    ).toBe(false);
+    expect(
+      shouldAutoStartComputerUse(computerUseState(), signedInAuth, true),
     ).toBe(false);
   });
 

@@ -4,15 +4,8 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const zeroVoiceIoSttSegmentSchema = z.object({
-  start: z.number(),
-  end: z.number(),
-  text: z.string(),
-});
-
 export const zeroVoiceIoSttResponseSchema = z.object({
   text: z.string(),
-  segments: z.array(zeroVoiceIoSttSegmentSchema).optional(),
 });
 
 export const zeroVoiceIoSttQuotaErrorSchema = apiErrorSchema.extend({
@@ -24,7 +17,6 @@ export const zeroVoiceIoSttQuotaErrorSchema = apiErrorSchema.extend({
     .optional(),
 });
 
-export type ZeroVoiceIoSttSegment = z.infer<typeof zeroVoiceIoSttSegmentSchema>;
 export type ZeroVoiceIoSttResponse = z.infer<
   typeof zeroVoiceIoSttResponseSchema
 >;
@@ -36,9 +28,6 @@ export const zeroVoiceIoSttContract = c.router({
     headers: authHeadersSchema,
     contentType: "multipart/form-data",
     body: c.type<FormData>(),
-    query: z.object({
-      verbose: z.coerce.boolean().optional().default(false),
-    }),
     responses: {
       200: zeroVoiceIoSttResponseSchema,
       400: apiErrorSchema,

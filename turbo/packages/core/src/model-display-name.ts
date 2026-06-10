@@ -4,12 +4,14 @@
  */
 const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // Anthropic direct (claude-code-oauth-token, anthropic-api-key, vm0)
+  "claude-fable-5": "Claude Fable 5",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-opus-4-6": "Claude Opus 4.6",
   "claude-opus-4-7": "Claude Opus 4.7",
   "claude-haiku-4-5": "Claude Haiku 4.5",
   // Anthropic via OpenRouter / Vercel AI Gateway
+  "anthropic/claude-fable-5": "Claude Fable 5",
   "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
   "anthropic/claude-opus-4.8": "Claude Opus 4.8",
   "anthropic/claude-opus-4.6": "Claude Opus 4.6",

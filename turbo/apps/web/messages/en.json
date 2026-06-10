@@ -4176,6 +4176,157 @@
     "generationAccessHeading": "Using {name} on VM0",
     "generationAccessBody": "VM0 agents can call {name} as part of an agent run, billed against your VM0 credits. The list price above is what the upstream provider charges; VM0 passes that through with the standard credit conversion.",
     "content": {
+      "claude-fable-5": {
+        "name": "Claude Fable 5",
+        "pageTitle": "Claude Fable 5 on VM0",
+        "tagline": "Anthropic's Claude 5 flagship for the hardest agent runs. Fable 5 brings a 1M-token context window, vision and code input, prompt caching, and higher reasoning headroom than the Claude 4 line.",
+        "cardIntro": "Anthropic's Claude 5 flagship for hard agent work, long-context codebases, and high-stakes reasoning. Higher quality than Opus 4.x, at a higher token price.",
+        "metaTitle": "Claude Fable 5: Pricing, Capabilities & VM0 Routing",
+        "metaDescription": "Claude Fable 5 on VM0. Anthropic's June 9, 2026 Claude 5 flagship with 1M-token context, image input, prompt caching, $10/$50 vendor pricing, and VM0 Built-in plus BYOK support.",
+        "summary": "Claude Fable 5 is Anthropic's Claude 5 flagship, released on June 9, 2026 and exposed on the first-party API as claude-fable-5. On VM0 it is a high-end Built-in model for agent runs that need the strongest Anthropic reasoning available, especially long codebase work, deep tool use, and tasks where Sonnet or Opus 4.x visibly hit their ceiling.\n\nThe trade-off is cost and data policy. Vendor list price is $10 input / $50 output per 1M tokens, with prompt-cache reads at $1 and cache writes at $12.50 per 1M tokens. Anthropic also documents Claude Fable 5 as requiring 30-day retention, so it is not the right choice for workloads that require zero data retention.",
+        "releaseDate": "June 9, 2026",
+        "familyPosition": "Top-tier Claude 5 model. Use it above Claude Opus 4.8 when the hardest reasoning step matters more than unit cost.",
+        "background": [
+          "Claude Fable 5 is the first broadly available Claude 5 model in VM0's curated lineup. It enters above the Claude 4 Opus and Sonnet models and keeps the Anthropic strengths VM0 agents depend on: reliable tool use, strong code understanding, long-context coherence, and multimodal input.",
+          "For VM0 users, the practical reason to choose Fable 5 is escalation. Keep most production agents on Sonnet or Opus until a run needs deeper planning, harder debugging, or more reliable execution over a very large context window. Fable 5 is meant for those expensive but important steps.",
+          "The model is available through VM0 Built-in routing, Anthropic API keys, Claude Code OAuth, OpenRouter, and Vercel AI Gateway. OpenRouter and Vercel use the gateway id anthropic/claude-fable-5, while Anthropic-native routes use claude-fable-5."
+        ],
+        "architecture": "Claude Fable 5 uses Anthropic's Claude 5 generation with a 1M-token context window, text, image, and code input, and Anthropic prompt caching. VM0 routes the Built-in model to Anthropic and normalizes gateway aliases such as anthropic/claude-fable-5 for OpenRouter and Vercel AI Gateway. Anthropic documents this model as requiring 30-day retention.",
+        "specs": [
+          {
+            "label": "Family",
+            "value": "Claude 5 generation"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "English-first, multilingual"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported (Anthropic)"
+          },
+          {
+            "label": "Context window",
+            "value": "1M tokens"
+          },
+          {
+            "label": "API model id",
+            "value": "claude-fable-5"
+          },
+          {
+            "label": "Gateway model id",
+            "value": "anthropic/claude-fable-5"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$10 input / $50 output per 1M"
+          }
+        ],
+        "benchmarksNote": "Public benchmark coverage for Claude Fable 5 is still early. Treat it as Anthropic's premium Claude 5 reasoning tier rather than a default replacement for cheaper production models.",
+        "benchmarks": [
+          {
+            "name": "Agentic coding",
+            "score": "Flagship tier",
+            "note": "use for the hardest code planning and debugging runs"
+          },
+          {
+            "name": "Long-context work",
+            "score": "1M context",
+            "note": "designed for very large repositories and transcripts"
+          },
+          {
+            "name": "Multimodal reasoning",
+            "score": "Text + vision",
+            "note": "image input is supported through VM0-compatible routes"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Reasoning headroom",
+            "body": "Fable 5 is the escalation target when Opus 4.8 or Sonnet 4.6 fails on a hard planning, debugging, or synthesis step."
+          },
+          {
+            "title": "Long-context stability",
+            "body": "The 1M-token context window fits large codebases, long transcripts, and multi-source research runs without aggressive summarization."
+          },
+          {
+            "title": "Tool-heavy agent runs",
+            "body": "Anthropic models remain strong at structured tool use, and Fable 5 is the premium choice when a long chain of tool calls must stay on goal."
+          },
+          {
+            "title": "Cost profile",
+            "body": "The model is expensive compared with Sonnet and Opus 4.x, so use it for targeted high-value steps rather than every turn of a routine agent."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The migration planner for a large codebase",
+            "body": "Reads architecture notes, issue history, and many source files, then plans a multi-step refactor where missing a dependency or edge case would be costly."
+          },
+          {
+            "title": "The incident analysis agent",
+            "body": "Combines logs, traces, deploy history, and source context to explain a production regression and propose a concrete rollback or fix path."
+          },
+          {
+            "title": "The hard review pass",
+            "body": "Runs after cheaper models have produced a patch, looking for subtle logic, security, billing, or concurrency failures before the change ships."
+          }
+        ],
+        "avoidFor": "Avoid Fable 5 for high-volume classification, routine support replies, latency-sensitive microtasks, and workloads that require zero data retention. Use Sonnet, Kimi, MiniMax, or DeepSeek when throughput and unit cost matter more than maximum reasoning depth.",
+        "comparisons": [
+          {
+            "vs": "Claude Opus 4.8",
+            "body": "Opus 4.8 is cheaper and remains a strong premium default. Fable 5 is the step up when the task needs Anthropic's newest reasoning tier."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 is the cost baseline and default for most VM0 agents. Fable 5 is for the minority of runs where Sonnet's reasoning ceiling is visible."
+          },
+          {
+            "vs": "GPT-5.5",
+            "body": "Both are premium reasoning choices. Pick Fable 5 when Anthropic tool behavior, Claude Code workflows, or Claude-compatible prompts are the stronger fit."
+          }
+        ],
+        "verdict": "Use Claude Fable 5 as a deliberate escalation model. It is not the cheapest way to run agents, but it is the Anthropic model to reach for when the hardest step is worth the spend.",
+        "faqs": [
+          {
+            "q": "What model id does Claude Fable 5 use?",
+            "a": "Anthropic-native routes use claude-fable-5. OpenRouter and Vercel AI Gateway use anthropic/claude-fable-5."
+          },
+          {
+            "q": "Does Claude Fable 5 support image input?",
+            "a": "Yes. VM0 marks Fable 5 as supporting text, vision, and code inputs."
+          },
+          {
+            "q": "How much does Claude Fable 5 cost from the vendor?",
+            "a": "The vendor list price is $10 input and $50 output per 1M tokens, with cache reads at $1 and cache writes at $12.50 per 1M tokens."
+          },
+          {
+            "q": "Should Fable 5 replace Sonnet as my default?",
+            "a": "Usually no. Keep routine agents on Sonnet or Opus and escalate to Fable 5 for the hardest reasoning, debugging, and review steps."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-opus-4-8",
+            "reason": "Premium Anthropic model at a lower unit cost"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Default VM0 workhorse for most agent turns"
+          },
+          {
+            "slug": "gpt-5-5",
+            "reason": "Alternative premium reasoning model"
+          }
+        ],
+        "routingNotes": "VM0 Built-in routes Claude Fable 5 through Anthropic. BYOK is supported through Anthropic API keys, Claude Code OAuth, OpenRouter, and Vercel AI Gateway.",
+        "vm0Notes": "Fable 5 is a high-cost core model in the Built-in lineup. It is best used as an escalation target for runs that need maximum reasoning depth, while cheaper models continue to handle routine tool calls and high-volume work."
+      },
       "claude-opus-4-8": {
         "name": "Claude Opus 4.8",
         "pageTitle": "Claude Opus 4.8",

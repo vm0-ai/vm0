@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.109.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.25...runner-rs-v0.109.0) (2026-06-10)
+
+
+### Features
+
+* add aws sigv4 firewall auth runtime ([#16876](https://github.com/vm0-ai/vm0/issues/16876)) ([1be4dfc](https://github.com/vm0-ai/vm0/commit/1be4dfc3b764a38a2759c0b0164ebb158f2ffe86))
+
 ## [0.108.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.24...runner-rs-v0.108.25) (2026-06-09)
 
 
