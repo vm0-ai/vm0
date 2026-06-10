@@ -96,6 +96,38 @@ below. This file is filled in family-by-family as work proceeds.
 - OPS — `health*`, `instrument`, `vercel-crons`, `release-please-config`,
   `app-factory`, `web-api-compatibility`, `model-stats`, `logs-*`.
 
+## Migration state
+
+Families fully (or near-fully, modulo a documented gap) converted to API-first
+BDD: AGENT lifecycle + connectors, VARIABLE, SECRET, USER-PREFERENCES,
+FEATURE-SWITCH, API-KEY, PERSONAL-MODEL-PROVIDER, COMPOSE read/list/by-name/
+metadata, CUSTOM-CONNECTOR list/CRUD/secrets, CHAT-THREAD metadata/create/patch/
+list, ORG list/invite/membership-requests/logo/team, USER-MODEL-PREFERENCE,
+ATTRIBUTION, AUTH-ME, REALTIME-TOKEN, DESKTOP-UPDATES, HEALTH, BILLING
+redeem-code.
+
+Two categories make up the remainder:
+
+1. **Already API-first raw-route tests** — tests for raw Hono routes that have no
+   ts-rest contract (so there is no `createBddApi` client to use). They already
+   issue real HTTP requests through `createApp(...).request(...)` and mock only
+   external concerns (env, time, S3, MSW), i.e. they already satisfy the
+   principles. Examples: `legacy-file.test.ts`,
+   `test-oauth-provider-get.test.ts`. No rewrite is required; renaming to
+   `.bdd.test.ts` would be cosmetic.
+
+2. **Gap-blocked families** — RUN, CHAT messages, BILLING checkout/status/
+   invoices, INTEGRATION (slack/telegram/github), WEBHOOK, SCHEDULE, MEDIA
+   (`*-io-*`, generate-image), STORAGE (`storages*`, uploads), and org/
+   org-members CRUD. Their preconditions — in-flight runs (sandbox admission),
+   seeded chat messages, Stripe customers/subscriptions, OAuth-connected
+   connectors, org membership cache, org metadata — have **no public API to
+   construct**, so a clean migration is impossible without production changes the
+   issue forbids. These can only be reduced (migrate the minority of
+   API-reachable cases, keep documented gap-legacy for the rest), which yields
+   marginal legacy reduction because the kept gap-legacy still covers the bulk of
+   their source branches.
+
 ## Chained scenario candidates
 
 - **CHAIN-AGENT** ✅ (this round) — create → GET → list → PATCH metadata →
