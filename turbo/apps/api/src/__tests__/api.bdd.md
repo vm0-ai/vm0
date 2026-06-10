@@ -708,3 +708,30 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 13 — CHAT-01 messages BDD
+
+Migrates the per-thread messages list. The legacy direct DB
+SELECTs that verified message-row presence / absence are
+replaced by assertions on the public list contract's
+`messages` array. The pagination cursor, generation-template,
+attach-file, and run-error tests are all variations of "owner
+sees correct messages" and chain naturally in GWT-WT-WT walks.
+
+- `zero-chat-threads-messages.bdd.test.ts` — 13 legacy `it()`s
+  → 5 BDD `it()`s (auth boundary + 3 read chains + 1
+  run/error chain). The first read chain covers 404 missing
+  → 404 cross-user → 200 empty → 200 ascending order → 200
+  generation template. The second read chain covers
+  `sinceId`, `limit` (with `hasHistoryBefore: true`), and
+  `beforeId` (with `hasHistoryBefore: false`). The third read
+  chain covers `attachFiles` resolution (S3 fallback) and
+  persisted metadata (no S3 list). The function complexity
+  cap (20) forced the read chain to be split across three
+  tests, which is the right granularity for BDD any case.
+
+Net test count: 13 legacy `it()`s → 5 BDD `it()`s (62%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
