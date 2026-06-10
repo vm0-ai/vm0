@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { z } from "zod";
 import {
   webhookHeartbeatContract,
   webhookModelUsageObservationContract,
@@ -17,13 +18,16 @@ import {
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { nowDate } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
 import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
-import { recordSandboxOperation } from "../external/sandbox-op-log";
+import {
+  SANDBOX_OP_LOG_DATASET,
+  sandboxOperationAxiomEvent,
+} from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
 import { settle } from "../utils";
@@ -40,6 +44,33 @@ const MODEL_USAGE_KIND = "model";
 
 const L = logger("webhooks:agent");
 
+type TelemetryDatasetFamily =
+  | "system"
+  | "metrics"
+  | "network"
+  | "sandbox_operations";
+
+interface TelemetryPayloadSummary {
+  readonly runId: string;
+  readonly hasSystemLog: boolean;
+  readonly hasMetrics: boolean;
+  readonly hasNetworkLogs: boolean;
+  readonly hasSandboxOperations: boolean;
+  readonly metricsCount: number;
+  readonly networkLogCount: number;
+  readonly sandboxOperationCount: number;
+  readonly sandboxOperationErrorCount: number;
+  readonly approxPayloadBytes: number;
+  readonly approxPayloadSizeBucket: string;
+}
+
+type TelemetryBody = z.infer<typeof webhookTelemetryContract.send.body>;
+
+interface TelemetryIngestResult {
+  readonly telemetryBuffered: boolean;
+  readonly axiomDatasetFamilies: readonly TelemetryDatasetFamily[];
+}
+
 function isForeignKeyViolation(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -51,6 +82,222 @@ function isForeignKeyViolation(error: unknown): boolean {
   }
 
   return cause.code === PG_FOREIGN_KEY_VIOLATION;
+}
+
+function estimateTelemetryPayloadBytes(value: unknown): number {
+  if (typeof value === "string") {
+    return value.length;
+  }
+  if (typeof value === "number") {
+    return value.toString().length;
+  }
+  if (typeof value === "boolean") {
+    return value ? 4 : 5;
+  }
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => {
+      return total + estimateTelemetryPayloadBytes(item);
+    }, 2);
+  }
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    return Object.keys(record).reduce((total, key) => {
+      return total + key.length + estimateTelemetryPayloadBytes(record[key]);
+    }, 2);
+  }
+  return 0;
+}
+
+function payloadSizeBucket(bytes: number): string {
+  if (bytes < 1024) {
+    return "lt_1kb";
+  }
+  if (bytes < 10 * 1024) {
+    return "1kb_10kb";
+  }
+  if (bytes < 100 * 1024) {
+    return "10kb_100kb";
+  }
+  if (bytes < 1024 * 1024) {
+    return "100kb_1mb";
+  }
+  return "gte_1mb";
+}
+
+function summarizeTelemetryPayload(body: {
+  readonly runId: string;
+  readonly systemLog?: string;
+  readonly metrics?: readonly unknown[];
+  readonly networkLogs?: readonly unknown[];
+  readonly sandboxOperations?: readonly {
+    readonly error?: string;
+  }[];
+}): TelemetryPayloadSummary {
+  const metricsCount = body.metrics?.length ?? 0;
+  const networkLogCount = body.networkLogs?.length ?? 0;
+  const sandboxOperationCount = body.sandboxOperations?.length ?? 0;
+  const approxPayloadBytes = estimateTelemetryPayloadBytes(body);
+
+  return {
+    runId: body.runId,
+    hasSystemLog: Boolean(body.systemLog),
+    hasMetrics: metricsCount > 0,
+    hasNetworkLogs: networkLogCount > 0,
+    hasSandboxOperations: sandboxOperationCount > 0,
+    metricsCount,
+    networkLogCount,
+    sandboxOperationCount,
+    sandboxOperationErrorCount:
+      body.sandboxOperations?.filter((operation) => {
+        return operation.error !== undefined;
+      }).length ?? 0,
+    approxPayloadBytes,
+    approxPayloadSizeBucket: payloadSizeBucket(approxPayloadBytes),
+  };
+}
+
+function ingestTelemetryRows(args: {
+  readonly dataset: string;
+  readonly family: TelemetryDatasetFamily;
+  readonly events: readonly Record<string, unknown>[];
+  readonly summary: TelemetryPayloadSummary;
+}): boolean {
+  const buffered = ingestToAxiom(args.dataset, args.events);
+  if (!buffered) {
+    L.warn("Agent telemetry Axiom ingest skipped", {
+      ...args.summary,
+      axiomDatasetFamily: args.family,
+      axiomFailureCategory: "ingest_skipped",
+    });
+  }
+  return buffered;
+}
+
+function systemTelemetryEvents(
+  body: TelemetryBody,
+  userId: string,
+): readonly Record<string, unknown>[] {
+  return [
+    {
+      _time: nowDate().toISOString(),
+      runId: body.runId,
+      userId,
+      log: body.systemLog,
+    },
+  ];
+}
+
+function metricTelemetryEvents(
+  body: TelemetryBody,
+  userId: string,
+): readonly Record<string, unknown>[] {
+  return (
+    body.metrics?.map((metric) => {
+      return {
+        _time: metric.ts,
+        runId: body.runId,
+        userId,
+        cpu: metric.cpu,
+        mem_used: metric.mem_used,
+        mem_total: metric.mem_total,
+        disk_used: metric.disk_used,
+        disk_total: metric.disk_total,
+      };
+    }) ?? []
+  );
+}
+
+function networkTelemetryEvents(
+  body: TelemetryBody,
+  userId: string,
+): readonly Record<string, unknown>[] {
+  return (
+    body.networkLogs?.map(({ timestamp, ...rest }) => {
+      return {
+        ...rest,
+        _time: timestamp,
+        runId: body.runId,
+        userId,
+      };
+    }) ?? []
+  );
+}
+
+function sandboxOperationTelemetryEvents(
+  body: TelemetryBody,
+): readonly Record<string, unknown>[] {
+  return (
+    body.sandboxOperations?.map((op) => {
+      return sandboxOperationAxiomEvent({
+        actionType: op.action_type,
+        sandboxType: "runner",
+        durationMs: op.duration_ms,
+        success: op.success,
+        runId: body.runId,
+        timestamp: op.ts,
+        dimensions: {
+          source: "sandbox",
+          ...(op.error ? { error: op.error } : {}),
+        },
+      });
+    }) ?? []
+  );
+}
+
+function ingestTelemetryPayload(args: {
+  readonly body: TelemetryBody;
+  readonly userId: string;
+  readonly summary: TelemetryPayloadSummary;
+}): TelemetryIngestResult {
+  const axiomDatasetFamilies: TelemetryDatasetFamily[] = [];
+  let telemetryBuffered = false;
+  const recordIngest = (
+    family: TelemetryDatasetFamily,
+    dataset: string,
+    events: readonly Record<string, unknown>[],
+  ): void => {
+    const buffered = ingestTelemetryRows({
+      dataset,
+      family,
+      events,
+      summary: args.summary,
+    });
+    telemetryBuffered = buffered || telemetryBuffered;
+    if (buffered) {
+      axiomDatasetFamilies.push(family);
+    }
+  };
+
+  if (args.body.systemLog) {
+    recordIngest(
+      "system",
+      getDatasetName(SANDBOX_TELEMETRY_SYSTEM_DATASET),
+      systemTelemetryEvents(args.body, args.userId),
+    );
+  }
+  if (args.body.metrics && args.body.metrics.length > 0) {
+    recordIngest(
+      "metrics",
+      getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
+      metricTelemetryEvents(args.body, args.userId),
+    );
+  }
+  if (args.body.networkLogs && args.body.networkLogs.length > 0) {
+    recordIngest(
+      "network",
+      getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
+      networkTelemetryEvents(args.body, args.userId),
+    );
+  }
+  if (args.body.sandboxOperations && args.body.sandboxOperations.length > 0) {
+    recordIngest(
+      "sandbox_operations",
+      getDatasetName(SANDBOX_OP_LOG_DATASET),
+      sandboxOperationTelemetryEvents(args.body),
+    );
+  }
+
+  return { telemetryBuffered, axiomDatasetFamilies };
 }
 
 const heartbeatBody$ = bodyResultOf(webhookHeartbeatContract.send);
@@ -272,75 +519,39 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     return notFound("Agent run not found");
   }
 
-  let telemetryBuffered = false;
+  const telemetrySummary = summarizeTelemetryPayload(body);
+  const axiomStartedAt = now();
+  const { telemetryBuffered, axiomDatasetFamilies } = ingestTelemetryPayload({
+    body,
+    userId: auth.userId,
+    summary: telemetrySummary,
+  });
 
-  if (body.systemLog) {
-    telemetryBuffered =
-      ingestToAxiom(getDatasetName(SANDBOX_TELEMETRY_SYSTEM_DATASET), [
-        {
-          _time: nowDate().toISOString(),
-          runId: body.runId,
-          userId: auth.userId,
-          log: body.systemLog,
-        },
-      ]) || telemetryBuffered;
-  }
-
-  if (body.metrics && body.metrics.length > 0) {
-    telemetryBuffered =
-      ingestToAxiom(
-        getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
-        body.metrics.map((metric) => {
-          return {
-            _time: metric.ts,
-            runId: body.runId,
-            userId: auth.userId,
-            cpu: metric.cpu,
-            mem_used: metric.mem_used,
-            mem_total: metric.mem_total,
-            disk_used: metric.disk_used,
-            disk_total: metric.disk_total,
-          };
-        }),
-      ) || telemetryBuffered;
-  }
-
-  if (body.networkLogs && body.networkLogs.length > 0) {
-    telemetryBuffered =
-      ingestToAxiom(
-        getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
-        body.networkLogs.map(({ timestamp, ...rest }) => {
-          return {
-            ...rest,
-            _time: timestamp,
-            runId: body.runId,
-            userId: auth.userId,
-          };
-        }),
-      ) || telemetryBuffered;
-  }
-
+  let axiomLatencyMs = 0;
   if (telemetryBuffered) {
-    await flushAxiom({ client: "telemetry", throwOnError: true });
+    const flushResult = await settle(
+      flushAxiom({ client: "telemetry", throwOnError: true }),
+    );
     signal.throwIfAborted();
-  }
-
-  if (body.sandboxOperations && body.sandboxOperations.length > 0) {
-    for (const op of body.sandboxOperations) {
-      recordSandboxOperation({
-        actionType: op.action_type,
-        sandboxType: "runner",
-        durationMs: op.duration_ms,
-        success: op.success,
-        runId: body.runId,
-        timestamp: op.ts,
-        dimensions: {
-          source: "sandbox",
-          ...(op.error ? { error: op.error } : {}),
-        },
+    axiomLatencyMs = now() - axiomStartedAt;
+    if (!flushResult.ok) {
+      L.warn("Agent telemetry Axiom flush failed", {
+        ...telemetrySummary,
+        axiomDatasetFamilies,
+        axiomFailureCategory: "flush",
+        axiomLatencyMs,
+        error: flushResult.error,
       });
+      throw flushResult.error;
     }
   }
+
+  L.debug("Agent telemetry ingested", {
+    ...telemetrySummary,
+    axiomDatasetFamilies,
+    axiomLatencyMs,
+    telemetryBuffered,
+  });
 
   return {
     status: 200 as const,
