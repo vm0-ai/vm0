@@ -94,10 +94,12 @@ function FeedbackToolbar({
   copied,
   onCopy,
   onProvideFeedback,
+  onPointerLeave,
 }: {
   copied: boolean;
   onCopy: () => void;
   onProvideFeedback: () => void;
+  onPointerLeave: () => void;
 }) {
   return (
     <PopoverContent
@@ -107,6 +109,9 @@ function FeedbackToolbar({
       onOpenAutoFocus={(event) => {
         return event.preventDefault();
       }}
+      // Dismiss once the pointer leaves the toolbar — fires only on leaving the
+      // outer box, so hovering its buttons keeps it open.
+      onMouseLeave={onPointerLeave}
       className="w-auto rounded-xl border-0 bg-foreground p-1 text-background shadow-lg"
     >
       <div className="flex items-center gap-0.5">
@@ -142,12 +147,14 @@ function FeedbackComposer({
   onCommentChange,
   onSubmit,
   onDismiss,
+  onPointerLeave,
 }: {
   quote: string;
   comment: string;
   onCommentChange: (value: string) => void;
   onSubmit: () => void;
   onDismiss: () => void;
+  onPointerLeave: () => void;
 }) {
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends, Shift+Enter inserts a newline — matching the main composer.
@@ -164,6 +171,9 @@ function FeedbackComposer({
       side="top"
       align="center"
       sideOffset={8}
+      // Same leave-to-dismiss as the toolbar; scrolling the quote or focusing
+      // the textarea keeps the pointer inside, so it stays open while in use.
+      onMouseLeave={onPointerLeave}
       className="w-80 rounded-xl p-3"
     >
       <div className="mb-2 flex items-center justify-between">
@@ -236,6 +246,15 @@ export function ChatFeedbackSelection({
     dismiss();
   };
 
+  // Leaving the popup closes it, except while the composer holds a typed note —
+  // that still needs an explicit Send / Cancel / X so the draft isn't lost.
+  const handlePointerLeave = () => {
+    if (mode === "composer" && comment.trim().length > 0) {
+      return;
+    }
+    dismiss();
+  };
+
   return (
     <>
       <span ref={selectionListenersRef(capture, dismissOnScroll)} hidden />
@@ -258,6 +277,7 @@ export function ChatFeedbackSelection({
                 return detach(copy(rootSignal), Reason.DomCallback);
               }}
               onProvideFeedback={openComposer}
+              onPointerLeave={handlePointerLeave}
             />
           ) : (
             <FeedbackComposer
@@ -266,6 +286,7 @@ export function ChatFeedbackSelection({
               onCommentChange={setComment}
               onSubmit={handleSubmit}
               onDismiss={dismiss}
+              onPointerLeave={handlePointerLeave}
             />
           )}
         </Popover>
