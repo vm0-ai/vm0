@@ -33,21 +33,21 @@ Latest current run on 2026-06-10:
 
 | Metric     | Coverage |
 | ---------- | -------: |
-| Statements |   87.18% |
-| Branches   |   72.76% |
-| Functions  |   93.34% |
-| Lines      |   87.18% |
+| Statements |   87.20% |
+| Branches   |   72.80% |
+| Functions  |   93.32% |
+| Lines      |   87.20% |
 
 Current diff status: `pnpm -F api exec vitest run --coverage` passes, but the
-overall statement, branch, and line percentages are below the captured baseline.
-The
+raw artifact diff still has statements, functions, and lines 0.01 percentage
+points below the captured JSON baseline; branches are at baseline. The
 secrets/variables, custom connectors, agent custom connectors, zero composes
-read/list/metadata, zero agent list, and chat thread
-create/model-selection/patch/pin/rename/unpin and desktop update route behaviors
-are now covered by strict API-first BDD cases, while deleted legacy helpers are
-no longer counted in coverage. Do not mark the migration complete until the
-overall baseline diff is closed or a stricter source-only baseline policy is
-agreed.
+read/list/metadata, zero agent list, chat thread
+create/model-selection/patch/pin/rename/unpin, desktop update, and desktop auth
+route behaviors are now covered by strict API-first BDD cases, while deleted
+legacy helpers are no longer counted in coverage. Do not mark the migration
+complete until the overall baseline diff is closed or a stricter source-only
+baseline policy is agreed.
 
 ## Test Principles
 
@@ -124,6 +124,7 @@ None recorded currently.
 | ------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | OPS-HEALTH-01                  | Health                           | `src/signals/routes/__tests__/health.test.ts`                                                                                                                                                                                                                                                                                                                                                                                         | `src/signals/routes/__tests__/health.bdd.test.ts`                                                                                                   | Migrated           | API-only, no helper gap. Public health and unauthenticated auth-health are chained in one test.                                                                                                                                                                                    |
 | OPS-REALTIME-01                | Realtime token                   | `src/signals/routes/__tests__/zero-realtime-token.test.ts`                                                                                                                                                                                                                                                                                                                                                                            | `src/signals/routes/__tests__/zero-realtime-token.bdd.test.ts`                                                                                      | Migrated           | API-only with Clerk Given and Ably external mock Then; unauthenticated and authenticated flow are chained in one test.                                                                                                                                                             |
+| OPS-DESKTOP-AUTH-01            | Desktop auth                     | `src/signals/routes/__tests__/desktop-auth.test.ts`                                                                                                                                                                                                                                                                                                                                                                                   | `src/signals/routes/__tests__/desktop-auth.bdd.test.ts`                                                                                             | Migrated           | API-only Clerk boundary; create, callback scheme, pending/consumed/completed status, owner isolation, single-use consume, unconsumed complete rejection, invalid code, and expired code are verified through route calls without DB assertions.                                    |
 | OPS-DESKTOP-UPDATES-01         | Desktop updates                  | `src/signals/routes/__tests__/desktop-updates.test.ts`                                                                                                                                                                                                                                                                                                                                                                                | `src/signals/routes/__tests__/desktop-updates.bdd.test.ts`                                                                                          | Migrated           | Given the desktop manifest is served through MSW at the external GitHub release URL; Then verifies current release, blocked-latest fallback, missing asset 404, and manifest cache refresh through route responses without service hooks.                                          |
 | ORG-LIST-01                    | Org list                         | `src/signals/routes/__tests__/zero-org-list.test.ts`                                                                                                                                                                                                                                                                                                                                                                                  | `src/signals/routes/__tests__/zero-org-list.bdd.test.ts`                                                                                            | Migrated           | API-only with Clerk membership mock Given; unauthenticated, single-org, and multi-org flow are chained in one test.                                                                                                                                                                |
 | ORG-INVITE-01                  | Org invite                       | `src/signals/routes/__tests__/zero-org-invite.test.ts`                                                                                                                                                                                                                                                                                                                                                                                | `src/signals/routes/__tests__/zero-org-invite.bdd.test.ts`                                                                                          | Migrated           | API-only with Clerk invitation mock Then; invite and revoke flows are chained by method.                                                                                                                                                                                           |
