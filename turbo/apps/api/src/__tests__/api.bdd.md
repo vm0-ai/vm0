@@ -1393,3 +1393,60 @@ Deletes the now-redundant `zero-agents-update.test.ts`.
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec vitest run` (3633 tests across 290 files)
 all clean.
+
+### Round 33 — AGENT-01 zero-runs (by-id, runner, context, agent-events, network-logs) BDD + legacy cleanup
+
+Migrates 5 legacy route tests into 10 BDD `it()`s:
+
+- `zero-runs-by-id.test.ts` (7→2): auth boundary (401
+  unauth → 401 no-org) + full coverage chain (400 invalid
+  id → 404 unknown → 404 cross-user → 200 owner → 403
+  sandbox no capability).
+- `zero-runs-runner.test.ts` (7→2): auth boundary + full
+  coverage chain (200 reused → 200 null for runs that
+  never set it → 404 unknown → 404 cross-user → 403
+  sandbox no capability).
+- `zero-run-context.test.ts` (8→2): auth boundary + full
+  coverage chain (404 unknown → 404 cross-user → 404
+  context not available → 200 snapshot → 200 sparse nulls
+  omitted → 403 sandbox no capability).
+- `zero-run-agent-events.test.ts` (8→2): auth boundary +
+  full coverage chain (200 claude-code → 200 codex via
+  legacy compose content → 404 unknown → 404 cross-user
+  → 200 watermark waits + noCache → 200 watermark null
+  skips poll → 403 sandbox no capability).
+- `zero-run-network-logs.test.ts` (9→2): auth boundary +
+  full coverage chain (403 sandbox → 404 unknown → 404
+  cross-user → 200 3 events http + tcp + dns → 200 sparse
+  nulls omitted → 200 empty → 200 hasMore when results
+  exceed limit).
+
+The Given uses `seedUsageInsightFixture$` +
+`seedCompose$` + `seedRun$` direct DB writes (Open
+Helper Gaps — the public API does not expose a
+"create a run for a fixture" primitive). The
+`zero-run-agent-events` codex test updates
+`agentComposeVersions.content` directly to simulate a
+legacy deployment; the run's `agentComposeVersionId`
+points to a NEW version created by `seedRun$`, so the
+test queries the run row first to find the correct
+version id. The watermark tests verify
+`context.mocks.axiom.query.mock.calls` to confirm the
+visibility poll + `noCache` option flow. The
+`context.mocks.axiom.query` mock defaults to
+`undefined`, so the "context not available" test must
+explicitly `mockResolvedValue([])`.
+
+Net test count: 39 legacy `it()`s → 10 BDD `it()`s (74%
+reduction). No per-file coverage regression.
+
+Deletes the 5 now-redundant legacy files
+(`zero-runs-by-id.test.ts`, `zero-runs-runner.test.ts`,
+`zero-run-context.test.ts`, `zero-run-agent-events.test.ts`,
+`zero-run-network-logs.test.ts`). Also deletes the
+already-redundant `zero-runs-queue.test.ts` (legacy
+pre-round-29 cleanup) which was left dangling in a
+prior round.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm -F api exec vitest run` all clean.
