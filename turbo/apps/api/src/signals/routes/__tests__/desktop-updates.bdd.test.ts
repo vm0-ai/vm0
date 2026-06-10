@@ -1,18 +1,17 @@
-import { desktopUpdatesContract } from "@vm0/api-contracts/contracts/desktop-updates";
-import { beforeEach, describe, expect, it } from "vitest";
-
-import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { accept, testContext } from "../../../__tests__/test-helpers";
 import {
   clearDesktopUpdateManifestCacheForTest,
   mockDesktopUpdateManifestForTest,
   type DesktopUpdateManifest,
 } from "../../services/desktop-updates.service";
+import { createBddApi } from "./helpers/api-bdd";
 
+// API-first BDD coverage for the public desktop auto-update feed. The release
+// manifest is fetched from GitHub, an external dependency, so it is injected
+// through the service's manifest test seam (it overrides the remote content,
+// not any internal logic). Everything else is a real HTTP request. See
+// `api.bdd.md` (CHAIN-DESKTOP-UPDATES).
 const context = testContext();
-
-function client() {
-  return setupApp({ context })(desktopUpdatesContract);
-}
 
 function stableManifest(
   latest: string,
@@ -21,9 +20,7 @@ function stableManifest(
 ): DesktopUpdateManifest {
   return {
     schemaVersion: 1,
-    channels: {
-      stable: { latest, blocked: [...blocked] },
-    },
+    channels: { stable: { latest, blocked: [...blocked] } },
     releases,
   };
 }
@@ -34,20 +31,20 @@ function darwinArm64Release(version: string, url: string) {
     name: `Zero Computer Use ${version}`,
     notes: `Release ${version}`,
     pubDate: "2026-06-08T00:00:00.000Z",
-    platforms: {
-      darwin: {
-        arm64: { url },
-      },
-    },
+    platforms: { darwin: { arm64: { url } } },
   };
 }
 
-describe("desktop update routes", () => {
-  beforeEach(() => {
-    clearDesktopUpdateManifestCacheForTest();
-  });
+const DARWIN_ARM64 = {
+  channel: "stable",
+  platform: "darwin",
+  arch: "arm64",
+} as const;
 
-  it("serves the current stable macOS arm64 update from the manifest", async () => {
+describe("desktop update feed (API-first BDD)", () => {
+  it("serves the current stable macOS arm64 release from the manifest", async () => {
+    const api = createBddApi(context);
+    clearDesktopUpdateManifestCacheForTest();
     const zipUrl =
       "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
     mockDesktopUpdateManifestForTest(
@@ -57,9 +54,7 @@ describe("desktop update routes", () => {
     );
 
     const response = await accept(
-      client().feed({
-        params: { channel: "stable", platform: "darwin", arch: "arm64" },
-      }),
+      api.desktopUpdates.feed({ params: DARWIN_ARM64 }),
       [200],
     );
 
@@ -80,7 +75,9 @@ describe("desktop update routes", () => {
     });
   });
 
-  it("does not return a blocked latest release", async () => {
+  it("falls back past a blocked latest release", async () => {
+    const api = createBddApi(context);
+    clearDesktopUpdateManifestCacheForTest();
     const previousUrl =
       "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
     mockDesktopUpdateManifestForTest(
@@ -102,33 +99,31 @@ describe("desktop update routes", () => {
     );
 
     const response = await accept(
-      client().feed({
-        params: { channel: "stable", platform: "darwin", arch: "arm64" },
-      }),
+      api.desktopUpdates.feed({ params: DARWIN_ARM64 }),
       [200],
     );
 
+    // The blocked 0.2.2 is skipped and the newer 0.3.0 is above `latest`, so the
+    // previous 0.2.1 is served.
     expect(response.body.currentRelease).toBe("0.2.1");
     expect(response.body.releases[0]?.updateTo.url).toBe(previousUrl);
   });
 
-  it("returns not found when the manifest has no matching asset", async () => {
+  it("returns not found when no matching asset exists", async () => {
+    const api = createBddApi(context);
+    clearDesktopUpdateManifestCacheForTest();
     mockDesktopUpdateManifestForTest(
       stableManifest("0.2.1", {
         "0.2.1": {
           version: "0.2.1",
           pubDate: "2026-06-08T00:00:00.000Z",
-          platforms: {
-            darwin: {},
-          },
+          platforms: { darwin: {} },
         },
       }),
     );
 
     const response = await accept(
-      client().feed({
-        params: { channel: "stable", platform: "darwin", arch: "arm64" },
-      }),
+      api.desktopUpdates.feed({ params: DARWIN_ARM64 }),
       [404],
     );
 

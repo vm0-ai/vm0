@@ -720,3 +720,17 @@ calc. Services tests outside this list migrate to route-level BDD.
   `realtime.ts` (38/9/16) unchanged vs `main`. No regressions.
   (`webhooks-stripe.service.ts` oscillates run-to-run and recovered on re-run —
   added to the noise set.)
+
+### Round 26 — DESKTOP UPDATE FEED (CHAIN-DESKTOP-UPDATES)
+
+- Extended `createBddApi` with the `desktopUpdates` client.
+- Added `desktop-updates.bdd.test.ts`: serve the current stable macOS arm64
+  release, fall back past a blocked `latest` (skip 0.2.2, ignore the newer
+  0.3.0 above `latest`, serve 0.2.1), and 404 when no asset matches the
+  requested platform/arch. The release manifest is fetched from GitHub (external)
+  and injected through the service's `mockDesktopUpdateManifestForTest` seam,
+  which overrides the remote content (not internal logic) — the same affordance
+  the route already relied on. The feed endpoint is public (no auth).
+- Deleted `desktop-updates.test.ts` whole.
+- Coverage verified (source-only): `desktop-updates.ts` (8/2/1) and
+  `desktop-updates.service.ts` (54/29/13) unchanged vs `main`. No regressions.
