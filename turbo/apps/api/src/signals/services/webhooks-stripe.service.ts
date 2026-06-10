@@ -29,7 +29,6 @@ import {
   BILLING_DOWNGRADE_PURPOSE,
   BILLING_RESTORE_PURPOSE,
 } from "./zero-billing-payment-method.service";
-import { uploadGoogleAdsOfflineConversion } from "./google-ads-offline-conversions.service";
 import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
 import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
@@ -65,7 +64,6 @@ interface InvoiceInput {
   readonly id: string;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
-  readonly amount_paid?: number | null;
   readonly subtotal?: number | null;
   readonly lines: {
     readonly data: readonly {
@@ -1309,18 +1307,6 @@ function tierFromSubscription(subscription: Stripe.Subscription) {
   return tierForKnownPriceId(priceId);
 }
 
-function mergedStripeMetadata(
-  ...sources: readonly (Readonly<Record<string, string>> | null | undefined)[]
-): Record<string, string> | null {
-  const metadata: Record<string, string> = {};
-  for (const source of sources) {
-    if (source) {
-      Object.assign(metadata, source);
-    }
-  }
-  return Object.keys(metadata).length === 0 ? null : metadata;
-}
-
 function isReplaceableProSubscription(args: {
   readonly orgId: string;
   readonly newSubscriptionId: string;
@@ -1426,10 +1412,6 @@ function customerIdFromInvoice(invoice: InvoiceInput): string | null {
   return typeof invoice.customer === "string"
     ? invoice.customer
     : (invoice.customer?.id ?? null);
-}
-
-function invoiceAmountPaidCents(invoice: InvoiceInput): number {
-  return typeof invoice.amount_paid === "number" ? invoice.amount_paid : 0;
 }
 
 function subscriptionPeriodEndFromInvoice(
@@ -1645,7 +1627,6 @@ async function processSubscriptionInvoicePaid(
 async function handleCheckoutCompleted(
   db: Db,
   session: CheckoutSessionInput,
-  conversionTime: Date,
 ): Promise<{
   readonly drainOrgId: string | null;
   readonly orgIds: readonly string[];
@@ -1722,16 +1703,6 @@ async function handleCheckoutCompleted(
     subscription,
     source: "checkout.session.completed",
   });
-  const tier = tierFromSubscription(subscription);
-  if (tier && subscription.status === "trialing") {
-    await uploadGoogleAdsOfflineConversion({
-      kind: "free_trial",
-      tier,
-      transactionId: session.id,
-      conversionTime,
-      metadata: mergedStripeMetadata(subscription.metadata, session.metadata),
-    });
-  }
   return { drainOrgId: null, orgIds };
 }
 
@@ -1760,7 +1731,6 @@ async function handleInvoicePaid(
   db: Db,
   getClerk: ClerkClientProvider,
   invoice: InvoiceInput,
-  conversionTime: Date,
 ): Promise<string | null> {
   const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
   if (autoRechargeResult.handled) {
@@ -1825,7 +1795,6 @@ async function handleInvoicePaid(
     return null;
   }
 
-  const amountPaidCents = invoiceAmountPaidCents(invoice);
   const processed = await db.transaction(async (tx) => {
     return await processSubscriptionInvoicePaid(tx, {
       invoice,
@@ -1835,20 +1804,6 @@ async function handleInvoicePaid(
       details,
     });
   });
-  if (processed && amountPaidCents > 0) {
-    await uploadGoogleAdsOfflineConversion({
-      kind: "paid_subscriber",
-      tier: details.tier,
-      transactionId: invoice.id,
-      conversionTime,
-      metadata: mergedStripeMetadata(
-        details.subscription.metadata,
-        invoice.parent?.subscription_details?.metadata,
-        invoice.metadata,
-      ),
-      conversionValueUsd: amountPaidCents / 100,
-    });
-  }
   return processed ? org.orgId : null;
 }
 
@@ -2035,11 +1990,7 @@ export const handleStripeWebhookEvent$ = command(
     switch (event.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
-        const result = await handleCheckoutCompleted(
-          db,
-          event.data.object,
-          new Date(event.created * 1000),
-        );
+        const result = await handleCheckoutCompleted(db, event.data.object);
         signal.throwIfAborted();
         drainOrgId = result.drainOrgId;
         for (const orgId of result.orgIds) {
@@ -2052,7 +2003,6 @@ export const handleStripeWebhookEvent$ = command(
           db,
           getClerk,
           event.data.object,
-          new Date(event.created * 1000),
         );
         signal.throwIfAborted();
         drainOrgId = paidDrainOrgId;

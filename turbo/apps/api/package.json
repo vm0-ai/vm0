@@ -46,6 +46,7 @@
     "gpt-tokenizer": "^3.4.0",
     "hono": "^4.12.23",
     "html-to-text": "^9.0.5",
+    "music-metadata": "^11.13.0",
     "pg": "^8.20.0",
     "resend": "^6.12.4",
     "signal-timers": "^1.0.4",

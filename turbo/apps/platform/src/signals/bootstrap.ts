@@ -62,6 +62,7 @@ import { NotFoundPage } from "../views/not-found-page.tsx";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
+import { googleAdsBillingConversionPayload } from "./bootstrap/billing-conversion.ts";
 import {
   markCompletedBillingCheckout$,
   reloadBillingStatus$,
@@ -349,6 +350,19 @@ const handleBillingRedirect$ = command(({ set }) => {
   window.history.replaceState(null, "", url.toString());
 
   if (billing === "pro" || billing === "team") {
+    // Fire Google Ads conversion event: subscription completed via Stripe
+    // checkout. The `billing` param is set only on Stripe success redirect
+    // and stripped above, so this fires at most once per real conversion.
+    type GtagFn = (...args: unknown[]) => void;
+    const payload = googleAdsBillingConversionPayload(billing, transactionId);
+    if (payload) {
+      (window as Window & { gtag?: GtagFn }).gtag?.(
+        "event",
+        "conversion",
+        payload,
+      );
+    }
+
     const label = billing === "pro" ? "Pro" : "Team";
     showSuccessToastAfterMount(
       `${label} checkout completed. Credits will be added after the invoice is paid.`,
