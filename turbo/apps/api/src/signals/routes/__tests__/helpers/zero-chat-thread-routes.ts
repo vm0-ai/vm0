@@ -138,3 +138,18 @@ export async function getZeroChatThreadThroughApi(
   );
   return response.body;
 }
+
+export async function findZeroChatThreadThroughApi(
+  context: TestContext,
+  threadId: string,
+) {
+  const client = setupApp({ context })(chatThreadByIdContract);
+  const response = await accept(
+    client.get({
+      params: { id: threadId },
+      headers: authHeaders(),
+    }),
+    [200, 404],
+  );
+  return response.status === 200 ? response.body : undefined;
+}

@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroRunsByIdContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
@@ -21,6 +19,11 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  authHeaders,
+  findZeroChatThreadThroughApi,
+} from "./helpers/zero-chat-thread-routes";
+import { getZeroScheduleThroughApi } from "./helpers/zero-schedule-routes";
 import { seedRun$ } from "./helpers/zero-usage-insight";
 
 const context = testContext();
@@ -32,33 +35,6 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
 
-  async function getThreadRowExists(threadId: string): Promise<boolean> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, threadId));
-    return Boolean(row);
-  }
-
-  async function getScheduleRowExists(scheduleId: string): Promise<boolean> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ id: zeroAgentSchedules.id })
-      .from(zeroAgentSchedules)
-      .where(eq(zeroAgentSchedules.id, scheduleId));
-    return Boolean(row);
-  }
-
-  async function getRunStatus(runId: string): Promise<string | undefined> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, runId));
-    return row?.status;
-  }
-
   // dispatchCancelSideEffects$ reads org credit metadata during the detached
   // queue-drain / credit-reconcile pass; seed it so that work runs cleanly.
   async function seedOrgMetadata(orgId: string): Promise<void> {
@@ -67,6 +43,38 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
       .insert(orgMetadata)
       .values({ orgId, tier: "free", credits: 10_000 })
       .onConflictDoNothing();
+  }
+
+  async function createLinkedScheduleThroughApi(
+    fixture: ZeroChatThreadFixture,
+  ): Promise<void> {
+    const client = setupApp({ context })(zeroSchedulesMainContract);
+    await accept(
+      client.deploy({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.composeId,
+          chatThreadId: fixture.threadId,
+          name: "linked",
+          cronExpression: "0 9 * * *",
+          prompt: "Daily update",
+          description: "Linked schedule",
+        },
+      }),
+      [201],
+    );
+  }
+
+  async function getRunStatusThroughApi(runId: string): Promise<string> {
+    const client = setupApp({ context })(zeroRunsByIdContract);
+    const response = await accept(
+      client.getById({
+        params: { id: runId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    return response.body.status;
   }
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -93,7 +101,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     const response = await accept(
       client.delete({
         params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -104,7 +112,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
-  it("deletes the thread and removes it from the DB (read-after-delete)", async () => {
+  it("deletes the thread and returns 404 on route read-after-delete", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -114,51 +122,40 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     const response = await accept(
       client.delete({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
     expect(response.body).toBeUndefined();
 
-    await expect(getThreadRowExists(fixture.threadId)).resolves.toBeFalsy();
+    await expect(
+      findZeroChatThreadThroughApi(context, fixture.threadId),
+    ).resolves.toBeUndefined();
   });
 
   it("deletes schedules linked to the deleted thread", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
-    const writeDb = store.set(writeDb$);
-    const [schedule] = await writeDb
-      .insert(zeroAgentSchedules)
-      .values({
-        agentId: fixture.composeId,
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        name: "linked",
-        triggerType: "cron",
-        cronExpression: "0 9 * * *",
-        prompt: "Daily update",
-        timezone: "UTC",
-        chatThreadId: fixture.threadId,
-      })
-      .returning({ id: zeroAgentSchedules.id });
-    if (!schedule) {
-      throw new Error("Expected linked schedule fixture");
-    }
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    await createLinkedScheduleThroughApi(fixture);
 
     const client = setupApp({ context })(chatThreadByIdContract);
     await accept(
       client.delete({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
-    await expect(getThreadRowExists(fixture.threadId)).resolves.toBeFalsy();
-    await expect(getScheduleRowExists(schedule.id)).resolves.toBeFalsy();
+    await expect(
+      findZeroChatThreadThroughApi(context, fixture.threadId),
+    ).resolves.toBeUndefined();
+    await expect(
+      getZeroScheduleThroughApi(context, "linked"),
+    ).resolves.toBeUndefined();
   });
 
   it("returns 204 with body undefined (c.noBody contract)", async () => {
@@ -171,7 +168,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     const response = await accept(
       client.delete({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
@@ -191,7 +188,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     const response = await accept(
       client.delete({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -200,8 +197,10 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
       error: { code: "NOT_FOUND", message: "Chat thread not found" },
     });
 
-    // Victim row preserved.
-    await expect(getThreadRowExists(fixture.threadId)).resolves.toBeTruthy();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await expect(
+      findZeroChatThreadThroughApi(context, fixture.threadId),
+    ).resolves.toMatchObject({ id: fixture.threadId });
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
@@ -215,7 +214,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     await accept(
       client.delete({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
@@ -227,7 +226,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     );
   });
 
-  it("returns 400 for a malformed UUID without touching the DB", async () => {
+  it("returns 400 for a malformed UUID without mutating the thread", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -237,7 +236,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     const response = await accept(
       client.delete({
         params: { id: "not-a-uuid" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [400],
     );
@@ -245,8 +244,10 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
     expect(response.body.error.message).toContain("id");
 
-    // Seeded thread untouched (path validation short-circuits before DB).
-    await expect(getThreadRowExists(fixture.threadId)).resolves.toBeTruthy();
+    // Seeded thread untouched (path validation short-circuits before lookup).
+    await expect(
+      findZeroChatThreadThroughApi(context, fixture.threadId),
+    ).resolves.toMatchObject({ id: fixture.threadId });
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
@@ -272,15 +273,17 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     await accept(
       client.delete({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
     // The run is cancelled synchronously as part of the delete, and the thread
     // is gone.
-    await expect(getRunStatus(runId)).resolves.toBe("cancelled");
-    await expect(getThreadRowExists(fixture.threadId)).resolves.toBeFalsy();
+    await expect(getRunStatusThroughApi(runId)).resolves.toBe("cancelled");
+    await expect(
+      findZeroChatThreadThroughApi(context, fixture.threadId),
+    ).resolves.toBeUndefined();
 
     // Post-cancel side effects land on the detached path.
     await clearAllDetached();
@@ -316,13 +319,13 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     await accept(
       client.delete({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
     // A completed run is not cancellable; its status is preserved.
-    await expect(getRunStatus(runId)).resolves.toBe("completed");
+    await expect(getRunStatusThroughApi(runId)).resolves.toBe("completed");
   });
 
   it("only cancels runs linked to the thread being deleted", async () => {
@@ -365,15 +368,19 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     await accept(
       client.delete({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
     // Only the deleted thread's run is cancelled; the sibling thread's run
     // keeps running.
-    await expect(getRunStatus(deletedThreadRun)).resolves.toBe("cancelled");
-    await expect(getRunStatus(otherThreadRun)).resolves.toBe("running");
+    await expect(getRunStatusThroughApi(deletedThreadRun)).resolves.toBe(
+      "cancelled",
+    );
+    await expect(getRunStatusThroughApi(otherThreadRun)).resolves.toBe(
+      "running",
+    );
 
     await clearAllDetached();
   });
