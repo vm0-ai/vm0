@@ -364,3 +364,50 @@ Per-round tracking files:
 - Next round candidates: pick the next route family in DEVELOPER-01
   (`zero-memory-dev-refresh`, `zero-developer-support`, `zero-report-error`),
   then move on to AGENT-01, CHAT-01, etc.
+
+### Round 3 — small/test-light BDD migrations
+
+Migrated 7 additional small/test-light route families to BDD shape in
+this round. Each legacy file is **kept** alongside the BDD file
+(per the hard rule). The "given" fixtures where the seed helpers
+write directly to the DB are recorded under "Open Helper Gaps".
+
+- `zero-org-list.bdd.test.ts` — 3 legacy `it()`s → 2 BDD `it()`s
+  (auth-boundary + one gwt-wt-wt chain that covers single-org and
+  multi-org Clerk-membership projection sharing the same session).
+  No DB writes — only external Clerk mocks.
+- `zero-realtime-token.bdd.test.ts` — 2 legacy `it()`s → 2 BDD
+  `it()`s (auth-boundary + token-issuance chain sharing the Ably
+  mock). No DB writes.
+- `zero-attribution.bdd.test.ts` — 3 legacy `it()`s → 2 BDD `it()`s
+  (auth-boundary + write/preserve chain that re-uses the Clerk
+  session). No DB writes.
+- `zero-api-keys-delete.bdd.test.ts` — 4 legacy `it()`s → 2 BDD
+  `it()`s. The Then step now goes through the public
+  `apiKeysContract.list` endpoint instead of a direct DB read for
+  the delete. The remaining `seedApiKeys$` direct-DB write is a
+  recorded helper gap.
+- `zero-schedules-disable.bdd.test.ts` — 5 legacy `it()`s → 2 BDD
+  `it()`s. The 4 path-based tests collapse into one gwt-wt-wt chain
+  that exercises disable-by-name, disable-by-agentId, 404 missing,
+  and 400 bad body in sequence. The `seedSchedulesScenario$` helper
+  is a recorded gap.
+- `desktop-updates.bdd.test.ts` — 3 legacy `it()`s → 1 BDD `it()`
+  (a single gwt-wt-wt chain sharing the route shape, switching the
+  manifest between steps). No DB writes — uses the test-only
+  `mockDesktopUpdateManifestForTest` helper.
+- `cron-aggregate-usage.bdd.test.ts` — 4 legacy `it()`s → 3 BDD
+  `it()`s. The Then step now goes through the contract's
+  `aggregated` count instead of a direct `usageDaily` DB read.
+  `seedRun$` remains a recorded gap.
+
+Net test count: 33 legacy `it()`s → 19 BDD `it()`s across this
+round (42% reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check`, full `pnpm exec vitest run` all clean
+(3670 tests passing, including the previously-flaky
+`zero-chat-messages` test that resolved itself after a re-run).
+
+Aggregate coverage: 87.22% / 72.82% / 93.35% / 87.22% on both main
+and this branch — at parity or marginally better.
