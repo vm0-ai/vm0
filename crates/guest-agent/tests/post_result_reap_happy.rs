@@ -4,8 +4,8 @@
 //! Neither SIGTERM nor SIGKILL is sent.
 //!
 //! Guards against the regression "reap accidentally kills healthy CLIs"
-//! — if a future change widens the arming guard or shortens grace to
-//! zero, this test catches it via the exit-code check.
+//! by keeping the configured reap deadline beyond the test timeout and
+//! asserting the mock exits cleanly before that deadline can fire.
 //!
 //! See: https://github.com/vm0-ai/vm0/issues/10879
 
