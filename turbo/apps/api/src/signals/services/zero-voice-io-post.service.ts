@@ -300,6 +300,7 @@ export function parseSpeechWavDurationSeconds(
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let format: WavFormat | null = null;
   let dataOffset: number | null = null;
+  let dataChunkSize: number | null = null;
   let offset = 12;
 
   while (offset + 8 <= bytes.byteLength) {
@@ -313,6 +314,7 @@ export function parseSpeechWavDurationSeconds(
         readSpeechWavFormat(view, chunkStart, bytes.byteLength) ?? format;
     } else if (chunkId === "data") {
       dataOffset = chunkStart;
+      dataChunkSize = chunkSize;
     }
 
     if (chunkEnd > bytes.byteLength) {
@@ -327,8 +329,15 @@ export function parseSpeechWavDurationSeconds(
     return null;
   }
 
-  const audioBytes =
+  const remaining =
     dataOffset !== null ? bytes.byteLength - dataOffset : bytes.byteLength - 44;
+  // Prefer the declared data-chunk size when it fits the buffer, so trailing
+  // chunks after `data` (LIST/INFO/JUNK) are not counted as audio. Fall back to
+  // the remaining bytes for oversized/placeholder/truncated sizes (streamed WAV).
+  const audioBytes =
+    dataChunkSize !== null && dataChunkSize > 0 && dataChunkSize <= remaining
+      ? dataChunkSize
+      : remaining;
   if (audioBytes <= 0) {
     return null;
   }
