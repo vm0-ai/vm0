@@ -155,10 +155,11 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     expect(queue.body.concurrency.active).toBe(0);
     expect(queue.body.queue).toHaveLength(0);
 
-    const heartbeat = await api.heartbeatRunner();
+    const runnerGroup = api.configureRunnerGroup();
+    const heartbeat = await api.heartbeatRunner(runnerGroup);
     expect(heartbeat.body.ok).toBeTruthy();
 
-    const poll = await api.pollRunner();
+    const poll = await api.pollRunner(runnerGroup);
     expect(poll.body.job).toBeNull();
 
     const missingRunId = randomUUID();
@@ -177,6 +178,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
   it("keeps official runner held-session heartbeat and empty polling visible through public endpoints", async () => {
     const api = createRunsSchedulesApi(context);
+    const runnerGroup = api.configureRunnerGroup();
     const heldSessionStates = [
       {
         sessionId: "session-bdd-held",
@@ -196,7 +198,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
     const emptyWithoutProfiles = await api.requestPollRunner(
       true,
-      { group: "vm0/test" },
+      { group: runnerGroup },
       [200],
     );
     if (emptyWithoutProfiles.status !== 200) {
@@ -208,7 +210,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
     const emptyHeldSessionPoll = await api.requestPollRunner(
       true,
-      { group: "vm0/test", heldSessionStates },
+      { group: runnerGroup, heldSessionStates },
       [200],
     );
     if (emptyHeldSessionPoll.status !== 200) {
