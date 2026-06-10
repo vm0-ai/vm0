@@ -48,6 +48,7 @@ export {
   PopoverContent,
   PopoverAnchor,
   PopoverClose,
+  PopoverOverlay,
 } from "./components/ui/popover";
 export {
   Select,

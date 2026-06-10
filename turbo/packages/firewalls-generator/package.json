@@ -43,6 +43,7 @@
     "generate:attio": "tsx src/index.ts attio",
     "generate:atlassian": "tsx src/index.ts atlassian",
     "generate:atlascloud": "tsx src/index.ts atlascloud",
+    "generate:aws": "tsx src/index.ts aws",
     "generate:axiom": "tsx src/index.ts axiom",
     "generate:base44": "tsx src/index.ts base44",
     "generate:bentoml": "tsx src/index.ts bentoml",

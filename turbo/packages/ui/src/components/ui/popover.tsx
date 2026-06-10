@@ -13,6 +13,41 @@ const PopoverAnchor = PopoverPrimitive.Anchor;
 
 const PopoverClose = PopoverPrimitive.Close;
 
+const PopoverOverlay = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<"button">
+>(
+  (
+    {
+      "aria-label": ariaLabel = "Close popover",
+      className,
+      tabIndex = -1,
+      type = "button",
+      ...props
+    },
+    ref,
+  ) => {
+    return (
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Close asChild>
+          <button
+            ref={ref}
+            type={type}
+            tabIndex={tabIndex}
+            aria-label={ariaLabel}
+            className={cn(
+              "fixed inset-0 z-40 cursor-default appearance-none border-0 bg-transparent p-0 outline-none",
+              className,
+            )}
+            {...props}
+          />
+        </PopoverPrimitive.Close>
+      </PopoverPrimitive.Portal>
+    );
+  },
+);
+PopoverOverlay.displayName = "PopoverOverlay";
+
 const PopoverContent = React.forwardRef<
   React.ComponentRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
@@ -39,4 +74,11 @@ const PopoverContent = React.forwardRef<
 });
 PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
-export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor, PopoverClose };
+export {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverAnchor,
+  PopoverClose,
+  PopoverOverlay,
+};

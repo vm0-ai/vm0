@@ -2189,6 +2189,68 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     ).resolves.toBeNull();
   });
 
+  it("refreshes AWS credentials for SigV4 firewall auth templates", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredAwsConnector(fixture);
+    server.use(
+      http.post(AWS_TOKEN_URL, () => {
+        return HttpResponse.json({
+          accessToken: {
+            accessKeyId: FRESH_AWS_CREDENTIAL_ID,
+            secretAccessKey: "fresh-aws-secret-access-key",
+            sessionToken: "fresh-aws-session-token",
+          },
+          expiresIn: 900,
+          refreshToken: "rotated-aws-refresh-token",
+          tokenType: "aws_sigv4",
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            AWS_ACCESS_KEY_ID: STALE_ENCRYPTED_AWS_CREDENTIAL_ID,
+            AWS_SECRET_ACCESS_KEY: "stale-encrypted-aws-secret-access-key",
+            AWS_SESSION_TOKEN: "stale-encrypted-aws-session-token",
+          }),
+          authHeaders: {},
+          authAwsSigv4: {
+            accessKeyId: secretTemplate("AWS_ACCESS_KEY_ID"),
+            secretAccessKey: secretTemplate("AWS_SECRET_ACCESS_KEY"),
+            sessionToken: secretTemplate("AWS_SESSION_TOKEN"),
+          },
+          secretConnectorMap: {
+            AWS_ACCESS_KEY_ID: "aws",
+            AWS_SECRET_ACCESS_KEY: "aws",
+            AWS_SESSION_TOKEN: "aws",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.awsSigv4).toStrictEqual({
+      accessKeyId: FRESH_AWS_CREDENTIAL_ID,
+      secretAccessKey: "fresh-aws-secret-access-key",
+      sessionToken: "fresh-aws-session-token",
+    });
+    expect(response.body.headers).toStrictEqual({});
+    expect(response.body.refreshedConnectors).toStrictEqual(["aws"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
+    expect(response.body.resolvedSecrets).toStrictEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
+  });
+
   it("serializes concurrent connector OAuth refreshes for rotated refresh tokens", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredNotionConnector(fixture);

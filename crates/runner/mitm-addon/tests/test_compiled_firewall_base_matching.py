@@ -1113,3 +1113,90 @@ def test_compiled_matches_parameterized_host_nonstandard_port_rejection():
         policies,
     )
     assert compiled is None
+
+
+def _aws_firewall():
+    return wrap_firewalls(
+        [
+            {
+                "base": "https://{awsHost+}.amazonaws.com",
+                "auth": {
+                    "awsSigv4": {
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                    }
+                },
+                "permissions": [],
+            },
+            {
+                "base": "https://{awsHost+}.amazonaws.com.cn",
+                "auth": {
+                    "awsSigv4": {
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                    }
+                },
+                "permissions": [],
+            },
+            {
+                "base": "https://{awsHost+}.api.aws",
+                "auth": {
+                    "awsSigv4": {
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                    }
+                },
+                "permissions": [],
+            },
+        ],
+        name="aws",
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://sts.amazonaws.com/",
+        "https://my-bucket.s3.us-west-2.amazonaws.com/key",
+        "https://s3.dualstack.us-west-2.amazonaws.com/my-bucket",
+        "https://ec2.us-west-2.api.aws/",
+        "https://sts.cn-north-1.amazonaws.com.cn/",
+    ],
+)
+def test_compiled_aws_auth_only_firewall_matches_aws_owned_endpoints(url):
+    policies = {"aws": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+
+    result = matching.match_compiled_firewall_request(
+        url,
+        "GET",
+        compile_firewalls_or_fail(_aws_firewall()),
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission is None
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://minio.example.com/my-bucket",
+        "https://s3.amazonaws.com.evil.example/my-bucket",
+        "https://evilamazonaws.com/",
+        "https://api.aws.evil.example/",
+    ],
+)
+def test_compiled_aws_auth_only_firewall_rejects_custom_or_lookalike_domains(url):
+    policies = {"aws": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+
+    result = matching.match_compiled_firewall_request(
+        url,
+        "GET",
+        compile_firewalls_or_fail(_aws_firewall()),
+        policies,
+    )
+
+    assert result is None
