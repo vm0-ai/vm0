@@ -80,6 +80,13 @@ describe("models page data", () => {
     ).toBe(true);
   });
 
+  it("documents Claude Fable 5 as a VM0-managed reasoning model", () => {
+    const reasoningIds = MODELS.filter(isReasoningModel).map((m) => {
+      return m.modelId;
+    });
+    expect(reasoningIds).toContain("claude-fable-5");
+  });
+
   it("omits removed model names from localized model content", () => {
     for (const locale of MODEL_CONTENT_LOCALES) {
       const content = readModelContent(locale);

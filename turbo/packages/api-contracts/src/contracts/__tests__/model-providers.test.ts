@@ -61,6 +61,7 @@ describe("model-first canonical catalog", () => {
   it("exposes the curated flat model list only", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
       "claude-opus-4-8",
+      "claude-fable-5",
       "claude-opus-4-7",
       "claude-opus-4-6",
       "claude-sonnet-4-6",
@@ -103,6 +104,9 @@ describe("model-first canonical catalog", () => {
   it("surfaces display labels for canonical models", () => {
     expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
       "Claude Opus 4.8",
+    );
+    expect(getCanonicalModelDisplayName("claude-fable-5")).toBe(
+      "Claude Fable 5",
     );
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
   });
@@ -147,6 +151,10 @@ describe("model-first canonical catalog", () => {
       "vm0",
       "minimax-api-key",
     ]);
+    expect(getProvidersForModel("claude-fable-5")).toEqual([
+      "vm0",
+      "anthropic-api-key",
+    ]);
     expect(getProvidersForModel("custom/model")).toEqual([]);
   });
 
@@ -164,6 +172,12 @@ describe("model-first canonical catalog", () => {
     expect(isModelSupportedByProvider("MiniMax-M3", "openrouter-api-key")).toBe(
       false,
     );
+    expect(
+      isModelSupportedByProvider("claude-fable-5", "anthropic-api-key"),
+    ).toBe(true);
+    expect(
+      isModelSupportedByProvider("claude-fable-5", "openrouter-api-key"),
+    ).toBe(false);
   });
 
   it("maps canonical models to provider runtime model ids", () => {
@@ -182,6 +196,9 @@ describe("model-first canonical catalog", () => {
     expect(
       getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-8"),
     ).toBe("claude-opus-4-8");
+    expect(getProviderRuntimeModel("anthropic-api-key", "claude-fable-5")).toBe(
+      "claude-fable-5",
+    );
     expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("z-ai/glm-5.1");
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.5")).toBe(
       "gpt-5.5",
@@ -343,6 +360,7 @@ describe("getVm0VisibleModels", () => {
   it("returns all VM0 managed models", () => {
     const models = getVm0VisibleModels();
     expect(models).toContain("claude-opus-4-8");
+    expect(models).toContain("claude-fable-5");
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M3");
     expect(models).toContain("glm-5.1");
@@ -375,6 +393,7 @@ describe("model image input support", () => {
   it.each([
     "claude-sonnet-4-6",
     "claude-opus-4-8",
+    "claude-fable-5",
     "claude-opus-4-7",
     "kimi-k2.6",
     "kimi-k2.5",
