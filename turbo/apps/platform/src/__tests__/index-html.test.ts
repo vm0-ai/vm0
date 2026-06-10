@@ -9,7 +9,7 @@ type BrowserUpgradeTarget = {
 };
 
 const browserSupportScript = Array.from(
-  indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g),
+  indexHtml.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/giu),
 )
   .map((scriptMatch) => scriptMatch[1])
   .find((scriptContent) => scriptContent.includes("__vm0BrowserSupported"));
