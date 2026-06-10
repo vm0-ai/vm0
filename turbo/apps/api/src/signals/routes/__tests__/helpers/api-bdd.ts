@@ -23,6 +23,10 @@ import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attri
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { desktopUpdatesContract } from "@vm0/api-contracts/contracts/desktop-updates";
+import {
+  healthAuthContract,
+  healthContract,
+} from "@vm0/api-contracts/contracts";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
@@ -168,6 +172,10 @@ export function createBddApi(context: TestContext) {
     realtimeToken: setupApp({ context })(platformRealtimeTokenContract),
     /** ts-rest client for `/api/desktop/updates/...` (public auto-update feed). */
     desktopUpdates: setupApp({ context })(desktopUpdatesContract),
+    /** ts-rest client for `/api/health` (public liveness check). */
+    health: setupApp({ context })(healthContract),
+    /** ts-rest client for `/api/health/auth` (auth-gated liveness check). */
+    healthAuth: setupApp({ context })(healthAuthContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,

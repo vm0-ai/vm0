@@ -734,3 +734,14 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Deleted `desktop-updates.test.ts` whole.
 - Coverage verified (source-only): `desktop-updates.ts` (8/2/1) and
   `desktop-updates.service.ts` (54/29/13) unchanged vs `main`. No regressions.
+
+### Round 27 — HEALTH (CHAIN-HEALTH)
+
+- Extended `createBddApi` with the `health` and `healthAuth` clients.
+- Added `health.bdd.test.ts`: the public health check returns `{status:"ok"}`,
+  and the authenticated health check is 401 without credentials. The
+  authenticated success paths stay with the auth-probe suite
+  (`health-auth-probe.test.ts`), which exercises every credential shape.
+- Deleted `health.test.ts` whole.
+- Coverage verified (source-only): `health.ts` (3/0) and `health-auth-probe.ts`
+  (18/10) unchanged vs `main`. No regressions.
