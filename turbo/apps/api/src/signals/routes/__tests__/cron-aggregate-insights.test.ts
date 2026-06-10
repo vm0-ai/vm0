@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { cronAggregateInsightsContract } from "@vm0/api-contracts/contracts/cron";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { createStore } from "ccstate";
@@ -92,6 +93,24 @@ async function setCreditBalance(fixture: UsageFixture): Promise<void> {
     .update(orgMetadata)
     .set({ credits: 100_000 })
     .where(eq(orgMetadata.orgId, fixture.orgId));
+}
+
+async function setUserTimezone(
+  fixture: UsageFixture,
+  timezone: string,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      timezone,
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+      set: { timezone },
+    });
 }
 
 async function seedUserName(
@@ -232,6 +251,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       store.set(seedUsageFixture$, {}, context.signal),
     );
     await setCreditBalance(fixture);
+    await setUserTimezone(fixture, "America/Los_Angeles");
     await seedUserName(fixture);
     const completedAt = new Date("2999-01-02T11:55:00.000Z");
     const { runId } = await store.set(

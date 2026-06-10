@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 
@@ -268,6 +268,14 @@ describe("GET /api/public/model-rankings", () => {
     const previousHour = new Date(windowStart.getTime() - HOUR_MS);
     mockNow(new Date(windowEnd.getTime() + 30 * 60_000));
 
+    await db
+      .delete(modelStat)
+      .where(
+        and(
+          inArray(modelStat.hourStart, [currentHour, previousHour]),
+          inArray(modelStat.model, [model, modelAlias, unsupportedModel]),
+        ),
+      );
     await db.insert(modelStat).values([
       {
         hourStart: currentHour,

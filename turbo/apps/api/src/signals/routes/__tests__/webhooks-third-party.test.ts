@@ -4640,10 +4640,25 @@ describe("POST /api/webhooks/stripe", () => {
       const subId = stripeId("sub");
       const invId = stripeId("inv");
       await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
-      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      const subscription = {
         id: subId,
         items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      };
+      let retrieveCount = 0;
+      let releaseRetrieve: (() => void) | undefined;
+      const retrieveBarrier = new Promise<void>((resolve) => {
+        releaseRetrieve = resolve;
       });
+      context.mocks.stripe.subscriptions.retrieve.mockImplementation(
+        async () => {
+          retrieveCount += 1;
+          if (retrieveCount === 2) {
+            releaseRetrieve?.();
+          }
+          await retrieveBarrier;
+          return subscription;
+        },
+      );
       const creditsBefore = (await selectStripeBilling(fixture)).credits;
       const payload = {
         id: invId,
@@ -4660,6 +4675,9 @@ describe("POST /api/webhooks/stripe", () => {
 
       expect(first.status).toBe(200);
       expect(second.status).toBe(200);
+      expect(context.mocks.stripe.subscriptions.retrieve).toHaveBeenCalledTimes(
+        2,
+      );
       expect((await selectStripeBilling(fixture)).credits - creditsBefore).toBe(
         20_000,
       );
