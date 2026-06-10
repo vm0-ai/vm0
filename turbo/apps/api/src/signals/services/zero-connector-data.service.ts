@@ -1974,11 +1974,15 @@ export function zeroConnectorSearch(args: {
         description: config.helpText,
         authMethods,
       };
+      const tags: readonly string[] = "tags" in config ? config.tags : [];
 
       if (
         keyword &&
         !item.label.toLowerCase().includes(keyword) &&
-        !item.description.toLowerCase().includes(keyword)
+        !item.description.toLowerCase().includes(keyword) &&
+        !tags.some((tag) => {
+          return tag.toLowerCase().includes(keyword);
+        })
       ) {
         return [];
       }
