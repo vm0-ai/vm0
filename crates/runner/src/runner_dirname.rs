@@ -2,8 +2,9 @@
 //!
 //! The same name is used as both a directory name (joined against
 //! `HomePaths::runners_dir()`) and a systemd service name suffix
-//! (e.g. `vm0-runner-<name>`). This module is the single source of
-//! truth for what counts as a valid runner instance name.
+//! (e.g. `vm0-runner-<name>`). Service locks and unit staging files also
+//! derive filenames from the service name, so this module is the single
+//! source of truth for what counts as a valid runner instance name.
 //!
 //! Without validation, an absolute path (`/etc`) replaces the base via
 //! `Path::join`, and a bare `..` segment escapes once the kernel resolves
@@ -19,18 +20,49 @@
 
 use crate::error::{RunnerError, RunnerResult};
 
+/// Maximum byte length for a runner instance name.
+///
+/// The limit is deliberately below common Linux `NAME_MAX` values after
+/// adding runner/service prefixes and staging suffixes.
+pub(crate) const MAX_NAME_BYTES: usize = 128;
+const INVALID_NAME_PREVIEW_CHARS: usize = 64;
+
 /// Validate `name` and return a `RunnerError::Config` with a uniform
 /// message if it fails. Use this at every callsite that takes a runner
 /// directory name from the user (currently only the `--runner-dirname`
 /// flag of `runner config`) so the error wording stays consistent.
 pub fn validate_or_err(name: &str) -> RunnerResult<()> {
     if !validate_name(name) {
+        let diagnostic = invalid_name_diagnostic(name);
+        let rules = validation_rules();
         return Err(RunnerError::Config(format!(
-            "invalid runner-dirname: {name} (must be a non-empty single path segment \
-             of lowercase alphanumeric, hyphens, and dots; cannot start with `.` or `-`)"
+            "invalid runner-dirname: {diagnostic} ({rules})"
         )));
     }
     Ok(())
+}
+
+pub(crate) fn validation_rules() -> String {
+    format!(
+        "must be a non-empty single path segment of at most {MAX_NAME_BYTES} bytes, \
+         lowercase alphanumeric, hyphens, and dots; cannot start with `.` or `-`"
+    )
+}
+
+pub(crate) fn invalid_name_diagnostic(name: &str) -> String {
+    let mut preview = String::new();
+    let mut chars = name.chars();
+    for _ in 0..INVALID_NAME_PREVIEW_CHARS {
+        let Some(c) = chars.next() else {
+            return format!("{name:?} ({} bytes)", name.len());
+        };
+        preview.push(c);
+    }
+    if chars.next().is_some() {
+        format!("{preview:?}... ({} bytes)", name.len())
+    } else {
+        format!("{name:?} ({} bytes)", name.len())
+    }
 }
 
 /// Validate that `name` is a safe runner instance identifier.
@@ -40,6 +72,7 @@ pub fn validate_or_err(name: &str) -> RunnerResult<()> {
 ///
 /// Accepts `[a-z0-9.-]+` with these guards:
 /// - non-empty
+/// - at most [`MAX_NAME_BYTES`] bytes
 /// - does not start with `.` (rejects `.`, `..`, and hidden-file forms)
 /// - does not start with `-` (avoids being parsed as a flag downstream)
 ///
@@ -48,7 +81,11 @@ pub fn validate_or_err(name: &str) -> RunnerResult<()> {
 /// conventions. The dot allowance exists for production semver dirnames
 /// produced by `ansible/playbooks/build-runner.yml` (e.g. `v0.3.0`).
 pub(crate) fn validate_name(name: &str) -> bool {
-    if name.is_empty() || name.starts_with('.') || name.starts_with('-') {
+    if name.is_empty()
+        || name.len() > MAX_NAME_BYTES
+        || name.starts_with('.')
+        || name.starts_with('-')
+    {
         return false;
     }
     name.chars()
@@ -85,6 +122,18 @@ mod tests {
         assert!(validate_name("foo..bar")); // consecutive dots (NOT traversal — no `/`)
         assert!(validate_name("vm0..0")); // near-traversal shape, still safe
         assert!(validate_name("0")); // single digit
+    }
+
+    #[test]
+    fn validate_name_accepts_max_length() {
+        let name = "a".repeat(MAX_NAME_BYTES);
+        assert!(validate_name(&name));
+    }
+
+    #[test]
+    fn validate_name_rejects_over_max_length() {
+        let name = "a".repeat(MAX_NAME_BYTES + 1);
+        assert!(!validate_name(&name));
     }
 
     #[test]
@@ -153,10 +202,28 @@ mod tests {
         assert!(msg.contains("/etc"), "got: {msg}");
     }
 
-    /// Empty input renders the `{name}` placeholder as blank in the error
-    /// message, so the generic "cannot start with `.` or `-`" hint does
-    /// not apply. Lock in that the message explicitly calls out the
-    /// non-empty requirement so empty-string bugs surface clearly.
+    #[test]
+    fn validate_or_err_overlong_message_reports_limit() {
+        let name = "a".repeat(MAX_NAME_BYTES + 1);
+        let err = validate_or_err(&name).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+        assert!(
+            msg.contains(&format!("at most {MAX_NAME_BYTES} bytes")),
+            "got: {msg}"
+        );
+        assert!(
+            msg.contains(&format!("{} bytes", MAX_NAME_BYTES + 1)),
+            "got: {msg}"
+        );
+        assert!(
+            !msg.contains(&name),
+            "overlong input should be previewed, not echoed in full: {msg}"
+        );
+    }
+
+    /// Empty string is reported as a zero-byte value, so lock in that the
+    /// message explicitly calls out the non-empty requirement.
     #[test]
     fn validate_or_err_empty_message_hints_non_empty() {
         let err = validate_or_err("").unwrap_err();
