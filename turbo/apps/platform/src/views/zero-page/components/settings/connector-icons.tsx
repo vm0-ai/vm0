@@ -249,6 +249,7 @@ const CONNECTOR_ICON_COLORFUL = {
   todoist: true,
   together: true,
   tripo: true,
+  twenty: true,
   twilio: true,
   wandb: true,
   webflow: true,
