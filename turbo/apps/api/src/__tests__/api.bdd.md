@@ -980,3 +980,38 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 22 — AGENT-01 sessions (id) BDD
+
+Migrates `agent-sessions-id.test.ts` (8 legacy `it()`s, 345
+lines). The 8 cases split into 3 BDD test groups: (a) auth
+boundary chain (401 unauth → 404 no-org), (b) 404/403 chain
+(missing → other user in same org → other org), (c) 200
+success chain (runtime org beats compose org → compose org
+denied → with artifacts + secret refs returns details → no
+secret refs returns null secretNames).
+
+The `sessionIdForRun$`, `updateSessionArtifacts$`, and
+`updateComposeHeadContent$` helpers are inlined into the
+BDD file because they depend on `agentRuns` + `agentSessions`
+
+- `agentComposeVersions` direct DB writes that are not
+  user-reachable through any public API (Open Helper Gap).
+
+Notable: the legacy test "authorizes by session runtime
+organization rather than compose organization" used a
+two-fixture pattern (composeFixture + runtimeFixture with
+the same `userId` but different `orgId`) to exercise
+runtime-vs-compose org authorization. The BDD version keeps
+the same shape via `Promise.resolve({...})` for the runtime
+fixture passed through `createFixtureTracker`. The 403 case
+is implicit in the legacy code path because the
+`fixtureCleanup` is run afterEach across the chain, but
+the org-cross step in chain (c) checks 200 → 404 (not 403) since the compose org is a different org from the
+runtime org.
+
+Net test count: 8 legacy `it()`s → 3 BDD `it()`s (63%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
