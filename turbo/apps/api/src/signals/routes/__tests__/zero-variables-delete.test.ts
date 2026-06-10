@@ -13,8 +13,14 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
+  authHeaders,
+  createZeroVariableThroughApi,
+  deleteZeroVariableThroughApi,
+  listZeroVariablesThroughApi,
+  type ZeroVariableRouteFixture,
+} from "./helpers/zero-variable-routes";
+import {
   deleteUserData$,
-  seedOtherVariable$,
   seedVariables$,
   type UserDataFixture,
 } from "./helpers/zero-user-data";
@@ -24,7 +30,16 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 describe("DELETE /api/zero/variables/:name", () => {
-  const track = createFixtureTracker<UserDataFixture>((fixture) => {
+  const trackVariable = createFixtureTracker<ZeroVariableRouteFixture>(
+    (fixture) => {
+      return deleteZeroVariableThroughApi(
+        context,
+        mocks.clerk.session,
+        fixture,
+      );
+    },
+  );
+  const trackLegacy = createFixtureTracker<UserDataFixture>((fixture) => {
     return store.set(deleteUserData$, fixture, context.signal);
   });
 
@@ -46,7 +61,7 @@ describe("DELETE /api/zero/variables/:name", () => {
     const response = await accept(
       client.delete({
         params: { name: "ANY_VAR" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [401],
     );
@@ -55,40 +70,29 @@ describe("DELETE /api/zero/variables/:name", () => {
     });
   });
 
-  it("deletes a variable successfully and removes the row", async () => {
-    const fixture = await track(
-      store.set(
-        seedVariables$,
-        [{ name: "DELETE_ME", value: "to-be-deleted" }],
-        context.signal,
-      ),
+  it("deletes a variable successfully and removes it from the list", async () => {
+    const fixture = await trackVariable(
+      createZeroVariableThroughApi(context, mocks.clerk.session, {
+        name: "DELETE_ME",
+        value: "to-be-deleted",
+      }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroVariablesByNameContract);
     const response = await client.delete({
       params: { name: "DELETE_ME" },
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
     expect(response.status).toBe(204);
 
-    // Row removed
-    const writeDb = store.set(writeDb$);
-    const remaining = await writeDb
-      .select({ id: variables.id })
-      .from(variables)
-      .where(
-        and(
-          eq(variables.orgId, fixture.orgId),
-          eq(variables.userId, fixture.userId),
-          eq(variables.name, "DELETE_ME"),
-        ),
-      );
-    expect(remaining).toStrictEqual([]);
+    await expect(listZeroVariablesThroughApi(context)).resolves.toStrictEqual(
+      [],
+    );
   });
 
   it("deletes only the user-owned variable when a connector-owned variable has the same name", async () => {
-    const fixture = await track(
+    const fixture = await trackLegacy(
       store.set(
         seedVariables$,
         [
@@ -107,7 +111,7 @@ describe("DELETE /api/zero/variables/:name", () => {
     const client = setupApp({ context })(zeroVariablesByNameContract);
     const response = await client.delete({
       params: { name: "SHARED_NAME" },
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
     expect(response.status).toBe(204);
 
@@ -132,7 +136,7 @@ describe("DELETE /api/zero/variables/:name", () => {
   });
 
   it("returns 404 when only a connector-owned variable exists", async () => {
-    const fixture = await track(
+    const fixture = await trackLegacy(
       store.set(
         seedVariables$,
         [
@@ -151,7 +155,7 @@ describe("DELETE /api/zero/variables/:name", () => {
     const response = await accept(
       client.delete({
         params: { name: "CONNECTOR_ONLY" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -161,14 +165,16 @@ describe("DELETE /api/zero/variables/:name", () => {
   });
 
   it("returns 404 for a nonexistent variable", async () => {
-    const fixture = await track(store.set(seedVariables$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(
+      `user_${randomUUID().slice(0, 8)}`,
+      `org_${randomUUID().slice(0, 8)}`,
+    );
 
     const client = setupApp({ context })(zeroVariablesByNameContract);
     const response = await accept(
       client.delete({
         params: { name: "NONEXISTENT" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -181,16 +187,22 @@ describe("DELETE /api/zero/variables/:name", () => {
   });
 
   it("returns 404 for a variable owned by another user (cross-user isolation)", async () => {
-    const fixture = await track(store.set(seedVariables$, [], context.signal));
-    // Another user in the same org owns OTHER_USER_VAR.
-    await store.set(seedOtherVariable$, fixture, context.signal);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const owner = await trackVariable(
+      createZeroVariableThroughApi(context, mocks.clerk.session, {
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        orgId,
+        name: "OTHER_USER_VAR",
+        value: "other-user",
+      }),
+    );
+    mocks.clerk.session(`user_${randomUUID().slice(0, 8)}`, orgId);
 
     const client = setupApp({ context })(zeroVariablesByNameContract);
     const response = await accept(
       client.delete({
         params: { name: "OTHER_USER_VAR" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -198,27 +210,18 @@ describe("DELETE /api/zero/variables/:name", () => {
       error: { code: "NOT_FOUND" },
     });
 
-    // Sanity: the victim row is still there (not silently deleted).
-    const writeDb = store.set(writeDb$);
-    const victim = await writeDb
-      .select({ id: variables.id })
-      .from(variables)
-      .where(
-        and(
-          eq(variables.orgId, fixture.orgId),
-          eq(variables.name, "OTHER_USER_VAR"),
-        ),
-      );
-    expect(victim).toHaveLength(1);
+    mocks.clerk.session(owner.userId, owner.orgId);
+    await expect(listZeroVariablesThroughApi(context)).resolves.toMatchObject([
+      { name: "OTHER_USER_VAR", value: "other-user" },
+    ]);
   });
 
   it("returns 404 for a variable in another org (cross-org isolation)", async () => {
-    const orgAFixture = await track(
-      store.set(
-        seedVariables$,
-        [{ name: "ORG_A_VAR", value: "value-a" }],
-        context.signal,
-      ),
+    const orgAFixture = await trackVariable(
+      createZeroVariableThroughApi(context, mocks.clerk.session, {
+        name: "ORG_A_VAR",
+        value: "value-a",
+      }),
     );
 
     // Authenticate as a different user in a different org.
@@ -228,7 +231,7 @@ describe("DELETE /api/zero/variables/:name", () => {
     const response = await accept(
       client.delete({
         params: { name: "ORG_A_VAR" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -236,18 +239,9 @@ describe("DELETE /api/zero/variables/:name", () => {
       error: { code: "NOT_FOUND" },
     });
 
-    // Sanity: the victim row is still there in org A.
-    const writeDb = store.set(writeDb$);
-    const victim = await writeDb
-      .select({ id: variables.id, orgId: variables.orgId })
-      .from(variables)
-      .where(
-        and(
-          eq(variables.orgId, orgAFixture.orgId),
-          eq(variables.name, "ORG_A_VAR"),
-        ),
-      );
-    expect(victim).toHaveLength(1);
-    expect(victim[0]?.orgId).toBe(orgAFixture.orgId);
+    mocks.clerk.session(orgAFixture.userId, orgAFixture.orgId);
+    await expect(listZeroVariablesThroughApi(context)).resolves.toMatchObject([
+      { name: "ORG_A_VAR", value: "value-a" },
+    ]);
   });
 });

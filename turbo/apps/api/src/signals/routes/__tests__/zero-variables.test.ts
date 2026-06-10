@@ -12,8 +12,15 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
+  authHeaders,
+  createZeroVariableThroughApi,
+  deleteZeroVariableThroughApi,
+  listZeroVariablesThroughApi,
+  setZeroVariableThroughApi,
+  type ZeroVariableRouteFixture,
+} from "./helpers/zero-variable-routes";
+import {
   deleteUserData$,
-  seedOtherVariable$,
   seedVariables$,
   type UserDataFixture,
 } from "./helpers/zero-user-data";
@@ -21,44 +28,51 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const track = createFixtureTracker<UserDataFixture>((fixture) => {
+const trackLegacy = createFixtureTracker<UserDataFixture>((fixture) => {
   return store.set(deleteUserData$, fixture, context.signal);
 });
+const trackVariable = createFixtureTracker<ZeroVariableRouteFixture>(
+  (fixture) => {
+    return deleteZeroVariableThroughApi(context, mocks.clerk.session, fixture);
+  },
+);
 
 describe("GET /api/zero/variables", () => {
   it("returns current user variables sorted by name", async () => {
-    const createdAt = new Date("2026-02-02T03:04:05.000Z");
-    const updatedAt = new Date("2026-02-03T03:04:05.000Z");
-    const fixture = await track(
-      store.set(
-        seedVariables$,
-        [
-          {
-            name: "Z_REGION",
-            value: "us-west-2",
-            description: null,
-            createdAt,
-            updatedAt,
-          },
-          {
-            name: "A_ENDPOINT",
-            value: "https://api.example.test",
-            description: "endpoint",
-            createdAt,
-            updatedAt,
-          },
-        ],
-        context.signal,
-      ),
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    await trackVariable(
+      createZeroVariableThroughApi(context, mocks.clerk.session, {
+        userId,
+        orgId,
+        name: "Z_REGION",
+        value: "us-west-2",
+      }),
     );
-    await store.set(seedOtherVariable$, fixture, context.signal);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await trackVariable(
+      createZeroVariableThroughApi(context, mocks.clerk.session, {
+        userId,
+        orgId,
+        name: "A_ENDPOINT",
+        value: "https://api.example.test",
+        description: "endpoint",
+      }),
+    );
+    await trackVariable(
+      createZeroVariableThroughApi(context, mocks.clerk.session, {
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        orgId,
+        name: "OTHER_USER_VAR",
+        value: "other-user",
+      }),
+    );
+    mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroVariablesContract);
 
     const response = await accept(
       client.list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -69,28 +83,30 @@ describe("GET /api/zero/variables", () => {
         name: "A_ENDPOINT",
         value: "https://api.example.test",
         description: "endpoint",
-        createdAt: "2026-02-02T03:04:05.000Z",
-        updatedAt: "2026-02-03T03:04:05.000Z",
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
       },
       {
         name: "Z_REGION",
         value: "us-west-2",
         description: null,
-        createdAt: "2026-02-02T03:04:05.000Z",
-        updatedAt: "2026-02-03T03:04:05.000Z",
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
       },
     ]);
   });
 
   it("returns an empty list when the user has no variables", async () => {
-    const fixture = await track(store.set(seedVariables$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(
+      `user_${randomUUID().slice(0, 8)}`,
+      `org_${randomUUID().slice(0, 8)}`,
+    );
 
     const client = setupApp({ context })(zeroVariablesContract);
 
     const response = await accept(
       client.list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -99,7 +115,7 @@ describe("GET /api/zero/variables", () => {
   });
 
   it("does not return connector-owned variables", async () => {
-    const fixture = await track(
+    const fixture = await trackLegacy(
       store.set(
         seedVariables$,
         [
@@ -119,7 +135,7 @@ describe("GET /api/zero/variables", () => {
 
     const response = await accept(
       client.list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -146,7 +162,7 @@ describe("GET /api/zero/variables", () => {
 
     const response = await accept(
       client.list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [401],
     );
@@ -159,94 +175,74 @@ describe("GET /api/zero/variables", () => {
 
 describe("POST /api/zero/variables", () => {
   it("creates a variable for the authenticated user", async () => {
-    const fixture = await track(store.set(seedVariables$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroVariablesContract);
-
-    const response = await accept(
-      client.set({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          name: "MY_VARIABLE",
-          value: "variable-value-123",
-          description: "Test variable",
-        },
+    const fixture = await trackVariable(
+      Promise.resolve({
+        orgId: `org_${randomUUID().slice(0, 8)}`,
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        name: "MY_VARIABLE",
       }),
-      [200],
+    );
+    const variable = await setZeroVariableThroughApi(
+      context,
+      mocks.clerk.session,
+      fixture,
+      {
+        value: "variable-value-123",
+        description: "Test variable",
+      },
     );
 
-    expect(response).toMatchObject({
-      body: {
-        id: expect.any(String),
+    expect(variable).toMatchObject({
+      id: expect.any(String),
+      name: "MY_VARIABLE",
+      value: "variable-value-123",
+      description: "Test variable",
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+    });
+    await expect(listZeroVariablesThroughApi(context)).resolves.toMatchObject([
+      {
         name: "MY_VARIABLE",
         value: "variable-value-123",
         description: "Test variable",
-        createdAt: expect.any(String),
-        updatedAt: expect.any(String),
       },
-    });
+    ]);
   });
 
   it("updates an existing variable without creating a duplicate", async () => {
-    const fixture = await track(
-      store.set(
-        seedVariables$,
-        [
-          {
-            name: "MY_VARIABLE",
-            value: "value-v1",
-            description: null,
-          },
-        ],
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroVariablesContract);
-
-    const response = await accept(
-      client.set({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          name: "MY_VARIABLE",
-          value: "value-v2",
-          description: "Updated description",
-        },
+    const fixture = await trackVariable(
+      createZeroVariableThroughApi(context, mocks.clerk.session, {
+        name: "MY_VARIABLE",
+        value: "value-v1",
       }),
-      [200],
+    );
+    const variable = await setZeroVariableThroughApi(
+      context,
+      mocks.clerk.session,
+      fixture,
+      {
+        value: "value-v2",
+        description: "Updated description",
+      },
     );
 
-    expect(response).toMatchObject({
-      body: {
+    expect(variable).toMatchObject({
+      name: "MY_VARIABLE",
+      value: "value-v2",
+      description: "Updated description",
+    });
+
+    await expect(listZeroVariablesThroughApi(context)).resolves.toMatchObject([
+      {
         name: "MY_VARIABLE",
         value: "value-v2",
         description: "Updated description",
       },
-    });
-
-    const listResponse = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(listResponse).toMatchObject({
-      body: {
-        variables: [
-          {
-            name: "MY_VARIABLE",
-            value: "value-v2",
-            description: "Updated description",
-          },
-        ],
-      },
-    });
+    ]);
   });
 
   it("updates only the user-owned variable when a connector-owned variable has the same name", async () => {
-    const fixture = await track(
+    const fixture = await trackLegacy(
       store.set(
         seedVariables$,
         [
@@ -265,7 +261,7 @@ describe("POST /api/zero/variables", () => {
 
     await accept(
       client.set({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: {
           name: "SHARED_NAME",
           value: "user-value",
@@ -319,14 +315,16 @@ describe("POST /api/zero/variables", () => {
   });
 
   it("returns 400 for an invalid variable name", async () => {
-    const fixture = await track(store.set(seedVariables$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(
+      `user_${randomUUID().slice(0, 8)}`,
+      `org_${randomUUID().slice(0, 8)}`,
+    );
 
     const client = setupApp({ context })(zeroVariablesContract);
 
     const response = await accept(
       client.set({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: {
           name: "invalid name with spaces",
           value: "variable-value-123",
