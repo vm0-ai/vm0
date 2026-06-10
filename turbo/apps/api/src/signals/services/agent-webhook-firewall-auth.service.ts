@@ -97,6 +97,15 @@ const refreshTimeoutMsForTests = testOverride<number | undefined>(() => {
   return undefined;
 });
 
+export function setFirewallAuthRefreshTimeoutMsForTests(
+  timeoutMs: number,
+): () => void {
+  refreshTimeoutMsForTests.set(timeoutMs);
+  return () => {
+    refreshTimeoutMsForTests.clear();
+  };
+}
+
 interface FirewallAuthBody {
   readonly encryptedSecrets: string;
   readonly authHeaders: Record<string, string>;

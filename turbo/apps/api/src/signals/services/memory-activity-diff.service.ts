@@ -24,7 +24,7 @@ interface MemoryFileState {
   readonly content: string;
 }
 
-type MemoryFileMap = ReadonlyMap<string, MemoryFileState>;
+export type MemoryFileMap = ReadonlyMap<string, MemoryFileState>;
 
 const MAX_DIFF_LINES = 300;
 const MAX_DIFF_LINE_CHARS = 500;
@@ -308,7 +308,7 @@ function classifyFile(
  * `MEMORY.md` is emitted like any other file because the activity UI renders
  * file-level diffs.
  */
-function computeChangeSet(
+export function computeChangeSet(
   fromFiles: MemoryFileMap,
   toFiles: MemoryFileMap,
 ): MemoryChangeSet {

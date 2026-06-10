@@ -19,8 +19,8 @@ import {
   type BuiltInGenerationUsageIdempotency,
 } from "./built-in-generation-usage-idempotency";
 
-const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
-const BYTEPLUS_VIDEO_TASKS_URL =
+export const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
+export const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 
 const L = logger("ZeroVideoIoGenerate");

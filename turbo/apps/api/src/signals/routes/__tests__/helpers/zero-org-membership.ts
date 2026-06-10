@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
 
@@ -13,7 +14,7 @@ interface SeedOrgMembershipValues {
   readonly seedOrgCache?: boolean;
 }
 
-interface OrgMembershipFixture {
+export interface OrgMembershipFixture {
   readonly orgId: string;
   readonly userId: string;
 }
@@ -40,5 +41,21 @@ export const seedOrgMembership$ = command(
     });
     signal.throwIfAborted();
     return { orgId: values.orgId, userId: values.userId };
+  },
+);
+
+export const deleteOrgMembership$ = command(
+  async (
+    { set },
+    fixture: OrgMembershipFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .delete(orgMembersCache)
+      .where(eq(orgMembersCache.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb.delete(orgCache).where(eq(orgCache.orgId, fixture.orgId));
+    signal.throwIfAborted();
   },
 );

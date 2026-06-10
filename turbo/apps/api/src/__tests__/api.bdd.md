@@ -4,6 +4,19 @@ This document is the migration target for the existing API Vitest suite. It is n
 
 The current inventory is 3344 `it`/`test` declarations under `turbo/apps/api/src` with `it.each` declarations counted once. Actual Vitest execution count may be higher after parameter expansion.
 
+## Migration Status
+
+Coverage parity is a hard gate: new BDD tests must restore per-file coverage **before** the corresponding legacy tests are deleted. An earlier phase of this branch deleted the legacy suite ahead of parity; that was reverted. The branch now carries:
+
+- All legacy test files restored from `main`, alive until their route family has a BDD replacement with per-file coverage >= baseline.
+- All production source files identical to `main` (this effort touches test code only; knip-driven production cleanups were reverted together with the test restore).
+- The 13 service-level exception files (listed below) restored and kept as-is.
+- The 11 `*.bdd.test.ts` files plus `helpers/api-bdd*.ts`, which already exceed the `main` coverage baseline when combined with the legacy suite.
+
+Per-round workflow from here: complete BDD coverage for one route family, prove per-file parity for that family's source files, then delete that family's legacy tests in the same commit.
+
+Known coverage jitter (not regressions): `src/signals/services/agent-run-create.service.ts` and `src/signals/services/local-day.ts` fluctuate by a few covered statements between identical runs because some branches depend on wall-clock day boundaries.
+
 ## Test Principles
 
 - Test API behavior through the Hono app and ts-rest contracts.

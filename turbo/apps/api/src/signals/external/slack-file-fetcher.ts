@@ -8,7 +8,7 @@ type SlackFileFetchErrorCode =
   | "html-response"
   | "too-large";
 
-class SlackFileFetchError extends Error {
+export class SlackFileFetchError extends Error {
   constructor(
     readonly code: SlackFileFetchErrorCode,
     message: string,
