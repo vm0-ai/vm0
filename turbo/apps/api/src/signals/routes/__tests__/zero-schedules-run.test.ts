@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  chatThreadMessagesContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
+import { zeroRunsByIdContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { connectors } from "@vm0/db/schema/connector";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
@@ -11,14 +15,12 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatMessages } from "@vm0/db/schema/chat-message";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import {
@@ -30,6 +32,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { authHeaders } from "./helpers/zero-schedule-routes";
 import { seedOrgModelProvider$ } from "./helpers/zero-model-providers";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
@@ -135,6 +138,49 @@ async function networkPolicyForRun(
   return policy;
 }
 
+async function getZeroRunThroughApi(runId: string) {
+  const client = setupApp({ context })(zeroRunsByIdContract);
+  const response = await accept(
+    client.getById({
+      params: { id: runId },
+      headers: authHeaders(),
+    }),
+    [200],
+  );
+  return response.body;
+}
+
+async function createChatThreadThroughApi(
+  fixture: SchedulesFixture,
+): Promise<string> {
+  const client = setupApp({ context })(chatThreadsContract);
+  const response = await accept(
+    client.create({
+      headers: authHeaders(),
+      body: {
+        agentId: fixture.composeId,
+        title: "linked thread",
+      },
+    }),
+    [201],
+  );
+  context.mocks.ably.publish.mockClear();
+  return response.body.id;
+}
+
+async function listChatMessagesThroughApi(threadId: string) {
+  const client = setupApp({ context })(chatThreadMessagesContract);
+  const response = await accept(
+    client.list({
+      params: { threadId },
+      query: { limit: 50 },
+      headers: authHeaders(),
+    }),
+    [200],
+  );
+  return response.body.messages;
+}
+
 async function rawPostRun(body: unknown): Promise<{
   readonly status: number;
   readonly body: unknown;
@@ -194,19 +240,13 @@ describe("POST /api/zero/schedules/run", () => {
       .where(eq(zeroAgentSchedules.id, scheduleId));
     expect(schedule?.lastRunId).toBe(body.runId);
 
-    const [run] = await db
-      .select({
-        prompt: agentRuns.prompt,
-        appendSystemPrompt: agentRuns.appendSystemPrompt,
-      })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, body.runId));
-    expect(run?.prompt).toBe("Manual run test");
-    expect(run?.appendSystemPrompt).toContain(
+    const run = await getZeroRunThroughApi(body.runId);
+    expect(run.prompt).toBe("Manual run test");
+    expect(run.appendSystemPrompt).toContain(
       "# Current Integration\nYou are currently running inside: Schedule",
     );
-    expect(run?.appendSystemPrompt).toContain("Trigger type: cron");
-    expect(run?.appendSystemPrompt).toContain(
+    expect(run.appendSystemPrompt).toContain("Trigger type: cron");
+    expect(run.appendSystemPrompt).toContain(
       "Use the schedule-specific context.",
     );
 
@@ -243,13 +283,7 @@ describe("POST /api/zero/schedules/run", () => {
       throw new Error("Expected schedule fixture");
     }
     const db = store.set(writeDb$);
-    const threadId = randomUUID();
-    await db.insert(chatThreads).values({
-      id: threadId,
-      userId: fixture.userId,
-      agentComposeId: fixture.composeId,
-      title: "linked thread",
-    });
+    const threadId = await createChatThreadThroughApi(fixture);
     await db
       .update(zeroAgentSchedules)
       .set({ chatThreadId: threadId })
@@ -274,20 +308,12 @@ describe("POST /api/zero/schedules/run", () => {
 
     // The prompt was posted as a user chat message bound to the run, tagged
     // with the originating schedule's id and schedule snapshot.
-    const messages = await db
-      .select({
-        content: chatMessages.content,
-        role: chatMessages.role,
-        scheduleId: chatMessages.scheduleId,
-        scheduleTitle: chatMessages.scheduleTitle,
-        scheduleSnapshot: chatMessages.scheduleSnapshot,
-      })
-      .from(chatMessages)
-      .where(eq(chatMessages.runId, body.runId));
+    const messages = await listChatMessagesThroughApi(threadId);
     expect(
       messages.some((message) => {
         return (
           message.role === "user" &&
+          message.runId === body.runId &&
           message.content === "Manual run test" &&
           message.scheduleId === scheduleId &&
           message.scheduleTitle === "run-test" &&
