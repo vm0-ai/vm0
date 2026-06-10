@@ -229,11 +229,24 @@ process.stdin.on("data", (chunk) => {
 }
 
 async function createDaemonDir(): Promise<string> {
-  return await mkdtemp(path.join(tmpdir(), "vm0-computer-daemon-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "vm0-computer-daemon-"));
+  await writeFile(
+    path.join(dir, "platform-shim.cjs"),
+    'Object.defineProperty(process, "platform", { value: "darwin" });\n',
+  );
+  return dir;
 }
 
 function daemonEnv(daemonDir: string): NodeJS.ProcessEnv {
-  return { ...process.env, VM0_COMPUTER_DAEMON_DIR: daemonDir };
+  const platformShim = `--require=${path.join(daemonDir, "platform-shim.cjs")}`;
+  const nodeOptions = process.env.NODE_OPTIONS
+    ? `${process.env.NODE_OPTIONS} ${platformShim}`
+    : platformShim;
+  return {
+    ...process.env,
+    NODE_OPTIONS: nodeOptions,
+    VM0_COMPUTER_DAEMON_DIR: daemonDir,
+  };
 }
 
 async function startDaemon(
