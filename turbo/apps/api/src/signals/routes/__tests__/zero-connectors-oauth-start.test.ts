@@ -331,6 +331,47 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
+  it("keeps Cloudflare OAuth callbacks on the canonical API origin when VM0_API_URL is a tunnel", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+    mockEnv("VM0_API_URL", "https://tunnel-liangyou-vm2-www.vm7.ai");
+    mockEnv("VM0_WEB_URL", "https://www.vm7.ai:8443");
+
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.CloudflareConnector]: true },
+    });
+
+    const response = await requestOauthStart("cloudflare", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: "https://www.vm7.ai:8443",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://api.vm7.ai:8443/api/connectors/cloudflare/callback",
+    );
+
+    const state = authorizationUrl.searchParams.get("state");
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState?.redirectUri).toBe(
+      "https://api.vm7.ai:8443/api/connectors/cloudflare/callback",
+    );
+  });
+
   it("returns 401 instead of relying on browser cookies when unauthenticated", async () => {
     const response = await requestOauthStart("github");
 
