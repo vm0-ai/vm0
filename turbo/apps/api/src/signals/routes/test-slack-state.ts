@@ -1,12 +1,16 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { createClerkClient } from "@clerk/backend";
 import { command, computed } from "ccstate";
-import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
+import {
+  testSlackStateContract,
+  type TestSlackStatePostBody,
+} from "@vm0/api-contracts/contracts/test-slack-state";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -212,6 +216,112 @@ async function seedDefaultAgent(
   });
 
   return { composeId, versionId, agentId: composeId };
+}
+
+async function seedDiagnosticRun(
+  db: Db,
+  input: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly composeId: string;
+    readonly triggerSource: "slack" | "manual";
+    readonly prompt: string;
+    readonly error?: string | null;
+    readonly createdAt: Date;
+  },
+): Promise<string> {
+  const sessionId = randomUUID();
+  const runId = randomUUID();
+  await db.insert(agentSessions).values({
+    id: sessionId,
+    userId: input.userId,
+    orgId: input.orgId,
+    agentComposeId: input.composeId,
+  });
+  await db.insert(agentRuns).values({
+    id: runId,
+    userId: input.userId,
+    orgId: input.orgId,
+    sessionId,
+    status: "completed",
+    prompt: input.prompt,
+    error: input.error ?? null,
+    createdAt: input.createdAt,
+  });
+  await db.insert(zeroRuns).values({
+    id: runId,
+    triggerSource: input.triggerSource,
+  });
+  return runId;
+}
+
+function shouldSeedDefaultAgent(body: TestSlackStatePostBody): boolean {
+  return (
+    body.seed_default_agent === true ||
+    body.seed_slack_run === true ||
+    body.seed_non_slack_run === true
+  );
+}
+
+async function seedRequestedDefaultAgent(
+  db: Db,
+  args: {
+    readonly body: TestSlackStatePostBody;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<{ composeId: string; versionId: string } | undefined> {
+  if (!shouldSeedDefaultAgent(args.body)) {
+    return undefined;
+  }
+
+  return await seedDefaultAgent(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    name: DEFAULT_AGENT_NAME,
+  });
+}
+
+async function seedRequestedRuns(
+  db: Db,
+  args: {
+    readonly body: TestSlackStatePostBody;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly defaultAgent: { readonly composeId: string } | undefined;
+  },
+): Promise<{
+  readonly slackRunId: string | undefined;
+  readonly nonSlackRunId: string | undefined;
+}> {
+  if (!args.defaultAgent) {
+    return { slackRunId: undefined, nonSlackRunId: undefined };
+  }
+
+  const slackRunId = args.body.seed_slack_run
+    ? await seedDiagnosticRun(db, {
+        orgId: args.orgId,
+        userId: args.userId,
+        composeId: args.defaultAgent.composeId,
+        triggerSource: "slack",
+        prompt: "hello from slack diagnostics",
+        error: "diagnostic error",
+        createdAt: new Date("2030-01-01T00:00:01.000Z"),
+      })
+    : undefined;
+
+  const nonSlackRunId = args.body.seed_non_slack_run
+    ? await seedDiagnosticRun(db, {
+        orgId: args.orgId,
+        userId: args.userId,
+        composeId: args.defaultAgent.composeId,
+        triggerSource: "manual",
+        prompt: "hello from manual diagnostics",
+        createdAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+    : undefined;
+
+  return { slackRunId, nonSlackRunId };
 }
 
 async function getOrInsertCompose(
@@ -638,15 +748,20 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
   }
 
-  let defaultAgent: { composeId: string; versionId: string } | undefined;
-  if (body.seed_default_agent) {
-    defaultAgent = await seedDefaultAgent(db, {
-      orgId,
-      userId,
-      name: DEFAULT_AGENT_NAME,
-    });
-    signal.throwIfAborted();
-  }
+  const defaultAgent = await seedRequestedDefaultAgent(db, {
+    body,
+    orgId,
+    userId,
+  });
+  signal.throwIfAborted();
+
+  const { slackRunId, nonSlackRunId } = await seedRequestedRuns(db, {
+    body,
+    orgId,
+    userId,
+    defaultAgent,
+  });
+  signal.throwIfAborted();
 
   return {
     status: 200 as const,
@@ -657,6 +772,8 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
       vm0_user_id: userId,
       connection_id: connectionId ?? null,
       default_agent_id: defaultAgent?.composeId ?? null,
+      slack_run_id: slackRunId ?? null,
+      non_slack_run_id: nonSlackRunId ?? null,
     },
   };
 });

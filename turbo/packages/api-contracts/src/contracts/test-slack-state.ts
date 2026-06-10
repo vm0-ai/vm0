@@ -1,12 +1,18 @@
 import { z } from "zod";
 
 import { initContract } from "./base";
+import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
 export const testSlackStateErrorSchema = z.object({
   error: z.string(),
 });
+
+export const testSlackStateBadRequestSchema = z.union([
+  testSlackStateErrorSchema,
+  apiErrorSchema,
+]);
 
 export const testSlackStateDeleteResponseSchema = z.object({
   ok: z.literal(true),
@@ -20,6 +26,8 @@ export const testSlackStatePostBodySchema = z.object({
   email: z.string().optional(),
   seed_connection: z.boolean().optional(),
   seed_default_agent: z.boolean().optional(),
+  seed_slack_run: z.boolean().optional(),
+  seed_non_slack_run: z.boolean().optional(),
 });
 
 export const testSlackStatePostResponseSchema = z.object({
@@ -29,6 +37,8 @@ export const testSlackStatePostResponseSchema = z.object({
   vm0_user_id: z.string(),
   connection_id: z.string().nullable(),
   default_agent_id: z.string().nullable(),
+  slack_run_id: z.string().nullable(),
+  non_slack_run_id: z.string().nullable(),
 });
 
 const nullableDateStringSchema = z.string().nullable();
@@ -113,7 +123,7 @@ export const testSlackStateContract = c.router({
     }),
     responses: {
       200: testSlackStateResponseSchema,
-      400: testSlackStateErrorSchema,
+      400: testSlackStateBadRequestSchema,
       404: z.string(),
     },
     summary: "Read Slack e2e diagnostic state for a test workspace",
@@ -124,7 +134,7 @@ export const testSlackStateContract = c.router({
     body: testSlackStatePostBodySchema,
     responses: {
       200: testSlackStatePostResponseSchema,
-      400: testSlackStateErrorSchema,
+      400: testSlackStateBadRequestSchema,
       404: z.string(),
     },
     summary: "Seed Slack e2e diagnostic state for a test workspace",
@@ -137,7 +147,7 @@ export const testSlackStateContract = c.router({
     }),
     responses: {
       200: testSlackStateDeleteResponseSchema,
-      400: testSlackStateErrorSchema,
+      400: testSlackStateBadRequestSchema,
       404: z.string(),
     },
     summary: "Clear Slack e2e diagnostic state for a test workspace",

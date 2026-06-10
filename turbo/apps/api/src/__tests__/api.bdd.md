@@ -33,21 +33,23 @@ Latest current run on 2026-06-10:
 
 | Metric     | Coverage |
 | ---------- | -------: |
-| Statements |   87.19% |
-| Branches   |   72.79% |
+| Statements |   87.20% |
+| Branches   |   72.83% |
 | Functions  |   93.31% |
-| Lines      |   87.19% |
+| Lines      |   87.20% |
 
-Current diff status: `pnpm -F api exec vitest run --coverage` passes, but the
-raw artifact diff still has statements, branches, functions, and lines below
-the captured JSON baseline. The
+Current diff status: `pnpm -F api exec vitest run --coverage` passes. The
+statement and line summaries are back at the captured baseline, branches are
+above it, and functions remain 0.01 percentage points below the captured JSON
+baseline. The
 secrets/variables, custom connectors, agent custom connectors, zero composes
 read/list/metadata, zero agent list, chat thread
 create/model-selection/patch/pin/rename/unpin, desktop update, desktop auth, and
-test Slack/Telegram mock route behaviors are now covered by strict API-first BDD
-cases, while deleted legacy helpers are no longer counted in coverage. Do not
-mark the migration complete until the overall baseline diff is closed or a
-stricter source-only baseline policy is agreed.
+test Slack/Telegram mock route behaviors and Slack state diagnostics are now
+covered by strict API-first BDD cases, while deleted legacy helpers are no
+longer counted in coverage. Do not mark the migration complete until the
+overall baseline diff is closed or a stricter source-only baseline policy is
+agreed.
 
 ## Test Principles
 
@@ -135,6 +137,7 @@ None recorded currently.
 | BILLING-REDEEM-CODE-01         | Billing redeem code              | `src/signals/routes/__tests__/zero-billing-redeem-code.test.ts`                                                                                                                                                                                                                                                                                                                                                                       | `src/signals/routes/__tests__/zero-billing-redeem-code.bdd.test.ts`                                                                                 | Migrated           | API-only with Clerk M2M and Atom MSW boundary; auth/config, Atom errors, and success are chained.                                                                                                                                                                                  |
 | TEST-OAUTH-PROVIDER-01         | Test OAuth provider              | `src/signals/routes/__tests__/test-oauth-provider-get.test.ts`                                                                                                                                                                                                                                                                                                                                                                        | `src/signals/routes/__tests__/test-oauth-provider-get.bdd.test.ts`                                                                                  | Migrated           | API-only synthetic OAuth routes; production/preview gates, authorize, device auth, code exchange, refresh, device-token, userinfo, and echo flows are chained.                                                                                                                     |
 | TEST-SLACK-MOCK-01             | Test Slack mock                  | `src/signals/routes/__tests__/test-slack-mock.test.ts`                                                                                                                                                                                                                                                                                                                                                                                | `src/signals/routes/__tests__/test-slack-mock.bdd.test.ts`                                                                                          | Migrated           | API-only synthetic Slack mock routes; production gates, fixture payloads, JSON/form `users.info`, chat post responses, and persisted mock calls are verified through `/api/test/slack-state` without DB assertions.                                                                |
+| TEST-SLACK-STATE-01            | Test Slack state                 | `src/signals/routes/__tests__/test-slack-state.test.ts`                                                                                                                                                                                                                                                                                                                                                                               | `src/signals/routes/__tests__/test-slack-state.bdd.test.ts`                                                                                         | Migrated           | API-only Slack diagnostic state routes; production/preview gates, validation, empty diagnostics, route-visible Slack installation/connection/default-agent/run seeding, mock call persistence, idempotent seed, and delete preservation are verified without DB assertions.        |
 | TEST-TELEGRAM-MOCK-01          | Test Telegram mock               | `src/signals/routes/__tests__/test-telegram-mock.test.ts`                                                                                                                                                                                                                                                                                                                                                                             | `src/signals/routes/__tests__/test-telegram-mock.bdd.test.ts`                                                                                       | Migrated           | API-only synthetic Telegram mock routes; production gate, fixture payloads, supported/unsupported methods, JSON parse fallbacks, and persisted raw/bodyJson mock calls are verified through `/api/test/telegram-state` without DB assertions.                                      |
 | COMPOSE-READ-01                | Zero composes read/list/metadata | `src/signals/routes/__tests__/zero-composes-by-id.test.ts`, `src/signals/routes/__tests__/zero-composes-by-name.test.ts`, `src/signals/routes/__tests__/zero-composes-list.test.ts`, `src/signals/routes/__tests__/zero-composes-metadata-update.test.ts`                                                                                                                                                                             | `src/signals/routes/__tests__/zero-composes.bdd.test.ts`                                                                                            | Migrated           | Given composes are created through `/api/agent/composes`; Then uses zero by-id, by-name, list, metadata, sandbox, and delete APIs to verify metadata insert/update, same-org access, cross-org isolation, and partial preservation without DB assertions.                          |
 | API-KEYS-01                    | Zero API keys                    | `src/signals/routes/__tests__/zero-api-keys.test.ts`, `src/signals/routes/__tests__/zero-api-keys-delete.test.ts`                                                                                                                                                                                                                                                                                                                     | `src/signals/routes/__tests__/zero-api-keys.bdd.test.ts`                                                                                            | Migrated           | Given keys are created through the API; Then uses list/delete APIs to verify token hiding, sort order, owner isolation, and delete visibility.                                                                                                                                     |
