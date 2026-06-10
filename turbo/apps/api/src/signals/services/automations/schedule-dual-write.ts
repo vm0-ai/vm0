@@ -20,6 +20,7 @@ function automationValuesFromSchedule(schedule: ScheduleRow): {
   readonly name: string;
   readonly description: string | null;
   readonly instruction: string;
+  readonly appendSystemPrompt: string | null;
   readonly agentId: string;
   readonly chatThreadId: string;
   readonly interpreterKind: string;
@@ -35,6 +36,7 @@ function automationValuesFromSchedule(schedule: ScheduleRow): {
     // The interpreter renders the automation's `instruction`; for a mirrored
     // schedule that instruction is the schedule prompt.
     instruction: schedule.prompt,
+    appendSystemPrompt: schedule.appendSystemPrompt,
     agentId: schedule.agentId,
     chatThreadId: schedule.chatThreadId,
     interpreterKind: TIME_INTERPRETER_KIND,

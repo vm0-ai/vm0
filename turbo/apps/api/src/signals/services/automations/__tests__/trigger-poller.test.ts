@@ -109,6 +109,7 @@ async function seedAutomationTrigger(
       userId: schedules.userId,
       name: `time-automation-${randomUUID().slice(0, 8)}`,
       instruction: "Summarize the latest project status.",
+      appendSystemPrompt: "Always answer in haiku.",
       agentId: schedules.composeId,
       chatThreadId: thread.id,
       interpreterKind: "time",
@@ -295,6 +296,8 @@ describe("executeDueTriggers$ (dormant automation time poller)", () => {
       "# Current Integration\nYou are currently running inside: Schedule",
     );
     expect(runs[0]?.appendSystemPrompt).toContain("Trigger type: cron");
+    // The automation's own append prompt is carried into the run (A3).
+    expect(runs[0]?.appendSystemPrompt).toContain("Always answer in haiku.");
 
     // The run carries the trigger-keyed reschedule callback + the chat callback.
     const runId = runs[0]?.id;
