@@ -27,56 +27,6 @@ describe("GET /api/zero/slack/channels", () => {
     return store.set(deleteSlackInstallation$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(client.list({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 404 when no Slack installation exists for the org", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "No Slack installation found for this org",
-        code: "NOT_FOUND",
-      },
-    });
-  });
-
   it("returns channels where the bot is a member", async () => {
     const fixture = await track(
       store.set(seedSlackInstallation$, {}, context.signal),

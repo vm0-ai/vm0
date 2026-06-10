@@ -53,6 +53,7 @@ import {
   zeroLogsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
+import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
@@ -241,6 +242,10 @@ export function createBddApi(context: TestContext) {
     usageInsight: setupApp({ context })(zeroUsageInsightContract),
     /** ts-rest client for `/api/zero/onboarding/status` (per-user onboarding
      * state). */
+    /** ts-rest client for `/api/zero/slack/channels` (list bot-member Slack
+     * channels). Listing real channels needs a seeded Slack installation plus an
+     * Axiom/Slack API mock; the auth and no-installation cases are reachable. */
+    slackChannels: setupApp({ context })(zeroSlackChannelsContract),
     onboardingStatus: setupApp({ context })(onboardingStatusContract),
     /** ts-rest client for `/api/zero/onboarding/setup` (admin one-shot default
      * agent creation). Creating the default agent is free, so the happy path is

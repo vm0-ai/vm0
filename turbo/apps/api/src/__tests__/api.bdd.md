@@ -131,15 +131,27 @@ Two categories make up the remainder:
    `test-oauth-provider-get.test.ts`. No rewrite is required; renaming to
    `.bdd.test.ts` would be cosmetic.
 
-2. **Remaining gap families to reduce** — CHAT messages, the rest of INTEGRATION
-   (slack/telegram, github link/patch/delete), WEBHOOK, MEDIA (`*-io-*`,
-   generate-image), STORAGE (`storages*`, uploads), connectors (oauth/device/
-   manual), USAGE, LOGS, CRON, ONBOARDING, device-auth. Each follows the same
-   reduce-legacy recipe as Rounds 33–44: convert the pre-gap rejection subset,
-   keep documented gap-legacy for the seeded/external cases (in-flight runs,
-   seeded chat messages, OAuth-connected connectors, S3 objects, signed
-   webhooks). The reachable subset per file is typically small (2–6 cases), so
-   these are incremental.
+2. **Reduced through Round 58** — RUN, BILLING, ORG, SCHEDULE, STORAGE,
+   USAGE (runs/members/insight), LOGS (list/by-id/search), ONBOARDING
+   (status/setup), CONNECTORS (by-type get/delete/scope-diff, list),
+   INTEGRATION-github (get/delete/patch), CHAT messages, and SLACK channels each
+   have their API-reachable rejection/empty subset (and, where creation is free,
+   a full Given-When-Then) converted to `*-rejections.bdd.test.ts`, with the
+   seeded/external cases kept as documented gap-legacy.
+
+3. **Remaining gap families to reduce** — the rest of the SLACK/TELEGRAM surface
+   (slack message/upload/connect/events/oauth, telegram message/post/upload, the
+   `internal-callbacks-*` signed callbacks), WEBHOOK, MEDIA (`*-io-*`,
+   generate-image — mostly raw routes), CRON (handler tests invoked off the
+   internal cron-secret, not user-facing HTTP), and device-auth (claude-code /
+   codex / device-token, mostly external-OAuth happy paths with 1–2 reachable
+   rejections each). Each follows the same reduce-legacy recipe: convert the
+   pre-gap rejection subset (typically 2–4 cases), keep documented gap-legacy for
+   the seeded/external cases (in-flight runs, seeded chat messages, OAuth-
+   connected installations, S3 objects, signed webhooks). Many of these have
+   small reachable subsets and route through zero-token + Clerk-membership mocks
+   whose internal random orgIds the seeded 404s cannot align with, so their
+   not-found cases stay in legacy.
 
 ## Chained scenario candidates
 
@@ -1276,4 +1288,17 @@ First USAGE-family reduce.
   (GAP-CHAT-MESSAGE-SEED), and the other-user 404 needs a seeded foreign thread;
   those stay in the kept legacy.
 - Reduced `zero-chat-threads-messages.test.ts` (13 -> 10).
+- Coverage verified (source-only): no regressions vs `main`.
+
+### Round 58 — SLACK CHANNEL LIST REJECTIONS (CHAIN-SLACK-CHANNELS-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `slackChannels` client
+  (`/api/zero/slack/channels`).
+- Added `zero-slack-channels-rejections.bdd.test.ts`: the list rejects
+  unauthenticated and org-less callers (401) and 404s an org with no Slack
+  installation ("No Slack installation found for this org").
+- Listing real channels and the empty-bot-membership case need a seeded Slack
+  installation plus a Slack API mock (GAP-CONNECTOR-CONNECT) and stay in the kept
+  legacy.
+- Reduced `zero-slack-channels.test.ts` (6 -> 3).
 - Coverage verified (source-only): no regressions vs `main`.
