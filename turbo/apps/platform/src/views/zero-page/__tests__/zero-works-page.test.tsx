@@ -212,6 +212,95 @@ describe("works page", () => {
     });
   });
 
+  it("confirms and uninstalls the Slack workspace integration", async () => {
+    const uninstallDeferred = context.mocks.deferred<void>();
+    let slackStatus: SlackOrgStatus = {
+      isConnected: true,
+      isInstalled: true,
+      isAdmin: true,
+      installUrl: "https://slack.com/oauth/install?state=abc",
+      connectUrl: null,
+      reinstallUrl: null,
+      scopeMismatch: false,
+      workspaceName: "VM0 HQ",
+      agentOrgSlug: null,
+      environment: {
+        requiredSecrets: [],
+        requiredVars: [],
+        missingSecrets: [],
+        missingVars: [],
+      },
+    };
+    let uninstallRequested = false;
+    context.mocks.api(
+      zeroIntegrationsSlackContract.getStatus,
+      ({ respond }) => {
+        return respond(200, slackStatus);
+      },
+    );
+    context.mocks.api(
+      zeroIntegrationsSlackContract.disconnect,
+      ({ query, respond }) => {
+        return uninstallDeferred.promise.then(() => {
+          uninstallRequested = query.action === "uninstall";
+          if (uninstallRequested) {
+            slackStatus = {
+              ...slackStatus,
+              isConnected: false,
+              isInstalled: false,
+              workspaceName: null,
+            };
+          }
+          return respond(200, { ok: true });
+        });
+      },
+    );
+
+    setupWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected (VM0 HQ)")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByLabelText("Uninstall"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Uninstall Slack integration?"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/This will remove the Slack integration/u),
+    ).toBeInTheDocument();
+
+    click(screen.getByText("Cancel"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Uninstall Slack integration?"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByLabelText("Uninstall"));
+    const dialog = await screen.findByRole("dialog");
+    click(within(dialog).getByText("Uninstall"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Uninstalling…")).toBeInTheDocument();
+    });
+    uninstallDeferred.resolve();
+
+    await waitFor(() => {
+      expect(uninstallRequested).toBeTruthy();
+      expect(
+        screen.queryByText("Uninstall Slack integration?"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("slack-install-button")).toBeInTheDocument();
+    });
+  });
+
   it("opens Telegram settings from the integrations list", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
 

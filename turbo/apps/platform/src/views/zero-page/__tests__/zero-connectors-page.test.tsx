@@ -1,5 +1,7 @@
 import {
   zeroConnectorOauthStartContract,
+  zeroConnectorExternalCodeSessionContract,
+  zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
@@ -402,6 +404,139 @@ describe("connectors page", () => {
     });
   });
 
+  it("shows removed OAuth scopes during connector permission review", async () => {
+    mockConnectors([
+      {
+        type: "github",
+        oauthScopes: ["repo", "workflow"],
+      },
+    ]);
+    context.mocks.api(
+      zeroConnectorScopeDiffContract.getScopeDiff,
+      ({ respond }) => {
+        return respond(200, {
+          addedScopes: [],
+          removedScopes: ["workflow"],
+          currentScopes: ["repo"],
+          storedScopes: ["repo", "workflow"],
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Review")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Review"));
+    await waitFor(() => {
+      expect(screen.getByText("Removed permissions")).toBeInTheDocument();
+      expect(screen.getByText("workflow")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps external-code connector setup open when the sign-in session cannot start", async () => {
+    mockConnectors([]);
+    context.mocks.api(
+      zeroConnectorExternalCodeSessionContract.create,
+      ({ respond }) => {
+        return respond(500, {
+          error: {
+            message: "AWS sign-in is temporarily unavailable",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Find connectors"),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors"), "aws");
+    click(await screen.findByLabelText("Connect AWS"));
+
+    const connectDialog = await screen.findByRole("dialog", { name: "AWS" });
+    click(buttonByText("Start AWS sign-in", connectDialog));
+
+    await waitFor(() => {
+      expect(
+        within(connectDialog).getByText(
+          "AWS sign-in is temporarily unavailable",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        buttonByText("Start AWS sign-in", connectDialog),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the external-code form open when the authorization code is rejected", async () => {
+    mockConnectors([]);
+    context.mocks.browser.open(createMockAuthWindow());
+    context.mocks.api(
+      zeroConnectorExternalCodeSessionContract.complete,
+      ({ respond }) => {
+        return respond(400, {
+          error: {
+            message: "Authorization code rejected",
+            code: "BAD_REQUEST",
+          },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Find connectors"),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors"), "aws");
+    click(await screen.findByLabelText("Connect AWS"));
+
+    const connectDialog = await screen.findByRole("dialog", { name: "AWS" });
+    click(buttonByText("Start AWS sign-in", connectDialog));
+    await waitFor(() => {
+      expect(
+        buttonByText("Open AWS sign-in", connectDialog),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Open AWS sign-in", connectDialog));
+    await fill(
+      within(connectDialog).getByTestId("connector-external-code-input"),
+      "BAD-CODE",
+    );
+    click(
+      within(connectDialog).getByTestId("connector-external-code-complete"),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(connectDialog).getByText("Authorization code rejected"),
+      ).toBeInTheDocument();
+      expect(
+        within(connectDialog).getByTestId("connector-external-code-input"),
+      ).toHaveValue("BAD-CODE");
+    });
+  });
+
   it("starts a device-auth connector grant", async () => {
     mockConnectors([]);
 
@@ -449,6 +584,79 @@ describe("connectors page", () => {
       expect(
         within(connectorCardByLabel("Base44")).getByText("Connected"),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("shows device-auth connector start failures and leaves retry available", async () => {
+    mockConnectors([]);
+    context.mocks.api(
+      zeroConnectorOauthDeviceAuthSessionContract.create,
+      ({ respond }) => {
+        return respond(500, {
+          error: {
+            message: "Base44 device authorization is unavailable",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Base44")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Connect Base44"));
+
+    const deviceDialog = await screen.findByRole("dialog", { name: "Base44" });
+    click(buttonByText("Connect Base44", deviceDialog));
+
+    await waitFor(() => {
+      expect(
+        within(deviceDialog).getByText(
+          "Base44 device authorization is unavailable",
+        ),
+      ).toBeInTheDocument();
+      expect(buttonByText("Try again", deviceDialog)).toBeInTheDocument();
+    });
+  });
+
+  it("shows denied device-auth connector grants and allows a retry", async () => {
+    mockConnectors([]);
+    context.mocks.browser.open(createMockAuthWindow());
+    context.mocks.api(
+      zeroConnectorOauthDeviceAuthSessionContract.poll,
+      ({ respond }) => {
+        return respond(200, {
+          status: "denied",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Base44")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Connect Base44"));
+
+    const deviceDialog = await screen.findByRole("dialog", { name: "Base44" });
+    click(buttonByText("Connect Base44", deviceDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("VM0-DEVICE");
+    });
+    click(screen.getByTestId("connector-oauth-device-open"));
+
+    await waitFor(() => {
+      expect(
+        within(deviceDialog).getByText(
+          "Connection was denied. Start again to retry.",
+        ),
+      ).toBeInTheDocument();
+      expect(buttonByText("Try again", deviceDialog)).toBeInTheDocument();
     });
   });
 

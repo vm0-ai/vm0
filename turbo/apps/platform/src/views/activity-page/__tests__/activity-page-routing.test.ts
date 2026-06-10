@@ -10,6 +10,7 @@ import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type {
   AgentEventsResponse,
+  LogEntry,
   LogDetail,
 } from "../../../signals/zero-page/log-types.ts";
 
@@ -105,6 +106,28 @@ function mockActivityAPIs(): void {
   );
 }
 
+function makeActivityRow(
+  idSuffix: string,
+  overrides: Partial<LogEntry> = {},
+): LogEntry {
+  return {
+    id: `b0000000-0000-4000-a000-000000000${idSuffix}`,
+    sessionId: `session-${idSuffix}`,
+    agentId: "c0000000-0000-4000-a000-000000000101",
+    displayName: "Research Agent",
+    framework: "claude-code",
+    status: "completed",
+    triggerSource: "web",
+    triggerAgentName: null,
+    scheduleId: null,
+    prompt: "Review activity",
+    createdAt: "2026-03-10T15:00:00Z",
+    startedAt: "2026-03-10T15:00:01Z",
+    completedAt: "2026-03-10T15:00:04Z",
+    ...overrides,
+  };
+}
+
 describe("activity page routing", () => {
   it("opens an activity detail from the list and returns by breadcrumb", async () => {
     mockActivityAPIs();
@@ -169,6 +192,132 @@ describe("activity page routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Agent (Parent Bot)")).toBeInTheDocument();
+    });
+  });
+
+  it("filters and paginates activity runs from the list controls", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000101";
+    context.mocks.data.composesList([
+      {
+        id: agentId,
+        name: "research-agent",
+        displayName: "Research Agent",
+        description: null,
+        sound: null,
+        headVersionId: null,
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    context.mocks.api(logsListContract.list, ({ query, respond }) => {
+      const filters: {
+        statuses: LogEntry["status"][];
+        sources: NonNullable<LogEntry["triggerSource"]>[];
+        agents: string[];
+      } = {
+        statuses: ["completed", "failed"],
+        sources: ["web", "telegram"],
+        agents: [agentId],
+      };
+
+      if (query.status === "failed" && query.triggerSource === "telegram") {
+        return respond(200, {
+          data: [
+            makeActivityRow("301", {
+              displayName: "Telegram Agent",
+              status: "failed",
+              triggerSource: "telegram",
+              startedAt: "2026-03-10T15:20:01Z",
+              completedAt: "2026-03-10T15:20:06Z",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+          filters,
+        });
+      }
+
+      if (query.status === "failed") {
+        return respond(200, {
+          data: [
+            makeActivityRow("201", {
+              displayName: "Incident Agent",
+              status: "failed",
+              triggerSource: "web",
+              startedAt: "2026-03-10T15:10:01Z",
+              completedAt: "2026-03-10T15:10:06Z",
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+          filters,
+        });
+      }
+
+      if (query.cursor === "page-3") {
+        return respond(200, {
+          data: [makeActivityRow("103", { displayName: "Archive Agent" })],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 3 },
+          filters,
+        });
+      }
+
+      if (query.cursor === "page-2") {
+        return respond(200, {
+          data: [makeActivityRow("102", { displayName: "Ops Agent" })],
+          pagination: { hasMore: true, nextCursor: "page-3", totalPages: 3 },
+          filters,
+        });
+      }
+
+      return respond(200, {
+        data: [makeActivityRow("101")],
+        pagination: { hasMore: true, nextCursor: "page-2", totalPages: 3 },
+        filters,
+      });
+    });
+
+    detachedSetupPage({ context, path: "/activities" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Research Agent")).toBeInTheDocument();
+      expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Forward 2 pages"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Archive Agent")).toBeInTheDocument();
+      expect(screen.getByText("Page 3 of 3")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Back 2 pages"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Research Agent")).toBeInTheDocument();
+      expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Rows per page"));
+    click(screen.getByRole("option", { name: "20" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Research Agent")).toBeInTheDocument();
+      expect(screen.getByText("20")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Status filter"));
+    click(screen.getByRole("option", { name: "Failed" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Incident Agent")).toBeInTheDocument();
+      expect(screen.queryByText("Research Agent")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Source filter"));
+    click(screen.getByRole("option", { name: "Telegram" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Telegram Agent")).toBeInTheDocument();
+      expect(screen.queryByText("Incident Agent")).not.toBeInTheDocument();
+      expect(screen.getAllByText("Telegram").length).toBeGreaterThan(0);
     });
   });
 });

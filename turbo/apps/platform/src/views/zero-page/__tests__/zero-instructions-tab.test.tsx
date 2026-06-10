@@ -97,4 +97,80 @@ describe("zero instructions tab", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  it("formats and saves edited instructions", async () => {
+    const user = userEvent.setup({ delay: null });
+    let savedInstructions = "Review release notes";
+    let capturedBody: unknown = null;
+    prepareAgentInstructions(savedInstructions);
+    context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: savedInstructions, filename: null });
+    });
+    context.mocks.api(
+      zeroAgentInstructionsContract.update,
+      ({ body, respond }) => {
+        capturedBody = body;
+        savedInstructions = body.content;
+        return respond(200, {
+          agentId: AGENT_ID,
+          ownerId: "test-user-123",
+          description: "A helpful agent",
+          displayName: "Research Agent",
+          sound: null,
+          avatarUrl: null,
+          customSkills: [],
+          visibility: "public",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}?tab=instructions`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Review release notes")).toBeInTheDocument();
+    });
+
+    const editor = document.querySelector('[contenteditable="true"]');
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("instructions editor not found");
+    }
+    await user.click(editor);
+    await user.keyboard("{Control>}a{/Control}");
+    for (const title of [
+      "Bold",
+      "Italic",
+      "Strikethrough",
+      "Inline code",
+      "Heading 1",
+      "Heading 2",
+      "Heading 3",
+      "Bullet list",
+      "Ordered list",
+      "Blockquote",
+    ]) {
+      click(await screen.findByTitle(title));
+    }
+    await user.click(editor);
+    await user.keyboard(
+      "{Control>}a{/Control}Review release notes with launch risks",
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByTestId("save-button"));
+
+    await waitFor(() => {
+      expect(capturedBody).toStrictEqual({
+        content: expect.stringContaining("Review release notes"),
+      });
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

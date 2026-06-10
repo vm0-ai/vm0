@@ -64,6 +64,24 @@ interface ClipboardRichWriteMock {
   writes: ClipboardItem[][];
 }
 
+interface BrowserDownload {
+  readonly url: string;
+  readonly filename: string;
+  readonly blob: Blob | null;
+}
+
+interface BrowserDownloadMock {
+  readonly downloads: BrowserDownload[];
+  readonly revokedUrls: string[];
+}
+
+interface ImageDimensionsMockValue {
+  width: number;
+  height: number;
+}
+
+type ImageDimensionsMockResult = ImageDimensionsMockValue | null;
+
 interface Bb0BluetoothRequestDeviceOptions {
   readonly acceptAllDevices?: boolean;
   readonly filters?: readonly {
@@ -255,6 +273,19 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       clipboardWrite: (): ClipboardRichWriteMock => {
         return mockClipboardWrite(getSignal());
       },
+      blobDownload: (): BrowserDownloadMock => {
+        return mockBlobDownload(getSignal());
+      },
+      audioContext: (): void => {
+        mockAudioContext(getSignal());
+      },
+      imageDimensions: (
+        results:
+          | ImageDimensionsMockResult
+          | readonly ImageDimensionsMockResult[],
+      ): void => {
+        mockImageDimensions(getSignal(), results);
+      },
       webBluetoothSupport: (): void => {
         mockSupportedWebBluetooth(getSignal());
       },
@@ -366,6 +397,161 @@ function mockClipboardWrite(signal: AbortSignal): ClipboardRichWriteMock {
     spy.mockRestore();
   });
   return { writes };
+}
+
+function mockBlobDownload(signal: AbortSignal): BrowserDownloadMock {
+  const downloads: BrowserDownload[] = [];
+  const revokedUrls: string[] = [];
+  const blobs = new Map<string, Blob>();
+  let objectUrlIndex = 0;
+
+  const createObjectUrlDescriptor = defineWindowProperty(
+    URL,
+    "createObjectURL",
+    (object: Blob | MediaSource) => {
+      objectUrlIndex += 1;
+      const url = `blob:mock-download-${objectUrlIndex}`;
+      if (object instanceof Blob) {
+        blobs.set(url, object);
+      }
+      return url;
+    },
+  );
+  const revokeObjectUrlDescriptor = defineWindowProperty(
+    URL,
+    "revokeObjectURL",
+    (url: string) => {
+      revokedUrls.push(url);
+    },
+  );
+  const clickSpy = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push({
+        url: this.href,
+        filename: this.download,
+        blob: blobs.get(this.href) ?? null,
+      });
+    });
+
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(URL, "createObjectURL", createObjectUrlDescriptor);
+    restoreWindowProperty(URL, "revokeObjectURL", revokeObjectUrlDescriptor);
+    clickSpy.mockRestore();
+  });
+
+  return { downloads, revokedUrls };
+}
+
+function mockAudioContext(signal: AbortSignal): void {
+  class TestAudioBuffer {
+    readonly duration: number;
+    private readonly channelData: Float32Array;
+
+    constructor(length: number, sampleRate: number) {
+      this.duration = length / sampleRate;
+      this.channelData = new Float32Array(length);
+    }
+
+    getChannelData(_channel: number): Float32Array {
+      return this.channelData;
+    }
+  }
+
+  class TestAudioBufferSource {
+    buffer: AudioBuffer | null = null;
+
+    connect(_destination: AudioDestinationNode): void {}
+
+    start(_when?: number): void {}
+  }
+
+  class TestAudioContext {
+    readonly currentTime = 0;
+    readonly destination = {} as AudioDestinationNode;
+
+    resume(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    close(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    createBuffer(
+      _numberOfChannels: number,
+      length: number,
+      sampleRate: number,
+    ): AudioBuffer {
+      return new TestAudioBuffer(length, sampleRate) as unknown as AudioBuffer;
+    }
+
+    createBufferSource(): AudioBufferSourceNode {
+      return new TestAudioBufferSource() as unknown as AudioBufferSourceNode;
+    }
+  }
+
+  const descriptor = defineWindowProperty(
+    window,
+    "AudioContext",
+    TestAudioContext,
+  );
+
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(window, "AudioContext", descriptor);
+  });
+}
+
+function mockImageDimensions(
+  signal: AbortSignal,
+  results: ImageDimensionsMockResult | readonly ImageDimensionsMockResult[],
+): void {
+  const pendingResults = Array.isArray(results) ? [...results] : [results];
+  let objectUrlIndex = 0;
+
+  class TestImage extends EventTarget {
+    naturalWidth = 0;
+    naturalHeight = 0;
+
+    set src(_value: string) {
+      const result =
+        pendingResults.length > 1
+          ? pendingResults.shift()
+          : (pendingResults[0] ?? null);
+      if (result) {
+        this.naturalWidth = result.width;
+        this.naturalHeight = result.height;
+      }
+      queueMicrotask(() => {
+        this.dispatchEvent(new Event(result ? "load" : "error"));
+      });
+    }
+  }
+
+  const createObjectUrlDescriptor = defineWindowProperty(
+    URL,
+    "createObjectURL",
+    (_object: Blob | MediaSource) => {
+      objectUrlIndex += 1;
+      return `blob:mock-image-${objectUrlIndex}`;
+    },
+  );
+  const revokeObjectUrlDescriptor = defineWindowProperty(
+    URL,
+    "revokeObjectURL",
+    (_url: string) => {},
+  );
+  const imageDescriptor = defineWindowProperty(
+    window,
+    "Image",
+    TestImage as unknown as typeof Image,
+  );
+
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(URL, "createObjectURL", createObjectUrlDescriptor);
+    restoreWindowProperty(URL, "revokeObjectURL", revokeObjectUrlDescriptor);
+    restoreWindowProperty(window, "Image", imageDescriptor);
+  });
 }
 
 function mockSupportedWebBluetooth(signal: AbortSignal): void {

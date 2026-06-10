@@ -746,6 +746,91 @@ describe("activity detail polling", () => {
     expect(screen.getByText("truncated")).toBeInTheDocument();
   });
 
+  it("downloads a completed activity with debug context and network logs", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000399";
+    const downloads = context.mocks.browser.blobDownload();
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Checkout Export",
+          status: "completed",
+          prompt: "Export checkout diagnostics",
+          startedAt: "2026-03-10T14:56:01Z",
+          completedAt: "2026-03-10T14:56:10Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: detailedActivityEvents(),
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+      return respond(200, codexRunContext(runId));
+    });
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      ({ respond }) => {
+        return respond(200, {
+          networkLogs: checkoutNetworkLogs(),
+          hasMore: false,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Checkout Export" }),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download raw data"));
+
+    await waitFor(() => {
+      expect(downloads.downloads).toHaveLength(1);
+    });
+    const download = downloads.downloads[0];
+    if (!download?.blob) {
+      throw new Error("Downloaded activity blob was not captured");
+    }
+    const downloaded = JSON.parse(await download.blob.text()) as {
+      meta?: { id?: unknown; displayName?: unknown; status?: unknown };
+      events?: unknown[];
+      context?: { prompt?: unknown; runId?: unknown };
+      networkLogs?: { url?: unknown }[];
+    };
+
+    expect(download.filename).toBe(`${runId}-logs.json`);
+    expect(downloaded.meta).toMatchObject({
+      id: runId,
+      displayName: "Checkout Export",
+      status: "completed",
+    });
+    expect(downloaded.events?.length).toBeGreaterThan(0);
+    expect(downloaded.context).toMatchObject({
+      prompt: "Repair the billing worker retry path",
+      runId,
+    });
+    expect(downloaded.networkLogs?.[0]?.url).toBe(
+      "https://payments.example.test/v1/checkout",
+    );
+    expect(downloads.revokedUrls).toContain(download.url);
+  });
+
   it("shows codex run steps, debug context, runner reuse, and network paging", async () => {
     const runId = "a0000000-0000-4000-a000-000000000299";
 

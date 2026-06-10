@@ -1407,6 +1407,77 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("sends readable assistant content to audio output", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "audio-output-thread";
+    const runId = "a0000000-0000-4000-a000-000000000401";
+    const assistantReply = [
+      "## Launch notes",
+      "- **Ship** the preview",
+      "- [Open dashboard](https://example.com)",
+      "",
+      "```ts",
+      "const hidden = true;",
+      "```",
+    ].join("\n");
+    let capturedTtsBody: unknown = null;
+
+    context.mocks.browser.audioContext();
+    context.mocks.http.post("*/api/zero/voice-io/tts", async ({ request }) => {
+      capturedTtsBody = await request.json();
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([0, 0, 1, 0, 2, 0]));
+            controller.close();
+          },
+        }),
+        { headers: { "Content-Type": "audio/pcm" } },
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Audio output",
+      chatMessages: [
+        {
+          id: "msg-audio-output-user",
+          role: "user",
+          content: "Read the launch notes",
+          runId,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-audio-output-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId,
+          status: "completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.AudioOutput]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Launch notes")).toBeInTheDocument();
+      expect(screen.getByLabelText("Read aloud")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Read aloud"));
+
+    await waitFor(() => {
+      expect(capturedTtsBody).toStrictEqual({
+        text: "Launch notes\nShip the preview\nOpen dashboard",
+      });
+      expect(screen.getByLabelText("Read aloud")).toBeInTheDocument();
+    });
+  });
+
   it("shows billing recovery guidance when credits are depleted", async () => {
     const threadId = "failed-guidance-credits";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
