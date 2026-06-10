@@ -766,6 +766,57 @@ button {
   line-height: 1.45;
 }
 
+.startup-loading {
+  min-height: min(460px, calc(100vh - 144px));
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.startup-loading-mark {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #2563eb;
+  background: #eff8ff;
+}
+
+.startup-loading-mark svg {
+  animation: startup-loading-spin 900ms linear infinite;
+}
+
+.startup-loading-copy {
+  max-width: 360px;
+  display: grid;
+  gap: 6px;
+}
+
+.startup-loading-copy h2 {
+  margin: 0;
+  color: #202631;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.startup-loading-copy p {
+  margin: 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@keyframes startup-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .screenshot-lightbox {
   position: fixed;
   inset: 0;
