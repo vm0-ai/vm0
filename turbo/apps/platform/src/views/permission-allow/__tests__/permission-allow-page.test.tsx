@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -96,7 +95,7 @@ describe("permission allow page", () => {
     });
   });
 
-  it("hides existing grant expiry when expiring grants are disabled", async () => {
+  it("shows existing grant expiry for matching allow grants", async () => {
     mockAgent();
     setMockUserPermissionGrants([
       createMockUserPermissionGrantResponse({
@@ -115,7 +114,7 @@ describe("permission allow page", () => {
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
     });
-    expect(screen.queryByText(/Expires in/)).not.toBeInTheDocument();
+    expect(screen.getByText("Expires in 1 hour")).toBeInTheDocument();
   });
 
   it("ignores expired matching grants", async () => {
@@ -170,11 +169,11 @@ describe("permission allow page", () => {
       connectorRef: "slack",
       permission: "chat:write",
       action: "allow",
+      expiresIn: "1h",
     });
-    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
   });
 
-  it("submits the default duration when expiring grants are enabled", async () => {
+  it("submits the default duration for allow grants", async () => {
     let grantBody: unknown;
     mockAgent();
     setMockUserPermissionGrants([]);
@@ -191,11 +190,9 @@ describe("permission allow page", () => {
       }),
     );
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow`,
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
-    });
+    setupPermissionPage(
+      `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow`,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Research agent")).toBeInTheDocument();
@@ -237,11 +234,9 @@ describe("permission allow page", () => {
       }),
     );
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow&expiresIn=1h`,
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
-    });
+    setupPermissionPage(
+      `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow&expiresIn=1h`,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Research agent")).toBeInTheDocument();
@@ -271,11 +266,9 @@ describe("permission allow page", () => {
       }),
     ]);
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow&expiresIn=always`,
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
-    });
+    setupPermissionPage(
+      `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow&expiresIn=always`,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
@@ -302,11 +295,9 @@ describe("permission allow page", () => {
       }),
     ]);
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow&expiresIn=always`,
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
-    });
+    setupPermissionPage(
+      `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow&expiresIn=always`,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Research agent")).toBeInTheDocument();
@@ -317,7 +308,7 @@ describe("permission allow page", () => {
     });
   });
 
-  it("submits the selected duration when expiring grants are enabled", async () => {
+  it("submits the selected duration for allow grants", async () => {
     let grantBody: unknown;
     mockAgent();
     setMockUserPermissionGrants([]);
@@ -328,11 +319,9 @@ describe("permission allow page", () => {
       }),
     );
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow`,
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
-    });
+    setupPermissionPage(
+      `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow`,
+    );
 
     const durationSelect = await screen.findByRole("combobox", {
       name: "Permission duration",
@@ -357,11 +346,9 @@ describe("permission allow page", () => {
       }),
     );
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
-    });
+    setupPermissionPage(
+      `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Research agent")).toBeInTheDocument();

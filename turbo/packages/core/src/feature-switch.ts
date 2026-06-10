@@ -316,13 +316,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ExpiringPermissionGrants]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Show duration controls for explicit current-user permission grants.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ConnectorPermissionReset]: {
     maintainer: "liangyou@vm0.ai",
     description:
