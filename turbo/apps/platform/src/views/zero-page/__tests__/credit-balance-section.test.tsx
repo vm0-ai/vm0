@@ -99,6 +99,25 @@ describe("credit balance settings section", () => {
     expect(within(dialog).queryByText("Team usage")).not.toBeInTheDocument();
   });
 
+  it("closes the settings dialog when a usage row is clicked", async () => {
+    setMockOrg({ role: "member" });
+    setUsageRows([
+      usageRow({ title: "Member chat", source: "chat", index: 1 }),
+    ]);
+
+    const dialog = await openCreditBalanceSection();
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Member chat")).toBeInTheDocument();
+    });
+
+    click(within(dialog).getByText("Member chat"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("loads additional personal rows and filters by source", async () => {
     setMockOrg({ role: "member" });
     setUsageRows([
