@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import indexHtml from "../../index.html?raw";
 
+type BrowserUpgradeTarget = {
+  actionLabel: string;
+  actionUrl: string;
+  description: string;
+  title: string;
+};
+
 const browserSupportScript = Array.from(
   indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g),
 )
@@ -13,9 +20,18 @@ if (!browserSupportScript) {
 
 const getBrowserSupportResult = (
   userAgent: string,
-): { blocked: boolean; supported: boolean | undefined } => {
+): {
+  browserSupportedAttribute: string | undefined;
+  blocked: boolean;
+  supported: boolean | undefined;
+  upgradeTarget: BrowserUpgradeTarget | undefined;
+} => {
+  let browserSupportedAttribute: string | undefined;
   let blocked = false;
-  const windowState: { __vm0BrowserSupported?: boolean } = {};
+  const windowState: {
+    __vm0BrowserUpgrade?: BrowserUpgradeTarget;
+    __vm0BrowserSupported?: boolean;
+  } = {};
   const runBrowserSupportScript = new Function(
     "document",
     "navigator",
@@ -27,7 +43,12 @@ const getBrowserSupportResult = (
     {
       documentElement: {
         setAttribute(name: string, value: string) {
-          blocked = name === "data-browser-supported" && value === "false";
+          if (name !== "data-browser-supported") {
+            return;
+          }
+
+          browserSupportedAttribute = value;
+          blocked = value === "false";
         },
       },
     },
@@ -35,7 +56,12 @@ const getBrowserSupportResult = (
     windowState,
   );
 
-  return { blocked, supported: windowState.__vm0BrowserSupported };
+  return {
+    browserSupportedAttribute,
+    blocked,
+    supported: windowState.__vm0BrowserSupported,
+    upgradeTarget: windowState.__vm0BrowserUpgrade,
+  };
 };
 
 // The platform app is an English-only admin UI. Browser auto-translation
@@ -77,16 +103,18 @@ describe("platform index.html browser support gate", () => {
     expect(indexHtml).not.toMatch(
       /<script[^>]*\btype="module"[^>]*\bsrc="\/src\/main\.ts"/,
     );
-    expect(indexHtml).toContain("window.__vm0BrowserSupported !== false");
+    expect(indexHtml).toContain("window.__vm0BrowserSupported === true");
     expect(indexHtml).toContain('import("/src/main.ts")');
   });
 
   it("shows an upgrade page for browsers below the app CSS target", () => {
     expect(indexHtml).toContain("data-browser-supported");
+    expect(indexHtml).toContain('[data-browser-supported="true"] #root');
     expect(indexHtml).toContain("Update your browser to continue");
-    expect(indexHtml).toContain("Chrome 111+");
-    expect(indexHtml).toContain("Safari 16.4+");
-    expect(indexHtml).toContain("iOS 16.4+");
+    expect(indexHtml).toContain(
+      "Zero does not support your current browser version",
+    );
+    expect(indexHtml.match(/<a\b/g)).toHaveLength(1);
   });
 
   it.each([
@@ -126,9 +154,43 @@ describe("platform index.html browser support gate", () => {
       true,
     ],
   ])("classifies %s support from the user agent", (_, userAgent, expected) => {
-    expect(getBrowserSupportResult(userAgent)).toStrictEqual({
+    expect(getBrowserSupportResult(userAgent)).toMatchObject({
+      browserSupportedAttribute: String(expected),
       blocked: !expected,
       supported: expected,
     });
   });
+
+  it.each([
+    [
+      "Chrome",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+      "Update Chrome",
+    ],
+    [
+      "HeadlessChrome",
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/147.0.0.0 Safari/537.36",
+      "Update Chrome",
+    ],
+    [
+      "Safari",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.3 Safari/605.1.15",
+      "Update Safari",
+    ],
+    [
+      "iOS",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 16_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/112.0.0.0 Mobile/15E148 Safari/604.1",
+      "Update iOS",
+    ],
+  ])(
+    "sets a single %s-specific upgrade action",
+    (_, userAgent, actionLabel) => {
+      expect(getBrowserSupportResult(userAgent).upgradeTarget).toMatchObject({
+        actionLabel,
+        description: expect.stringContaining(
+          "Zero does not support your current browser version",
+        ),
+      });
+    },
+  );
 });
