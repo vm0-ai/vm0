@@ -923,6 +923,23 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestUpdateAgentMetadata(
+      actor: ApiTestUser | null,
+      agentId: string,
+      body: ZeroAgentMetadataRequest,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
+    ) {
+      const client = setupApp({ context })(zeroAgentsByIdContract);
+      return await accept(
+        client.updateMetadata({
+          params: { id: agentId },
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async deleteAgent(actor: ApiTestUser, agentId: string): Promise<void> {
       const client = setupApp({ context })(zeroAgentsByIdContract);
       await accept(

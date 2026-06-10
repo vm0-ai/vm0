@@ -531,6 +531,38 @@ describe("ORG-01 and ORG-02", () => {
 });
 
 describe("AGENT-01 and AGENT-02", () => {
+  it("rejects agent metadata updates at unauthenticated, malformed, and missing boundaries", async () => {
+    const admin = api.user();
+    const missingAgentId = randomUUID();
+
+    const unauthenticated = await api.requestUpdateAgentMetadata(
+      null,
+      missingAgentId,
+      { displayName: "No auth" },
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+
+    const malformed = await api.requestUpdateAgentMetadata(
+      admin,
+      "not-a-valid-agent-id",
+      { displayName: "Malformed" },
+      [400],
+    );
+    expectApiError(malformed.body);
+    expect(malformed.body.error.code).toBe("BAD_REQUEST");
+
+    const missing = await api.requestUpdateAgentMetadata(
+      admin,
+      missingAgentId,
+      { displayName: "Missing" },
+      [404],
+    );
+    expectApiError(missing.body);
+    expect(missing.body.error.code).toBe("NOT_FOUND");
+  });
+
   it("enforces the public agent limit while still allowing private agents", async () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
@@ -608,6 +640,24 @@ describe("AGENT-01 and AGENT-02", () => {
       displayName: "BDD Private After Public Limit",
       visibility: "private",
     });
+
+    const blockedVisibility = await api.requestUpdateAgentMetadata(
+      admin,
+      privateAfterLimit.agentId,
+      { visibility: "public" },
+      [409],
+    );
+    expectApiError(blockedVisibility.body);
+    expect(blockedVisibility.body.error.code).toBe("CONFLICT");
+    expect(blockedVisibility.body.error.message).toBe(
+      "This organization has reached the maximum number of agents (7). Delete an existing agent before making this agent public.",
+    );
+
+    const privateAfterBlockedVisibility = await api.readAgent(
+      admin,
+      privateAfterLimit.agentId,
+    );
+    expect(privateAfterBlockedVisibility.visibility).toBe("private");
   });
 
   it("covers agent isolation, default-agent permissions, and org custom connector enablement", async () => {

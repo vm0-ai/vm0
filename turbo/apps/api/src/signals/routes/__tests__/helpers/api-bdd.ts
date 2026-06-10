@@ -280,6 +280,22 @@ export function createBddApi(context: TestContext) {
       return response.body;
     },
 
+    async updateAgent(
+      nextUser: ApiTestUser,
+      agentId: string,
+      body: ZeroAgentRequest,
+    ): Promise<ZeroAgentResponse> {
+      const response = await accept(
+        agentsByIdClient().update({
+          params: { id: agentId },
+          headers: authenticate(nextUser),
+          body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async deleteAgent(nextUser: ApiTestUser, agentId: string): Promise<void> {
       await accept(
         agentsByIdClient().delete({

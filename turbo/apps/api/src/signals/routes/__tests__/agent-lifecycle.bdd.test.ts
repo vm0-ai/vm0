@@ -49,6 +49,33 @@ describe("AGENT-01: zero agent lifecycle through public API", () => {
     expect(readAfterUpdate.description).toBe("Uses only public API state");
     expect(readAfterUpdate.visibility).toBe("private");
 
+    const replaced = await api.updateAgent(admin, created.agentId, {
+      displayName: "BDD Research Agent Replaced",
+      description: "Updated through PUT",
+      sound: "focus",
+      avatarUrl: "preset:3",
+      visibility: "public",
+      customSkills: [],
+    });
+    expect(replaced).toMatchObject({
+      agentId: created.agentId,
+      displayName: "BDD Research Agent Replaced",
+      description: "Updated through PUT",
+      sound: "focus",
+      avatarUrl: "preset:3",
+      visibility: "public",
+      customSkills: [],
+    });
+
+    const readAfterReplace = await api.readAgent(admin, created.agentId);
+    expect(readAfterReplace).toMatchObject({
+      displayName: "BDD Research Agent Replaced",
+      description: "Updated through PUT",
+      sound: "focus",
+      avatarUrl: "preset:3",
+      visibility: "public",
+    });
+
     await api.deleteAgent(admin, created.agentId);
 
     const missing = await api.requestReadAgent(admin, created.agentId, [404]);
