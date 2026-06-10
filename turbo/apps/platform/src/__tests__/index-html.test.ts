@@ -8,10 +8,11 @@ type BrowserUpgradeTarget = {
   title: string;
 };
 
+const indexDocument = new DOMParser().parseFromString(indexHtml, "text/html");
 const browserSupportScript = Array.from(
-  indexHtml.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/giu),
+  indexDocument.querySelectorAll("script"),
 )
-  .map((scriptMatch) => scriptMatch[1])
+  .map((script) => script.textContent ?? "")
   .find((scriptContent) => scriptContent.includes("__vm0BrowserSupported"));
 
 if (!browserSupportScript) {
