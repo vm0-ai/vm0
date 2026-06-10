@@ -265,8 +265,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
   },
   {
     id: "tech-minimalist-reveal",
-    nameZh: "极简科技·产品展示",
-    nameEn: "Tech Minimalist Reveal",
+    nameZh: "手机产品展示",
+    nameEn: "Phone Product Showcase",
     category: "brand_commercial",
     dimensions: {
       visualTone: "cold_desaturated",
@@ -277,9 +277,9 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       emotionalTone: "inspiring",
       styleReference: "tech_minimalist_reveal",
     },
-    scene: "laptop-open",
+    scene: "phone-product-showcase",
     sampleVideoUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6f1e98ef-7fc1-48b0-b1db-cd1ee58a0bd4/video-6f1e98ef.mp4",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/95946706-2280-4938-9ec1-f824816f5105/video-95946706.mp4",
   },
   {
     id: "luxury-watch-product",
