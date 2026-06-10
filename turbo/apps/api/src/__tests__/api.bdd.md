@@ -486,3 +486,38 @@ round (68% reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 6 — SCHEDULE-01 + CONNECTOR-01 + CHAT-01 BDD
+
+Migrated 4 more route families to BDD shape. Adds the second
+SCHEDULE-01 route (`zero-schedules-enable`), continues
+CONNECTOR-01 (`zero-custom-connectors`), and starts CHAT-01
+(`zero-chat-threads-pin`, `zero-chat-threads-unpin`).
+
+- `zero-schedules-enable.bdd.test.ts` — 6 legacy `it()`s → 2 BDD
+  `it()`s (auth boundary + a gwt-wt-wt chain that exercises
+  enable-by-name → 404 missing → enable-by-agentId → 400 bad body
+  → 400 SCHEDULE_PAST in one shared session). All Then assertions
+  are on the contract's response.
+- `zero-custom-connectors.bdd.test.ts` — 5 legacy `it()`s → 2 BDD
+  `it()`s (auth boundary + list chain: empty → with-secret →
+  without-secret). The list chain shares the same caller and
+  fixture shape.
+- `zero-chat-threads-pin.bdd.test.ts` — 5 legacy `it()`s → 2 BDD
+  `it()`s. The legacy direct DB SELECT verifying `pinnedAt` is
+  replaced by assertions on the public
+  `chatThreadsContract.list` response (pinned threads live in the
+  separate `pinned` array). The chain exercises 404 missing → 404
+  cross-user (verified via list) → 204 own (verified via list) →
+  204 re-pin (verified via list) plus Ably publish calls.
+- `zero-chat-threads-unpin.bdd.test.ts` — 5 legacy `it()`s → 2 BDD
+  `it()`s. Same Then strategy as pin: assertions on the
+  `chatThreadsContract.list` response replace the legacy DB
+  SELECT. The chain exercises 404 missing → 404 cross-user →
+  204 own → 204 idempotent.
+
+Net test count: 21 legacy `it()`s → 8 BDD `it()`s across this
+round (62% reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
