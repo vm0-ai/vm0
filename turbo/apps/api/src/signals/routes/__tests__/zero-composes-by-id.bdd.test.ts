@@ -207,4 +207,78 @@ describe("compose read by id (API-first BDD)", () => {
       [404],
     );
   });
+
+  it("reads a compose by name, and 404s for unknown / cross-org names", async () => {
+    const api = createBddApi(context);
+    api.allowInstructionsStorage();
+    const owner = api.actAsAdmin();
+
+    // Given an agent (compose) created through the API, with a known name.
+    const created = await accept(
+      api.agents.create({
+        headers: SESSION_AUTH,
+        body: { displayName: "Named" },
+      }),
+      [201],
+    );
+    const composeId = created.body.agentId;
+    const byId = await accept(
+      api.composesById.getById({
+        params: { id: composeId },
+        headers: SESSION_AUTH,
+      }),
+      [200],
+    );
+    const name = byId.body.name;
+
+    // When the compose is read by name. Then it is returned (metadata only).
+    const byName = await accept(
+      api.composesMain.getByName({ query: { name }, headers: SESSION_AUTH }),
+      [200],
+    );
+    expect(byName.body).toMatchObject({ id: composeId, name });
+    expect(byName.body.headVersionId).toMatch(/^[a-f0-9]{64}$/);
+
+    // Then an unknown name is not found.
+    const missing = await accept(
+      api.composesMain.getByName({
+        query: { name: "nonexistent-agent" },
+        headers: SESSION_AUTH,
+      }),
+      [404],
+    );
+    expect(missing.body).toStrictEqual({
+      error: {
+        message: "Agent compose not found: nonexistent-agent",
+        code: "NOT_FOUND",
+      },
+    });
+
+    // Then the same name in a different org is not found, and unauthenticated
+    // / no-org reads are rejected.
+    api.actAsAdmin();
+    const crossOrg = await accept(
+      api.composesMain.getByName({ query: { name }, headers: SESSION_AUTH }),
+      [404],
+    );
+    expect(crossOrg.body).toStrictEqual({
+      error: {
+        message: `Agent compose not found: ${name}`,
+        code: "NOT_FOUND",
+      },
+    });
+    await accept(
+      api.composesMain.getByName({ query: { name: "any" }, headers: {} }),
+      [401],
+    );
+    api.actAsNoOrg();
+    await accept(
+      api.composesMain.getByName({
+        query: { name: "any" },
+        headers: SESSION_AUTH,
+      }),
+      [401],
+    );
+    expect(owner.orgId).toStrictEqual(expect.any(String));
+  });
 });

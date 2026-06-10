@@ -126,6 +126,8 @@ below. This file is filled in family-by-family as work proceeds.
   unknown / malformed / cross-org.
 - **CHAIN-COMPOSE-LIST** ✅ — create agents → list composes → delete one →
   list excludes → GET 404.
+- **CHAIN-COMPOSE-BY-NAME** ✅ — create agent → read its compose by name → 404
+  for unknown / cross-org.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -495,3 +497,16 @@ calc. Services tests outside this list migrate to route-level BDD.
   DB-seeded pending run (GAP-PENDING-RUN, revisits with the RUN family).
 - Coverage verified (source-only): `zero-composes.ts` (45/13) and the other
   compose route/service files unchanged vs the `main` baseline.
+
+### Round 13 — COMPOSE BY NAME (CHAIN-COMPOSE-BY-NAME)
+
+- Extended `createBddApi` with the `composesMain` (`zeroComposesMainContract`)
+  getByName client.
+- Extended `zero-composes-by-id.bdd.test.ts` with a getByName chain: create
+  agent → read its name via getById → getByName returns it, plus unknown-404,
+  cross-org-404, and unauthenticated / no-org-401 branches.
+- Deleted `zero-composes-by-name.test.ts` whole.
+- Coverage verified (source-only): `zero-composes.ts` (45/13) unchanged vs the
+  `main` baseline. (An unrelated flaky `cron-summarize-memory` "idempotent on
+  rerun" test failed once mid-verification and passed on re-run — not a code
+  issue.)
