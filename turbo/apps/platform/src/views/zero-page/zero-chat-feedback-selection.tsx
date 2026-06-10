@@ -3,7 +3,6 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   RefCallback,
 } from "react";
-import { useState } from "react";
 import {
   IconArrowUp,
   IconCheck,
@@ -35,12 +34,14 @@ import {
   feedbackCopiedValue$,
   feedbackDraftValue$,
   feedbackEditingIdValue$,
+  feedbackExpandedValue$,
   feedbackSelectionValue$,
   feedbackSendCountValue$,
   removeFeedbackComment$,
   setFeedbackDraftNote$,
   startFeedback$,
   submitFeedback$,
+  toggleFeedbackExpanded$,
   type FeedbackComment,
   type FeedbackSelection,
 } from "../../signals/zero-page/chat-feedback.ts";
@@ -183,6 +184,64 @@ function FeedbackCommentCard({
   );
 }
 
+// Committed comments collapse to a one-line summary so the tray stays short and
+// the reply behind it stays visible. Expanding (or editing) reveals the bounded,
+// scrollable list.
+function FeedbackCommentSummary({
+  comments,
+  editingId,
+  expanded,
+  onToggle,
+  onEdit,
+  onRemove,
+}: {
+  comments: readonly FeedbackComment[];
+  editingId: number | null;
+  expanded: boolean;
+  onToggle: () => void;
+  onEdit: (id: number) => void;
+  onRemove: (id: number) => void;
+}) {
+  const showList = expanded || editingId !== null;
+  return (
+    <div className="mb-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+      >
+        <span>
+          {comments.length === 1 ? "1 comment" : `${comments.length} comments`}
+        </span>
+        {showList ? (
+          <IconChevronDown size={15} stroke={2} />
+        ) : (
+          <IconChevronRight size={15} stroke={2} />
+        )}
+      </button>
+      {showList ? (
+        <div className="mt-2 flex max-h-44 flex-col gap-2 overflow-y-auto pr-0.5">
+          {comments.map((comment) => {
+            return (
+              <FeedbackCommentCard
+                key={comment.id}
+                comment={comment}
+                editing={editingId === comment.id}
+                onEdit={() => {
+                  return onEdit(comment.id);
+                }}
+                onRemove={() => {
+                  return onRemove(comment.id);
+                }}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // Mounts the selection listeners and the floating Copy / Provide feedback
 // toolbar anchored to the highlighted passage.
 export function ChatFeedbackSelection() {
@@ -236,20 +295,17 @@ export function ChatFeedbackTray({
   const draft = useGet(feedbackDraftValue$);
   const editingId = useGet(feedbackEditingIdValue$);
   const sendCount = useGet(feedbackSendCountValue$);
+  const expanded = useGet(feedbackExpandedValue$);
   const setNote = useSet(setFeedbackDraftNote$);
   const editComment = useSet(editFeedbackComment$);
   const removeComment = useSet(removeFeedbackComment$);
+  const toggleExpanded = useSet(toggleFeedbackExpanded$);
   const submit = useSet(submitFeedback$);
   const dismiss = useSet(dismissFeedback$);
-  const [expanded, setExpanded] = useState(false);
 
   if (!active) {
     return null;
   }
-
-  // Collapse committed comments into a one-line summary by default so the tray
-  // stays short and Zero's reply stays visible; expand (or edit) to see them.
-  const showList = expanded || editingId !== null;
 
   const handleSubmit = () => {
     const prompt = submit();
@@ -292,47 +348,14 @@ export function ChatFeedbackTray({
           </div>
 
           {comments.length > 0 ? (
-            <div className="mb-2">
-              <button
-                type="button"
-                onClick={() => {
-                  return setExpanded((value) => {
-                    return !value;
-                  });
-                }}
-                className="flex w-full items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
-              >
-                <span>
-                  {comments.length === 1
-                    ? "1 comment"
-                    : `${comments.length} comments`}
-                </span>
-                {showList ? (
-                  <IconChevronDown size={15} stroke={2} />
-                ) : (
-                  <IconChevronRight size={15} stroke={2} />
-                )}
-              </button>
-              {showList ? (
-                <div className="mt-2 flex max-h-44 flex-col gap-2 overflow-y-auto pr-0.5">
-                  {comments.map((comment) => {
-                    return (
-                      <FeedbackCommentCard
-                        key={comment.id}
-                        comment={comment}
-                        editing={editingId === comment.id}
-                        onEdit={() => {
-                          return editComment(comment.id);
-                        }}
-                        onRemove={() => {
-                          return removeComment(comment.id);
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
+            <FeedbackCommentSummary
+              comments={comments}
+              editingId={editingId}
+              expanded={expanded}
+              onToggle={toggleExpanded}
+              onEdit={editComment}
+              onRemove={removeComment}
+            />
           ) : null}
 
           {draft ? (

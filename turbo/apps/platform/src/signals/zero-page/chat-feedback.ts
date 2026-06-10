@@ -35,6 +35,7 @@ const feedbackActive$ = state<boolean>(false);
 const feedbackComments$ = state<readonly FeedbackComment[]>([]);
 const feedbackDraft$ = state<FeedbackDraft | null>(null);
 const feedbackEditingId$ = state<number | null>(null);
+const feedbackExpanded$ = state<boolean>(false);
 const feedbackNextId$ = state<number>(1);
 const feedbackCopied$ = state<boolean>(false);
 const feedbackCopiedTimerId$ = state<number | null>(null);
@@ -57,6 +58,10 @@ export const feedbackDraftValue$ = computed((get) => {
 
 export const feedbackEditingIdValue$ = computed((get) => {
   return get(feedbackEditingId$);
+});
+
+export const feedbackExpandedValue$ = computed((get) => {
+  return get(feedbackExpanded$);
 });
 
 export const feedbackCopiedValue$ = computed((get) => {
@@ -194,6 +199,10 @@ export const setFeedbackDraftNote$ = command(({ get, set }, note: string) => {
   set(feedbackDraft$, { ...draft, note });
 });
 
+export const toggleFeedbackExpanded$ = command(({ get, set }) => {
+  set(feedbackExpanded$, !get(feedbackExpanded$));
+});
+
 export const editFeedbackComment$ = command(({ get, set }, id: number) => {
   set(commitDraft$);
   const comment = get(feedbackComments$).find((item) => {
@@ -241,6 +250,7 @@ export const dismissFeedback$ = command(({ get, set }) => {
   set(feedbackComments$, []);
   set(feedbackDraft$, null);
   set(feedbackEditingId$, null);
+  set(feedbackExpanded$, false);
   set(feedbackCopied$, false);
 });
 
