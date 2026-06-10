@@ -179,7 +179,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
     ...new Set(
       enabledEntries
         .filter((e) => {
-          return e.timezone && !e.time.match(/Every \d+ (minutes?|seconds?)/);
+          return e.timezone && !/Every \d+ (minutes?|seconds?)/.test(e.time);
         })
         .map((e) => {
           return e.timezone ?? "";
@@ -190,7 +190,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
     uniqueTimezones.length === 1 ? uniqueTimezones[0] : null;
 
   const loopEntries = enabledEntries.filter((e) => {
-    return e.time.match(/Every \d+ (minutes?|seconds?)/);
+    return /Every \d+ (minutes?|seconds?)/.test(e.time);
   });
   const onceEntries = enabledEntries.filter((e) => {
     return e.time.startsWith("Once on");
