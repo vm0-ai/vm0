@@ -44,6 +44,9 @@ export interface DesktopComputerUseApi {
   readonly start: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
   readonly requestScreenRecordingPermission: () => Promise<DesktopComputerUseState>;
+  readonly setKeepAwakeEnabled: (
+    enabled: boolean,
+  ) => Promise<DesktopComputerUseState>;
   readonly openAccessibilitySettings: () => Promise<void>;
   readonly openScreenRecordingSettings: () => Promise<void>;
   readonly subscribe: (callback: () => void) => () => void;

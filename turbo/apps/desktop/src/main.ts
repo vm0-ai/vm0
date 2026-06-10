@@ -6,6 +6,7 @@ import {
   dialog,
   Menu,
   net,
+  powerSaveBlocker,
   protocol,
   session,
   shell,
@@ -44,6 +45,7 @@ import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import { DesktopKeepAwakeController } from "./desktop-keep-awake";
 import {
   DesktopQuitConfirmationController,
   buildDesktopQuitConfirmationOptions,
@@ -106,6 +108,7 @@ let appIsQuitting = false;
 let computerUseQuitStopStarted = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
+let keepAwakeController: DesktopKeepAwakeController | null = null;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
@@ -221,6 +224,10 @@ function trayIconPath(): string {
   return path.join(__dirname, "..", "assets", "tray-iconTemplate.png");
 }
 
+function desktopPreferencesPath(): string {
+  return path.join(app.getPath("userData"), "desktop-preferences.json");
+}
+
 function applyAppName(): void {
   app.setName(config.identity.displayName);
   app.name = config.identity.displayName;
@@ -266,7 +273,32 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
       computerUseRuntime?.getState() ??
       computerUseBlockedHostState ??
       IDLE_COMPUTER_USE_HOST_STATE,
+    keepAwake: keepAwakeController?.getState() ?? {
+      enabled: false,
+      active: false,
+    },
   };
+}
+
+function installKeepAwake(): void {
+  keepAwakeController = new DesktopKeepAwakeController({
+    preferencesPath: desktopPreferencesPath(),
+    blocker: powerSaveBlocker,
+    onChange: notifyComputerUseChanged,
+  });
+  keepAwakeController.load();
+}
+
+function setKeepAwakeEnabled(enabled: boolean): DesktopComputerUseState {
+  if (!keepAwakeController) {
+    throw new Error("Desktop keep-awake settings are unavailable");
+  }
+  keepAwakeController.setEnabled(enabled);
+  return getComputerUseBridgeState();
+}
+
+function releaseKeepAwake(): void {
+  keepAwakeController?.release();
 }
 
 async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
@@ -346,6 +378,7 @@ function installComputerUse(): void {
       start: startComputerUseRuntime,
       requestAccessibilityPermission: requestComputerUsePermission,
       requestScreenRecordingPermission: requestComputerUseScreenRecording,
+      setKeepAwakeEnabled,
     },
     { rendererUrl: localRendererUrl },
   );
@@ -386,6 +419,7 @@ function disposeComputerUseNativeBackend(): void {
 async function prepareForQuitAndInstall(): Promise<void> {
   quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
+  releaseKeepAwake();
   if (!computerUseQuitStopStarted) {
     computerUseQuitStopStarted = true;
     await stopComputerUseRuntimeForQuit();
@@ -440,6 +474,9 @@ function installTray(): void {
     },
     openScreenRecordingSettings: () => {
       openExternal(MAC_SCREEN_RECORDING_SETTINGS_URL);
+    },
+    setKeepAwakeEnabled: async (enabled) => {
+      setKeepAwakeEnabled(enabled);
     },
     quit: () => {
       requestDesktopQuit();
@@ -884,6 +921,7 @@ if (!hasSingleInstanceLock) {
     }
 
     appIsQuitting = true;
+    releaseKeepAwake();
     if (!computerUseRuntime || computerUseQuitStopStarted) {
       disposeComputerUseNativeBackend();
       return;
@@ -907,6 +945,7 @@ if (!hasSingleInstanceLock) {
       apiBaseUrl: desktopApiBaseUrl,
       prepareForQuitAndInstall,
     });
+    installKeepAwake();
     installComputerUse();
     refreshComputerUsePermissionsForState();
     const desktopAuthSession = getAuthSession();

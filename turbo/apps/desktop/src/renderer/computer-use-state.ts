@@ -137,6 +137,13 @@ export const requestScreenRecordingPermission$ = command(async ({ set }) => {
   set(reloadComputerUse$);
 });
 
+export const setKeepAwakeEnabled$ = command(
+  async ({ set }, enabled: boolean) => {
+    await desktopComputerUseApi().setKeepAwakeEnabled(enabled);
+    set(reloadComputerUse$);
+  },
+);
+
 export const openAccessibilitySettings$ = command(async () => {
   await desktopComputerUseApi().openAccessibilitySettings();
 });

@@ -14,6 +14,7 @@ interface ComputerUseNativeApi {
   readonly start: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
   readonly requestScreenRecordingPermission: () => Promise<DesktopComputerUseState>;
+  readonly setKeepAwakeEnabled: (enabled: boolean) => DesktopComputerUseState;
 }
 
 export function notifyDesktopComputerUseChanged(): void {
@@ -63,6 +64,16 @@ export function installComputerUseIpc(
     (event) => {
       assertComputerUsePage(event);
       return api.requestScreenRecordingPermission();
+    },
+  );
+  ipcMain.handle(
+    COMPUTER_USE_CHANNELS.setKeepAwakeEnabled,
+    (event, enabled: unknown) => {
+      assertComputerUsePage(event);
+      if (typeof enabled !== "boolean") {
+        throw new Error("Desktop keep-awake enabled state must be a boolean");
+      }
+      return api.setKeepAwakeEnabled(enabled);
     },
   );
   ipcMain.handle(

@@ -52,12 +52,18 @@ export interface ComputerUseHostRuntimeState {
   readonly localCommandLog: readonly ComputerUseLocalCommandLogEntry[];
 }
 
+export interface DesktopKeepAwakeState {
+  readonly enabled: boolean;
+  readonly active: boolean;
+}
+
 export interface DesktopComputerUseState {
   readonly featureSwitchKey: typeof COMPUTER_USE_FEATURE_SWITCH_KEY;
   readonly platform: NodeJS.Platform;
   readonly supported: boolean;
   readonly permissions: ComputerUsePermissionState;
   readonly host: ComputerUseHostRuntimeState;
+  readonly keepAwake: DesktopKeepAwakeState;
 }
 
 export function hasRequiredComputerUsePermissions(

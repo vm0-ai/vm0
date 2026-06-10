@@ -27,7 +27,8 @@ const MAX_COMMAND_LABEL_LENGTH = 90;
 
 export interface DesktopTrayMenuItem {
   readonly label?: string;
-  readonly type?: "separator";
+  readonly type?: "checkbox" | "separator";
+  readonly checked?: boolean;
   readonly enabled?: boolean;
   readonly submenu?: readonly DesktopTrayMenuItem[];
   readonly click?: () => void;
@@ -43,6 +44,7 @@ export interface DesktopTrayMenuActions {
   readonly requestScreenRecordingPermission: () => void;
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
+  readonly setKeepAwakeEnabled: (enabled: boolean) => void;
   readonly quit: () => void;
 }
 
@@ -309,6 +311,14 @@ export function buildDesktopTrayMenuItems(
 ): readonly DesktopTrayMenuItem[] {
   return [
     { label: "Show Main Window", click: actions.showMainWindow },
+    {
+      label: "Keep Mac Awake",
+      type: "checkbox",
+      checked: state.computerUse.keepAwake.enabled,
+      click: () => {
+        actions.setKeepAwakeEnabled(!state.computerUse.keepAwake.enabled);
+      },
+    },
     separator(),
     {
       label: `Computer Use: ${computerUseStatusLabel(state)}`,
