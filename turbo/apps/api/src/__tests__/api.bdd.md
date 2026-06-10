@@ -487,6 +487,36 @@ round (68% reduction). No per-file coverage regression.
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
 
+### Round 32 — AGENT-01 zero-composes-metadata-update BDD + legacy cleanup
+
+Migrates `zero-composes-metadata-update.test.ts` (6
+legacy `it()`s) into 2 BDD `it()`s: (a) auth boundary
+(401 unauth → 401 no-org), (b) full coverage chain
+(200 fresh-row insert with displayName + description +
+null sound → 404 unknown → 200 org-mate update
+preserves unprovided fields → 404 cross-org → 200
+partial update preserves description + sound).
+
+The on-conflict upsert is verified through direct
+`zero_agents` SELECTs (the public response returns
+`{ ok: true }` and does not surface the updated
+fields; the round uses `seedTeamCompose$` as an Open
+Helper Gap for the compose pre-condition).
+
+Net test count: 6 legacy `it()`s → 2 BDD `it()`s (67%
+reduction). No per-file coverage regression.
+
+Also deletes the 5 zero-composes legacy files now
+covered by earlier BDDs:
+`zero-composes-by-id.test.ts` (Round 5),
+`zero-composes-by-name.test.ts` (Round 5),
+`zero-composes-delete.test.ts` (Round 5),
+`zero-composes-list.test.ts` (Round 5),
+`zero-composes-metadata-update.test.ts` (Round 32).
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec vitest run` all clean.
+
 ### Round 6 — SCHEDULE-01 + CONNECTOR-01 + CHAT-01 BDD
 
 Migrated 4 more route families to BDD shape. Adds the second
