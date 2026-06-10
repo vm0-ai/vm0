@@ -863,3 +863,45 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 18 — CHAT-01 artifacts sync (Google Drive upload) BDD
+
+Migrates `zero-chat-threads-artifacts-sync.test.ts` (9 legacy
+`it()`s, 987 lines). The legacy file seeds connectors + secrets
+
+- hosted sites + run uploaded files via direct DB writes
+  (because the public surface has no creation path for any of
+  those rows); the BDD version keeps the same preconditions but
+  replaces the `seededDriveOrgs[]` / `seededHostedOrgs[]`
+  package-scope variables with two `createFixtureTracker<T>`
+  helpers (the lint rule `api/no-package-variable` forbids
+  package-scope state in tests).
+
+The 9 cases split into 5 BDD test groups:
+
+- Auth + validation chain (401 unauth, 401 no-org, 400
+  missing Drive connector, 404 unknown file, 400 invalid
+  body) — chains naturally because each step sets a
+  precondition the next step tests.
+- Single-file MSW assertion chain (the full Drive flow:
+  folder create + folder nesting + multipart upload +
+  custom metadata headers).
+- Hosted-site zip chain (multiple S3 keys, zip stream
+  decoded from the multipart body, file contents match).
+- Artifact-bucket sync chain (current s3Key from
+  `metadata.s3Key` vs s3Key derived from persisted CDN URL).
+- Legacy storage bucket fallback (HeadObject 404 → falls
+  back to `test-user-storages`).
+
+Notable BDD-API mappings: the public `syncGoogleDrive` POST
+contract is preserved end-to-end (no internal helper
+assertions). Pre-existing test helpers (`seedUsageInsightFixture$`,
+`seedCompose$`, `seedChatThread$`, `seedRun$`) and the
+`seedRunUploadedFile` direct-DB helper are reused; no new
+helpers added.
+
+Net test count: 9 legacy `it()`s → 5 BDD `it()`s (44%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
