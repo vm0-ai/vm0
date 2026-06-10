@@ -101,6 +101,10 @@ function codeFromCallbackUrl(callbackUrl: string): string {
   return new URL(callbackUrl).searchParams.get("code") ?? "";
 }
 
+function handoffIdFromCallbackUrl(callbackUrl: string): string {
+  return new URL(callbackUrl).searchParams.get("handoffId") ?? "";
+}
+
 function base64UrlEncode(input: string): string {
   return Buffer.from(input, "utf8")
     .toString("base64")
@@ -233,6 +237,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
 
   return {
     callbackCode: codeFromCallbackUrl,
+    callbackHandoffId: handoffIdFromCallbackUrl,
 
     mockDesktopSignInToken(token: string): void {
       context.mocks.clerk.signInTokens.createSignInToken.mockResolvedValue({
@@ -300,6 +305,37 @@ export function createAuthDeviceApiActions(context: TestContext) {
     ) {
       const client = setupApp({ context })(desktopAuthConsumeContract);
       return await accept(client.consume({ body: { code } }), statuses);
+    },
+
+    async requestDesktopHandoffStatus(
+      actor: ApiTestUser | null,
+      handoffId: string,
+      statuses: readonly (200 | 401 | 404)[],
+    ) {
+      const client = setupApp({ context })(desktopAuthHandoffContract);
+      return await accept(
+        client.status({
+          params: { handoffId },
+          headers: authenticate(actor),
+        }),
+        statuses,
+      );
+    },
+
+    async requestDesktopHandoffComplete(
+      actor: ApiTestUser | null,
+      handoffId: string,
+      statuses: readonly (200 | 401 | 404)[],
+    ) {
+      const client = setupApp({ context })(desktopAuthHandoffContract);
+      return await accept(
+        client.complete({
+          params: { handoffId },
+          body: {},
+          headers: authenticate(actor),
+        }),
+        statuses,
+      );
     },
 
     async createDeviceToken(body: CreateDeviceTokenRequest) {
