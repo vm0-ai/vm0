@@ -79,6 +79,9 @@ fn read_codex_session_history(
     let Some(id_norm) = normalize_codex_thread_id(thread_id) else {
         return Ok(None);
     };
+    if !codex_sessions_parent_is_usable(sessions_dir)? {
+        return Ok(None);
+    }
     read_codex_session_history_impl(sessions_dir, thread_id, &id_norm)
 }
 
@@ -90,6 +93,20 @@ pub(crate) fn canonical_codex_thread_id(thread_id: &str) -> Option<String> {
     uuid::Uuid::parse_str(thread_id)
         .ok()
         .map(|uuid| uuid.to_string())
+}
+
+fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentError> {
+    let Some(parent) = sessions_dir.parent() else {
+        return Ok(true);
+    };
+    if parent.as_os_str().is_empty() {
+        return Ok(true);
+    }
+    match std::fs::symlink_metadata(parent) {
+        Ok(metadata) => Ok(metadata.file_type().is_dir()),
+        Err(err) if should_skip_unusable_codex_entry(&err) => Ok(false),
+        Err(err) => Err(read_history_error(parent, err)),
+    }
 }
 
 #[cfg(not(target_os = "linux"))]

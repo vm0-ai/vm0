@@ -628,6 +628,45 @@ async fn read_session_history_codex_marker_rejects_symlinked_sessions_root() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn read_session_history_codex_marker_rejects_symlinked_codex_home_parent() {
+    use std::os::unix::fs::symlink;
+
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let real_codex_home = tmp.path().join("real-codex-home");
+    let codex_home_link = tmp.path().join(".codex");
+    let real_sessions_dir = real_codex_home.join("sessions");
+    std::fs::create_dir_all(&real_sessions_dir).unwrap();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    std::fs::write(
+        real_sessions_dir.join(format!("{thread_id}.jsonl")),
+        b"outside-parent-history\n",
+    )
+    .unwrap();
+    symlink(&real_codex_home, &codex_home_link).unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        codex_home_link.join("sessions").to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("codex lookup must not follow a symlinked codex home parent");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Codex session file not found"),
+        "expected symlinked codex home parent to be ignored, got: {msg}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn read_session_history_codex_marker_skips_special_files() {
     use std::os::unix::net::UnixListener;
 
