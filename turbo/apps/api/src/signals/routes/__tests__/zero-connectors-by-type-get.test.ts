@@ -62,51 +62,6 @@ describe("GET /api/zero/connectors/:type", () => {
     }
   });
 
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.get({ params: { type: "github" }, headers: {} }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.get({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 404 when no connector of that type exists", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.get({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
   it("returns the connector when one exists for that type", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

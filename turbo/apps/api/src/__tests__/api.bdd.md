@@ -1122,3 +1122,14 @@ First USAGE-family reduce.
 - Coverage verified (source-only): `zero-usage-runs.ts` (12/4) unchanged vs
   `main`. No regressions. (Note: module-scope mutable objects trip the custom
   `api/no-package-variable` lint rule — expose them as functions in test files.)
+
+### Round 48 — CONNECTOR-BY-TYPE READ REJECTIONS (CHAIN-CONNECTOR-BY-TYPE-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `connectorByType` (get/delete) client.
+- Added `zero-connectors-by-type-get-rejections.bdd.test.ts`: unauthenticated
+  401, no-org 401, and a 404 for an org with no connector of the requested type.
+- Reduced `zero-connectors-by-type-get.test.ts` from 6 to 3 cases. The kept
+  cases return a connected connector / legacy-secret variants, which need a
+  seeded connector row from the OAuth/manual connect flow (GAP-CONNECTOR-CONNECT).
+- Coverage verified (source-only): `zero-connector-data.service.ts` (389/136)
+  unchanged vs `main`. No regressions.
