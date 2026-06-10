@@ -3,10 +3,10 @@
 # Codex resume test — verifies vm0 run continue resumes a codex thread
 # via the framework-aware checkpoint scan path.
 #
-# The first turn writes a session file at
+# The first turn writes a mock session file at
 # `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`. Continue
-# rehydrates from the agent session, calls codex with `exec resume`, and
-# the mock-codex appends another turn to the same file.
+# rehydrates from the agent session into Codex's rollout filename shape,
+# calls codex with `exec resume`, and renders the next turn.
 
 load '../../helpers/setup'
 
@@ -51,7 +51,7 @@ teardown_file() {
 }
 
 @test "t-codex-resume-1: continue resumes codex thread from session" {
-    # Initial turn: creates a codex thread and writes the session file.
+    # Initial turn: creates a codex thread and writes the first mock session file.
     run $VM0_CLI run "$AGENT_NAME" \
         "first turn"
     assert_success
@@ -72,8 +72,8 @@ teardown_file() {
     echo "# Agent session: $session_id"
 
     # Continue the run: framework-aware restore_session resolves the
-    # codex thread_id from the prior session, mock-codex appends to the
-    # existing session file, and a new turn renders.
+    # codex thread_id from the prior session, restores that history into
+    # Codex's rollout filename shape, and the next turn renders.
     run $VM0_CLI run continue "$session_id" \
         "second turn"
     assert_success

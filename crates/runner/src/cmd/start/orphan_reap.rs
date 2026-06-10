@@ -314,10 +314,11 @@ async fn reap_orphaned_active_runs_with_firecrackers(
 mod tests {
     use super::*;
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate, StorageFingerprints,
+        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
         SyntheticParkedIdleCandidateParts,
     };
     use crate::resource_budget::ResourceBudget;
+    use crate::storage_fingerprints::StorageFingerprints;
     use sandbox::SandboxFactory;
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
     use std::time::Duration;

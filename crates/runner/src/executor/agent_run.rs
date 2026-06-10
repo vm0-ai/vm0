@@ -106,7 +106,7 @@ fn wait_process_timed_out(error: &sandbox::SandboxError) -> bool {
 pub(super) struct RunStart<'a> {
     pub(super) restore_guest_state: bool,
     pub(super) reuse_result: SandboxReuseResult,
-    pub(super) prev_storage: Option<&'a crate::idle_pool::StorageFingerprints>,
+    pub(super) prev_storage: Option<&'a crate::storage_fingerprints::StorageFingerprints>,
 }
 
 pub(super) async fn run_in_sandbox(

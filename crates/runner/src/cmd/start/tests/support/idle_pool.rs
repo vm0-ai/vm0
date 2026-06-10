@@ -20,7 +20,7 @@ fn make_synthetic_parked_candidate(
         device_rate_limits: None,
         budget_lease,
         source_ip: "10.0.0.1".into(),
-        storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
     })
 }
 
@@ -94,7 +94,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
             device_rate_limits: None,
             budget_lease,
             source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
         })
         .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT.to_string()),
     );

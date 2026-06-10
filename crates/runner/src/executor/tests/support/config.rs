@@ -93,7 +93,7 @@ pub(in crate::executor::tests) async fn make_reusable_idle_sandbox(
         device_rate_limits: None,
         budget_lease: test_budget_lease(),
         source_ip,
-        storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
     });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
     let entry = pool.take(session_id).expect("idle entry should exist");

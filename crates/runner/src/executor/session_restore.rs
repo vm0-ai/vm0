@@ -1,9 +1,10 @@
 //! CLI session restore helpers for guest agent frameworks.
 
-use sandbox::Sandbox;
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use tracing::{info, warn};
 
-use super::{RunnerError, RunnerResult};
+use super::storage::format_guest_exec_failure;
+use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use crate::types::{ExecutionContext, ResumeSession};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -29,9 +30,9 @@ pub(super) async fn restore_session(
             warn!(
                 run_id = %context.run_id,
                 framework = %other,
-                "skipping session restore for unknown framework"
+                "restoring session as claude-code for unknown framework"
             );
-            Ok(())
+            restore_claude_session(sandbox, context, session).await
         }
     }
 }
@@ -133,11 +134,14 @@ pub(super) async fn restore_codex_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    let session_path = codex_restore_rollout_path(
-        &session.session_id,
-        &session.session_history,
-        chrono::Utc::now(),
-    );
+    let session_id = canonical_codex_thread_id(&session.session_id).ok_or_else(|| {
+        RunnerError::Internal(format!("invalid codex session_id: {}", session.session_id))
+    })?;
+
+    let session_path =
+        codex_restore_rollout_path(&session_id, &session.session_history, chrono::Utc::now());
+
+    cleanup_existing_codex_session_files(sandbox, context, &session_id, &session_path).await?;
 
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
@@ -152,10 +156,105 @@ pub(super) async fn restore_codex_session(
     Ok(())
 }
 
+async fn cleanup_existing_codex_session_files(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session_id: &str,
+    session_path: &str,
+) -> RunnerResult<()> {
+    let cleanup_cmd = r#"codex_home=/home/user/.codex
+root="$codex_home/sessions"
+restore_path="$VM0_CODEX_RESTORE_SESSION_PATH"
+restore_dir="${restore_path%/*}"
+case "$restore_dir" in
+  "$root"/*/*/*) ;;
+  *)
+    echo "invalid codex restore directory: $restore_dir" >&2
+    exit 1
+    ;;
+esac
+check_restore_dir_component() {
+  path="$1"
+  if [ -L "$path" ]; then
+    echo "codex restore directory is a symlink: $path" >&2
+    exit 1
+  fi
+  if [ -e "$path" ] && [ ! -d "$path" ]; then
+    echo "codex restore path component is not a directory: $path" >&2
+    exit 1
+  fi
+}
+check_restore_dir_component "$codex_home"
+check_restore_dir_component "$root"
+root_prefix="$root/"
+relative_dir="${restore_dir#$root_prefix}"
+current="$root"
+old_ifs="$IFS"
+IFS=/
+for component in $relative_dir; do
+  case "$component" in
+    ""|"."|"..")
+      echo "invalid codex restore path component: $component" >&2
+      exit 1
+      ;;
+  esac
+  current="$current/$component"
+  check_restore_dir_component "$current"
+done
+IFS="$old_ifs"
+if [ -d "$root" ]; then
+  id="$VM0_CODEX_RESTORE_SESSION_ID"
+  id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
+  find "$root" \( -type f -o -type l \) \( \
+    -iname "*${id}*.jsonl" -o \
+    -iname "*${id}*.jsonl.zst" -o \
+    -iname "*${id}*.jsonl.vm0tmp-*" -o \
+    -iname "*${id}*.jsonl.zst.vm0tmp-*" -o \
+    -iname "*${id_no_dashes}*.jsonl" -o \
+    -iname "*${id_no_dashes}*.jsonl.zst" -o \
+    -iname "*${id_no_dashes}*.jsonl.vm0tmp-*" -o \
+    -iname "*${id_no_dashes}*.jsonl.zst.vm0tmp-*" \
+  \) -delete
+fi"#;
+    let env = [
+        ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
+        ("VM0_CODEX_RESTORE_SESSION_PATH", session_path),
+    ];
+    let result = sandbox
+        .exec(&ExecRequest {
+            cmd: cleanup_cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &env,
+            sudo: false,
+            stdin_bytes: None,
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+        })
+        .await?;
+    if result.exit_code != 0 {
+        return Err(RunnerError::Internal(format_guest_exec_failure(
+            "codex session cleanup",
+            &result,
+        )));
+    }
+    info!(
+        run_id = %context.run_id,
+        session_id = %session_id,
+        "cleaned up existing codex session files before restore",
+    );
+    Ok(())
+}
+
 /// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
 pub(super) fn is_valid_session_id(id: &str) -> bool {
     !id.is_empty()
         && id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+pub(super) fn canonical_codex_thread_id(id: &str) -> Option<String> {
+    if !is_valid_session_id(id) {
+        return None;
+    }
+    uuid::Uuid::parse_str(id).ok().map(|uuid| uuid.to_string())
 }
