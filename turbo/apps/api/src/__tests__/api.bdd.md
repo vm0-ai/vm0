@@ -898,3 +898,16 @@ But every rejection \_before* the credit check is reachable.
   relying on test-ordering — a latent coupling the original masked.
 - Coverage verified (source-only): `zero-billing-portal.ts` (18/8/1) and
   `billing.service.ts` (28/31/4) unchanged vs `main`. No regressions.
+
+### Round 35 — BILLING INVOICES (CHAIN-BILLING-INVOICES, reduce-legacy)
+
+- Extended `createBddApi` with the `billingInvoices` client.
+- Added `zero-billing-invoices.bdd.test.ts`: unauthenticated 401, no-org 401,
+  non-admin 403, and an empty list for an org with no Stripe customer (asserting
+  Stripe is never called via `mockListStripeInvoices`).
+- Reduced `zero-billing-invoices.test.ts` from 6 to 2 cases, keeping the two
+  funded paths (invoices for an org with a seeded Stripe customer/subscription,
+  and the empty-with-customer case) — both need a DB-seeded customer
+  (GAP-STRIPE-CUSTOMER).
+- Coverage verified (source-only): `zero-billing-invoices.ts` (8/2) and
+  `zero-billing-invoices.service.ts` (8/2) unchanged vs `main`. No regressions.

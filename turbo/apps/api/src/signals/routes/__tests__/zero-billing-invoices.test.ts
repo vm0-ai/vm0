@@ -24,63 +24,6 @@ describe("GET /api/zero/billing/invoices", () => {
     return store.set(deleteInvoicesOrg$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
-
-    const response = await accept(client.get({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
-  it("returns 401 when the user has no active org", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
-
-    const response = await accept(
-      client.get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
-  it("returns 403 for a non-admin org member", async () => {
-    const fixture = await track(
-      store.set(seedInvoicesOrg$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
-
-    const response = await accept(
-      client.get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only org admins can view invoices",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("returns invoices for an admin's org with active subscription", async () => {
     const customerId = `cus-inv-${randomUUID().slice(0, 8)}`;
     const fixture = await track(
@@ -150,27 +93,6 @@ describe("GET /api/zero/billing/invoices", () => {
         },
       ],
     });
-  });
-
-  it("returns an empty list when the org has no Stripe customer", async () => {
-    const fixture = await track(
-      store.set(seedInvoicesOrg$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockListStripeInvoices(() => {
-      throw new Error("Stripe invoices should not be listed without customer");
-    });
-
-    const client = setupApp({ context })(zeroBillingInvoicesContract);
-
-    const response = await accept(
-      client.get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ invoices: [] });
   });
 
   it("returns an empty list when Stripe returns no invoices", async () => {
