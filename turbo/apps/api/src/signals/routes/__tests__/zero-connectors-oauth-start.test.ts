@@ -77,9 +77,9 @@ function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
     "oauth",
   );
   expect(authorizationUrl.searchParams.get("scope")?.split(" ")).toStrictEqual(
-    grant.authorizationScopes,
+    grant.scopes,
   );
-  expect(grant.scopes).not.toContain("offline_access");
+  expect(grant.scopes).toContain("offline_access");
 }
 
 async function requestOauthStart(

@@ -3966,7 +3966,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
         refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
       },
     });
-    expect(grant.scopes).toHaveLength(352);
+    expect(grant.scopes).toHaveLength(353);
     expect(new Set(grant.scopes).size).toBe(grant.scopes.length);
     expect(grant.scopes).toEqual(
       expect.arrayContaining([
@@ -3981,6 +3981,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
         "ai.write",
         "queues.write",
         "workers-r2.write",
+        "offline_access",
       ]),
     );
     expect(grant.scopes).not.toEqual(
@@ -3992,11 +3993,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
         "workers-r2.metadata_read",
       ]),
     );
-    expect(grant.scopes).not.toContain("offline_access");
-    expect(grant.authorizationScopes).toStrictEqual([
-      ...grant.scopes,
-      "offline_access",
-    ]);
     expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
       featureFlag: FeatureSwitchKey.CloudflareConnector,
       client: {

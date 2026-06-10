@@ -1822,7 +1822,7 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(JSON.parse(connector!.oauthScopes!)).toStrictEqual(
       getConnectorAuthMethodAuthCodeGrantConfig("cloudflare", "oauth").scopes,
     );
-    expect(JSON.parse(connector!.oauthScopes!)).not.toContain("offline_access");
+    expect(JSON.parse(connector!.oauthScopes!)).toContain("offline_access");
     await expect(
       findDecryptedSecret({
         orgId,
