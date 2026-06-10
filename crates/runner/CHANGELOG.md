@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.110.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.0...runner-rs-v0.110.1) (2026-06-10)
+
+
+### Refactoring
+
+* split firewall auth hook orchestration ([#17002](https://github.com/vm0-ai/vm0/issues/17002)) ([f042a66](https://github.com/vm0-ai/vm0/commit/f042a66aa0769d1992ded2a324dc91b36382f333))
+
+## [0.110.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.109.0...runner-rs-v0.110.0) (2026-06-10)
+
+
+### Features
+
+* roll out workspace image cache ([#16990](https://github.com/vm0-ai/vm0/issues/16990)) ([420f20b](https://github.com/vm0-ai/vm0/commit/420f20b1288d217e456432290f57d29efeebef37))
+
+## [0.109.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.25...runner-rs-v0.109.0) (2026-06-10)
+
+
+### Features
+
+* add aws sigv4 firewall auth runtime ([#16876](https://github.com/vm0-ai/vm0/issues/16876)) ([1be4dfc](https://github.com/vm0-ai/vm0/commit/1be4dfc3b764a38a2759c0b0164ebb158f2ffe86))
+
+## [0.108.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.24...runner-rs-v0.108.25) (2026-06-09)
+
+
+### Bug Fixes
+
+* bound auth base forwarding workers ([#16912](https://github.com/vm0-ai/vm0/issues/16912)) ([1620c9a](https://github.com/vm0-ai/vm0/commit/1620c9ac419ad9a315e1fc23aa00ebf37ffbb20b))
+* **mitm-addon:** handle registry json parser failures ([#16903](https://github.com/vm0-ai/vm0/issues/16903)) ([28a7fcd](https://github.com/vm0-ai/vm0/commit/28a7fcd102a5efca3f7b52adac37e39a5dc1d290))
+* release usage tracking on request cancellation ([#16907](https://github.com/vm0-ai/vm0/issues/16907)) ([f61340e](https://github.com/vm0-ai/vm0/commit/f61340e6c0c6b04e82cd55c67db07d52649da7b4))
+
 ## [0.108.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.23...runner-rs-v0.108.24) (2026-06-09)
 
 

@@ -27,7 +27,8 @@ const MAX_COMMAND_LABEL_LENGTH = 90;
 
 export interface DesktopTrayMenuItem {
   readonly label?: string;
-  readonly type?: "separator";
+  readonly type?: "checkbox" | "separator";
+  readonly checked?: boolean;
   readonly enabled?: boolean;
   readonly submenu?: readonly DesktopTrayMenuItem[];
   readonly click?: () => void;
@@ -36,19 +37,23 @@ export interface DesktopTrayMenuItem {
 export interface DesktopTrayMenuActions {
   readonly showMainWindow: () => void;
   readonly startComputerUse: () => void;
+  readonly stopComputerUse: () => void;
   readonly refreshStatus: () => void;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => void;
+  readonly signOut: () => void;
   readonly requestAccessibilityPermission: () => void;
   readonly requestScreenRecordingPermission: () => void;
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
+  readonly setKeepAwakeEnabled: (enabled: boolean) => void;
   readonly quit: () => void;
 }
 
 interface DesktopTrayMenuState {
   readonly computerUse: DesktopComputerUseState;
   readonly auth: DesktopAuthState | null;
+  readonly authLoading?: boolean;
   readonly authError: string | null;
 }
 
@@ -70,7 +75,7 @@ function computerUseStatusLabel(state: DesktopTrayMenuState): string {
   if (state.computerUse.host.status !== "idle") {
     return HOST_STATUS_LABELS[state.computerUse.host.status];
   }
-  if (state.auth?.status === "signing_in") {
+  if (isAuthLoading(state)) {
     return "Signing in...";
   }
   if (state.auth?.status !== "signed_in") {
@@ -86,13 +91,24 @@ function isAuthReady(auth: DesktopAuthState | null): boolean {
   return auth?.status === "signed_in" && auth.organization !== null;
 }
 
+function isAuthLoading(state: DesktopTrayMenuState): boolean {
+  return state.authLoading === true || state.auth?.status === "signing_in";
+}
+
 function canStartComputerUse(state: DesktopTrayMenuState): boolean {
   return (
     state.computerUse.supported &&
     hasRequiredComputerUsePermissions(state.computerUse.permissions) &&
+    !isAuthLoading(state) &&
     isAuthReady(state.auth) &&
     state.computerUse.host.status !== "connecting" &&
     state.computerUse.host.status !== "online"
+  );
+}
+
+function canStopComputerUse(state: DesktopTrayMenuState): boolean {
+  return (
+    state.computerUse.supported && state.computerUse.host.status === "online"
   );
 }
 
@@ -103,14 +119,14 @@ function authActionForComputerUse(
   if (state.computerUse.host.status === "online") {
     return null;
   }
+  if (isAuthLoading(state)) {
+    return disabledLabel("Signing in...");
+  }
   if (state.auth?.status === "signed_in") {
     if (!state.auth.organization) {
       return { label: "Select Workspace", click: actions.switchWorkspace };
     }
     return null;
-  }
-  if (state.auth?.status === "signing_in") {
-    return disabledLabel("Signing in...");
   }
   return { label: "Sign in to Zero", click: actions.openSignIn };
 }
@@ -149,6 +165,11 @@ function buildComputerUseSubmenu(
       label: "Start Computer Use",
       enabled: canStartComputerUse(state),
       click: actions.startComputerUse,
+    },
+    {
+      label: "Stop Computer Use",
+      enabled: canStopComputerUse(state),
+      click: actions.stopComputerUse,
     },
   ];
   if (authAction) {
@@ -194,14 +215,14 @@ function buildPermissionItems(
 }
 
 function authStatusLabel(state: DesktopTrayMenuState): string {
+  if (isAuthLoading(state)) {
+    return "Signing in to Zero...";
+  }
   if (state.authError) {
     return "Sign in to Zero";
   }
   if (!state.auth) {
     return "Sign in to Zero";
-  }
-  if (state.auth.status === "signing_in") {
-    return "Signing in to Zero...";
   }
   if (state.auth.status === "signed_out") {
     return "Sign in to Zero";
@@ -216,6 +237,10 @@ function buildAuthSubmenu(
   state: DesktopTrayMenuState,
   actions: DesktopTrayMenuActions,
 ): readonly DesktopTrayMenuItem[] {
+  if (isAuthLoading(state)) {
+    return [disabledLabel("Signing in...")];
+  }
+
   if (state.authError || !state.auth || state.auth.status === "signed_out") {
     return [
       disabledLabel("Not signed in"),
@@ -235,7 +260,7 @@ function buildAuthSubmenu(
     ),
     separator(),
     { label: "Switch Workspace", click: actions.switchWorkspace },
-    { label: "Sign in again", click: actions.openSignIn },
+    { label: "Sign out", click: actions.signOut },
   ];
 }
 
@@ -309,6 +334,14 @@ export function buildDesktopTrayMenuItems(
 ): readonly DesktopTrayMenuItem[] {
   return [
     { label: "Show Main Window", click: actions.showMainWindow },
+    {
+      label: "Keep Mac Awake",
+      type: "checkbox",
+      checked: state.computerUse.keepAwake.enabled,
+      click: () => {
+        actions.setKeepAwakeEnabled(!state.computerUse.keepAwake.enabled);
+      },
+    },
     separator(),
     {
       label: `Computer Use: ${computerUseStatusLabel(state)}`,

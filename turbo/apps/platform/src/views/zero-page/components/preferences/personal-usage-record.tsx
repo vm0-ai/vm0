@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import {
   IconBrandGithub,
@@ -27,6 +28,9 @@ import {
   usageRecordAsync$,
   usageSourceFilter$,
 } from "../../../../signals/zero-page/settings/personal-usage-record.ts";
+import { setSettingsDialogOpen$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
 import { Link } from "../../../router/link.tsx";
 
 const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
@@ -133,8 +137,19 @@ export function SourceFilter({
 }
 
 function UsageRow({ row }: { row: UsageRecordRow }) {
+  const closeSettings = useSet(setSettingsDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
   const { label, Icon } = SOURCE_META[row.source];
   const title = row.title && row.title.length > 0 ? row.title : "Untitled";
+
+  // Close the settings dialog so the navigated chat/activity is visible.
+  // Keep it open for new-tab clicks, which don't change the current page.
+  const closeOnNavigate = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+      return;
+    }
+    detach(closeSettings(false, pageSignal), Reason.DomCallback);
+  };
   const credits = `${formatCredits(row.credits)} credits`;
   const inner = (
     <>
@@ -163,6 +178,7 @@ function UsageRow({ row }: { row: UsageRecordRow }) {
         pathname="/chats/:threadId"
         options={{ pathParams: { threadId: row.threadId } }}
         className={ROW_CLASS}
+        onClick={closeOnNavigate}
       >
         {inner}
       </Link>
@@ -174,6 +190,7 @@ function UsageRow({ row }: { row: UsageRecordRow }) {
         pathname="/activities/:activityRunId"
         options={{ pathParams: { activityRunId: row.runId } }}
         className={ROW_CLASS}
+        onClick={closeOnNavigate}
       >
         {inner}
       </Link>

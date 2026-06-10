@@ -6,6 +6,7 @@ import {
   dialog,
   Menu,
   net,
+  powerSaveBlocker,
   protocol,
   session,
   shell,
@@ -44,6 +45,7 @@ import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import { DesktopKeepAwakeController } from "./desktop-keep-awake";
 import {
   DesktopQuitConfirmationController,
   buildDesktopQuitConfirmationOptions,
@@ -97,6 +99,13 @@ const localRendererUrl = desktopRendererUrl();
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
 const COMPUTER_USE_QUIT_STOP_TIMEOUT_MS = 1_000;
+const DESKTOP_SIGN_OUT_STORAGES = [
+  "cookies",
+  "localstorage",
+  "indexdb",
+  "serviceworkers",
+  "cachestorage",
+] as const;
 const MAC_ACCESSIBILITY_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 const MAC_SCREEN_RECORDING_SETTINGS_URL =
@@ -104,8 +113,10 @@ const MAC_SCREEN_RECORDING_SETTINGS_URL =
 let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
 let computerUseQuitStopStarted = false;
+let computerUseManualStopRequested = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
+let keepAwakeController: DesktopKeepAwakeController | null = null;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
@@ -221,6 +232,10 @@ function trayIconPath(): string {
   return path.join(__dirname, "..", "assets", "tray-iconTemplate.png");
 }
 
+function desktopPreferencesPath(): string {
+  return path.join(app.getPath("userData"), "desktop-preferences.json");
+}
+
 function applyAppName(): void {
   app.setName(config.identity.displayName);
   app.name = config.identity.displayName;
@@ -266,10 +281,42 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
       computerUseRuntime?.getState() ??
       computerUseBlockedHostState ??
       IDLE_COMPUTER_USE_HOST_STATE,
+    keepAwake: keepAwakeController?.getState() ?? {
+      enabled: false,
+      active: false,
+    },
   };
 }
 
-async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
+function installKeepAwake(): void {
+  keepAwakeController = new DesktopKeepAwakeController({
+    preferencesPath: desktopPreferencesPath(),
+    blocker: powerSaveBlocker,
+    onChange: notifyComputerUseChanged,
+  });
+  keepAwakeController.load();
+}
+
+function setKeepAwakeEnabled(enabled: boolean): DesktopComputerUseState {
+  if (!keepAwakeController) {
+    throw new Error("Desktop keep-awake settings are unavailable");
+  }
+  keepAwakeController.setEnabled(enabled);
+  return getComputerUseBridgeState();
+}
+
+function releaseKeepAwake(): void {
+  keepAwakeController?.release();
+}
+
+async function startComputerUseRuntime(
+  options: { readonly userInitiated?: boolean } = {},
+): Promise<DesktopComputerUseState> {
+  if (computerUseManualStopRequested && options.userInitiated !== true) {
+    return getComputerUseBridgeState();
+  }
+  computerUseManualStopRequested = false;
+
   const permissions = await refreshComputerUsePermissionState();
   let startupGate: ComputerUseStartupGate = { status: "missing_permissions" };
   if (hasRequiredComputerUsePermissions(permissions)) {
@@ -317,6 +364,13 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
   return getComputerUseBridgeState();
 }
 
+async function stopComputerUseRuntime(): Promise<DesktopComputerUseState> {
+  computerUseManualStopRequested = true;
+  await computerUseRuntime?.stop();
+  notifyComputerUseChanged();
+  return getComputerUseBridgeState();
+}
+
 async function requestComputerUsePermission(): Promise<DesktopComputerUseState> {
   await requestComputerUseAccessibilityPermission();
   notifyComputerUseChanged();
@@ -344,8 +398,10 @@ function installComputerUse(): void {
       getState: getComputerUseBridgeState,
       refreshPermissions: refreshComputerUsePermissions,
       start: startComputerUseRuntime,
+      stop: stopComputerUseRuntime,
       requestAccessibilityPermission: requestComputerUsePermission,
       requestScreenRecordingPermission: requestComputerUseScreenRecording,
+      setKeepAwakeEnabled,
     },
     { rendererUrl: localRendererUrl },
   );
@@ -386,11 +442,31 @@ function disposeComputerUseNativeBackend(): void {
 async function prepareForQuitAndInstall(): Promise<void> {
   quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
+  releaseKeepAwake();
   if (!computerUseQuitStopStarted) {
     computerUseQuitStopStarted = true;
     await stopComputerUseRuntimeForQuit();
   }
   disposeComputerUseNativeBackend();
+}
+
+async function clearDesktopAuthStorage(): Promise<void> {
+  await session.fromPartition(config.sessionPartition).clearStorageData({
+    storages: [...DESKTOP_SIGN_OUT_STORAGES],
+  });
+}
+
+async function signOutDesktopSession(): Promise<void> {
+  await clearDesktopAuthStorage();
+  getAuthSession().signOut();
+  const runtime = computerUseRuntime;
+  computerUseRuntime = null;
+  computerUseBlockedHostState = null;
+  try {
+    await runtime?.stop();
+  } finally {
+    notifyComputerUseChanged();
+  }
 }
 
 function installDesktopAuth(): void {
@@ -401,6 +477,7 @@ function installDesktopAuth(): void {
         openExternal(desktopAuthStartUrl);
       },
       openOrgSelection: () => getAuthSession().selectOrganization(),
+      signOut: signOutDesktopSession,
       completeSignIn: (token) => getAuthSession().completeSignIn(token),
     },
     {
@@ -420,7 +497,10 @@ function installTray(): void {
       await createMainWindow();
     },
     startComputerUse: async () => {
-      await startComputerUseRuntime();
+      await startComputerUseRuntime({ userInitiated: true });
+    },
+    stopComputerUse: async () => {
+      await stopComputerUseRuntime();
     },
     refreshStatus: async () => {
       await refreshComputerUsePermissions();
@@ -429,6 +509,7 @@ function installTray(): void {
       openExternal(desktopAuthStartUrl);
     },
     switchWorkspace: () => getAuthSession().selectOrganization(),
+    signOut: signOutDesktopSession,
     requestAccessibilityPermission: async () => {
       await requestComputerUsePermission();
     },
@@ -440,6 +521,9 @@ function installTray(): void {
     },
     openScreenRecordingSettings: () => {
       openExternal(MAC_SCREEN_RECORDING_SETTINGS_URL);
+    },
+    setKeepAwakeEnabled: async (enabled) => {
+      setKeepAwakeEnabled(enabled);
     },
     quit: () => {
       requestDesktopQuit();
@@ -791,7 +875,7 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   const permissions = await refreshComputerUsePermissionState();
   notifyComputerUseChanged();
   if (hasRequiredComputerUsePermissions(permissions)) {
-    await startComputerUseRuntime();
+    await startComputerUseRuntime({ userInitiated: true });
   }
 }
 
@@ -884,6 +968,7 @@ if (!hasSingleInstanceLock) {
     }
 
     appIsQuitting = true;
+    releaseKeepAwake();
     if (!computerUseRuntime || computerUseQuitStopStarted) {
       disposeComputerUseNativeBackend();
       return;
@@ -907,6 +992,7 @@ if (!hasSingleInstanceLock) {
       apiBaseUrl: desktopApiBaseUrl,
       prepareForQuitAndInstall,
     });
+    installKeepAwake();
     installComputerUse();
     refreshComputerUsePermissionsForState();
     const desktopAuthSession = getAuthSession();

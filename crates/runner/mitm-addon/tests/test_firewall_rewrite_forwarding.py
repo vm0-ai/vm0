@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 import auth
 import auth_base_forwarder as forwarder
+from aws_sigv4 import AwsSigV4Credentials
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
 
 
@@ -152,6 +153,68 @@ class TestAuthBaseUrlRewriteForwarding:
         assert ("Authorization", "Bearer real") in req_headers
         assert ("X-Injected", "trusted") in req_headers
         assert ("X-Keep", "client") in req_headers
+
+    async def test_forward_request_signs_rewritten_aws_sigv4_request(
+        self,
+        headers,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        """auth.base forwarding signs the rewritten upstream URL, not the placeholder."""
+        placeholder_authorization = (
+            "AWS4-HMAC-SHA256 "
+            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+            "SignedHeaders=content-type;host;x-amz-date, "
+            "Signature=placeholder"
+        )
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            resolved_base="https://STS.AMAZONAWS.COM:443/",
+            method="POST",
+            request_body=b"Action=GetCallerIdentity&Version=2011-06-15",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Content-Type", "application/x-www-form-urlencoded"),
+                ("X-Amz-Date", "20260101T000000Z"),
+                ("Authorization", placeholder_authorization),
+            ),
+            auth_overrides={
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                },
+            },
+            token_overrides={
+                "aws_sigv4": AwsSigV4Credentials(
+                    "AKIDEXAMPLE",
+                    "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+                    "real-session-token",
+                ),
+            },
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        forwarded_url = mock_forward.call_args[0][0]
+        req_headers = mock_forward.call_args[0][2]
+        authorization = dict(req_headers)["authorization"]
+        assert forwarded_url == "https://sts.amazonaws.com:443/"
+        assert ("host", "sts.amazonaws.com") in req_headers
+        assert "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request" in authorization
+        assert (
+            "Signature=d58b7e131d8f54e75a6ee98fd426242a7bab02e04a9e7eaec5dfad94425ab4ae"
+            in authorization
+        )
+        assert ("x-amz-security-token", "real-session-token") in req_headers
+        assert flow.request.headers["Authorization"] == placeholder_authorization
 
     async def test_forward_request_uses_raw_body_for_any_method(
         self, real_flow, mitm_ctx, tmp_path

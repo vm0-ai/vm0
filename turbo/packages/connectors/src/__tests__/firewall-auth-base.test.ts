@@ -110,6 +110,57 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("extracts secrets from auth.awsSigv4", () => {
+    const apis = [
+      {
+        base: "https://sts.amazonaws.com",
+        auth: {
+          headers: {},
+          awsSigv4: {
+            accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+            secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+      ],
+      vars: [],
+    });
+  });
+
+  it("extracts vars from auth.awsSigv4 references", () => {
+    const apis = [
+      {
+        base: "https://sts.amazonaws.com",
+        auth: {
+          headers: {},
+          awsSigv4: {
+            accessKeyId: "${{ vars.AWS_ACCESS_KEY_ID }}",
+            secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toEqual(["AWS_SECRET_ACCESS_KEY"]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: ["AWS_SECRET_ACCESS_KEY"],
+      vars: ["AWS_ACCESS_KEY_ID"],
+    });
+  });
+
   it("skips auth.query when not present", () => {
     const apis = [
       {

@@ -34,10 +34,7 @@ pub(crate) use guest_state::{fix_guest_clock, reseed_guest_entropy};
 
 use agent_run::ProcessCancelTimeouts;
 use env::validate_execution_context_before_sandbox;
-use sandbox_run::{
-    execute_new_sandbox, execute_reused_sandbox, invalidate_disabled_workspace_cache_baselines,
-    workspace_image_promotable,
-};
+use sandbox_run::{execute_new_sandbox, execute_reused_sandbox, workspace_image_promotable};
 use telemetry::{record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;
@@ -358,9 +355,8 @@ pub async fn execute_job_reuse(
     let workspace_promotion = idle_parts.workspace_promotion;
     let sandbox = idle_parts.sandbox;
 
-    let workspace_cache_enabled = context.session_workspace_image_cache_enabled();
-    let workspace_image = match (workspace_cache_enabled, config.workspace_cache.as_ref()) {
-        (true, Some(cache)) => {
+    let workspace_image = match config.workspace_cache.as_ref() {
+        Some(cache) => {
             let active_request = WorkspaceImageActiveLeaseRequest {
                 run_id,
                 sandbox_id,
@@ -375,34 +371,7 @@ pub async fn execute_job_reuse(
                 None => cache.lease_active(active_request).await,
             })
         }
-        (false, maybe_cache) => {
-            if let Some(cache) = maybe_cache {
-                invalidate_disabled_workspace_cache_baselines(&context, cache).await;
-            }
-            if let Some(promotion) = workspace_promotion
-                && let Err(error) = promotion
-                    .invalidate_current("reused sandbox ran without workspace image cache")
-                    .await
-            {
-                let failure = ExecutionFailure::from_error(format!(
-                    "failed to invalidate workspace image cache before disabled-cache reuse: {error}"
-                ));
-                return (
-                    ExecuteOutcome {
-                        failure: Some(failure),
-                        sandbox: Some(sandbox),
-                        source_ip,
-                        network_log_session: None,
-                        workspace_image: None,
-                        workspace_promotable: false,
-                        guest_session_id: None,
-                    },
-                    telemetry,
-                );
-            }
-            None
-        }
-        (true, None) => {
+        None => {
             if let Some(promotion) = workspace_promotion
                 && let Err(error) = promotion
                     .invalidate_current("reused sandbox ran without workspace image cache")

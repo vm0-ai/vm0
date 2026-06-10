@@ -111,11 +111,18 @@ interface FirewallAuthBody {
   readonly authHeaders: Record<string, string>;
   readonly authBase?: string;
   readonly authQuery?: Record<string, string>;
+  readonly authAwsSigv4?: FirewallAwsSigv4AuthConfig;
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly vars?: Record<string, string>;
   readonly firewallBillable?: boolean;
   readonly forceRefresh?: boolean;
+}
+
+interface FirewallAwsSigv4AuthConfig {
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly sessionToken?: string;
 }
 
 interface RefreshResult {
@@ -150,6 +157,7 @@ interface ResolveResult {
     readonly headers: Record<string, string>;
     readonly base?: string;
     readonly query?: Record<string, string>;
+    readonly awsSigv4?: FirewallAwsSigv4AuthConfig;
     readonly expiresAt: number | null;
     readonly resolvedSecrets: readonly string[];
     readonly refreshedConnectors: readonly string[];
@@ -2754,6 +2762,7 @@ async function prepareFirewallAuthResolutionContext(args: {
     args.body.authHeaders,
     args.body.authBase,
     args.body.authQuery,
+    args.body.authAwsSigv4,
   );
   const vars = args.body.vars ?? {};
   if (
@@ -3304,6 +3313,7 @@ function collectReferencedKeys(
   authHeaders: Record<string, string>,
   authBase?: string,
   authQuery?: Record<string, string>,
+  authAwsSigv4?: FirewallAwsSigv4AuthConfig,
 ): ReferencedAuthKeys {
   const secretKeys = new Set<string>();
   const varKeys = new Set<string>();
@@ -3326,6 +3336,13 @@ function collectReferencedKeys(
   if (authQuery) {
     for (const template of Object.values(authQuery)) {
       collectSimpleReferencedKeys(template, addKey);
+    }
+  }
+  if (authAwsSigv4) {
+    for (const template of Object.values(authAwsSigv4)) {
+      if (template) {
+        collectSimpleReferencedKeys(template, addKey);
+      }
     }
   }
 
@@ -3409,17 +3426,21 @@ function getOwnValue(
   return Object.hasOwn(values, key) ? values[key] : undefined;
 }
 
-function resolveTemplates(
-  authHeaders: Record<string, string>,
-  secrets: Record<string, string>,
-  vars: Record<string, string>,
-  authBase?: string,
-  authQuery?: Record<string, string>,
-): {
+interface ResolveTemplatesArgs {
+  readonly authHeaders: Record<string, string>;
+  readonly secrets: Record<string, string>;
+  readonly vars: Record<string, string>;
+  readonly authBase?: string;
+  readonly authQuery?: Record<string, string>;
+  readonly authAwsSigv4?: FirewallAwsSigv4AuthConfig;
+}
+
+function resolveTemplates(args: ResolveTemplatesArgs): {
   readonly headers: Record<string, string>;
   readonly resolvedSecrets: readonly string[];
   readonly base?: string;
   readonly query?: Record<string, string>;
+  readonly awsSigv4?: FirewallAwsSigv4AuthConfig;
 } {
   const resolvedKeys = new Set<string>();
 
@@ -3429,26 +3450,26 @@ function resolveTemplates(
       (_match, namespace: string, key: string) => {
         if (namespace === "secrets") {
           resolvedKeys.add(key);
-          return getOwnValue(secrets, key) ?? "";
+          return getOwnValue(args.secrets, key) ?? "";
         }
-        return getOwnValue(vars, key) ?? "";
+        return getOwnValue(args.vars, key) ?? "";
       },
     );
   };
 
   const headers: Record<string, string> = {};
-  for (const [name, template] of Object.entries(authHeaders)) {
+  for (const [name, template] of Object.entries(args.authHeaders)) {
     let resolved = replaceBasicAuthTemplates(template, (match) => {
       const user = resolveBasicArg({
         ...match.first,
-        secrets,
-        vars,
+        secrets: args.secrets,
+        vars: args.vars,
         resolvedKeys,
       });
       const pass = resolveBasicArg({
         ...match.second,
-        secrets,
-        vars,
+        secrets: args.secrets,
+        vars: args.vars,
         resolvedKeys,
       });
       return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
@@ -3457,13 +3478,22 @@ function resolveTemplates(
     headers[name] = resolved;
   }
 
-  const base = authBase ? resolveSimple(authBase) : undefined;
-  const query = authQuery
+  const base = args.authBase ? resolveSimple(args.authBase) : undefined;
+  const query = args.authQuery
     ? Object.fromEntries(
-        Object.entries(authQuery).map(([key, value]) => {
+        Object.entries(args.authQuery).map(([key, value]) => {
           return [key, resolveSimple(value)];
         }),
       )
+    : undefined;
+  const awsSigv4 = args.authAwsSigv4
+    ? ({
+        accessKeyId: resolveSimple(args.authAwsSigv4.accessKeyId),
+        secretAccessKey: resolveSimple(args.authAwsSigv4.secretAccessKey),
+        ...(args.authAwsSigv4.sessionToken
+          ? { sessionToken: resolveSimple(args.authAwsSigv4.sessionToken) }
+          : {}),
+      } satisfies FirewallAwsSigv4AuthConfig)
     : undefined;
 
   return {
@@ -3471,7 +3501,19 @@ function resolveTemplates(
     resolvedSecrets: [...resolvedKeys].sort(),
     base,
     query,
+    awsSigv4,
   };
+}
+
+function hasEmptyAwsSigv4Credential(
+  credentials: FirewallAwsSigv4AuthConfig | undefined,
+): boolean {
+  return (
+    credentials !== undefined &&
+    (credentials.accessKeyId === "" ||
+      credentials.secretAccessKey === "" ||
+      credentials.sessionToken === "")
+  );
 }
 
 export async function resolveFirewallAuth(
@@ -3566,13 +3608,17 @@ export async function resolveFirewallAuth(
     );
   }
 
-  const resolved = resolveTemplates(
-    body.authHeaders,
-    decryptedSecrets,
+  const resolved = resolveTemplates({
+    authHeaders: body.authHeaders,
+    secrets: decryptedSecrets,
     vars,
-    body.authBase,
-    body.authQuery,
-  );
+    authBase: body.authBase,
+    authQuery: body.authQuery,
+    authAwsSigv4: body.authAwsSigv4,
+  });
+  if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {
+    return connectorNotConfigured();
+  }
 
   return {
     status: 200,
@@ -3580,6 +3626,7 @@ export async function resolveFirewallAuth(
       headers: resolved.headers,
       base: resolved.base,
       query: resolved.query,
+      awsSigv4: resolved.awsSigv4,
       expiresAt: mergeExpiresAt(expiresAt, billableCacheExpiry.expiresAt),
       resolvedSecrets: resolved.resolvedSecrets,
       refreshedConnectors,

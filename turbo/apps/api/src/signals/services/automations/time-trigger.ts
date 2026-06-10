@@ -188,26 +188,23 @@ export class TimeTrigger {
 
   /**
    * Claim a due `automation_triggers` time row via an optimistic lock on
-   * `nextRunAt` — the trigger-table counterpart of `evaluate`. Mirrors the live
-   * schedule claim's atomicity (a concurrent poller whose `nextRunAt` already
-   * moved loses the race and returns null), but because the trigger poller is
-   * self-contained (no reschedule callback in this slice) the claim folds in the
-   * recurrence advance: cron/loop advance to their next run, once disables. Stamps
-   * `lastRunAt` and clears any retry marker, exactly as the schedule claim does.
+   * `nextRunAt` — the trigger-table counterpart of `evaluate`, mirroring the
+   * live schedule claim 1:1: clear the next run, stamp `lastRunAt`, reset any
+   * retry marker, and disable one-time triggers. The recurrence advance happens
+   * in the trigger completion callback (or `advanceTriggerAfterPreRunFailure`
+   * when the run was never created), exactly like the schedule path. Returns
+   * the claimed row, or null when another invocation won the race (the row's
+   * `nextRunAt` already moved).
    */
   async evaluateTrigger(args: {
     readonly db: Db;
     readonly trigger: TriggerRow;
     readonly currentTime: Date;
   }): Promise<TriggerRow | null> {
-    const nextRunAt = TimeTrigger.nextTriggerRun(
-      args.trigger,
-      args.currentTime,
-    );
     const [claimed] = await args.db
       .update(automationTriggers)
       .set({
-        nextRunAt,
+        nextRunAt: null,
         lastRunAt: args.currentTime,
         retryStartedAt: null,
         updatedAt: args.currentTime,

@@ -8,6 +8,14 @@ import {
 
 describe("VM0 managed model provider", () => {
   describe("model-to-provider mapping", () => {
+    it("should resolve Fable to anthropic-api-key", () => {
+      expect(getVm0ConcreteProviderType("claude-fable-5")).toBe(
+        "anthropic-api-key",
+      );
+      expect(getVm0Vendor("claude-fable-5")).toBe("anthropic");
+      expect(getVm0ApiModel("claude-fable-5")).toBe("claude-fable-5");
+    });
+
     it("should resolve sonnet to anthropic-api-key", () => {
       expect(getVm0ConcreteProviderType("claude-sonnet-4-6")).toBe(
         "anthropic-api-key",
@@ -74,6 +82,7 @@ describe("VM0 managed model provider", () => {
 
     it("should have all VM0 provider models mapped", () => {
       expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toStrictEqual([
+        "claude-fable-5",
         "claude-opus-4-8",
         "claude-fable-5",
         "claude-opus-4-7",

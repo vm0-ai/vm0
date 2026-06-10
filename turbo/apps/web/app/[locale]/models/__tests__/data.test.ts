@@ -54,10 +54,11 @@ describe("models page data", () => {
     ).toBe(true);
   });
 
-  it("documents MiniMax M3 and omits removed backend models", () => {
+  it("documents current VM0-managed additions and omits removed backend models", () => {
     const reasoningIds = MODELS.filter(isReasoningModel).map((m) => {
       return m.modelId;
     });
+    expect(reasoningIds).toContain("claude-fable-5");
     expect(reasoningIds).toContain("MiniMax-M3");
     expect(reasoningIds).not.toContain("claude-haiku-4-5");
     expect(reasoningIds).not.toContain("deepseek-v4-flash");

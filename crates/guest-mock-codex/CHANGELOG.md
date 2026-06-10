@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.2...guest-mock-codex-v0.2.3) (2026-06-09)
+
+
+### Refactoring
+
+* move guest mock codex contract to library ([#16864](https://github.com/vm0-ai/vm0/issues/16864)) ([1f046d9](https://github.com/vm0-ai/vm0/commit/1f046d9ec6f5d30e51ec6a4a5b8fe938578d7c38)), closes [#16782](https://github.com/vm0-ai/vm0/issues/16782)
+
 ## [0.2.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.1...guest-mock-codex-v0.2.2) (2026-06-02)
 
 

@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 
 import { command } from "ccstate";
-import type {
-  HostedArtifactKind,
-  HostedSitePrepareRequest,
-  HostedSiteRedeployPresentationHtmlRequest,
+import {
+  type GeneratePresentationSpeakerNotesRequest,
+  type HostedArtifactKind,
+  type HostedSitePrepareRequest,
+  type HostedSiteRedeployPresentationHtmlRequest,
+  type PresentationSpeakerNotesPatch,
+  presentationSpeakerNotesPatchSchema,
 } from "@vm0/api-contracts/contracts/zero-host";
 import {
   hostedDeployments,
@@ -16,6 +19,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { type Db, writeDb$ } from "../external/db";
+import { generateText } from "../external/openrouter";
 import {
   copyHostedSitesS3Object,
   generateHostedSitesPresignedPutUrl,
@@ -23,12 +27,14 @@ import {
   putHostedSitesS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
+import { safeJsonParse } from "../utils";
 import { recordHostedSiteArtifact$ } from "./run-uploaded-files.service";
 
 const PUT_URL_TTL_SECONDS = 3600;
 const MAX_HOSTED_SITE_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_HOSTED_SITE_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_PUBLIC_SLUG_ATTEMPTS = 5;
+const PRESENTATION_SPEAKER_NOTES_MODEL = "openai/gpt-4.1-mini";
 
 interface PrepareDeploymentArgs {
   readonly orgId: string;
@@ -46,6 +52,10 @@ interface RedeployPresentationHtmlArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly body: HostedSiteRedeployPresentationHtmlRequest;
+}
+
+interface GeneratePresentationSpeakerNotesArgs {
+  readonly body: GeneratePresentationSpeakerNotesRequest;
 }
 
 type PrepareDeploymentResult =
@@ -83,6 +93,11 @@ type CompleteDeploymentResult =
   | { readonly status: "config_error"; readonly message: string };
 
 type RedeployPresentationHtmlResult = CompleteDeploymentResult;
+
+type GeneratePresentationSpeakerNotesResult =
+  | { readonly status: "ok"; readonly body: PresentationSpeakerNotesPatch }
+  | { readonly status: "bad_request"; readonly message: string }
+  | { readonly status: "config_error"; readonly message: string };
 
 type RedeployPresentationTargetResult =
   | {
@@ -156,6 +171,62 @@ function hostedR2Config(): HostedR2ConfigResult {
     };
   }
   return { status: "ok", config: { bucket } };
+}
+
+function presentationSpeakerNotesPrompt(html: string): readonly {
+  readonly role: "system" | "user";
+  readonly content: string;
+}[] {
+  return [
+    {
+      role: "system",
+      content:
+        "You add speaker notes to the user's own HTML presentation. Treat the HTML as read-only context. Return valid JSON matching the requested schema. Write speaker notes as spoken presenter scripts in the same primary language as each slide.",
+    },
+    {
+      role: "user",
+      content: `Generate speaker notes only for empty notes in this existing HTML presentation.
+
+Output:
+- Return only JSON.
+- Output shape: {"kind":"presentation-speaker-notes-patch","version":1,"slides":[{"slideId":"...","speakerNotes":"..."}]}.
+- Use slide IDs from data-slide-id when present.
+- If a slide has no data-slide-id, use its 1-based DOM order fallback: slide-1, slide-2, etc.
+- Include every slide whose speaker notes are empty or missing.
+- Leave slides with existing non-empty speaker notes out of the response.
+
+Writing brief:
+- Write each speakerNotes value as a presenter script the user can read aloud.
+- Start directly with what the speaker would say.
+- For cover or title slides, write a natural opening that introduces the topic, scope, and why it matters.
+- For content slides, turn the visible details into a coherent spoken explanation.
+- Match each slide's primary language and tone. Use plain text.
+
+HTML:
+${html}`,
+    },
+  ];
+}
+
+function jsonObjectText(value: string): string {
+  const trimmed = value.trim();
+  if (safeJsonParse(trimmed) !== null) {
+    return trimmed;
+  }
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    return trimmed;
+  }
+  return trimmed.slice(start, end + 1);
+}
+
+function parsePresentationSpeakerNotesPatch(
+  text: string,
+): PresentationSpeakerNotesPatch | null {
+  const parsed = safeJsonParse(jsonObjectText(text));
+  const result = presentationSpeakerNotesPatchSchema.safeParse(parsed);
+  return result.success ? result.data : null;
 }
 
 function publicUrl(publicSlug: string): string {
@@ -819,5 +890,34 @@ export const redeployPresentationHtml$ = command(
       },
       signal,
     );
+  },
+);
+
+export const generatePresentationSpeakerNotes$ = command(
+  async (
+    _,
+    args: GeneratePresentationSpeakerNotesArgs,
+    signal: AbortSignal,
+  ): Promise<GeneratePresentationSpeakerNotesResult> => {
+    const generated = await generateText(
+      PRESENTATION_SPEAKER_NOTES_MODEL,
+      presentationSpeakerNotesPrompt(args.body.html),
+      4096,
+    );
+    signal.throwIfAborted();
+    if (!generated) {
+      return {
+        status: "config_error",
+        message: "Speaker notes generation is not configured",
+      };
+    }
+    const patch = parsePresentationSpeakerNotesPatch(generated);
+    if (!patch) {
+      return {
+        status: "bad_request",
+        message: "Speaker notes generation returned invalid JSON",
+      };
+    }
+    return { status: "ok", body: patch };
   },
 );

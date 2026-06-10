@@ -1,5 +1,64 @@
 # Changelog
 
+## [9.186.1](https://github.com/vm0-ai/vm0/compare/cli-v9.186.0...cli-v9.186.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* remove compose github url support ([#17012](https://github.com/vm0-ai/vm0/issues/17012)) ([4ae5a09](https://github.com/vm0-ai/vm0/commit/4ae5a092dcef53f08499aa07cae0b1ff7ac72634))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.78.0
+    * @vm0/core bumped to 8.321.1
+
+## [9.186.0](https://github.com/vm0-ai/vm0/compare/cli-v9.185.1...cli-v9.186.0) (2026-06-10)
+
+
+### Features
+
+* **cli:** re-land zero video transcribe + frames with sandbox STT access ([#17003](https://github.com/vm0-ai/vm0/issues/17003)) ([8ec0ffc](https://github.com/vm0-ai/vm0/commit/8ec0ffc6dd4fb797dc3f065160d8d118a4c24e4d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.77.0
+    * @vm0/connectors bumped to 1.59.0
+    * @vm0/core bumped to 8.321.0
+
+## [9.185.1](https://github.com/vm0-ai/vm0/compare/cli-v9.185.0...cli-v9.185.1) (2026-06-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.76.0
+    * @vm0/connectors bumped to 1.58.0
+    * @vm0/core bumped to 8.320.2
+
+## [9.185.0](https://github.com/vm0-ai/vm0/compare/cli-v9.184.2...cli-v9.185.0) (2026-06-09)
+
+
+### Features
+
+* **cli:** add zero video transcribe command with timestamped STT output ([#16799](https://github.com/vm0-ai/vm0/issues/16799)) ([365c0db](https://github.com/vm0-ai/vm0/commit/365c0db4ac494869778f7a7c62671e2715fc3b54))
+* support connector output variables ([#16901](https://github.com/vm0-ai/vm0/issues/16901)) ([edfd55b](https://github.com/vm0-ai/vm0/commit/edfd55b3a37b611deaf9f5eac9d4bf3326e4bcda))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.75.0
+    * @vm0/connectors bumped to 1.57.0
+    * @vm0/core bumped to 8.320.1
+
 ## [9.184.2](https://github.com/vm0-ai/vm0/compare/cli-v9.184.1...cli-v9.184.2) (2026-06-09)
 
 

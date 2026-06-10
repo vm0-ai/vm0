@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.6.0...desktop-v0.7.0) (2026-06-10)
+
+
+### Features
+
+* add desktop auth startup loading state ([#17019](https://github.com/vm0-ai/vm0/issues/17019)) ([08b8ccb](https://github.com/vm0-ai/vm0/commit/08b8ccbbb3751047e7914638c6083b9a36d3837a))
+
+## [0.6.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.5.0...desktop-v0.6.0) (2026-06-10)
+
+
+### Features
+
+* add desktop computer use stop action ([#17005](https://github.com/vm0-ai/vm0/issues/17005)) ([4a22a39](https://github.com/vm0-ai/vm0/commit/4a22a3933761b4f67fb01f2c11ddb7a74b6ab8bc))
+* add desktop keep-awake setting ([#16987](https://github.com/vm0-ai/vm0/issues/16987)) ([ae58daf](https://github.com/vm0-ai/vm0/commit/ae58daf501030cc4f70b53c358b019a2ef2abb4a))
+* add desktop sign out ([#16989](https://github.com/vm0-ai/vm0/issues/16989)) ([023a0a4](https://github.com/vm0-ai/vm0/commit/023a0a441379708928b7b477f86deebb537172cb))
+* redesign desktop main window setup flow ([#17007](https://github.com/vm0-ai/vm0/issues/17007)) ([437fee1](https://github.com/vm0-ai/vm0/commit/437fee1d33640181eafac9746e28bdddb1a160ab))
+
+
+### Bug Fixes
+
+* show desktop tray auth loading status ([#16985](https://github.com/vm0-ai/vm0/issues/16985)) ([7f7b48d](https://github.com/vm0-ai/vm0/commit/7f7b48d8d04cd8a421504c941ee792b714dd0a41))
+
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.4.0...desktop-v0.5.0) (2026-06-09)
+
+
+### Features
+
+* **desktop:** start in menu bar without main window ([#16908](https://github.com/vm0-ai/vm0/issues/16908)) ([8b7eb3e](https://github.com/vm0-ai/vm0/commit/8b7eb3eb50ad18124560f32513e2135e2a6dc633))
+* show desktop tray permission status ([#16911](https://github.com/vm0-ai/vm0/issues/16911)) ([2eb453e](https://github.com/vm0-ai/vm0/commit/2eb453e4047ab6d1900ebc13c8a421608ec755e4))
+
+
+### Bug Fixes
+
+* confirm desktop quit ([#16910](https://github.com/vm0-ai/vm0/issues/16910)) ([dc0c1a6](https://github.com/vm0-ai/vm0/commit/dc0c1a6415e4d839adcecbdaafb2463e3b2d6f2f))
+* rename desktop development app ([#16898](https://github.com/vm0-ai/vm0/issues/16898)) ([a642325](https://github.com/vm0-ai/vm0/commit/a642325b825f13357932c43b9cc6cbc24c1a5f89))
+
 ## [0.4.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.3.1...desktop-v0.4.0) (2026-06-09)
 
 

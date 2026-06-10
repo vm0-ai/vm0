@@ -112,7 +112,13 @@ export const MODELS: ModelEntry[] = [
     vm0Tier: "core",
     byoKeyLabel: "Anthropic API key",
     defaultFor: [],
-    comparisonSlugs: ["Claude Opus 4.8", "GPT-5.5", "Claude Sonnet 4.6"],
+    comparisonSlugs: [
+      "Claude Opus 4.8",
+      "Claude Opus 4.7",
+      "Claude Sonnet 4.6",
+      "GPT-5.5",
+      "DeepSeek V4 Pro",
+    ],
     alternativeSlugs: ["claude-opus-4-8", "claude-sonnet-4-6", "gpt-5-5"],
   },
 

@@ -50,6 +50,7 @@ export const VM0_ORG_SLUG = "vm0";
  * Canonical model-first catalog.
  */
 export const SUPPORTED_RUN_MODELS = [
+  "claude-fable-5",
   "claude-opus-4-8",
   "claude-fable-5",
   "claude-opus-4-7",
@@ -77,6 +78,7 @@ export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
 export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
   Record<SupportedRunModel, number>
 >({
+  "claude-fable-5": 3.3,
   "claude-opus-4-8": 1.7,
   "claude-fable-5": 3.3,
   "claude-opus-4-7": 1.7,
@@ -93,6 +95,7 @@ export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
 });
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
+  "claude-fable-5",
   "claude-opus-4-8",
   "claude-sonnet-4-6",
   "deepseek-v4-pro",
@@ -119,6 +122,7 @@ export interface DefaultOrgModelPolicySeed {
 }
 
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
+  "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-7": "Claude Opus 4.7",
@@ -187,6 +191,10 @@ interface Vm0ModelConfig {
 // `MODEL_PROVIDER_TYPES.vm0.models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
+  "claude-fable-5": {
+    concreteType: "anthropic-api-key",
+    vendor: "anthropic",
+  },
   "claude-opus-4-8": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -243,6 +251,7 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
 };
 
 export const VM0_MODEL_ALIAS_TO_MODEL = {
+  "anthropic/claude-fable-5": "claude-fable-5",
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
   "anthropic/claude-opus-4.7": "claude-opus-4-7",
   "anthropic/claude-opus-4.6": "claude-opus-4-6",
@@ -263,11 +272,13 @@ export function normalizeVm0ModelId(model: string): string {
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
 
 const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
+  "claude-fable-5",
   "claude-opus-4-8",
   "claude-fable-5",
   "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-sonnet-4-6",
+  "anthropic/claude-fable-5",
   "anthropic/claude-opus-4.8",
   "anthropic/claude-opus-4.7",
   "anthropic/claude-opus-4.6",
@@ -356,6 +367,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "claude-fable-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
       "claude-opus-4-7",
@@ -375,6 +387,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "claude-fable-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
       "claude-fable-5",
@@ -400,6 +413,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "anthropic/claude-fable-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
       "anthropic/claude-sonnet-4.6",
@@ -514,6 +528,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "anthropic/claude-fable-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-opus-4.7",
       "anthropic/claude-opus-4.6",
@@ -770,6 +785,13 @@ export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
 export type ModelProviderFramework = "claude-code" | "codex";
 
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
+  "claude-fable-5": [
+    "vm0",
+    "claude-code-oauth-token",
+    "anthropic-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+  ],
   "claude-opus-4-8": [
     "vm0",
     "claude-code-oauth-token",
@@ -841,6 +863,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
   Record<ModelProviderType, Partial<Record<SupportedRunModel, string>>>
 > = {
   "openrouter-api-key": {
+    "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
@@ -851,6 +874,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "glm-5.1": "z-ai/glm-5.1",
   },
   "vercel-ai-gateway": {
+    "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
@@ -872,6 +896,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
 
 const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
   {
+    "anthropic/claude-fable-5": "claude-fable-5",
     "anthropic/claude-opus-4.8": "claude-opus-4-8",
     "anthropic/claude-opus-4.7": "claude-opus-4-7",
     "anthropic/claude-opus-4.6": "claude-opus-4-6",

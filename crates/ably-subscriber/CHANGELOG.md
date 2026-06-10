@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.18](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.17...ably-subscriber-v0.7.18) (2026-06-10)
+
+
+### Refactoring
+
+* split ably session state from event loop ([#16999](https://github.com/vm0-ai/vm0/issues/16999)) ([1482a8f](https://github.com/vm0-ai/vm0/commit/1482a8fff07ac693e468d0c5606dc12291478b4c))
+
 ## [0.7.17](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.16...ably-subscriber-v0.7.17) (2026-06-04)
 
 
