@@ -1199,3 +1199,48 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 28 — AGENT-01 runs (POST) BDD
+
+Migrates the API-testable subset of `agent-runs-create.test.ts`
+(47 legacy `it()`s, 3095 lines). The BDD form factors 14
+of the 47 legacy cases into 5 chains: (a) auth + body
+validation chain (401 → 400 missing prompt → 400 ambiguous
+Claude tools → 400 vm0 provider), (b) cross-org + body
+combination chain (404 cross-org → 400 checkpoint + session
+together), (c) concurrency chain (201 first → 429 second →
+201 cap=0 unlimited → 201 stale pending runs ignored), (d)
+capture + dispatch chain (403 production capture + 201
+internal allow → 201 failed no runner group → 201 sandbox),
+(e) create + run-context snapshot chain (201 owner → axiom
+run-context ingest → public list returns the run).
+
+The remaining 33 legacy cases are Service-Level Exceptions:
+they verify the post-create internal state via direct DB
+SELECTs against `agentRuns`, `runnerJobQueue`,
+`agentSessions`, `secrets`, `conversations`, `checkpoints`,
+`zeroAgents`, `modelProviders`, `agentComposeVersions`,
+etc. The public read surface (`runsByIdContract.getById` +
+`runsMainContract.list`) does not expose `vars`,
+`secretNames`, `additionalVolumes`, `runnerGroup`,
+`runnerProfile`, `encryptedRunnerSecrets`, the
+runnerJobQueue row, the `agent_sessions.conversation_id`
+linkage, or the post-create artifact+volume storageManifest
+shape. Surfacing these through the public read API is
+follow-up work; the legacy `agent-runs-create.test.ts`
+stays alive in the interim.
+
+The BDD file is faithful to the public surface: the 5
+chains cover auth, validation, concurrency, capture
+gating, dispatch failure, sandbox tokens, and the
+public run-context telemetry. Direct DB inserts in the
+BDD file are limited to seeding preconditions
+(`stale pending run`, `userCache internal email`) that the
+public API does not expose (Open Helper Gap).
+
+Net test count: 14 legacy `it()`s covered by BDD → 5 BDD
+`it()`s (64% reduction in the migrated subset). 33 legacy
+`it()`s preserved as Service-Level Exception.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
