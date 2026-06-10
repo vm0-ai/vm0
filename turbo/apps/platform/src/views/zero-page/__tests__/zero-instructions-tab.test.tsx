@@ -61,7 +61,9 @@ function prepareAgentInstructions(content: string | null): void {
 describe("zero instructions tab", () => {
   it("does not mark initial markdown load as unsaved, then lets the user discard edits", async () => {
     const user = userEvent.setup();
-    prepareAgentInstructions("**Keep replies concise.**");
+    prepareAgentInstructions(
+      "**Keep replies concise.**\n\n```ts\nconst ready = true;\n```",
+    );
 
     detachedSetupPage({
       context,
@@ -73,6 +75,8 @@ describe("zero instructions tab", () => {
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
       expect(screen.getByText(/Keep replies concise/u)).toBeInTheDocument();
+      const editor = document.querySelector('[contenteditable="true"]');
+      expect(editor?.textContent).toContain("const ready = true;");
     });
     expect(
       screen.queryByText("You have unsaved changes"),

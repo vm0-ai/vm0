@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -760,6 +760,38 @@ describe("zero sidebar", () => {
       expect(within(current).getByText("Connectors")).toBeInTheDocument();
       return current;
     });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    Object.defineProperty(scrollArea, "clientHeight", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(scrollArea, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollArea, "scrollTop", {
+      configurable: true,
+      value: 120,
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(scrollArea.getAttribute("style")).toContain("box-shadow:");
+    });
+
+    const scrollWrapper = scrollArea.parentElement;
+    if (!scrollWrapper) {
+      throw new Error("Sidebar scroll wrapper not found");
+    }
+    fireEvent.mouseEnter(scrollWrapper);
+    fireEvent.mouseLeave(scrollWrapper);
+
+    Object.defineProperty(scrollArea, "scrollHeight", {
+      configurable: true,
+      value: 200,
+    });
+    fireEvent.scroll(scrollArea);
 
     click(within(nav).getByText("Manage"));
 

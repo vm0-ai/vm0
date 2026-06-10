@@ -1,4 +1,3 @@
-import { command, computed, state } from "ccstate";
 import { jsonParseOr, throwIfAbort } from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
@@ -197,37 +196,3 @@ export function readChatMessageFromClipboard(
   const serialized = decodeClipboardPayload(encoded);
   return serialized ? parseChatClipboardPayload(serialized) : null;
 }
-
-const internalCopyStatus$ = state<"idle" | "copied">("idle");
-
-const internalCopyTimeoutId$ = state<number | null>(null);
-
-export const copyStatus$ = computed((get) => {
-  return get(internalCopyStatus$);
-});
-
-/**
- * Copy text to clipboard and show "copied" status for 5 seconds.
- */
-export const copyToClipboard$ = command(
-  async ({ get, set }, text: string, signal: AbortSignal) => {
-    const ok = await writeToClipboard(text);
-    signal.throwIfAborted();
-    if (!ok) {
-      return;
-    }
-
-    const existingTimeoutId = get(internalCopyTimeoutId$);
-    if (existingTimeoutId !== null) {
-      window.clearTimeout(existingTimeoutId);
-    }
-
-    set(internalCopyStatus$, "copied");
-
-    const timeoutId = window.setTimeout(() => {
-      set(internalCopyStatus$, "idle");
-      set(internalCopyTimeoutId$, null);
-    }, 5000);
-    set(internalCopyTimeoutId$, timeoutId);
-  },
-);
