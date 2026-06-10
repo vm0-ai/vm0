@@ -20,6 +20,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
@@ -176,6 +177,9 @@ export function createBddApi(context: TestContext) {
     ),
     /** ts-rest client for `/api/zero/billing/redeem-code` (consume a code). */
     billingRedeemCode: setupApp({ context })(zeroBillingRedeemCodeContract),
+    /** ts-rest client for `/api/zero/org/logo` (get/delete; POST is multipart
+     * and is issued as a raw request by the test). */
+    orgLogo: setupApp({ context })(zeroOrgLogoContract),
     /** ts-rest client for `/api/zero/attribution/signup` (record first-touch
      * signup attribution into Clerk private metadata). */
     attribution: setupApp({ context })(zeroAttributionContract),

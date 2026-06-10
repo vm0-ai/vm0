@@ -794,3 +794,19 @@ so there is no API-first way to exercise just the mapping.
 - Deleted `zero-billing-redeem-code.test.ts` whole.
 - Coverage verified (source-only): `zero-billing-redeem-code.ts` (70/42/9) and
   `zero-billing-redeem.service.ts` (89/31/7) unchanged vs `main`. No regressions.
+
+### Round 31 — ORG LOGO (CHAIN-ORG-LOGO)
+
+- Extended `createBddApi` with the `orgLogo` (get/delete) client; the multipart
+  upload is issued as a raw request through the app.
+- Added `zero-org-logo.bdd.test.ts`: read the org logo (present + cleared,
+  asserting the Clerk lookup); upload a logo (asserting the file forwarded to
+  Clerk) and a cleared image; validate the file (no file / not a file / too
+  large / unsupported type); and enforce the unauthenticated / no-org /
+  non-admin / zero-token matrix on read+upload+delete while mapping Clerk
+  not-found and bad-request errors to 404 and forbidden to 403. Clerk owns the
+  org image, so each result is read from the real response and verified through
+  the Clerk mock.
+- Deleted `zero-org-logo.test.ts` whole.
+- Coverage verified (source-only): `zero-org-logo.ts` (60/46/8) unchanged vs
+  `main`. No regressions.
