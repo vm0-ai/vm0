@@ -628,3 +628,29 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 10 — AGENT-01 by-id BDD
+
+Migrates the agent detail route (GET + DELETE). The legacy direct
+DB SELECTs that verified row presence / absence are replaced by
+re-GET through the public contract (deleted agents return 404;
+cross-org callers never see the row). Storage cleanup is
+verified indirectly (a re-GET 404 also covers the storage
+cascade for the public surface).
+
+- `zero-agents-by-id.bdd.test.ts` — 20 legacy `it()`s → 3 BDD
+  `it()`s (auth boundary + a GET chain + a DELETE chain). The
+  GET chain exercises 401 no org → 200 owner → 200 CLI token
+  (private) → 404 cross-user (private) → 404 unknown → 404
+  cross-org → 403 zero-token w/o capability → 200 zero-token
+  with capability. The DELETE chain exercises 403 sandbox w/o
+  agent:delete → 404 unknown → 404 cross-org → 403 non-owner
+  → 204 own (verified by re-GET 404). The orgMembersCache
+  upsert pattern and CLI token `cliTokens` table insert are
+  preserved because the route reads them on every request.
+
+Net test count: 20 legacy `it()`s → 3 BDD `it()`s (85%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
