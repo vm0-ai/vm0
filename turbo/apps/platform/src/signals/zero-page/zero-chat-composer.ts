@@ -71,6 +71,18 @@ export const setPopoverSortOrder$ = command(
   },
 );
 
+// -- New-thread Computer Use host selection ---------------------------------
+
+const internalNewThreadComputerUseHostId$ = state<string | null>(null);
+export const newThreadComputerUseHostId$ = computed((get) => {
+  return get(internalNewThreadComputerUseHostId$);
+});
+export const setNewThreadComputerUseHostId$ = command(
+  ({ set }, hostId: string | null) => {
+    set(internalNewThreadComputerUseHostId$, hostId);
+  },
+);
+
 // -- Model picker open state ------------------------------------------------
 
 const internalModelPickerOpen$ = state(false);

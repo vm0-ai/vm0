@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   chatMessagesContract,
   type AttachFile,
@@ -13,6 +15,7 @@ import {
   type ChatMessageScheduleSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -50,6 +53,8 @@ import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
 import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { hostIsOnline } from "../services/zero-computer-use.service";
 import {
   cancelRun$,
   dispatchCancelSideEffects$,
@@ -89,6 +94,7 @@ interface NormalSendBody {
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
+  readonly computerUseHostId?: string | null;
   readonly clientMessageId?: string;
   readonly debugNoMockClaude?: boolean;
   readonly debugNoMockCodex?: boolean;
@@ -122,6 +128,7 @@ interface ResolvedThread {
   readonly threadId: string;
   readonly sessionId: string | undefined;
   readonly incompleteContext: string;
+  readonly computerUseHostId: string | null;
   readonly isNewThread: boolean;
   readonly isClientThreadRetry: boolean;
 }
@@ -182,6 +189,7 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly priorContext: string;
   readonly generationTemplatePrompt: string;
+  readonly computerUseHostId: string | null;
   readonly persistedExplicitSelection: boolean;
 }
 
@@ -1272,6 +1280,144 @@ async function maybePersistExplicitModelFirstSelection(params: {
   return true;
 }
 
+function hasComputerUseHostSelection(body: NormalSendBody): boolean {
+  return Object.prototype.hasOwnProperty.call(body, "computerUseHostId");
+}
+
+async function computerUseFeatureEnabled(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<boolean> {
+  const context = await loadUserFeatureSwitchContext(
+    params.db,
+    params.orgId,
+    params.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
+    orgId: params.orgId,
+    userId: params.userId,
+    overrides: context.overrides,
+  });
+}
+
+async function updateThreadComputerUseHost(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly hostId: string | null;
+}): Promise<void> {
+  await params.db
+    .update(chatThreads)
+    .set({ computerUseHostId: params.hostId, updatedAt: nowDate() })
+    .where(
+      and(
+        eq(chatThreads.id, params.threadId),
+        eq(chatThreads.userId, params.userId),
+      ),
+    );
+}
+
+async function selectedComputerUseHostIsOnline(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly hostId: string;
+}): Promise<"online" | "offline" | "missing"> {
+  const [host] = await params.db
+    .select()
+    .from(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.id, params.hostId),
+        eq(computerUseHosts.orgId, params.orgId),
+        eq(computerUseHosts.userId, params.userId),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+  if (!host) {
+    return "missing";
+  }
+  return hostIsOnline(host, nowDate()) ? "online" : "offline";
+}
+
+async function resolveComputerUseHostGrant(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly body: NormalSendBody;
+  readonly thread: ResolvedThread;
+}): Promise<string | null | NormalSendFailure> {
+  const explicitSelection = hasComputerUseHostSelection(params.body);
+  const requestedHostId = explicitSelection
+    ? params.body.computerUseHostId
+    : params.thread.computerUseHostId;
+
+  if (!requestedHostId) {
+    if (explicitSelection && params.thread.computerUseHostId !== null) {
+      await updateThreadComputerUseHost({
+        db: params.db,
+        threadId: params.thread.threadId,
+        userId: params.userId,
+        hostId: null,
+      });
+    }
+    return null;
+  }
+
+  if (
+    !(await computerUseFeatureEnabled({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+    }))
+  ) {
+    if (explicitSelection) {
+      return forbidden("Computer use is not enabled");
+    }
+    return null;
+  }
+
+  const hostStatus = await selectedComputerUseHostIsOnline({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    hostId: requestedHostId,
+  });
+  if (hostStatus === "missing") {
+    if (explicitSelection) {
+      return notFound("Computer-use host not found");
+    }
+    await updateThreadComputerUseHost({
+      db: params.db,
+      threadId: params.thread.threadId,
+      userId: params.userId,
+      hostId: null,
+    });
+    return null;
+  }
+  if (hostStatus === "offline") {
+    if (explicitSelection) {
+      return conflict("Selected computer-use host is offline");
+    }
+    return null;
+  }
+
+  if (
+    explicitSelection &&
+    requestedHostId !== params.thread.computerUseHostId
+  ) {
+    await updateThreadComputerUseHost({
+      db: params.db,
+      threadId: params.thread.threadId,
+      userId: params.userId,
+      hostId: requestedHostId,
+    });
+  }
+  return requestedHostId;
+}
+
 async function createChatThread(
   db: Db,
   args: {
@@ -1359,13 +1505,18 @@ async function resolveThread(params: {
       threadId: thread.id,
       sessionId: undefined,
       incompleteContext: "",
+      computerUseHostId: null,
       isNewThread: !thread.clientThreadAlreadyExisted,
       isClientThreadRetry: thread.clientThreadAlreadyExisted,
     };
   }
 
   const [thread] = await params.db
-    .select({ id: chatThreads.id, selectedModel: chatThreads.selectedModel })
+    .select({
+      id: chatThreads.id,
+      selectedModel: chatThreads.selectedModel,
+      computerUseHostId: chatThreads.computerUseHostId,
+    })
     .from(chatThreads)
     .where(
       and(
@@ -1400,6 +1551,7 @@ async function resolveThread(params: {
       : buildWebChatIncompleteContext(
           groupIncompleteRoundsByRunId(incompleteRows),
         ),
+    computerUseHostId: thread.computerUseHostId,
     isNewThread: false,
     isClientThreadRetry: false,
   };
@@ -1970,6 +2122,17 @@ const prepareNormalSend$ = command(
         modelSelection: args.body.modelSelection,
       });
     signal.throwIfAborted();
+    const computerUseHostId = await resolveComputerUseHostGrant({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      body: args.body,
+      thread,
+    });
+    signal.throwIfAborted();
+    if (typeof computerUseHostId !== "string" && computerUseHostId !== null) {
+      return computerUseHostId;
+    }
 
     return {
       db,
@@ -1977,6 +2140,7 @@ const prepareNormalSend$ = command(
       thread,
       priorContext,
       generationTemplatePrompt: generationTemplatePrompt.prompt,
+      computerUseHostId,
       persistedExplicitSelection,
     };
   },
@@ -2345,6 +2509,7 @@ const createNormalChatRun$ = command(
         auth: args.auth,
         apiStartTime: args.apiStartTime,
         chatThreadId: prepared.thread.threadId,
+        computerUseHostId: prepared.computerUseHostId ?? undefined,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,

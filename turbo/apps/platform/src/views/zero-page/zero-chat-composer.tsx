@@ -21,6 +21,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconChartBar,
+  IconDeviceDesktop,
   IconEye,
   IconLoader2,
   IconMicrophone,
@@ -247,6 +248,13 @@ interface ZeroChatComposerProps {
     value: GenerationTemplateRequest | undefined;
     onChange: (value: GenerationTemplateRequest | undefined) => void;
   };
+  computerUse?: {
+    hosts: readonly ComposerComputerUseHost[];
+    loading: boolean;
+    selectedHostId: string | null;
+    onChange: (hostId: string | null) => void;
+    downloadUrl: string;
+  };
   /** When true, render a skeleton in the model picker slot. */
   modelPickerLoading?: boolean;
   submitBlocker?: {
@@ -269,10 +277,16 @@ export interface QueuedComposerItem {
   text: string;
 }
 
+export interface ComposerComputerUseHost {
+  id: string;
+  displayName: string;
+}
+
 type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
 type ComposerTemplatePicker = NonNullable<
   ZeroChatComposerProps["templatePicker"]
 >;
+type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1377,6 +1391,104 @@ function ConnectorsPopoverButton({
   );
 }
 
+function ComputerUsePopoverButton({
+  computerUse,
+}: {
+  computerUse: ComposerComputerUse;
+}) {
+  const active = computerUse.selectedHostId !== null;
+
+  return (
+    <Popover>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <PopoverTrigger asChild>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                  active && "text-primary",
+                )}
+                aria-label="Computer Use"
+              >
+                <IconDeviceDesktop size={18} stroke={1.5} />
+              </button>
+            </TooltipTrigger>
+          </PopoverTrigger>
+          <TooltipContent side="top" className="text-xs">
+            Computer
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
+        <div className="py-1">
+          {computerUse.loading ? (
+            <div className="flex flex-col animate-pulse">
+              {Array.from({ length: 2 }, (_, i) => {
+                return (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2">
+                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                    <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
+                    <span className="h-3 w-6 rounded-full bg-muted/50" />
+                  </div>
+                );
+              })}
+            </div>
+          ) : computerUse.hosts.length > 0 ? (
+            <div className="flex max-h-72 flex-col overflow-y-auto">
+              {computerUse.hosts.map((host) => {
+                const checked = computerUse.selectedHostId === host.id;
+                return (
+                  <div
+                    key={host.id}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+                      <IconDeviceDesktop size={16} stroke={1.5} />
+                    </span>
+                    <span className="text-sm flex-1 truncate text-foreground">
+                      {host.displayName}
+                    </span>
+                    <LoadingSwitch
+                      checked={checked}
+                      onCheckedChange={(nextChecked) => {
+                        computerUse.onChange(nextChecked ? host.id : null);
+                      }}
+                      loading={false}
+                      ariaLabel={`${checked ? "Disable" : "Enable"} ${host.displayName}`}
+                      size="sm"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="px-3 py-2 text-sm text-muted-foreground">
+              No online computers
+            </div>
+          )}
+        </div>
+        <div className="border-t border-border/50 p-1">
+          <a
+            href={computerUse.downloadUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+          >
+            <IconPlug
+              size={18}
+              stroke={1.5}
+              className="shrink-0 text-muted-foreground"
+            />
+            Connect my computer
+          </a>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Voice input mic button
 // ---------------------------------------------------------------------------
@@ -1697,6 +1809,7 @@ export function ZeroChatComposer({
   actionsLoading = false,
   modelPicker,
   templatePicker,
+  computerUse,
   modelPickerLoading = false,
   submitBlocker,
   queuedItems,
@@ -2140,6 +2253,9 @@ export function ZeroChatComposer({
                     }}
                     onToggle={handleToggle}
                   />
+                  {computerUse && (
+                    <ComputerUsePopoverButton computerUse={computerUse} />
+                  )}
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">

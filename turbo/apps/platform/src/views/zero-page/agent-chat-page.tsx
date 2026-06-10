@@ -1,4 +1,10 @@
-import { useGet, useSet, useLoadable, useLastResolved } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -45,8 +51,15 @@ import {
 } from "../../signals/zero-page/zero-chat-page.ts";
 import {
   newThreadGenerationTemplate$,
+  newThreadComputerUseHostId$,
   setNewThreadGenerationTemplate$,
+  setNewThreadComputerUseHostId$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
+import {
+  onlineComputerUseHosts$,
+  selectedOnlineComputerUseHostId,
+  ZERO_DESKTOP_DOWNLOAD_URL,
+} from "../../signals/zero-page/computer-use-hosts.ts";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -413,6 +426,17 @@ export function AgentChatPage() {
   const sendNewThread = useSet(sendNewThreadOptimistically$);
   const generationTemplate = useGet(newThreadGenerationTemplate$);
   const setGenerationTemplate = useSet(setNewThreadGenerationTemplate$);
+  const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
+  const computerUseHosts =
+    computerUseHostsLoadable.state === "hasData"
+      ? computerUseHostsLoadable.data
+      : [];
+  const storedComputerUseHostId = useGet(newThreadComputerUseHostId$);
+  const selectedComputerUseHostId = selectedOnlineComputerUseHostId(
+    computerUseHosts,
+    storedComputerUseHostId,
+  );
+  const setComputerUseHostId = useSet(setNewThreadComputerUseHostId$);
   const rootSignal = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
   const {
@@ -440,6 +464,7 @@ export function AgentChatPage() {
             prompt: message,
             modelSelection,
             generationTemplate: selectedGenerationTemplate,
+            computerUseHostId: selectedComputerUseHostId,
           },
           rootSignal,
         );
@@ -509,6 +534,13 @@ export function AgentChatPage() {
             templatePicker={{
               value: generationTemplate,
               onChange: setGenerationTemplate,
+            }}
+            computerUse={{
+              hosts: computerUseHosts,
+              loading: computerUseHostsLoadable.state === "loading",
+              selectedHostId: selectedComputerUseHostId,
+              onChange: setComputerUseHostId,
+              downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
             }}
             modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}

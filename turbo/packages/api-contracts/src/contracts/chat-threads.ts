@@ -260,6 +260,7 @@ const chatThreadDetailSchema = z.object({
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
+  computerUseHostId: z.string().uuid().nullable().optional(),
   /**
    * Per-thread selected model pin. Provider route fields are retained for
    * backwards-compatible responses but model-first sends re-resolve provider
@@ -578,6 +579,7 @@ export const chatMessagesContract = c.router({
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
         generationTemplate: generationTemplateRequestSchema.optional(),
+        computerUseHostId: z.string().uuid().nullable().optional(),
         // Optional for backward compatibility: older clients that omit this field
         // still trigger title generation (server guards with !== false, not === true).
         hasTextContent: z.boolean().optional(),
@@ -606,6 +608,7 @@ export const chatMessagesContract = c.router({
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         debugNoMockClaude: z.undefined().optional(),
@@ -622,6 +625,7 @@ export const chatMessagesContract = c.router({
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         debugNoMockClaude: z.undefined().optional(),

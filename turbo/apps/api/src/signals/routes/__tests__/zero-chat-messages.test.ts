@@ -18,6 +18,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -174,6 +175,30 @@ async function seedFixture(): Promise<ChatMessageFixture> {
   return { userId, orgId, agentId, versionId };
 }
 
+async function seedOnlineComputerUseHost(
+  fixture: ChatMessageFixture,
+): Promise<string> {
+  const writeDb = store.set(writeDb$);
+  const [host] = await writeDb
+    .insert(computerUseHosts)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      displayName: "Zero Desktop",
+      tokenHash: `host_${randomUUID()}`,
+      appVersion: "0.1.0",
+      osVersion: "macOS 15",
+      supportedCapabilities: ["apps.list"],
+      permissions: { accessibility: true, screenRecording: true },
+      lastSeenAt: nowDate(),
+    })
+    .returning({ id: computerUseHosts.id });
+  if (!host) {
+    throw new Error("Failed to seed computer-use host");
+  }
+  return host.id;
+}
+
 async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
   const writeDb = store.set(writeDb$);
   const threadRows = await writeDb
@@ -217,6 +242,14 @@ async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
   if (threadIds.length > 0) {
     await writeDb.delete(chatThreads).where(inArray(chatThreads.id, threadIds));
   }
+  await writeDb
+    .delete(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.orgId, fixture.orgId),
+        eq(computerUseHosts.userId, fixture.userId),
+      ),
+    );
   await writeDb
     .delete(userFeatureSwitches)
     .where(
@@ -1085,7 +1118,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
-  it("passes enabled feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
+  it("does not grant computer-use capability without a selected host", async () => {
     const fixture = await track(seedFixture());
     await store
       .set(writeDb$)
@@ -1107,9 +1140,47 @@ describe("POST /api/zero/chat/messages", () => {
 
     const secrets = await runExecutionSecrets(response.body.runId!);
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
-    expect(zeroAuth?.capabilities).toContain("computer-use:write");
+    expect(zeroAuth?.capabilities).not.toContain("computer-use:write");
     expect(zeroAuth?.capabilities).toContain("host:read");
     expect(zeroAuth?.capabilities).toContain("host:write");
+  });
+
+  it("grants computer-use capability to the selected online host", async () => {
+    const fixture = await track(seedFixture());
+    await store
+      .set(writeDb$)
+      .insert(userFeatureSwitches)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        switches: {
+          [FeatureSwitchKey.ComputerUse]: true,
+        },
+        updatedAt: nowDate(),
+      });
+    const hostId = await seedOnlineComputerUseHost(fixture);
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "open remote browser",
+      computerUseHostId: hostId,
+    });
+    await clearAllDetached();
+
+    const secrets = await runExecutionSecrets(response.body.runId!);
+    const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
+    expect(zeroAuth).toMatchObject({
+      computerUseHostId: hostId,
+      capabilities: expect.arrayContaining(["computer-use:write"]),
+    });
+
+    const [thread] = await store
+      .set(writeDb$)
+      .select({ computerUseHostId: chatThreads.computerUseHostId })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, response.body.threadId))
+      .limit(1);
+    expect(thread?.computerUseHostId).toBe(hostId);
   });
 
   it("persists attachments on the user message and injects them into the run prompt", async () => {

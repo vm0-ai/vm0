@@ -145,6 +145,7 @@ type ChatThreadRow = {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: string | null;
   readonly selectedModel: string | null;
+  readonly computerUseHostId: string | null;
   readonly orgId: string | null;
   readonly lastReadMessageId: string | null;
   readonly renamedAt: Date | null;
@@ -310,6 +311,7 @@ function ownedChatThread(
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
         draftAttachments: chatThreads.draftAttachments,
+        computerUseHostId: chatThreads.computerUseHostId,
         selectedModel: chatThreads.selectedModel,
         orgId: zeroAgents.orgId,
         lastReadMessageId: chatThreads.lastReadMessageId,
@@ -335,6 +337,7 @@ function ownedChatThread(
         .array()
         .nullable()
         .parse(thread.draftAttachments ?? null),
+      computerUseHostId: thread.computerUseHostId,
       modelProviderId: null,
       modelProviderType: null,
       modelProviderCredentialScope: null,
