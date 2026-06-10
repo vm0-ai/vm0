@@ -31,19 +31,6 @@ import {
   storagesPrepareContract,
 } from "@vm0/api-contracts/contracts/storages";
 import {
-  zeroComputerUseAuditEventsContract,
-  zeroComputerUseCommandContract,
-  zeroComputerUseHeartbeatContract,
-  zeroComputerUseHostCommandsContract,
-  zeroComputerUseHostsContract,
-  zeroComputerUseWriteCommandContract,
-  type ComputerUseAuditEventListResponse,
-  type ComputerUseCommandCreateResponse,
-  type ComputerUseCommandResponse,
-  type ComputerUseHostListResponse,
-} from "@vm0/api-contracts/contracts/zero-computer-use";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import {
   zeroHostContract,
   type HostedSiteCompleteResponse,
   type HostedSitePrepareRequest,
@@ -62,7 +49,6 @@ import {
   zeroMemoryContract,
   type MemoryDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
   accept,
@@ -76,10 +62,6 @@ type StorageType = "volume" | "artifact";
 
 interface AuthHeaders {
   readonly authorization?: string;
-}
-
-interface RequiredAuthHeaders {
-  readonly authorization: string;
 }
 
 interface BddCompose {
@@ -168,18 +150,6 @@ type BddSendMessageBody =
       readonly clientMessageId?: string;
     };
 
-const DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES = [
-  "apps.list",
-  "app.state",
-  "app.open",
-  "element.click",
-  "element.scroll",
-  "element.set_value",
-  "element.perform_action",
-  "keyboard.type_text",
-  "keyboard.press_key",
-] as const;
-
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
 }
@@ -201,10 +171,6 @@ function authenticate(
     actor.orgRole,
   );
   return authHeaders(actor);
-}
-
-function hostHeaders(hostToken: string): RequiredAuthHeaders {
-  return { authorization: `Bearer ${hostToken}` };
 }
 
 function commandName(command: unknown): string {
@@ -345,34 +311,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function storageDownloadClient() {
     return setupApp({ context })(storagesDownloadContract);
-  }
-
-  function featureSwitchesClient() {
-    return setupApp({ context })(zeroFeatureSwitchesContract);
-  }
-
-  function computerUseHostsClient() {
-    return setupApp({ context })(zeroComputerUseHostsContract);
-  }
-
-  function computerUseHeartbeatClient() {
-    return setupApp({ context })(zeroComputerUseHeartbeatContract);
-  }
-
-  function computerUseCommandClient() {
-    return setupApp({ context })(zeroComputerUseCommandContract);
-  }
-
-  function computerUseWriteCommandClient() {
-    return setupApp({ context })(zeroComputerUseWriteCommandContract);
-  }
-
-  function computerUseHostCommandsClient() {
-    return setupApp({ context })(zeroComputerUseHostCommandsContract);
-  }
-
-  function computerUseAuditEventsClient() {
-    return setupApp({ context })(zeroComputerUseAuditEventsContract);
   }
 
   return {
@@ -1091,274 +1029,6 @@ export function createChatFilesBddApi(context: TestContext) {
         }),
         statuses,
       );
-    },
-
-    async enableComputerUse(actor: ApiTestUser): Promise<void> {
-      await accept(
-        featureSwitchesClient().update({
-          headers: authenticate(context, actor),
-          body: { switches: { [FeatureSwitchKey.ComputerUse]: true } },
-        }),
-        [200],
-      );
-    },
-
-    async startComputerUseHost(
-      actor: ApiTestUser,
-    ): Promise<{ readonly hostId: string; readonly hostToken: string }> {
-      const response = await accept(
-        computerUseHostsClient().start({
-          headers: authenticate(context, actor),
-          body: {
-            hostName: "Zero Desktop",
-            appVersion: "0.1.0",
-            osVersion: "macOS 15",
-            supportedCapabilities: [
-              ...DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES,
-            ],
-            permissions: { accessibility: true, screenRecording: true },
-          },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestStartComputerUseHost(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403 | 409)[],
-    ) {
-      return await accept(
-        computerUseHostsClient().start({
-          headers: authenticate(context, actor),
-          body: {
-            hostName: "Zero Desktop",
-            appVersion: "0.1.0",
-            osVersion: "macOS 15",
-            supportedCapabilities: [
-              ...DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES,
-            ],
-            permissions: { accessibility: true, screenRecording: true },
-          },
-        }),
-        statuses,
-      );
-    },
-
-    async requestListComputerUseHosts(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403)[],
-    ) {
-      return await accept(
-        computerUseHostsClient().list({
-          headers: authenticate(context, actor),
-        }),
-        statuses,
-      );
-    },
-
-    async listComputerUseHosts(
-      actor: ApiTestUser,
-    ): Promise<ComputerUseHostListResponse> {
-      const response = await accept(
-        computerUseHostsClient().list({
-          headers: authenticate(context, actor),
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestDeleteComputerUseHost(
-      actor: ApiTestUser | null,
-      hostId: string,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        computerUseHostsClient().delete({
-          headers: authenticate(context, actor),
-          params: { hostId },
-        }),
-        statuses,
-      );
-    },
-
-    async deleteComputerUseHost(
-      actor: ApiTestUser,
-      hostId: string,
-    ): Promise<void> {
-      await accept(
-        computerUseHostsClient().delete({
-          headers: authenticate(context, actor),
-          params: { hostId },
-        }),
-        [200],
-      );
-    },
-
-    async stopComputerUseHost(
-      hostToken: string,
-    ): Promise<{ readonly ok: true; readonly hostId: string }> {
-      const response = await accept(
-        computerUseHeartbeatClient().stop({
-          headers: hostHeaders(hostToken),
-          body: {},
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async createComputerUseWriteCommand(
-      actor: ApiTestUser,
-    ): Promise<ComputerUseCommandCreateResponse> {
-      const response = await accept(
-        computerUseWriteCommandClient().create({
-          headers: authenticate(context, actor),
-          body: {
-            kind: "app.open",
-            app: "Safari",
-            timeoutMs: 15_000,
-          },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestCreateComputerUseWriteCommand(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403 | 404 | 409)[],
-    ) {
-      return await accept(
-        computerUseWriteCommandClient().create({
-          headers: authenticate(context, actor),
-          body: {
-            kind: "app.open",
-            app: "Safari",
-            timeoutMs: 15_000,
-          },
-        }),
-        statuses,
-      );
-    },
-
-    async readComputerUseCommand(
-      actor: ApiTestUser,
-      commandId: string,
-    ): Promise<ComputerUseCommandResponse> {
-      const response = await accept(
-        computerUseCommandClient().get({
-          headers: authenticate(context, actor),
-          params: { commandId },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestReadComputerUseCommand(
-      actor: ApiTestUser | null,
-      commandId: string,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        computerUseCommandClient().get({
-          headers: authenticate(context, actor),
-          params: { commandId },
-        }),
-        statuses,
-      );
-    },
-
-    async requestComputerUseScreenshot(
-      actor: ApiTestUser | null,
-      commandId: string,
-      statuses: readonly (200 | 401 | 403 | 404)[],
-    ) {
-      return await accept(
-        computerUseCommandClient().getScreenshot({
-          headers: authenticate(context, actor),
-          params: { commandId },
-        }),
-        statuses,
-      );
-    },
-
-    async claimNextComputerUseCommand(hostToken: string): Promise<
-      | { readonly status: "idle" }
-      | {
-          readonly status: "command";
-          readonly command: ComputerUseCommandResponse;
-        }
-    > {
-      const response = await accept(
-        computerUseHostCommandsClient().next({
-          headers: hostHeaders(hostToken),
-          body: {
-            supportedCapabilities: [
-              ...DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES,
-            ],
-          },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async completeComputerUseCommand(
-      hostToken: string,
-      commandId: string,
-    ): Promise<void> {
-      await accept(
-        computerUseHostCommandsClient().complete({
-          headers: hostHeaders(hostToken),
-          params: { commandId },
-          body: {
-            status: "succeeded",
-            result: { app: "Safari", opened: true },
-          },
-        }),
-        [200],
-      );
-    },
-
-    async requestListComputerUseAuditEvents(
-      actor: ApiTestUser | null,
-      query: {
-        readonly commandId?: string;
-        readonly hostId?: string;
-        readonly runId?: string;
-        readonly limit?: number;
-      },
-      statuses: readonly (200 | 401 | 403)[],
-    ) {
-      return await accept(
-        computerUseAuditEventsClient().list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        statuses,
-      );
-    },
-
-    async listComputerUseAuditEvents(
-      actor: ApiTestUser,
-      query: {
-        readonly commandId?: string;
-        readonly hostId?: string;
-        readonly runId?: string;
-        readonly limit?: number;
-      } = {},
-    ): Promise<ComputerUseAuditEventListResponse> {
-      const response = await accept(
-        computerUseAuditEventsClient().list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        [200],
-      );
-      return response.body;
     },
 
     expectApiError(body: unknown): asserts body is ApiErrorResponse {
