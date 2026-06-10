@@ -1093,3 +1093,34 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 25 — AGENT-01 runs (id) read BDD
+
+Migrates `agent-runs-read.test.ts` (13 legacy `it()`s, 690
+lines). The 13 cases split into 4 BDD test groups: (a) GET
+list auth boundary + default status filter chain, (b) GET
+list 400 + filter chain (invalid status → invalid since →
+invalid until → agent + date + org + limit → sandbox token),
+(c) GET byId 400/404/200 chain (invalid uuid → missing →
+wrong user → wrong org → 200 detail), (d) GET queue 401 +
+empty + FIFO + active-in-active-org + privacy + estimated
+time chain.
+
+The 404-by-id cases use direct DB seeding via `seedRun$`
+(Open Helper Gap — runs are normally created through the
+public POST endpoint, but seeding a `wrong user` or `wrong
+org` run is not user-reachable from any API). The
+`userCache` insert for the queue FIFO case is also a direct
+DB write because the `userCache` table is updated by an
+internal callback, not by a public API.
+
+Notable: the legacy "filters by agent name" test
+distinguished between `agent` and `agentName`; the BDD
+contract's `agent` query is the same shape (the response
+field `agentName` is the post-projection key).
+
+Net test count: 13 legacy `it()`s → 4 BDD `it()`s (69%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
