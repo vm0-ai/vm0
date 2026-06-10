@@ -18,6 +18,7 @@ import {
   zeroPersonalModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
@@ -148,6 +149,8 @@ export function createBddApi(context: TestContext) {
     chatThreadModelSelection: setupApp({ context })(
       chatThreadModelSelectionContract,
     ),
+    /** ts-rest client for `/api/zero/org/list` (list the caller's orgs). */
+    orgList: setupApp({ context })(zeroOrgListContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
@@ -171,6 +174,28 @@ export function createBddApi(context: TestContext) {
     /** Mock a Clerk session with no active organization. */
     actAsNoOrg(userId: string = newUserId()): void {
       mocks.clerk.session(userId, null);
+    },
+
+    /** Mock the caller's Clerk organization memberships (the external source of
+     * truth for `/api/zero/org/list`). Clerk owns org membership, so there is
+     * no in-app API to create it — mocking the provider is the precondition. */
+    mockOrgMemberships(
+      memberships: readonly {
+        readonly orgId: string;
+        readonly slug: string;
+        readonly role: "org:admin" | "org:member";
+      }[],
+    ): void {
+      context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
+        {
+          data: memberships.map((membership) => {
+            return {
+              organization: { id: membership.orgId, slug: membership.slug },
+              role: membership.role,
+            };
+          }),
+        },
+      );
     },
 
     /** Build an `Authorization` header for a sandbox "zero" token carrying the

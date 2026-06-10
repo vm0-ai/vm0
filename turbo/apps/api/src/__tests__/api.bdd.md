@@ -636,3 +636,19 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified (source-only): no chat-thread source regression vs `main`;
   `zero-chat-thread.service.ts` 283/206 → 284/207. (`slack-connect-blocks.ts`
   oscillates run-to-run and recovered on re-run — added to the noise set.)
+
+### Round 21 — ORG LIST (CHAIN-ORG-LIST)
+
+- Extended `createBddApi` with the `orgList` client and a `mockOrgMemberships`
+  helper. Clerk owns organization membership, so the membership set is a
+  legitimate external precondition to mock (there is no in-app API to create a
+  Clerk org membership) — the helper only stubs
+  `clerk.users.getOrganizationMembershipList`.
+- Added `zero-org-list.bdd.test.ts`: map a single admin membership, then a
+  mixed admin/member set (covers both `mapClerkOrgRole` arms), asserting
+  `orgs`/`active` from the real response; plus an unauthenticated 401. Dropped
+  the legacy `toHaveBeenCalledWith` mock-interaction assertion in favour of the
+  response shape.
+- Deleted `zero-org-list.test.ts` whole.
+- Coverage verified (source-only): `zero-org-read.ts` (40/13/5) and
+  `zero-org-data.service.ts` (199/106/30) unchanged vs `main`. No regressions.
