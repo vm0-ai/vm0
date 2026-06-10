@@ -55,6 +55,7 @@ import {
 import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
+import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
@@ -252,6 +253,11 @@ export function createBddApi(context: TestContext) {
      * (GAP-CONNECTOR-CONNECT); the auth, disconnected-status and
      * unknown-workspace cases are reachable directly. */
     slackConnect: setupApp({ context })(zeroSlackConnectContract),
+    /** ts-rest client for `/api/zero/integrations/slack` (org Slack status). A
+     * connected workspace and environment details need a seeded installation /
+     * connection (GAP-CONNECTOR-CONNECT); the auth and not-installed (install
+     * URLs) cases are reachable directly. */
+    slackIntegration: setupApp({ context })(zeroIntegrationsSlackContract),
     onboardingStatus: setupApp({ context })(onboardingStatusContract),
     /** ts-rest client for `/api/zero/onboarding/setup` (admin one-shot default
      * agent creation). Creating the default agent is free, so the happy path is

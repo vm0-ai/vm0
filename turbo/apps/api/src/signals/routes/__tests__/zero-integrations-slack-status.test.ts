@@ -32,29 +32,6 @@ describe("GET /api/zero/integrations/slack", () => {
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
-
-    const response = await accept(client.getStatus({ headers: {} }), [401]);
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(zeroIntegrationsSlackContract);
-
-    const response = await accept(
-      client.getStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
   it("returns isConnected=false when user has no connection", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

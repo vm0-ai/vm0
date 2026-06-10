@@ -1319,3 +1319,19 @@ First USAGE-family reduce.
   legacy.
 - Reduced `zero-slack-connect.test.ts` (21 -> 16).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 60 — ORG SLACK STATUS REJECTIONS (CHAIN-SLACK-STATUS-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `slackIntegration` client
+  (`/api/zero/integrations/slack`).
+- Added `zero-integrations-slack-status-rejections.bdd.test.ts`: the status
+  rejects unauthenticated and org-less callers (401) and reports
+  `isInstalled: false` / `isConnected: false` / `isAdmin: true` for a fresh admin
+  org.
+- The OAuth install/connect URL _contents_ need the Slack client env the legacy
+  harness configures (they come back null otherwise), and the connected-workspace,
+  isConnected=false (installation present, no user connection), environment-detail
+  and scope-mismatch variants need a seeded installation / connection / default
+  agent version (GAP-CONNECTOR-CONNECT); those stay in the kept legacy.
+- Reduced `zero-integrations-slack-status.test.ts` (14 -> 12).
+- Coverage verified (source-only): no regressions vs `main`.
