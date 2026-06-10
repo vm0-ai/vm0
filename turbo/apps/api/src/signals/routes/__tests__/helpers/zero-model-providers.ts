@@ -23,6 +23,16 @@ interface SeedOrgModelProviderValues {
   readonly authMethod?: string | null;
 }
 
+interface SeedUserModelProviderValues {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: string;
+  readonly isDefault?: boolean;
+  readonly selectedModel?: string | null;
+  readonly secretName?: string | null;
+  readonly authMethod?: string | null;
+}
+
 export const seedOrgModelProvider$ = command(
   async (
     { set },
@@ -64,49 +74,6 @@ export const seedOrgModelProvider$ = command(
     return { id: row?.id ?? randomUUID() };
   },
 );
-
-export const deleteOrgModelProviders$ = command(
-  async (
-    { set },
-    fixture: OrgModelProviderFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .delete(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, fixture.orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        ),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.userId, ORG_SENTINEL_USER_ID),
-        ),
-      );
-    signal.throwIfAborted();
-  },
-);
-
-export interface UserModelProviderFixture {
-  readonly orgId: string;
-  readonly userId: string;
-}
-
-interface SeedUserModelProviderValues {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly type: string;
-  readonly isDefault?: boolean;
-  readonly selectedModel?: string | null;
-  readonly secretName?: string | null;
-  readonly authMethod?: string | null;
-}
 
 export const seedUserModelProvider$ = command(
   async (
@@ -150,10 +117,10 @@ export const seedUserModelProvider$ = command(
   },
 );
 
-export const deleteUserModelProviders$ = command(
+export const deleteOrgModelProviders$ = command(
   async (
     { set },
-    fixture: UserModelProviderFixture,
+    fixture: OrgModelProviderFixture,
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
@@ -162,7 +129,7 @@ export const deleteUserModelProviders$ = command(
       .where(
         and(
           eq(modelProviders.orgId, fixture.orgId),
-          eq(modelProviders.userId, fixture.userId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
         ),
       );
     signal.throwIfAborted();
@@ -171,7 +138,7 @@ export const deleteUserModelProviders$ = command(
       .where(
         and(
           eq(secrets.orgId, fixture.orgId),
-          eq(secrets.userId, fixture.userId),
+          eq(secrets.userId, ORG_SENTINEL_USER_ID),
         ),
       );
     signal.throwIfAborted();
