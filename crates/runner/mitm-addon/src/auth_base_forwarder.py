@@ -32,6 +32,14 @@ HOP_BY_HOP: frozenset[str] = frozenset(
         "upgrade",
     )
 )
+_RESOLVED_AUTH_HEADER_EXCLUDED: frozenset[str] = HOP_BY_HOP | frozenset(
+    ("host", "content-length", "transfer-encoding")
+)
+_HTTP_TOKEN_CHARS: frozenset[str] = frozenset(
+    "!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+)
+_ASCII_CONTROL_MAX = 0x1F
+_ASCII_DELETE = 0x7F
 DEFAULT_HTTPS_PORT = 443
 MAX_AUTH_BASE_REQUEST_BODY_BYTES = 32 * 1024 * 1024
 MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
@@ -77,6 +85,10 @@ class ForwardedRequestTooLargeError(Exception):
 
 class UnsafeAuthBaseDestinationError(Exception):
     """Raised when an auth.base upstream destination is not public internet."""
+
+
+class InvalidResolvedAuthHeaderError(Exception):
+    """Raised when resolved auth data contains an invalid HTTP header."""
 
 
 class _ValidatedAddress(NamedTuple):
@@ -204,11 +216,40 @@ def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
     )
 
 
+def _validate_resolved_auth_header_pair(header_name: str, header_value: str) -> None:
+    if (
+        not isinstance(header_name, str)
+        or not header_name
+        or any(char not in _HTTP_TOKEN_CHARS for char in header_name)
+    ):
+        raise InvalidResolvedAuthHeaderError("Resolved auth header name is invalid")
+    if (
+        not isinstance(header_value, str)
+        or any(ord(char) <= _ASCII_CONTROL_MAX and char != "\t" for char in header_value)
+        or chr(_ASCII_DELETE) in header_value
+    ):
+        raise InvalidResolvedAuthHeaderError(f"Resolved auth header {header_name} value is invalid")
+    try:
+        header_value.encode("latin-1")
+    except UnicodeEncodeError as exc:
+        raise InvalidResolvedAuthHeaderError(
+            f"Resolved auth header {header_name} value is invalid"
+        ) from exc
+
+
+def resolved_auth_header_pairs(headers) -> list[tuple[str, str]]:
+    """Return resolved auth headers safe to inject into an outbound request."""
+    pairs = header_pairs(headers)
+    for name, value in pairs:
+        _validate_resolved_auth_header_pair(name, value)
+    return [
+        (name, value) for name, value in pairs if name.lower() not in _RESOLVED_AUTH_HEADER_EXCLUDED
+    ]
+
+
 def trusted_request_header_pairs(headers) -> list[tuple[str, str]]:
     """Return trusted injected request headers safe to append after client filtering."""
-    excluded = set(HOP_BY_HOP)
-    excluded.update({"host", "content-length", "transfer-encoding"})
-    return [(name, value) for name, value in header_pairs(headers) if name.lower() not in excluded]
+    return resolved_auth_header_pairs(headers)
 
 
 def _headers_from_pairs(pairs: list[tuple[str, str]]) -> http.Headers:
