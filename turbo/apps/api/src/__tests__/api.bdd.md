@@ -787,3 +787,31 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 16 — CHAT-01 general (path validation + detail + messages) BDD
+
+Migrates the catch-all `zero-chat-threads.test.ts` (path
+validation table + detail cases + append-only messages cases).
+The path validation table (`it.each` over 13 cases) is
+preserved as a single BDD test that walks the same set of
+routes by re-using the public app. The thread-detail cases
+are all "owner sees correct detail" variations and chain
+naturally in a single GWT-WT-WT walk. The messages cases
+(S3-backed attachFile metadata + append-only revoked/ghost
+rows) chain into a single messages chain.
+
+- `zero-chat-threads.bdd.test.ts` — 15 legacy `it()`s (one is
+  `it.each` over 13 paths) → 3 BDD `it()`s (path validation
+  - detail chain + messages chain). The detail chain covers
+    401, 404 missing, 400 malformed, 200 metadata, 200 no
+    messages key, 200 no S3 list, 200 renamedAt ISO, 200
+    first-run model fallback, 200 stale provider route
+    columns ignored, 404 cross-user, 200 title after update
+    (verified in list), 200 activeRuns live status, and 200
+    activeRuns empty (all terminal).
+
+Net test count: 15 legacy `it()`s → 3 BDD `it()`s (80%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
