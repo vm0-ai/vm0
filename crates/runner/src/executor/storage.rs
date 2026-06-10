@@ -243,9 +243,17 @@ fn redact_url_query_strings(input: &str) -> String {
     let mut redacted = String::with_capacity(input.len());
     let mut cursor = 0;
 
-    while let Some((url_start, scheme)) = find_next_url_scheme(input, cursor) {
-        redacted.push_str(&input[cursor..url_start]);
+    while cursor < input.len() {
+        let Some(scheme) = url_scheme_at(input, cursor) else {
+            let Some(ch) = input[cursor..].chars().next() else {
+                break;
+            };
+            redacted.push(ch);
+            cursor += ch.len_utf8();
+            continue;
+        };
 
+        let url_start = cursor;
         let url_body_start = url_start + scheme.len();
         let url_end = find_url_token_end(input, url_body_start);
         let Some(query_offset) = input[url_body_start..url_end].find('?') else {
@@ -265,15 +273,10 @@ fn redact_url_query_strings(input: &str) -> String {
     redacted
 }
 
-fn find_next_url_scheme(input: &str, start: usize) -> Option<(usize, &'static str)> {
+fn url_scheme_at(input: &str, index: usize) -> Option<&'static str> {
     ["https://", "http://"]
         .into_iter()
-        .filter_map(|scheme| {
-            input[start..]
-                .find(scheme)
-                .map(|index| (start + index, scheme))
-        })
-        .min_by_key(|(index, _)| *index)
+        .find(|scheme| input[index..].starts_with(scheme))
 }
 
 fn find_url_token_end(input: &str, start: usize) -> usize {
