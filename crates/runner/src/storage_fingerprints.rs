@@ -8,18 +8,18 @@ use serde::{Deserialize, Serialize};
 ///
 /// All comparisons use `(vas_storage_name, vas_version_id)` tuples.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StorageFingerprints {
+pub(crate) struct StorageFingerprints {
     /// mount_path → (vas_storage_name, vas_version_id) for regular storages.
-    pub storages: HashMap<String, (String, String)>,
+    pub(crate) storages: HashMap<String, (String, String)>,
     /// mount_path → (vas_storage_name, vas_version_id) for artifacts.
-    pub artifacts: HashMap<String, (String, String)>,
+    pub(crate) artifacts: HashMap<String, (String, String)>,
 }
 
 const TAINTED_STORAGE_FINGERPRINT_NAME: &str = "\0vm0-tainted-storage\0";
 const TAINTED_STORAGE_FINGERPRINT_VERSION: &str = "\0vm0-tainted-storage\0";
 
 impl StorageFingerprints {
-    pub fn from_manifest(manifest: &StorageManifest) -> Self {
+    pub(crate) fn from_manifest(manifest: &StorageManifest) -> Self {
         let mut storages = HashMap::new();
         for s in &manifest.storages {
             storages.insert(
