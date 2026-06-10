@@ -92,7 +92,7 @@ function menuItemByText(text: string): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("adds, edits, and deletes a workspace model route", async () => {
+  it("adds, edits, and deletes a workspace API key model route", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     await openProvidersTab();
@@ -157,6 +157,12 @@ describe("organization model providers settings", () => {
         screen.queryByTestId("org-model-policy-row-claude-opus-4-7"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("adds a workspace Claude subscription model route", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    await openProvidersTab();
 
     click(buttonByText("Add model"));
     click(screen.getByRole("radio", { name: /Claude subscription/u }));

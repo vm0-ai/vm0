@@ -487,6 +487,70 @@ describe("chat composer models", () => {
     });
   });
 
+  it("opens reconnect login for a stale personal Codex routed model", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.open(null);
+    context.mocks.browser.clipboardWriteText();
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "gpt-5.5",
+        modelLabel: "GPT-5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000403",
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+        needsReconnect: true,
+        lastRefreshErrorCode: "refresh_token_expired",
+      }),
+    ]);
+    mockAgent();
+    context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+      return respond(200, {
+        sessionToken: "mock-stale-codex-device-session",
+        type: "codex",
+        status: "pending",
+        scope: "personal",
+        browserUrl: "https://auth.openai.com/codex/device",
+        verificationCode: "RECO-NNECT",
+        expiresIn: 30,
+        interval: 1,
+      });
+    });
+    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+      return respond(200, { status: "pending", errorMessage: null });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectComposerModel("GPT-5.5");
+
+    await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+    const warning = (await screen.findByText("Model Configure")).closest(
+      "button",
+    )!;
+    expect(warning).toHaveAccessibleName(
+      /Model Configure: ChatGPT \(Codex\) needs to be reconnected before you can use GPT-5\.5/u,
+    );
+
+    await user.click(warning);
+
+    await expect(
+      screen.findByTestId("codex-device-auth-code"),
+    ).resolves.toHaveTextContent("RECO-NNECT");
+    expect(screen.getByText("Re-connect Codex")).toBeInTheDocument();
+  });
+
   it("completes personal Claude Code auth from a routed model blocker", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.open(null);

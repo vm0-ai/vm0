@@ -303,7 +303,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("opens connector consent surfaces and completes modal grant flows", async () => {
+  it("opens connector consent surfaces", async () => {
     mockConnectors([{ type: "github", oauthScopes: [] }]);
     context.mocks.api(
       zeroConnectorScopeDiffContract.getScopeDiff,
@@ -321,6 +321,7 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect Gmail")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Connect Axiom"));
@@ -345,8 +346,17 @@ describe("connectors page", () => {
       expect(screen.getByText("project")).toBeInTheDocument();
     });
     await userEvent.keyboard("{Escape}");
+  });
+
+  it("completes device-auth and manual token connector grants", async () => {
+    mockConnectors([]);
 
     context.mocks.browser.open(createMockAuthWindow());
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Base44")).toBeInTheDocument();
+    });
     click(screen.getByLabelText("Connect Base44"));
 
     const deviceDialog = await screen.findByRole("dialog", { name: "Base44" });
