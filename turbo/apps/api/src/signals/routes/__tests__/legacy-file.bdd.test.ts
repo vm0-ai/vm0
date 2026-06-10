@@ -36,22 +36,26 @@ function appRequest(path: string, init?: RequestInit): Promise<Response> {
   );
 }
 
-describe("GET /f/:userId/:id/:filename", () => {
+function mockS3ArtifactExists(): void {
+  context.mocks.s3.send.mockResolvedValue({});
+  context.mocks.s3.getSignedUrl.mockResolvedValue(
+    "https://signed.example.com/doc.pdf?sig=abc",
+  );
+}
+
+describe("GET /f/:userId/:id/:filename BDD", () => {
   beforeEach(() => {
-    context.mocks.s3.send.mockResolvedValue({});
-    context.mocks.s3.getSignedUrl.mockResolvedValue(
-      "https://signed.example.com/doc.pdf?sig=abc",
-    );
+    mockS3ArtifactExists();
   });
 
-  it("302-redirects legacy file links to the public artifact CDN when the migrated object exists", async () => {
-    const response = await appRequest("/f/user_alice/file-id/doc.pdf");
+  it("redirects migrated and fallback legacy file links with CORS handling", async () => {
+    const migrated = await appRequest("/f/user_alice/file-id/doc.pdf");
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(
+    expect(migrated.status).toBe(302);
+    expect(migrated.headers.get("Location")).toBe(
       "https://cdn.vm7.io/artifacts/user_alice/file-id/doc.pdf",
     );
-    expect(response.headers.get("Cache-Control")).toContain("public");
+    expect(migrated.headers.get("Cache-Control")).toContain("public");
     expect(
       commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
     ).toMatchObject({
@@ -59,45 +63,40 @@ describe("GET /f/:userId/:id/:filename", () => {
       Key: "artifacts/user_alice/file-id/doc.pdf",
     });
     expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
-  });
 
-  it("maps prefixless public user IDs back to Clerk user IDs", async () => {
-    const response = await appRequest("/f/alice/file-id/doc.pdf");
+    context.mocks.s3.send.mockClear();
+    const prefixless = await appRequest("/f/alice/file-id/doc.pdf");
 
-    expect(response.status).toBe(302);
+    expect(prefixless.status).toBe(302);
     expect(
       commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
     ).toMatchObject({
       Bucket: "test-user-artifacts",
       Key: "artifacts/user_alice/file-id/doc.pdf",
     });
-  });
 
-  it("keeps non-Clerk user-like URL segments unchanged", async () => {
-    const response = await appRequest("/f/user-1/file-id/doc.pdf");
+    context.mocks.s3.send.mockClear();
+    const nonClerk = await appRequest("/f/user-1/file-id/doc.pdf");
 
-    expect(response.status).toBe(302);
+    expect(nonClerk.status).toBe(302);
     expect(
       commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
     ).toMatchObject({
       Bucket: "test-user-artifacts",
       Key: "artifacts/user-1/file-id/doc.pdf",
     });
-  });
 
-  it("falls back to old user-storage presigned URLs when the artifact object is absent", async () => {
     context.mocks.s3.send.mockRejectedValueOnce({
       name: "NotFound",
       $metadata: { httpStatusCode: 404 },
     });
+    const fallback = await appRequest("/f/user_alice/file-id/doc.pdf");
 
-    const response = await appRequest("/f/user_alice/file-id/doc.pdf");
-
-    expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(
+    expect(fallback.status).toBe(302);
+    expect(fallback.headers.get("Location")).toBe(
       "https://signed.example.com/doc.pdf?sig=abc",
     );
-    expect(response.headers.get("Cache-Control")).toContain("private");
+    expect(fallback.headers.get("Cache-Control")).toContain("private");
     const [, command, options] =
       context.mocks.s3.getSignedUrl.mock.calls[0] ?? [];
     expect(commandInput(command)).toMatchObject({
@@ -105,24 +104,20 @@ describe("GET /f/:userId/:id/:filename", () => {
       Key: "uploads/user_alice/file-id/doc.pdf",
     });
     expect(optionsInput(options)).toMatchObject({ expiresIn: 300 });
-  });
 
-  it("adds CORS headers for allowed origins on redirects", async () => {
-    const response = await appRequest("/f/user_alice/file-id/notes.md", {
+    const corsRedirect = await appRequest("/f/user_alice/file-id/notes.md", {
       headers: { origin: "https://app.vm7.ai:8443" },
     });
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+    expect(corsRedirect.status).toBe(302);
+    expect(corsRedirect.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://app.vm7.ai:8443",
     );
-    expect(response.headers.get("Access-Control-Allow-Credentials")).toBe(
+    expect(corsRedirect.headers.get("Access-Control-Allow-Credentials")).toBe(
       "true",
     );
-  });
 
-  it("handles CORS preflight for allowed origins", async () => {
-    const response = await appRequest("/f/user_alice/file-id/notes.md", {
+    const preflight = await appRequest("/f/user_alice/file-id/notes.md", {
       method: "OPTIONS",
       headers: {
         origin: "https://app.vm7.ai:8443",
@@ -130,17 +125,17 @@ describe("GET /f/:userId/:id/:filename", () => {
       },
     });
 
-    expect(response.status).toBe(204);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://app.vm7.ai:8443",
     );
-    expect(response.headers.get("Access-Control-Allow-Methods")).toContain(
+    expect(preflight.headers.get("Access-Control-Allow-Methods")).toContain(
       "GET",
     );
-    expect(response.headers.get("Access-Control-Allow-Methods")).toContain(
+    expect(preflight.headers.get("Access-Control-Allow-Methods")).toContain(
       "OPTIONS",
     );
-    expect(response.headers.get("Access-Control-Allow-Headers")).toContain(
+    expect(preflight.headers.get("Access-Control-Allow-Headers")).toContain(
       "Range",
     );
   });

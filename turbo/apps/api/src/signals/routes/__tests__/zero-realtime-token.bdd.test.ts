@@ -18,35 +18,32 @@ const tokenRequest = Object.freeze({
   mac: "test-mac",
 });
 
-describe("POST /api/zero/realtime/token", () => {
+describe("POST /api/zero/realtime/token BDD", () => {
   beforeEach(() => {
     context.mocks.ably.createTokenRequest.mockResolvedValue(tokenRequest);
   });
 
-  it("returns 401 when unauthenticated", async () => {
+  it("rejects unauthenticated requests before issuing a user token", async () => {
     const client = setupApp({ context })(platformRealtimeTokenContract);
 
-    const response = await accept(
+    const unauthenticated = await accept(
       client.create({ body: {}, headers: {} }),
       [401],
     );
 
-    expect(response.body).toStrictEqual({
+    expect(unauthenticated.body).toStrictEqual({
       error: {
         message: "Authentication required",
         code: "UNAUTHORIZED",
       },
     });
     expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
-  });
 
-  it("returns a subscribe-only Ably token for the authenticated user channel", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
-    const client = setupApp({ context })(platformRealtimeTokenContract);
 
-    const response = await accept(
+    const authenticated = await accept(
       client.create({
         body: {},
         headers: { authorization: "Bearer clerk-session" },
@@ -54,7 +51,7 @@ describe("POST /api/zero/realtime/token", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual(tokenRequest);
+    expect(authenticated.body).toStrictEqual(tokenRequest);
     expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledWith({
       capability: {
         [`user:${userId}`]: ["subscribe"],

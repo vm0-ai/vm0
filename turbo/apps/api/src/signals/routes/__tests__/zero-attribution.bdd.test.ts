@@ -19,21 +19,23 @@ function client() {
   );
 }
 
-describe("POST /api/zero/attribution/signup", () => {
-  it("requires a Clerk session", async () => {
-    const response = await client().recordSignup({
-      body: {
-        attribution: {
-          vm0_source: "presentation",
-        },
-      },
-    });
-
-    expect(response.status).toBe(401);
-  });
-
-  it("writes first-touch attribution to Clerk private metadata", async () => {
+describe("POST /api/zero/attribution/signup BDD", () => {
+  it("requires auth, records first-touch attribution, and preserves existing attribution", async () => {
     mockNow(new Date(RECORDED_AT_ISO));
+
+    const unauthenticated = await accept(
+      client().recordSignup({
+        body: {
+          attribution: {
+            vm0_source: "presentation",
+          },
+        },
+      }),
+      [401],
+    );
+
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
     context.mocks.clerk.users.getUserList.mockResolvedValue({
@@ -84,15 +86,13 @@ describe("POST /api/zero/attribution/signup", () => {
         },
       },
     });
-  });
 
-  it("does not overwrite existing signup attribution", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
+    const existingUserId = `user_${randomUUID()}`;
+    mocks.clerk.session(existingUserId, null);
     context.mocks.clerk.users.getUserList.mockResolvedValue({
       data: [
         {
-          id: userId,
+          id: existingUserId,
           privateMetadata: {
             signup_attribution: {
               vm0_source: "existing",
@@ -102,7 +102,7 @@ describe("POST /api/zero/attribution/signup", () => {
       ],
     });
 
-    const response = await accept(
+    const existingResponse = await accept(
       client().recordSignup({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -114,7 +114,7 @@ describe("POST /api/zero/attribution/signup", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ recorded: false });
-    expect(context.mocks.clerk.users.updateUser).not.toHaveBeenCalled();
+    expect(existingResponse.body).toStrictEqual({ recorded: false });
+    expect(context.mocks.clerk.users.updateUser).toHaveBeenCalledTimes(1);
   });
 });
