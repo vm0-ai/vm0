@@ -34,8 +34,14 @@ function createSession() {
     cookieUrls: [new URL("https://www.vm0.ai"), new URL("https://app.vm0.ai")],
     cookieSource,
     tokenUrl: TOKEN_URL,
-    consumeUrl: (code) =>
-      `https://www.vm0.ai/desktop-auth/consume?code=${code}`,
+    consumeUrl: (code, handoffId) => {
+      const url = new URL("https://www.vm0.ai/desktop-auth/consume");
+      url.searchParams.set("code", code);
+      if (handoffId) {
+        url.searchParams.set("handoffId", handoffId);
+      }
+      return url.toString();
+    },
     selectOrgUrl: SELECT_ORG_URL,
     runAuthWindow,
     onChange,
@@ -189,6 +195,19 @@ describe("DesktopAuthSession", () => {
     expect(runAuthWindow.mock.invocationCallOrder[0]).toBeLessThan(
       onAuthCompleted.mock.invocationCallOrder[0] ?? Infinity,
     );
+  });
+
+  it("carries handoff id into the consume flow", async () => {
+    const { session, runAuthWindow } = createSession();
+    const handoffId = "550e8400-e29b-41d4-a716-446655440000";
+
+    await session.consumeCode("code-123", handoffId);
+
+    expect(runAuthWindow).toHaveBeenCalledWith({
+      url: `https://www.vm0.ai/desktop-auth/consume?code=code-123&handoffId=${handoffId}`,
+      visible: false,
+      allowInteractiveFallbacks: true,
+    });
   });
 
   it("reports signing-in state while a consume flow is pending", async () => {
