@@ -4,6 +4,7 @@ import { cronExecuteSchedulesContract } from "@vm0/api-contracts/contracts/cron"
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
@@ -14,6 +15,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
+import { syncScheduleToAutomationSafely } from "../../services/automations/schedule-dual-write";
 import {
   deleteSchedulesScenario$,
   seedSchedulesScenario$,
@@ -68,6 +70,34 @@ async function findSchedule(scheduleId: string) {
     .from(zeroAgentSchedules)
     .where(eq(zeroAgentSchedules.id, scheduleId));
   return schedule;
+}
+
+// Mirror a seeded schedule into the events-first tables, as the dual-write
+// would have on deploy. Lets the runtime-sync assertions below start from a
+// mapped mirror.
+async function mirrorSchedule(scheduleId: string): Promise<void> {
+  const db = store.set(writeDb$);
+  const [schedule] = await db
+    .select()
+    .from(zeroAgentSchedules)
+    .where(eq(zeroAgentSchedules.id, scheduleId));
+  if (!schedule) {
+    throw new Error("mirrorSchedule: schedule not found");
+  }
+  await syncScheduleToAutomationSafely(db, schedule);
+}
+
+async function findMirrorTrigger(scheduleId: string) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({ trigger: automationTriggers })
+    .from(automations)
+    .innerJoin(
+      automationTriggers,
+      eq(automationTriggers.automationId, automations.id),
+    )
+    .where(eq(automations.sourceScheduleId, scheduleId));
+  return row?.trigger;
 }
 
 async function findScheduleRuns(scheduleId: string) {
@@ -215,6 +245,54 @@ describe("GET /api/cron/execute-schedules", () => {
     const runs = await findScheduleRuns(scheduleId);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toBe("Daily task");
+  });
+
+  it("mirrors the claim and lastRunId onto the schedule's automation trigger", async () => {
+    const fixture = await seedFixture([
+      {
+        name: "mirrored-cron",
+        prompt: "Mirrored task",
+        cronExpression: "0 9 * * *",
+        nextRunAt: dueDate(),
+      },
+    ]);
+    const scheduleId = fixture.scheduleIds[0]!;
+    await mirrorSchedule(scheduleId);
+    mockNow(DUE_TIME);
+
+    await accept(apiClient().execute({ headers: cronHeaders() }), [200]);
+
+    // The claim (next_run_at cleared, lastRunAt stamped) and the lastRunId
+    // backfill both re-sync the mirror, so the trigger row tracks the fire.
+    const schedule = await findSchedule(scheduleId);
+    const trigger = await findMirrorTrigger(scheduleId);
+    expect(trigger?.nextRunAt).toBeNull();
+    expect(trigger?.lastRunAt?.getTime()).toBe(schedule?.lastRunAt?.getTime());
+    expect(schedule?.lastRunId).not.toBeNull();
+    expect(trigger?.lastRunId).toBe(schedule?.lastRunId);
+  });
+
+  it("mirrors pre-run failure bookkeeping onto the automation trigger", async () => {
+    const fixture = await seedFixture([
+      {
+        name: "mirrored-cron-failure",
+        prompt: "Mirrored failure task",
+        cronExpression: "0 9 * * *",
+        nextRunAt: dueDate(),
+      },
+    ]);
+    const scheduleId = fixture.scheduleIds[0]!;
+    await mirrorSchedule(scheduleId);
+    await clearComposeHeadVersion(fixture.composeId);
+    mockNow(DUE_TIME);
+
+    await accept(apiClient().execute({ headers: cronHeaders() }), [200]);
+
+    const schedule = await findSchedule(scheduleId);
+    const trigger = await findMirrorTrigger(scheduleId);
+    expect(trigger?.consecutiveFailures).toBe(1);
+    expect(trigger?.enabled).toBeTruthy();
+    expect(trigger?.nextRunAt?.getTime()).toBe(schedule?.nextRunAt?.getTime());
   });
 
   it("does not create duplicate runs for concurrent cron invocations", async () => {

@@ -189,8 +189,8 @@ export class TimeTrigger {
   /**
    * Claim a due `automation_triggers` time row via an optimistic lock on
    * `nextRunAt` — the trigger-table counterpart of `evaluate`, mirroring the
-   * live schedule claim 1:1: clear the next run, stamp `lastRunAt`, reset any
-   * retry marker, and disable one-time triggers. The recurrence advance happens
+   * live schedule claim 1:1: clear the next run, stamp `lastRunAt`, and disable
+   * one-time triggers. The recurrence advance happens
    * in the trigger completion callback (or `advanceTriggerAfterPreRunFailure`
    * when the run was never created), exactly like the schedule path. Returns
    * the claimed row, or null when another invocation won the race (the row's
@@ -206,7 +206,6 @@ export class TimeTrigger {
       .set({
         nextRunAt: null,
         lastRunAt: args.currentTime,
-        retryStartedAt: null,
         updatedAt: args.currentTime,
         ...(args.trigger.kind === "once" ? { enabled: false } : {}),
       })

@@ -79,7 +79,6 @@ function triggerValuesFromSchedule(
   readonly lastRunAt: Date | null;
   readonly lastRunId: string | null;
   readonly consecutiveFailures: number;
-  readonly retryStartedAt: Date | null;
   readonly enabled: boolean;
   readonly updatedAt: Date;
 } {
@@ -94,7 +93,6 @@ function triggerValuesFromSchedule(
     lastRunAt: schedule.lastRunAt,
     lastRunId: schedule.lastRunId,
     consecutiveFailures: schedule.consecutiveFailures,
-    retryStartedAt: schedule.retryStartedAt,
     enabled: schedule.enabled,
     updatedAt: schedule.updatedAt,
   };
@@ -106,7 +104,7 @@ function triggerValuesFromSchedule(
  * `automation_triggers` row keyed on `automationId`. Idempotent — re-running for
  * the same schedule updates the existing mirror in place rather than duplicating
  * it. Pure data-sync: it carries over enabled state + runtime fields
- * (`nextRunAt`/`lastRunAt`/`lastRunId`/`consecutiveFailures`/`retryStartedAt`)
+ * (`nextRunAt`/`lastRunAt`/`lastRunId`/`consecutiveFailures`)
  * but NEVER creates a run (the live `executeDueSchedules$` poller remains the
  * only schedule executor; the trigger poller is dormant).
  */

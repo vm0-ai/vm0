@@ -536,6 +536,24 @@ enum ExecOperationTracking<'a> {
     Untracked,
 }
 
+struct ExecOperationRegistrationInput<'a> {
+    label: &'a str,
+    stdout: ExecOutputPolicy,
+    stderr: ExecOutputPolicy,
+    stream_queue_capacity: Option<usize>,
+    lifecycle: ExecOperationLifecycle,
+    tracking: ExecOperationTracking<'a>,
+}
+
+struct ExecOperationRegistration {
+    seq: u32,
+    diagnostic: ExecOperationDiagnostic,
+    result_rx: oneshot::Receiver<io::Result<ExecOperationResult>>,
+    stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
+    registration_guard: ExecOperationRegistrationGuard,
+    tracks_normal_operation: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExecTerminalLogLifecycle {
     OneShot,
@@ -1651,6 +1669,79 @@ fn stream_state(policy: ExecOutputPolicy) -> Option<ExecStreamState> {
     }
 }
 
+fn register_exec_operation_start(
+    shared: &Arc<Shared>,
+    input: ExecOperationRegistrationInput<'_>,
+) -> io::Result<ExecOperationRegistration> {
+    let ExecOperationRegistrationInput {
+        label,
+        stdout,
+        stderr,
+        stream_queue_capacity,
+        lifecycle,
+        tracking,
+    } = input;
+    let (stream_tx, stream_rx) = match stream_queue_capacity {
+        Some(capacity) => {
+            let (tx, rx) = mpsc::channel(capacity);
+            (Some(tx), Some(rx))
+        }
+        None => (None, None),
+    };
+    let (result_tx, result_rx) = oneshot::channel();
+    let seq = shared.next_seq();
+    let diagnostic = ExecOperationDiagnostic::new(seq, label);
+    let normal_operation = match tracking {
+        ExecOperationTracking::Tracked => Some(ExecOperationNormalTracking::Owned(
+            shared.reserve_normal_operation()?,
+        )),
+        ExecOperationTracking::Composite(normal_operation) => Some(
+            ExecOperationNormalTracking::Composite(normal_operation.transition_handle()?),
+        ),
+        ExecOperationTracking::Untracked => None,
+    };
+    let tracks_normal_operation = normal_operation.is_some();
+    let operation = ExecOperation {
+        normal_operation,
+        lifecycle,
+        diagnostic: diagnostic.clone(),
+        result_tx,
+        stream_tx,
+        stdout_capture: capture_state(stdout),
+        stderr_capture: capture_state(stderr),
+        stdout_stream: stream_state(stdout),
+        stderr_stream: stream_state(stderr),
+        expected_output_seq: 0,
+        stream_overflowed: false,
+        host_cancel_requested: false,
+        pending_controls: HashMap::new(),
+    };
+
+    {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Closed => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ));
+            }
+            ConnectionState::Connected { operations, .. } => {
+                operations.insert(seq, operation);
+            }
+        }
+    }
+
+    Ok(ExecOperationRegistration {
+        seq,
+        diagnostic,
+        result_rx,
+        stream_rx,
+        registration_guard: ExecOperationRegistrationGuard::new(Arc::clone(shared), seq),
+        tracks_normal_operation,
+    })
+}
+
 fn validate_output(
     operation: &mut ExecOperation,
     output: &vsock_proto::DecodedExecOutput<'_>,
@@ -2168,6 +2259,26 @@ async fn write_frame(
     .await
 }
 
+async fn write_exec_start_frame(
+    shared: &Arc<Shared>,
+    seq: u32,
+    payload: &[u8],
+    diagnostic: &ExecOperationDiagnostic,
+    tracks_normal_operation: bool,
+    write_observer: FrameWriteObserver,
+) -> io::Result<()> {
+    write_frame(
+        shared,
+        MSG_EXEC_START,
+        seq,
+        payload,
+        Some(diagnostic.frame("start")),
+        tracks_normal_operation.then_some(seq),
+        write_observer,
+    )
+    .await
+}
+
 async fn write_frame_with_pre_write(
     shared: &Arc<Shared>,
     msg_type: u8,
@@ -2427,65 +2538,30 @@ async fn start_exec_operation_on_shared_with_tracking(
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-    let (stream_tx, stream_rx) = match stream_queue_capacity {
-        Some(capacity) => {
-            let (tx, rx) = mpsc::channel(capacity);
-            (Some(tx), Some(rx))
-        }
-        None => (None, None),
-    };
-    let (result_tx, result_rx) = oneshot::channel();
-    let seq = shared.next_seq();
-    let diagnostic = ExecOperationDiagnostic::new(seq, request.label);
-    let normal_operation = match tracking {
-        ExecOperationTracking::Tracked => Some(ExecOperationNormalTracking::Owned(
-            shared.reserve_normal_operation()?,
-        )),
-        ExecOperationTracking::Composite(normal_operation) => Some(
-            ExecOperationNormalTracking::Composite(normal_operation.transition_handle()?),
-        ),
-        ExecOperationTracking::Untracked => None,
-    };
-    let tracks_normal_operation = normal_operation.is_some();
-    let operation = ExecOperation {
-        normal_operation,
-        lifecycle: ExecOperationLifecycle::OneShot,
-        diagnostic: diagnostic.clone(),
-        result_tx,
-        stream_tx,
-        stdout_capture: capture_state(request.stdout),
-        stderr_capture: capture_state(request.stderr),
-        stdout_stream: stream_state(request.stdout),
-        stderr_stream: stream_state(request.stderr),
-        expected_output_seq: 0,
-        stream_overflowed: false,
-        host_cancel_requested: false,
-        pending_controls: HashMap::new(),
-    };
-
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { operations, .. } => {
-                operations.insert(seq, operation);
-            }
-        }
-    }
-
-    let mut registration_guard = ExecOperationRegistrationGuard::new(Arc::clone(shared), seq);
-    write_frame(
+    let ExecOperationRegistration {
+        seq,
+        diagnostic,
+        result_rx,
+        stream_rx,
+        mut registration_guard,
+        tracks_normal_operation,
+    } = register_exec_operation_start(
         shared,
-        MSG_EXEC_START,
+        ExecOperationRegistrationInput {
+            label: request.label,
+            stdout: request.stdout,
+            stderr: request.stderr,
+            stream_queue_capacity,
+            lifecycle: ExecOperationLifecycle::OneShot,
+            tracking,
+        },
+    )?;
+    write_exec_start_frame(
+        shared,
         seq,
         &payload,
-        Some(diagnostic.frame("start")),
-        tracks_normal_operation.then_some(seq),
+        &diagnostic,
+        tracks_normal_operation,
         write_observer,
     )
     .await?;
@@ -2568,63 +2644,36 @@ where
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-    let (stream_tx, stream_rx) = match stream_queue_capacity {
-        Some(capacity) => {
-            let (tx, rx) = mpsc::channel(capacity);
-            (Some(tx), Some(rx))
-        }
-        None => (None, None),
-    };
-    let (result_tx, result_rx) = oneshot::channel();
     let (start_tx, start_rx) = oneshot::channel();
-    let seq = shared.next_seq();
-    let diagnostic = ExecOperationDiagnostic::new(seq, request.label);
-    let operation = ExecOperation {
-        normal_operation: Some(ExecOperationNormalTracking::Owned(
-            shared.reserve_normal_operation()?,
-        )),
-        lifecycle: ExecOperationLifecycle::SupervisedAwaitingStart {
-            start_tx: Some(start_tx),
-            control_nonce,
+    let ExecOperationRegistration {
+        seq,
+        diagnostic,
+        result_rx,
+        stream_rx,
+        mut registration_guard,
+        tracks_normal_operation,
+    } = register_exec_operation_start(
+        shared,
+        ExecOperationRegistrationInput {
+            label: request.label,
+            stdout: request.stdout,
+            stderr: request.stderr,
+            stream_queue_capacity,
+            lifecycle: ExecOperationLifecycle::SupervisedAwaitingStart {
+                start_tx: Some(start_tx),
+                control_nonce,
+            },
+            tracking: ExecOperationTracking::Tracked,
         },
-        diagnostic: diagnostic.clone(),
-        result_tx,
-        stream_tx,
-        stdout_capture: capture_state(request.stdout),
-        stderr_capture: capture_state(request.stderr),
-        stdout_stream: stream_state(request.stdout),
-        stderr_stream: stream_state(request.stderr),
-        expected_output_seq: 0,
-        stream_overflowed: false,
-        host_cancel_requested: false,
-        pending_controls: HashMap::new(),
-    };
-
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { operations, .. } => {
-                operations.insert(seq, operation);
-            }
-        }
-    }
-
-    let mut registration_guard = ExecOperationRegistrationGuard::new(Arc::clone(shared), seq);
+    )?;
     let mut start_cancel_on_drop =
         ExecOperationCancelOnDropGuard::new_for_seq(Arc::clone(shared), seq, diagnostic.clone());
-    let start_write_result = write_frame(
+    let start_write_result = write_exec_start_frame(
         shared,
-        MSG_EXEC_START,
         seq,
         &payload,
-        Some(diagnostic.frame("start")),
-        Some(seq),
+        &diagnostic,
+        tracks_normal_operation,
         FrameWriteObserver::default(),
     )
     .await;

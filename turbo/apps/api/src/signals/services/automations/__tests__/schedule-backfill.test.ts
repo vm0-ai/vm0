@@ -19,7 +19,10 @@ import { createFixtureTracker } from "../../../routes/__tests__/helpers/zero-rou
 const context = testContext();
 const store = createStore();
 
-// The one-time, idempotent backfill data migration under test.
+// The one-time, idempotent backfill data migration under test. The replay
+// strips retry_started_at references: the column is vestigial (no production
+// writer since the runtime mirror-sync landed) and is dropped together with
+// the refresh-backfill migration, so the historical SQL must run without it.
 const BACKFILL_SQL = readFileSync(
   fileURLToPath(
     new URL(
@@ -28,7 +31,9 @@ const BACKFILL_SQL = readFileSync(
     ),
   ),
   "utf8",
-);
+)
+  .replaceAll('  "retry_started_at",\n', "")
+  .replaceAll('  "schedule"."retry_started_at",\n', "");
 
 // 0444 adds automations.append_system_prompt and carries it into mirrors that
 // predate the column. The DDL already ran via db:migrate; only the data UPDATE
