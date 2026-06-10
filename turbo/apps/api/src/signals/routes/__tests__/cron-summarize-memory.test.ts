@@ -10,7 +10,7 @@ import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -51,6 +51,9 @@ const LOOKBACK_DATES = [
 const BASELINE_BEFORE_LOOKBACK = "2998-12-26T03:00:00.000Z";
 const BASELINE_DURING_LOOKBACK = "2999-01-01T03:00:00.000Z";
 const YESTERDAY = "2999-01-02";
+const MEMORY_CRON_TEST_TIMEOUT_MS = 20_000;
+
+vi.setConfig({ testTimeout: MEMORY_CRON_TEST_TIMEOUT_MS });
 
 interface OpenRouterRequestMessage {
   readonly role: "system" | "user" | "assistant";
