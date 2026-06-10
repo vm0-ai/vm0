@@ -1589,6 +1589,7 @@ jobs:
       - detect-release
       - detect
       - check
+      - api-contracts-rust-bindings
       - mitm-addon-test
       - runner-build
       - runner-benchmark
@@ -1637,6 +1638,7 @@ jobs:
 
           # May-skip: only run when relevant crates change
           check_result "check" "${{ needs.check.result }}" "true"
+          check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
