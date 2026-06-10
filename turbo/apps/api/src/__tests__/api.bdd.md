@@ -614,3 +614,25 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified (source-only): `zero-chat-thread.service.ts` (283/206)
   unchanged vs the `main` baseline; create/patch routes unchanged. No
   regressions.
+
+### Round 20 — CHAT THREAD LIST (CHAIN-CHAT-THREAD-LIST)
+
+- Added `zero-chat-threads-list.bdd.test.ts`: create an agent + three threads,
+  assert the unified list shape (id / agent.id+avatarUrl / createdAt / updatedAt
+  / isRead / running / pinnedAt / renamedAt / hasDraft / totalCount), then pin →
+  pinned segment, rename → renamedAt, draft → hasDraft. A second test drives
+  cursor pagination (limit overflow → hasMore + nextCursor, second page via
+  cursor with the pinned segment omitted, malformed cursor falls back to the
+  first page). A third covers agentId scoping, unknown-agent 404, cross-org
+  isolation (empty list + 404 on the foreign agent), no-org 401, and
+  unauthenticated 401.
+- Deleted `zero-chat-threads-list.test.ts` whole (1.3k lines). Its
+  running/isRead-by-cursor/scheduleCount value cases assert SQL-computed columns
+  (`sql<boolean>` / `sql<number>`) that carry no unique JS branch; deleting the
+  whole file left `zero-chat-threads.ts` and `zero-chat-thread.service.ts`
+  coverage unchanged (the service even gained a branch), confirmed across two
+  full-suite coverage runs. The run/message/schedule value behaviours are a
+  drop decision (DROP-CHAT-LIST-SQL-VALUES), not a coverage gap.
+- Coverage verified (source-only): no chat-thread source regression vs `main`;
+  `zero-chat-thread.service.ts` 283/206 → 284/207. (`slack-connect-blocks.ts`
+  oscillates run-to-run and recovered on re-run — added to the noise set.)
