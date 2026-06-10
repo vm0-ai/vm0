@@ -18,6 +18,25 @@ import {
   type SlackWebhookFixture,
 } from "./helpers/zero-slack-webhooks";
 
+// BDD migration of the legacy
+// `test-slack-dispatch-probe.test.ts`. The 8 legacy `it()`s
+// collapse into 2 BDD `it()`s: (1) 404 + 400 chain (404
+// outside allowed envs → 400 Vercel preview with internal
+// bypass header → 400 preview with the schema-backed
+// bypass secret → 400 protected preview rewrites after
+// Vercel consumes bypass headers → 200 routes preview Slack
+// Web API calls to API mock routes + WebClient called with
+// the mock URL + bypass headers → 400 legacy missing-field
+// error), (2) 200 dispatch chain (200 synchronously
+// dispatches connected mention probes with DB run written
+// → 200 synchronously dispatches connected direct-message
+// probes with Slack status update called → 200 serializes
+// synchronous dispatch errors as diagnostic 200 responses).
+//
+// Service-Level Exception: `vm0ApiKeys`, `agentRuns`, and
+// `zeroRuns` rows are seeded + read directly via
+// `writeDb$` because no public route creates them.
+
 const context = testContext();
 const store = createStore();
 const ROUTE = "/api/test/slack-dispatch-probe";
@@ -145,7 +164,7 @@ async function readZeroRunTriggerSource(
   return zeroRun?.triggerSource;
 }
 
-describe("POST /api/test/slack-dispatch-probe", () => {
+describe("BDD POST /api/test/slack-dispatch-probe — 404 + 400 + 200 mock-routing chain", () => {
   const track = createFixtureTracker<SlackWebhookFixture>((fixture) => {
     return store.set(deleteSlackWebhookFixture$, fixture, context.signal);
   });
@@ -155,21 +174,22 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     configureSlackProbeTest();
   });
 
-  it("hides the test endpoint outside allowed environments", async () => {
+  it("gwt-wt-wt: 404 outside allowed envs → 400 Vercel preview with internal bypass header → 400 preview with the schema-backed bypass secret → 400 protected preview rewrites after Vercel consumes bypass headers → 200 routes preview Slack Web API calls to API mock routes + WebClient called with the mock URL + bypass headers → 400 legacy missing-field error", async () => {
+    // Given: production env.
+
+    // When + Then: 404.
     mockEnv("ENV", "production");
+    const prodResponse = await postProbe({});
+    expect(prodResponse.status).toBe(404);
+    await expect(prodResponse.text()).resolves.toBe("Not found");
 
-    const response = await postProbe({});
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("allows Vercel preview runtimes with the internal bypass header", async () => {
+    // Given: production env + Vercel preview + bypass secret.
     mockEnv("ENV", "production");
     mockOptionalEnv("VERCEL_ENV", "preview");
     mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
 
-    const response = await requestApp(ROUTE, {
+    // When + Then: 400 — missing-field error.
+    const previewResponse = await requestApp(ROUTE, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -177,18 +197,17 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       },
       body: JSON.stringify({}),
     });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(previewResponse.status).toBe(400);
+    await expect(previewResponse.json()).resolves.toStrictEqual({
       error: "team_id, channel_id, user_id, message_text, message_ts required",
     });
-  });
 
-  it("allows preview with the schema-backed bypass secret", async () => {
+    // Given: preview env + schema-backed bypass secret.
     mockEnv("ENV", "preview");
     mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
 
-    const response = await requestApp(ROUTE, {
+    // When + Then: 400 — missing-field error.
+    const previewBypassResponse = await requestApp(ROUTE, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -196,31 +215,30 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       },
       body: JSON.stringify({}),
     });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(previewBypassResponse.status).toBe(400);
+    await expect(previewBypassResponse.json()).resolves.toStrictEqual({
       error: "team_id, channel_id, user_id, message_text, message_ts required",
     });
-  });
 
-  it("allows protected preview rewrites after Vercel consumes bypass headers", async () => {
+    // Given: protected preview rewrites after Vercel
+    // consumes bypass headers.
     mockEnv("ENV", "preview");
     mockOptionalEnv("USE_MOCK_CLAUDE", "true");
     mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
 
-    const response = await postProbe({});
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
+    // When + Then: 400.
+    const protectedPreviewResponse = await postProbe({});
+    expect(protectedPreviewResponse.status).toBe(400);
+    await expect(protectedPreviewResponse.json()).resolves.toStrictEqual({
       error: "team_id, channel_id, user_id, message_text, message_ts required",
     });
-  });
 
-  it("routes preview Slack Web API calls to API mock routes", async () => {
+    // Given: the slack-mock env + a fresh Slack webhook
+    // fixture.
     mockOptionalEnv("E2E_SLACK_MOCK_ENABLED", "1");
     mockOptionalEnv("VERCEL_URL", "pr-13948-api.vm6.ai");
     mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
-    const fixture = await track(
+    const mockFixture = await track(
       store.set(
         seedSlackWebhookFixture$,
         { withConnection: true, withDefaultAgent: true },
@@ -228,15 +246,16 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       ),
     );
 
-    const response = await postProbe({
-      team_id: fixture.slackWorkspaceId,
+    // When + Then: 200 — WebClient is called with the mock
+    // URL + bypass headers.
+    const mockResponse = await postProbe({
+      team_id: mockFixture.slackWorkspaceId,
       channel_id: "C-test",
-      user_id: fixture.slackUserId,
+      user_id: mockFixture.slackUserId,
       message_text: "mock Slack API",
       message_ts: "1710000003.000000",
     });
-
-    expect(response.status).toBe(200);
+    expect(mockResponse.status).toBe(200);
     expect(WebClient).toHaveBeenCalledWith(expect.any(String), {
       slackApiUrl: "https://pr-13948-api.vm6.ai/api/test/slack-mock/",
       headers: {
@@ -246,22 +265,33 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       retryConfig: { retries: 1 },
       timeout: 5000,
     });
-  });
 
-  it("returns the legacy missing-field error", async () => {
-    const response = await postProbe({
+    // Given: a partial request payload missing most fields.
+    // When + Then: 400 — legacy missing-field error.
+    const missingFieldsResponse = await postProbe({
       team_id: "T-test",
       channel_id: "C-test",
     });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(missingFieldsResponse.status).toBe(400);
+    await expect(missingFieldsResponse.json()).resolves.toStrictEqual({
       error: "team_id, channel_id, user_id, message_text, message_ts required",
     });
   });
+});
 
-  it("synchronously dispatches connected mention probes", async () => {
-    const fixture = await track(
+describe("BDD POST /api/test/slack-dispatch-probe — 200 dispatch chain", () => {
+  const track = createFixtureTracker<SlackWebhookFixture>((fixture) => {
+    return store.set(deleteSlackWebhookFixture$, fixture, context.signal);
+  });
+
+  beforeEach(async () => {
+    await seedVm0ManagedKeys();
+    configureSlackProbeTest();
+  });
+
+  it("gwt-wt-wt: 200 synchronously dispatches connected mention probes with DB run written → 200 synchronously dispatches connected direct-message probes with Slack status update called → 200 serializes synchronous dispatch errors as diagnostic 200 responses", async () => {
+    // Given: a fresh Slack webhook fixture.
+    const mentionFixture = await track(
       store.set(
         seedSlackWebhookFixture$,
         { withConnection: true, withDefaultAgent: true },
@@ -269,31 +299,35 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       ),
     );
 
-    const response = await postProbe({
-      team_id: fixture.slackWorkspaceId,
+    // When: dispatch a connected mention probe.
+    const mentionResponse = await postProbe({
+      team_id: mentionFixture.slackWorkspaceId,
       channel_id: "C-test",
-      user_id: fixture.slackUserId,
+      user_id: mentionFixture.slackUserId,
       message_text: "summarize this channel",
       message_ts: "1710000000.000000",
       channel_type: "channel",
     });
 
-    expect(response.status).toBe(200);
+    // Then: 200 + a run was written to the DB with the
+    // expected prompt + appendSystemPrompt + zero-run
+    // trigger source.
+    expect(mentionResponse.status).toBe(200);
     await expect(
-      readJson<TestSlackDispatchProbeResponse>(response),
+      readJson<TestSlackDispatchProbeResponse>(mentionResponse),
     ).resolves.toStrictEqual({ ok: true });
-
-    const run = await readSingleRunForUser(fixture.userId);
-    expect(run.prompt).toBe("summarize this channel");
-    expect(run.appendSystemPrompt).toContain(
+    const mentionRun = await readSingleRunForUser(mentionFixture.userId);
+    expect(mentionRun.prompt).toBe("summarize this channel");
+    expect(mentionRun.appendSystemPrompt).toContain(
       "You are currently running inside: Slack",
     );
-    expect(run.appendSystemPrompt).toContain("Channel type: Channel");
-    await expect(readZeroRunTriggerSource(run.id)).resolves.toBe("slack");
-  });
+    expect(mentionRun.appendSystemPrompt).toContain("Channel type: Channel");
+    await expect(readZeroRunTriggerSource(mentionRun.id)).resolves.toBe(
+      "slack",
+    );
 
-  it("synchronously dispatches connected direct-message probes", async () => {
-    const fixture = await track(
+    // Given: a fresh Slack webhook fixture.
+    const dmFixture = await track(
       store.set(
         seedSlackWebhookFixture$,
         { withConnection: true, withDefaultAgent: true },
@@ -301,23 +335,26 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       ),
     );
 
-    const response = await postProbe({
-      team_id: fixture.slackWorkspaceId,
+    // When: dispatch a connected direct-message probe.
+    const dmResponse = await postProbe({
+      team_id: dmFixture.slackWorkspaceId,
       channel_id: "D-test",
-      user_id: fixture.slackUserId,
+      user_id: dmFixture.slackUserId,
       message_text: "hello in dm",
       message_ts: "1710000001.000000",
       channel_type: "im",
     });
 
-    expect(response.status).toBe(200);
+    // Then: 200 + a run was written with the DM channel
+    // type + Slack status update was called with the DM
+    // channel id + thread ts.
+    expect(dmResponse.status).toBe(200);
     await expect(
-      readJson<TestSlackDispatchProbeResponse>(response),
+      readJson<TestSlackDispatchProbeResponse>(dmResponse),
     ).resolves.toStrictEqual({ ok: true });
-
-    const run = await readSingleRunForUser(fixture.userId);
-    expect(run.prompt).toBe("hello in dm");
-    expect(run.appendSystemPrompt).toContain("Channel type: Direct message");
+    const dmRun = await readSingleRunForUser(dmFixture.userId);
+    expect(dmRun.prompt).toBe("hello in dm");
+    expect(dmRun.appendSystemPrompt).toContain("Channel type: Direct message");
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenCalledWith(
@@ -326,10 +363,11 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         thread_ts: "1710000001.000000",
       }),
     );
-  });
 
-  it("serializes synchronous dispatch errors as diagnostic 200 responses", async () => {
-    const fixture = await track(
+    // Given: a fresh Slack webhook fixture + the Slack
+    // status update mock rejects with a `slack_status_failed`
+    // error.
+    const errorFixture = await track(
       store.set(
         seedSlackWebhookFixture$,
         { withConnection: true, withDefaultAgent: true },
@@ -343,17 +381,22 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       statusError,
     );
 
-    const response = await postProbe({
-      team_id: fixture.slackWorkspaceId,
+    // When: dispatch a probe that triggers the error.
+    const errorResponse = await postProbe({
+      team_id: errorFixture.slackWorkspaceId,
       channel_id: "C-test",
-      user_id: fixture.slackUserId,
+      user_id: errorFixture.slackUserId,
       message_text: "trigger an error",
       message_ts: "1710000002.000000",
     });
 
-    expect(response.status).toBe(200);
-    const body = await readJson<TestSlackDispatchProbeResponse>(response);
-    expect(body).toMatchObject({
+    // Then: 200 — synchronous dispatch errors are
+    // serialized as diagnostic 200 responses.
+    expect(errorResponse.status).toBe(200);
+    const errorBody = await readJson<TestSlackDispatchProbeResponse>(
+      errorResponse,
+    );
+    expect(errorBody).toMatchObject({
       ok: false,
       error: {
         name: "Error",
