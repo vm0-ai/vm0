@@ -33,6 +33,12 @@ const signedInAuth: DesktopAuthState = {
   },
 };
 
+const signingInAuth: DesktopAuthState = {
+  status: "signing_in",
+  user: null,
+  organization: null,
+};
+
 function computerUseState(
   host: Partial<ComputerUseHostRuntimeState> = {},
   permissions: DesktopComputerUseState["permissions"] = {
@@ -176,6 +182,47 @@ describe("desktop tray menu", () => {
     expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
     click(findItem(computerUseMenu, "Sign in to Zero"));
     expect(openSignIn).toHaveBeenCalledOnce();
+  });
+
+  it("shows signing in and disables start while auth is signing in", () => {
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "idle" }),
+        auth: signingInAuth,
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    const computerUseMenu = submenu(
+      findItem(menu, "Computer Use: Signing in..."),
+    );
+    expect(findItem(computerUseMenu, "Status: Signing in...").enabled).toBe(
+      false,
+    );
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(findItem(computerUseMenu, "Signing in...").enabled).toBe(false);
+  });
+
+  it("keeps stale signed-in auth from showing ready while auth is loading", () => {
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "idle" }),
+        auth: signedInAuth,
+        authLoading: true,
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    const computerUseMenu = submenu(
+      findItem(menu, "Computer Use: Signing in..."),
+    );
+    expect(findItem(computerUseMenu, "Status: Signing in...").enabled).toBe(
+      false,
+    );
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(findItem(menu, "Signing in to Zero...")).toBeDefined();
   });
 
   it("shows permission actions when Computer Use is blocked locally", () => {
