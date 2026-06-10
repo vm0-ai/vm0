@@ -90,6 +90,45 @@ describe("formatRunErrorForExternalSurface", () => {
     ).toBe(weeklyLimit);
   });
 
+  it("shows Claude Code five-hour rate limit errors verbatim", () => {
+    const rateLimit =
+      "Claude Code rate limit reached. Your 5-hour limit has been reached; resets 12:50pm (Asia/Shanghai).";
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rateLimit,
+      }),
+    ).toBe(rateLimit);
+    expect(isActionableRunError(rateLimit)).toBe(true);
+    expect(isGenericRunErrorForDisplay(rateLimit)).toBe(false);
+  });
+
+  it("keeps unrelated rate limit errors generic", () => {
+    const unrelatedRateLimit =
+      "GitHub API rate limit exceeded while fetching repository context.";
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: unrelatedRateLimit,
+      }),
+    ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+    expect(isActionableRunError(unrelatedRateLimit)).toBe(false);
+    expect(isGenericRunErrorForDisplay(unrelatedRateLimit)).toBe(true);
+  });
+
+  it("keeps unrelated Claude limit errors generic", () => {
+    const unrelatedClaudeLimit =
+      "Claude process memory limit reached while preparing the sandbox.";
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: unrelatedClaudeLimit,
+      }),
+    ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+    expect(isActionableRunError(unrelatedClaudeLimit)).toBe(false);
+    expect(isGenericRunErrorForDisplay(unrelatedClaudeLimit)).toBe(true);
+  });
+
   it("falls back to the Web generic message for unallowlisted errors", () => {
     expect(
       formatRunErrorForExternalSurface({

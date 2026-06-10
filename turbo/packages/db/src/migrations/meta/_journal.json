@@ -3116,6 +3116,13 @@
       "when": 1781065742149,
       "tag": "0444_nebulous_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 445,
+      "version": "7",
+      "when": 1781071550984,
+      "tag": "0445_add_zero_maps_enterprise_pricing",
+      "breakpoints": true
     }
   ]
 }
