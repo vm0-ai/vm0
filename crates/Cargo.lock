@@ -2614,6 +2614,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "tracing-test-support",
  "url",
  "uuid",
  "which",
@@ -3532,6 +3533,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-test-support"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3699,6 +3708,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "tracing-test-support",
  "uuid",
  "vsock-proto",
 ]

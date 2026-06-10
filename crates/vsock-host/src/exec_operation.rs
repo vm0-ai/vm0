@@ -2990,85 +2990,14 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
-    use std::fmt;
     use std::os::fd::AsRawFd;
+    use std::sync::Arc;
     use std::sync::atomic::AtomicU32;
-    use std::sync::{Arc, Mutex};
     use tokio::io::AsyncReadExt;
-    use tracing::field::{Field, Visit};
-    use tracing::{Event, Level, Subscriber};
-    use tracing_subscriber::layer::{Context, Layer};
+    use tracing::Level;
     use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
     use vsock_proto::RawMessage;
-
-    #[derive(Clone, Debug)]
-    struct CapturedEvent {
-        level: Level,
-        fields: BTreeMap<String, String>,
-    }
-
-    #[derive(Clone, Default)]
-    struct CapturedEvents {
-        events: Arc<Mutex<Vec<CapturedEvent>>>,
-    }
-
-    impl CapturedEvents {
-        fn events(&self) -> Vec<CapturedEvent> {
-            self.events.lock().unwrap().clone()
-        }
-    }
-
-    impl<S> Layer<S> for CapturedEvents
-    where
-        S: Subscriber,
-    {
-        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = CapturedFields::default();
-            event.record(&mut visitor);
-            self.events.lock().unwrap().push(CapturedEvent {
-                level: *event.metadata().level(),
-                fields: visitor.fields,
-            });
-        }
-    }
-
-    #[derive(Default)]
-    struct CapturedFields {
-        fields: BTreeMap<String, String>,
-    }
-
-    impl Visit for CapturedFields {
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_i128(&mut self, field: &Field, value: i128) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_u128(&mut self, field: &Field, value: u128) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_bool(&mut self, field: &Field, value: bool) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-            self.fields
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
 
     fn exec_operation_for_snapshot(seq: u32, label: &str) -> ExecOperation {
         let (result_tx, _result_rx) = oneshot::channel();
@@ -3140,7 +3069,7 @@ mod tests {
             tracing::callsite::rebuild_interest_cache();
             diagnostic.log_terminal(lifecycle, result, stream_overflowed, host_cancel_requested);
         });
-        captured.events()
+        captured.entries()
     }
 
     fn assert_terminal_log_field(event: &CapturedEvent, field: &str, expected: &str) {
@@ -3455,7 +3384,7 @@ mod tests {
             dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
-        let events = captured.events();
+        let events = captured.entries();
         let result = result_rx.try_recv().unwrap().unwrap();
         (events, result)
     }
@@ -3617,7 +3546,7 @@ mod tests {
             dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
-        let events = captured.events();
+        let events = captured.entries();
         assert_eq!(events.len(), 1, "captured events: {events:#?}");
         assert_eq!(events[0].level, Level::INFO);
         assert_terminal_log_field(&events[0], "termination", "Cancelled");
@@ -3676,7 +3605,7 @@ mod tests {
             dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
-        let events = captured.events();
+        let events = captured.entries();
         assert_eq!(events.len(), 1, "captured events: {events:#?}");
         assert_eq!(events[0].level, Level::INFO);
         assert_terminal_log_field(&events[0], "termination", "Cancelled");
