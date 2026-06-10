@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
+import { storagesPrepareContract } from "@vm0/api-contracts/contracts/storages";
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   CANONICAL_WORKING_DIR,
@@ -65,6 +66,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
+const TEST_STORAGE_HASH = "a".repeat(64);
 
 function modelProviderSecretPlaceholder(
   type: ModelProviderType,
@@ -258,6 +260,10 @@ const trackModelProviders = createFixtureTracker<{ readonly orgId: string }>(
 
 function runsClient() {
   return setupApp({ context })(runsMainContract);
+}
+
+function storagePrepareClient() {
+  return setupApp({ context })(storagesPrepareContract);
 }
 
 function vm0Template(expression: string): string {
@@ -759,6 +765,48 @@ describe("POST /api/agent/runs", () => {
         vasVersionId: overrideVersion,
       },
     ]);
+  });
+
+  it("omits additional volumes whose prepared storage has no head version", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const volumeName = `prepared-volume-${randomUUID().slice(0, 8)}`;
+
+    const prepared = await accept(
+      storagePrepareClient().prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          storageName: volumeName,
+          storageType: "volume",
+          files: [
+            {
+              path: "docs/readme.md",
+              hash: TEST_STORAGE_HASH,
+              size: 1,
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    expect(prepared.body.existing).toBeFalsy();
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use prepared volume",
+          additionalVolumes: [{ name: volumeName, mountPath: "/mnt/docs" }],
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body).toMatchObject({ status: "pending" });
+    expect(runContextSnapshot(response.body.runId)).toMatchObject({
+      volumes: [],
+    });
   });
 
   it("expands api-token connector firewall vars and masks connector env secrets with placeholders", async () => {
