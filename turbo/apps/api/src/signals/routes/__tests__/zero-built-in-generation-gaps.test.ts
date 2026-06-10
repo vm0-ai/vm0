@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
 
+import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
-import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
@@ -22,7 +23,7 @@ interface BuiltInGenerationFixture {
   readonly userId: string;
 }
 
-function authHeaders() {
+function authHeaders(): { readonly authorization: string } {
   return { authorization: "Bearer clerk-session" };
 }
 
@@ -42,7 +43,7 @@ async function deleteBuiltInGenerationFixture(
     .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
 }
 
-describe("GET /api/zero/built-in-generations/:generationId", () => {
+describe("GET /api/zero/built-in-generations/:generationId helper gaps", () => {
   const track = createFixtureTracker<BuiltInGenerationFixture>(
     deleteBuiltInGenerationFixture,
   );

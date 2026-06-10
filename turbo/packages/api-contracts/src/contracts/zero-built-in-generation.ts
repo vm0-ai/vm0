@@ -75,6 +75,7 @@ export const zeroBuiltInGenerationContract = c.router({
     }),
     responses: {
       200: zeroBuiltInGenerationResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
