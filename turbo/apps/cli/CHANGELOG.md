@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.186.0](https://github.com/vm0-ai/vm0/compare/cli-v9.185.1...cli-v9.186.0) (2026-06-10)
+
+
+### Features
+
+* **cli:** re-land zero video transcribe + frames with sandbox STT access ([#17003](https://github.com/vm0-ai/vm0/issues/17003)) ([8ec0ffc](https://github.com/vm0-ai/vm0/commit/8ec0ffc6dd4fb797dc3f065160d8d118a4c24e4d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.77.0
+    * @vm0/connectors bumped to 1.59.0
+    * @vm0/core bumped to 8.321.0
+
 ## [9.185.1](https://github.com/vm0-ai/vm0/compare/cli-v9.185.0...cli-v9.185.1) (2026-06-10)
 
 

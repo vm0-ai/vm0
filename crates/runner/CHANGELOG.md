@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.110.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.109.0...runner-rs-v0.110.0) (2026-06-10)
+
+
+### Features
+
+* roll out workspace image cache ([#16990](https://github.com/vm0-ai/vm0/issues/16990)) ([420f20b](https://github.com/vm0-ai/vm0/commit/420f20b1288d217e456432290f57d29efeebef37))
+
 ## [0.109.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.25...runner-rs-v0.109.0) (2026-06-10)
 
 
