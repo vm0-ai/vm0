@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import {
   integrationsTelegramBotListContract,
   integrationsTelegramMessageContract,
@@ -37,6 +38,8 @@ import {
   type GithubOauthConnectQuery,
   type GithubOauthInstallQuery,
 } from "@vm0/api-contracts/contracts/github-oauth";
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
@@ -44,18 +47,24 @@ import {
   zeroSlackBrowserConnectContract,
   type ZeroSlackBrowserConnectQuery,
 } from "@vm0/api-contracts/contracts/zero-slack-browser-connect";
+import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
+import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import { HttpResponse, http } from "msw";
 
 import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
+import { server } from "../../../../mocks/server";
 import {
   accept,
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { clearAllDetached } from "../../../utils";
 import type { ApiTestUser, ApiTestUserOptions } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -129,6 +138,8 @@ const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
 const AGENTPHONE_AGENT_ID = "agt-bdd-agentphone";
 const AGENTPHONE_PHONE_NUMBER = "+19039853128";
 const SLACK_SIGNING_SECRET = "slack-bdd-signing-secret";
+const SLACK_APP_BOT_SCOPES = "chat:write,im:write,users:read";
+const SLACK_APP_INTERNAL_API_URL = "https://api.vm0.test";
 
 type SlackSignatureHeaders = Record<string, string>;
 type SlackIngressPath =
@@ -140,11 +151,13 @@ type SlackDownloadStatus = 200 | 400 | 401 | 404 | 413 | 502;
 type AgentPhoneWebhookStatus = 200 | 400 | 401 | 404;
 type TelegramWebhookStatus = 200 | 400 | 401 | 404;
 
-interface SlackIngressResponse {
-  readonly status: SlackIngressStatus;
-  readonly body: unknown;
-  readonly headers: Headers;
-}
+type SlackIngressResponse = {
+  readonly [S in SlackIngressStatus]: {
+    readonly status: S;
+    readonly body: unknown;
+    readonly headers: Headers;
+  };
+}[SlackIngressStatus];
 
 interface SlackDownloadResponse {
   readonly status: SlackDownloadStatus;
@@ -162,6 +175,94 @@ interface TelegramWebhookResponse {
   readonly status: TelegramWebhookStatus;
   readonly body: unknown;
   readonly headers: Headers;
+}
+
+interface SlackAppInstallOptions {
+  readonly teamId?: string;
+  readonly installerSlackUserId?: string;
+}
+
+interface SlackAppInstallation {
+  readonly teamId: string;
+  readonly botUserId: string;
+  readonly installerSlackUserId: string;
+}
+
+interface SlackCommandRequest {
+  readonly teamId: string;
+  readonly userId: string;
+  readonly text: string;
+  readonly channelId?: string;
+  readonly triggerId?: string;
+}
+
+interface SlackPickerSubmissionArgs {
+  readonly workspaceId: string;
+  readonly slackUserId: string;
+  readonly selectedValue: string;
+  readonly channelId?: string;
+}
+
+function signedSlackHeaders(
+  body: string,
+  timestampOverride?: string,
+): SlackSignatureHeaders {
+  const timestamp = timestampOverride ?? String(Math.floor(now() / 1000));
+  return {
+    "x-slack-request-timestamp": timestamp,
+    "x-slack-signature": `v0=${createHmac("sha256", SLACK_SIGNING_SECRET)
+      .update(`v0:${timestamp}:${body}`)
+      .digest("hex")}`,
+  };
+}
+
+function slackCommandRequestBody(args: SlackCommandRequest): string {
+  return new URLSearchParams({
+    token: "bdd-token",
+    team_id: args.teamId,
+    team_domain: "bdd-workspace",
+    channel_id: args.channelId ?? "C_BDD_CMD",
+    channel_name: "general",
+    user_id: args.userId,
+    user_name: "bdduser",
+    command: "/zero",
+    text: args.text,
+    response_url: "https://hooks.slack.com/commands/bdd/response",
+    trigger_id: args.triggerId ?? "trigger-bdd",
+    api_app_id: "A-bdd",
+  }).toString();
+}
+
+function slackPickerSubmission(
+  callbackId: string,
+  blockId: string,
+  actionId: string,
+  args: SlackPickerSubmissionArgs,
+): Record<string, unknown> {
+  return {
+    type: "view_submission",
+    user: {
+      id: args.slackUserId,
+      username: "bdduser",
+      team_id: args.workspaceId,
+    },
+    team: { id: args.workspaceId, domain: "bdd" },
+    view: {
+      callback_id: callbackId,
+      ...(args.channelId === undefined
+        ? {}
+        : {
+            private_metadata: JSON.stringify({ channelId: args.channelId }),
+          }),
+      state: {
+        values: {
+          [blockId]: {
+            [actionId]: { selected_option: { value: args.selectedValue } },
+          },
+        },
+      },
+    },
+  };
 }
 
 function clerkUserProfile(actor: ApiTestUser): ClerkUserProfile {
@@ -676,14 +777,323 @@ export function createBddIntegrationApi(context: TestContext) {
       mockOptionalEnv("SLACK_SIGNING_SECRET", SLACK_SIGNING_SECRET);
     },
 
-    signedSlackIngressHeaders(body: string): SlackSignatureHeaders {
-      const timestamp = String(Math.floor(now() / 1000));
-      return {
-        "x-slack-request-timestamp": timestamp,
-        "x-slack-signature": `v0=${createHmac("sha256", SLACK_SIGNING_SECRET)
-          .update(`v0:${timestamp}:${body}`)
-          .digest("hex")}`,
-      };
+    signedSlackIngressHeaders(
+      body: string,
+      timestampOverride?: string,
+    ): SlackSignatureHeaders {
+      return signedSlackHeaders(body, timestampOverride);
+    },
+
+    configureSlackAppMocks(): void {
+      mockOptionalEnv("SLACK_SIGNING_SECRET", SLACK_SIGNING_SECRET);
+      mockEnv("SLACK_OAUTH_CLIENT_ID", "slack-bdd-client-id");
+      mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-bdd-client-secret");
+      mockEnv("APP_URL", "https://app.vm0.test");
+      mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+      mockEnv("VM0_API_URL", SLACK_APP_INTERNAL_API_URL);
+      context.mocks.s3.send.mockResolvedValue({});
+      context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
+        ok: true,
+      });
+      context.mocks.slack.chat.postMessage.mockResolvedValue({
+        ok: true,
+        ts: "1710000000.000000",
+        channel: "C-bdd",
+      });
+      context.mocks.slack.chat.postEphemeral.mockResolvedValue({
+        ok: true,
+        message_ts: "1710000000.000001",
+      });
+      context.mocks.slack.conversations.history.mockResolvedValue({
+        ok: true,
+        messages: [],
+      });
+      context.mocks.slack.conversations.replies.mockResolvedValue({
+        ok: true,
+        messages: [],
+      });
+      context.mocks.slack.conversations.open.mockResolvedValue({
+        ok: true,
+        channel: { id: "D-bdd" },
+      });
+      context.mocks.slack.users.info.mockResolvedValue({
+        ok: true,
+        user: {
+          profile: {
+            display_name: "Slack User",
+            email: "slack@example.com",
+          },
+          tz: "UTC",
+        },
+      });
+      context.mocks.slack.views.publish.mockResolvedValue({ ok: true });
+      context.mocks.slack.views.open.mockResolvedValue({
+        ok: true,
+        view: { id: "V-bdd" },
+      });
+    },
+
+    clearSlackCallHistory(): void {
+      context.mocks.slack.assistant.threads.setStatus.mockClear();
+      context.mocks.slack.chat.postMessage.mockClear();
+      context.mocks.slack.chat.postEphemeral.mockClear();
+      context.mocks.slack.conversations.history.mockClear();
+      context.mocks.slack.conversations.replies.mockClear();
+      context.mocks.slack.conversations.open.mockClear();
+      context.mocks.slack.users.info.mockClear();
+      context.mocks.slack.views.publish.mockClear();
+      context.mocks.slack.views.open.mockClear();
+    },
+
+    acceptSlackSessionHistoryDownloads(): void {
+      context.mocks.s3.send.mockImplementation((command: unknown) => {
+        if (command instanceof GetObjectCommand) {
+          return Promise.resolve({
+            Body: (async function* () {
+              yield new TextEncoder().encode("[]");
+            })(),
+          });
+        }
+        return Promise.resolve({});
+      });
+    },
+
+    forwardSlackInternalCallbacks(): void {
+      server.use(
+        http.post(
+          `${SLACK_APP_INTERNAL_API_URL}/api/internal/callbacks/*`,
+          async ({ request }) => {
+            const url = new URL(request.url);
+            const forwarded = await createApp({
+              signal: context.signal,
+            }).request(`${url.pathname}${url.search}`, {
+              method: "POST",
+              headers: request.headers,
+              body: await request.text(),
+            });
+            return new HttpResponse(await forwarded.text(), {
+              status: forwarded.status,
+              headers: {
+                "content-type":
+                  forwarded.headers.get("content-type") ?? "application/json",
+              },
+            });
+          },
+        ),
+      );
+    },
+
+    async installSlackWorkspace(
+      actor: ApiTestUser | null,
+      options: SlackAppInstallOptions = {},
+    ): Promise<SlackAppInstallation> {
+      const teamId =
+        options.teamId ??
+        `T_BDD_${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
+      const installerSlackUserId =
+        options.installerSlackUserId ?? `U_INSTALL_${randomUUID().slice(0, 8)}`;
+      const botUserId = `UBOT_${randomUUID().slice(0, 8)}`;
+      if (actor && !actor.orgId) {
+        throw new Error("Slack install actor must have an organization");
+      }
+      if (actor) {
+        authenticate(context, routeMocks, actor);
+      }
+      context.mocks.slack.oauth.v2.access.mockResolvedValueOnce({
+        ok: true,
+        access_token: `xoxb-bdd-${teamId}`,
+        bot_user_id: botUserId,
+        team: { id: teamId, name: `BDD Slack App ${teamId}` },
+        authed_user: { id: installerSlackUserId },
+        scope: SLACK_APP_BOT_SCOPES,
+      });
+      const client = setupApp({ context })(zeroSlackOauthContract);
+      await accept(
+        client.callback({
+          query: {
+            code: `bdd-install-${teamId}`,
+            state: actor
+              ? JSON.stringify({
+                  orgId: actor.orgId,
+                  vm0UserId: actor.userId,
+                })
+              : undefined,
+          },
+        }),
+        [307],
+      );
+      await clearAllDetached();
+      return { teamId, botUserId, installerSlackUserId };
+    },
+
+    async connectSlackUser(
+      actor: ApiTestUser,
+      body: SlackConnectBody,
+    ): Promise<void> {
+      const client = setupApp({ context })(zeroSlackConnectContract);
+      await accept(
+        client.connect({
+          headers: authenticate(context, routeMocks, actor),
+          body,
+        }),
+        [200],
+      );
+      await clearAllDetached();
+    },
+
+    async postSlackEvent(
+      teamId: string,
+      event: Record<string, unknown>,
+    ): Promise<unknown> {
+      const body = JSON.stringify({
+        type: "event_callback",
+        team_id: teamId,
+        event,
+      });
+      const response = await accept(
+        requestRawSlackIngress(
+          context,
+          "/api/zero/slack/events",
+          body,
+          signedSlackHeaders(body),
+          "application/json",
+        ),
+        [200],
+      );
+      await clearAllDetached();
+      return response.body;
+    },
+
+    async postSlackCommand(args: SlackCommandRequest): Promise<unknown> {
+      const body = slackCommandRequestBody(args);
+      const response = await accept(
+        requestRawSlackIngress(
+          context,
+          "/api/zero/slack/commands",
+          body,
+          signedSlackHeaders(body),
+          "application/x-www-form-urlencoded",
+        ),
+        [200],
+      );
+      await clearAllDetached();
+      return response.body;
+    },
+
+    async postSlackInteractive(
+      payload: Record<string, unknown>,
+    ): Promise<unknown> {
+      const body = new URLSearchParams({
+        payload: JSON.stringify(payload),
+      }).toString();
+      const response = await accept(
+        requestRawSlackIngress(
+          context,
+          "/api/zero/slack/interactive",
+          body,
+          signedSlackHeaders(body),
+          "application/x-www-form-urlencoded",
+        ),
+        [200],
+      );
+      await clearAllDetached();
+      return response.body;
+    },
+
+    agentPickerSubmission(
+      args: SlackPickerSubmissionArgs,
+    ): Record<string, unknown> {
+      return slackPickerSubmission(
+        "switch_agent_modal",
+        "agent_select_block",
+        "agent_select",
+        args,
+      );
+    },
+
+    modelPickerSubmission(
+      args: SlackPickerSubmissionArgs,
+    ): Record<string, unknown> {
+      return slackPickerSubmission(
+        "model_preference_modal",
+        "model_select_block",
+        "model_select",
+        args,
+      );
+    },
+
+    async readSlackTestState(teamId: string) {
+      const client = setupApp({ context })(testSlackStateContract);
+      const response = await accept(
+        client.get({ query: { team_id: teamId } }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async readUserModelPreference(actor: ApiTestUser) {
+      const client = setupApp({ context })(zeroUserModelPreferenceContract);
+      const response = await accept(
+        client.get({ headers: authenticate(context, routeMocks, actor) }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async updateUserModelPreference(
+      actor: ApiTestUser,
+      selectedModel: SupportedRunModel | null,
+    ): Promise<void> {
+      const client = setupApp({ context })(zeroUserModelPreferenceContract);
+      await accept(
+        client.update({
+          headers: authenticate(context, routeMocks, actor),
+          body: { selectedModel },
+        }),
+        [200],
+      );
+    },
+
+    async configureSlackRunModelPolicies(actor: ApiTestUser): Promise<void> {
+      const providers = setupApp({ context })(zeroModelProvidersMainContract);
+      const anthropic = await accept(
+        providers.upsert({
+          headers: authenticate(context, routeMocks, actor),
+          body: { type: "anthropic-api-key", secret: "bdd-anthropic-key" },
+        }),
+        [200, 201],
+      );
+      const openai = await accept(
+        providers.upsert({
+          headers: authenticate(context, routeMocks, actor),
+          body: { type: "openai-api-key", secret: "bdd-openai-key" },
+        }),
+        [200, 201],
+      );
+      await accept(
+        setupApp({ context })(zeroModelPoliciesMainContract).update({
+          headers: authenticate(context, routeMocks, actor),
+          body: {
+            policies: [
+              {
+                model: "claude-sonnet-4-6",
+                isDefault: true,
+                defaultProviderType: "anthropic-api-key",
+                credentialScope: "org",
+                modelProviderId: anthropic.body.provider.id,
+              },
+              {
+                model: "gpt-5.5",
+                isDefault: false,
+                defaultProviderType: "openai-api-key",
+                credentialScope: "org",
+                modelProviderId: openai.body.provider.id,
+              },
+            ],
+          },
+        }),
+        [200],
+      );
     },
 
     async requestSlackEvent(
