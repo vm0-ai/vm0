@@ -1,5 +1,10 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import { buildMetaAdsAuthorizationUrl, exchangeMetaAdsCode } from "./oauth";
+import {
+  buildMetaAdsAuthorizationUrl,
+  exchangeMetaAdsCode,
+  refreshMetaAdsLongLivedToken,
+} from "./oauth";
+
 export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
   grant: {
     kind: "auth-code",
@@ -26,6 +31,7 @@ export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
       return {
         outputs: {
           accessToken: result.accessToken,
+          refreshToken: result.accessToken,
         },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
@@ -38,7 +44,23 @@ export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
     },
   },
   access: {
-    kind: "none",
+    kind: "refresh-token",
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      const result = await refreshMetaAdsLongLivedToken(
+        clientId,
+        clientSecret,
+        args.inputs.refreshToken,
+        args.signal,
+      );
+      return {
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.accessToken,
+        },
+        expiresIn: result.expiresIn,
+      };
+    },
   },
   revoke: { kind: "none" },
 };

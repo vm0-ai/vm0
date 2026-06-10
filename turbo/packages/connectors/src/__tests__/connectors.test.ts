@@ -2474,6 +2474,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["api-token"]);
   });
 
+  it("exposes Meta Ads OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("meta-ads", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("meta-ads", {
+        [FeatureSwitchKey.MetaAdsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
   it("exposes Ashby API-token auth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([
       "api-token",
@@ -2700,6 +2711,44 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     });
   });
 
+  it("returns long-lived access token refresh metadata for Meta Ads", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("meta-ads", "oauth"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        refreshToken: {
+          valueRef: "$secrets.META_ADS_REFRESH_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "META_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      outputs: {
+        accessToken: {
+          valueRef: "$secrets.META_ADS_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "META_ADS_ACCESS_TOKEN",
+          },
+        },
+        refreshToken: {
+          valueRef: "$secrets.META_ADS_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "META_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      refreshableSecrets: ["META_ADS_ACCESS_TOKEN"],
+      envBindings: {
+        META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
+    });
+  });
+
   it("supports multi-input and multi-output refresh metadata", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("test-oauth", "api"),
@@ -2921,6 +2970,13 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       "GOOGLE_ADS_REFRESH_TOKEN",
     ]);
   });
+
+  it("keeps Meta Ads runtime token connector-owned", () => {
+    expect(getConnectorOwnedSecretNames("meta-ads", "oauth")).toStrictEqual([
+      "META_ADS_ACCESS_TOKEN",
+      "META_ADS_REFRESH_TOKEN",
+    ]);
+  });
 });
 
 describe("getConnectorAuthMethodRuntimeMetadata", () => {
@@ -3059,6 +3115,28 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
           source: {
             kind: "platform-secret",
             name: "GOOGLE_ADS_DEVELOPER_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
+  it("returns Meta Ads runtime token binding metadata", () => {
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("meta-ads", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["META_ADS_ACCESS_TOKEN", "META_ADS_REFRESH_TOKEN"],
+        variables: [],
+      },
+      runtimeBindings: [
+        {
+          envName: "META_ADS_TOKEN",
+          valueRef: "$secrets.META_ADS_ACCESS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "META_ADS_ACCESS_TOKEN",
           },
         },
       ],

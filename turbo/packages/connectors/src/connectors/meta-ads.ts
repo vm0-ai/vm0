@@ -10,6 +10,7 @@ export const metaAds = {
     authMethods: {
       oauth: {
         featureFlag: FeatureSwitchKey.MetaAdsConnector,
+        showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Facebook to grant access to Ads Manager.",
         client: {
@@ -19,7 +20,7 @@ export const metaAds = {
           clientSecretEnv: "META_ADS_OAUTH_CLIENT_SECRET",
         },
         storage: {
-          secrets: ["META_ADS_ACCESS_TOKEN"],
+          secrets: ["META_ADS_ACCESS_TOKEN", "META_ADS_REFRESH_TOKEN"],
           variables: [],
         },
         grant: {
@@ -27,10 +28,19 @@ export const metaAds = {
           scopes: ["ads_management", "ads_read", "business_management"],
           outputs: {
             accessToken: "$secrets.META_ADS_ACCESS_TOKEN",
+            refreshToken: "$secrets.META_ADS_REFRESH_TOKEN",
           },
         },
         access: {
-          kind: "static",
+          kind: "refresh-token",
+          inputs: {
+            refreshToken: "$secrets.META_ADS_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.META_ADS_ACCESS_TOKEN",
+            refreshToken: "$secrets.META_ADS_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["META_ADS_ACCESS_TOKEN"],
           envBindings: {
             META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
           },

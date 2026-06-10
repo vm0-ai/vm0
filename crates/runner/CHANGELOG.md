@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.110.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.1...runner-rs-v0.110.2) (2026-06-10)
+
+
+### Refactoring
+
+* move storage fingerprints out of idle pool ([#17051](https://github.com/vm0-ai/vm0/issues/17051)) ([1e6fb39](https://github.com/vm0-ai/vm0/commit/1e6fb3923f9f9a481e5741813dc413c5a9325cd2))
+
 ## [0.110.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.0...runner-rs-v0.110.1) (2026-06-10)
 
 

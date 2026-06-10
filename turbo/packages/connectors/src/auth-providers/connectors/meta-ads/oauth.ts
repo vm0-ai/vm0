@@ -122,17 +122,19 @@ export async function exchangeMetaAdsCode(
 async function exchangeForLongLivedToken(
   clientId: string,
   clientSecret: string,
-  shortLivedToken: string,
+  token: string,
+  signal?: AbortSignal,
 ): Promise<{ accessToken: string; expiresIn?: number }> {
   const params = new URLSearchParams({
     grant_type: "fb_exchange_token",
     client_id: clientId,
     client_secret: clientSecret,
-    fb_exchange_token: shortLivedToken,
+    fb_exchange_token: token,
   });
 
   const response = await fetch(
     `https://graph.facebook.com/v22.0/oauth/access_token?${params.toString()}`,
+    signal ? { signal } : undefined,
   );
 
   if (!response.ok) {
@@ -166,6 +168,15 @@ async function exchangeForLongLivedToken(
     accessToken: data.access_token,
     expiresIn: data.expires_in,
   };
+}
+
+export async function refreshMetaAdsLongLivedToken(
+  clientId: string,
+  clientSecret: string,
+  accessToken: string,
+  signal: AbortSignal,
+): Promise<{ accessToken: string; expiresIn?: number }> {
+  return exchangeForLongLivedToken(clientId, clientSecret, accessToken, signal);
 }
 
 /**

@@ -2365,6 +2365,79 @@ describe("POST /api/zero/runs", () => {
     ).toContain("google-ads");
   });
 
+  it("adds the Meta Ads token and firewall for authorized connector runs", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "meta-ads",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "meta-ads",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "META_ADS_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("meta-ads-access"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "META_ADS_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("meta-ads-refresh"),
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "meta ads connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly auth?: {
+            readonly headers?: Record<string, string>;
+          };
+        }[];
+      }[];
+    };
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      META_ADS_TOKEN: "meta-ads-access",
+    });
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      META_ADS_TOKEN: "meta-ads",
+    });
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "meta-ads";
+    });
+    expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
+      Authorization: ["Bearer $", "{{ secrets.META_ADS_TOKEN }}"].join(""),
+    });
+  });
+
   it("injects authorized custom connector firewalls and secrets", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
