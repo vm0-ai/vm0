@@ -80,6 +80,7 @@ describe("POST /api/zero/attribution/signup", () => {
           vm0_variant: "a",
           gclid: "test-gclid",
           gclid_present: "true",
+          user_id: userId,
           recorded_at: RECORDED_AT_ISO,
         },
       },
