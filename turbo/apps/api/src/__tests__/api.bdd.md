@@ -479,6 +479,19 @@ Before deleting an existing test file, fill this table for that file or route fa
 | Implementation call count     | None                             | Drop                           | Covered by visible behavior                     |
 | No visible assertion exists   | Needs helper/API                 | Block migration                | Add read/status/helper first                    |
 
+## Unreachable Code Candidates
+
+Code paths that cannot be reached through any public API request. Recorded here per #16967; deletion or refactoring is follow-up work, and the resulting
+coverage gap is acceptable once listed:
+
+- `agent-webhook-firewall-auth.service.ts` `TOKEN_ACCESS_RESOLUTION_FAILED`: needs a current connector token whose backing secret row is absent; every public seeding path writes both atomically.
+- `runners.ts` claim-conflict 409 branches: `claimedAt` is never written (successful claims delete the queue row), so the conflicting state cannot exist.
+- `runners.ts` poison-job handling for malformed execution contexts: contexts are always produced schema-valid by the dispatch payload builders.
+
+Production-reachable but not API-constructible (keep the legacy test alive; these are concurrency races, not dead code):
+
+- `agent-webhook-firewall-auth.service.ts` advisory-lock branches (locked refresh divergence, mid-request row deletion, `source-missing` statuses): the legacy test reaches them with pg advisory locks held across requests. `webhooks-agent-firewall-auth.bdd.test.ts` covers the API-reachable surface (the file now exceeds its baseline), but the legacy file stays until a concurrency harness exists.
+
 ## Open Helper Gaps
 
 These gaps must be closed before the corresponding old tests can be safely deleted:
