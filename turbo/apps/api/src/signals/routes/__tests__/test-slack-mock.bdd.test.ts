@@ -13,6 +13,25 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 
+// BDD migration of the legacy `test-slack-mock.test.ts`. The
+// 13 legacy `it()`s collapse into 3 BDD `it()`s: (1) 404
+// production-env chain (404 auth.test → 404
+// assistant.threads.setStatus → 404 chat.postMessage → 404
+// chat.postEphemeral → 404 oauth.v2.access → 404
+// views.publish → 404 conversations.history → 404
+// conversations.open → 404 conversations.replies → 404
+// users.info), (2) 200 dev-env fixture chain (200 returns
+// fixed Slack auth.test and oauth.v2.access fixture payloads
+// → 200 returns fixed Slack conversation and ack payloads →
+// 200 reads users.info user ids from JSON and form-encoded
+// bodies with fixture fallback), (3) 200 logged-call chain
+// (200 logs chat.postMessage and chat.postEphemeral calls +
+// DB log rows written).
+//
+// Service-Level Exception: `e2eSlackMockCallLog` rows are
+// read directly via `writeDb$` because no public GET
+// endpoint exists for a single mock call log.
+
 const context = testContext();
 const store = createStore();
 const writeDb = store.set(writeDb$);
@@ -39,130 +58,46 @@ afterEach(async () => {
   await cleanupMockCallLog();
 });
 
-describe("POST /api/test/slack-mock/*", () => {
-  it("returns 404 outside allowed test environments", async () => {
+describe("BDD POST /api/test/slack-mock/* — 404 production-env chain", () => {
+  it("gwt-wt-wt: 404 auth.test → 404 assistant.threads.setStatus → 404 chat.postMessage → 404 chat.postEphemeral → 404 oauth.v2.access → 404 views.publish → 404 conversations.history → 404 conversations.open → 404 conversations.replies → 404 users.info", async () => {
+    // Given: production env.
     mockEnv("ENV", "production");
 
-    const response = await requestApp(`${BASE_ROUTE}/auth.test`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns 404 for assistant.threads.setStatus outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
-
-    const response = await requestApp(
-      `${BASE_ROUTE}/assistant.threads.setStatus`,
-      {
+    // When + Then: 404 for each of the 10 supported methods.
+    for (const method of [
+      "auth.test",
+      "assistant.threads.setStatus",
+      "chat.postMessage",
+      "chat.postEphemeral",
+      "oauth.v2.access",
+      "views.publish",
+      "conversations.history",
+      "conversations.open",
+      "conversations.replies",
+      "users.info",
+    ]) {
+      const response = await requestApp(`${BASE_ROUTE}/${method}`, {
         method: "POST",
-      },
-    );
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
+      });
+      expect(response.status).toBe(404);
+      await expect(response.text()).resolves.toBe("Not found");
+    }
   });
+});
 
-  it("returns 404 for chat.postMessage outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
+describe("BDD POST /api/test/slack-mock/* — 200 dev-env fixture chain", () => {
+  it("gwt-wt-wt: 200 returns fixed Slack auth.test and oauth.v2.access fixture payloads → 200 returns fixed Slack conversation and ack payloads → 200 reads users.info user ids from JSON and form-encoded bodies with fixture fallback", async () => {
+    // Given: development env.
 
-    const response = await requestApp(`${BASE_ROUTE}/chat.postMessage`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns 404 for chat.postEphemeral outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
-
-    const response = await requestApp(`${BASE_ROUTE}/chat.postEphemeral`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns 404 for oauth.v2.access outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
-
-    const response = await requestApp(`${BASE_ROUTE}/oauth.v2.access`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns 404 for views.publish outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
-
-    const response = await requestApp(`${BASE_ROUTE}/views.publish`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns 404 for conversations.history outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
-
-    const response = await requestApp(`${BASE_ROUTE}/conversations.history`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns 404 for conversations.open outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
-
-    const response = await requestApp(`${BASE_ROUTE}/conversations.open`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns 404 for conversations.replies outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
-
-    const response = await requestApp(`${BASE_ROUTE}/conversations.replies`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns 404 for users.info outside allowed test environments", async () => {
-    mockEnv("ENV", "production");
-
-    const response = await requestApp(`${BASE_ROUTE}/users.info`, {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns fixed Slack auth.test and oauth.v2.access fixture payloads", async () => {
+    // When + Then: 200 — auth.test and oauth.v2.access
+    // return the fixed fixture payloads.
     mockEnv("ENV", "development");
-
     const authResponse = await requestApp(`${BASE_ROUTE}/auth.test`, {
       method: "POST",
     });
     const oauthResponse = await requestApp(`${BASE_ROUTE}/oauth.v2.access`, {
       method: "POST",
     });
-
     await expect(authResponse.json()).resolves.toStrictEqual({
       ok: true,
       url: "https://e2e-mock.invalid/",
@@ -191,11 +126,9 @@ describe("POST /api/test/slack-mock/*", () => {
         token_type: "user",
       },
     });
-  });
 
-  it("returns fixed Slack conversation and ack payloads", async () => {
-    mockEnv("ENV", "development");
-
+    // When + Then: 200 — conversation and ack methods
+    // return the fixed payloads.
     await expect(
       requestApp(`${BASE_ROUTE}/assistant.threads.setStatus`, {
         method: "POST",
@@ -234,11 +167,9 @@ describe("POST /api/test/slack-mock/*", () => {
         return response.json();
       }),
     ).resolves.toStrictEqual({ ok: true, messages: [], has_more: false });
-  });
 
-  it("reads users.info user ids from JSON and form-encoded bodies with fixture fallback", async () => {
-    mockEnv("ENV", "development");
-
+    // When + Then: 200 — users.info reads user ids from
+    // JSON and form-encoded bodies with fixture fallback.
     const jsonResponse = await requestApp(`${BASE_ROUTE}/users.info`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -274,11 +205,16 @@ describe("POST /api/test/slack-mock/*", () => {
     expect(emptyJsonBody.user.id).toBe(SLACK_E2E_FIXTURES.userUserId);
     expect(emptyFormBody.user.id).toBe(SLACK_E2E_FIXTURES.userUserId);
   });
+});
 
-  it("logs chat.postMessage and chat.postEphemeral calls", async () => {
+describe("BDD POST /api/test/slack-mock/* — 200 logged-call chain", () => {
+  it("gwt-wt-wt: 200 logs chat.postMessage and chat.postEphemeral calls + DB log rows written", async () => {
+    // Given: development env + a clean mock call log.
     mockEnv("ENV", "development");
     await cleanupMockCallLog();
 
+    // When: post to chat.postMessage (form-encoded) and
+    // chat.postEphemeral (JSON).
     const messageResponse = await requestApp(`${BASE_ROUTE}/chat.postMessage`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -301,6 +237,7 @@ describe("POST /api/test/slack-mock/*", () => {
       },
     );
 
+    // Then: 200 + the responses match the expected shape.
     expect(messageResponse.status).toBe(200);
     await expect(messageResponse.json()).resolves.toMatchObject({
       ok: true,
@@ -313,6 +250,7 @@ describe("POST /api/test/slack-mock/*", () => {
       message_ts: expect.stringMatching(/^\d+\.000200$/),
     });
 
+    // Then: the DB log contains both calls.
     const calls = await writeDb
       .select({
         method: e2eSlackMockCallLog.method,
