@@ -82,7 +82,7 @@ export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 
-const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
+const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 
 function isRecallControlMessage(msg: PagedChatMessage): boolean {
   return (
@@ -95,7 +95,7 @@ function isRecallControlMessage(msg: PagedChatMessage): boolean {
 function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   return (
     msg.role === "assistant" &&
-    msg.content === QUEUED_RUN_ASSISTANT_MESSAGE &&
+    msg.runEventId === QUEUED_RUN_MARKER_EVENT_ID &&
     msg.runId !== undefined
   );
 }
