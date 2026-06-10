@@ -6,6 +6,8 @@ import {
   buildCronExpression,
   buildAtTime,
   isAtTimePast,
+  cronUtcToLocalTime,
+  atTimeInTimezone,
   type ScheduleBody,
   type CronTimeOption,
 } from "../cron.ts";
@@ -40,36 +42,6 @@ interface ScheduleItem {
 // ---------------------------------------------------------------------------
 // Schedule time string conversion
 // ---------------------------------------------------------------------------
-
-function cronUtcToLocalTime(
-  utcHour: number,
-  utcMinute: number,
-  timezone: string,
-): { hour: number; minute: number } {
-  if (timezone === "UTC" || timezone === "Etc/UTC") {
-    return { hour: utcHour, minute: utcMinute };
-  }
-  const d = new Date();
-  d.setUTCHours(utcHour, utcMinute, 0, 0);
-  const parts = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: timezone,
-  }).formatToParts(d);
-  return {
-    hour: Number(
-      parts.find((p) => {
-        return p.type === "hour";
-      })?.value ?? utcHour,
-    ),
-    minute: Number(
-      parts.find((p) => {
-        return p.type === "minute";
-      })?.value ?? utcMinute,
-    ),
-  };
-}
 
 function cronToTimeString(cron: string, timezone = "UTC"): string {
   const parts = cron.split(" ");
@@ -112,35 +84,6 @@ function cronToTimeString(cron: string, timezone = "UTC"): string {
     return `Every week at ${timeStr}`;
   }
   return `Every day at ${timeStr}`;
-}
-
-function atTimeInTimezone(
-  isoTime: string,
-  timezone: string,
-): { date: string; hour: number; minute: number } {
-  const d = new Date(isoTime);
-  const tz = timezone || "UTC";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: tz,
-  }).formatToParts(d);
-  const get = (type: string) => {
-    return (
-      parts.find((p) => {
-        return p.type === type;
-      })?.value ?? "00"
-    );
-  };
-  return {
-    date: `${get("year")}-${get("month")}-${get("day")}`,
-    hour: Number(get("hour")),
-    minute: Number(get("minute")),
-  };
 }
 
 function scheduleToTimeString(s: ScheduleItem): string {
