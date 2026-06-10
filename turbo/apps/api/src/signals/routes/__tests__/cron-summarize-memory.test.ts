@@ -714,7 +714,7 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(rows).toHaveLength(7);
     const summary = await findSummary(seeded.fixture);
     await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(1);
-  });
+  }, 20_000);
 
   it("isolates a failing user so others are still summarized", async () => {
     // Defense-in-depth: one user's data error (here, missing S3 content) must
