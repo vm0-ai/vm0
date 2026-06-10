@@ -1161,3 +1161,41 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 27 — AGENT-01 composes (GET read) BDD
+
+Migrates `agent-composes-read.test.ts` (16 legacy `it()`s,
+937 lines). The 16 cases split into 5 BDD test groups, one
+per public read endpoint: (a) `GET /api/agent/composes` by
+name (401 → 400 missing → 200 owner → 200 member + 404
+other-org → 200 sandbox), (b) `GET /api/agent/composes/:id`
+by id (400 malformed → 200 owner + 200 member + 200
+sandbox → 404 inaccessible + 404 missing), (c) `GET
+/api/agent/composes/list` (401 + 400 no-org → 200 empty →
+200 sorted by `updatedAt` desc with metadata + org
+isolation → 200 sandbox), (d) `GET
+/api/agent/composes/versions` (200 latest + 200 full hash
+
+- 200 prefix → 200 sandbox → 400 no-head + 404 missing
+  version + 404 missing compose → 400 invalid + 400
+  ambiguous prefix), (e) `GET
+/api/agent/composes/:id/instructions` (400 malformed + 401
+  unauth + 404 missing → 200 canonical + 200 explicit → 200
+  storage member + 200 storage sandbox → 404 non-member).
+
+The 400 invalid-body cases for missing `name`, malformed
+`id`, and 3-char `version` use the raw public app because
+the ts-rest client validates these client-side and never
+reaches the route. The `seedAgentComposeReadFixture$` and
+`deleteAgentComposeReadFixture$` are inlined direct-DB
+writers (Open Helper Gap) — the public API does not expose
+"create compose with head version" or "create zero-agent
+row with metadata" primitives. The org-isolation test
+seeds a second org's compose and verifies it does not
+appear in the first org's list.
+
+Net test count: 16 legacy `it()`s → 5 BDD `it()`s (69%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
