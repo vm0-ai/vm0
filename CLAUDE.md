@@ -252,17 +252,12 @@ The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial, 8 minutes f
 
 ## Presentation Generation
 
-**Always run the full `zero generate presentation` flow.** Never shortcut it regardless of urgency or quality constraints ("快速", "不考虑质量", etc.).
+When generating presentations, always use `zero generate presentation` and follow the resource-selection packet it returns (select template → fetch SKILL.md → author per spec).
 
-### Required Steps:
-1. Run `zero generate presentation --prompt "..." --slides N` to get the resource-selection packet
-2. Select a template from the packet (e.g. `template:html-ppt-taste-editorial`)
-3. Fetch the template's `SKILL.md` and `example.html` from GitHub to read the design spec
-4. Author the artifact following the spec exactly — typography, layout, navigation
-5. Publish with `zero host <dir> --site <slug> --artifact-kind presentation-html`
-
-### Why this matters:
-Skipping the template fetch produces a generic custom HTML deck that ignores the design system. The packet-based flow exists precisely to ensure every deck uses a proper registered template.
+**Always publish with the `--artifact-kind presentation-html` flag:**
+```bash
+zero host <dir> --site <slug> --artifact-kind presentation-html
+```
 
 ## Language Standard
 
