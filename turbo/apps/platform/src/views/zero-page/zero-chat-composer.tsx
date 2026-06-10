@@ -277,7 +277,7 @@ export interface QueuedComposerItem {
   text: string;
 }
 
-export interface ComposerComputerUseHost {
+interface ComposerComputerUseHost {
   id: string;
   displayName: string;
 }

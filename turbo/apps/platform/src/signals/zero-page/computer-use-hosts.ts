@@ -11,7 +11,7 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 export const ZERO_DESKTOP_DOWNLOAD_URL =
   "https://github.com/vm0-ai/vm0/releases/tag/desktop-updates";
 
-export type OnlineComputerUseHost = Pick<
+type OnlineComputerUseHost = Pick<
   ComputerUseHost,
   "id" | "displayName" | "lastSeenAt"
 >;
