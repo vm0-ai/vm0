@@ -85,6 +85,9 @@ pub struct Message {
     /// Event name (e.g. "job", "events", "status").
     pub name: Option<String>,
     /// Message payload.
+    ///
+    /// Binary payloads are exposed as base64 strings because this public API
+    /// uses `serde_json::Value`, which has no raw binary representation.
     pub data: serde_json::Value,
     /// Unique message ID.
     pub id: Option<String>,
