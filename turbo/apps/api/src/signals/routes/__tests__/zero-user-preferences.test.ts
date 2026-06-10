@@ -1,25 +1,21 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { createStore } from "ccstate";
+import {
+  zeroUserPreferencesContract,
+  type UpdateUserPreferencesRequest,
+  type UserPreferencesResponse,
+} from "@vm0/api-contracts/contracts/zero-user-preferences";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteUserData$,
-  seedUserPreferences$,
-  type UserDataFixture,
-} from "./helpers/zero-user-data";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const track = createFixtureTracker<UserDataFixture>((fixture) => {
-  return store.set(deleteUserData$, fixture, context.signal);
-});
+
+interface UserPreferencesRouteFixture {
+  readonly orgId: string;
+  readonly userId: string;
+}
 
 function apiClient() {
   return setupApp({ context })(zeroUserPreferencesContract);
@@ -29,13 +25,43 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function createTrackedFixture(): Promise<UserDataFixture> {
-  return track(
-    Promise.resolve({
-      orgId: `org_${randomUUID()}`,
-      userId: `user_${randomUUID()}`,
+function createFixture(): UserPreferencesRouteFixture {
+  return {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  };
+}
+
+async function updatePreferencesThroughApi(
+  fixture: UserPreferencesRouteFixture,
+  body: UpdateUserPreferencesRequest,
+): Promise<UserPreferencesResponse> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+
+  const response = await accept(
+    apiClient().update({
+      headers: authHeaders(),
+      body,
     }),
+    [200],
   );
+
+  return response.body;
+}
+
+async function getPreferencesThroughApi(
+  fixture: UserPreferencesRouteFixture,
+): Promise<UserPreferencesResponse> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+
+  const response = await accept(
+    apiClient().get({
+      headers: authHeaders(),
+    }),
+    [200],
+  );
+
+  return response.body;
 }
 
 describe("GET /api/zero/user-preferences", () => {
@@ -53,10 +79,7 @@ describe("GET /api/zero/user-preferences", () => {
   });
 
   it("returns 401 when the authenticated session has no organization", async () => {
-    const fixture = await track(
-      store.set(seedUserPreferences$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, null);
+    mocks.clerk.session(`user_${randomUUID()}`, null);
 
     const client = apiClient();
 
@@ -76,35 +99,19 @@ describe("GET /api/zero/user-preferences", () => {
   });
 
   it("returns the persisted preferences for the current org member", async () => {
-    const fixture = await track(
-      store.set(
-        seedUserPreferences$,
-        {
-          timezone: "America/Los_Angeles",
-          pinnedAgentIds: ["agent_b", "agent_a"],
-          sendMode: "cmd-enter",
-          captureNetworkBodiesRemaining: 3,
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = apiClient();
-
-    const response = await accept(
-      client.get({
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
+    const fixture = createFixture();
+    const expected = {
       timezone: "America/Los_Angeles",
       pinnedAgentIds: ["agent_b", "agent_a"],
       sendMode: "cmd-enter",
       captureNetworkBodiesRemaining: 3,
-    });
+    } satisfies UpdateUserPreferencesRequest;
+
+    await updatePreferencesThroughApi(fixture, expected);
+
+    await expect(getPreferencesThroughApi(fixture)).resolves.toStrictEqual(
+      expected,
+    );
   });
 
   it("returns defaults when the org member metadata row does not exist", async () => {
@@ -151,10 +158,7 @@ describe("POST /api/zero/user-preferences", () => {
   });
 
   it("returns 401 when the authenticated session has no organization", async () => {
-    const fixture = await track(
-      store.set(seedUserPreferences$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, null);
+    mocks.clerk.session(`user_${randomUUID()}`, null);
 
     const client = apiClient();
 
@@ -175,9 +179,7 @@ describe("POST /api/zero/user-preferences", () => {
   });
 
   it("returns 400 when timezone is invalid", async () => {
-    const fixture = await track(
-      store.set(seedUserPreferences$, {}, context.signal),
-    );
+    const fixture = createFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = apiClient();
@@ -199,9 +201,7 @@ describe("POST /api/zero/user-preferences", () => {
   });
 
   it("returns 400 when no preference update is provided", async () => {
-    const fixture = await track(
-      store.set(seedUserPreferences$, {}, context.signal),
-    );
+    const fixture = createFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = apiClient();
@@ -218,67 +218,36 @@ describe("POST /api/zero/user-preferences", () => {
   });
 
   it("creates preferences with all supported fields", async () => {
-    const fixture = await createTrackedFixture();
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = apiClient();
-
-    const updateResponse = await accept(
-      client.update({
-        headers: authHeaders(),
-        body: {
-          timezone: "Europe/London",
-          pinnedAgentIds: ["agent-a", "agent-b"],
-          sendMode: "cmd-enter",
-          captureNetworkBodiesRemaining: 4,
-        },
-      }),
-      [200],
-    );
-
+    const fixture = createFixture();
     const expected = {
       timezone: "Europe/London",
       pinnedAgentIds: ["agent-a", "agent-b"],
       sendMode: "cmd-enter",
       captureNetworkBodiesRemaining: 4,
-    };
-    expect(updateResponse.body).toStrictEqual(expected);
+    } satisfies UpdateUserPreferencesRequest;
 
-    const getResponse = await accept(
-      client.get({
-        headers: authHeaders(),
-      }),
-      [200],
+    await expect(
+      updatePreferencesThroughApi(fixture, expected),
+    ).resolves.toStrictEqual(expected);
+    await expect(getPreferencesThroughApi(fixture)).resolves.toStrictEqual(
+      expected,
     );
-    expect(getResponse.body).toStrictEqual(expected);
   });
 
   it("updates timezone without changing existing preference fields", async () => {
-    const fixture = await track(
-      store.set(
-        seedUserPreferences$,
-        {
-          timezone: "Asia/Tokyo",
-          pinnedAgentIds: ["agent-old"],
-          sendMode: "cmd-enter",
-          captureNetworkBodiesRemaining: 2,
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = createFixture();
+    await updatePreferencesThroughApi(fixture, {
+      timezone: "Asia/Tokyo",
+      pinnedAgentIds: ["agent-old"],
+      sendMode: "cmd-enter",
+      captureNetworkBodiesRemaining: 2,
+    });
 
-    const client = apiClient();
+    const response = await updatePreferencesThroughApi(fixture, {
+      timezone: "America/Los_Angeles",
+    });
 
-    const response = await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { timezone: "America/Los_Angeles" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
+    expect(response).toStrictEqual({
       timezone: "America/Los_Angeles",
       pinnedAgentIds: ["agent-old"],
       sendMode: "cmd-enter",
@@ -287,31 +256,19 @@ describe("POST /api/zero/user-preferences", () => {
   });
 
   it("updates pinnedAgentIds without changing existing preference fields", async () => {
-    const fixture = await track(
-      store.set(
-        seedUserPreferences$,
-        {
-          timezone: "Asia/Tokyo",
-          pinnedAgentIds: ["agent-old"],
-          sendMode: "cmd-enter",
-          captureNetworkBodiesRemaining: 2,
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = createFixture();
+    await updatePreferencesThroughApi(fixture, {
+      timezone: "Asia/Tokyo",
+      pinnedAgentIds: ["agent-old"],
+      sendMode: "cmd-enter",
+      captureNetworkBodiesRemaining: 2,
+    });
 
-    const client = apiClient();
+    const response = await updatePreferencesThroughApi(fixture, {
+      pinnedAgentIds: ["agent-new", "agent-extra"],
+    });
 
-    const response = await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { pinnedAgentIds: ["agent-new", "agent-extra"] },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
+    expect(response).toStrictEqual({
       timezone: "Asia/Tokyo",
       pinnedAgentIds: ["agent-new", "agent-extra"],
       sendMode: "cmd-enter",
@@ -320,31 +277,19 @@ describe("POST /api/zero/user-preferences", () => {
   });
 
   it("updates sendMode without changing existing preference fields", async () => {
-    const fixture = await track(
-      store.set(
-        seedUserPreferences$,
-        {
-          timezone: "Asia/Tokyo",
-          pinnedAgentIds: ["agent-old"],
-          sendMode: "enter",
-          captureNetworkBodiesRemaining: 2,
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = createFixture();
+    await updatePreferencesThroughApi(fixture, {
+      timezone: "Asia/Tokyo",
+      pinnedAgentIds: ["agent-old"],
+      sendMode: "enter",
+      captureNetworkBodiesRemaining: 2,
+    });
 
-    const client = apiClient();
+    const response = await updatePreferencesThroughApi(fixture, {
+      sendMode: "cmd-enter",
+    });
 
-    const response = await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { sendMode: "cmd-enter" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
+    expect(response).toStrictEqual({
       timezone: "Asia/Tokyo",
       pinnedAgentIds: ["agent-old"],
       sendMode: "cmd-enter",
@@ -353,31 +298,19 @@ describe("POST /api/zero/user-preferences", () => {
   });
 
   it("updates captureNetworkBodiesRemaining without changing existing preference fields", async () => {
-    const fixture = await track(
-      store.set(
-        seedUserPreferences$,
-        {
-          timezone: "Asia/Tokyo",
-          pinnedAgentIds: ["agent-old"],
-          sendMode: "cmd-enter",
-          captureNetworkBodiesRemaining: 2,
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = createFixture();
+    await updatePreferencesThroughApi(fixture, {
+      timezone: "Asia/Tokyo",
+      pinnedAgentIds: ["agent-old"],
+      sendMode: "cmd-enter",
+      captureNetworkBodiesRemaining: 2,
+    });
 
-    const client = apiClient();
+    const response = await updatePreferencesThroughApi(fixture, {
+      captureNetworkBodiesRemaining: 7,
+    });
 
-    const response = await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { captureNetworkBodiesRemaining: 7 },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
+    expect(response).toStrictEqual({
       timezone: "Asia/Tokyo",
       pinnedAgentIds: ["agent-old"],
       sendMode: "cmd-enter",

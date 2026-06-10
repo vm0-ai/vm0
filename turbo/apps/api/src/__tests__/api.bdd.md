@@ -45,6 +45,7 @@ migrated.
 | CHAIN-CHAT-THREAD-META  | `/api/zero/chat-threads/*`                  | POST create agent -> POST create thread -> POST pin/rename/model-selection/unpin -> GET list/detail visible metadata  |
 | CHAIN-SECRETS           | `/api/zero/secrets`                         | POST create user secret -> GET list -> DELETE user secret -> GET list without secret                                  |
 | CHAIN-VARIABLES         | `/api/zero/variables`                       | POST create user variable -> GET list -> POST update -> DELETE user variable -> GET list without variable             |
+| CHAIN-USER-PREFERENCES  | `/api/zero/user-preferences`                | GET defaults -> POST full preference set -> GET persisted -> POST partial updates -> GET merged preferences           |
 
 ## Migration Audit Table
 
@@ -64,6 +65,7 @@ migrated.
 | SECRETS-01           | List, create, update, encryption, and cross-user no-leak behavior                       | CHAIN-SECRETS               | partial  | `zero-secrets.test.ts` creates user secrets through POST, verifies metadata through GET list, and verifies same-name cross-user isolation through route reads; encrypted-value and connector metadata checks remain legacy.                |
 | SECRETS-DELETE-01    | Delete user secret, missing secret, and cross-user/cross-org no-leak behavior           | CHAIN-SECRETS               | partial  | `zero-secrets-delete.test.ts` creates user secrets through POST, deletes through DELETE, and verifies user-visible state through GET list; connector-type filter regression still needs a visible connector-secret setup/read helper.      |
 | VARIABLES-01         | List, create, update, delete, and cross-user/cross-org no-leak behavior                 | CHAIN-VARIABLES             | partial  | `zero-variables.test.ts` and `zero-variables-delete.test.ts` create user variables through POST, verify state through GET list, and verify deletes/no-leak behavior through DELETE plus follow-up GET list.                                |
+| USER-PREFERENCES-01  | Defaults, persisted preferences, validation, and partial update merge behavior          | CHAIN-USER-PREFERENCES      | migrated | `zero-user-preferences.test.ts` creates and updates preferences through POST and verifies default, persisted, and merged preference state through GET or POST responses without direct DB fixtures.                                        |
 
 ## Open Helper Gaps
 

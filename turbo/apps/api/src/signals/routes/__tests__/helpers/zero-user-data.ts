@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import type { SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { command } from "ccstate";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -14,13 +13,6 @@ import { writeDb$ } from "../../../external/db";
 export interface UserDataFixture {
   readonly orgId: string;
   readonly userId: string;
-}
-
-interface UserPreferencesSeedValues {
-  readonly timezone?: string | null;
-  readonly pinnedAgentIds?: readonly string[];
-  readonly sendMode?: SendMode;
-  readonly captureNetworkBodiesRemaining?: number | null;
 }
 
 interface VariableSeedValues {
@@ -46,29 +38,6 @@ function createUserDataFixture(): UserDataFixture {
     userId: `user_${randomUUID()}`,
   };
 }
-
-export const seedUserPreferences$ = command(
-  async (
-    { set },
-    values: UserPreferencesSeedValues,
-    signal: AbortSignal,
-  ): Promise<UserDataFixture> => {
-    const fixture = createUserDataFixture();
-    const writeDb = set(writeDb$);
-
-    await writeDb.insert(orgMembersMetadata).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      timezone: values.timezone ?? null,
-      pinnedAgentIds: [...(values.pinnedAgentIds ?? [])],
-      sendMode: values.sendMode ?? "enter",
-      captureNetworkBodiesRemaining: values.captureNetworkBodiesRemaining ?? 0,
-    });
-    signal.throwIfAborted();
-
-    return fixture;
-  },
-);
 
 export const seedVariables$ = command(
   async (
