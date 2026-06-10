@@ -4,7 +4,6 @@ import {
   IconLoader2,
   IconPresentation,
   IconSparkles,
-  IconX,
 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
@@ -240,11 +239,11 @@ function PresentationEditorHeader({
       <button
         type="button"
         data-presentation-editor-action="true"
-        aria-label="Close presentation editor"
+        aria-label="Done editing presentation"
         onClick={onClose}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-8 items-center justify-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
       >
-        <IconX size={16} stroke={1.5} />
+        Done
       </button>
     </header>
   );
