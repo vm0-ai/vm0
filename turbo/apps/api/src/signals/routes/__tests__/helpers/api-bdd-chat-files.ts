@@ -134,6 +134,7 @@ type BddSendMessageBody =
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
+      readonly computerUseHostId?: string | null;
       readonly clientMessageId?: string;
       readonly revokesMessageId?: string;
     }
@@ -749,6 +750,11 @@ export function createChatFilesBddApi(context: TestContext) {
               ...(body.attachFiles === undefined
                 ? {}
                 : { attachFiles: [...body.attachFiles] }),
+              // Explicit null clears the thread's sticky computer-use host;
+              // omitting the field keeps it, so the two must stay distinct.
+              ...(body.computerUseHostId === undefined
+                ? {}
+                : { computerUseHostId: body.computerUseHostId }),
               ...(body.clientMessageId === undefined
                 ? {}
                 : { clientMessageId: body.clientMessageId }),
