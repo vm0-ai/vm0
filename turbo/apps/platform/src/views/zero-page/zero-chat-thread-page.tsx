@@ -2863,6 +2863,8 @@ function useChatThreadComposerSendState({
 }
 
 function useChatThreadComputerUse(thread: ChatThreadSignals) {
+  const features = useLastResolved(featureSwitch$);
+  const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
   const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
@@ -2879,14 +2881,18 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
   const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
 
   return {
-    selectedComputerUseHostId,
-    computerUse: {
-      hosts: computerUseHosts,
-      loading: computerUseHostsLoadable.state === "loading",
-      selectedHostId: selectedComputerUseHostId,
-      onChange: setComputerUseHostId,
-      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-    },
+    selectedComputerUseHostId: computerUseEnabled
+      ? selectedComputerUseHostId
+      : null,
+    computerUse: computerUseEnabled
+      ? {
+          hosts: computerUseHosts,
+          loading: computerUseHostsLoadable.state === "loading",
+          selectedHostId: selectedComputerUseHostId,
+          onChange: setComputerUseHostId,
+          downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+        }
+      : undefined,
   };
 }
 
