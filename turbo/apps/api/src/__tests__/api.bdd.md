@@ -149,20 +149,20 @@ create→deploy→enable→run case, which uniquely covers run storage/dispatch 
 | 200 lists agent created via POST | BDD (CHAIN-AGENT)                                      |
 | 200 org-scoped only              | BDD (CHAIN-AGENT-VISIBILITY visibility filter)         |
 
-### `zero-agents-by-id.test.ts` → **kept** (CLI-token / zero-token-cache / pending-run gaps; CRUD boundary cases now duplicated by BDD, pruned next round)
+### `zero-agents-by-id.test.ts` → **reduced** to gap/unique-branch cases (CRUD boundaries migrated to BDD)
 
-| legacy case                                       | disposition                          |
-| ------------------------------------------------- | ------------------------------------ |
-| get 401 / 401 no-org / 400 bad uuid / 404 unknown | BDD (authorization)                  |
-| get 200 found                                     | BDD (CHAIN-AGENT)                    |
-| get hides private from non-owner (404)            | BDD (CHAIN-AGENT-VISIBILITY)         |
-| get accepts owner CLI token (private)             | GAP-CLI-TOKEN                        |
-| get accepts zero token with `agent:read`          | GAP-ZERO-TOKEN-CACHE                 |
-| delete 401 / 403 cap / 400 / 404 / cross-org      | BDD (authorization)                  |
-| delete owner 204 / admin deletes public 204       | BDD (CHAIN-AGENT, write permissions) |
-| delete non-owner member 403                       | BDD (write permissions)              |
-| delete owner CLI token + storage cleanup          | GAP-CLI-TOKEN                        |
-| delete 409 when a pending run references agent    | GAP-PENDING-RUN                      |
+| legacy case                                                   | disposition                                                                                       |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| get 401 / 401 no-org / 400 bad uuid / 404 unknown / cross-org | BDD (authorization; no-org/uuid/404 are shared branches)                                          |
+| get 200 found                                                 | BDD (CHAIN-AGENT)                                                                                 |
+| get hides private from non-owner (404)                        | BDD (CHAIN-AGENT-VISIBILITY)                                                                      |
+| get accepts owner CLI token (private)                         | GAP-CLI-TOKEN (retained)                                                                          |
+| get accepts zero token with `agent:read`                      | GAP-ZERO-TOKEN-CACHE (retained)                                                                   |
+| delete 401 / 403 cap / 400 / 404 / cross-org                  | BDD (authorization)                                                                               |
+| delete admin deletes public 204 / non-owner 403               | BDD (CHAIN-AGENT, write permissions)                                                              |
+| delete owner 204 (storage-less agent)                         | retained — covers the storage-less `deleteComposeById$` branch unreachable via API-created agents |
+| delete owner CLI token + storage cleanup                      | GAP-CLI-TOKEN (retained; real-S3 cleanup branch)                                                  |
+| delete 409 when a pending run references agent                | GAP-PENDING-RUN (retained)                                                                        |
 
 ### `zero-agents-update.test.ts` → **kept** (instructions route lives in a separate source file `zero-agent-instructions.ts`; CLI-token gap)
 
@@ -327,3 +327,19 @@ not drops: the underlying code paths remain executed by the BDD tests.)
   GAP-FEATURE-GATED-CONNECTOR / GAP-STALE-RECOMPOSE).
 - Coverage: `zero-agents.ts` user-connector routes preserved; verified ≥
   baseline in the round run.
+
+### Round 4 — AGENT get/delete pruning
+
+- Reduced `zero-agents-by-id.test.ts` to the gap/unique-branch cases: CLI-token
+  and zero-token-with-cache GET, the storage-less delete, the real-S3 cleanup
+  delete, and the pending-run 409 — removing the CRUD/boundary cases that the
+  BDD suites already cover via shared branches.
+- Caught a real −3-branch drop in `zero-compose-data.service.ts` (the
+  storage-less `deleteComposeById$` path is only reachable through a
+  `seedTeamCompose` agent, never an API-created one) and restored it by keeping
+  one storage-less delete case.
+- Coverage verified: `zero-agents.ts` 253/132/37 and
+  `zero-compose-data.service.ts` 85/53 both back at baseline; total covered
+  statements 26850 → 26863. The lone `agent-run-storage.service.ts` branch
+  delta (66↔65) is run-to-run noise on a detached-async path (oscillates across
+  identical-code runs with statements pinned at 114).

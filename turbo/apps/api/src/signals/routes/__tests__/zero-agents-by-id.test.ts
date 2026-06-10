@@ -2,8 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
-import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
@@ -14,6 +12,8 @@ import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { storages } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { createStore } from "ccstate";
+import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -30,6 +30,12 @@ import {
   type TeamComposeFixture,
 } from "./helpers/zero-team";
 
+// The GET/DELETE agent CRUD and boundary cases have migrated to
+// `agent-lifecycle.bdd.test.ts` (API-first BDD). This file retains only the
+// cases that cannot be built/observed through the public API: CLI-token and
+// zero-token-with-cache auth (GAP-CLI-TOKEN / GAP-ZERO-TOKEN-CACHE), the
+// delete-with-real-S3-storage cleanup path, and the pending-run 409 branch
+// (GAP-PENDING-RUN) — see `api.bdd.md`.
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -77,101 +83,13 @@ describe("GET /api/zero/agents/:id", () => {
     return store.set(deleteTeamCompose$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({ params: { id: randomUUID() }, headers: {} }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no active organization", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, null);
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 400 for invalid path params", async () => {
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: "not-a-uuid" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("returns the agent when found in the active org", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        {
-          composes: [
-            {
-              displayName: "Test Agent",
-              description: "Test description",
-              sound: "friendly",
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const agentId = fixture.composeIds[0]!;
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      agentId,
-      ownerId: fixture.userId,
-      displayName: "Test Agent",
-      description: "Test description",
-      sound: "friendly",
-      avatarUrl: null,
-      customSkills: [],
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
-      visibility: "public",
-    });
-  });
-
   it("accepts an owner CLI token for a private agent", async () => {
     const fixture = await track(
       store.set(
         seedTeamCompose$,
         {
           composes: [
-            {
-              displayName: "CLI Private Agent",
-              visibility: "private",
-            },
+            { displayName: "CLI Private Agent", visibility: "private" },
           ],
         },
         context.signal,
@@ -193,129 +111,6 @@ describe("GET /api/zero/agents/:id", () => {
       ownerId: fixture.userId,
       displayName: "CLI Private Agent",
       visibility: "private",
-    });
-  });
-
-  it("hides private agents from same-org non-owners", async () => {
-    const fixture = await track(
-      store.set(
-        seedTeamCompose$,
-        {
-          composes: [
-            {
-              displayName: "Owner Only",
-              visibility: "private",
-            },
-          ],
-        },
-        context.signal,
-      ),
-    );
-    const agentId = fixture.composeIds[0]!;
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const ownerResponse = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(ownerResponse.body.visibility).toBe("private");
-
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
-    const otherResponse = await accept(
-      client.get({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-    expect(otherResponse.body).toStrictEqual({
-      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
-    });
-  });
-
-  it("returns 404 for an unknown agent id", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const unknownId = randomUUID();
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: unknownId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${unknownId}`, code: "NOT_FOUND" },
-    });
-  });
-
-  it("returns 404 when the agent belongs to a different org (no existence leak)", async () => {
-    const otherFixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Other Org Agent" }] },
-        context.signal,
-      ),
-    );
-    const sharedId = otherFixture.composeIds[0]!;
-
-    const myFixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(myFixture.userId, myFixture.orgId);
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: sharedId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${sharedId}`, code: "NOT_FOUND" },
-    });
-  });
-
-  it("returns 403 for a sandbox token without agent:read capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId,
-      orgId,
-      runId,
-      capabilities: ["file:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.get({
-        params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Missing required capability: agent:read",
-        code: "FORBIDDEN",
-      },
     });
   });
 
@@ -379,149 +174,10 @@ describe("DELETE /api/zero/agents/:id", () => {
     return store.set(deleteTeamCompose$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({ params: { id: randomUUID() }, headers: {} }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 403 for a sandbox token without agent:delete capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId,
-      orgId,
-      runId,
-      capabilities: ["file:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Missing required capability: agent:delete",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
-  it("returns 400 for invalid path params", async () => {
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: "not-a-uuid" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("returns 404 for an unknown agent id", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const unknownId = randomUUID();
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: unknownId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${unknownId}`, code: "NOT_FOUND" },
-    });
-  });
-
-  it("returns 404 when the agent belongs to a different org", async () => {
-    const otherFixture = await track(
-      store.set(
-        seedTeamCompose$,
-        { composes: [{ displayName: "Other Org Agent" }] },
-        context.signal,
-      ),
-    );
-    const agentId = otherFixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
-
-    const fixture = await track(
-      store.set(seedTeamCompose$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
-    });
-
-    const writeDb = store.set(writeDb$);
-    const survivor = await writeDb
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, agentId));
-    expect(survivor).toStrictEqual([{ id: agentId }]);
-  });
-
-  it("rejects same-org members who are not the agent owner", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
-    );
-    const agentId = fixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only the agent owner or org admin can delete agent",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
-  it("deletes the caller's own agent", async () => {
+  it("deletes an agent that has no instructions storage", async () => {
+    // A `seedTeamCompose` agent has no instructions-storage row, exercising the
+    // storage-less delete branch of `deleteComposeById$` that API-created
+    // agents (which always provision instructions storage) cannot reach.
     const fixture = await track(
       store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
     );
@@ -618,35 +274,6 @@ describe("DELETE /api/zero/agents/:id", () => {
             eq(storages.name, storageName),
           ),
         ),
-    ).resolves.toStrictEqual([]);
-  });
-
-  it("allows an org admin to delete another user's public agent", async () => {
-    const fixture = await track(
-      store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
-    );
-    const agentId = fixture.composeIds[0];
-    if (!agentId) {
-      throw new Error("Expected seeded agent");
-    }
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:admin");
-
-    const client = setupApp({ context })(zeroAgentsByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: agentId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [204],
-    );
-    expect(response.body).toBeUndefined();
-
-    const writeDb = store.set(writeDb$);
-    await expect(
-      writeDb
-        .select({ id: zeroAgents.id })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, agentId)),
     ).resolves.toStrictEqual([]);
   });
 
