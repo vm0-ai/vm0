@@ -762,3 +762,28 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 15 — CHAT-01 artifacts BDD
+
+Migrates the per-thread artifacts list (file uploads, dedup,
+website/presentation filters, Drive sync). The legacy direct DB
+SELECTs that verified the per-run file arrays are replaced by
+assertions on the public list contract's `runs` array. The
+package-level `seededDriveOrgs` cleanup array is replaced with
+`createFixtureTracker<string>` so the afterEach hook
+disappears (the tracker auto-cleans).
+
+- `zero-chat-threads-artifacts.bdd.test.ts` — 9 legacy `it()`s
+  → 3 BDD `it()`s (auth boundary + 1 read chain covering
+  cross-user 404 + single file + dedup + website filter +
+  presentation filter + chat-message ownership fallback + 1
+  Drive chain covering synced and unknown states). The read
+  chain exercises 7 distinct scenarios through a single
+  GWT-WT-WT walk; the Drive chain exercises the upstream
+  HTTP call and the 401-on-refresh swallow.
+
+Net test count: 9 legacy `it()`s → 3 BDD `it()`s (67%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
