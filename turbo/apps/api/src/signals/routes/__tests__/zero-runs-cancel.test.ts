@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
+import {
+  zeroRunsByIdContract,
+  zeroRunsCancelContract,
+} from "@vm0/api-contracts/contracts/zero-runs";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -34,6 +37,18 @@ const mocks = createZeroRouteMocks(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+async function getRunStatusThroughApi(runId: string): Promise<string> {
+  const client = setupApp({ context })(zeroRunsByIdContract);
+  const response = await accept(
+    client.getById({
+      params: { id: runId },
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  return response.body.status;
 }
 
 describe("POST /api/zero/runs/:id/cancel", () => {
@@ -145,12 +160,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       message: "Run cancelled successfully",
     });
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, runId));
-    expect(row?.status).toBe("cancelled");
+    await expect(getRunStatusThroughApi(runId)).resolves.toBe("cancelled");
 
     // Settle the detached waitUntil work then assert Ably publish surface.
     await clearAllDetached();
@@ -351,11 +361,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    const [run] = await writeDb
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, runId));
-    expect(run?.status).toBe("cancelled");
+    await expect(getRunStatusThroughApi(runId)).resolves.toBe("cancelled");
 
     const queueRows = await writeDb
       .select({ runId: agentRunQueue.runId })
@@ -456,18 +462,12 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     await clearAllDetached();
 
     // Cancelled run reflects the cancel.
-    const [cancelledRow] = await writeDb
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, runningRunId));
-    expect(cancelledRow?.status).toBe("cancelled");
+    await expect(getRunStatusThroughApi(runningRunId)).resolves.toBe(
+      "cancelled",
+    );
 
     // Queue drain promoted the queued run to pending.
-    const [queuedRow] = await writeDb
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, queuedRunId));
-    expect(queuedRow?.status).toBe("pending");
+    await expect(getRunStatusThroughApi(queuedRunId)).resolves.toBe("pending");
 
     // Queue entry is gone.
     const queueRows = await writeDb
@@ -689,11 +689,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
 
     // Idempotent path skipped dispatchCancelSideEffects$ entirely; the
     // queue entry and queued run are untouched.
-    const [queuedRow] = await writeDb
-      .select({ status: agentRuns.status })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, queuedRunId));
-    expect(queuedRow?.status).toBe("queued");
+    await expect(getRunStatusThroughApi(queuedRunId)).resolves.toBe("queued");
 
     const queueRows = await writeDb
       .select()
