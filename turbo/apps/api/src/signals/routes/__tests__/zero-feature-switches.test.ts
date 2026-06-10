@@ -1,344 +1,137 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
-import {
-  deleteFeatureSwitches$,
-  seedFeatureSwitches$,
-  type FeatureSwitchesFixture,
-} from "./helpers/zero-feature-switches";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-async function getRowSwitches(
-  orgId: string,
-  userId: string,
-): Promise<Record<string, boolean> | undefined> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({ switches: userFeatureSwitches.switches })
-    .from(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, orgId),
-        eq(userFeatureSwitches.userId, userId),
-      ),
-    );
-  return row ? (row.switches as Record<string, boolean>) : undefined;
+function expectUnauthorized(body: unknown): void {
+  expect(body).toStrictEqual({
+    error: {
+      message: "Not authenticated",
+      code: "UNAUTHORIZED",
+    },
+  });
 }
 
-describe("GET /api/zero/feature-switches", () => {
-  const track = createFixtureTracker<FeatureSwitchesFixture>((fixture) => {
-    return store.set(deleteFeatureSwitches$, fixture, context.signal);
-  });
+function authHeaders(): { readonly authorization: string } {
+  return { authorization: "Bearer clerk-session" };
+}
 
-  it("returns 401 when the request is unauthenticated", async () => {
+describe("GET/POST/DELETE /api/zero/feature-switches", () => {
+  it("rejects requests without an authenticated organization", async () => {
     const client = setupApp({ context })(zeroFeatureSwitchesContract);
 
-    const response = await accept(client.get({ headers: {} }), [401]);
+    const unauthenticatedGet = await accept(client.get({ headers: {} }), [401]);
+    expectUnauthorized(unauthenticatedGet.body);
 
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    const response = await accept(
-      client.get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
-  it("returns persisted feature switch overrides", async () => {
-    const fixture = await track(
-      store.set(
-        seedFeatureSwitches$,
-        {
-          apiBackend: true,
-          audioInput: false,
-        },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    const response = await accept(
-      client.get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      switches: {
-        apiBackend: true,
-        audioInput: false,
-      },
-    });
-  });
-
-  it("returns empty switches when no override row exists", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    const response = await accept(
-      client.get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ switches: {} });
-  });
-});
-
-describe("POST /api/zero/feature-switches", () => {
-  const track = createFixtureTracker<FeatureSwitchesFixture>((fixture) => {
-    return store.set(deleteFeatureSwitches$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    const response = await accept(
+    const unauthenticatedUpdate = await accept(
       client.update({
         headers: {},
         body: { switches: { dummy: true } },
       }),
       [401],
     );
+    expectUnauthorized(unauthenticatedUpdate.body);
 
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
+    const unauthenticatedDelete = await accept(
+      client.delete({ headers: {} }),
+      [401],
+    );
+    expectUnauthorized(unauthenticatedDelete.body);
 
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
+    mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
+    const organizationlessGet = await accept(
+      client.get({ headers: authHeaders() }),
+      [401],
+    );
+    expectUnauthorized(organizationlessGet.body);
 
-    const response = await accept(
+    const organizationlessUpdate = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { switches: { dummy: true } },
       }),
       [401],
     );
+    expectUnauthorized(organizationlessUpdate.body);
 
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
+    const organizationlessDelete = await accept(
+      client.delete({ headers: authHeaders() }),
+      [401],
+    );
+    expectUnauthorized(organizationlessDelete.body);
   });
 
-  it("creates new switches for a user with no override row", async () => {
+  it("manages feature switch overrides through an API-visible lifecycle", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await track(Promise.resolve({ orgId, userId }));
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroFeatureSwitchesContract);
 
-    const response = await accept(
+    const initial = await accept(client.get({ headers: authHeaders() }), [200]);
+    expect(initial.body).toStrictEqual({ switches: {} });
+
+    const created = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { switches: { dummy: true } },
       }),
       [200],
     );
+    expect(created.body).toStrictEqual({ switches: { dummy: true } });
 
-    expect(response.body).toStrictEqual({ switches: { dummy: true } });
-
-    await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
-      dummy: true,
-    });
-  });
-
-  it("merges with existing switches (preserves untouched keys)", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    await track(Promise.resolve({ orgId, userId }));
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    await accept(
-      client.update({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { dummy: true } },
-      }),
+    const afterCreate = await accept(
+      client.get({ headers: authHeaders() }),
       [200],
     );
+    expect(afterCreate.body).toStrictEqual({ switches: { dummy: true } });
 
-    const response = await accept(
+    const merged = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { switches: { lab: false } },
       }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(merged.body).toStrictEqual({
       switches: { dummy: true, lab: false },
     });
 
-    await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
-      dummy: true,
-      lab: false,
-    });
-  });
-
-  it("overrides existing switch values for the same key", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    await track(Promise.resolve({ orgId, userId }));
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    await accept(
+    const overwritten = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { dummy: true } },
-      }),
-      [200],
-    );
-
-    const response = await accept(
-      client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { switches: { dummy: false } },
       }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({ switches: { dummy: false } });
-
-    await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
-      dummy: false,
+    expect(overwritten.body).toStrictEqual({
+      switches: { dummy: false, lab: false },
     });
-  });
 
-  it("returns updated switches on subsequent GET", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    await track(Promise.resolve({ orgId, userId }));
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    await accept(
-      client.update({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { dummy: true, lab: false } },
-      }),
+    const afterOverwrite = await accept(
+      client.get({ headers: authHeaders() }),
       [200],
     );
+    expect(afterOverwrite.body).toStrictEqual({
+      switches: { dummy: false, lab: false },
+    });
 
-    const response = await accept(
-      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+    const deleted = await accept(
+      client.delete({ headers: authHeaders() }),
       [200],
     );
+    expect(deleted.body).toStrictEqual({ deleted: true });
 
-    expect(response.body).toStrictEqual({
-      switches: { dummy: true, lab: false },
-    });
-  });
-});
-
-describe("DELETE /api/zero/feature-switches", () => {
-  const track = createFixtureTracker<FeatureSwitchesFixture>((fixture) => {
-    return store.set(deleteFeatureSwitches$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    const response = await accept(client.delete({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    const response = await accept(
-      client.delete({ headers: { authorization: "Bearer clerk-session" } }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("clears all overrides; subsequent GET returns empty switches", async () => {
-    const fixture = await track(
-      store.set(
-        seedFeatureSwitches$,
-        { dummy: true, lab: false },
-        context.signal,
-      ),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroFeatureSwitchesContract);
-
-    const deleteResponse = await accept(
-      client.delete({ headers: { authorization: "Bearer clerk-session" } }),
+    const afterDelete = await accept(
+      client.get({ headers: authHeaders() }),
       [200],
     );
-
-    expect(deleteResponse.body).toStrictEqual({ deleted: true });
-
-    await expect(
-      getRowSwitches(fixture.orgId, fixture.userId),
-    ).resolves.toBeUndefined();
-
-    const getResponse = await accept(
-      client.get({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    expect(getResponse.body).toStrictEqual({ switches: {} });
+    expect(afterDelete.body).toStrictEqual({ switches: {} });
   });
 });
