@@ -12,9 +12,9 @@ import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 
 /*
 helper gap:
-- INT-01 Slack installed-workspace, browser-connect, upload-complete, and
-  internal Slack org callback happy paths still need a public API setup journey
-  that does not use test-state DB seed routes.
+- INT-01 Slack channel, message, upload, and download-file happy paths still
+  need public API setup journeys for externally observable Slack channel/file
+  state without diagnostic fixture routes.
 - INT-02 Telegram linked-bot, message/upload success, internal callback, and
   cleanup flows still need public API setup helpers for bot installation state.
 - INT-03 GitHub installed-app and AgentPhone linked-send happy paths need public
@@ -36,6 +36,35 @@ interface SlackEphemeralBody {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function slackBotOauthResponse(args: {
+  readonly accessToken: string;
+  readonly botUserId: string;
+  readonly workspaceId: string;
+  readonly workspaceName: string;
+  readonly authedUserId: string;
+  readonly scope: string;
+}) {
+  return {
+    ok: true,
+    access_token: args.accessToken,
+    bot_user_id: args.botUserId,
+    team: { id: args.workspaceId, name: args.workspaceName },
+    authed_user: { id: args.authedUserId },
+    scope: args.scope,
+  };
+}
+
+function slackUserOauthResponse(args: {
+  readonly workspaceId: string;
+  readonly authedUserId: string;
+}) {
+  return {
+    ok: true,
+    team: { id: args.workspaceId },
+    authed_user: { id: args.authedUserId },
+  };
 }
 
 function expectSlackEphemeral(
@@ -549,6 +578,245 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     );
     expect(callbackMissingCode.body).toStrictEqual({
       error: "Missing authorization code",
+    });
+  });
+
+  it("installs, connects, disconnects, and uninstalls a Slack workspace through OAuth APIs", async () => {
+    integrations.configureSlackOauthProvider();
+    context.mocks.slack.chat.postMessage.mockResolvedValue({
+      channel: "D_BDD_SLACK",
+      ts: "1710000000.000100",
+    });
+    context.mocks.slack.chat.postEphemeral.mockResolvedValue({
+      ts: "1710000000.000101",
+    });
+    context.mocks.slack.views.publish.mockResolvedValue({ ok: true });
+
+    const admin = integrations.user();
+    const orgId = admin.orgId;
+    if (!orgId) {
+      throw new Error("Expected admin test user to have an organization");
+    }
+    const member = integrations.user({
+      orgId,
+      orgRole: "org:member",
+    });
+    const disconnectedMember = integrations.user({
+      orgId,
+      orgRole: "org:member",
+    });
+    const workspaceId = `T_BDD_${randomInt(1_000_000, 9_999_999)}`;
+    const workspaceName = `BDD Slack ${workspaceId}`;
+
+    const initialInstall = await integrations.requestSlackOauthInstall(
+      {
+        orgId,
+        vm0UserId: admin.userId,
+        prompt: "install prompt",
+      },
+      [307],
+    );
+    const initialInstallUrl = new URL(
+      initialInstall.headers.get("location") ?? "",
+    );
+    const botScope = initialInstallUrl.searchParams.get("scope") ?? "";
+    expect(initialInstallUrl.hostname).toBe("slack.com");
+    expect(botScope).toContain("chat:write");
+
+    const initialAdminStatus = await integrations.requestSlackIntegrationStatus(
+      admin,
+      [200],
+    );
+    expect(initialAdminStatus.body).toMatchObject({
+      isConnected: false,
+      isInstalled: false,
+      isAdmin: true,
+    });
+
+    context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
+      slackBotOauthResponse({
+        accessToken: "xoxb-bdd-slack",
+        botUserId: "UBOT_BDD_SLACK",
+        workspaceId,
+        workspaceName,
+        authedUserId: "UADMIN_BDD_SLACK",
+        scope: botScope,
+      }),
+    );
+    const installed = await integrations.requestSlackOauthCallback(
+      {
+        code: "install-code",
+        state: JSON.stringify({
+          orgId,
+          vm0UserId: admin.userId,
+          prompt: "install prompt",
+        }),
+      },
+      [307],
+    );
+    expect(installed.headers.get("location") ?? "").toContain(
+      `/settings/slack?status=connected&workspace=${encodeURIComponent(
+        workspaceName,
+      )}`,
+    );
+
+    const adminStatus = await integrations.requestSlackIntegrationStatus(
+      admin,
+      [200],
+    );
+    expect(adminStatus.body).toMatchObject({
+      isConnected: true,
+      isInstalled: true,
+      isAdmin: true,
+      workspaceName,
+      scopeMismatch: false,
+    });
+
+    const memberOrgStatus = await integrations.requestSlackIntegrationStatus(
+      member,
+      [200],
+    );
+    expect(memberOrgStatus.body).toMatchObject({
+      isConnected: false,
+      isInstalled: true,
+      isAdmin: false,
+    });
+    if (!("connectUrl" in memberOrgStatus.body)) {
+      throw new Error("Expected Slack member status to include connectUrl");
+    }
+    expect(memberOrgStatus.body.connectUrl).toContain(
+      "/api/zero/slack/oauth/connect",
+    );
+
+    const memberConnectStatus = await integrations.requestSlackConnectStatus(
+      member,
+      [200],
+    );
+    expect(memberConnectStatus.body).toStrictEqual({
+      isConnected: false,
+      isAdmin: false,
+    });
+
+    const connectStart = await integrations.requestSlackOauthConnect(
+      {
+        orgId,
+        vm0UserId: member.userId,
+        prompt: "p".repeat(700),
+      },
+      [307],
+    );
+    const connectStartUrl = new URL(connectStart.headers.get("location") ?? "");
+    expect(connectStartUrl.hostname).toBe("slack.com");
+    expect(connectStartUrl.searchParams.get("user_scope")).toBe(
+      "identity.basic",
+    );
+    expect(connectStartUrl.searchParams.get("team")).toBe(workspaceId);
+    const connectStateText = connectStartUrl.searchParams.get("state") ?? "";
+    const connectState: unknown = JSON.parse(connectStateText);
+    if (!isRecord(connectState)) {
+      throw new Error("Expected Slack connect state object");
+    }
+    expect(connectState).toMatchObject({
+      orgId,
+      vm0UserId: member.userId,
+      flow: "connect",
+    });
+    expect(String(connectState.prompt ?? "")).toHaveLength(500);
+
+    context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
+      slackUserOauthResponse({
+        workspaceId,
+        authedUserId: "UMEMBER_BDD_SLACK",
+      }),
+    );
+    const connected = await integrations.requestSlackOauthCallback(
+      {
+        code: "member-connect-code",
+        state: JSON.stringify({
+          orgId,
+          vm0UserId: member.userId,
+          flow: "connect",
+          prompt: "member prompt",
+        }),
+      },
+      [307],
+    );
+    expect(connected.headers.get("location") ?? "").toContain(
+      `/settings/slack?status=connected&workspace=${encodeURIComponent(
+        workspaceName,
+      )}`,
+    );
+
+    const connectedMemberStatus = await integrations.requestSlackConnectStatus(
+      member,
+      [200],
+    );
+    expect(connectedMemberStatus.body).toMatchObject({
+      isConnected: true,
+      isAdmin: false,
+      workspaceName,
+    });
+
+    const disconnectedBeforeWrongTeam =
+      await integrations.requestSlackConnectStatus(disconnectedMember, [200]);
+    expect(disconnectedBeforeWrongTeam.body).toStrictEqual({
+      isConnected: false,
+      isAdmin: false,
+    });
+    context.mocks.slack.oauth.v2.access.mockResolvedValueOnce(
+      slackUserOauthResponse({
+        workspaceId: "T_OTHER_BDD_SLACK",
+        authedUserId: "UOTHER_BDD_SLACK",
+      }),
+    );
+    const wrongTeam = await integrations.requestSlackOauthCallback(
+      {
+        code: "wrong-team-code",
+        state: JSON.stringify({
+          orgId,
+          vm0UserId: disconnectedMember.userId,
+          flow: "connect",
+        }),
+      },
+      [307],
+    );
+    expect(wrongTeam.headers.get("location") ?? "").toContain(
+      "different%20Slack%20workspace",
+    );
+    const disconnectedAfterWrongTeam =
+      await integrations.requestSlackConnectStatus(disconnectedMember, [200]);
+    expect(disconnectedAfterWrongTeam.body).toStrictEqual({
+      isConnected: false,
+      isAdmin: false,
+    });
+
+    const disconnected = await integrations.requestSlackDisconnect(
+      member,
+      undefined,
+      [200],
+    );
+    expect(disconnected.body).toStrictEqual({ ok: true });
+    const memberAfterDisconnect = await integrations.requestSlackConnectStatus(
+      member,
+      [200],
+    );
+    expect(memberAfterDisconnect.body).toStrictEqual({
+      isConnected: false,
+      isAdmin: false,
+    });
+
+    const uninstalled = await integrations.requestSlackDisconnect(
+      admin,
+      "uninstall",
+      [200],
+    );
+    expect(uninstalled.body).toStrictEqual({ ok: true });
+    const adminAfterUninstall =
+      await integrations.requestSlackIntegrationStatus(admin, [200]);
+    expect(adminAfterUninstall.body).toMatchObject({
+      isConnected: false,
+      isInstalled: false,
+      isAdmin: true,
     });
   });
 });
