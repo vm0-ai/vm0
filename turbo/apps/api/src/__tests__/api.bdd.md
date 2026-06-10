@@ -1015,3 +1015,43 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 23 — AGENT-01 composes (id) DELETE BDD
+
+Migrates `agent-composes-delete.test.ts` (9 legacy `it()`s,
+437 lines). The 9 cases split into 3 BDD test groups: (a)
+auth boundary chain (401 unauth → 403 sandbox → 403
+zero-token → 400 malformed id), (b) 404 chain (unknown id →
+non-owner), (c) 409 + success chain (409 pending run → 204
+owner without instructions volume → 204 with instructions
+volume + S3 deletion → 204 unrelated skill kept).
+
+The 409 case uses the `seedRun$` helper with `status:
+"pending"` (Open Helper Gap — the runtime queue sets
+status; no public API allows the test to insert a pending
+run). The legacy test verified the compose is still present
+after 409 via direct DB SELECTs; the BDD version verifies
+via a follow-up `getById` through the contract (returns 200
+for the original owner).
+
+Notable: the legacy "404 unknown id" and "404 non-owner" cases
+both used direct DB SELECTs to assert the compose is gone
+after non-owner denial. The BDD version uses a `getById`
+call on the same contract (the non-owner case is asserted
+to still see the compose under the original owner, so the
+auth/visibility boundary is exercised in the BDD-API form).
+
+The `cleanupAgentComposeFixture$` helper is inlined because
+it is per-fixture cleanup that wipes `agentRuns` +
+`agentSessions` + `agentComposes` + `storages` for a given
+orgId. The BDD `createFixtureTracker` for `TeamComposeFixture`
+already routes cleanup through `deleteTeamCompose$`, so
+`cleanupAgentComposeFixture$` becomes a defensive belt for
+the 409 case (where the pending run leaves a row behind
+after `deleteTeamCompose$` cleanup).
+
+Net test count: 9 legacy `it()`s → 3 BDD `it()`s (67%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
