@@ -176,7 +176,10 @@ import {
   ZeroChatComposer,
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
-import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
+import {
+  ChatFeedbackSelection,
+  ChatFeedbackTray,
+} from "./zero-chat-feedback-selection.tsx";
 import {
   setThreadGenerationTemplate$,
   threadGenerationTemplate$,
@@ -2396,15 +2399,16 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
             />
           </div>
 
+          {inlineFeedbackEnabled && (
+            <ChatFeedbackTray onSubmit={onSubmitFeedback} />
+          )}
           <ChatThreadComposer thread={thread} />
         </div>
 
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
 
-      {inlineFeedbackEnabled && (
-        <ChatFeedbackSelection onSubmit={onSubmitFeedback} />
-      )}
+      {inlineFeedbackEnabled && <ChatFeedbackSelection />}
     </>
   );
 }
