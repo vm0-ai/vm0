@@ -10,7 +10,10 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { clearAllDetached } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
-import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
+import {
+  createBddIntegrationApi,
+  type ForwardedInternalCallback,
+} from "./helpers/api-bdd-integrations";
 import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -157,6 +160,14 @@ function uniqueSlackUserId(): string {
 
 function slackPostMessageCallsJson(): string {
   return JSON.stringify(context.mocks.slack.chat.postMessage.mock.calls);
+}
+
+function slackOrgCallbackDeliveries(
+  log: readonly ForwardedInternalCallback[],
+): readonly ForwardedInternalCallback[] {
+  return log.filter((entry) => {
+    return entry.path === "/api/internal/callbacks/slack/org";
+  });
 }
 
 async function pollSlackRun(runnerGroup: string): Promise<string> {
@@ -1992,6 +2003,333 @@ describe("INT-01: Slack app deep webhook flows", () => {
       "Sent via BDD Slack Failing Override",
     );
   });
+
+  it("delivers Slack org callbacks for progress, audit footers, failures, and Slack errors", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const callbackLog = integrations.forwardSlackInternalCallbacks();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await integrations.configureSlackRunModelPolicies(actor);
+    await bdd.readOnboardingStatus(actor);
+    await integrations.enableAuditLinkSwitch(actor);
+    const slackUser1 = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUser1,
+    });
+    integrations.clearSlackCallHistory();
+
+    const channelId = "C_BDD_ORG_CB";
+    const threadT1 = "4000.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser1,
+      text: "summarize the audited thread",
+      ts: threadT1,
+      channel: channelId,
+    });
+    const run1Id = await pollSlackRun(runnerGroup);
+    const claim1 = await runs.claimRunnerJob(run1Id);
+    context.mocks.slack.assistant.threads.setStatus.mockClear();
+    await webhooks.requestAgentHeartbeat(
+      { runId: run1Id },
+      { authorization: `Bearer ${claim1.sandboxToken}` },
+      [200],
+    );
+    await clearAllDetached();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledWith({
+      channel_id: channelId,
+      thread_ts: threadT1,
+      status: "is thinking...",
+    });
+    expect(slackOrgCallbackDeliveries(callbackLog).at(-1)).toStrictEqual({
+      path: "/api/internal/callbacks/slack/org",
+      status: 200,
+      body: { success: true },
+    });
+
+    integrations.mockSlackRunResultOutput("SLACK_BDD_OUTPUT");
+    await completeSlackTriggeredRun({
+      runId: run1Id,
+      sandboxToken: claim1.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        channel: channelId,
+        thread_ts: threadT1,
+        text: "SLACK_BDD_OUTPUT",
+      }),
+    );
+    const auditedBlocks = slackPostMessageCallsJson();
+    expect(auditedBlocks).toContain("Audit");
+    expect(auditedBlocks).toContain(
+      `https://app.vm0.test/activities/${run1Id}`,
+    );
+    expect(auditedBlocks).toContain("Claude Sonnet 4.6");
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenLastCalledWith({
+      channel_id: channelId,
+      thread_ts: threadT1,
+      status: "",
+    });
+    const run1 = await runs.readRun(actor, run1Id);
+    expect(run1.status).toBe("completed");
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser1,
+      text: "answer through codex items",
+      ts: "4000.000200",
+      channel: channelId,
+    });
+    const run2Id = await pollSlackRun(runnerGroup);
+    const claim2 = await runs.claimRunnerJob(run2Id);
+    integrations.mockSlackRunAgentMessageOutput("final codex answer");
+    await completeSlackTriggeredRun({
+      runId: run2Id,
+      sandboxToken: claim2.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: "final codex answer" }),
+    );
+
+    if (!actor.orgId) {
+      throw new Error("Expected the Slack chain actor to have an org");
+    }
+    const actor2 = integrations.user({
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    const slackUser2 = uniqueSlackUserId();
+    await integrations.connectSlackUser(actor2, {
+      workspaceId: teamId,
+      slackUserId: slackUser2,
+    });
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser2,
+      text: "second opinion in the same thread",
+      ts: "4000.000150",
+      thread_ts: threadT1,
+      channel: channelId,
+    });
+    const run3Id = await pollSlackRun(runnerGroup);
+    const claim3 = await runs.claimRunnerJob(run3Id);
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: run3Id,
+      sandboxToken: claim3.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+    expect(slackPostMessageCallsJson()).toContain(`Reply to <@${slackUser2}>`);
+    const run3 = await runs.readRun(actor2, run3Id);
+    expect(run3.status).toBe("completed");
+
+    const threadT3 = "4000.000300";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser1,
+      text: "resume a broken checkpoint",
+      ts: threadT3,
+      channel: channelId,
+    });
+    const run4Id = await pollSlackRun(runnerGroup);
+    const claim4 = await runs.claimRunnerJob(run4Id);
+    await webhooks.requestAgentComplete(
+      {
+        runId: run4Id,
+        exitCode: 1,
+        error: "Cannot continue session from checkpoint",
+      },
+      { authorization: `Bearer ${claim4.sandboxToken}` },
+      [200],
+    );
+    await clearAllDetached();
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        text: "Cannot continue session from checkpoint",
+      }),
+    );
+    expect(slackOrgCallbackDeliveries(callbackLog).at(-1)).toStrictEqual({
+      path: "/api/internal/callbacks/slack/org",
+      status: 200,
+      body: { success: true },
+    });
+    const run4 = await runs.readRun(actor, run4Id);
+    expect(run4.status).toBe("failed");
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser1,
+      text: "try the broken thing again",
+      ts: "4000.000310",
+      thread_ts: threadT3,
+      channel: channelId,
+    });
+    const run5Id = await pollSlackRun(runnerGroup);
+    const claim5 = await runs.claimRunnerJob(run5Id);
+    await webhooks.requestAgentComplete(
+      { runId: run5Id, exitCode: 1 },
+      { authorization: `Bearer ${claim5.sandboxToken}` },
+      [200],
+    );
+    await clearAllDetached();
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        text: "Oops, something went wrong. Please try again later.",
+      }),
+    );
+    const run5 = await runs.readRun(actor, run5Id);
+    expect(run5.status).toBe("failed");
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser1,
+      text: "post into a vanished channel",
+      ts: "4000.000400",
+      channel: channelId,
+    });
+    const run6Id = await pollSlackRun(runnerGroup);
+    const claim6 = await runs.claimRunnerJob(run6Id);
+    integrations.mockSlackRunResultOutput("UNDELIVERED_OUTPUT");
+    context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
+      Object.assign(new Error("channel_not_found"), {
+        data: { ok: false, error: "channel_not_found" },
+      }),
+    );
+    await completeSlackTriggeredRun({
+      runId: run6Id,
+      sandboxToken: claim6.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+    expect(slackOrgCallbackDeliveries(callbackLog).at(-1)).toStrictEqual({
+      path: "/api/internal/callbacks/slack/org",
+      status: 400,
+      body: { error: "Slack API error: channel_not_found" },
+    });
+    const run6 = await runs.readRun(actor, run6Id);
+    expect(run6.status).toBe("completed");
+  }, 90_000);
+
+  it("keeps Slack org callbacks visible when model routes unpin and installs vanish", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const callbackLog = integrations.forwardSlackInternalCallbacks();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await bdd.readOnboardingStatus(actor);
+    await integrations.configureUnpinnedSlackModelRoute(actor);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    integrations.clearSlackCallHistory();
+
+    const channelId = "C_BDD_UNPINNED";
+    const threadU1 = "5100.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: "run without a pinned model",
+      ts: threadU1,
+      channel: channelId,
+    });
+    const run1Id = await pollSlackRun(runnerGroup);
+    const claim1 = await runs.claimRunnerJob(run1Id);
+    expect(claim1.cliAgentType).toBe("claude-code");
+    expect(claim1.environment).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: expect.stringMatching(/.+/),
+      ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
+    });
+
+    context.mocks.slack.assistant.threads.setStatus.mockRejectedValueOnce(
+      new Error("status_boom"),
+    );
+    await webhooks.requestAgentHeartbeat(
+      { runId: run1Id },
+      { authorization: `Bearer ${claim1.sandboxToken}` },
+      [200],
+    );
+    await clearAllDetached();
+    expect(slackOrgCallbackDeliveries(callbackLog).at(-1)).toStrictEqual({
+      path: "/api/internal/callbacks/slack/org",
+      status: 200,
+      body: { success: true },
+    });
+
+    integrations.mockSlackRunResultOutput("NO_MODEL_FOOTER_OUTPUT");
+    await completeSlackTriggeredRun({
+      runId: run1Id,
+      sandboxToken: claim1.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        channel: channelId,
+        thread_ts: threadU1,
+        text: "NO_MODEL_FOOTER_OUTPUT",
+      }),
+    );
+    const unpinnedBlocks = slackPostMessageCallsJson();
+    expect(unpinnedBlocks).not.toContain("Audit");
+    expect(unpinnedBlocks).not.toContain("Responded by");
+    expect(unpinnedBlocks).not.toContain("Reply to");
+    expect(unpinnedBlocks).not.toContain("Claude");
+    const run1 = await runs.readRun(actor, run1Id);
+    expect(run1.status).toBe("completed");
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: "survive the uninstall",
+      ts: "5100.000200",
+      channel: channelId,
+    });
+    const run2Id = await pollSlackRun(runnerGroup);
+    const claim2 = await runs.claimRunnerJob(run2Id);
+    await integrations.postSlackEvent(teamId, { type: "app_uninstalled" });
+    context.mocks.slack.assistant.threads.setStatus.mockClear();
+    await webhooks.requestAgentHeartbeat(
+      { runId: run2Id },
+      { authorization: `Bearer ${claim2.sandboxToken}` },
+      [200],
+    );
+    await clearAllDetached();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).not.toHaveBeenCalled();
+    expect(slackOrgCallbackDeliveries(callbackLog).at(-1)).toStrictEqual({
+      path: "/api/internal/callbacks/slack/org",
+      status: 200,
+      body: { success: true },
+    });
+
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: run2Id,
+      sandboxToken: claim2.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+    expect(slackOrgCallbackDeliveries(callbackLog).at(-1)).toStrictEqual({
+      path: "/api/internal/callbacks/slack/org",
+      status: 404,
+      body: { error: "Slack installation not found" },
+    });
+    expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
+    const run2 = await runs.readRun(actor, run2Id);
+    expect(run2.status).toBe("completed");
+  }, 90_000);
 });
 
 describe("INT-02: Telegram integration", () => {

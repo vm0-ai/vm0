@@ -47,8 +47,13 @@ import {
   zeroSlackBrowserConnectContract,
   type ZeroSlackBrowserConnectQuery,
 } from "@vm0/api-contracts/contracts/zero-slack-browser-connect";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import {
+  zeroModelProvidersByTypeContract,
+  zeroModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
@@ -175,6 +180,12 @@ interface TelegramWebhookResponse {
   readonly status: TelegramWebhookStatus;
   readonly body: unknown;
   readonly headers: Headers;
+}
+
+export interface ForwardedInternalCallback {
+  readonly path: string;
+  readonly status: number;
+  readonly body: unknown;
 }
 
 interface SlackAppInstallOptions {
@@ -858,29 +869,38 @@ export function createBddIntegrationApi(context: TestContext) {
       });
     },
 
-    forwardSlackInternalCallbacks(): void {
+    forwardSlackInternalCallbacks(): readonly ForwardedInternalCallback[] {
+      const forwarded: ForwardedInternalCallback[] = [];
       server.use(
         http.post(
           `${SLACK_APP_INTERNAL_API_URL}/api/internal/callbacks/*`,
           async ({ request }) => {
             const url = new URL(request.url);
-            const forwarded = await createApp({
+            const response = await createApp({
               signal: context.signal,
             }).request(`${url.pathname}${url.search}`, {
               method: "POST",
               headers: request.headers,
               body: await request.text(),
             });
-            return new HttpResponse(await forwarded.text(), {
-              status: forwarded.status,
-              headers: {
-                "content-type":
-                  forwarded.headers.get("content-type") ?? "application/json",
-              },
+            const contentType =
+              response.headers.get("content-type") ?? "application/json";
+            const text = await response.text();
+            forwarded.push({
+              path: url.pathname,
+              status: response.status,
+              body: contentType.includes("application/json")
+                ? (JSON.parse(text) as unknown)
+                : text,
+            });
+            return new HttpResponse(text, {
+              status: response.status,
+              headers: { "content-type": contentType },
             });
           },
         ),
       );
+      return forwarded;
     },
 
     async installSlackWorkspace(
@@ -1093,6 +1113,85 @@ export function createBddIntegrationApi(context: TestContext) {
           },
         }),
         [200],
+      );
+    },
+
+    mockSlackRunResultOutput(text: string): void {
+      context.mocks.axiom.query.mockResolvedValueOnce([
+        { eventType: "result", eventData: { result: text } },
+      ]);
+    },
+
+    mockSlackRunAgentMessageOutput(text: string): void {
+      context.mocks.axiom.query.mockResolvedValueOnce([
+        {
+          eventType: "item.completed",
+          eventData: { item: { type: "agent_message", text } },
+        },
+      ]);
+    },
+
+    async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
+      await accept(
+        setupApp({ context })(zeroFeatureSwitchesContract).update({
+          headers: authenticate(context, routeMocks, actor),
+          body: { switches: { [FeatureSwitchKey.AuditLink]: true } },
+        }),
+        [200],
+      );
+    },
+
+    async configureUnpinnedSlackModelRoute(actor: ApiTestUser): Promise<void> {
+      const providers = setupApp({ context })(zeroModelProvidersMainContract);
+      // openrouter-api-key is a claude-code provider whose catalog entry has
+      // no default model, so runs admitted through it keep selectedModel null.
+      await accept(
+        providers.upsert({
+          headers: authenticate(context, routeMocks, actor),
+          body: { type: "openrouter-api-key", secret: "bdd-openrouter-key" },
+        }),
+        [200, 201],
+      );
+      const openai = await accept(
+        providers.upsert({
+          headers: authenticate(context, routeMocks, actor),
+          body: { type: "openai-api-key", secret: "bdd-openai-key" },
+        }),
+        [200, 201],
+      );
+      await accept(
+        setupApp({ context })(zeroModelPoliciesMainContract).update({
+          headers: authenticate(context, routeMocks, actor),
+          body: {
+            policies: [
+              {
+                model: "gpt-5.5",
+                isDefault: true,
+                defaultProviderType: "openai-api-key",
+                credentialScope: "org",
+                modelProviderId: openai.body.provider.id,
+              },
+            ],
+          },
+        }),
+        [200],
+      );
+      await accept(
+        setupApp({ context })(zeroModelProvidersByTypeContract).delete({
+          headers: authenticate(context, routeMocks, actor),
+          params: { type: "openai-api-key" },
+        }),
+        [204],
+      );
+      // Onboarding seeds an org "vm0" no-secret provider pinned to a model;
+      // delete it too so unpinned runs resolve the org openrouter provider,
+      // which carries no selected model.
+      await accept(
+        setupApp({ context })(zeroModelProvidersByTypeContract).delete({
+          headers: authenticate(context, routeMocks, actor),
+          params: { type: "vm0" },
+        }),
+        [204],
       );
     },
 
