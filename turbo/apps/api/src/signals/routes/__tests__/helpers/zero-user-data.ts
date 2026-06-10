@@ -101,40 +101,6 @@ export const seedSecrets$ = command(
   },
 );
 
-export const seedOtherVariable$ = command(
-  async (
-    { set },
-    fixture: UserDataFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb.insert(variables).values({
-      orgId: fixture.orgId,
-      userId: `user_${randomUUID()}`,
-      name: "OTHER_USER_VAR",
-      value: "other-user",
-    });
-    signal.throwIfAborted();
-  },
-);
-
-export const seedOtherSecret$ = command(
-  async (
-    { set },
-    fixture: UserDataFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb.insert(secrets).values({
-      orgId: fixture.orgId,
-      userId: `user_${randomUUID()}`,
-      name: "OTHER_USER_SECRET",
-      encryptedValue: "encrypted_other_user",
-    });
-    signal.throwIfAborted();
-  },
-);
-
 export const deleteUserData$ = command(
   async (
     { set },
