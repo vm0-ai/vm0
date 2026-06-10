@@ -815,3 +815,51 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 17 — CHAT-01 list (auth + scoped/ordering/agent shape + state flags + ISO shape) BDD
+
+Migrates `zero-chat-threads-list.test.ts` (the largest
+remaining CHAT-01 file: 29 legacy `it()`s across two describe
+blocks, 1154 lines). The 29 cases split into 4 BDD test
+groups that chain naturally: (a) auth boundary, (b) scoped
+list chain (cross-org 404 → empty → id-fields → isRead empty
+→ isRead with lastReadMessageId), (c) ordering chain (orders
+by lastMessageAt desc → orders empty by createdAt desc →
+pinned floats to top → scoped agent shape), (d) org-wide
+list chain (every-agent in caller's org → agent.id/avatarUrl
+everywhere → no org leak → pinned vs threads split → scoped
+pinned to requested agent → pagination first page →
+pagination second page), (e) state flags chain (no runs →
+non-terminal run → all terminal → mixed → no draft →
+draftContent → only draftAttachments → empty draftContent →
+scheduleCount), (f) ISO shape chain (pinnedAt+renamedAt
+ISO → null → pinned vs threads split).
+
+- `zero-chat-threads-list.bdd.test.ts` — 29 legacy `it()`s → 6
+  BDD `it()`s (auth boundary + scoped list chain + ordering
+  chain + org-wide list chain + state flags chain + ISO shape
+  chain). 79% reduction.
+
+Notable BDD-API mappings: `agentId` query param is preserved
+in the public contract (it scopes the list to one agent); the
+`pinned` vs `threads` split is preserved; pagination
+contract uses `limit` + `cursor`; `lastReadMessageId` is
+still not exposed on the public surface so its precondition
+is a tolerated direct-DB write (Open Helper Gap, same as the
+legacy test); thread title preconditions use the existing
+`updateChatThreadTitle$` command; thread `pinnedAt` is set
+via direct DB write (no public pin endpoint at the time of
+migration); `running` and `scheduleCount` are computed from
+`zeroAgentSchedules` + `zeroRuns` joins in the list handler
+and verified end-to-end. ISO serialization for `pinnedAt` /
+`renamedAt` is asserted on the row directly (not the
+underlying DB column). The test uses `agentId`-scoped calls
+where the org-wide list would otherwise surface cross-test
+fixtures created in earlier steps, so each chain step is
+isolated even though the store/Clerk mocks are shared.
+
+Net test count: 29 legacy `it()`s → 6 BDD `it()`s (79%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
