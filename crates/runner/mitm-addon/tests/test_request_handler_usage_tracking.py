@@ -103,9 +103,16 @@ async def _wait_for_forward_start(
             await asyncio.gather(started_task, return_exceptions=True)
 
 
-async def _release_forward_probe(probe: _ForwardProbe, request_task: asyncio.Task[None]) -> None:
+async def _release_forward_probe(
+    probe: _ForwardProbe,
+    request_task: asyncio.Task[None],
+    *,
+    timeout: float = _FORWARD_START_TIMEOUT_SECONDS,
+) -> None:
     probe.release.set()
     if not request_task.done():
+        await asyncio.wait((request_task,), timeout=timeout)
+    if request_task.done():
         await asyncio.gather(request_task, return_exceptions=True)
 
 
