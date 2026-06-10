@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -8,6 +8,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -44,6 +45,17 @@ const TELEGRAM_E2E_FIXTURES = {
 } as const;
 
 type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+function isoString(value: Date): string {
+  return value.toISOString();
+}
+
+function contentKeys(value: unknown): string[] {
+  if (value && typeof value === "object") {
+    return Object.keys(value);
+  }
+  return [];
+}
 
 interface SeedDefaultAgentInput {
   readonly orgId: string;
@@ -481,6 +493,110 @@ async function seedDefaultAgent(
   return { composeId, versionId, agentId: composeId };
 }
 
+async function seedDiagnosticMessage(
+  db: Db,
+  input: {
+    readonly botId: string;
+    readonly telegramUserId: string;
+  },
+): Promise<string> {
+  const messageId = `message_${randomUUID()}`;
+  await db.insert(telegramMessages).values({
+    installationId: input.botId,
+    chatId: `chat_${input.botId}`,
+    messageId,
+    fromUserId: input.telegramUserId,
+    text: "hello from telegram diagnostics",
+  });
+  return messageId;
+}
+
+async function seedDiagnosticRun(
+  db: Db,
+  input: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly composeId: string;
+    readonly triggerSource: "telegram" | "slack";
+    readonly createdAt: Date;
+  },
+): Promise<string> {
+  const sessionId = randomUUID();
+  const runId = randomUUID();
+  await db.insert(agentSessions).values({
+    id: sessionId,
+    userId: input.userId,
+    orgId: input.orgId,
+    agentComposeId: input.composeId,
+  });
+  await db.insert(agentRuns).values({
+    id: runId,
+    userId: input.userId,
+    orgId: input.orgId,
+    sessionId,
+    status: "completed",
+    prompt: `${input.triggerSource} diagnostic run`,
+    createdAt: input.createdAt,
+  });
+  await db.insert(zeroRuns).values({
+    id: runId,
+    triggerSource: input.triggerSource,
+  });
+  return runId;
+}
+
+async function seedRequestedDiagnostics(
+  db: Db,
+  args: {
+    readonly body: Record<string, unknown>;
+    readonly botId: string;
+    readonly telegramUserId: string;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly defaultAgent: DefaultAgentSeed;
+    readonly signal: AbortSignal;
+  },
+): Promise<{
+  readonly messageId: string | undefined;
+  readonly telegramRunId: string | undefined;
+  readonly slackRunId: string | undefined;
+}> {
+  const messageId =
+    args.body.seed_message === true
+      ? await seedDiagnosticMessage(db, {
+          botId: args.botId,
+          telegramUserId: args.telegramUserId,
+        })
+      : undefined;
+  args.signal.throwIfAborted();
+
+  const telegramRunId =
+    args.body.seed_telegram_run === true
+      ? await seedDiagnosticRun(db, {
+          orgId: args.orgId,
+          userId: args.userId,
+          composeId: args.defaultAgent.composeId,
+          triggerSource: "telegram",
+          createdAt: new Date("2030-01-01T00:00:01.000Z"),
+        })
+      : undefined;
+  args.signal.throwIfAborted();
+
+  const slackRunId =
+    args.body.seed_slack_run === true
+      ? await seedDiagnosticRun(db, {
+          orgId: args.orgId,
+          userId: args.userId,
+          composeId: args.defaultAgent.composeId,
+          triggerSource: "slack",
+          createdAt: new Date("2030-01-01T00:00:00.000Z"),
+        })
+      : undefined;
+  args.signal.throwIfAborted();
+
+  return { messageId, telegramRunId, slackRunId };
+}
+
 const getTestTelegramState$ = computed(async (get) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -514,19 +630,32 @@ const getTestTelegramState$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      installation,
-      links,
+      installation: installation
+        ? {
+            ...installation,
+            createdAt: isoString(installation.createdAt),
+          }
+        : null,
+      links: links.map((link) => {
+        return {
+          ...link,
+          createdAt: isoString(link.createdAt),
+        };
+      }),
       message_count: messageCount,
-      recent_runs: recentRuns,
+      recent_runs: recentRuns.map((run) => {
+        return {
+          ...run,
+          createdAt: isoString(run.createdAt),
+        };
+      }),
       org_metadata: orgMeta,
       default_agent: defaultAgent,
       default_compose: compose,
       default_compose_version: composeVersion
         ? {
             id: composeVersion.id,
-            content_keys: Object.keys(
-              (composeVersion.content ?? {}) as Record<string, unknown>,
-            ),
+            content_keys: contentKeys(composeVersion.content),
           }
         : null,
       resolved_telegram_api_url: resolveTelegramApiUrlForDiagnostics(),
@@ -647,6 +776,18 @@ const postTestTelegramState$ = command(
           );
     signal.throwIfAborted();
 
+    const { messageId, telegramRunId, slackRunId } =
+      await seedRequestedDiagnostics(db, {
+        body,
+        botId,
+        telegramUserId,
+        orgId,
+        userId,
+        defaultAgent,
+        signal,
+      });
+    signal.throwIfAborted();
+
     return {
       status: 200 as const,
       body: {
@@ -656,6 +797,9 @@ const postTestTelegramState$ = command(
         vm0_user_id: userId,
         user_link_id: linkId,
         default_agent_id: defaultAgent.composeId,
+        message_id: messageId ?? null,
+        telegram_run_id: telegramRunId ?? null,
+        slack_run_id: slackRunId ?? null,
       },
     };
   },
@@ -702,7 +846,7 @@ const deleteTestTelegramState$ = command(
 
     if (existing?.orgId) {
       const telegramAgentRuns = await db
-        .select({ id: agentRuns.id })
+        .select({ id: agentRuns.id, sessionId: agentRuns.sessionId })
         .from(agentRuns)
         .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
         .where(
@@ -722,6 +866,17 @@ const deleteTestTelegramState$ = command(
         signal.throwIfAborted();
 
         await db.delete(agentRuns).where(inArray(agentRuns.id, ids));
+        signal.throwIfAborted();
+      }
+
+      const sessionIds = telegramAgentRuns.map((run) => {
+        return run.sessionId;
+      });
+
+      if (sessionIds.length > 0) {
+        await db
+          .delete(agentSessions)
+          .where(inArray(agentSessions.id, sessionIds));
         signal.throwIfAborted();
       }
     }
