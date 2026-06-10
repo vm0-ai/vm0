@@ -696,6 +696,10 @@ function mockGmailProvider(options: ResolvedProviderMockOptions): void {
 function mockGoogleWorkspaceProvider(
   options: ResolvedProviderMockOptions,
 ): void {
+  const scope =
+    options.type === "google-cloud"
+      ? "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/appengine.admin https://www.googleapis.com/auth/sqlservice.login https://www.googleapis.com/auth/compute"
+      : "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email";
   server.use(
     mockJsonTokenEndpoint(
       GOOGLE_TOKEN_URL,
@@ -704,8 +708,7 @@ function mockGoogleWorkspaceProvider(
         accessToken: options.accessToken,
         refreshToken: options.refreshToken,
         expiresIn: options.expiresIn,
-        scope:
-          "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email",
+        scope,
       }),
     ),
     http.get(GOOGLE_USERINFO_URL, () => {
@@ -1115,6 +1118,7 @@ function mockProviderOAuth(options: ProviderMockOptions): void {
     "google-drive": mockGoogleWorkspaceProvider,
     "google-calendar": mockGoogleWorkspaceProvider,
     "google-search-console": mockGoogleWorkspaceProvider,
+    "google-cloud": mockGoogleWorkspaceProvider,
     linear: mockLinearProvider,
     docusign: mockDocusignProvider,
     figma: mockFigmaProvider,
@@ -1336,6 +1340,12 @@ const providerSuccessCases = [
   },
   {
     type: "google-search-console",
+    externalId: "google-user-123",
+    externalUsername: "Google User",
+    externalEmail: "user@gmail.com",
+  },
+  {
+    type: "google-cloud",
     externalId: "google-user-123",
     externalUsername: "Google User",
     externalEmail: "user@gmail.com",

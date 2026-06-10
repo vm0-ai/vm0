@@ -2483,7 +2483,6 @@ describe("POST /api/zero/runs", () => {
         type: "connector",
       },
     ]);
-
     const response = await accept(
       zeroRunsClient().create({
         headers: { authorization: "Bearer clerk-session" },
@@ -2595,6 +2594,106 @@ describe("POST /api/zero/runs", () => {
     expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
       "Access-Token": ["$", "{{ secrets.TIKTOK_ADS_TOKEN }}"].join(""),
     });
+  });
+
+  it("injects authorized Google Cloud token through firewall without permission groups", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "google-cloud",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "google-cloud",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "GOOGLE_CLOUD_ACCESS_TOKEN",
+      encryptedValue: encryptSecretForTests("google-cloud-access"),
+      type: "connector",
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "google cloud connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly base: string;
+          readonly auth?: {
+            readonly headers?: Record<string, string>;
+          };
+          readonly permissions?: readonly unknown[];
+        }[];
+      }[];
+    };
+    expect(executionContext.environment.GOOGLE_CLOUD_TOKEN).toBe(
+      connectorSecretPlaceholder("google-cloud", "GOOGLE_CLOUD_TOKEN"),
+    );
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      GOOGLE_CLOUD_TOKEN: "google-cloud-access",
+    });
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      GOOGLE_CLOUD_TOKEN: "google-cloud",
+    });
+
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "google-cloud";
+    });
+    expect(
+      firewall?.apis.map((api) => {
+        return api.base;
+      }),
+    ).toStrictEqual([
+      "https://cloudresourcemanager.googleapis.com",
+      "https://serviceusage.googleapis.com",
+      "https://iam.googleapis.com",
+      "https://compute.googleapis.com",
+      "https://appengine.googleapis.com",
+      "https://sqladmin.googleapis.com",
+      "https://bigquery.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://run.googleapis.com",
+      "https://cloudbuild.googleapis.com",
+      "https://artifactregistry.googleapis.com",
+      "https://container.googleapis.com",
+      "https://cloudfunctions.googleapis.com",
+      "https://secretmanager.googleapis.com",
+      "https://logging.googleapis.com",
+      "https://monitoring.googleapis.com",
+      "https://cloudbilling.googleapis.com",
+      "https://pubsub.googleapis.com",
+      "https://firestore.googleapis.com",
+      "https://spanner.googleapis.com",
+    ]);
+    for (const api of firewall?.apis ?? []) {
+      expect(api.auth?.headers?.Authorization).toBe(
+        ["Bearer $", "{{ secrets.GOOGLE_CLOUD_TOKEN }}"].join(""),
+      );
+      expect(api.permissions).toStrictEqual([]);
+    }
   });
 
   it("injects authorized custom connector firewalls and secrets", async () => {

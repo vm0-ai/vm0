@@ -139,6 +139,7 @@ const CONNECTOR_ICON_COLORFUL = {
   gong: true,
   "google-ads": true,
   "google-calendar": true,
+  "google-cloud": true,
   "google-docs": true,
   "google-drive": true,
   "google-maps": true,
