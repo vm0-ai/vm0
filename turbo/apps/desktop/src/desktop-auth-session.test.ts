@@ -82,10 +82,7 @@ describe("DesktopAuthSession", () => {
     session.signOut();
     session.completeSignIn("late");
     const fetch = vi.fn(async () => new Response(null, { status: 401 }));
-    vi.stubGlobal(
-      "fetch",
-      fetch,
-    );
+    vi.stubGlobal("fetch", fetch);
 
     expect(session.getCachedToken()).toBeNull();
     expect(await session.getToken({ forceRefresh: true })).toBeNull();
