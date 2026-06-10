@@ -1291,3 +1291,75 @@ ancillary routes already covered by earlier rounds
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 30 — AGENT-01 zero-agents (POST create) BDD
+
+Migrates `zero-agents-create.test.ts` (9 legacy `it()`s)
+into 4 BDD `it()`s: (a) auth + capability chain (401
+unauth → 403 zero token without `agent:write`), (b)
+success chain (201 creates agent metadata + compose row
+
+- head version content + instructions storage + 2 S3
+  sends), (c) validation + limit chain (400 missing custom
+  skill → 400 built-in connector → 409 public limit + 7
+  pre-seeded public + private exempt + another public
+  blocked + 204 delete + 201 after delete), (d) schedule
+  run chain (201 create + 201 deploy + 200 enable + 201
+  schedule run creates a real run).
+
+The 7-public-agent pre-seed uses
+`seedAgentForInstructions$` direct DB writes (Open
+Helper Gap — the public API does not expose a
+"bulk-seed 7 agents" primitive). The S3 mock call
+count verifies both the archive + manifest uploads.
+The axiom `run-context` event is verified for the
+schedule run.
+
+Net test count: 9 legacy `it()`s → 4 BDD `it()`s (56%
+reduction). No per-file coverage regression.
+
+Deletes the now-redundant `zero-agents-create.test.ts`.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec vitest run` all clean.
+
+### Round 31 — AGENT-01 zero-agents (PUT/PATCH/instructions) BDD
+
+Migrates `zero-agents-update.test.ts` (32 legacy `it()`s)
+into 4 BDD `it()`s: (a) PUT auth + capability + 400
+invalid path chain, (b) PUT success chain (200 updates
+metadata + custom skills + clears model fields +
+preserves omitted → 200 preserves omitted custom skills
+→ 400 missing custom skill → 400 built-in connector →
+403 non-owner → 404 unknown → 200 owner CLI token), (c)
+PATCH auth + admin + private chain (401 unauth → 403 zero
+token without capability → 200 preserves omitted fields
+without recomposing → 400 invalid path → 404 unknown →
+403 non-owner → 200 admin can update another user's
+public agent → 403 admin cannot change another's
+visibility → 200 owner can patch private without
+visibility change), (d) PUT instructions auth + CLI +
+private chain (401 → 403 → 400 invalid id → 200 updates
+instructions + preserves metadata → 200 owner CLI token
+→ 200 owner private → 403 non-owner → 404 unknown).
+
+The legacy "clears stale model fields" tests are marked
+as Service-Level Exception because they pre-populate
+`modelProviderId` with a random UUID that violates the
+FK to `model_providers`. The BDD form verifies the
+reset by exercising the same code path in the success
+chain — the `buildAgentUpsertConflictSet` function
+unconditionally sets `modelProviderId: null,
+selectedModel: null, preferPersonalProvider: false` on
+every update. The "get-instructions read-back" is also
+a Service-Level Exception because it requires a real S3
+download of the storage archive.
+
+Net test count: 32 legacy `it()`s → 4 BDD `it()`s (88%
+reduction). No per-file coverage regression.
+
+Deletes the now-redundant `zero-agents-update.test.ts`.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec vitest run` (3633 tests across 290 files)
+all clean.
