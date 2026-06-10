@@ -79,6 +79,8 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
         args.keep_latest,
     )
     .await?;
+    let version_service_locks_removed =
+        gc_orphaned_version_service_locks(&home, args.dry_run).await?;
 
     let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
 
@@ -96,6 +98,7 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
         && locks_removed == 0
         && job_logs_removed == 0
         && versions_removed.is_empty()
+        && version_service_locks_removed == 0
         && nbd_orphans == 0
         && workspace_orphans == 0
         && r2_deleted == 0
@@ -114,6 +117,15 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
                 info!("versions that would be removed: {list}");
             } else {
                 info!("versions removed: {list}");
+            }
+        }
+        if version_service_locks_removed > 0 {
+            if args.dry_run {
+                info!(
+                    "version service locks that would be removed: {version_service_locks_removed}"
+                );
+            } else {
+                info!("version service locks removed: {version_service_locks_removed}");
             }
         }
     }
@@ -754,7 +766,8 @@ fn debootstrap_cache_file_kind(path: &Path) -> Option<DeBootstrapCacheFileKind> 
 /// `open_lock_file` will recreate them on next use, and the inode recheck in
 /// `lock.rs` prevents stale-fd races. Service locks are intentionally retained
 /// because this GC pass runs before version GC, which relies on those lock paths
-/// to coordinate with concurrent service install/uninstall commands.
+/// to coordinate with concurrent service install/uninstall commands. Stale
+/// version service locks are cleaned by a post-version-GC pass.
 async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
@@ -943,6 +956,69 @@ fn parse_semver(name: &str) -> Option<(u32, u32, u32)> {
         return None;
     }
     Some((major, minor, patch))
+}
+
+fn version_from_service_lock_name(name: &str) -> Option<&str> {
+    const PREFIX: &str = "service-vm0-runner-";
+    const SUFFIX: &str = ".lock";
+
+    let version = name.strip_prefix(PREFIX)?.strip_suffix(SUFFIX)?;
+    parse_semver(version)?;
+    Some(version)
+}
+
+fn version_bin_is_gc_enumerable_dir(path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) => Ok(meta.file_type().is_dir()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("stat version bin {}: {e}", path.display())),
+    }
+}
+
+async fn gc_orphaned_version_service_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
+    let locks_dir = home.locks_dir();
+    let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
+        return Ok(0);
+    };
+
+    let mut removed = 0u64;
+    let bin_dir = home.bin_dir();
+
+    while let Some(entry) = next_entry_warn(
+        &mut entries,
+        "gc_orphaned_version_service_locks",
+        &locks_dir,
+    )
+    .await
+    {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(version) = version_from_service_lock_name(name) else {
+            continue;
+        };
+
+        let version_bin = bin_dir.join(version);
+        match version_bin_is_gc_enumerable_dir(&version_bin) {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(e) => {
+                warn!("{e}");
+                continue;
+            }
+        }
+
+        let lock_path = entry.path();
+        match probe_lock(&lock_path) {
+            LockProbe::Free(lock) => {
+                if remove_unused_lock_after_probe(&lock_path, &lock, name, dry_run).await {
+                    removed += 1;
+                }
+            }
+            LockProbe::Held | LockProbe::Error(_) => {}
+        }
+    }
+
+    Ok(removed)
 }
 
 async fn version_newest_mtime(home: &HomePaths, bin_dir: &Path, name: &str) -> SystemTime {
@@ -2077,6 +2153,17 @@ mod tests {
         HomePaths::with_root(root.to_path_buf())
     }
 
+    fn test_version_service_lock(home: &HomePaths, version: &str) -> PathBuf {
+        let unit = service::unit_name(version).unwrap();
+        home.service_lock(&unit)
+    }
+
+    fn create_test_version_service_lock(home: &HomePaths, version: &str) -> PathBuf {
+        let path = test_version_service_lock(home, version);
+        drop(lock::open_lock_file(&path).unwrap());
+        path
+    }
+
     fn age_version_past_gc_min_age(home: &HomePaths, name: &str) {
         let old_time = SystemTime::now() - Duration::from_secs(GC_MIN_AGE.as_secs() + 60);
         for path in [
@@ -2396,6 +2483,152 @@ mod tests {
     fn parse_semver_orders_numerically() {
         assert!(parse_semver("v0.10.0") > parse_semver("v0.9.0"));
         assert!(parse_semver("v1.0.0") > parse_semver("v0.99.99"));
+    }
+
+    #[test]
+    fn version_from_service_lock_name_parses_only_semver_runner_service_locks() {
+        assert_eq!(
+            version_from_service_lock_name("service-vm0-runner-v1.0.0.lock"),
+            Some("v1.0.0")
+        );
+        assert!(version_from_service_lock_name("service-vm0-runner-staging.lock").is_none());
+        assert!(version_from_service_lock_name("service-vm0-runner-v1.0.lock").is_none());
+        assert!(version_from_service_lock_name("workspace-image-cache-v1.0.0.lock").is_none());
+        assert!(version_from_service_lock_name("service-vm0-runner-v1.0.0").is_none());
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_removes_missing_version_bin() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let service_lock = create_test_version_service_lock(&home, "v1.0.0");
+
+        let removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(
+            !service_lock.exists(),
+            "missing version bin dir should make its service lock stale"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_keeps_existing_version_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let version = "v1.0.0";
+        let service_lock = create_test_version_service_lock(&home, version);
+        std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
+
+        let removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(removed, 0);
+        assert!(
+            service_lock.exists(),
+            "existing version dir should keep its service lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_removes_semver_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let version = "v1.0.0";
+        let service_lock = create_test_version_service_lock(&home, version);
+        std::fs::create_dir_all(home.bin_dir()).unwrap();
+        std::fs::write(home.bin_dir().join(version), "not a directory").unwrap();
+
+        let removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(
+            !service_lock.exists(),
+            "semver-named files are not GC-enumerable version dirs"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_removes_semver_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let version = "v1.0.0";
+        let service_lock = create_test_version_service_lock(&home, version);
+        let target_dir = dir.path().join("external-version");
+        std::fs::create_dir_all(home.bin_dir()).unwrap();
+        std::fs::create_dir_all(&target_dir).unwrap();
+        std::os::unix::fs::symlink(&target_dir, home.bin_dir().join(version)).unwrap();
+
+        let removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(
+            !service_lock.exists(),
+            "semver-named symlinks are not GC-enumerable version dirs"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_keeps_held_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let service_lock = test_version_service_lock(&home, "v1.0.0");
+        let lock_file = lock::open_lock_file(&service_lock).unwrap();
+        let _held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(removed, 0);
+        assert!(
+            service_lock.exists(),
+            "held orphaned service lock must not be removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_keeps_non_semver_service_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let unit = service::unit_name("staging").unwrap();
+        let service_lock = home.service_lock(&unit);
+        drop(lock::open_lock_file(&service_lock).unwrap());
+
+        let removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(removed, 0);
+        assert!(
+            service_lock.exists(),
+            "non-semver service locks belong outside version GC"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_dry_run_preserves_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let service_lock = create_test_version_service_lock(&home, "v1.0.0");
+
+        let removed = gc_orphaned_version_service_locks(&home, true)
+            .await
+            .unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(
+            service_lock.exists(),
+            "dry-run should count but not remove stale service locks"
+        );
     }
 
     #[tokio::test]
