@@ -81,7 +81,7 @@ Notes:
         }
 
         const tmpVideo = join(tmpdir(), `zero-video-${Date.now()}.mp4`);
-        const tmpAudio = join(tmpdir(), `zero-audio-${Date.now()}.mp3`);
+        const tmpAudio = join(tmpdir(), `zero-audio-${Date.now()}.wav`);
 
         try {
           if (options.url) {
@@ -102,8 +102,10 @@ Notes:
               "16000",
               "-ac",
               "1",
-              "-b:a",
-              "64k",
+              "-c:a",
+              "pcm_s16le",
+              "-map_metadata",
+              "-1",
               tmpAudio,
               "-y",
               "-loglevel",

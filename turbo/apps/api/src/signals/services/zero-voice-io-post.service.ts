@@ -341,35 +341,6 @@ export function parseSpeechWavDurationSeconds(
   return Math.max(1, Math.ceil(audioBytes / bytesPerSecond));
 }
 
-function sttWavDuration(buf: Uint8Array): number | null {
-  if (buf.length < 44) {
-    return null;
-  }
-  if (
-    buf[0] !== 0x52 ||
-    buf[1] !== 0x49 ||
-    buf[2] !== 0x46 ||
-    buf[3] !== 0x46
-  ) {
-    return null;
-  }
-
-  const view = new DataView(buf.buffer, buf.byteOffset, buf.length);
-  const sampleRate = view.getUint32(24, true);
-  const numChannels = view.getUint16(22, true);
-  const bitsPerSample = view.getUint16(34, true);
-  const dataSize = view.getUint32(40, true);
-
-  if (sampleRate === 0 || numChannels === 0 || bitsPerSample === 0) {
-    return null;
-  }
-  const bytesPerSecond = (sampleRate * numChannels * bitsPerSample) / 8;
-  if (bytesPerSecond === 0) {
-    return null;
-  }
-  return Math.ceil(dataSize / bytesPerSecond);
-}
-
 function estimateDurationFromSize(fileSize: number): number {
   return Math.ceil(fileSize / (MIN_SPEECH_BITRATE_BPS / 8));
 }
@@ -565,21 +536,26 @@ function parseWebmDuration(buf: Uint8Array): number | null {
 
 export async function getAudioDuration(file: File): Promise<number | null> {
   const mimeType = file.type.split(";")[0] ?? file.type;
-  const buf = new Uint8Array(
-    await file
-      .slice(0, Math.min(file.size, MAX_DURATION_READ_BYTES))
-      .arrayBuffer(),
-  );
 
-  if (mimeType === "audio/webm") {
-    return parseWebmDuration(buf);
-  }
   if (
     mimeType === "audio/wav" ||
     mimeType === "audio/wave" ||
     mimeType === "audio/x-wav"
   ) {
-    return sttWavDuration(buf);
+    // Walk the RIFF chunk chain over the whole file. ffmpeg-produced WAV is not
+    // guaranteed to place the data chunk at a fixed offset (it can insert
+    // LIST/INFO/JUNK chunks), so a fixed-offset header read mis-measures it.
+    return parseSpeechWavDurationSeconds(
+      new Uint8Array(await file.arrayBuffer()),
+    );
+  }
+  if (mimeType === "audio/webm") {
+    const head = new Uint8Array(
+      await file
+        .slice(0, Math.min(file.size, MAX_DURATION_READ_BYTES))
+        .arrayBuffer(),
+    );
+    return parseWebmDuration(head);
   }
   return estimateDurationFromSize(file.size);
 }

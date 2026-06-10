@@ -750,6 +750,32 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(counts.get(sttDailyDurationKey())).toBe(2);
   });
 
+  it("meters /stt WAV duration from the data chunk, not a fixed 44-byte offset", async () => {
+    // ffmpeg-produced WAV can carry chunks (LIST/INFO/JUNK) before the data
+    // chunk, so the data chunk is not at byte 44. A fixed-offset reader would
+    // mis-measure this clip; the RIFF chunk-walk must report its true length.
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "hello from voice" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytesWithOversizedDataChunk(120))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      readBehaviorCount(fixture, sttDailyDurationKey()),
+    ).resolves.toBe(120);
+  });
+
   it("uses whisper-1 and verbose_json when ?verbose=true, returns segments", async () => {
     const fixture = await track(seedVoiceFixture({ audioInputEnabled: true }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
