@@ -9,6 +9,10 @@ import {
   zeroSkillsCollectionContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  zeroVariablesByNameContract,
+  zeroVariablesContract,
+} from "@vm0/api-contracts/contracts/zero-secrets";
 
 import { setupApp, type TestContext } from "../../../../__tests__/test-helpers";
 import { now } from "../../../../lib/time";
@@ -61,6 +65,10 @@ export function createBddApi(context: TestContext) {
     /** ts-rest client for `/api/zero/agents/:id/user-connectors`
      * (get/update the built-in connector types enabled on an agent). */
     agentUserConnectors: setupApp({ context })(zeroUserConnectorsContract),
+    /** ts-rest client for `/api/zero/variables` (list/set user variables). */
+    variables: setupApp({ context })(zeroVariablesContract),
+    /** ts-rest client for `/api/zero/variables/:name` (delete a variable). */
+    variableByName: setupApp({ context })(zeroVariablesByNameContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,

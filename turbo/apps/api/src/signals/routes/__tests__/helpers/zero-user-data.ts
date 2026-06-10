@@ -23,15 +23,6 @@ interface UserPreferencesSeedValues {
   readonly captureNetworkBodiesRemaining?: number | null;
 }
 
-interface VariableSeedValues {
-  readonly name: string;
-  readonly value: string;
-  readonly description?: string | null;
-  readonly type?: "user" | "connector";
-  readonly createdAt?: Date;
-  readonly updatedAt?: Date;
-}
-
 interface SecretSeedValues {
   readonly name: string;
   readonly description?: string | null;
@@ -70,37 +61,6 @@ export const seedUserPreferences$ = command(
   },
 );
 
-export const seedVariables$ = command(
-  async (
-    { set },
-    rows: readonly VariableSeedValues[],
-    signal: AbortSignal,
-  ): Promise<UserDataFixture> => {
-    const fixture = createUserDataFixture();
-    const writeDb = set(writeDb$);
-
-    if (rows.length > 0) {
-      await writeDb.insert(variables).values(
-        rows.map((row) => {
-          return {
-            orgId: fixture.orgId,
-            userId: fixture.userId,
-            name: row.name,
-            value: row.value,
-            description: row.description ?? null,
-            type: row.type ?? "user",
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-          };
-        }),
-      );
-      signal.throwIfAborted();
-    }
-
-    return fixture;
-  },
-);
-
 export const seedSecrets$ = command(
   async (
     { set },
@@ -129,23 +89,6 @@ export const seedSecrets$ = command(
     }
 
     return fixture;
-  },
-);
-
-export const seedOtherVariable$ = command(
-  async (
-    { set },
-    fixture: UserDataFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb.insert(variables).values({
-      orgId: fixture.orgId,
-      userId: `user_${randomUUID()}`,
-      name: "OTHER_USER_VAR",
-      value: "other-user",
-    });
-    signal.throwIfAborted();
   },
 );
 

@@ -110,6 +110,8 @@ below. This file is filled in family-by-family as work proceeds.
   reflects → replace → clear → GET empty.
 - **CHAIN-USER-CONNECTOR** ✅ — create agent → enable built-in types → GET
   reflects → replace → dedupe → clear → GET empty.
+- **CHAIN-VARIABLE** ✅ — set variable → list → update (no dup) → list sorted →
+  delete → list excludes → delete again 404.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -268,8 +270,17 @@ calc. Services tests outside this list migrate to route-level BDD.
 
 ## Drop decisions
 
-None yet. (Compose-internal / S3-manifest assertions are recorded as GAPs above,
-not drops: the underlying code paths remain executed by the BDD tests.)
+- **Connector-owned variable filtering** (`zero-variables.test.ts` "does not
+  return connector-owned" / "updates only user-owned when connector same name";
+  `zero-variables-delete.test.ts` "deletes only user-owned…" / "404 only
+  connector-owned"). Connector-owned variables can't be created through the
+  variables API, and the `type = "user"` filter is a SQL `WHERE` clause with no
+  unique JS branch — so these are coverage-neutral behavioural duplicates.
+  Verified: deleting both files left `zero-secrets.ts` (28/4/4) and
+  `zero-variables-delete.ts` (11/2/1) unchanged vs baseline. Dropped along with
+  their `seedVariables$`/`seedOtherVariable$` helpers.
+- Compose-internal / S3-manifest assertions are recorded as GAPs above, not
+  drops: the underlying code paths remain executed by the BDD tests.
 
 ## Round log
 
@@ -343,3 +354,18 @@ not drops: the underlying code paths remain executed by the BDD tests.)
   statements 26850 → 26863. The lone `agent-run-storage.service.ts` branch
   delta (66↔65) is run-to-run noise on a detached-async path (oscillates across
   identical-code runs with statements pinned at 114).
+
+### Round 5 — VARIABLES (CHAIN-VARIABLE)
+
+- First non-AGENT family. Extended `createBddApi` with `variables`
+  (`zeroVariablesContract`) and `variableByName` (`zeroVariablesByNameContract`)
+  clients.
+- Added `zero-variables.bdd.test.ts`: CHAIN-VARIABLE (set → list → update →
+  sort → delete → 404) plus invalid-name / unauthenticated / no-org boundaries.
+- Deleted `zero-variables.test.ts` and `zero-variables-delete.test.ts` whole
+  (the only non-migratable cases were coverage-neutral connector-owned filters —
+  see Drop decisions), and removed their now-orphaned `seedVariables$` /
+  `seedOtherVariable$` helpers.
+- Coverage verified: `zero-secrets.ts` (28/4/4, shared with the SECRET family)
+  and `zero-variables-delete.ts` (11/2/1) unchanged vs the `main` baseline;
+  total covered statements 26850 → 26859.
