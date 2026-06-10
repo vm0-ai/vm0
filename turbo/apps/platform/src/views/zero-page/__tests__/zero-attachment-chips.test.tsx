@@ -314,4 +314,118 @@ describe("zero attachment chips", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("opens markdown and text previews, shares a document link, and reports download failures", async () => {
+    const releaseNotesUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-markdown/release-notes.md";
+    const transcriptUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-text/transcript.txt";
+    const archiveUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-file/archive.bin";
+    context.mocks.browser.clipboardWriteText();
+    context.mocks.http.get(releaseNotesUrl, () => {
+      return new Response("# Release notes\n\nThe rollout is ready.", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(transcriptUrl, () => {
+      return new Response("Meeting transcript\nDecision: ship", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    context.mocks.http.get(archiveUrl, () => {
+      return new Response(null, { status: 500 });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-text-previews",
+          role: "user",
+          content: "Review these text attachments",
+          attachFiles: [
+            {
+              id: "attachment-markdown",
+              filename: "release-notes.md",
+              contentType: "text/markdown",
+              size: 42,
+              url: releaseNotesUrl,
+            },
+            {
+              id: "attachment-text",
+              filename: "transcript.txt",
+              contentType: "text/plain",
+              size: 33,
+              url: transcriptUrl,
+            },
+            {
+              id: "attachment-file",
+              filename: "archive.bin",
+              contentType: "application/octet-stream",
+              size: 4096,
+              url: archiveUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Review these text attachments"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open markdown preview for release-notes.md"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open text preview for transcript.txt"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open markdown preview for release-notes.md"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText("The rollout is ready.")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Share"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Link copied")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open text preview for transcript.txt"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText(/Decision: ship/u)).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download archive.bin"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Download failed")).toBeInTheDocument();
+    });
+  });
 });
