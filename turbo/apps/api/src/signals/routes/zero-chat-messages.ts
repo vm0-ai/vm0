@@ -2121,12 +2121,16 @@ export async function postScheduleUserMessage(params: {
 }
 
 /**
- * Post a webhook automation run's prompt as a user chat message into its linked
+ * Post an automation run's prompt as a user chat message into its linked
  * thread and publish the realtime signals so the client surfaces the run.
  * Generalizes `postScheduleUserMessage` for the events-first automation path:
- * the prompt is the automation `instruction`, carrying no schedule snapshot.
- * Like the schedule path it preserves the thread draft (the post is not
- * user-initiated typing) and is awaited so the inbound route sees it persisted.
+ * the prompt is the automation `instruction`. A time-automation fire passes the
+ * schedule-chip fields (`scheduleId` links a mirrored automation's source
+ * schedule for navigation; `scheduleSnapshot` keeps the label rendering after
+ * edits/deletes) so the chat bubble matches the live schedule path; a webhook
+ * fire omits them. Like the schedule path it preserves the thread draft (the
+ * post is not user-initiated typing) and is awaited so the caller sees it
+ * persisted.
  */
 export async function postAutomationUserMessage(params: {
   readonly db: Db;
@@ -2135,6 +2139,9 @@ export async function postAutomationUserMessage(params: {
   readonly runId: string;
   readonly prompt: string;
   readonly appendQueueMarker: boolean;
+  readonly scheduleId?: string;
+  readonly scheduleTitle?: string;
+  readonly scheduleSnapshot?: ChatMessageScheduleSnapshot;
 }): Promise<void> {
   await appendAssociatedUserMessage({
     db: params.db,
@@ -2148,6 +2155,9 @@ export async function postAutomationUserMessage(params: {
     generationTemplate: undefined,
     appendQueueMarker: params.appendQueueMarker,
     clearDraft: false,
+    scheduleId: params.scheduleId,
+    scheduleTitle: params.scheduleTitle,
+    scheduleSnapshot: params.scheduleSnapshot,
   });
   await publishUserSignal(
     [params.userId],
