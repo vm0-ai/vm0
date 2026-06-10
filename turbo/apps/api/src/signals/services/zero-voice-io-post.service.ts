@@ -21,6 +21,9 @@ export const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
 export const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
 export const VOICE_IO_STT_MODEL = "gpt-4o-mini-transcribe";
+// Verbose transcription (per-segment timestamps) requires whisper-1;
+// gpt-4o-mini-transcribe does not return segment timestamps.
+export const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
 export const SPEECH_CONTENT_TYPE = "audio/wav";
 export const SPEECH_RESPONSE_FORMAT = "wav";
 export const TTS_RESPONSE_FORMAT = "pcm";
@@ -201,6 +204,19 @@ export function isTranscriptionBody(
   value: unknown,
 ): value is { readonly text: string } {
   return isRecord(value) && typeof value.text === "string";
+}
+
+export function isVerboseTranscriptionSegment(value: unknown): value is {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
+} {
+  return (
+    isRecord(value) &&
+    typeof value.start === "number" &&
+    typeof value.end === "number" &&
+    typeof value.text === "string"
+  );
 }
 
 export function isAllowedSttMimeType(value: string): boolean {

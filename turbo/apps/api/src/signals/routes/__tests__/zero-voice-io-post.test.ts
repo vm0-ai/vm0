@@ -742,6 +742,40 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(counts.get(sttDailyDurationKey())).toBe(2);
   });
 
+  it("uses whisper-1 and verbose_json when ?verbose=true, returns segments", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedModel: FormDataEntryValue | null = null;
+    let observedResponseFormat: FormDataEntryValue | null = null;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, async ({ request }) => {
+        const form = await request.formData();
+        observedModel = form.get("model");
+        observedResponseFormat = form.get("response_format");
+        return HttpResponse.json({
+          text: "hello world",
+          segments: [{ start: 0, end: 1.5, text: " hello world" }],
+        });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt?verbose=true", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytes(2))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      text: "hello world",
+      segments: [{ start: 0, end: 1.5, text: " hello world" }],
+    });
+    expect(observedModel).toBe("whisper-1");
+    expect(observedResponseFormat).toBe("verbose_json");
+  });
+
   it("does not increment the legacy /stt free-tier counter for pro orgs", async () => {
     const fixture = await track(seedVoiceFixture({ tier: "pro" }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
