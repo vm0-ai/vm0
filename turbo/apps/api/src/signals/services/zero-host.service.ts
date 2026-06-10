@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import {
   type GeneratePresentationSpeakerNotesRequest,
   type HostedArtifactKind,
+  type HostedSiteFilesResponse,
   type HostedSitePrepareRequest,
   type HostedSiteRedeployPresentationHtmlRequest,
   type PresentationSpeakerNotesPatch,
@@ -58,6 +59,11 @@ interface GeneratePresentationSpeakerNotesArgs {
   readonly body: GeneratePresentationSpeakerNotesRequest;
 }
 
+interface GetHostedSiteFilesArgs {
+  readonly orgId: string;
+  readonly publicSlug: string;
+}
+
 type PrepareDeploymentResult =
   | {
       readonly status: "ok";
@@ -98,6 +104,14 @@ type GeneratePresentationSpeakerNotesResult =
   | { readonly status: "ok"; readonly body: PresentationSpeakerNotesPatch }
   | { readonly status: "bad_request"; readonly message: string }
   | { readonly status: "config_error"; readonly message: string };
+
+type GetHostedSiteFilesResult =
+  | {
+      readonly status: "ok";
+      readonly body: HostedSiteFilesResponse;
+    }
+  | { readonly status: "not_found"; readonly message: string }
+  | { readonly status: "conflict"; readonly message: string };
 
 type RedeployPresentationTargetResult =
   | {
@@ -772,6 +786,82 @@ export const completeHostedSiteDeployment$ = command(
         publicSlug: deployment.manifest.publicSlug,
         url: deployment.url,
         status: "ready",
+      },
+    };
+  },
+);
+
+export const getHostedSiteFiles$ = command(
+  async (
+    { set },
+    args: GetHostedSiteFilesArgs,
+    signal: AbortSignal,
+  ): Promise<GetHostedSiteFilesResult> => {
+    const writeDb = set(writeDb$);
+    const [site] = await writeDb
+      .select()
+      .from(hostedSites)
+      .where(
+        and(
+          eq(hostedSites.publicSlug, args.publicSlug),
+          eq(hostedSites.orgId, args.orgId),
+          isNull(hostedSites.deletedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!site) {
+      return { status: "not_found", message: "Hosted site not found" };
+    }
+    if (!site.activeDeploymentId) {
+      return {
+        status: "conflict",
+        message: "Hosted site has no active deployment",
+      };
+    }
+
+    const [deployment] = await writeDb
+      .select()
+      .from(hostedDeployments)
+      .where(
+        and(
+          eq(hostedDeployments.id, site.activeDeploymentId),
+          eq(hostedDeployments.siteId, site.id),
+          eq(hostedDeployments.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!deployment) {
+      return {
+        status: "not_found",
+        message: "Active hosted deployment not found",
+      };
+    }
+    if (deployment.status !== "ready") {
+      return {
+        status: "conflict",
+        message: `Hosted deployment is ${deployment.status}`,
+      };
+    }
+
+    const files = Object.values(deployment.manifest.files).sort((a, b) => {
+      return a.path.localeCompare(b.path);
+    });
+    signal.throwIfAborted();
+
+    return {
+      status: "ok",
+      body: {
+        siteId: site.id,
+        deploymentId: deployment.id,
+        publicSlug: site.publicSlug,
+        url: deployment.url,
+        fileCount: deployment.fileCount,
+        size: deployment.sizeBytes,
+        files,
       },
     };
   },

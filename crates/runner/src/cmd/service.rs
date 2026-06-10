@@ -146,12 +146,14 @@ static UNIT_STAGING_COUNTER: AtomicU64 = AtomicU64::new(0);
 ///
 /// Validates the suffix with [`crate::runner_dirname::validate_name`] so
 /// that runner directory names and service name suffixes follow the same
-/// rules (lowercase alphanumeric, hyphens, dots; no leading `.` or `-`).
+/// rules (bounded length, lowercase alphanumeric, hyphens, dots; no
+/// leading `.` or `-`).
 pub(crate) fn unit_name(suffix: &str) -> RunnerResult<String> {
     if !crate::runner_dirname::validate_name(suffix) {
+        let diagnostic = crate::runner_dirname::invalid_name_diagnostic(suffix);
+        let rules = crate::runner_dirname::validation_rules();
         return Err(RunnerError::Config(format!(
-            "invalid service name suffix '{suffix}': must be non-empty, \
-             lowercase alphanumeric, hyphens, and dots; cannot start with '.' or '-'"
+            "invalid service name suffix {diagnostic}: {rules}"
         )));
     }
     Ok(format!("{UNIT_PREFIX}{suffix}"))
@@ -1424,6 +1426,12 @@ mod tests {
     }
 
     #[test]
+    fn test_unit_name_accepts_max_length_suffix() {
+        let suffix = "a".repeat(crate::runner_dirname::MAX_NAME_BYTES);
+        assert_eq!(unit_name(&suffix).unwrap(), format!("vm0-runner-{suffix}"));
+    }
+
+    #[test]
     fn test_unit_name_rejects_invalid() {
         assert!(unit_name("").is_err());
         assert!(unit_name("../evil").is_err());
@@ -1434,6 +1442,61 @@ mod tests {
         assert!(unit_name("my_name-1.0").is_err());
         assert!(unit_name(".hidden").is_err());
         assert!(unit_name("-flag").is_err());
+    }
+
+    #[test]
+    fn test_unit_name_rejects_over_max_length_suffix() {
+        let suffix = "a".repeat(crate::runner_dirname::MAX_NAME_BYTES + 1);
+        let msg = unit_name(&suffix).unwrap_err().to_string();
+        assert!(msg.contains("service name suffix"), "got: {msg}");
+        assert!(
+            msg.contains(&format!(
+                "at most {} bytes",
+                crate::runner_dirname::MAX_NAME_BYTES
+            )),
+            "got: {msg}"
+        );
+        assert!(
+            msg.contains(&format!(
+                "{} bytes",
+                crate::runner_dirname::MAX_NAME_BYTES + 1
+            )),
+            "got: {msg}"
+        );
+        assert!(
+            !msg.contains(&suffix),
+            "overlong suffix should be previewed, not echoed in full: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_max_length_suffix_derived_basenames_fit_name_max() {
+        const COMMON_LINUX_NAME_MAX: usize = 255;
+
+        let suffix = "a".repeat(crate::runner_dirname::MAX_NAME_BYTES);
+        let unit = unit_name(&suffix).unwrap();
+        let unit_file = format!("{unit}.service");
+        let service_lock = format!("service-{unit}.lock");
+        let current_staging = format!(
+            "{unit_file}{UNIT_STAGING_MARKER}{}.{}.{}",
+            u32::MAX,
+            u128::MAX,
+            u64::MAX
+        );
+        let legacy_staging = format!(".{unit_file}.tmp.{}", "0".repeat(36));
+
+        for (label, basename) in [
+            ("unit file", unit_file),
+            ("service lock", service_lock),
+            ("current unit staging", current_staging),
+            ("legacy unit staging", legacy_staging),
+        ] {
+            assert!(
+                basename.len() <= COMMON_LINUX_NAME_MAX,
+                "{label} basename is {} bytes: {basename}",
+                basename.len()
+            );
+        }
     }
 
     /// Guard against someone replacing the call with `validate_or_err`

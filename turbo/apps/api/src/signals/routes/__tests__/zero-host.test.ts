@@ -576,6 +576,134 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
   });
 });
 
+describe("GET /api/zero/host/sites/:publicSlug/files", () => {
+  it("returns active file metadata for an owned hosted site", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "demo-site",
+          slugSuffix: "release-01",
+          spaFallback: true,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+
+    const prefix = `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}`;
+    mockUploadedKeys([
+      `${prefix}/index.html`,
+      `${prefix}/assets/index-a1b2c3d4.js`,
+    ]);
+    await accept(
+      client.complete({
+        params: { deploymentId: prepared.body.deploymentId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    context.mocks.s3.getSignedUrl.mockClear();
+
+    const response = await accept(
+      client.files({
+        params: { publicSlug: prepared.body.publicSlug },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      siteId: prepared.body.siteId,
+      deploymentId: prepared.body.deploymentId,
+      publicSlug: prepared.body.publicSlug,
+      url: prepared.body.url,
+      fileCount: 2,
+      size: 540,
+    });
+    expect(
+      response.body.files.map((file) => {
+        return {
+          path: file.path,
+          size: file.size,
+          contentType: file.contentType,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        path: "/assets/index-a1b2c3d4.js",
+        size: 420,
+        contentType: "application/javascript; charset=utf-8",
+      },
+      {
+        path: "/index.html",
+        size: 120,
+        contentType: "text/html; charset=utf-8",
+      },
+    ]);
+    expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for a hosted site owned by another org", async () => {
+    const owner = await seedHostedSiteFixture();
+    mocks.clerk.session(owner.userId, owner.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "private-site",
+          slugSuffix: "release-01",
+          spaFallback: false,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+
+    const prefix = `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}`;
+    mockUploadedKeys([
+      `${prefix}/index.html`,
+      `${prefix}/assets/index-a1b2c3d4.js`,
+    ]);
+    await accept(
+      client.complete({
+        params: { deploymentId: prepared.body.deploymentId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    context.mocks.s3.getSignedUrl.mockClear();
+    const other = await seedHostedSiteFixture();
+    mocks.clerk.session(other.userId, other.orgId);
+
+    const response = await accept(
+      client.files({
+        params: { publicSlug: prepared.body.publicSlug },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Hosted site not found",
+        code: "NOT_FOUND",
+      },
+    });
+    expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/zero/host/presentation-html/redeploy", () => {
   it("redeploys presentation HTML to the same hosted site URL", async () => {
     const fixture = await seedHostedSiteFixture();

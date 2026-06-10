@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.19](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.18...ably-subscriber-v0.7.19) (2026-06-10)
+
+
+### Documentation
+
+* document ably session state invariants ([#17056](https://github.com/vm0-ai/vm0/issues/17056)) ([e7cd299](https://github.com/vm0-ai/vm0/commit/e7cd2998dc476ef5ba06d05168795a5e294c47c3))
+
 ## [0.7.18](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.17...ably-subscriber-v0.7.18) (2026-06-10)
 
 

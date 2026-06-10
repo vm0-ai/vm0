@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.420.2](https://github.com/vm0-ai/vm0/compare/web-v12.420.1...web-v12.420.2) (2026-06-10)
+
+
+### Bug Fixes
+
+* escape json-ld script payloads ([#17015](https://github.com/vm0-ai/vm0/issues/17015)) ([27cf3ea](https://github.com/vm0-ai/vm0/commit/27cf3ea2416ea863adf98d0fb6c55250ca5124e7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.79.0
+    * @vm0/core bumped to 8.323.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.61.0
+
 ## [12.420.1](https://github.com/vm0-ai/vm0/compare/web-v12.420.0...web-v12.420.1) (2026-06-10)
 
 

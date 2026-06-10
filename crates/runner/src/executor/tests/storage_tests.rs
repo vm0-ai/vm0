@@ -4,10 +4,11 @@ use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootP
 use sandbox::ExecResult;
 use sandbox_mock::MockSandbox;
 
+use super::super::GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES;
 use super::super::guest_runtime_dir;
 use super::super::storage::{
-    download_storages, filter_unchanged_storages, format_guest_download_failure,
-    guest_download_command, guest_download_env,
+    download_storages, filter_unchanged_storages, format_command_output_excerpt,
+    format_guest_download_failure, guest_download_command, guest_download_env,
 };
 use super::support::{minimal_context, sandbox_write_file_error};
 use crate::types::{GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry};
@@ -98,6 +99,64 @@ fn guest_download_failure_output_redacts_url_queries() {
 
     assert!(msg.contains("stderr (captured, sandbox-truncated)"));
     assert!(msg.contains("archiveUrl=https://storage.example/archive.tar.gz?<redacted>"));
+    assert!(!msg.contains("secret"));
+}
+
+#[test]
+fn guest_download_failure_redacts_url_query_before_excerpting() {
+    let prefix = "HTTP transport error for archiveUrl=https://storage.example/archive.tar.gz?";
+    let query_key = "X-Amz-Signature=";
+    let secret_value = "secret-value-that-must-not-leak";
+    let suffix = " download failed";
+    let boundary_offset = "X-Amz-".len();
+    let padding_len = GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES + boundary_offset
+        - query_key.len()
+        - secret_value.len()
+        - suffix.len();
+    let query = format!("{query_key}{secret_value}{}", "a".repeat(padding_len));
+    let result = ExecResult {
+        exit_code: 1,
+        stdout: Vec::new(),
+        stderr: format!("{prefix}{query}{suffix}").into_bytes(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    };
+
+    let msg = format_guest_download_failure(&result);
+
+    assert!(msg.contains("storage download failed (exit code 1)"));
+    assert!(msg.contains("stderr ("));
+    assert!(msg.contains("archive.tar.gz?<redacted>"));
+    assert!(!msg.contains("X-Amz-Signature"));
+    assert!(!msg.contains(secret_value));
+}
+
+#[test]
+fn command_output_redaction_preserves_whitespace_between_urls() {
+    let msg = format_command_output_excerpt(
+        "stderr",
+        b"first=https://a.example/archive.tar.gz?token=secret\n\tsecond=http://b.example/logs?key=hidden plain=https://c.example/no-query",
+        false,
+    )
+    .unwrap();
+
+    assert!(msg.contains(
+        "first=https://a.example/archive.tar.gz?<redacted>\n\tsecond=http://b.example/logs?<redacted> plain=https://c.example/no-query"
+    ));
+    assert!(!msg.contains("secret"));
+    assert!(!msg.contains("hidden"));
+}
+
+#[test]
+fn command_output_redaction_handles_case_insensitive_url_schemes() {
+    let msg = format_command_output_excerpt(
+        "stderr",
+        b"archiveUrl=HTTPS://storage.example/archive.tar.gz?token=secret",
+        false,
+    )
+    .unwrap();
+
+    assert!(msg.contains("archiveUrl=HTTPS://storage.example/archive.tar.gz?<redacted>"));
     assert!(!msg.contains("secret"));
 }
 

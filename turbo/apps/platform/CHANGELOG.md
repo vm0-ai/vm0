@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.433.0](https://github.com/vm0-ai/vm0/compare/app-v0.432.0...app-v0.433.0) (2026-06-10)
+
+
+### Features
+
+* add google search console connector ([#17020](https://github.com/vm0-ai/vm0/issues/17020)) ([9cb2db5](https://github.com/vm0-ai/vm0/commit/9cb2db5f763ad3a2aed9cf25963472c38b05875e))
+
+
+### Bug Fixes
+
+* update freshdesk connector color ([#17064](https://github.com/vm0-ai/vm0/issues/17064)) ([7e81976](https://github.com/vm0-ai/vm0/commit/7e81976f3d2f53da91f445241af73d000075ead4))
+* update garmin connect connector color ([#17066](https://github.com/vm0-ai/vm0/issues/17066)) ([d36be84](https://github.com/vm0-ai/vm0/commit/d36be84e5d1a0a6021a0adf31a0e25d830113c70))
+* update gemini connector icon ([#17060](https://github.com/vm0-ai/vm0/issues/17060)) ([4468708](https://github.com/vm0-ai/vm0/commit/4468708069ecc058dae5eda41c515f92e355c331))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.79.0
+    * @vm0/connectors bumped to 1.61.0
+    * @vm0/core bumped to 8.323.0
+
 ## [0.432.0](https://github.com/vm0-ai/vm0/compare/app-v0.431.1...app-v0.432.0) (2026-06-10)
 
 

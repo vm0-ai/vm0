@@ -37,6 +37,9 @@ const ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SE
 const ZERO_RUNS_AGENT_EVENTS_PATH_RE = new RegExp(
   `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/agent$`,
 );
+const ZERO_HOST_SITE_FILES_REWRITE_SOURCE =
+  "/api/zero/host/sites/:publicSlug/files";
+const ZERO_HOST_SITE_FILES_PATH_RE = /^\/api\/zero\/host\/sites\/[^/]+\/files$/;
 const ZERO_LOGS_BY_ID_REWRITE_SOURCE = `/api/zero/logs/:id(${UUID_PATH_SEGMENT_PATTERN})`;
 const ZERO_LOGS_BY_ID_PATH_RE = new RegExp(
   `^/api/zero/logs/${UUID_PATH_SEGMENT_PATTERN}$`,
@@ -805,6 +808,11 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/zero/host/presentation-html/speaker-notes",
     "/api/zero/host/presentation-html/speaker-notes",
+  ],
+  [
+    ZERO_HOST_SITE_FILES_REWRITE_SOURCE,
+    "/api/zero/host/sites/:publicSlug/files",
+    ZERO_HOST_SITE_FILES_PATH_RE,
   ],
   [ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE, "/api/zero/me/model-providers"],
   [
