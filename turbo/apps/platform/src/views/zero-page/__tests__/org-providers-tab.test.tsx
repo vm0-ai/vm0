@@ -99,6 +99,8 @@ describe("organization model providers settings", () => {
 
     click(screen.getByText("Add model"));
     click(screen.getByRole("radio", { name: /API key/u }));
+    click(buttonByText("Add model"));
+    expect(screen.getByText("API key is required")).toBeInTheDocument();
     await fill(
       screen.getByPlaceholderText("Enter your API key"),
       "sk-ant-test",
@@ -110,6 +112,27 @@ describe("organization model providers settings", () => {
     );
     expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+
+    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(menuItemByText("Edit model"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Edit model" }),
+      ).toBeInTheDocument();
+    });
+    await fill(screen.getByPlaceholderText("Enter your API key"), " ");
+    click(buttonByText("Save changes"));
+    expect(screen.getByText("API key is required")).toBeInTheDocument();
+    await fill(
+      screen.getByPlaceholderText("Enter your API key"),
+      "sk-ant-rotated",
+    );
+    click(buttonByText("Save changes"));
+
+    await waitFor(() => {
+      expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+    });
 
     click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
     click(menuItemByText("Edit model"));
