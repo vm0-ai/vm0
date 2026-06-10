@@ -12,6 +12,7 @@ import pytest
 
 import auth
 import matching
+from aws_sigv4 import AwsSigV4Credentials
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
     cached_headers,
@@ -47,6 +48,7 @@ def _auth_success(
     refreshed_secrets: list[str] | None = None,
     base: str | None = None,
     query: dict[str, str] | None = None,
+    aws_sigv4: AwsSigV4Credentials | None = None,
 ) -> auth._FirewallAuthSuccess:
     return auth._FirewallAuthSuccess(
         payload=auth._FirewallAuthPayload(
@@ -54,6 +56,7 @@ def _auth_success(
             resolved_secrets=resolved_secrets or [],
             base=base,
             query=query,
+            aws_sigv4=aws_sigv4,
         ),
         expires_at=expires_at,
         refreshed_connectors=refreshed_connectors or [],
@@ -202,6 +205,7 @@ class TestGetFirewallHeaders:
             "vars_map": None,
             "auth_base": None,
             "auth_query": None,
+            "auth_aws_sigv4": None,
             "firewall_billable": False,
             "force_refresh": False,
         }
@@ -1309,6 +1313,11 @@ class TestFetchFirewallHeaders:
                 },
                 "base": "https://example.com/webhook/secret",
                 "query": {"api_key": "resolved-key"},
+                "awsSigv4": {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": "session-token",
+                },
                 "expiresAt": expires_at,
                 "resolvedSecrets": ["API_TOKEN"],
                 "refreshedConnectors": ["notion"],
@@ -1330,6 +1339,11 @@ class TestFetchFirewallHeaders:
         }
         assert result.payload.base == "https://example.com/webhook/secret"
         assert result.payload.query == {"api_key": "resolved-key"}
+        assert result.payload.aws_sigv4 == AwsSigV4Credentials(
+            "access-key-id",
+            "secret-access-key",
+            "session-token",
+        )
         assert result.expires_at == expires_at
         assert result.payload.resolved_secrets == ["API_TOKEN"]
         assert result.refreshed_connectors == ["notion"]
@@ -1354,6 +1368,11 @@ class TestFetchFirewallHeaders:
                 vars_map={"TEAM": "vm0"},
                 auth_base="${{ secrets.WEBHOOK_URL }}",
                 auth_query={"api_key": "${{ secrets.API_KEY }}"},
+                auth_aws_sigv4={
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                },
                 firewall_billable=True,
                 force_refresh=True,
             )
@@ -1366,6 +1385,11 @@ class TestFetchFirewallHeaders:
         assert body["vars"] == {"TEAM": "vm0"}
         assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
         assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
+        assert body["authAwsSigv4"] == {
+            "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+            "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+        }
         assert body["firewallBillable"] is True
         assert body["forceRefresh"] is True
         assert "firewallName" not in body
