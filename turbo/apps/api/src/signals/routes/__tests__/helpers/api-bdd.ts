@@ -96,6 +96,7 @@ import {
 } from "@vm0/api-contracts/contracts/logs";
 import {
   zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
   zeroAgentsMainContract,
   zeroSkillsCollectionContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
@@ -154,6 +155,10 @@ export function createBddApi(context: TestContext) {
     agents: setupApp({ context })(zeroAgentsMainContract),
     /** ts-rest client for `/api/zero/agents/:id` (get/update/patch/delete). */
     agentsById: setupApp({ context })(zeroAgentsByIdContract),
+    /** ts-rest client for `/api/zero/agents/:id/instructions` (get + put). A
+     * successful update needs instructions storage on an existing agent; the
+     * auth, capability, invalid-id and not-found rejections are reachable. */
+    agentInstructions: setupApp({ context })(zeroAgentInstructionsContract),
     /** ts-rest client for `/api/zero/skills` (create), used to build the
      * `customSkills` precondition through the public API. */
     skills: setupApp({ context })(zeroSkillsCollectionContract),

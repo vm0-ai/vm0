@@ -1386,3 +1386,19 @@ First USAGE-family reduce.
 - Reduced `zero-chat-search.test.ts` (12 -> 8), dropping the now-orphaned
   `currentSecond` helper and `signSandboxJwtForTests` import.
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 64 — AGENT UPDATE / METADATA / INSTRUCTIONS REJECTIONS (CHAIN-AGENT-UPDATE-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `agentInstructions` client
+  (`/api/zero/agents/:id/instructions`); reused `agentsById.update` (PUT) and
+  `agentsById.updateMetadata` (PATCH).
+- Added `zero-agents-update-rejections.bdd.test.ts`: each of the PUT update,
+  PATCH metadata and instructions update endpoints rejects unauthenticated
+  callers (401), a zero token without `agent:write` (403), an invalid agent id
+  (400) and an unknown agent (404, "Agent not found: <id>").
+- The success paths (recompose, skill/model validation, visibility/public-limit
+  rules, owner/admin/member ownership variants, instructions storage) update a
+  real agent and stay in the kept legacy.
+- Reduced `zero-agents-update.test.ts` (32 -> 20), dropping the now-orphaned
+  `currentSecond` helper and `signSandboxJwtForTests` import.
+- Coverage verified (source-only): no regressions vs `main`.

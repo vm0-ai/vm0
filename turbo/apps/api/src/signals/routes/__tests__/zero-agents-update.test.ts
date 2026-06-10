@@ -13,7 +13,7 @@ import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
+import { generateCliToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
@@ -33,10 +33,6 @@ const mocks = createZeroRouteMocks(context);
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
-}
-
-function currentSecond(): number {
-  return Math.floor(now() / 1000);
 }
 
 async function cliAuthHeaders(
@@ -102,63 +98,6 @@ function s3PutInputs(): readonly Record<string, unknown>[] {
 describe("PUT /api/zero/agents/:id", () => {
   const track = createFixtureTracker<SkillsFixture>((fixture) => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(
-      agentsClient().update({
-        params: { id: randomUUID() },
-        headers: {},
-        body: {},
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 403 for a sandbox token without agent:write capability", async () => {
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
-      runId: `run_${randomUUID()}`,
-      capabilities: ["agent:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const response = await accept(
-      agentsClient().update({
-        params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
-        body: {},
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Missing required capability: agent:write",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
-  it("returns 400 for invalid path params", async () => {
-    const response = await accept(
-      agentsClient().update({
-        params: { id: "not-a-uuid" },
-        headers: authHeaders(),
-        body: {},
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
   it("updates agent metadata, validates custom skills and model selection, and preserves omitted fields", async () => {
@@ -409,76 +348,11 @@ describe("PUT /api/zero/agents/:id", () => {
       },
     });
   });
-
-  it("returns 404 for an unknown agent", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const agentId = randomUUID();
-
-    const response = await accept(
-      agentsClient().update({
-        params: { id: agentId },
-        headers: authHeaders(),
-        body: {},
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
-    });
-  });
 });
 
 describe("PATCH /api/zero/agents/:id", () => {
   const track = createFixtureTracker<SkillsFixture>((fixture) => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(
-      agentsClient().updateMetadata({
-        params: { id: randomUUID() },
-        headers: {},
-        body: {},
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 403 for a sandbox token without agent:write capability", async () => {
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
-      runId: `run_${randomUUID()}`,
-      capabilities: ["agent:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const response = await accept(
-      agentsClient().updateMetadata({
-        params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
-        body: {},
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Missing required capability: agent:write",
-        code: "FORBIDDEN",
-      },
-    });
   });
 
   it("updates metadata fields and preserves omitted fields without recomposing", async () => {
@@ -530,40 +404,6 @@ describe("PATCH /api/zero/agents/:id", () => {
       .from(agentComposes)
       .where(eq(agentComposes.id, agent.agentId));
     expect(compose?.headVersionId).toBeNull();
-  });
-
-  it("returns 400 for invalid path params", async () => {
-    const response = await accept(
-      agentsClient().updateMetadata({
-        params: { id: "not-a-uuid" },
-        headers: authHeaders(),
-        body: { displayName: "Invalid" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("returns 404 for an unknown agent", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const agentId = randomUUID();
-
-    const response = await accept(
-      agentsClient().updateMetadata({
-        params: { id: agentId },
-        headers: authHeaders(),
-        body: {},
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
-    });
   });
 
   it("returns 403 when a non-owner member updates another user's agent", async () => {
@@ -860,73 +700,6 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(
-      instructionsClient().update({
-        params: { id: randomUUID() },
-        headers: {},
-        body: { content: "new instructions" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 403 for a sandbox token without agent:write capability", async () => {
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
-      runId: `run_${randomUUID()}`,
-      capabilities: ["agent:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const response = await accept(
-      instructionsClient().update({
-        params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
-        body: { content: "new instructions" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Missing required capability: agent:write",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
-  it("returns 400 for an invalid agent id", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      instructionsClient().update({
-        params: { id: "not-a-uuid" },
-        headers: authHeaders(),
-        body: { content: "new instructions" },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "id: Invalid UUID",
-        code: "BAD_REQUEST",
-      },
-    });
-  });
-
   it("updates instructions storage and preserves agent metadata", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
@@ -1068,27 +841,6 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
           "Only the agent owner or org admin can update agent instructions",
         code: "FORBIDDEN",
       },
-    });
-  });
-
-  it("returns 404 for an unknown agent", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const agentId = randomUUID();
-
-    const response = await accept(
-      instructionsClient().update({
-        params: { id: agentId },
-        headers: authHeaders(),
-        body: { content: "missing" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
     });
   });
 });
