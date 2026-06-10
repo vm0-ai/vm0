@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { VideoStyleGroupTag } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -108,6 +109,19 @@ export const templatePickerSearch$ = computed((get) => {
 export const setTemplatePickerSearch$ = command(({ set }, value: string) => {
   set(internalTemplatePickerSearch$, value);
 });
+
+export type TemplatePickerVideoGroup = VideoStyleGroupTag | "all";
+
+const internalTemplatePickerVideoGroup$ =
+  state<TemplatePickerVideoGroup>("all");
+export const templatePickerVideoGroup$ = computed((get) => {
+  return get(internalTemplatePickerVideoGroup$);
+});
+export const setTemplatePickerVideoGroup$ = command(
+  ({ set }, value: TemplatePickerVideoGroup) => {
+    set(internalTemplatePickerVideoGroup$, value);
+  },
+);
 
 const internalTemplatePickerPreviewSlug$ = state<string | null>(null);
 export const templatePickerPreviewSlug$ = computed((get) => {

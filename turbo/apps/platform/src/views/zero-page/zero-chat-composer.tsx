@@ -30,6 +30,7 @@ import {
   IconPlus,
   IconSearch,
   IconTemplate,
+  IconVideo,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -92,6 +93,7 @@ import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   PRESENTATION_TEMPLATE_ITEMS,
   type PresentationTemplateItem,
+  VIDEO_STYLE_GROUPS,
   VIDEO_STYLE_PRESETS,
   type VideoStylePreset,
 } from "@vm0/core";
@@ -148,12 +150,15 @@ import {
   setTemplatePickerCategory$,
   templatePickerSearch$,
   setTemplatePickerSearch$,
+  templatePickerVideoGroup$,
+  setTemplatePickerVideoGroup$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
   setTemplatePickerPreviewSlideIndex$,
   templateCardHover$,
   setTemplateCardHover$,
+  type TemplatePickerVideoGroup,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -547,13 +552,15 @@ function videoTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
-  const searchable = [
-    item.nameEn,
-    item.nameZh,
-    item.category,
-    ...item.tags,
-  ].join(" ");
+  const searchable = [item.nameEn, item.category, ...item.tags].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function videoTemplateMatchesGroup(
+  item: VideoStylePreset,
+  group: TemplatePickerVideoGroup,
+): boolean {
+  return group === "all" || item.tags.includes(group);
 }
 
 function VideoTemplateCard({
@@ -597,13 +604,10 @@ function VideoTemplateCard({
           </div>
         )}
       </div>
-      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+      <div className="flex items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
             {item.nameEn}
-          </p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {item.nameZh}
           </p>
         </div>
         <div className="flex shrink-0 items-center">
@@ -922,6 +926,8 @@ function TemplatePickerDialog({
   const setCategory = useSet(setTemplatePickerCategory$);
   const search = useGet(templatePickerSearch$);
   const setSearch = useSet(setTemplatePickerSearch$);
+  const videoGroup = useGet(templatePickerVideoGroup$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const selectedSlideIndex = useGet(templatePickerPreviewSlideIndex$);
@@ -934,8 +940,15 @@ function TemplatePickerDialog({
     return presentationTemplateMatchesSearch(item, search);
   });
   const filteredVideoItems = VIDEO_STYLE_PRESETS.filter((item) => {
-    return videoTemplateMatchesSearch(item, search);
+    return (
+      videoTemplateMatchesGroup(item, videoGroup) &&
+      videoTemplateMatchesSearch(item, search)
+    );
   });
+  const videoGroupFilters: readonly {
+    readonly tag: TemplatePickerVideoGroup;
+    readonly label: string;
+  }[] = [{ tag: "all", label: "All" }, ...VIDEO_STYLE_GROUPS];
 
   const handleSelectPresentation = (item: PresentationTemplateItem) => {
     onChange(toPresentationGenerationTemplate(item));
@@ -955,6 +968,7 @@ function TemplatePickerDialog({
   const defaultCategory = hasPptTab ? "slides" : "video";
   const effectiveCategory =
     category === "slides" && !hasPptTab ? "video" : category;
+  const selectedCategory = effectiveCategory || defaultCategory;
 
   return (
     <Dialog
@@ -991,19 +1005,30 @@ function TemplatePickerDialog({
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
               <DialogTitle>Templates</DialogTitle>
             </DialogHeader>
-            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
               <Tabs
-                value={effectiveCategory || defaultCategory}
+                value={selectedCategory}
                 onValueChange={setCategory}
+                className="-mb-px"
               >
-                <TabsList className="h-auto rounded-none bg-transparent p-0">
+                <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
                   {hasPptTab && (
                     <TabsTrigger
                       value="slides"
-                      className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                      className={cn(
+                        "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+                        selectedCategory === "slides"
+                          ? "border-foreground text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
                     >
                       <IconChartBar
-                        className="h-5 w-5 text-blue-500"
+                        className={cn(
+                          "h-5 w-5",
+                          selectedCategory === "slides"
+                            ? "text-blue-500"
+                            : "text-muted-foreground",
+                        )}
                         stroke={1.8}
                       />
                       PPT
@@ -1012,10 +1037,20 @@ function TemplatePickerDialog({
                   {hasVideoTab && (
                     <TabsTrigger
                       value="video"
-                      className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                      className={cn(
+                        "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+                        selectedCategory === "video"
+                          ? "border-foreground text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
                     >
-                      <IconTemplate
-                        className="h-5 w-5 text-purple-500"
+                      <IconVideo
+                        className={cn(
+                          "h-5 w-5",
+                          selectedCategory === "video"
+                            ? "text-purple-500"
+                            : "text-muted-foreground",
+                        )}
                         stroke={1.8}
                       />
                       Video
@@ -1023,120 +1058,143 @@ function TemplatePickerDialog({
                   )}
                 </TabsList>
               </Tabs>
-              <div className="relative w-full sm:w-64">
-                <IconSearch
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                  stroke={1.8}
-                />
-                <Input
-                  aria-label="Search templates"
-                  className="h-8 pl-9 text-sm"
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                  }}
-                  placeholder="Search templates"
-                />
+              <div className="w-full pb-3 sm:w-64">
+                <div className="relative">
+                  <IconSearch
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    stroke={1.8}
+                  />
+                  <Input
+                    aria-label="Search templates"
+                    className="h-8 pl-9 text-sm"
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                    }}
+                    placeholder="Search templates"
+                  />
+                </div>
               </div>
             </div>
-            {(effectiveCategory || defaultCategory) === "slides" &&
-              hasPptTab && (
-                <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
-                  <TemplateSectionHeader
-                    label="VM0 templates"
-                    count={filteredPptItems.length}
-                  />
-                  {filteredPptItems.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {filteredPptItems.map((item) => {
-                        const selected = isSelectedPresentationTemplate(
-                          item,
-                          value,
-                        );
-                        return (
-                          <div
-                            key={item.slug}
-                            className={cn(
-                              "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-                              selected
-                                ? "border-primary ring-1 ring-primary"
-                                : "border-border",
-                            )}
-                          >
-                            <TemplatePreview
-                              item={item}
-                              onPreview={handlePreview}
-                            />
-                            <div className="flex items-start justify-between gap-3 px-3.5 py-3">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-foreground">
-                                  {item.title}
-                                </p>
-                                <p className="mt-1 truncate text-xs text-muted-foreground">
-                                  {formatPresentationTemplateKind(
-                                    item.templateId,
-                                  )}
-                                </p>
-                              </div>
-                              <div className="flex shrink-0 items-center">
-                                <button
-                                  type="button"
-                                  aria-label={`Select template ${item.title}`}
-                                  aria-pressed={selected}
-                                  onClick={() => {
-                                    handleSelectPresentation(item);
-                                  }}
-                                  className={cn(
-                                    "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                    selected
-                                      ? "border-primary/40 bg-primary/10 text-primary"
-                                      : "border-border bg-background text-foreground hover:bg-muted",
-                                  )}
-                                >
-                                  Use
-                                </button>
-                              </div>
+            {selectedCategory === "slides" && hasPptTab && (
+              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+                <TemplateSectionHeader
+                  label="VM0 templates"
+                  count={filteredPptItems.length}
+                />
+                {filteredPptItems.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredPptItems.map((item) => {
+                      const selected = isSelectedPresentationTemplate(
+                        item,
+                        value,
+                      );
+                      return (
+                        <div
+                          key={item.slug}
+                          className={cn(
+                            "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+                            selected
+                              ? "border-primary ring-1 ring-primary"
+                              : "border-border",
+                          )}
+                        >
+                          <TemplatePreview
+                            item={item}
+                            onPreview={handlePreview}
+                          />
+                          <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {item.title}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                {formatPresentationTemplateKind(
+                                  item.templateId,
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center">
+                              <button
+                                type="button"
+                                aria-label={`Select template ${item.title}`}
+                                aria-pressed={selected}
+                                onClick={() => {
+                                  handleSelectPresentation(item);
+                                }}
+                                className={cn(
+                                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                  selected
+                                    ? "border-primary/40 bg-primary/10 text-primary"
+                                    : "border-border bg-background text-foreground hover:bg-muted",
+                                )}
+                              >
+                                Use
+                              </button>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <TemplateEmptyPanel
-                      title="No matches"
-                      description="Try a different search."
-                    />
-                  )}
-                </div>
-              )}
-            {(effectiveCategory || defaultCategory) === "video" &&
-              hasVideoTab && (
-                <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
-                  <TemplateSectionHeader
-                    label="VM0 video styles"
-                    count={filteredVideoItems.length}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
                   />
-                  {filteredVideoItems.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {filteredVideoItems.map((item) => {
-                        return (
-                          <VideoTemplateCard
-                            key={item.id}
-                            item={item}
-                            selected={isSelectedVideoTemplate(item, value)}
-                            onSelect={handleSelectVideo}
-                          />
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <TemplateEmptyPanel
-                      title="No matches"
-                      description="Try a different search."
-                    />
-                  )}
+                )}
+              </div>
+            )}
+            {selectedCategory === "video" && hasVideoTab && (
+              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+                <TemplateSectionHeader
+                  label="VM0 video styles"
+                  count={filteredVideoItems.length}
+                />
+                <div className="mb-4 flex flex-wrap gap-2">
+                  {videoGroupFilters.map((group) => {
+                    const selected = videoGroup === group.tag;
+                    return (
+                      <button
+                        key={group.tag}
+                        type="button"
+                        aria-pressed={selected}
+                        className={cn(
+                          "h-7 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          selected
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                        onClick={() => {
+                          setVideoGroup(group.tag);
+                        }}
+                      >
+                        {group.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+                {filteredVideoItems.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredVideoItems.map((item) => {
+                      return (
+                        <VideoTemplateCard
+                          key={item.id}
+                          item={item}
+                          selected={isSelectedVideoTemplate(item, value)}
+                          onSelect={handleSelectVideo}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
           </>
         )}
       </DialogContent>
@@ -1165,7 +1223,7 @@ function SelectedTemplateChip({
             />
           </span>
           <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Template
+            Presentation
           </span>
           <span className="h-3.5 w-px shrink-0 bg-border/70" />
           <span className="min-w-0 truncate text-xs font-medium">{label}</span>
@@ -1196,7 +1254,7 @@ function SelectedVideoTemplateChip({
       <div className="flex">
         <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
           <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <IconTemplate
+            <IconVideo
               size={12}
               stroke={1.5}
               className="text-muted-foreground"
@@ -1273,6 +1331,7 @@ function TemplatePickerButton({
   const open = useGet(templatePickerOpen$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const selectedTitle = selectedTemplateTitle(picker.value);
@@ -1292,6 +1351,7 @@ function TemplatePickerButton({
               aria-pressed={picker.value !== undefined}
               onClick={() => {
                 setSearch("");
+                setVideoGroup("all");
                 setPreviewSlug(null);
                 setSelectedSlideIndex(0);
                 setOpen(true);

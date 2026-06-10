@@ -264,6 +264,36 @@ describe("zero chat template picker", () => {
     expect(screen.queryByText("Nothing saved yet")).toBeNull();
   });
 
+  it("filters video styles by group", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.VideoTemplatePicker]: true },
+    });
+
+    click(await screen.findByLabelText("Template"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    expect(tabWithText("Video")).toBeDefined();
+    expect(screen.getByText("Brand & Product")).toBeInTheDocument();
+    expect(screen.getByText("Story & Emotion")).toBeInTheDocument();
+    expect(screen.getByText("Energy & Sports")).toBeInTheDocument();
+    expect(screen.getByText("Fantasy & Art")).toBeInTheDocument();
+    expect(screen.getByText("Anime")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Fantasy & Art"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Chinese Ink Painting")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Tech Minimalist Reveal")).toBeNull();
+  });
+
   it("opens a PPT preview page from the template eye button", async () => {
     const user = userEvent.setup();
     mockChatLifecycle();
