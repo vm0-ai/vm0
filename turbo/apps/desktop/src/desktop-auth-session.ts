@@ -95,6 +95,7 @@ export class DesktopAuthSession {
   private tokenRefresh: Promise<string | null> | null = null;
   private pendingCode: string | null = null;
   private signingIn = false;
+  private acceptsSignInCompletions = true;
 
   constructor(options: DesktopAuthSessionOptions) {
     this.apiBaseUrl = options.apiBaseUrl;
@@ -114,6 +115,9 @@ export class DesktopAuthSession {
     if (!options?.forceRefresh && this.token) {
       return this.token;
     }
+    if (!this.acceptsSignInCompletions) {
+      return null;
+    }
     return await this.refresh();
   }
 
@@ -124,6 +128,9 @@ export class DesktopAuthSession {
   async getAuthState(): Promise<DesktopAuthState> {
     if (this.signingIn) {
       return signingInDesktopAuthState();
+    }
+    if (!this.acceptsSignInCompletions) {
+      return signedOutDesktopAuthState();
     }
 
     const state = await this.fetchAuthState();
@@ -177,11 +184,24 @@ export class DesktopAuthSession {
   }
 
   completeSignIn(token: string): void {
+    if (!this.acceptsSignInCompletions) {
+      return;
+    }
     this.token = token;
     this.onChange();
   }
 
+  signOut(): void {
+    this.token = null;
+    this.tokenRefresh = null;
+    this.pendingCode = null;
+    this.signingIn = false;
+    this.acceptsSignInCompletions = false;
+    this.onChange();
+  }
+
   async consumeCode(code: string): Promise<void> {
+    this.acceptsSignInCompletions = true;
     this.setSigningIn(true);
     try {
       await this.runAuthWindow({
@@ -197,6 +217,7 @@ export class DesktopAuthSession {
   }
 
   async selectOrganization(): Promise<void> {
+    this.acceptsSignInCompletions = true;
     await this.runAuthWindow({
       url: this.selectOrgUrl,
       visible: true,

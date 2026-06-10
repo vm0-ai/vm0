@@ -40,6 +40,7 @@ export interface DesktopTrayMenuActions {
   readonly refreshStatus: () => void;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => void;
+  readonly signOut: () => void;
   readonly requestAccessibilityPermission: () => void;
   readonly requestScreenRecordingPermission: () => void;
   readonly openAccessibilitySettings: () => void;
@@ -247,7 +248,7 @@ function buildAuthSubmenu(
     ),
     separator(),
     { label: "Switch Workspace", click: actions.switchWorkspace },
-    { label: "Sign in again", click: actions.openSignIn },
+    { label: "Sign out", click: actions.signOut },
   ];
 }
 

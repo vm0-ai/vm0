@@ -9,6 +9,7 @@ import {
   IconCode,
   IconExternalLink,
   IconHistory,
+  IconLogout,
   IconMaximize,
   IconPhoto,
   IconPlayerPlay,
@@ -36,6 +37,7 @@ import {
   requestAccessibilityPermission$,
   requestScreenRecordingPermission$,
   setKeepAwakeEnabled$,
+  signOutDesktop$,
   setupComputerUseBridge$,
   startComputerUse$,
 } from "./computer-use-state";
@@ -990,15 +992,19 @@ function AccountMenu({
   loading,
   onSelectOrg,
   onSignIn,
+  onSignOut,
   orgSelectionLoading,
   signInLoading,
+  signOutLoading,
 }: {
   readonly authState: DesktopAuthState | null;
   readonly loading: boolean;
   readonly onSelectOrg: () => void;
   readonly onSignIn: () => void;
+  readonly onSignOut: () => void;
   readonly orgSelectionLoading: boolean;
   readonly signInLoading: boolean;
+  readonly signOutLoading: boolean;
 }) {
   if (
     !authState ||
@@ -1052,11 +1058,11 @@ function AccountMenu({
         <button
           type="button"
           className="account-menu-item"
-          onClick={onSignIn}
-          disabled={signInLoading}
+          onClick={onSignOut}
+          disabled={signOutLoading}
         >
-          <IconExternalLink size={15} />
-          <span>Sign in again</span>
+          <IconLogout size={15} />
+          <span>Sign out</span>
         </button>
       </div>
     </details>
@@ -1069,6 +1075,7 @@ function Header() {
   const [orgSelectionLoadable, selectOrg] = useLoadableSet(
     openDesktopOrgSelection$,
   );
+  const [signOutLoadable, signOut] = useLoadableSet(signOutDesktop$);
   const authState = authLoadable.state === "hasData" ? authLoadable.data : null;
   const authLoading = authLoadable.state === "loading";
   return (
@@ -1084,11 +1091,15 @@ function Header() {
             onSignIn={() => {
               void signIn();
             }}
+            onSignOut={() => {
+              void signOut();
+            }}
             onSelectOrg={() => {
               void selectOrg();
             }}
             orgSelectionLoading={orgSelectionLoadable.state === "loading"}
             signInLoading={signInLoadable.state === "loading"}
+            signOutLoading={signOutLoadable.state === "loading"}
           />
         )}
       </div>

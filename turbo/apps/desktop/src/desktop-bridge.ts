@@ -32,6 +32,7 @@ export interface DesktopAuthApi {
   readonly getState: () => Promise<DesktopAuthState>;
   readonly openSignIn: () => Promise<void>;
   readonly openOrgSelection: () => Promise<void>;
+  readonly signOut: () => Promise<void>;
   readonly completeSignIn: (params: {
     readonly token: string;
   }) => Promise<void>;

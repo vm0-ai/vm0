@@ -23,6 +23,7 @@ interface DesktopTrayControllerOptions {
   readonly refreshStatus: () => Promise<void>;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => Promise<void>;
+  readonly signOut: () => Promise<void>;
   readonly requestAccessibilityPermission: () => Promise<void>;
   readonly requestScreenRecordingPermission: () => Promise<void>;
   readonly openAccessibilitySettings: () => void;
@@ -173,6 +174,13 @@ export class DesktopTrayController {
         "switch workspace",
         () => {
           return this.options.switchWorkspace();
+        },
+        { refreshAuth: true },
+      ),
+      signOut: this.runAction(
+        "sign out",
+        () => {
+          return this.options.signOut();
         },
         { refreshAuth: true },
       ),
