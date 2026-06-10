@@ -2174,3 +2174,107 @@ covered route files.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api
 check-types`, `pnpm -F api exec vitest run` all clean.
+
+### Round 44 — Mixed small-batch BDD (6 legacy → 12 BDD)
+
+Migrates 6 small legacy route tests into 12 BDD `it()`s:
+
+- `test-telegram-dispatch-probe.test.ts` (4→2): 404 + 400
+  chain (404 prod env → 400 malformed JSON returns legacy
+  required-field error), 200 dispatch chain (200 dispatches
+  private messages + Telegram typing MSW capture + DB
+  run + DB callback payload → 200 dispatches group
+  mentions with mention stripping + Telegram metadata + DB
+  callback payload).
+- `zero-slack-browser-connect.test.ts` (12→3): auth + link
+  validation chain (307 unauth → 307 invalid link → 307
+  missing workspace install), admin bind + idempotency
+  chain (307 admin binds + creates connection → 307
+  reconnecting is idempotent → 307 rejects non-admin),
+  member + notifications chain (307 member connects → 307
+  org mismatch → 307 ephemeral notification + no
+  postMessage → 307 fallback to DM after ephemeral fails
+  → 307 DM + welcome thread without channel → 307 no
+  pending prompt DM).
+- `integrations-github-patch.test.ts` (12→3): auth +
+  bad-body chain (401 unauth → 400 missing agentName →
+  400 invalid JSON → 400 empty agentName → 400 missing
+  org → 404 no installation), admin authorization chain
+  (403 null admin + member → 403 member with different
+  admin → 403 GitHub admin not org admin), success chain
+  (404 target agent not found → 200 admin updates default
+  agent → 200 admin updates default before GitHub
+  connected).
+- `zero-integrations-slack-upload-complete.test.ts` (7→2):
+  auth + precondition chain (401 no auth → 403 sandbox
+  without `slack:write` → 404 no installation → 400
+  SLACK_ERROR when file info fails), success chain (200
+  records Slack upload for run-scoped zero token + DB row
+  - completeUploadExternal called → 200 no run association
+    for Clerk session → 200 idempotent for repeated
+    completion).
+- `zero-telegram-data.service.test.ts` (10→3): migrated as
+  route-level BDD on
+  `GET /api/zero/integrations/telegram/bots` (the only
+  consumer of the `zeroTelegramBots` signal). Official +
+  custom chain (200 only official when no custom → 200
+  prepends official to list of custom → 200 marks custom
+  token invalid when getMe mismatches), env + preference
+  chain (200 official `configured=false` when env unset →
+  200 user-selected preference → 200 org default fallback
+  → 200 null agent), connection + cross-org chain (200
+  official connected with link row → 200 official
+  disconnected with no link row → 200 no leak from
+  cross-org).
+- `zero-uploads-prepare.test.ts` (13→3): auth + bad-body
+  chain (401 unauth → 400 invalid body → 400 too large →
+  400 unsupported type → 403 sandbox no `file:write`),
+  success + body shape chain (200 ZERO_TOKEN with
+  `file:write` → 200 full body shape + CDN URL → 402
+  suspended org → 200 normalized content type → 200 public
+  S3 endpoint → 200 sanitized filename), MIME allowlist
+  chain (200 representative types from allowlist).
+- `device-token.test.ts` (5→3): create chain (200 creates
+  10-min bb0 device code + DB row), poll chain (202
+  pending before confirm → 200 approved credentials after
+  confirm + DB rows → 404 invalid wrong token → 410
+  expired), confirm chain (401 no session → 400 no default
+  agent).
+- `cron-reconcile-billing-entitlements.test.ts` (9→3):
+  auth chain (401 invalid cron secret → 401 missing
+  authorization), downgrade + repair chain (200 downgrades
+  stale past_due without paid-through → 200 repairs
+  recovered → 200 repairs missing paid-through → 200
+  downgrades canceled Stripe), grace-window + stale chain
+  (200 downgrades stale unpaid after paid-through → 200
+  downgrades expired even with recent update → 200 keeps
+  stale with future paid-through → 200 keeps fresh in
+  grace window).
+
+Service-Level Exceptions noted:
+
+- `zero-slack-browser-connect.bdd.test.ts` uses
+  `mockClear()` between sub-steps for `postMessage` /
+  `postEphemeral` mocks because the BDD chain shares
+  cumulative mock state across sub-steps while the legacy
+  tests had fresh mocks per `it()`.
+- `zero-integrations-telegram-bots.bdd.test.ts` does not
+  assert the `avatarUrl: null` field from the legacy test
+  because the response schema does not expose `avatarUrl`.
+  All other assertions from the service test are
+  preserved.
+- This round deletes 8 legacy files
+  (`test-telegram-dispatch-probe.test.ts`,
+  `zero-slack-browser-connect.test.ts`,
+  `integrations-github-patch.test.ts`,
+  `zero-integrations-slack-upload-complete.test.ts`,
+  `zero-telegram-data.service.test.ts`,
+  `zero-uploads-prepare.test.ts`, `device-token.test.ts`,
+  `cron-reconcile-billing-entitlements.test.ts`).
+
+Net test count: 74 legacy `it()`s → 23 BDD `it()`s (69%
+reduction). No per-file coverage regression for the
+covered route files.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api
+check-types`, `pnpm -F api exec vitest run` all clean.
