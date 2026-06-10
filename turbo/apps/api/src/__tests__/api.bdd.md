@@ -584,3 +584,47 @@ No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 9 — SCHEDULE-01 delete + CHAT-01 create/patch/delete BDD
+
+Migrates one more SCHEDULE-01 route and three more CHAT-01
+routes. The list contract and the public list-endpoint
+`hasDraft` flag carry the assertions that the legacy tests
+made via direct DB SELECTs. Schedule cascade and run
+cancellation are verified through the public schedules list
+and the `zeroRunsByIdContract.getById` endpoint.
+
+- `zero-schedules-delete.bdd.test.ts` — 6 legacy `it()`s → 2
+  BDD `it()`s (auth boundary + a gwt-wt-wt chain that
+  exercises 404 missing → 403 zero-token w/o schedule:delete
+  → 204 own (verified via list) → 204 re-delete (verified via
+  list)).
+- `zero-chat-threads-create.bdd.test.ts` — 7 legacy `it()`s →
+  2 BDD `it()`s (auth boundary + a gwt-wt-wt chain that
+  exercises 404 unknown compose → 201 with title (verified via
+  list) → 201 with clientThreadId → 404 cross-org (list empty
+  for the other org) → 404 no-org (list still shows the two
+  created threads)).
+- `zero-chat-threads-patch.bdd.test.ts` — 12 legacy `it()`s →
+  2 BDD `it()`s (auth boundary + a gwt-wt-wt chain that
+  exercises 404 missing → 404 cross-user (owner draft
+  preserved via list) → 204 sets draft (hasDraft: true, 1
+  publish) → 204 continues draft (no publish) → 204 clears
+  (hasDraft: false, 1 publish) → 204 empty-over-empty (no
+  publish) → 204 attachments-only (hasDraft: true, 1
+  publish)). Draft state is verified via the public
+  `hasDraft` boolean on the list contract.
+- `zero-chat-threads-delete.bdd.test.ts` — 11 legacy `it()`s
+  → 3 BDD `it()`s (auth boundary + a delete chain and a
+  cascade chain). The cascade chain exercises 204 deletes
+  linked schedule (verified via schedules list) → 204 cancels
+  own run (verified via `zeroRunsByIdContract.getById`) → 204
+  leaves sibling run untouched (verified via getById). The
+  direct DB SELECTs that verified row removal are replaced by
+  list and getById assertions.
+
+Net test count: 36 legacy `it()`s → 9 BDD `it()`s (75%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
