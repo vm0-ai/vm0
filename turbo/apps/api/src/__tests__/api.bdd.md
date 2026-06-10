@@ -108,6 +108,8 @@ below. This file is filled in family-by-family as work proceeds.
 - CHAIN-CHAT — create thread → post message → list → rename → pin → delete.
 - **CHAIN-CONNECTOR** ✅ — create custom connector → enable on agent → GET
   reflects → replace → clear → GET empty.
+- **CHAIN-USER-CONNECTOR** ✅ — create agent → enable built-in types → GET
+  reflects → replace → dedupe → clear → GET empty.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -193,6 +195,26 @@ create→deploy→enable→run case, which uniquely covers run storage/dispatch 
 | GET 403 zero token without `agent:read`           | BDD (agent-connectors authorization)                         |
 | GET accepts owner CLI token                       | GAP-CLI-TOKEN (retained here)                                |
 
+### `zero-user-connectors.test.ts` → **reduced** (CHAIN-USER-CONNECTOR migrated to `agent-connectors.bdd.test.ts`)
+
+| legacy case                                | disposition                                 |
+| ------------------------------------------ | ------------------------------------------- |
+| GET 401 / no-org / 404 / cross-org / empty | BDD (CHAIN-USER-CONNECTOR + authorization)  |
+| GET accepts owner CLI token                | GAP-CLI-TOKEN (retained here)               |
+| GET ignores removed connector type         | GAP-REMOVED-CONNECTOR (retained here)       |
+| GET ignores feature-flag-disabled type     | GAP-FEATURE-GATED-CONNECTOR (retained here) |
+
+### `zero-user-connectors-update.test.ts` → **reduced** (CHAIN-USER-CONNECTOR migrated)
+
+| legacy case                                  | disposition                                           |
+| -------------------------------------------- | ----------------------------------------------------- |
+| PUT set/persist + replace + dedupe + clear   | BDD (CHAIN-USER-CONNECTOR)                            |
+| PUT 400 unavailable / invalid type           | BDD (rejects unavailable and invalid connector types) |
+| PUT 401 / no-org / 404 / 403 cap             | BDD (agent user connectors authorization)             |
+| PUT skips recomposition when head is current | BDD (CHAIN-USER-CONNECTOR PUTs on a fresh agent)      |
+| PUT accepts owner CLI token                  | GAP-CLI-TOKEN (retained here)                         |
+| PUT recomposes when head version is stale    | GAP-STALE-RECOMPOSE (retained here)                   |
+
 ### `zero-default-agent.test.ts` → **kept** (no read API)
 
 | legacy case                 | disposition                                                                                                         |
@@ -226,6 +248,12 @@ to read the DB.
 - **GAP-REMOVED-CONNECTOR** — the user-connectors registry filter needs a
   connector grant for a type no longer in the registry; the update API only
   accepts currently-valid types, so the stale grant can't be created via API.
+- **GAP-FEATURE-GATED-CONNECTOR** — same shape as above for a valid but
+  feature-switch-disabled type (e.g. `spotify`): the update API rejects it, so
+  the grant can only be created by DB seeding.
+- **GAP-STALE-RECOMPOSE** — the "recompose when the compose head is stale"
+  branch needs a forced-stale `headVersionId`; no API exposes or corrupts the
+  head version, so staleness can't be induced through the API.
 
 ## Service-level exceptions (kept as-is)
 
@@ -285,3 +313,17 @@ not drops: the underlying code paths remain executed by the BDD tests.)
 - Coverage: `zero-agents.ts` connector-route branches preserved; the BDD setup
   additionally exercises the custom-connector create route (already covered by
   its own test). Verified ≥ baseline in the round run.
+
+### Round 3 — AGENT user connectors (CHAIN-USER-CONNECTOR)
+
+- Extended `createBddApi` with the `agentUserConnectors`
+  (`zeroUserConnectorsContract`) client.
+- Added the `agent user connectors` suites to `agent-connectors.bdd.test.ts`:
+  CHAIN-USER-CONNECTOR (enable → read → replace → dedupe → clear), unavailable
+  /invalid-type rejection, cross-org hiding, and an authorization matrix.
+- Reduced `zero-user-connectors.test.ts` to the CLI-token and registry/feature
+  -filter cases, and `zero-user-connectors-update.test.ts` to the CLI-token and
+  stale-recompose cases (GAP-CLI-TOKEN / GAP-REMOVED-CONNECTOR /
+  GAP-FEATURE-GATED-CONNECTOR / GAP-STALE-RECOMPOSE).
+- Coverage: `zero-agents.ts` user-connector routes preserved; verified ≥
+  baseline in the round run.

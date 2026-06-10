@@ -242,3 +242,254 @@ describe("agent custom connectors (API-first BDD)", () => {
     });
   });
 });
+
+describe("agent user connectors (API-first BDD)", () => {
+  it("chain-user-connector: enables, reads, replaces, dedupes, then clears types", async () => {
+    const api = createBddApi(context);
+    api.allowInstructionsStorage();
+    api.actAsAdmin();
+
+    // Given an agent created via the API with no metadata (exercises the
+    // default/null metadata path of the create handler).
+    const agent = await accept(
+      api.agents.create({ headers: SESSION_AUTH, body: {} }),
+      [201],
+    );
+    expect(agent.body.displayName).toBeNull();
+    const agentId = agent.body.agentId;
+
+    // Then it starts with no enabled connector types.
+    const initial = await accept(
+      api.agentUserConnectors.get({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+      }),
+      [200],
+    );
+    expect(initial.body.enabledTypes).toStrictEqual([]);
+
+    // When two available types are enabled. Then they round-trip through GET.
+    const enabled = await accept(
+      api.agentUserConnectors.update({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+        body: { enabledTypes: ["github", "slack"] },
+      }),
+      [200],
+    );
+    expect(new Set(enabled.body.enabledTypes)).toStrictEqual(
+      new Set(["github", "slack"]),
+    );
+    const afterEnable = await accept(
+      api.agentUserConnectors.get({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+      }),
+      [200],
+    );
+    expect(new Set(afterEnable.body.enabledTypes)).toStrictEqual(
+      new Set(["github", "slack"]),
+    );
+
+    // When the set is replaced. Then the replace is atomic.
+    const replaced = await accept(
+      api.agentUserConnectors.update({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+        body: { enabledTypes: ["linear"] },
+      }),
+      [200],
+    );
+    expect(replaced.body.enabledTypes).toStrictEqual(["linear"]);
+    const afterReplace = await accept(
+      api.agentUserConnectors.get({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+      }),
+      [200],
+    );
+    expect(afterReplace.body.enabledTypes).toStrictEqual(["linear"]);
+
+    // When duplicate entries are submitted. Then they are de-duplicated.
+    const deduped = await accept(
+      api.agentUserConnectors.update({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+        body: { enabledTypes: ["slack", "github", "slack"] },
+      }),
+      [200],
+    );
+    expect(new Set(deduped.body.enabledTypes)).toStrictEqual(
+      new Set(["slack", "github"]),
+    );
+    expect(deduped.body.enabledTypes).toHaveLength(2);
+
+    // When cleared with an empty array. Then none remain.
+    const cleared = await accept(
+      api.agentUserConnectors.update({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+        body: { enabledTypes: [] },
+      }),
+      [200],
+    );
+    expect(cleared.body.enabledTypes).toStrictEqual([]);
+    const afterClear = await accept(
+      api.agentUserConnectors.get({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+      }),
+      [200],
+    );
+    expect(afterClear.body.enabledTypes).toStrictEqual([]);
+  });
+
+  it("rejects unavailable and invalid connector types", async () => {
+    const api = createBddApi(context);
+    api.allowInstructionsStorage();
+    api.actAsAdmin();
+
+    const agent = await accept(
+      api.agents.create({
+        headers: SESSION_AUTH,
+        body: { displayName: "Validation Agent" },
+      }),
+      [201],
+    );
+    const agentId = agent.body.agentId;
+
+    // When a feature-gated type is requested. Then it is rejected.
+    const unavailable = await accept(
+      api.agentUserConnectors.update({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+        body: { enabledTypes: ["bentoml"] },
+      }),
+      [400],
+    );
+    expect(unavailable.body.error.code).toBe("VALIDATION_ERROR");
+    expect(unavailable.body.error.message).toContain(
+      "Connector types are not available: bentoml",
+    );
+
+    // When an unknown type is requested. Then it is rejected.
+    const invalid = await accept(
+      api.agentUserConnectors.update({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+        body: { enabledTypes: ["github", "not-a-connector"] },
+      }),
+      [400],
+    );
+    expect(invalid.body.error).toStrictEqual({
+      message: "Invalid connector types: not-a-connector",
+      code: "VALIDATION_ERROR",
+    });
+
+    // Then nothing was enabled by the rejected requests.
+    const still = await accept(
+      api.agentUserConnectors.get({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+      }),
+      [200],
+    );
+    expect(still.body.enabledTypes).toStrictEqual([]);
+  });
+
+  it("hides another org's agent connectors", async () => {
+    const api = createBddApi(context);
+    api.allowInstructionsStorage();
+    api.actAsAdmin();
+
+    const agent = await accept(
+      api.agents.create({
+        headers: SESSION_AUTH,
+        body: { displayName: "Cross-org Agent" },
+      }),
+      [201],
+    );
+    const agentId = agent.body.agentId;
+
+    // When a different org reads it. Then it is not found.
+    api.actAsAdmin();
+    const response = await accept(
+      api.agentUserConnectors.get({
+        params: { id: agentId },
+        headers: SESSION_AUTH,
+      }),
+      [404],
+    );
+    expect(response.body.error.message).toBe(`Agent not found: ${agentId}`);
+  });
+
+  describe("authorization", () => {
+    it("rejects unauthenticated, no-organization, unknown agents, and bad capabilities", async () => {
+      const api = createBddApi(context);
+      const id = randomUUID();
+
+      await accept(
+        api.agentUserConnectors.get({ params: { id }, headers: {} }),
+        [401],
+      );
+      await accept(
+        api.agentUserConnectors.update({
+          params: { id },
+          headers: {},
+          body: { enabledTypes: [] },
+        }),
+        [401],
+      );
+
+      api.actAsNoOrg();
+      await accept(
+        api.agentUserConnectors.get({ params: { id }, headers: SESSION_AUTH }),
+        [401],
+      );
+      await accept(
+        api.agentUserConnectors.update({
+          params: { id },
+          headers: SESSION_AUTH,
+          body: { enabledTypes: [] },
+        }),
+        [401],
+      );
+
+      api.actAsAdmin();
+      const unknownId = randomUUID();
+      const getMissing = await accept(
+        api.agentUserConnectors.get({
+          params: { id: unknownId },
+          headers: SESSION_AUTH,
+        }),
+        [404],
+      );
+      expect(getMissing.body.error.message).toBe(
+        `Agent not found: ${unknownId}`,
+      );
+      const putMissing = await accept(
+        api.agentUserConnectors.update({
+          params: { id: unknownId },
+          headers: SESSION_AUTH,
+          body: { enabledTypes: ["github"] },
+        }),
+        [404],
+      );
+      expect(putMissing.body.error.message).toBe(
+        `Agent not found: ${unknownId}`,
+      );
+
+      const capability = await accept(
+        api.agentUserConnectors.update({
+          params: { id: randomUUID() },
+          headers: api.zeroAuth(["file:read"]),
+          body: { enabledTypes: ["github"] },
+        }),
+        [403],
+      );
+      expect(capability.body.error.message).toBe(
+        "Missing required capability: agent:read",
+      );
+    });
+  });
+});

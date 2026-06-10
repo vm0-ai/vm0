@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -57,6 +58,9 @@ export function createBddApi(context: TestContext) {
     agentCustomConnectors: setupApp({ context })(
       zeroAgentCustomConnectorsContract,
     ),
+    /** ts-rest client for `/api/zero/agents/:id/user-connectors`
+     * (get/update the built-in connector types enabled on an agent). */
+    agentUserConnectors: setupApp({ context })(zeroUserConnectorsContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
