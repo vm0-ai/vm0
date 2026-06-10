@@ -62,9 +62,9 @@ describe("aws firewall", () => {
       "AWS_SESSION_TOKEN",
     ]);
     expect(firewall.placeholders).toMatchObject({
-      AWS_ACCESS_KEY_ID: "ASIAIOSFODNN7EXAMPLE",
-      AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-      AWS_SESSION_TOKEN: "aws-session-token-placeholder",
+      AWS_ACCESS_KEY_ID: "ASIAC0FFEE5AFE10CA1C",
+      AWS_SECRET_ACCESS_KEY: "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe",
+      AWS_SESSION_TOKEN: "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe10ca1",
     });
     expect(getDefaultFirewallPolicies("aws")).toStrictEqual({
       policies: {},

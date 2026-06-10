@@ -12,10 +12,11 @@
 
 import { writeOutput } from "./codegen";
 
-const ACCESS_KEY_ID_PLACEHOLDER = "ASIAIOSFODNN7EXAMPLE";
+const ACCESS_KEY_ID_PLACEHOLDER = "ASIAC0FFEE5AFE10CA1C";
 const SECRET_ACCESS_KEY_PLACEHOLDER =
-  "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";
-const SESSION_TOKEN_PLACEHOLDER = "aws-session-token-placeholder";
+  "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe";
+const SESSION_TOKEN_PLACEHOLDER =
+  "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe10ca1";
 
 const AWS_BASES = [
   "https://{awsHost+}.amazonaws.com",

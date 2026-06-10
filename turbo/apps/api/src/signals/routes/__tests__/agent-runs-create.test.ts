@@ -1596,9 +1596,9 @@ describe("POST /api/agent/runs", () => {
     expect(decryptedSecrets).not.toHaveProperty("AWS_REGION");
     expect(decryptedSecrets).not.toHaveProperty("AWS_DEFAULT_REGION");
     expect(executionContext.environment).toMatchObject({
-      AWS_ACCESS_KEY_ID: "ASIAIOSFODNN7EXAMPLE",
-      AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-      AWS_SESSION_TOKEN: "aws-session-token-placeholder",
+      AWS_ACCESS_KEY_ID: "ASIAC0FFEE5AFE10CA1C",
+      AWS_SECRET_ACCESS_KEY: "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe",
+      AWS_SESSION_TOKEN: "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe10ca1",
       AWS_REGION: "us-west-2",
       AWS_DEFAULT_REGION: "us-west-2",
     });
