@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.4.0...desktop-v0.5.0) (2026-06-09)
+
+
+### Features
+
+* **desktop:** start in menu bar without main window ([#16908](https://github.com/vm0-ai/vm0/issues/16908)) ([8b7eb3e](https://github.com/vm0-ai/vm0/commit/8b7eb3eb50ad18124560f32513e2135e2a6dc633))
+* show desktop tray permission status ([#16911](https://github.com/vm0-ai/vm0/issues/16911)) ([2eb453e](https://github.com/vm0-ai/vm0/commit/2eb453e4047ab6d1900ebc13c8a421608ec755e4))
+
+
+### Bug Fixes
+
+* confirm desktop quit ([#16910](https://github.com/vm0-ai/vm0/issues/16910)) ([dc0c1a6](https://github.com/vm0-ai/vm0/commit/dc0c1a6415e4d839adcecbdaafb2463e3b2d6f2f))
+* rename desktop development app ([#16898](https://github.com/vm0-ai/vm0/issues/16898)) ([a642325](https://github.com/vm0-ai/vm0/commit/a642325b825f13357932c43b9cc6cbc24c1a5f89))
+
 ## [0.4.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.3.1...desktop-v0.4.0) (2026-06-09)
 
 
