@@ -71,18 +71,50 @@ function scheduleToTimeString(s: ScheduleResponse): string {
   }
 
   if (s.cronExpression) {
-    return cronToTimeString(s.cronExpression);
+    return cronToTimeString(s.cronExpression, s.timezone ?? "UTC");
   }
 
   return "Scheduled";
 }
 
-function cronToTimeString(cron: string): string {
+function cronUtcToLocalTime(
+  utcHour: number,
+  utcMinute: number,
+  timezone: string,
+): { hour: number; minute: number } {
+  if (timezone === "UTC" || timezone === "Etc/UTC") {
+    return { hour: utcHour, minute: utcMinute };
+  }
+  const d = new Date();
+  d.setUTCHours(utcHour, utcMinute, 0, 0);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: timezone,
+  }).formatToParts(d);
+  return {
+    hour: Number(
+      parts.find((p) => {
+        return p.type === "hour";
+      })?.value ?? utcHour,
+    ),
+    minute: Number(
+      parts.find((p) => {
+        return p.type === "minute";
+      })?.value ?? utcMinute,
+    ),
+  };
+}
+
+function cronToTimeString(cron: string, timezone = "UTC"): string {
   const parts = cron.split(" ");
-  const minute = Number(parts[0]);
-  const hour = Number(parts[1]);
+  const rawMinute = Number(parts[0]);
+  const rawHour = Number(parts[1]);
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
+
+  const { hour, minute } = cronUtcToLocalTime(rawHour, rawMinute, timezone);
 
   const ampm = hour >= 12 ? "PM" : "AM";
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
