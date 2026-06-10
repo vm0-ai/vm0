@@ -205,7 +205,10 @@ export function createRunsSchedulesApi(context: TestContext) {
       context.mocks.axiom.query.mockResolvedValue([]);
     },
 
-    async grantProEntitlement(actor: ApiTestUser): Promise<void> {
+    async grantProEntitlement(actor: ApiTestUser): Promise<{
+      readonly customerId: string;
+      readonly subscriptionId: string;
+    }> {
       mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
       mockEnv(
         "ZERO_PRICE",
@@ -280,6 +283,7 @@ export function createRunsSchedulesApi(context: TestContext) {
           `Entitlement grant did not reach pro tier: ${billingStatus.body.tier}`,
         );
       }
+      return { customerId, subscriptionId };
     },
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { nowDate } from "../../../lib/time";
+import { now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { clearAllDetached } from "../../utils";
 import {
@@ -28,6 +28,10 @@ async function entitledRunActor(): Promise<{
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly runnerGroup: string;
+  readonly granted: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+  };
 }> {
   const bdd = createBddApi(context);
   const api = createRunsSchedulesApi(context);
@@ -36,14 +40,14 @@ async function entitledRunActor(): Promise<{
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
   const runnerGroup = api.configureRunnerGroup();
-  await api.grantProEntitlement(actor);
+  const granted = await api.grantProEntitlement(actor);
   await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName: "BDD lifecycle agent",
     description: "Exercises the full run lifecycle.",
     visibility: "private",
   });
-  return { actor, agentId: agent.agentId, runnerGroup };
+  return { actor, agentId: agent.agentId, runnerGroup, granted };
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
@@ -418,5 +422,179 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
 
     const record = await billing.readUsageRecord(actor);
     expect(record.status).toBe(200);
+  });
+});
+
+describe("BILL-01: billing entitlement reconciliation cron", () => {
+  function subscriptionEvent(args: {
+    readonly subscriptionId: string;
+    readonly customerId: string;
+    readonly status: string;
+    readonly periodEndUnix: number;
+  }): unknown {
+    return {
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: args.subscriptionId,
+          status: args.status,
+          customer: args.customerId,
+          cancel_at: args.periodEndUnix,
+          cancel_at_period_end: false,
+          schedule: null,
+          trial_end: null,
+          metadata: {},
+          items: {
+            data: [
+              {
+                price: { id: "price_bdd_pro" },
+                current_period_end: args.periodEndUnix,
+              },
+            ],
+          },
+        },
+      },
+    };
+  }
+
+  async function failSubscription(args: {
+    readonly subscriptionId: string;
+    readonly customerId: string;
+  }): Promise<void> {
+    const webhooks = createWebhookCallbackApi(context);
+    const event = subscriptionEvent({
+      ...args,
+      status: "past_due",
+      periodEndUnix: Math.floor(now() / 1000) - 2 * 86_400,
+    });
+    webhooks.configureStripeWebhookSecret();
+    webhooks.acceptNextStripeWebhookEvent(event);
+    await webhooks.requestStripeWebhook(
+      JSON.stringify(event),
+      { "stripe-signature": "t=1,v1=bdd" },
+      [200],
+    );
+  }
+
+  it("recovers payment-failed subscriptions that became active again", async () => {
+    const api = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const { actor, granted } = await entitledRunActor();
+    await failSubscription(granted);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "active",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: {
+        data: [
+          {
+            price: { id: "price_bdd_pro" },
+            current_period_end: Math.floor(now() / 1000) + 30 * 86_400,
+          },
+        ],
+      },
+    });
+    await api.runSafeCronRoutes(true);
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+
+    await failSubscription(granted);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "incomplete",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: { data: [] },
+    });
+    await api.runSafeCronRoutes(true);
+    const skipped = await billing.readBillingStatus(actor);
+    expect(skipped.tier).toBe("pro");
+  });
+
+  it("keeps recently paid-through subscriptions and downgrades stale ones", async () => {
+    const api = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const { actor, granted } = await entitledRunActor();
+    await failSubscription(granted);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "past_due",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: {
+        data: [
+          {
+            price: { id: "price_bdd_pro" },
+            current_period_end: Math.floor(now() / 1000) + 7 * 86_400,
+          },
+        ],
+      },
+    });
+    await api.runSafeCronRoutes(true);
+    const synced = await billing.readBillingStatus(actor);
+    expect(synced.tier).toBe("pro");
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "past_due",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: {
+        data: [
+          {
+            price: { id: "price_bdd_pro" },
+            current_period_end: Math.floor(now() / 1000) - 2 * 86_400,
+          },
+        ],
+      },
+    });
+    await failSubscription(granted);
+    await api.runSafeCronRoutes(true);
+
+    const downgraded = await billing.readBillingStatus(actor);
+    expect(downgraded.tier).not.toBe("pro");
+  });
+
+  it("clears cancelled subscriptions during reconciliation", async () => {
+    const api = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const { actor, granted } = await entitledRunActor();
+    await failSubscription(granted);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: granted.subscriptionId,
+      status: "canceled",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: { data: [] },
+    });
+    await api.runSafeCronRoutes(true);
+
+    const cleared = await billing.readBillingStatus(actor);
+    expect(cleared.tier).not.toBe("pro");
   });
 });
