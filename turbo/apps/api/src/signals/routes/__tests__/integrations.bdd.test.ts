@@ -5,6 +5,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
+import { env } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createBddApi } from "./helpers/api-bdd";
@@ -18,8 +19,8 @@ helper gap:
 - INT-02 Telegram linked-bot, message/upload success, internal callback, and
   cleanup flows still need public API setup helpers for bot installation state.
 - INT-03 GitHub installed-app and AgentPhone linked-send happy paths need public
-  setup APIs for provider installation/linkage state before they can be covered
-  without diagnostic fixture routes.
+  setup APIs for provider installation and downstream agent state before they
+  can be covered without diagnostic fixture routes.
 */
 
 const context = testContext();
@@ -103,10 +104,31 @@ function telegramSendMessage() {
   );
 }
 
-function agentPhoneVerificationSend(status: 200 | 503 = 200) {
-  return http.post("https://api.agentphone.test/v1/messages", () => {
-    return HttpResponse.json({ ok: status === 200 }, { status });
-  });
+function agentPhoneVerificationSend(
+  status: 200 | 503 = 200,
+  onBody?: (body: unknown) => void,
+) {
+  return http.post(
+    "https://api.agentphone.test/v1/messages",
+    async ({ request }) => {
+      const body: unknown = await request.json();
+      onBody?.(body);
+      const toNumber =
+        isRecord(body) && typeof body.to_number === "string"
+          ? body.to_number
+          : null;
+      return HttpResponse.json(
+        {
+          id: "msg-bdd-agentphone",
+          status: status === 200 ? "sent" : "failed",
+          channel: "sms",
+          from_number: "+19039853128",
+          to_number: toNumber,
+        },
+        { status },
+      );
+    },
+  );
 }
 
 function uniquePhoneHandle() {
@@ -135,6 +157,24 @@ function agentPhoneWebhookHeaders(body: string): {
     "x-webhook-event": "agent.message",
     "x-webhook-id": "evt-bdd-agentphone",
   };
+}
+
+function githubConnectSignature(args: {
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly timestamp: number;
+  readonly githubUsername?: string;
+}): string {
+  return createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
+    .update(
+      [
+        args.installationId,
+        args.githubUserId,
+        String(args.timestamp),
+        args.githubUsername?.trim().replace(/^@+/, "") ?? "",
+      ].join(":"),
+    )
+    .digest("hex");
 }
 
 describe("INT-01: Slack integration and Slack app routes", () => {
@@ -1246,7 +1286,7 @@ describe("INT-02: Telegram integration", () => {
 });
 
 describe("INT-03: GitHub and AgentPhone integrations", () => {
-  it("keeps GitHub OAuth install, connect, and callback errors visible through redirects", async () => {
+  it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
     integrations.clearGithubAppProvider();
 
     const unconfiguredInstall = await integrations.requestGithubOauthInstall(
@@ -1270,6 +1310,27 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     ).toBeTruthy();
     expect(install.headers.get("Cache-Control")).toBe("no-store");
 
+    const admin = integrations.user();
+    const orgId = admin.orgId;
+    if (!orgId) {
+      throw new Error("Expected GitHub admin test user to have an org");
+    }
+    const member = integrations.user({
+      orgId,
+      orgRole: "org:member",
+    });
+    await integrations.readGithubInstallation(member);
+    const nonAdminInstall = await integrations.requestGithubOauthInstall(
+      {
+        orgId,
+        vm0UserId: member.userId,
+      },
+      [307],
+    );
+    expect(nonAdminInstall.headers.get("location") ?? "").toContain(
+      "Only%20organization%20admins%20can%20install%20GitHub",
+    );
+
     const unauthenticatedConnect = await integrations.requestGithubOauthConnect(
       null,
       {},
@@ -1292,6 +1353,28 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       "Invalid%20or%20expired%20GitHub%20connect%20link",
     );
 
+    const timestamp = Math.floor(now() / 1000);
+    const validSignedMissingInstallation =
+      await integrations.requestGithubOauthConnect(
+        actor,
+        {
+          installation: "12345",
+          ghUser: "67890",
+          ghLogin: "@bdd-github-user",
+          ts: timestamp,
+          sig: githubConnectSignature({
+            installationId: "12345",
+            githubUserId: "67890",
+            githubUsername: "@bdd-github-user",
+            timestamp,
+          }),
+        },
+        [307],
+      );
+    expect(
+      validSignedMissingInstallation.headers.get("location") ?? "",
+    ).toContain("No%20GitHub%20installation%20found%20for%20this%20workspace");
+
     const unconfiguredConnect = await integrations.requestGithubOauthConnect(
       actor,
       {},
@@ -1300,7 +1383,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(unconfiguredConnect.headers.get("location") ?? "").toContain(
       "GitHub%20OAuth%20is%20not%20configured",
     );
+  });
 
+  it("keeps GitHub user OAuth callback errors visible through redirects", async () => {
     const githubError = await integrations.requestGithubOauthConnectCallback(
       {
         error: "access_denied",
@@ -1330,7 +1415,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(invalidState.headers.get("location") ?? "").toContain(
       "Invalid%20OAuth%20state",
     );
+  });
 
+  it("keeps GitHub app setup callback errors visible through redirects", async () => {
     integrations.clearGithubAppProvider();
     const unconfiguredSetup = await integrations.requestGithubAppSetupCallback(
       {},
@@ -1340,7 +1427,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       "GitHub%20App%20integration%20is%20not%20configured",
     );
 
+    integrations.configureGithubAppInstallProvider();
     integrations.configureGithubAppCallbackProvider();
+
     const updateSetup = await integrations.requestGithubAppSetupCallback(
       { setup_action: "update" },
       [307],
@@ -1370,6 +1459,96 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     );
     expect(setupInvalidState.headers.get("location") ?? "").toContain(
       "Invalid%20OAuth%20state",
+    );
+
+    const admin = integrations.user();
+    const orgId = admin.orgId;
+    if (!orgId) {
+      throw new Error("Expected GitHub admin test user to have an org");
+    }
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD GitHub setup agent",
+    });
+    await integrations.readGithubInstallation(admin);
+    const installWithState = await integrations.requestGithubOauthInstall(
+      {
+        orgId,
+        vm0UserId: admin.userId,
+        composeId: agent.agentId,
+      },
+      [307],
+    );
+    const signedState =
+      new URL(installWithState.headers.get("location") ?? "").searchParams.get(
+        "state",
+      ) ?? "";
+    expect(signedState).not.toBe("");
+
+    const parsedSignedState: unknown = JSON.parse(signedState);
+    if (!isRecord(parsedSignedState)) {
+      throw new Error("Expected signed GitHub state to be an object");
+    }
+    const tamperedState = JSON.stringify({
+      ...parsedSignedState,
+      sig: "0".repeat(64),
+    });
+    const setupTamperedState = await integrations.requestGithubAppSetupCallback(
+      {
+        installation_id: "12345",
+        setup_action: "install",
+        state: tamperedState,
+      },
+      [307],
+    );
+    expect(setupTamperedState.headers.get("location") ?? "").toContain(
+      "Invalid%20state%20signature",
+    );
+
+    const installWithoutAgent = await integrations.requestGithubOauthInstall(
+      {
+        orgId,
+        vm0UserId: admin.userId,
+      },
+      [307],
+    );
+    const stateWithoutAgent =
+      new URL(
+        installWithoutAgent.headers.get("location") ?? "",
+      ).searchParams.get("state") ?? "";
+    expect(stateWithoutAgent).not.toBe("");
+    const setupMissingAgent = await integrations.requestGithubAppSetupCallback(
+      {
+        installation_id: "12345",
+        setup_action: "install",
+        state: stateWithoutAgent,
+      },
+      [307],
+    );
+    expect(setupMissingAgent.headers.get("location") ?? "").toContain(
+      "Missing%20default%20agent",
+    );
+
+    const requestSetup = await integrations.requestGithubAppSetupCallback(
+      {
+        setup_action: "request",
+        state: signedState,
+      },
+      [307],
+    );
+    expect(requestSetup.headers.get("location") ?? "").toContain(
+      "permission%20to%20install%20this%20GitHub%20App",
+    );
+
+    const missingInstallation =
+      await integrations.requestGithubAppSetupCallback(
+        {
+          setup_action: "install",
+          state: signedState,
+        },
+        [307],
+      );
+    expect(missingInstallation.headers.get("location") ?? "").toContain(
+      "Missing%20installation%20ID%20from%20GitHub",
     );
   });
 
@@ -1566,7 +1745,18 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     });
 
     integrations.configureAgentPhoneProvider();
-    server.use(agentPhoneVerificationSend());
+    let connectUrl: string | undefined;
+    server.use(
+      agentPhoneVerificationSend(200, (body) => {
+        if (!isRecord(body) || typeof body.body !== "string") {
+          return;
+        }
+        const match = body.body.match(/https?:\/\/\S+/u);
+        if (match) {
+          connectUrl = match[0];
+        }
+      }),
+    );
     const phoneHandle = uniquePhoneHandle();
     const sent = await integrations.requestStartAgentPhoneLink(
       actor,
@@ -1587,7 +1777,120 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       error: { code: "TOO_MANY_REQUESTS" },
     });
 
+    if (!connectUrl) {
+      throw new Error("Expected AgentPhone verification text to include a URL");
+    }
+    const connectParams = new URL(connectUrl).searchParams;
+    const timestamp = Number(connectParams.get("ts") ?? "");
+    if (!Number.isFinite(timestamp)) {
+      throw new Error("Expected AgentPhone connect URL to include timestamp");
+    }
+    const connectBody = {
+      phoneHandle: connectParams.get("handle") ?? "",
+      agentphoneAgentId: connectParams.get("agent") ?? "",
+      timestamp,
+      signature: connectParams.get("sig") ?? "",
+      channel: connectParams.get("channel") ?? undefined,
+    };
+    const connected = await integrations.requestConnectAgentPhone(
+      actor,
+      connectBody,
+      [200],
+    );
+    expect(connected.body).toStrictEqual({ phoneHandle });
+
+    const linkedStatus = await integrations.getAgentPhoneLinkStatus(actor);
+    expect(linkedStatus).toStrictEqual({
+      linked: true,
+      phoneHandle,
+      agentPhoneNumber: "+19039853128",
+      configured: true,
+    });
+
+    const missingAgentMessage = await integrations.requestSendPhoneMessage(
+      actor,
+      {
+        toNumber: phoneHandle,
+        text: "BDD AgentPhone missing agent",
+      },
+      [404],
+    );
+    expect(missingAgentMessage.body).toStrictEqual({
+      error: {
+        message: "AgentPhone agent not found",
+        code: "NOT_FOUND",
+      },
+    });
+
+    const sentPhoneMessage = await integrations.requestSendPhoneMessage(
+      actor,
+      {
+        agentphoneAgentId: connectBody.agentphoneAgentId,
+        toNumber: phoneHandle,
+        text: "BDD linked AgentPhone message",
+      },
+      [200],
+    );
+    expect(sentPhoneMessage.body).toStrictEqual({
+      ok: true,
+      messageId: "msg-bdd-agentphone",
+      channel: "sms",
+      toNumber: phoneHandle,
+    });
+
     server.use(agentPhoneVerificationSend(503));
+    const failedPhoneMessage = await integrations.requestSendPhoneMessage(
+      actor,
+      {
+        agentphoneAgentId: connectBody.agentphoneAgentId,
+        toNumber: phoneHandle,
+        text: "BDD AgentPhone provider failure",
+      },
+      [502],
+    );
+    expect(failedPhoneMessage.body).toMatchObject({
+      error: { code: "AGENTPHONE_ERROR" },
+    });
+
+    const duplicateConnect = await integrations.requestConnectAgentPhone(
+      integrations.user(),
+      connectBody,
+      [409],
+    );
+    expect(duplicateConnect.body).toMatchObject({
+      error: { code: "CONFLICT" },
+    });
+
+    const alreadyLinkedStart = await integrations.requestStartAgentPhoneLink(
+      actor,
+      { phoneHandle: uniquePhoneHandle() },
+      [409],
+    );
+    expect(alreadyLinkedStart.body).toMatchObject({
+      error: { code: "CONFLICT" },
+    });
+
+    const disconnected = await integrations.requestUnlinkAgentPhone(
+      actor,
+      [204],
+    );
+    expect(disconnected.body).toBeUndefined();
+
+    const unlinkedStatus = await integrations.getAgentPhoneLinkStatus(actor);
+    expect(unlinkedStatus).toStrictEqual({
+      linked: false,
+      agentPhoneNumber: "+19039853128",
+      configured: true,
+    });
+
+    const missingUnlink = await integrations.requestUnlinkAgentPhone(
+      actor,
+      [404],
+    );
+    expect(missingUnlink.body).toMatchObject({
+      error: { code: "NOT_FOUND" },
+    });
+
     const unavailable = await integrations.requestStartAgentPhoneLink(
       integrations.user(),
       { phoneHandle: uniquePhoneHandle() },
@@ -1598,14 +1901,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         message: "AgentPhone verification text could not be sent",
         code: "PROVIDER_UNAVAILABLE",
       },
-    });
-
-    const missingUnlink = await integrations.requestUnlinkAgentPhone(
-      actor,
-      [404],
-    );
-    expect(missingUnlink.body).toMatchObject({
-      error: { code: "NOT_FOUND" },
     });
 
     const noConfigWebhook = await integrations.requestAgentPhoneWebhook(
