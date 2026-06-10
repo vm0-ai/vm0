@@ -1,22 +1,19 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
-import { readFile, rm } from "fs/promises";
+import { readFile } from "fs/promises";
 import { existsSync } from "fs";
-import { dirname, join } from "path";
+import { dirname } from "path";
 import { parse as parseYaml } from "yaml";
 import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
-  getComposeByName,
   createOrUpdateCompose,
   listZeroSecrets,
   listZeroVariables,
   listZeroConnectors,
 } from "../../lib/api";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
-import { downloadGitHubDirectory } from "../../lib/domain/github-skills";
 import { uploadInstructions } from "../../lib/storage/system-storage";
-import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
 import {
   startSilentUpgrade,
   waitForSilentUpgrade,
@@ -26,14 +23,6 @@ import { withErrorHandler } from "../../lib/command";
 declare const __CLI_VERSION__: string;
 
 const DEFAULT_CONFIG_FILE = "vm0.yaml";
-
-/**
- * Check if input is a GitHub URL (supports plain repo, root with branch, and subdirectory)
- * Matches: https://github.com/owner/repo[/tree/branch[/path]]
- */
-function isGitHubUrl(input: string): boolean {
-  return /^https:\/\/github\.com\/[^/]+\/[^/]+/.test(input);
-}
 
 /**
  * Extract secret names from compose content using variable references.
@@ -107,22 +96,6 @@ async function loadAndValidateConfig(
   const basePath = dirname(configFile);
 
   return { config, agentName, agent, basePath };
-}
-
-/**
- * Type guard to check if config has a non-empty volumes field.
- */
-function hasVolumes(config: unknown): boolean {
-  if (typeof config !== "object" || config === null) {
-    return false;
-  }
-  const cfg = config as Record<string, unknown>;
-  const volumes = cfg.volumes;
-  return (
-    typeof volumes === "object" &&
-    volumes !== null &&
-    Object.keys(volumes).length > 0
-  );
 }
 
 async function uploadInstructionsIfPresent(
@@ -267,7 +240,6 @@ interface ComposeResult {
 
 /**
  * Finalize compose: call API and display result.
- * Shared by both GitHub URL and local file flows.
  * Returns the compose result for JSON output mode.
  */
 async function finalizeCompose(
@@ -332,94 +304,12 @@ async function finalizeCompose(
   return result;
 }
 
-/**
- * Handle compose from GitHub URL
- */
-async function handleGitHubCompose(
-  url: string,
-  options: { yes?: boolean; autoUpdate?: boolean; json?: boolean },
-): Promise<ComposeResult> {
-  if (!options.json) {
-    console.log(`Downloading from GitHub: ${url}`);
-  }
-
-  const { dir: downloadedDir, tempRoot } = await downloadGitHubDirectory(url);
-  const configFile = join(downloadedDir, "vm0.yaml");
-
-  try {
-    if (!existsSync(configFile)) {
-      throw new Error("vm0.yaml not found in the GitHub directory", {
-        cause: new Error(`URL: ${url}`),
-      });
-    }
-
-    // Load and validate config
-    const { config, agentName, agent, basePath } =
-      await loadAndValidateConfig(configFile);
-
-    // Check if agent with same name already exists
-    const existingCompose = await getComposeByName(agentName);
-    if (existingCompose) {
-      if (!options.json) {
-        console.log();
-        console.log(
-          chalk.yellow(`⚠ An agent named "${agentName}" already exists.`),
-        );
-      }
-
-      if (!isInteractive()) {
-        // Non-interactive mode: require --yes flag to overwrite
-        if (!options.yes) {
-          throw new Error(
-            "Cannot overwrite existing agent in non-interactive mode",
-            {
-              cause: new Error(
-                "Use --yes flag to confirm overwriting the existing agent.",
-              ),
-            },
-          );
-        }
-      } else {
-        // Interactive mode: prompt user (default No)
-        const confirmed = await promptConfirm(
-          "Do you want to overwrite it?",
-          false,
-        );
-        if (!confirmed) {
-          if (!options.json) {
-            console.log(chalk.yellow("Compose cancelled."));
-          }
-          process.exit(0);
-        }
-      }
-    }
-
-    // Check for unsupported volumes
-    if (hasVolumes(config)) {
-      throw new Error("Volumes are not supported for GitHub URL compose", {
-        cause: new Error(
-          "Clone the repository locally and run: vm0 compose ./path/to/vm0.yaml",
-        ),
-      });
-    }
-
-    // Upload instructions
-    await uploadInstructionsIfPresent(agentName, agent, basePath, options.json);
-
-    // Finalize compose (upload, display)
-    return await finalizeCompose(config, agent, options);
-  } finally {
-    // Cleanup temp directory
-    await rm(tempRoot, { recursive: true, force: true });
-  }
-}
-
 export const composeCommand = new Command()
   .name("compose")
   .description("Create or update agent compose (e.g., vm0.yaml)")
   .argument(
     "[agent-yaml]",
-    `Path to agent YAML file or GitHub tree URL (default: ${DEFAULT_CONFIG_FILE})`,
+    `Path to agent YAML file (default: ${DEFAULT_CONFIG_FILE})`,
   )
   .option("-y, --yes", "Skip confirmation prompts")
   .option(
@@ -467,28 +357,17 @@ export const composeCommand = new Command()
         }
 
         try {
-          let result: ComposeResult;
+          const { config, agentName, agent, basePath } =
+            await loadAndValidateConfig(resolvedConfigFile);
 
-          // Branch based on input type
-          if (isGitHubUrl(resolvedConfigFile)) {
-            result = await handleGitHubCompose(resolvedConfigFile, options);
-          } else {
-            // Existing local file flow
-            // 1. Load and validate config
-            const { config, agentName, agent, basePath } =
-              await loadAndValidateConfig(resolvedConfigFile);
+          await uploadInstructionsIfPresent(
+            agentName,
+            agent,
+            basePath,
+            options.json,
+          );
 
-            // 3. Upload instructions
-            await uploadInstructionsIfPresent(
-              agentName,
-              agent,
-              basePath,
-              options.json,
-            );
-
-            // 4. Finalize compose (upload, display)
-            result = await finalizeCompose(config, agent, options);
-          }
+          const result = await finalizeCompose(config, agent, options);
 
           // Output JSON result if requested
           if (options.json) {

@@ -27,8 +27,8 @@ import {
   type Automation,
 } from "./automations/default-interpreter";
 import {
-  deleteScheduleAutomation,
-  syncScheduleToAutomation,
+  deleteScheduleAutomationSafely,
+  syncScheduleToAutomationSafely,
 } from "./automations/schedule-dual-write";
 import { calculateNextRun, TimeTrigger } from "./automations/time-trigger";
 import {
@@ -689,7 +689,8 @@ export const deploySchedule$ = command(
 
     // Dual-write the schedule into the events-first tables (data-sync only; no
     // run is created). Keyed on automations.sourceScheduleId for idempotency.
-    await syncScheduleToAutomation(db, schedule);
+    // Best-effort: a mirror failure never fails the deploy.
+    await syncScheduleToAutomationSafely(db, schedule);
     signal.throwIfAborted();
 
     // Notify the linked chat thread so its header schedule menu refreshes the
@@ -744,8 +745,9 @@ export const disableSchedule$ = command(
       return { kind: "not_found" };
     }
 
-    // Mirror the disabled state into the events-first tables (data-sync only).
-    await syncScheduleToAutomation(db, updated);
+    // Mirror the disabled state into the events-first tables (data-sync only,
+    // best-effort).
+    await syncScheduleToAutomationSafely(db, updated);
     signal.throwIfAborted();
 
     await publishChatThreadSchedulesChangedSafely(
@@ -791,8 +793,9 @@ export const deleteSchedule$ = command(
     }
 
     // Drop the events-first mirror of the schedule (its time trigger row is
-    // removed by the FK cascade). Idempotent — a no-op when no mirror exists.
-    await deleteScheduleAutomation(db, ownership.schedule.id);
+    // removed by the FK cascade). Idempotent — a no-op when no mirror exists;
+    // best-effort: a mirror failure never fails the delete.
+    await deleteScheduleAutomationSafely(db, ownership.schedule.id);
     signal.throwIfAborted();
 
     // Notify the linked chat thread so its header schedule menu drops the
@@ -859,8 +862,8 @@ export const enableSchedule$ = command(
     }
 
     // Mirror the enabled state + recomputed nextRunAt into the events-first
-    // tables (data-sync only; no run is created).
-    await syncScheduleToAutomation(db, updated);
+    // tables (data-sync only, best-effort; no run is created).
+    await syncScheduleToAutomationSafely(db, updated);
     signal.throwIfAborted();
 
     await publishChatThreadSchedulesChangedSafely(

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.122.0](https://github.com/vm0-ai/vm0/compare/api-v1.121.0...api-v1.122.0) (2026-06-10)
+
+
+### Features
+
+* add claude fable 5 model support ([#16996](https://github.com/vm0-ai/vm0/issues/16996)) ([c9a6eb1](https://github.com/vm0-ai/vm0/commit/c9a6eb12ddae7e58940d72436f5ceb2032d557d6))
+* **cli:** re-land zero video transcribe + frames with sandbox STT access ([#17003](https://github.com/vm0-ai/vm0/issues/17003)) ([8ec0ffc](https://github.com/vm0-ai/vm0/commit/8ec0ffc6dd4fb797dc3f065160d8d118a4c24e4d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.77.0
+    * @vm0/connectors bumped to 1.59.0
+    * @vm0/core bumped to 8.321.0
+    * @vm0/db bumped to 1.39.0
+
 ## [1.121.0](https://github.com/vm0-ai/vm0/compare/api-v1.120.0...api-v1.121.0) (2026-06-10)
 
 

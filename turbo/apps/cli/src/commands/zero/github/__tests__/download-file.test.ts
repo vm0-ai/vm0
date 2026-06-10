@@ -20,6 +20,7 @@ describe("zero github download-file command", () => {
     .mockImplementation(() => {});
 
   let tmpDir: string;
+  let defaultOutPaths: string[];
 
   beforeEach(() => {
     chalk.level = 0;
@@ -28,12 +29,16 @@ describe("zero github download-file command", () => {
 
     tmpDir = join(tmpdir(), `github-download-file-test-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });
+    defaultOutPaths = [];
   });
 
   afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     rmSync(tmpDir, { recursive: true, force: true });
+    for (const outPath of defaultOutPaths) {
+      rmSync(outPath, { force: true });
+    }
   });
 
   it("streams file bytes to the provided output path and prints JSON result", async () => {
@@ -76,6 +81,88 @@ describe("zero github download-file command", () => {
     expect(parsed).toMatchObject({
       path: outPath,
       mimetype: "image/png",
+      size: payload.length,
+    });
+  });
+
+  it("sanitizes unsafe filename hints before writing to the default output path", async () => {
+    const payload = Buffer.from("safe filename hint");
+    const fileUrl = "https://github.com/user-attachments/assets/abc123";
+    const unsafeFilename = "../../../etc/passwd";
+    const outPath = join(tmpdir(), "github-passwd");
+    defaultOutPaths.push(outPath);
+
+    rmSync(outPath, { force: true });
+    server.use(
+      http.get(DOWNLOAD_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("url")).toBe(fileUrl);
+        expect(url.searchParams.get("filename")).toBe(unsafeFilename);
+        return new HttpResponse(payload, {
+          status: 200,
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-length": String(payload.length),
+            "x-file-mimetype": "application/octet-stream",
+          },
+        });
+      }),
+    );
+
+    await downloadFileCommand.parseAsync([
+      "node",
+      "cli",
+      fileUrl,
+      "--filename",
+      unsafeFilename,
+    ]);
+
+    expect(existsSync(outPath)).toBe(true);
+    expect(readFileSync(outPath).equals(payload)).toBe(true);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    expect(parsed).toMatchObject({
+      path: outPath,
+      mimetype: "application/octet-stream",
+      size: payload.length,
+    });
+  });
+
+  it("sanitizes unsafe URL-derived filenames before writing to the default output path", async () => {
+    const payload = Buffer.from("safe url filename");
+    const fileUrl =
+      "https://github.com/user-attachments/assets/..%2F..%2Fetc%2Fshadow";
+    const outPath = join(tmpdir(), "github-shadow");
+    defaultOutPaths.push(outPath);
+
+    rmSync(outPath, { force: true });
+    server.use(
+      http.get(DOWNLOAD_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("url")).toBe(fileUrl);
+        expect(url.searchParams.has("filename")).toBe(false);
+        return new HttpResponse(payload, {
+          status: 200,
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-length": String(payload.length),
+            "x-file-mimetype": "application/octet-stream",
+          },
+        });
+      }),
+    );
+
+    await downloadFileCommand.parseAsync(["node", "cli", fileUrl]);
+
+    expect(existsSync(outPath)).toBe(true);
+    expect(readFileSync(outPath).equals(payload)).toBe(true);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    expect(parsed).toMatchObject({
+      path: outPath,
+      mimetype: "application/octet-stream",
       size: payload.length,
     });
   });

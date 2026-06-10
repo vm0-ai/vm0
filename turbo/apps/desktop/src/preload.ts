@@ -38,8 +38,11 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
   refreshPermissions(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.refreshPermissions);
   },
-  start(): Promise<DesktopComputerUseState> {
-    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.start);
+  start(options): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.start, options);
+  },
+  stop(): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.stop);
   },
   requestAccessibilityPermission(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(

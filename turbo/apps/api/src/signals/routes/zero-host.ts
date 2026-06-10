@@ -6,6 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
   completeHostedSiteDeployment$,
+  generatePresentationSpeakerNotes$,
   prepareHostedSiteDeployment$,
   redeployPresentationHtml$,
 } from "../services/zero-host.service";
@@ -65,6 +66,9 @@ const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const completeParams$ = pathParamsOf(zeroHostContract.complete);
 const redeployPresentationHtmlBody$ = bodyResultOf(
   zeroHostContract.redeployPresentationHtml,
+);
+const generateSpeakerNotesBody$ = bodyResultOf(
+  zeroHostContract.generatePresentationSpeakerNotes,
 );
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -144,6 +148,39 @@ const redeployPresentationHtmlInner$ = command(
   },
 );
 
+const generateSpeakerNotesInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+
+    const bodyResult = await get(generateSpeakerNotesBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+    if (suspended) {
+      return suspended;
+    }
+
+    const result = await set(
+      generatePresentationSpeakerNotes$,
+      { body: bodyResult.data },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "bad_request") {
+      return badRequestMessage(result.message);
+    }
+    if (result.status === "config_error") {
+      return internalError(result.message);
+    }
+
+    return { status: 200 as const, body: result.body };
+  },
+);
+
 export const zeroHostRoutes: readonly RouteEntry[] = [
   {
     route: zeroHostContract.prepare,
@@ -176,6 +213,17 @@ export const zeroHostRoutes: readonly RouteEntry[] = [
         missingOrganizationStatus: 401,
       },
       redeployPresentationHtmlInner$,
+    ),
+  },
+  {
+    route: zeroHostContract.generatePresentationSpeakerNotes,
+    handler: authRoute(
+      {
+        requiredCapability: "host:write",
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+      },
+      generateSpeakerNotesInner$,
     ),
   },
 ];

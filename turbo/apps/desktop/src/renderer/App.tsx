@@ -13,6 +13,7 @@ import {
   IconMaximize,
   IconPhoto,
   IconPlayerPlay,
+  IconPlayerStop,
   IconRefresh,
   IconShieldCheck,
   IconUserCircle,
@@ -22,7 +23,10 @@ import { useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { DesktopAuthState } from "../desktop-bridge";
 import { hasReadyDesktopAuth } from "../computer-use-startup-gate";
-import type { DesktopComputerUseState } from "../computer-use-types";
+import {
+  hasRequiredComputerUsePermissions,
+  type DesktopComputerUseState,
+} from "../computer-use-types";
 import {
   computerUseData$,
   desktopAuthData$,
@@ -40,6 +44,7 @@ import {
   signOutDesktop$,
   setupComputerUseBridge$,
   startComputerUse$,
+  stopComputerUse$,
 } from "./computer-use-state";
 
 type HostStatus = DesktopComputerUseState["host"]["status"];
@@ -356,9 +361,199 @@ function KeyValueList({
   );
 }
 
-function PermissionsPanel({
+function StepIndex({
+  step,
+  tone = "active",
+}: {
+  readonly step: number;
+  readonly tone?: "active" | "pending" | "ready";
+}) {
+  return (
+    <span className={`step-index step-index-${tone}`}>
+      {tone === "ready" ? <IconCheck size={14} /> : step}
+    </span>
+  );
+}
+
+function AuthStepCard({
+  authLoading,
+  authState,
+}: {
+  readonly authLoading: boolean;
+  readonly authState: DesktopAuthState | null;
+}) {
+  const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
+  const [orgSelectionLoadable, selectOrg] = useLoadableSet(
+    openDesktopOrgSelection$,
+  );
+  const [signOutLoadable, signOut] = useLoadableSet(signOutDesktop$);
+  const signedInAuth = authState?.status === "signed_in" ? authState : null;
+  const activeOrganization = signedInAuth?.organization ?? null;
+  const signingIn =
+    authState?.status === "signing_in" || signInLoadable.state === "loading";
+  const authBridgeAvailable = hasDesktopAuthBridge();
+
+  if (signedInAuth && activeOrganization) {
+    return (
+      <section className="step-card step-card-compact">
+        <div className="compact-step-main">
+          <StepIndex step={1} tone="ready" />
+          <IconUserCircle size={17} />
+          <span className="compact-step-copy">
+            <strong>Signed in</strong>
+            <span>
+              {signedInAuth.user.email} - {activeOrganization.name}
+            </span>
+          </span>
+        </div>
+        <div className="row-actions">
+          <IconButton
+            icon={<IconBuilding size={15} />}
+            onClick={() => {
+              void selectOrg();
+            }}
+            disabled={orgSelectionLoadable.state === "loading"}
+          >
+            Switch workspace
+          </IconButton>
+          <IconButton
+            tone="danger"
+            icon={<IconLogout size={15} />}
+            onClick={() => {
+              void signOut();
+            }}
+            disabled={signOutLoadable.state === "loading"}
+          >
+            Sign out
+          </IconButton>
+        </div>
+      </section>
+    );
+  }
+
+  const title = authLoading
+    ? "Checking sign-in"
+    : signedInAuth
+      ? "Select a workspace"
+      : signingIn
+        ? "Finish signing in"
+        : "Sign in to Zero";
+  const description = signedInAuth
+    ? "Choose the workspace that should receive this Mac as a Computer Use runtime."
+    : "Connect this Mac to a Zero account before Computer Use can register a runtime.";
+
+  return (
+    <section className="step-card step-card-expanded">
+      <div className="step-card-main">
+        <div className="step-kicker">
+          <StepIndex step={1} />
+          <span>Account</span>
+        </div>
+        <div className="step-heading">
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <div className="step-actions">
+          {signedInAuth ? (
+            <>
+              <IconButton
+                tone="primary"
+                icon={<IconBuilding size={15} />}
+                onClick={() => {
+                  void selectOrg();
+                }}
+                disabled={orgSelectionLoadable.state === "loading"}
+              >
+                Select workspace
+              </IconButton>
+              <IconButton
+                tone="danger"
+                icon={<IconLogout size={15} />}
+                onClick={() => {
+                  void signOut();
+                }}
+                disabled={signOutLoadable.state === "loading"}
+              >
+                Sign out
+              </IconButton>
+            </>
+          ) : (
+            <IconButton
+              tone="primary"
+              icon={<IconExternalLink size={15} />}
+              onClick={() => {
+                void signIn();
+              }}
+              disabled={authLoading || signingIn || !authBridgeAvailable}
+            >
+              {signingIn ? "Signing in..." : "Sign in"}
+            </IconButton>
+          )}
+        </div>
+      </div>
+      <aside className="step-guidance">
+        <strong>Next</strong>
+        <span>
+          After the account and workspace are ready, Zero will ask for the macOS
+          permissions needed by Computer Use.
+        </span>
+      </aside>
+    </section>
+  );
+}
+
+function PermissionSetupRow({
+  granted,
+  meta,
+  onOpenSettings,
+  onRequest,
+  requestLoading,
+  title,
+}: {
+  readonly granted: boolean;
+  readonly meta: string;
+  readonly onOpenSettings: () => void;
+  readonly onRequest: () => void;
+  readonly requestLoading: boolean;
+  readonly title: string;
+}) {
+  return (
+    <div className="permission-row">
+      <div>
+        <div className="row-title">{title}</div>
+        <div className="row-meta">{granted ? "Granted" : meta}</div>
+      </div>
+      <div className="row-actions">
+        {granted ? (
+          <span className="check-pill">
+            <IconCheck size={14} />
+            Ready
+          </span>
+        ) : (
+          <IconButton
+            icon={<IconShieldCheck size={15} />}
+            onClick={onRequest}
+            disabled={requestLoading}
+          >
+            Request
+          </IconButton>
+        )}
+        <IconButton
+          icon={<IconExternalLink size={15} />}
+          onClick={onOpenSettings}
+        >
+          Settings
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
+function PermissionsStepCard({
+  authReady,
   state,
 }: {
+  readonly authReady: boolean;
   readonly state: DesktopComputerUseState;
 }) {
   const [requestLoadable, requestPermission] = useLoadableSet(
@@ -368,122 +563,134 @@ function PermissionsPanel({
     useLoadableSet(requestScreenRecordingPermission$);
   const [, openAccessibility] = useLoadableSet(openAccessibilitySettings$);
   const [, openScreenRecording] = useLoadableSet(openScreenRecordingSettings$);
+  const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
   const accessibilityGranted = state.permissions.accessibility;
   const screenRecordingGranted = state.permissions.screenRecording;
+  const permissionsReady = hasRequiredComputerUsePermissions(state.permissions);
+
+  if (!authReady) {
+    return (
+      <section className="step-card step-card-locked">
+        <div className="step-card-main">
+          <div className="step-kicker">
+            <StepIndex step={2} tone="pending" />
+            <span>Permissions</span>
+          </div>
+          <div className="step-heading">
+            <h2>Allow Computer Use permissions</h2>
+            <p>Sign in and select a workspace first.</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (permissionsReady) {
+    return (
+      <section className="step-card step-card-compact">
+        <div className="compact-step-main">
+          <StepIndex step={2} tone="ready" />
+          <IconShieldCheck size={17} />
+          <span className="compact-step-copy">
+            <strong>Permissions ready</strong>
+            <span>Accessibility and Screen Recording granted</span>
+          </span>
+        </div>
+        <div className="row-actions">
+          <IconButton
+            icon={<IconExternalLink size={15} />}
+            onClick={() => {
+              void openAccessibility();
+            }}
+          >
+            Accessibility Settings
+          </IconButton>
+          <IconButton
+            icon={<IconExternalLink size={15} />}
+            onClick={() => {
+              void openScreenRecording();
+            }}
+          >
+            Screen Recording Settings
+          </IconButton>
+          <IconButton
+            icon={<IconRefresh size={15} />}
+            onClick={() => {
+              void refresh();
+            }}
+            disabled={refreshLoadable.state === "loading"}
+          >
+            Refresh
+          </IconButton>
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <Panel title="Permissions" icon={<IconShieldCheck size={18} />}>
-      <div className="permission-list">
-        <div className="permission-row">
-          <div>
-            <div className="row-title">Accessibility</div>
-            <div className="row-meta">
-              {accessibilityGranted ? "Granted" : "Required for UI control"}
-            </div>
-          </div>
-          <div className="row-actions">
-            {accessibilityGranted ? (
-              <span className="check-pill">
-                <IconCheck size={14} />
-                Ready
-              </span>
-            ) : (
-              <>
-                <IconButton
-                  icon={<IconShieldCheck size={15} />}
-                  onClick={() => {
-                    void requestPermission();
-                  }}
-                  disabled={requestLoadable.state === "loading"}
-                >
-                  Request
-                </IconButton>
-                <IconButton
-                  icon={<IconExternalLink size={15} />}
-                  onClick={() => {
-                    void openAccessibility();
-                  }}
-                >
-                  Settings
-                </IconButton>
-              </>
-            )}
-          </div>
+    <section className="step-card step-card-expanded">
+      <div className="step-card-main">
+        <div className="step-kicker">
+          <StepIndex step={2} />
+          <span>Permissions</span>
         </div>
-        <div className="permission-row">
-          <div>
-            <div className="row-title">Screen Recording</div>
-            <div className="row-meta">
-              {screenRecordingGranted ? "Granted" : "Required for screenshots"}
-            </div>
-          </div>
-          <div className="row-actions">
-            {screenRecordingGranted ? (
-              <span className="check-pill">
-                <IconCheck size={14} />
-                Ready
-              </span>
-            ) : (
-              <>
-                <IconButton
-                  icon={<IconShieldCheck size={15} />}
-                  onClick={() => {
-                    void requestScreenRecording();
-                  }}
-                  disabled={screenRecordingRequestLoadable.state === "loading"}
-                >
-                  Request
-                </IconButton>
-                <IconButton
-                  icon={<IconExternalLink size={15} />}
-                  onClick={() => {
-                    void openScreenRecording();
-                  }}
-                >
-                  Settings
-                </IconButton>
-              </>
-            )}
-          </div>
+        <div className="step-heading">
+          <h2>Allow Computer Use permissions</h2>
+          <p>
+            Zero needs macOS permission to inspect the screen and control UI
+            elements on this Mac.
+          </p>
+        </div>
+        <div className="permission-list">
+          <PermissionSetupRow
+            title="Accessibility"
+            meta="Required for clicking, typing, and reading UI structure"
+            granted={accessibilityGranted}
+            requestLoading={requestLoadable.state === "loading"}
+            onRequest={() => {
+              void requestPermission();
+            }}
+            onOpenSettings={() => {
+              void openAccessibility();
+            }}
+          />
+          <PermissionSetupRow
+            title="Screen Recording"
+            meta="Required for screenshots and visual context"
+            granted={screenRecordingGranted}
+            requestLoading={screenRecordingRequestLoadable.state === "loading"}
+            onRequest={() => {
+              void requestScreenRecording();
+            }}
+            onOpenSettings={() => {
+              void openScreenRecording();
+            }}
+          />
         </div>
       </div>
-    </Panel>
+      <aside className="step-guidance">
+        <strong>Runtime is hidden</strong>
+        <span>
+          Runtime status and command history appear after both permissions are
+          ready.
+        </span>
+      </aside>
+    </section>
   );
 }
 
-function RuntimePanel({
-  authLoading,
-  authState,
-  state,
-}: {
-  readonly authLoading: boolean;
-  readonly authState: DesktopAuthState | null;
-  readonly state: DesktopComputerUseState;
-}) {
+function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   const [startLoadable, start] = useLoadableSet(startComputerUse$);
+  const [stopLoadable, stop] = useLoadableSet(stopComputerUse$);
   const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
-  const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
   const [keepAwakeLoadable, setKeepAwakeEnabled] =
     useLoadableSet(setKeepAwakeEnabled$);
-  const [orgSelectionLoadable, selectOrg] = useLoadableSet(
-    openDesktopOrgSelection$,
-  );
-  const missingPermissions =
-    !state.permissions.accessibility || !state.permissions.screenRecording;
-  const signedOut =
-    !authLoading && (!authState || authState.status === "signed_out");
-  const signingIn = authState?.status === "signing_in";
-  const needsOrganization =
-    !authLoading &&
-    authState?.status === "signed_in" &&
-    authState.organization === null;
   const startDisabled =
-    authLoading ||
-    !hasReadyDesktopAuth(authState) ||
-    missingPermissions ||
     state.host.status === "connecting" ||
     state.host.status === "online" ||
     startLoadable.state === "loading";
+  const stopDisabled =
+    state.host.status !== "online" || stopLoadable.state === "loading";
 
   return (
     <Panel title="Runtime" icon={<IconActivityHeartbeat size={18} />}>
@@ -535,6 +742,16 @@ function RuntimePanel({
           Start
         </IconButton>
         <IconButton
+          tone="danger"
+          icon={<IconPlayerStop size={15} />}
+          onClick={() => {
+            void stop();
+          }}
+          disabled={stopDisabled}
+        >
+          Stop
+        </IconButton>
+        <IconButton
           icon={<IconRefresh size={15} />}
           onClick={() => {
             void refresh();
@@ -543,30 +760,6 @@ function RuntimePanel({
         >
           Refresh
         </IconButton>
-        {(signedOut || state.host.status === "unauthenticated") &&
-          hasDesktopAuthBridge() && (
-            <IconButton
-              icon={<IconExternalLink size={15} />}
-              onClick={() => {
-                void signIn();
-              }}
-              disabled={signingIn || signInLoadable.state === "loading"}
-            >
-              {signingIn ? "Signing in..." : "Sign in"}
-            </IconButton>
-          )}
-        {(needsOrganization || state.host.status === "needs_organization") &&
-          hasDesktopAuthBridge() && (
-            <IconButton
-              icon={<IconBuilding size={15} />}
-              onClick={() => {
-                void selectOrg();
-              }}
-              disabled={orgSelectionLoadable.state === "loading"}
-            >
-              Select workspace
-            </IconButton>
-          )}
       </div>
     </Panel>
   );
@@ -921,6 +1114,9 @@ function ComputerUseContent({
   readonly authState: DesktopAuthState | null;
   readonly state: DesktopComputerUseState;
 }) {
+  const authReady = hasReadyDesktopAuth(authState);
+  const permissionsReady = hasRequiredComputerUsePermissions(state.permissions);
+
   return (
     <>
       <AutoStartRuntime authState={authState} state={state} />
@@ -928,13 +1124,14 @@ function ComputerUseContent({
         <UnsupportedPanel platform={state.platform} />
       ) : (
         <>
-          <PermissionsPanel state={state} />
-          <RuntimePanel
-            authLoading={authLoading}
-            authState={authState}
-            state={state}
-          />
-          <CommandLogPanel state={state} />
+          <AuthStepCard authLoading={authLoading} authState={authState} />
+          <PermissionsStepCard authReady={authReady} state={state} />
+          {authReady && permissionsReady && (
+            <>
+              <RuntimePanel state={state} />
+              <CommandLogPanel state={state} />
+            </>
+          )}
         </>
       )}
     </>
@@ -987,121 +1184,11 @@ function ComputerUsePage() {
   );
 }
 
-function AccountMenu({
-  authState,
-  loading,
-  onSelectOrg,
-  onSignIn,
-  onSignOut,
-  orgSelectionLoading,
-  signInLoading,
-  signOutLoading,
-}: {
-  readonly authState: DesktopAuthState | null;
-  readonly loading: boolean;
-  readonly onSelectOrg: () => void;
-  readonly onSignIn: () => void;
-  readonly onSignOut: () => void;
-  readonly orgSelectionLoading: boolean;
-  readonly signInLoading: boolean;
-  readonly signOutLoading: boolean;
-}) {
-  if (
-    !authState ||
-    authState.status === "signed_out" ||
-    authState.status === "signing_in"
-  ) {
-    const signingIn =
-      authState?.status === "signing_in" || signInLoading === true;
-    return (
-      <IconButton
-        icon={<IconExternalLink size={15} />}
-        onClick={onSignIn}
-        disabled={loading || signingIn}
-      >
-        {signingIn ? "Signing in..." : loading ? "Checking" : "Sign in"}
-      </IconButton>
-    );
-  }
-
-  const workspaceLabel = authState.organization?.name ?? "Select workspace";
-
-  return (
-    <details className="account-menu">
-      <summary className="account-summary">
-        <IconUserCircle size={17} />
-        <span className="account-copy">
-          <span className="account-email">{authState.user.email}</span>
-        </span>
-        <IconChevronDown size={14} />
-      </summary>
-      <div className="account-popover">
-        <div className="account-popover-heading">
-          <span>Signed in as</span>
-          <strong>{authState.user.email}</strong>
-        </div>
-        <div className="account-popover-heading">
-          <span>Workspace</span>
-          <strong>{workspaceLabel}</strong>
-        </div>
-        <button
-          type="button"
-          className="account-menu-item"
-          onClick={onSelectOrg}
-          disabled={orgSelectionLoading}
-        >
-          <IconBuilding size={15} />
-          <span>
-            {authState.organization ? "Switch workspace" : "Select workspace"}
-          </span>
-        </button>
-        <button
-          type="button"
-          className="account-menu-item"
-          onClick={onSignOut}
-          disabled={signOutLoading}
-        >
-          <IconLogout size={15} />
-          <span>Sign out</span>
-        </button>
-      </div>
-    </details>
-  );
-}
-
 function Header() {
-  const authLoadable = useLastLoadable(desktopAuthData$);
-  const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
-  const [orgSelectionLoadable, selectOrg] = useLoadableSet(
-    openDesktopOrgSelection$,
-  );
-  const [signOutLoadable, signOut] = useLoadableSet(signOutDesktop$);
-  const authState = authLoadable.state === "hasData" ? authLoadable.data : null;
-  const authLoading = authLoadable.state === "loading";
   return (
     <header className="app-header">
       <div className="titlebar-title">
         <h1>Zero Computer Use</h1>
-      </div>
-      <div className="header-actions">
-        {hasDesktopAuthBridge() && (
-          <AccountMenu
-            authState={authState}
-            loading={authLoading}
-            onSignIn={() => {
-              void signIn();
-            }}
-            onSignOut={() => {
-              void signOut();
-            }}
-            onSelectOrg={() => {
-              void selectOrg();
-            }}
-            orgSelectionLoading={orgSelectionLoadable.state === "loading"}
-            signInLoading={signInLoadable.state === "loading"}
-            signOutLoading={signOutLoadable.state === "loading"}
-          />
-        )}
       </div>
     </header>
   );

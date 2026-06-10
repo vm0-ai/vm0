@@ -4176,6 +4176,157 @@
     "generationAccessHeading": "VM0 で {name} を使う",
     "generationAccessBody": "VM0 のエージェントはエージェント実行の一部として {name} を呼び出すことができ、VM0 クレジットで請求されます。上記の定価はアップストリーム・プロバイダーが課金する金額で、VM0 は標準のクレジット換算で透過的に転送します。",
     "content": {
+      "claude-fable-5": {
+        "name": "Claude Fable 5",
+        "pageTitle": "VM0 の Claude Fable 5",
+        "tagline": "最も難しいエージェント実行向けの Anthropic Claude 5 フラッグシップ。Fable 5 は 1M トークンのコンテキスト、画像とコード入力、プロンプトキャッシュ、Claude 4 系より広い推論余力を備えています。",
+        "cardIntro": "難しいエージェント作業、大規模コードベース、高リスクの推論向けの Anthropic Claude 5 フラッグシップ。Opus 4.x より高品質で、トークン単価も高くなります。",
+        "metaTitle": "Claude Fable 5: 価格、機能、VM0 ルーティング",
+        "metaDescription": "VM0 の Claude Fable 5。Anthropic が 2026年6月9日にリリースした Claude 5 フラッグシップ。1M トークンコンテキスト、画像入力、プロンプトキャッシュ、ベンダー価格 $10/$50、VM0 Built-in と BYOK に対応。",
+        "summary": "Claude Fable 5 は、Anthropic が 2026年6月9日にリリースした Claude 5 フラッグシップで、ファーストパーティ API では claude-fable-5 として提供されます。VM0 では、利用可能な Anthropic の最強推論が必要なエージェント実行向けの高性能 Built-in モデルです。特に長いコードベース作業、深いツール利用、Sonnet や Opus 4.x が明確に限界に達するタスクで使います。\n\nトレードオフはコストとデータポリシーです。ベンダー定価は入力 $10 / 出力 $50 / 1M トークンで、プロンプトキャッシュ読み取りは $1、キャッシュ書き込みは $12.50 / 1M トークンです。Anthropic は Claude Fable 5 に 30 日間保持が必要であることも文書化しているため、Zero Data Retention が必要なワークロードには適しません。",
+        "releaseDate": "2026年6月9日",
+        "familyPosition": "Claude 5 世代の最上位モデル。最も難しい推論ステップが単価より重要な場合に、Claude Opus 4.8 の上位として使います。",
+        "background": [
+          "Claude Fable 5 は、VM0 の curated ラインアップに入る最初の広く利用可能な Claude 5 モデルです。Claude 4 の Opus と Sonnet の上位に位置し、VM0 エージェントが依存している Anthropic の強みを維持しています。信頼できるツール利用、強いコード理解、長文コンテキストの一貫性、マルチモーダル入力です。",
+          "VM0 ユーザーが Fable 5 を選ぶ実務上の理由はエスカレーションです。ほとんどの本番エージェントは Sonnet または Opus のままにし、より深い計画、難しいデバッグ、非常に大きなコンテキストウィンドウでのより信頼できる実行が必要になったときに使います。Fable 5 は高価ですが重要なステップ向けです。",
+          "このモデルは VM0 Built-in ルーティング、Anthropic API キー、Claude Code OAuth、OpenRouter、Vercel AI Gateway で利用できます。OpenRouter と Vercel は gateway ID anthropic/claude-fable-5 を使い、Anthropic ネイティブのルートは claude-fable-5 を使います。"
+        ],
+        "architecture": "Claude Fable 5 は Anthropic の Claude 5 世代で、1M トークンのコンテキストウィンドウ、テキスト、画像、コード入力、Anthropic のプロンプトキャッシュを備えています。VM0 は Built-in モデルを Anthropic にルーティングし、OpenRouter と Vercel AI Gateway 向けに anthropic/claude-fable-5 などの gateway alias を正規化します。Anthropic はこのモデルに 30 日間保持が必要であると文書化しています。",
+        "specs": [
+          {
+            "label": "ファミリー",
+            "value": "Claude 5 世代"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキスト、画像、コード"
+          },
+          {
+            "label": "言語",
+            "value": "英語中心、多言語対応"
+          },
+          {
+            "label": "プロンプトキャッシュ",
+            "value": "サポート（Anthropic）"
+          },
+          {
+            "label": "コンテキストウィンドウ",
+            "value": "1M トークン"
+          },
+          {
+            "label": "API モデル ID",
+            "value": "claude-fable-5"
+          },
+          {
+            "label": "Gateway モデル ID",
+            "value": "anthropic/claude-fable-5"
+          },
+          {
+            "label": "ベンダー定価",
+            "value": "入力 $10 / 出力 $50 / 1M"
+          }
+        ],
+        "benchmarksNote": "Claude Fable 5 の公開ベンチマーク情報はまだ初期段階です。安価な本番モデルの標準置き換えではなく、Anthropic の Claude 5 プレミアム推論ティアとして扱ってください。",
+        "benchmarks": [
+          {
+            "name": "エージェンティックコーディング",
+            "score": "フラッグシップ級",
+            "note": "最も難しいコード計画とデバッグ実行向け"
+          },
+          {
+            "name": "長文コンテキスト作業",
+            "score": "1M コンテキスト",
+            "note": "非常に大きなリポジトリとトランスクリプト向け"
+          },
+          {
+            "name": "マルチモーダル推論",
+            "score": "テキスト + 画像",
+            "note": "画像入力は VM0 互換ルートでサポート"
+          }
+        ],
+        "performance": [
+          {
+            "title": "推論余力",
+            "body": "Fable 5 は、Opus 4.8 や Sonnet 4.6 が難しい計画、デバッグ、統合ステップで失敗するときのエスカレーション先です。"
+          },
+          {
+            "title": "長文コンテキストの安定性",
+            "body": "1M トークンのコンテキストウィンドウにより、大きなコードベース、長い会話ログ、複数ソースの調査実行を過度な要約なしで扱えます。"
+          },
+          {
+            "title": "ツール多用のエージェント実行",
+            "body": "Anthropic モデルは構造化されたツール利用に強く、Fable 5 は長いツール呼び出し列を目標から逸らさずに保ちたい場合のプレミアム選択肢です。"
+          },
+          {
+            "title": "コスト特性",
+            "body": "Sonnet や Opus 4.x と比べると高価なので、通常のエージェントの全ターンではなく、高価値な特定ステップに使うのが適しています。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "大規模コードベースの移行プランナー",
+            "body": "アーキテクチャメモ、issue 履歴、多数のソースファイルを読み、依存関係やエッジケースの見落としが高くつく多段階リファクタリングを計画します。"
+          },
+          {
+            "title": "インシデント分析エージェント",
+            "body": "ログ、トレース、デプロイ履歴、ソースコンテキストを組み合わせて本番回帰を説明し、具体的なロールバックまたは修正パスを提案します。"
+          },
+          {
+            "title": "厳しい最終レビュー",
+            "body": "安価なモデルがパッチを作った後に実行し、出荷前に微妙なロジック、セキュリティ、課金、並行性の失敗を探します。"
+          }
+        ],
+        "avoidFor": "大量分類、定型的なサポート返信、レイテンシ重視の小さなタスク、Zero Data Retention が必要なワークロードでは Fable 5 を避けてください。最大推論深度よりスループットと単価が重要な場合は Sonnet、Kimi、MiniMax、DeepSeek を使います。",
+        "comparisons": [
+          {
+            "vs": "Claude Opus 4.8",
+            "body": "Opus 4.8 はより安く、強力なプレミアムデフォルトであり続けます。Fable 5 は、Anthropic の最新推論ティアが必要なタスクで使う上位選択肢です。"
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 はコスト基準であり、多くの VM0 エージェントのデフォルトです。Fable 5 は Sonnet の推論限界が見える少数の実行向けです。"
+          },
+          {
+            "vs": "GPT-5.5",
+            "body": "どちらもプレミアム推論の選択肢です。Anthropic のツール挙動、Claude Code ワークフロー、Claude 互換プロンプトがより合う場合は Fable 5 を選びます。"
+          }
+        ],
+        "verdict": "Claude Fable 5 は意図的なエスカレーションモデルとして使います。エージェントを動かす最安の方法ではありませんが、最も難しいステップにコストを払う価値があるときに選ぶ Anthropic モデルです。",
+        "faqs": [
+          {
+            "q": "Claude Fable 5 のモデル ID は何ですか？",
+            "a": "Anthropic ネイティブのルートでは claude-fable-5 を使います。OpenRouter と Vercel AI Gateway では anthropic/claude-fable-5 を使います。"
+          },
+          {
+            "q": "Claude Fable 5 は画像入力をサポートしますか？",
+            "a": "はい。VM0 は Fable 5 をテキスト、画像、コード入力対応として扱います。"
+          },
+          {
+            "q": "Claude Fable 5 のベンダー価格はいくらですか？",
+            "a": "ベンダー定価は入力 $10、出力 $50 / 1M トークンで、キャッシュ読み取りは $1、キャッシュ書き込みは $12.50 / 1M トークンです。"
+          },
+          {
+            "q": "Fable 5 を Sonnet のデフォルト置き換えにすべきですか？",
+            "a": "通常は違います。日常的なエージェントは Sonnet または Opus のままにし、最も難しい推論、デバッグ、レビューのステップで Fable 5 にエスカレーションします。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-opus-4-8",
+            "reason": "単価が低い Anthropic のプレミアムモデル"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "ほとんどのエージェントターン向けの VM0 デフォルトワークホース"
+          },
+          {
+            "slug": "gpt-5-5",
+            "reason": "代替のプレミアム推論モデル"
+          }
+        ],
+        "routingNotes": "VM0 Built-in は Claude Fable 5 を Anthropic 経由でルーティングします。BYOK は Anthropic API キー、Claude Code OAuth、OpenRouter、Vercel AI Gateway でサポートされます。",
+        "vm0Notes": "Fable 5 は Built-in ラインアップ内の高コスト core モデルです。最大の推論深度が必要な実行のエスカレーション先として最適で、安価なモデルは通常のツール呼び出しや高ボリューム作業を引き続き担当します。"
+      },
       "claude-opus-4-8": {
         "name": "Claude Opus 4.8",
         "pageTitle": "Claude Opus 4.8",

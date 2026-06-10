@@ -20,6 +20,7 @@ interface DesktopTrayControllerOptions {
   readonly getAuthState: () => Promise<DesktopAuthState>;
   readonly showMainWindow: () => Promise<void>;
   readonly startComputerUse: () => Promise<void>;
+  readonly stopComputerUse: () => Promise<void>;
   readonly refreshStatus: () => Promise<void>;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => Promise<void>;
@@ -155,6 +156,9 @@ export class DesktopTrayController {
       }),
       startComputerUse: this.runAction("start Computer Use", () => {
         return this.options.startComputerUse();
+      }),
+      stopComputerUse: this.runAction("stop Computer Use", () => {
+        return this.options.stopComputerUse();
       }),
       refreshStatus: this.runAction(
         "refresh status",

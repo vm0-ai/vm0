@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.321.0](https://github.com/vm0-ai/vm0/compare/core-v8.320.2...core-v8.321.0) (2026-06-10)
+
+
+### Features
+
+* add claude fable 5 model support ([#16996](https://github.com/vm0-ai/vm0/issues/16996)) ([c9a6eb1](https://github.com/vm0-ai/vm0/commit/c9a6eb12ddae7e58940d72436f5ceb2032d557d6))
+* **cli:** re-land zero video transcribe + frames with sandbox STT access ([#17003](https://github.com/vm0-ai/vm0/issues/17003)) ([8ec0ffc](https://github.com/vm0-ai/vm0/commit/8ec0ffc6dd4fb797dc3f065160d8d118a4c24e4d))
+* roll out workspace image cache ([#16990](https://github.com/vm0-ai/vm0/issues/16990)) ([420f20b](https://github.com/vm0-ai/vm0/commit/420f20b1288d217e456432290f57d29efeebef37))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.77.0
+    * @vm0/connectors bumped to 1.59.0
+
 ## [8.320.2](https://github.com/vm0-ai/vm0/compare/core-v8.320.1...core-v8.320.2) (2026-06-10)
 
 

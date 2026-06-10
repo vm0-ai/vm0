@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.419.0](https://github.com/vm0-ai/vm0/compare/web-v12.418.3...web-v12.419.0) (2026-06-10)
+
+
+### Features
+
+* add claude fable 5 model support ([#16996](https://github.com/vm0-ai/vm0/issues/16996)) ([c9a6eb1](https://github.com/vm0-ai/vm0/commit/c9a6eb12ddae7e58940d72436f5ceb2032d557d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.77.0
+    * @vm0/core bumped to 8.321.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.59.0
+
 ## [12.418.3](https://github.com/vm0-ai/vm0/compare/web-v12.418.2...web-v12.418.3) (2026-06-10)
 
 

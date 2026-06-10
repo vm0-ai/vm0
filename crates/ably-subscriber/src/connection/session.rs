@@ -1,0 +1,421 @@
+use std::time::Duration;
+
+use tokio::time::Instant;
+
+use super::state::{
+    ChannelLifecycleState, ConnState, ConnectionLifecycleState, RealtimeStateMachine,
+    checked_deadline_after, checked_deadline_from, retry_delay,
+};
+use crate::protocol::ProtocolMessage;
+use crate::types::TokenDetails;
+
+pub(crate) struct SessionState {
+    conn_state: ConnState,
+    lifecycle: RealtimeStateMachine,
+    token_renewal_failures: u32,
+    channel_retry_at: Option<Instant>,
+    channel_retry_count: u32,
+    channel_operation_deadline: Option<Instant>,
+    connected_event_pending: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TokenRenewalFailure {
+    Retry { failures: u32 },
+    Fatal { failures: u32 },
+}
+
+impl SessionState {
+    pub(crate) fn connected(conn_state: ConnState) -> Self {
+        Self {
+            conn_state,
+            lifecycle: RealtimeStateMachine::connected(),
+            token_renewal_failures: 0,
+            channel_retry_at: None,
+            channel_retry_count: 0,
+            channel_operation_deadline: None,
+            connected_event_pending: false,
+        }
+    }
+
+    pub(super) fn channel_operation_deadline(&self) -> Option<Instant> {
+        self.channel_operation_deadline
+    }
+
+    pub(super) fn channel_retry_at(&self) -> Option<Instant> {
+        self.channel_retry_at
+    }
+
+    pub(super) fn token_renewal_at(&self) -> Option<Instant> {
+        self.conn_state.token_renewal_at
+    }
+
+    pub(super) fn max_idle_interval(&self) -> Option<Duration> {
+        self.conn_state.max_idle_interval
+    }
+
+    pub(super) fn channel_state(&self) -> ChannelLifecycleState {
+        self.lifecycle.channel
+    }
+
+    pub(super) fn connection_is_suspended(&self) -> bool {
+        self.lifecycle.connection == ConnectionLifecycleState::Suspended
+    }
+
+    pub(super) fn channel_serial(&self) -> Option<&str> {
+        self.conn_state.channel_serial.as_deref()
+    }
+
+    pub(super) fn token(&self) -> &str {
+        &self.conn_state.token.token
+    }
+
+    pub(super) fn connection_key(&self) -> Option<&str> {
+        self.conn_state.connection_key.as_deref()
+    }
+
+    pub(super) fn connection_id(&self) -> Option<&str> {
+        self.conn_state.connection_id.as_deref()
+    }
+
+    pub(super) fn can_resume(&self) -> bool {
+        self.conn_state.can_resume()
+    }
+
+    pub(super) fn begin_channel_attach(&mut self, realtime_request_timeout: Duration) -> bool {
+        self.lifecycle.request_channel_attaching();
+        if self.lifecycle.channel != ChannelLifecycleState::Attaching
+            || !self.lifecycle.connection.send_events()
+        {
+            return false;
+        }
+
+        self.channel_retry_at = None;
+        self.channel_operation_deadline = checked_deadline_after(realtime_request_timeout);
+        true
+    }
+
+    pub(super) fn clear_elapsed_channel_operation_deadline(
+        &mut self,
+        now: Instant,
+        channel_retry_timeout: Duration,
+    ) -> Option<bool> {
+        if self
+            .channel_operation_deadline
+            .is_none_or(|deadline| deadline > now)
+        {
+            return None;
+        }
+
+        self.channel_operation_deadline = None;
+        if self.lifecycle.channel == ChannelLifecycleState::Attaching {
+            self.enter_channel_suspended(channel_retry_timeout);
+            return Some(true);
+        }
+        Some(false)
+    }
+
+    pub(super) fn clear_elapsed_channel_retry(&mut self, now: Instant) -> Option<bool> {
+        if self.channel_retry_at.is_none_or(|deadline| deadline > now) {
+            return None;
+        }
+
+        self.channel_retry_at = None;
+        Some(self.lifecycle.channel == ChannelLifecycleState::Suspended)
+    }
+
+    pub(super) fn enter_channel_suspended(&mut self, channel_retry_timeout: Duration) {
+        self.conn_state.channel_serial = None;
+        self.lifecycle.notify_channel_suspended();
+        self.schedule_channel_retry(channel_retry_timeout);
+    }
+
+    pub(super) fn mark_channel_attached(&mut self) {
+        self.lifecycle.notify_channel_attached();
+        self.channel_retry_at = None;
+        self.channel_retry_count = 0;
+        self.channel_operation_deadline = None;
+    }
+
+    pub(super) fn enter_channel_failed(&mut self) {
+        self.conn_state.channel_serial = None;
+        self.lifecycle.notify_channel_failed();
+        self.channel_retry_at = None;
+        self.channel_operation_deadline = None;
+        self.connected_event_pending = false;
+    }
+
+    pub(super) fn record_channel_serial(&mut self, channel_serial: String) {
+        self.conn_state.channel_serial = Some(channel_serial);
+    }
+
+    pub(super) fn mark_connection_disconnected(&mut self, now: Instant) {
+        self.conn_state.disconnected_at = Some(now);
+        self.lifecycle.notify_disconnected();
+    }
+
+    pub(super) fn notify_protocol_disconnected(&mut self) {
+        self.lifecycle.notify_disconnected();
+    }
+
+    pub(super) fn suspend_deadline(&self) -> Option<Instant> {
+        if self.lifecycle.connection == ConnectionLifecycleState::Suspended
+            || self.conn_state.connection_key.is_none()
+        {
+            return None;
+        }
+        self.conn_state.disconnected_at.and_then(|disconnected_at| {
+            checked_deadline_from(disconnected_at, self.conn_state.connection_state_ttl)
+        })
+    }
+
+    pub(super) fn should_enter_suspended_retry(&self) -> bool {
+        self.lifecycle.connection != ConnectionLifecycleState::Suspended
+            && self.conn_state.disconnected_at.is_some()
+            && !self.conn_state.can_resume()
+    }
+
+    pub(super) fn enter_suspended_retry_state(&mut self) {
+        self.conn_state.clear_resume_state();
+        self.lifecycle.notify_suspended();
+        self.conn_state.channel_serial = None;
+        self.channel_retry_at = None;
+        self.channel_operation_deadline = None;
+        self.connected_event_pending = false;
+    }
+
+    pub(super) fn request_closing(&mut self) {
+        self.lifecycle.request_closing();
+    }
+
+    pub(super) fn mark_closed(&mut self) {
+        self.lifecycle.notify_closed();
+    }
+
+    pub(super) fn enter_connection_failed(&mut self) {
+        self.lifecycle.notify_failed();
+        self.conn_state.channel_serial = None;
+        self.channel_retry_at = None;
+        self.channel_operation_deadline = None;
+    }
+
+    pub(super) fn update_from_connected(&mut self, msg: &ProtocolMessage) {
+        self.conn_state.update_from_connected(msg);
+    }
+
+    pub(super) fn take_connected_event_pending(&mut self) -> bool {
+        let pending = self.connected_event_pending;
+        self.connected_event_pending = false;
+        pending
+    }
+
+    pub(super) fn record_successful_token_renewal(&mut self) {
+        self.token_renewal_failures = 0;
+    }
+
+    pub(super) fn record_failed_token_renewal(
+        &mut self,
+        max_failures: u32,
+        retry_delay: Duration,
+    ) -> TokenRenewalFailure {
+        self.token_renewal_failures = self.token_renewal_failures.saturating_add(1);
+        let failures = self.token_renewal_failures;
+
+        if failures >= max_failures {
+            self.lifecycle.notify_failed();
+            return TokenRenewalFailure::Fatal { failures };
+        }
+
+        self.conn_state.token_renewal_at = checked_deadline_after(retry_delay);
+        TokenRenewalFailure::Retry { failures }
+    }
+
+    pub(super) fn commit_token(&mut self, token: TokenDetails, token_renewal_margin: Duration) {
+        self.conn_state.token = token;
+        self.conn_state.token_renewal_at =
+            ConnState::compute_renewal_at(&self.conn_state.token, token_renewal_margin);
+    }
+
+    pub(super) fn request_connecting(&mut self) {
+        self.lifecycle.request_connecting();
+    }
+
+    pub(super) fn commit_reconnect_attached(
+        &mut self,
+        connected_msg: &ProtocolMessage,
+        channel_serial: Option<String>,
+        token: Option<TokenDetails>,
+        token_renewal_margin: Duration,
+    ) {
+        if let Some(serial) = channel_serial {
+            self.conn_state.channel_serial = Some(serial);
+        }
+        self.commit_connected_transport_state(connected_msg, token, token_renewal_margin);
+        self.token_renewal_failures = 0;
+        self.connected_event_pending = false;
+        self.lifecycle.notify_connected();
+    }
+
+    pub(super) fn commit_reconnect_channel_suspended(
+        &mut self,
+        connected_msg: &ProtocolMessage,
+        token: Option<TokenDetails>,
+        token_renewal_margin: Duration,
+        channel_retry_timeout: Duration,
+    ) {
+        self.conn_state.channel_serial = None;
+        self.commit_connected_transport_state(connected_msg, token, token_renewal_margin);
+        self.token_renewal_failures = 0;
+        self.lifecycle.notify_transport_connected();
+        self.enter_channel_suspended(channel_retry_timeout);
+        self.connected_event_pending = true;
+    }
+
+    pub(super) fn commit_reconnect_closed(&mut self) {
+        self.conn_state.channel_serial = None;
+        self.lifecycle.notify_closed();
+    }
+
+    pub(super) fn mark_reconnect_failed_if_not_suspended(&mut self) {
+        if self.lifecycle.connection != ConnectionLifecycleState::Suspended {
+            self.lifecycle.notify_disconnected();
+        }
+    }
+
+    fn schedule_channel_retry(&mut self, channel_retry_timeout: Duration) {
+        self.channel_operation_deadline = None;
+        if self.lifecycle.channel == ChannelLifecycleState::Suspended
+            && self.lifecycle.connection.send_events()
+        {
+            self.channel_retry_count = self.channel_retry_count.saturating_add(1);
+            self.channel_retry_at = checked_deadline_after(retry_delay(
+                channel_retry_timeout,
+                self.channel_retry_count,
+            ));
+        } else {
+            self.channel_retry_at = None;
+        }
+    }
+
+    fn commit_connected_transport_state(
+        &mut self,
+        connected_msg: &ProtocolMessage,
+        token: Option<TokenDetails>,
+        token_renewal_margin: Duration,
+    ) {
+        self.conn_state.update_from_connected(connected_msg);
+        if let Some(token) = token {
+            self.commit_token(token, token_renewal_margin);
+        }
+        self.conn_state.disconnected_at = None;
+        self.channel_retry_at = None;
+        self.channel_retry_count = 0;
+        self.channel_operation_deadline = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{ConnectionDetails, action};
+    use crate::types::{TimingConfig, TokenDetails};
+
+    fn test_token() -> TokenDetails {
+        TokenDetails {
+            token: "token".to_string(),
+            expires: i64::MAX,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        }
+    }
+
+    fn test_conn_state() -> ConnState {
+        let timing = TimingConfig::default();
+        ConnState {
+            connection_id: Some("conn-1".to_string()),
+            connection_key: Some("conn-1!key".to_string()),
+            channel_serial: Some("serial-0".to_string()),
+            connection_state_ttl: timing.default_connection_state_ttl,
+            max_idle_interval: Some(timing.default_max_idle_interval),
+            disconnected_at: None,
+            token: test_token(),
+            token_renewal_at: None,
+        }
+    }
+
+    #[test]
+    fn channel_retry_count_saturates_at_max_attempt() {
+        let timing = TimingConfig::default();
+        let mut state = SessionState::connected(test_conn_state());
+        state.lifecycle.notify_channel_suspended();
+        state.channel_retry_count = u32::MAX;
+
+        state.schedule_channel_retry(timing.channel_retry_timeout);
+
+        assert_eq!(state.channel_retry_count, u32::MAX);
+        assert!(state.channel_retry_at.is_some());
+    }
+
+    #[test]
+    fn suspended_retry_clears_resume_channel_and_pending_state() {
+        let mut state = SessionState::connected(test_conn_state());
+        state.connected_event_pending = true;
+        state.channel_retry_at = Some(Instant::now());
+        state.channel_operation_deadline = Some(Instant::now());
+
+        state.enter_suspended_retry_state();
+
+        assert_eq!(state.connection_id(), None);
+        assert_eq!(state.connection_key(), None);
+        assert_eq!(state.channel_serial(), None);
+        assert_eq!(state.channel_retry_at(), None);
+        assert_eq!(state.channel_operation_deadline(), None);
+        assert!(!state.connected_event_pending);
+        assert_eq!(
+            state.lifecycle.connection,
+            ConnectionLifecycleState::Suspended
+        );
+    }
+
+    #[test]
+    fn reconnect_channel_suspended_sets_pending_connected_event() {
+        let timing = TimingConfig::default();
+        let mut state = SessionState::connected(test_conn_state());
+        state.request_connecting();
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-2".to_string()),
+            connection_key: Some("conn-2!key".to_string()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-2!key".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        state.commit_reconnect_channel_suspended(
+            &connected,
+            None,
+            timing.token_renewal_margin,
+            timing.channel_retry_timeout,
+        );
+
+        assert!(state.connected_event_pending);
+        assert_eq!(state.channel_serial(), None);
+        assert_eq!(state.connection_id(), Some("conn-2"));
+        assert_eq!(state.channel_state(), ChannelLifecycleState::Suspended);
+        assert!(state.channel_retry_at().is_some());
+    }
+
+    #[test]
+    fn token_renewal_failure_marks_failed_at_max_attempts() {
+        let timing = TimingConfig::default();
+        let mut state = SessionState::connected(test_conn_state());
+
+        let result = state.record_failed_token_renewal(1, timing.token_renewal_retry_delay);
+
+        assert!(matches!(result, TokenRenewalFailure::Fatal { failures: 1 }));
+        assert_eq!(state.lifecycle.connection, ConnectionLifecycleState::Failed);
+    }
+}

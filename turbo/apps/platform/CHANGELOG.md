@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.431.0](https://github.com/vm0-ai/vm0/compare/app-v0.430.2...app-v0.431.0) (2026-06-10)
+
+
+### Features
+
+* add claude fable 5 model support ([#16996](https://github.com/vm0-ai/vm0/issues/16996)) ([c9a6eb1](https://github.com/vm0-ai/vm0/commit/c9a6eb12ddae7e58940d72436f5ceb2032d557d6))
+* **app:** require supported browser versions ([#16922](https://github.com/vm0-ai/vm0/issues/16922)) ([ef572ca](https://github.com/vm0-ai/vm0/commit/ef572cabb1b30d6e4439b954a4b0dd0e8b836a94))
+
+
+### Bug Fixes
+
+* use official ahrefs connector icon ([#17000](https://github.com/vm0-ai/vm0/issues/17000)) ([62b2f0b](https://github.com/vm0-ai/vm0/commit/62b2f0bbf378be87846be076f6862efcf6b08d2a))
+* use official amplitude connector icon ([#17006](https://github.com/vm0-ai/vm0/issues/17006)) ([d5790fe](https://github.com/vm0-ai/vm0/commit/d5790feb86fd1cc9d1e07534e8306fdb652adadf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.77.0
+    * @vm0/connectors bumped to 1.59.0
+    * @vm0/core bumped to 8.321.0
+
 ## [0.430.2](https://github.com/vm0-ai/vm0/compare/app-v0.430.1...app-v0.430.2) (2026-06-10)
 
 
