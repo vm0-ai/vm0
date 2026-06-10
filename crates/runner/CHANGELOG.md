@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.110.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.0...runner-rs-v0.110.1) (2026-06-10)
+
+
+### Refactoring
+
+* split firewall auth hook orchestration ([#17002](https://github.com/vm0-ai/vm0/issues/17002)) ([f042a66](https://github.com/vm0-ai/vm0/commit/f042a66aa0769d1992ded2a324dc91b36382f333))
+
 ## [0.110.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.109.0...runner-rs-v0.110.0) (2026-06-10)
 
 

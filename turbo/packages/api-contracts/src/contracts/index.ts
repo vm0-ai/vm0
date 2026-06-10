@@ -1413,6 +1413,14 @@ export {
   type ScheduleLoopCallbackPayload,
 } from "./internal-callbacks-schedule";
 export {
+  internalCallbacksTriggerContract,
+  triggerCronCallbackPayloadSchema,
+  triggerLoopCallbackPayloadSchema,
+  type InternalCallbacksTriggerContract,
+  type TriggerCronCallbackPayload,
+  type TriggerLoopCallbackPayload,
+} from "./internal-callbacks-trigger";
+export {
   internalCallbackBodySchema,
   internalCallbackErrorSchema,
   internalCallbackHeadersSchema,

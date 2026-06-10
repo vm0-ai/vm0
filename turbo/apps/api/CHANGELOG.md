@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.123.0](https://github.com/vm0-ai/vm0/compare/api-v1.122.0...api-v1.123.0) (2026-06-10)
+
+
+### Features
+
+* **api:** trigger completion callbacks restore live schedule semantics ([#17013](https://github.com/vm0-ai/vm0/issues/17013)) ([5c8740d](https://github.com/vm0-ai/vm0/commit/5c8740da92319b3f626cba70321e7f9f97ee38b8))
+
+
+### Bug Fixes
+
+* **api:** make schedule dual-write mirror best-effort ([#17009](https://github.com/vm0-ai/vm0/issues/17009)) ([37fce38](https://github.com/vm0-ai/vm0/commit/37fce38d1504d501cdaf472b0dc076088b1eee88))
+* **platform:** generate complete presentation scripts ([#16927](https://github.com/vm0-ai/vm0/issues/16927)) ([45254d9](https://github.com/vm0-ai/vm0/commit/45254d9501bac6cb0195ff1508b354d960fb18d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.78.0
+    * @vm0/core bumped to 8.321.1
+    * @vm0/db bumped to 1.39.1
+
 ## [1.122.0](https://github.com/vm0-ai/vm0/compare/api-v1.121.0...api-v1.122.0) (2026-06-10)
 
 

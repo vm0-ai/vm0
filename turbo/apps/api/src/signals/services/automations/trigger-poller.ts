@@ -47,6 +47,7 @@ interface DueTrigger {
     readonly userId: string;
     readonly chatThreadId: string;
     readonly instruction: string;
+    readonly appendSystemPrompt: string | null;
   };
 }
 
@@ -221,8 +222,8 @@ async function recordTriggerPreRunFailure(
 // Render a triggered run as a web-chat turn in the automation's linked thread.
 // Model comes from the thread pin (org default if unpinned); the session is
 // always fresh (no sessionId); the run is tagged with the automation + firing
-// trigger (run provenance). The poller advances next_run_at on claim, so there
-// is no reschedule callback here.
+// trigger (run provenance). The claim cleared next_run_at; the interpreter
+// attaches the trigger-keyed reschedule callback that advances it on completion.
 const runTriggerNow$ = command(
   async (
     { set },
@@ -261,8 +262,9 @@ const runTriggerNow$ = command(
     const { modelPin, effectiveModelProvider } = modelContext;
 
     // The single default interpreter handles every Automation kind, keyed off an
-    // automation-table time trigger event here (provenance + no reschedule
-    // callback). The registry is deferred to the first fetching interpreter.
+    // automation-table time trigger event here (provenance + trigger-keyed
+    // reschedule callback). The registry is deferred to the first fetching
+    // interpreter.
     const runInput = await new DefaultInterpreter().interpret(
       automationRowToTimeAutomation({
         id: automation.id,
@@ -271,6 +273,7 @@ const runTriggerNow$ = command(
         userId: automation.userId,
         chatThreadId: automation.chatThreadId,
         instruction: automation.instruction,
+        appendSystemPrompt: automation.appendSystemPrompt,
         triggerType: trigger.kind as "cron" | "once" | "loop",
         cronExpression: trigger.cronExpression,
         timezone: trigger.timezone,
@@ -350,9 +353,10 @@ const runTriggerNow$ = command(
  * of `executeDueSchedules$`, built for the (later, gated) cutover and NOT wired
  * to any live cron route in this slice. It mirrors the schedule poller's
  * semantics 1:1: scan enabled time triggers whose `next_run_at` is due, skip any
- * whose previous run is still active, optimistic-lock claim the due row (which
- * also advances cron/loop or disables once), then create the run via the default
- * interpreter (tagged with automation + trigger provenance) and auto-disable a
+ * whose previous run is still active, optimistic-lock claim the due row (clears
+ * `next_run_at`; disables once-triggers), then create the run via the default
+ * interpreter (tagged with automation + trigger provenance, carrying the
+ * trigger completion callback that advances the recurrence) and auto-disable a
  * trigger after consecutive pre-run failures. Nothing here changes live
  * execution; `executeDueSchedules$` remains the only schedule executor.
  */
@@ -373,6 +377,7 @@ export const executeDueTriggers$ = command(
         userId: automations.userId,
         chatThreadId: automations.chatThreadId,
         instruction: automations.instruction,
+        appendSystemPrompt: automations.appendSystemPrompt,
         automationEnabled: automations.enabled,
       })
       .from(automationTriggers)
@@ -415,6 +420,7 @@ export const executeDueTriggers$ = command(
           userId: row.userId,
           chatThreadId: row.chatThreadId,
           instruction: row.instruction,
+          appendSystemPrompt: row.appendSystemPrompt,
         },
       };
 
