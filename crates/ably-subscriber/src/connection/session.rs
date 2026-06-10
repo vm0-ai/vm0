@@ -30,16 +30,18 @@ pub(crate) struct SessionState {
     /// marks the lifecycle failed.
     token_renewal_failures: u32,
     /// Next suspended-channel reattach attempt. It is scheduled from a
-    /// suspended channel while the connection can send events, then cleared by
-    /// retry, reconnect, suspend, or terminal cleanup.
+    /// suspended channel while the connection can send events, then cleared
+    /// when consumed, superseded by a new attach, reset by reconnect/suspended
+    /// retry, or dropped on failure.
     channel_retry_at: Option<Instant>,
     /// Backoff counter used when scheduling suspended-channel retries. It
     /// resets after a successful channel attach, and reconnect commits reset it
     /// before scheduling any suspended retry on the new transport.
     channel_retry_count: u32,
-    /// Deadline for the current in-flight channel attach operation. This is
-    /// separate from `channel_retry_at`: operation deadlines time out active
-    /// attaches, while retry deadlines start the next attach attempt.
+    /// Deadline set for a sent channel attach operation. This is separate from
+    /// `channel_retry_at`: operation deadlines time out active attaches, while
+    /// retry deadlines start the next attach attempt. Reconnect, suspended
+    /// retry, and failure cleanup clear stale attach deadlines.
     channel_operation_deadline: Option<Instant>,
     /// A reconnect can restore the transport while channel attach is still
     /// suspended. In that case `Event::Connected` is held for a later `ATTACHED`
@@ -211,8 +213,8 @@ impl SessionState {
     // Suspended retry means the session can no longer resume the previous
     // connection, either because the resumable window expired or because no
     // resume key is available. Clear resume metadata, channel serial, pending
-    // channel work, and deferred connected emission before future attempts use
-    // a fresh connection.
+    // channel deadlines, and deferred connected emission before future attempts
+    // use a fresh connection.
     pub(super) fn enter_suspended_retry_state(&mut self) {
         self.conn_state.clear_resume_state();
         self.lifecycle.notify_suspended();
