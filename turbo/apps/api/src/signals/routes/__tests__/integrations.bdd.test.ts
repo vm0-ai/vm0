@@ -1423,12 +1423,42 @@ describe("INT-01: Slack app deep webhook flows", () => {
       }),
     );
 
+    // Beyond the legacy baseline: a connected Slack user with zero visible
+    // agents gets the no-agents ephemeral from /zero switch, and the App
+    // Home switch action returns silently without opening a modal.
+    const emptySwitch = await integrations.postSlackCommand({
+      teamId: bareInstall.teamId,
+      userId: bareSlackUserId,
+      channelId: "C_BDD_NOAGENT",
+      text: "switch",
+      triggerId: "trigger-bdd-noagent-switch",
+    });
+    expect(JSON.stringify(emptySwitch)).toContain(
+      "No agents are available to your Slack account.",
+    );
+    const silentHomeSwitch = await integrations.postSlackInteractive({
+      type: "block_actions",
+      user: {
+        id: bareSlackUserId,
+        username: "bdduser",
+        team_id: bareInstall.teamId,
+      },
+      team: { id: bareInstall.teamId, domain: "bdd" },
+      trigger_id: "trigger-bdd-noagent-home",
+      actions: [{ action_id: "home_switch_agent", block_id: "home" }],
+    });
+    expect(silentHomeSwitch).toBe("");
+    expect(context.mocks.slack.views.open).not.toHaveBeenCalled();
+
     // Deleting the org default agent clears orgMetadata.defaultAgentId at the
     // DB level (FK onDelete: "set null"), and the default-agent PUT validates
-    // zeroAgents membership, so the service's "configured agent could not be
-    // found" notice is unreachable through public APIs. The deleted-default
-    // journey lands on the same "No agent is configured" notice, delivered
-    // through the DM postMessage branch here instead of the channel ephemeral.
+    // zeroAgents membership, so resolveEffectiveCompose's "not_found" status
+    // ("configured agent could not be found" notice) is unreachable through
+    // public APIs. The deleted-default journey lands on the "not_configured"
+    // status's "No agent is configured" notice, delivered through the DM
+    // postMessage branch here instead of the channel ephemeral. The
+    // "not_accessible" status is covered by the hidden-private-default
+    // journey in this describe.
     const onboarded = bdd.user();
     await bdd.setupOnboarding(onboarded, {
       displayName: "BDD Slack Deleted Agent",
@@ -1474,6 +1504,18 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const agentB = await bdd.createAgent(actor, {
       displayName: "BDD Slack Picker Agent",
     });
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const ownPrivate = await bdd.createAgent(actor, {
+      displayName: "BDD Slack Own Private",
+      visibility: "private",
+    });
+    const memberPublic = await bdd.createAgent(member, {
+      displayName: "BDD Slack Member Public",
+    });
+    const memberPrivate = await bdd.createAgent(member, {
+      displayName: "BDD Slack Member Private",
+      visibility: "private",
+    });
     const slackUserId = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUserId,
@@ -1517,7 +1559,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     expect(switchModal.optionValues).toContain("__org_default__");
     expect(switchModal.optionValues).toContain(agentB.agentId);
+    expect(switchModal.optionValues).toContain(ownPrivate.agentId);
+    expect(switchModal.optionValues).toContain(memberPublic.agentId);
     expect(switchModal.optionValues).not.toContain(defaultAgentId);
+    expect(switchModal.optionValues).not.toContain(memberPrivate.agentId);
     expect(switchModal.optionLabels).toContainEqual(
       expect.stringContaining("Use org default"),
     );
@@ -1658,6 +1703,18 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const outsiderAgent = await bdd.createAgent(outsider, {
       displayName: "BDD Slack Foreign Agent",
     });
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const ownPrivate = await bdd.createAgent(actor, {
+      displayName: "BDD Slack Picker Own Private",
+      visibility: "private",
+    });
+    const memberPublic = await bdd.createAgent(member, {
+      displayName: "BDD Slack Picker Member Public",
+    });
+    const memberPrivate = await bdd.createAgent(member, {
+      displayName: "BDD Slack Picker Member Private",
+      visibility: "private",
+    });
     const slackUserId = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUserId,
@@ -1696,6 +1753,18 @@ describe("INT-01: Slack app deep webhook flows", () => {
       }),
     );
     expect(foreign).toStrictEqual({
+      response_action: "errors",
+      errors: { agent_select_block: "You don't have access to that agent." },
+    });
+
+    const sameOrgPrivate = await integrations.postSlackInteractive(
+      integrations.agentPickerSubmission({
+        workspaceId: teamId,
+        slackUserId,
+        selectedValue: memberPrivate.agentId,
+      }),
+    );
+    expect(sameOrgPrivate).toStrictEqual({
       response_action: "errors",
       errors: { agent_select_block: "You don't have access to that agent." },
     });
@@ -1797,6 +1866,104 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const homeModal = latestSlackModal();
     expect(homeModal.callbackId).toBe("switch_agent_modal");
     expect(homeModal.privateMetadata).toBeNull();
+    expect(homeModal.optionValues).toContain("__org_default__");
+    expect(homeModal.optionValues).toContain(agentB.agentId);
+    expect(homeModal.optionValues).toContain(ownPrivate.agentId);
+    expect(homeModal.optionValues).toContain(memberPublic.agentId);
+    expect(homeModal.optionValues).not.toContain(status.defaultAgentId);
+    expect(homeModal.optionValues).not.toContain(memberPrivate.agentId);
+  });
+
+  it("hides an inaccessible private org default across pickers, App Home, and runs", async () => {
+    bdd.acceptAgentStorageWrites();
+    integrations.configureSlackAppMocks();
+    const actor = bdd.user();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const hiddenDefault = await bdd.createAgent(member, {
+      displayName: "BDD Hidden Default",
+      visibility: "private",
+    });
+    const visiblePublic = await bdd.createAgent(member, {
+      displayName: "BDD Visible Public",
+    });
+    await integrations.setDefaultAgent(actor, hiddenDefault.agentId);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    integrations.clearSlackCallHistory();
+
+    const switchResponse = await integrations.postSlackCommand({
+      teamId,
+      userId: slackUserId,
+      channelId: "C_BDD_HIDDEN",
+      text: "switch",
+      triggerId: "trigger-bdd-hidden-switch",
+    });
+    expect(switchResponse).toBe("");
+    const commandModal = latestSlackModal();
+    expect(commandModal.optionValues).not.toContain("__org_default__");
+    expect(commandModal.optionValues).toContain(visiblePublic.agentId);
+    expect(commandModal.optionValues).not.toContain(hiddenDefault.agentId);
+    expect(commandModal.optionLabels).not.toContainEqual(
+      expect.stringContaining("Use org default"),
+    );
+
+    const orgDefaultRejected = await integrations.postSlackInteractive(
+      integrations.agentPickerSubmission({
+        workspaceId: teamId,
+        slackUserId,
+        selectedValue: "__org_default__",
+      }),
+    );
+    expect(orgDefaultRejected).toStrictEqual({
+      response_action: "errors",
+      errors: { agent_select_block: "You don't have access to that agent." },
+    });
+
+    context.mocks.slack.views.open.mockClear();
+    const homeSwitch = await integrations.postSlackInteractive({
+      type: "block_actions",
+      user: { id: slackUserId, username: "bdduser", team_id: teamId },
+      team: { id: teamId, domain: "bdd" },
+      trigger_id: "trigger-bdd-hidden-home",
+      actions: [{ action_id: "home_switch_agent", block_id: "home" }],
+    });
+    expect(homeSwitch).toBe("");
+    const homeModal = latestSlackModal();
+    expect(homeModal.optionValues).not.toContain("__org_default__");
+    expect(homeModal.optionValues).toContain(visiblePublic.agentId);
+    expect(homeModal.optionValues).not.toContain(hiddenDefault.agentId);
+
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "hello in dm",
+      ts: "2200.000100",
+      channel: "D_BDD_HIDDEN",
+    });
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "D_BDD_HIDDEN",
+        text: expect.stringContaining("not available to your Slack account"),
+      }),
+    );
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).not.toHaveBeenCalled();
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_home_opened",
+      user: slackUserId,
+      tab: "home",
+      channel: "D_BDD_HIDDEN_HOME",
+    });
+    const homeViewJson = JSON.stringify(
+      context.mocks.slack.views.publish.mock.calls.at(-1),
+    );
+    expect(homeViewJson).toContain("home_switch_agent");
+    expect(homeViewJson).toContain("_No agent configured yet._");
   });
 
   it("refreshes Slack App Home, welcomes once, and cleans up lifecycle events", async () => {
