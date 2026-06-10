@@ -11,27 +11,25 @@
 
 mod common;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     unsafe {
-        // 3s sigterm grace gives cold-CI fork+exec jitter a wide
-        // buffer below the 1s elapsed bound asserted below. sigkill
-        // grace is unused on this path (reap never fires at all).
-        common::setup_env(&mock, tmp.path(), "@exit-after-result", 3, 1)?;
+        // Keep post-result reap outside the 15s test timeout. If this
+        // happy path returns successfully, it returned before the reap
+        // deadline could fire. sigkill grace is unused on this path.
+        common::setup_env(&mock, tmp.path(), "@exit-after-result", 60, 1)?;
     }
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
-    // Happy path completes in milliseconds (mock exits immediately
-    // after emitting result). A generous 15s cap ensures flakes on
-    // loaded CI still flag as "took too long", distinguishing from
-    // "did not return at all".
-    let started = Instant::now();
+    // Happy path completes before the configured 60s post-result reap
+    // grace. The 15s cap is only a hang guard, not a performance
+    // assertion on fork/exec or async scheduling.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
         guest_agent::cli::execute_cli(
@@ -42,7 +40,6 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
     )
     .await
     .expect("execute_cli did not return within 15s on the happy path");
-    let elapsed = started.elapsed();
 
     let result = result.expect("execute_cli returned Err");
     let exit_code = result.exit_code;
@@ -53,15 +50,6 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
         exit_code,
         common::CLEAN_EXIT,
         "expected clean exit, got {exit_code} — reap may have killed a healthy CLI"
-    );
-    // With sigterm grace = 3s, a reap that mistakenly fires would
-    // push elapsed to ≥3s. Any value well under that proves the
-    // deadline branch didn't execute. 1s cap gives two seconds of
-    // headroom over the tightest imaginable signal path while still
-    // easily accommodating a cold fork+exec on slow CI.
-    assert!(
-        elapsed < Duration::from_secs(1),
-        "happy path took {elapsed:?}; reap deadline may have fired"
     );
     Ok(())
 }
