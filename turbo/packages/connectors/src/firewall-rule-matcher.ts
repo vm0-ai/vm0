@@ -234,7 +234,11 @@ function isValidAwsSigv4AuthConfig(value: unknown): boolean {
     "secretAccessKey",
     "sessionToken",
   ]);
-  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+  if (
+    Object.keys(value).some((key) => {
+      return !allowedKeys.has(key);
+    })
+  ) {
     return false;
   }
   if (typeof value.accessKeyId !== "string" || value.accessKeyId === "") {
