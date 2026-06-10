@@ -110,8 +110,8 @@ impl SessionState {
     }
 
     // Channel attach has two scheduled states: an operation deadline while an
-    // ATTACH is in flight, then a retry deadline if that attach times out into
-    // suspended channel retry.
+    // ATTACH is in flight, then a retry deadline if that attach is suspended
+    // by timeout or DETACHED response.
     pub(super) fn begin_channel_attach(&mut self, realtime_request_timeout: Duration) -> bool {
         self.lifecycle.request_channel_attaching();
         if self.lifecycle.channel != ChannelLifecycleState::Attaching
