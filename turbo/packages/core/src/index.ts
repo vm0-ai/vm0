@@ -26,7 +26,6 @@ export {
   VIDEO_STYLE_PRESETS,
   VIDEO_DIMENSION_DESCRIPTIONS,
   type VideoStyleGroup,
-  type VideoStyleGroupTag,
   type VideoStylePreset,
   type VideoStyleDimensions,
   type VideoStyleCategory,

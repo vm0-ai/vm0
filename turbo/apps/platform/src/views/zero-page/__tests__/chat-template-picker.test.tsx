@@ -321,13 +321,13 @@ describe("zero chat template picker", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     expect(tabWithText("Video")).toBeDefined();
-    expect(screen.getByText("Brand & Product")).toBeInTheDocument();
-    expect(screen.getByText("Story & Emotion")).toBeInTheDocument();
-    expect(screen.getByText("Energy & Sports")).toBeInTheDocument();
-    expect(screen.getByText("Fantasy & Art")).toBeInTheDocument();
+    expect(screen.getByText("Brand & Commercial")).toBeInTheDocument();
+    expect(screen.getByText("Cinematic")).toBeInTheDocument();
+    expect(screen.getByText("Energy & Music")).toBeInTheDocument();
+    expect(screen.getByText("Art & Creative")).toBeInTheDocument();
     expect(screen.getByText("Anime")).toBeInTheDocument();
 
-    await user.click(screen.getByText("Fantasy & Art"));
+    await user.click(screen.getByText("Art & Creative"));
 
     await waitFor(() => {
       expect(screen.getByText("Chinese Ink Painting")).toBeInTheDocument();

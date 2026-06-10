@@ -552,7 +552,13 @@ function videoTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
-  const searchable = [item.nameEn, item.category, ...item.tags].join(" ");
+  const searchable = [
+    item.nameEn,
+    item.nameZh,
+    item.category,
+    item.scene,
+    item.dimensions.styleReference,
+  ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
 
@@ -560,7 +566,7 @@ function videoTemplateMatchesGroup(
   item: VideoStylePreset,
   group: TemplatePickerVideoGroup,
 ): boolean {
-  return group === "all" || item.tags.includes(group);
+  return group === "all" || item.category === group;
 }
 
 function VideoTemplateCard({

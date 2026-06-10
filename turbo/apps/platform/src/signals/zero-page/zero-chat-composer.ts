@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import type { VideoStyleGroupTag } from "@vm0/core";
+import type { VideoStyleCategory } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -110,7 +110,7 @@ export const setTemplatePickerSearch$ = command(({ set }, value: string) => {
   set(internalTemplatePickerSearch$, value);
 });
 
-export type TemplatePickerVideoGroup = VideoStyleGroupTag | "all";
+export type TemplatePickerVideoGroup = VideoStyleCategory | "all";
 
 const internalTemplatePickerVideoGroup$ =
   state<TemplatePickerVideoGroup>("all");

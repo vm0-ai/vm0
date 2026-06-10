@@ -1,28 +1,14 @@
 export type VideoStyleCategory =
-  | "anime_2d"
-  | "art_culture"
-  | "classic_cinematic"
-  | "fashion_luxury"
-  | "lifestyle"
-  | "music_entertainment"
-  | "nostalgic"
-  | "product_brand"
-  | "sci_fi_tech"
-  | "sports_energy"
-  | "surreal_creative"
-  | "urban_social";
-
-export type VideoStyleGroupTag =
+  | "art_creative"
+  | "anime"
+  | "brand_commercial"
   | "cinematic"
   | "documentary"
-  | "lifestyle"
-  | "brand-commercial"
-  | "energy-music"
-  | "art-creative"
-  | "anime-2d";
+  | "energy_music"
+  | "lifestyle";
 
 export interface VideoStyleGroup {
-  readonly tag: VideoStyleGroupTag;
+  readonly tag: VideoStyleCategory;
   readonly label: string;
 }
 
@@ -30,10 +16,10 @@ export const VIDEO_STYLE_GROUPS: readonly VideoStyleGroup[] = [
   { tag: "cinematic", label: "Cinematic" },
   { tag: "documentary", label: "Documentary" },
   { tag: "lifestyle", label: "Lifestyle" },
-  { tag: "brand-commercial", label: "Brand & Commercial" },
-  { tag: "energy-music", label: "Energy & Music" },
-  { tag: "art-creative", label: "Art & Creative" },
-  { tag: "anime-2d", label: "Anime" },
+  { tag: "brand_commercial", label: "Brand & Commercial" },
+  { tag: "energy_music", label: "Energy & Music" },
+  { tag: "art_creative", label: "Art & Creative" },
+  { tag: "anime", label: "Anime" },
 ];
 
 export interface VideoStyleDimensions {
@@ -54,7 +40,6 @@ export interface VideoStylePreset {
   readonly dimensions: VideoStyleDimensions;
   readonly scene: string;
   readonly sampleVideoUrl: string;
-  readonly tags: readonly string[];
 }
 
 export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -175,8 +160,6 @@ export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "street documentary — city pulse, candid portraits, social texture",
   synthwave_retro:
     "80s synthwave retro — grid horizons, neon glow, nostalgic retrofuturism",
-  absurdist_comedy:
-    "absurdist comedy — deadpan escalation, mundane surrealism, dry British wit",
   magical_girl_anime:
     "magical girl anime — sparkle transforms, friendship bonds, bright courage",
   shonen_battle_anime:
@@ -194,7 +177,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     id: "symmetrical-pastel-quirky",
     nameZh: "对称粉彩·怪诞优雅",
     nameEn: "Symmetrical Pastel Quirky",
-    category: "classic_cinematic",
+    category: "cinematic",
     dimensions: {
       visualTone: "dreamy_pastel",
       cameraStyle: "steady_locked",
@@ -207,13 +190,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "grand-hotel-lobby",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6126d21a-1a19-4b2a-914a-0eec6335bf1f/video-6126d21a.mp4",
-    tags: ["cinematic", "quirky", "pastel", "symmetry", "deadpan", "retro"],
   },
   {
     id: "imax-epic-cinematic",
     nameZh: "史诗叙事·宏大电影",
     nameEn: "IMAX Epic Cinematic",
-    category: "classic_cinematic",
+    category: "cinematic",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "drone_aerial",
@@ -226,13 +208,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "mountain-horizon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df99de74-8eea-420c-86d1-c104ba5ba6b6/video-df99de74.mp4",
-    tags: ["cinematic", "epic", "imax", "dramatic", "cinematic", "grand"],
   },
   {
     id: "slowburn-moody-romance",
     nameZh: "情绪诗意·慢燃暖光",
     nameEn: "Slow Burn Moody Romance",
-    category: "classic_cinematic",
+    category: "cinematic",
     dimensions: {
       visualTone: "warm_natural",
       cameraStyle: "handheld_raw",
@@ -245,20 +226,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "rain-on-window",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/feda268d-7b6c-4c5d-b3c8-89ab1dcc29cd/video-feda268d.mp4",
-    tags: [
-      "cinematic",
-      "moody",
-      "romance",
-      "handheld",
-      "nostalgic",
-      "atmospheric",
-    ],
   },
   {
     id: "indie-naturalistic",
     nameZh: "文艺独立·自然光",
     nameEn: "Indie Naturalistic",
-    category: "classic_cinematic",
+    category: "cinematic",
     dimensions: {
       visualTone: "cold_desaturated",
       cameraStyle: "handheld_raw",
@@ -271,20 +244,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "forest-clearing",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e4fbe51f-45c9-4689-8681-1e102af0a55e/video-e4fbe51f.mp4",
-    tags: [
-      "cinematic",
-      "indie",
-      "arthouse",
-      "naturalistic",
-      "quiet",
-      "character-driven",
-    ],
   },
   {
     id: "film-noir",
     nameZh: "黑白悬疑·Film Noir",
     nameEn: "Film Noir",
-    category: "classic_cinematic",
+    category: "cinematic",
     dimensions: {
       visualTone: "cold_desaturated",
       cameraStyle: "steady_locked",
@@ -297,13 +262,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "rain-on-window",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dc649267-41d8-4fbc-b253-29e407791ac6/video-dc649267.mp4",
-    tags: ["cinematic", "noir", "black-white", "mystery", "shadows", "1950s"],
   },
   {
     id: "tech-minimalist-reveal",
     nameZh: "极简科技·产品展示",
     nameEn: "Tech Minimalist Reveal",
-    category: "product_brand",
+    category: "brand_commercial",
     dimensions: {
       visualTone: "cold_desaturated",
       cameraStyle: "slow_push_in",
@@ -316,20 +280,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "laptop-open",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6f1e98ef-7fc1-48b0-b1db-cd1ee58a0bd4/video-6f1e98ef.mp4",
-    tags: [
-      "brand-commercial",
-      "minimalist",
-      "product",
-      "tech",
-      "clean",
-      "white",
-    ],
   },
   {
     id: "luxury-watch-product",
     nameZh: "Luxury Watch Product",
     nameEn: "Luxury Watch Product",
-    category: "product_brand",
+    category: "brand_commercial",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "steady_locked",
@@ -342,21 +298,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "luxury-watch-dial",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e20abbb-a630-4523-857f-8350eba2ea4f/video-9e20abbb.mp4",
-    tags: [
-      "brand-commercial",
-      "product",
-      "watch",
-      "luxury",
-      "mechanical-watch",
-      "apple-product",
-      "cinematic",
-    ],
   },
   {
     id: "athletic-motivation",
     nameZh: "运动励志·广告风",
     nameEn: "Athletic Motivation Ad",
-    category: "sports_energy",
+    category: "energy_music",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "extreme_closeup",
@@ -369,13 +316,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "extreme-sports",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/104ad36a-4d0c-472b-8416-d04cc2f06e75/video-104ad36a.mp4",
-    tags: ["energy-music", "sports", "motivation", "fast", "energy", "ad"],
   },
   {
     id: "nature-documentary",
     nameZh: "自然纪录·BBC风",
     nameEn: "Nature Documentary",
-    category: "sci_fi_tech",
+    category: "documentary",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "drone_aerial",
@@ -388,20 +334,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "mountain-horizon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75e08761-7cdf-42ea-b8f3-eadb31586de6/video-75e08761.mp4",
-    tags: [
-      "documentary",
-      "nature",
-      "documentary",
-      "wildlife",
-      "slow",
-      "cinematic",
-    ],
   },
   {
     id: "shortform-viral",
     nameZh: "短视频·病毒传播",
     nameEn: "Shortform Viral",
-    category: "urban_social",
+    category: "energy_music",
     dimensions: {
       visualTone: "warm_natural",
       cameraStyle: "handheld_raw",
@@ -414,13 +352,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "summer-beach-crew",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4bac1319-dba7-47a0-bc1b-4d1e932f71fd/video-4bac1319.mp4",
-    tags: ["energy-music", "viral", "shortform", "trending", "fast", "social"],
   },
   {
     id: "hand-drawn-fantasy-anime",
     nameZh: "手绘奇幻·动漫美学",
     nameEn: "Hand Drawn Fantasy Anime",
-    category: "anime_2d",
+    category: "art_creative",
     dimensions: {
       visualTone: "warm_natural",
       cameraStyle: "slow_push_in",
@@ -433,20 +370,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "forest-spirit-path",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da7c7c2d-3383-4796-8e83-b0e112127387/video-da7c7c2d.mp4",
-    tags: [
-      "art-creative",
-      "anime",
-      "hand-drawn",
-      "fantasy",
-      "nature",
-      "whimsical",
-    ],
   },
   {
     id: "chinese-ink-art",
     nameZh: "水墨·东方禅意",
     nameEn: "Chinese Ink Painting",
-    category: "art_culture",
+    category: "art_creative",
     dimensions: {
       visualTone: "cold_desaturated",
       cameraStyle: "slow_push_in",
@@ -459,13 +388,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "mountain-horizon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8314b0ae-6051-4daa-b789-51bec466ba66/video-8314b0ae.mp4",
-    tags: ["art-creative", "ink", "chinese", "zen", "minimalist", "eastern"],
   },
   {
     id: "pop-art",
     nameZh: "波普·安迪沃霍尔风",
     nameEn: "Pop Art",
-    category: "art_culture",
+    category: "art_creative",
     dimensions: {
       visualTone: "neon_cyberpunk",
       cameraStyle: "steady_locked",
@@ -478,13 +406,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "abstract-color-burst",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92c22511-a22e-4c9c-9489-b452eabaa16b/video-92c22511.mp4",
-    tags: ["art-creative", "pop-art", "bold", "colorful", "graphic", "retro"],
   },
   {
     id: "japanese-wabi-sabi",
     nameZh: "日系·小清新",
     nameEn: "Japanese Wabi-Sabi",
-    category: "art_culture",
+    category: "lifestyle",
     dimensions: {
       visualTone: "warm_natural",
       cameraStyle: "slow_push_in",
@@ -497,20 +424,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "tokyo-alley-morning",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72b754cf-f76d-4fa9-9015-ab5082b49608/video-72b754cf.mp4",
-    tags: [
-      "lifestyle",
-      "japanese",
-      "wabi-sabi",
-      "calm",
-      "everyday",
-      "aesthetic",
-    ],
   },
   {
     id: "european-romance",
     nameZh: "欧洲·古典浪漫",
     nameEn: "European Classical Romance",
-    category: "art_culture",
+    category: "cinematic",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "steady_locked",
@@ -523,20 +442,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "castle-garden-dusk",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8ea3c41f-8e80-4c70-aae6-a492b9eb264e/video-8ea3c41f.mp4",
-    tags: [
-      "cinematic",
-      "europe",
-      "romance",
-      "castle",
-      "golden-hour",
-      "elegant",
-    ],
   },
   {
     id: "gourmet-documentary",
     nameZh: "美食纪录·感官系",
     nameEn: "Gourmet Documentary",
-    category: "lifestyle",
+    category: "documentary",
     dimensions: {
       visualTone: "warm_natural",
       cameraStyle: "extreme_closeup",
@@ -549,13 +460,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "food-plating",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f0dd8d7-bfc3-4443-9b95-b58faf0d4f64/video-3f0dd8d7.mp4",
-    tags: ["documentary", "food", "macro", "sensory", "chef", "documentary"],
   },
   {
     id: "fashion-editorial",
     nameZh: "奢侈品·时尚大片",
     nameEn: "Fashion Editorial",
-    category: "fashion_luxury",
+    category: "brand_commercial",
     dimensions: {
       visualTone: "cold_desaturated",
       cameraStyle: "steady_locked",
@@ -567,15 +477,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     },
     scene: "model-editorial",
     sampleVideoUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6d5822ff-d0ef-485e-b4e4-2eb0a46414d5/video-6d5822ff.mp4",
-    tags: [
-      "brand-commercial",
-      "fashion",
-      "luxury",
-      "editorial",
-      "high-contrast",
-      "model",
-    ],
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8bf8b826-2517-435b-8882-7f071c683e46/video-8bf8b826.mp4",
   },
   {
     id: "summer-indie",
@@ -594,13 +496,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "summer-beach-crew",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d44e690-d838-49c6-89f8-946bcffee10b/video-3d44e690.mp4",
-    tags: ["lifestyle", "summer", "beach", "youth", "vibrant", "friends"],
   },
   {
     id: "super8-home-film",
     nameZh: "复古暖调·70s胶片",
     nameEn: "Super 8 Home Film",
-    category: "nostalgic",
+    category: "cinematic",
     dimensions: {
       visualTone: "vintage_film",
       cameraStyle: "handheld_raw",
@@ -613,15 +514,6 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "family-backyard-70s",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/29ddb4de-8aef-42a7-aac4-ee013c9272a5/video-29ddb4de.mp4",
-    tags: [
-      "cinematic",
-      "retro",
-      "70s",
-      "super8",
-      "family",
-      "nostalgic",
-      "film-grain",
-    ],
   },
   {
     id: "cottagecore",
@@ -640,15 +532,6 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "cottage-garden-morning",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c28fd30a-d735-4c67-97d4-0567fd375a8d/video-c28fd30a.mp4",
-    tags: [
-      "lifestyle",
-      "cottagecore",
-      "garden",
-      "handmade",
-      "nature",
-      "cozy",
-      "slow-living",
-    ],
   },
   {
     id: "wellness-yoga",
@@ -667,15 +550,6 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "yoga-sunrise-studio",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b629a3f5-c644-4d96-81f5-834fe1a31da1/video-b629a3f5.mp4",
-    tags: [
-      "lifestyle",
-      "wellness",
-      "yoga",
-      "meditation",
-      "mindfulness",
-      "morning",
-      "calm",
-    ],
   },
   {
     id: "diy-maker",
@@ -694,21 +568,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "workshop-maker-build",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/76c1cf86-cb76-4a9b-817f-15597bcc8481/video-76c1cf86.mp4",
-    tags: [
-      "lifestyle",
-      "diy",
-      "maker",
-      "craft",
-      "woodwork",
-      "handmade",
-      "satisfying",
-    ],
   },
   {
     id: "extreme-sports",
     nameZh: "运动·高燃热血",
     nameEn: "Extreme Sports Ad",
-    category: "sports_energy",
+    category: "energy_music",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "extreme_closeup",
@@ -721,20 +586,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "extreme-sports",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/637ca413-fd3e-4b6e-9b8c-42f2a6c63816/video-637ca413.mp4",
-    tags: [
-      "energy-music",
-      "extreme-sports",
-      "action",
-      "adrenaline",
-      "slow-motion",
-      "athlete",
-    ],
   },
   {
     id: "music-video",
     nameZh: "音乐MV风",
     nameEn: "Music Video",
-    category: "music_entertainment",
+    category: "energy_music",
     dimensions: {
       visualTone: "neon_cyberpunk",
       cameraStyle: "dutch_angle",
@@ -747,21 +604,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "concert-stage",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f7d288e2-9d81-43b7-ae1b-1702a11686a8/video-f7d288e2.mp4",
-    tags: [
-      "energy-music",
-      "music",
-      "concert",
-      "stage",
-      "neon",
-      "performance",
-      "rhythm",
-    ],
   },
   {
     id: "surrealist-dream",
     nameZh: "超现实·梦境",
     nameEn: "Surrealist Dream",
-    category: "surreal_creative",
+    category: "art_creative",
     dimensions: {
       visualTone: "dreamy_pastel",
       cameraStyle: "slow_push_in",
@@ -774,20 +622,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "impossible-room",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b7b0d289-9e05-4f93-9795-d5d19263435c/video-b7b0d289.mp4",
-    tags: [
-      "art-creative",
-      "surreal",
-      "dream",
-      "impossible",
-      "dali",
-      "ethereal",
-    ],
   },
   {
     id: "ai-digital-art",
     nameZh: "AI·数字宇宙",
     nameEn: "AI Digital Universe",
-    category: "sci_fi_tech",
+    category: "art_creative",
     dimensions: {
       visualTone: "neon_cyberpunk",
       cameraStyle: "pov_firstperson",
@@ -800,21 +640,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "neural-network-viz",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/629cab0a-fead-4c9c-ac9b-d5ef6df0782f/video-629cab0a.mp4",
-    tags: [
-      "art-creative",
-      "ai",
-      "digital",
-      "neural-network",
-      "futuristic",
-      "code",
-      "tech",
-    ],
   },
   {
     id: "space-documentary",
     nameZh: "太空·宇宙探索",
     nameEn: "Space Documentary",
-    category: "sci_fi_tech",
+    category: "documentary",
     dimensions: {
       visualTone: "cold_desaturated",
       cameraStyle: "drone_aerial",
@@ -827,21 +658,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "astronaut-spacewalk",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/273d9673-9ed2-426b-8516-0102fbdd8622/video-273d9673.mp4",
-    tags: [
-      "documentary",
-      "space",
-      "cosmos",
-      "nasa",
-      "astronaut",
-      "epic",
-      "documentary",
-    ],
   },
   {
     id: "street-documentary",
     nameZh: "街头纪实·都市",
     nameEn: "Street Documentary",
-    category: "urban_social",
+    category: "documentary",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "handheld_raw",
@@ -854,21 +676,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "nyc-street-corner",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/54c271a6-d2da-4134-a812-679fd0fc8810/video-54c271a6.mp4",
-    tags: [
-      "documentary",
-      "street",
-      "nyc",
-      "urban",
-      "documentary",
-      "people",
-      "authentic",
-    ],
   },
   {
     id: "synthwave-retro",
     nameZh: "80s Synthwave·复古科技",
     nameEn: "Synthwave Retro",
-    category: "nostalgic",
+    category: "art_creative",
     dimensions: {
       visualTone: "neon_cyberpunk",
       cameraStyle: "steady_locked",
@@ -881,48 +694,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "neon-highway-night",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c227b1aa-7876-4fe3-8869-4d2b996d418f/video-c227b1aa.mp4",
-    tags: [
-      "art-creative",
-      "synthwave",
-      "80s",
-      "retro",
-      "neon",
-      "vhs",
-      "cyberpunk-nostalgic",
-    ],
-  },
-  {
-    id: "absurdist-comedy",
-    nameZh: "怪诞喜剧·冷面幽默",
-    nameEn: "Absurdist Comedy",
-    category: "surreal_creative",
-    dimensions: {
-      visualTone: "warm_natural",
-      cameraStyle: "handheld_raw",
-      editingPace: "fast_cut",
-      narrativeMode: "observational",
-      productionType: "live_action",
-      emotionalTone: "humorous_quirky",
-      styleReference: "absurdist_comedy",
-    },
-    scene: "mundane-surreal-office",
-    sampleVideoUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e93201b0-90d2-42f1-9db7-19441315c4bc/video-e93201b0.mp4",
-    tags: [
-      "art-creative",
-      "comedy",
-      "absurdist",
-      "quirky",
-      "deadpan",
-      "office",
-      "humor",
-    ],
   },
   {
     id: "magical-girl",
     nameZh: "魔法少女·粉彩变身",
     nameEn: "Magical Girl",
-    category: "anime_2d",
+    category: "anime",
     dimensions: {
       visualTone: "dreamy_pastel",
       cameraStyle: "slow_push_in",
@@ -935,20 +712,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "magical-girl-transform",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f0b7f984-4d85-432f-bf41-a53d89e262bd/video-f0b7f984.mp4",
-    tags: [
-      "anime-2d",
-      "anime",
-      "magical-girl",
-      "transformation",
-      "pastel",
-      "sparkle",
-    ],
   },
   {
     id: "shonen-battle",
     nameZh: "热血少年·觉醒爆发",
     nameEn: "Shonen Battle",
-    category: "anime_2d",
+    category: "anime",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "extreme_closeup",
@@ -961,21 +730,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "hero-power-awakening",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d07d39ed-d2fe-4bee-a148-501d96ead5a2/video-d07d39ed.mp4",
-    tags: [
-      "anime-2d",
-      "anime",
-      "shonen",
-      "battle",
-      "power-up",
-      "energy",
-      "hero",
-    ],
   },
   {
     id: "cyberpunk-anime",
     nameZh: "赛博朋克·动漫都市",
     nameEn: "Cyberpunk Anime",
-    category: "anime_2d",
+    category: "anime",
     dimensions: {
       visualTone: "neon_cyberpunk",
       cameraStyle: "dutch_angle",
@@ -988,21 +748,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "cyberpunk-hacker-alley",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e1cfe984-3bfc-4ba1-acb3-9b40b7b76771/video-e1cfe984.mp4",
-    tags: [
-      "anime-2d",
-      "anime",
-      "cyberpunk",
-      "neon",
-      "hacker",
-      "dystopian",
-      "futuristic",
-    ],
   },
   {
     id: "slice-of-life-anime",
     nameZh: "日常系·校园治愈",
     nameEn: "Slice of Life Anime",
-    category: "anime_2d",
+    category: "anime",
     dimensions: {
       visualTone: "warm_natural",
       cameraStyle: "slow_push_in",
@@ -1015,21 +766,12 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "school-summer-afternoon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a477b387-f156-4826-9112-3258fcaec339/video-a477b387.mp4",
-    tags: [
-      "anime-2d",
-      "anime",
-      "slice-of-life",
-      "school",
-      "healing",
-      "summer",
-      "friends",
-    ],
   },
   {
     id: "wuxia-anime",
     nameZh: "古风仙侠·国漫",
     nameEn: "Wuxia Anime",
-    category: "anime_2d",
+    category: "anime",
     dimensions: {
       visualTone: "cinematic",
       cameraStyle: "drone_aerial",
@@ -1042,15 +784,5 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "wuxia-sword-flight",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/939b77ca-c2f2-4379-abfa-1bb2a904288b/video-939b77ca.mp4",
-    tags: [
-      "anime-2d",
-      "anime",
-      "wuxia",
-      "chinese-animation",
-      "sword",
-      "ancient",
-      "epic",
-      "ink-wash",
-    ],
   },
 ];
