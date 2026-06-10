@@ -881,7 +881,6 @@ async function runFillEmptySpeakerNotes(ctx: {
       signal: params.pageSignal,
     }).finally(() => {
       ctx.setPublishing(false);
-      ctx.markDirty();
     }),
     (error) => {
       if (!(error instanceof DOMException && error.name === "AbortError")) {

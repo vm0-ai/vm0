@@ -210,8 +210,11 @@ ${html}`,
 
 function jsonObjectText(value: string): string {
   const trimmed = value.trim();
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+  try {
+    JSON.parse(trimmed);
     return trimmed;
+  } catch {
+    // fall through to extraction
   }
   const start = trimmed.indexOf("{");
   const end = trimmed.lastIndexOf("}");
