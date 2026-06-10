@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { cronSummarizeMemoryContract } from "@vm0/api-contracts/contracts/cron";
+import {
+  zeroMemoryActivityContract,
+  type MemoryActivityResponse,
+} from "@vm0/api-contracts/contracts/zero-memory-activity";
 import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
@@ -95,6 +99,10 @@ function apiClient() {
 
 function devRefreshClient() {
   return setupApp({ context })(zeroMemoryDevRefreshContract);
+}
+
+function activityClient() {
+  return setupApp({ context })(zeroMemoryActivityContract);
 }
 
 function authHeaders() {
@@ -402,6 +410,36 @@ async function findItems(summaryId: string): Promise<string[]> {
   });
 }
 
+async function readMemoryActivity(
+  fixture: MemoryFixture,
+): Promise<MemoryActivityResponse["entries"]> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  const response = await accept(
+    activityClient().get({ headers: authHeaders() }),
+    [200],
+  );
+  return response.body.entries;
+}
+
+function activityFilePaths(
+  entry: MemoryActivityResponse["entries"][number] | undefined,
+): string[] {
+  return (
+    entry?.items.map((item) => {
+      return item.filePath;
+    }) ?? []
+  );
+}
+
+function activityEntryForDate(
+  entries: MemoryActivityResponse["entries"],
+  date: string,
+): MemoryActivityResponse["entries"][number] | undefined {
+  return entries.find((entry) => {
+    return entry.date === date;
+  });
+}
+
 function mockLlm(
   content = "Today Zero learned one new thing about you.",
   finishReason = "stop",
@@ -534,15 +572,17 @@ describe("GET /api/cron/summarize-memory", () => {
       expect(quietSummary.summary).toBeNull();
     }
 
-    const summary = await findSummary(seeded.fixture);
-    expect(summary).not.toBeNull();
-    expect(summary?.toVersionId).toBe(seeded.v2Id);
-    expect(summary?.summary).toBe(
-      "Zero learned your coffee order and updated your pets.",
-    );
-
-    const items = await findItems(summary?.id ?? "");
-    expect(items).toStrictEqual(["facts/coffee.md", "facts/pets.md"]);
+    const activityEntries = await readMemoryActivity(seeded.fixture);
+    expect(activityEntries).toHaveLength(1);
+    expect(activityEntries[0]).toMatchObject({
+      date: YESTERDAY,
+      toVersionId: seeded.v2Id,
+      summary: "Zero learned your coffee order and updated your pets.",
+    });
+    expect(activityFilePaths(activityEntries[0])).toStrictEqual([
+      "facts/coffee.md",
+      "facts/pets.md",
+    ]);
   });
 
   it("summarizes a file whose frontmatter is not valid YAML", async () => {
@@ -572,9 +612,10 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(response.body).toStrictEqual({ summarized: 7 });
     expect(llm.calls).toBe(1);
 
-    const summary = await findSummary(seeded.fixture);
-    const items = await findItems(summary?.id ?? "");
-    expect(items).toStrictEqual(["facts/zero-search.md"]);
+    const activityEntries = await readMemoryActivity(seeded.fixture);
+    expect(activityFilePaths(activityEntries[0])).toStrictEqual([
+      "facts/zero-search.md",
+    ]);
   });
 
   it("persists MEMORY.md alongside the real file change", async () => {
@@ -589,11 +630,11 @@ describe("GET /api/cron/summarize-memory", () => {
 
     await accept(apiClient().summarize({ headers: cronHeaders() }), [200]);
 
-    const summary = await findSummary(seeded.fixture);
-    const items = await findItems(summary?.id ?? "");
-    expect(items).toHaveLength(2);
-    expect(items).toContain("MEMORY.md");
-    expect(items).toContain("facts/coffee.md");
+    const activityEntries = await readMemoryActivity(seeded.fixture);
+    expect(activityFilePaths(activityEntries[0])).toStrictEqual([
+      "MEMORY.md",
+      "facts/coffee.md",
+    ]);
   });
 
   it("backfills quiet cards and makes no LLM call when memory did not change", async () => {
@@ -639,9 +680,9 @@ describe("GET /api/cron/summarize-memory", () => {
     );
 
     expect(response.body).toStrictEqual({ summarized: 7 });
-    const summary = await findSummary(seeded.fixture);
-    expect(summary?.summary).toBeNull();
-    await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(2);
+    const activityEntries = await readMemoryActivity(seeded.fixture);
+    expect(activityEntries[0]?.summary).toBeNull();
+    expect(activityFilePaths(activityEntries[0])).toHaveLength(2);
   });
 
   it("persists deterministic items with a null summary when the LLM response is incomplete", async () => {
@@ -661,9 +702,9 @@ describe("GET /api/cron/summarize-memory", () => {
 
     expect(response.body).toStrictEqual({ summarized: 7 });
     expect(llm.calls).toBe(1);
-    const summary = await findSummary(seeded.fixture);
-    expect(summary?.summary).toBeNull();
-    await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(2);
+    const activityEntries = await readMemoryActivity(seeded.fixture);
+    expect(activityEntries[0]?.summary).toBeNull();
+    expect(activityFilePaths(activityEntries[0])).toHaveLength(2);
   });
 
   it("persists deterministic items with a null summary when no LLM key is configured", async () => {
@@ -682,9 +723,9 @@ describe("GET /api/cron/summarize-memory", () => {
     );
 
     expect(response.body).toStrictEqual({ summarized: 7 });
-    const summary = await findSummary(seeded.fixture);
-    expect(summary?.summary).toBeNull();
-    await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(1);
+    const activityEntries = await readMemoryActivity(seeded.fixture);
+    expect(activityEntries[0]?.summary).toBeNull();
+    expect(activityFilePaths(activityEntries[0])).toHaveLength(1);
   });
 
   it("is idempotent on rerun", async () => {
@@ -748,13 +789,14 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(response.body).toStrictEqual({ summarized: 2 });
     expect(llm.calls).toBe(2);
 
-    const healthySummary = await findSummary(healthy.fixture);
-    expect(healthySummary).not.toBeNull();
-    expect(healthySummary?.toVersionId).toBe(healthy.v2Id);
-    const items = await findItems(healthySummary?.id ?? "");
-    expect(items).toStrictEqual(["facts/coffee.md"]);
+    const healthyActivity = await readMemoryActivity(healthy.fixture);
+    const healthyYesterday = activityEntryForDate(healthyActivity, YESTERDAY);
+    expect(healthyYesterday?.toVersionId).toBe(healthy.v2Id);
+    expect(activityFilePaths(healthyYesterday)).toStrictEqual([
+      "facts/coffee.md",
+    ]);
 
-    await expect(findSummary(broken.fixture)).resolves.toBeNull();
+    await expect(readMemoryActivity(broken.fixture)).resolves.toStrictEqual([]);
   });
 
   it("backfills each changed day in the seven-day window without combining history", async () => {
@@ -844,9 +886,10 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(response.body).toStrictEqual({ summarized: 1 });
     expect(llm.calls).toBe(1);
 
-    const summary = await findSummary(fixture);
-    expect(summary).not.toBeNull();
-    await expect(findItems(summary?.id ?? "")).resolves.toStrictEqual([
+    const activityEntries = await readMemoryActivity(fixture);
+    expect(activityEntries).toHaveLength(1);
+    expect(activityEntries[0]?.fromVersionId).toBeNull();
+    expect(activityFilePaths(activityEntries[0])).toStrictEqual([
       "facts/coffee.md",
     ]);
   });
@@ -900,10 +943,12 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(response.body).toStrictEqual({ summarized: 2 });
     expect(llm.calls).toBe(2);
 
-    const enabledSummary = await findSummary(enabled.fixture);
-    expect(enabledSummary).not.toBeNull();
-    expect(enabledSummary?.toVersionId).toBe(enabled.v2Id);
-    await expect(findSummaries(disabled.fixture)).resolves.toHaveLength(0);
+    const enabledActivity = await readMemoryActivity(enabled.fixture);
+    const enabledYesterday = activityEntryForDate(enabledActivity, YESTERDAY);
+    expect(enabledYesterday?.toVersionId).toBe(enabled.v2Id);
+    await expect(readMemoryActivity(disabled.fixture)).resolves.toStrictEqual(
+      [],
+    );
   });
 });
 
@@ -983,11 +1028,13 @@ describe("POST /api/zero/memory/dev-refresh", () => {
     expect(first.body).toStrictEqual({ summarized: 2 });
     expect(oldLlm.calls).toBe(2);
 
-    const before = await findSummary(current.fixture);
-    expect(before?.summary).toBe("Old prompt summary");
-    await expect(findSummaries(other.fixture)).resolves.toHaveLength(0);
+    const beforeActivity = await readMemoryActivity(current.fixture);
+    const beforeYesterday = activityEntryForDate(beforeActivity, YESTERDAY);
+    expect(beforeYesterday?.summary).toBe("Old prompt summary");
+    await expect(readMemoryActivity(other.fixture)).resolves.toStrictEqual([]);
 
     const newLlm = mockLlm("New prompt summary");
+    mocks.clerk.session(current.fixture.userId, current.fixture.orgId);
     const second = await accept(
       devRefreshClient().refresh({ headers: authHeaders() }),
       [200],
@@ -995,10 +1042,10 @@ describe("POST /api/zero/memory/dev-refresh", () => {
 
     expect(second.body).toStrictEqual({ summarized: 2 });
     expect(newLlm.calls).toBe(2);
-    const after = await findSummary(current.fixture);
-    expect(after?.id).toBe(before?.id);
-    expect(after?.summary).toBe("New prompt summary");
-    await expect(findSummaries(current.fixture)).resolves.toHaveLength(2);
-    await expect(findSummaries(other.fixture)).resolves.toHaveLength(0);
+    const afterActivity = await readMemoryActivity(current.fixture);
+    const afterYesterday = activityEntryForDate(afterActivity, YESTERDAY);
+    expect(afterYesterday?.summary).toBe("New prompt summary");
+    expect(afterActivity).toHaveLength(2);
+    await expect(readMemoryActivity(other.fixture)).resolves.toStrictEqual([]);
   });
 });
