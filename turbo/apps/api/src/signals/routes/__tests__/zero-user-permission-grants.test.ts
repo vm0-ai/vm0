@@ -5,10 +5,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewalls";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -95,18 +93,6 @@ async function readStoredGrant(args: {
   return row ?? null;
 }
 
-async function enableConnectorPermissionReset(args: {
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: args.orgId,
-    userId: args.userId,
-    switches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-  });
-}
-
 describe("zero user permission grants", () => {
   const fixtures: UsageInsightFixture[] = [];
   const trackedOrgIds: string[] = [];
@@ -136,9 +122,6 @@ describe("zero user permission grants", () => {
       await db
         .delete(userPermissionGrants)
         .where(inArray(userPermissionGrants.orgId, trackedOrgIds));
-      await db
-        .delete(userFeatureSwitches)
-        .where(inArray(userFeatureSwitches.orgId, trackedOrgIds));
       trackedOrgIds.length = 0;
     }
 
@@ -384,47 +367,12 @@ describe("zero user permission grants", () => {
     expect(askResponse.status).toBe(400);
   });
 
-  it("rejects connector reset when the feature switch is disabled", async () => {
-    const fixture = await createFixture();
-    const agentId = await seedAgent(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const db = store.set(writeDb$);
-    await db.insert(userPermissionGrants).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      agentId,
-      connectorRef: SLACK_CONNECTOR,
-      permission: SLACK_READ_PERMISSION,
-      action: "deny",
-    });
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
-
-    const response = await accept(
-      client.reset({
-        query: { agentId, connectorRef: SLACK_CONNECTOR },
-        headers: AUTH_HEADERS,
-      }),
-      [403],
-    );
-
-    expect(response.body.error.code).toBe("FORBIDDEN");
-    const stored = await readStoredGrant({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      agentId,
-      connectorRef: SLACK_CONNECTOR,
-      permission: SLACK_READ_PERMISSION,
-    });
-    expect(stored?.action).toBe("deny");
-  });
-
   it("resets only the current user's selected connector grants", async () => {
     const fixture = await createFixture();
     const otherUserId = `user_${randomUUID()}`;
     await seedMember({ orgId: fixture.orgId, userId: otherUserId });
     const agentId = await seedAgent(fixture);
     const otherAgentId = await seedAgent(fixture);
-    await enableConnectorPermissionReset(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const db = store.set(writeDb$);
     await db.insert(userPermissionGrants).values([
@@ -529,7 +477,6 @@ describe("zero user permission grants", () => {
   it("validates connector refs for connector reset", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
-    await enableConnectorPermissionReset(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
@@ -552,10 +499,6 @@ describe("zero user permission grants", () => {
       orgId: owner.orgId,
       userId: owner.userId,
       visibility: "private",
-    });
-    await enableConnectorPermissionReset({
-      orgId: owner.orgId,
-      userId: sameOrgUserId,
     });
     mocks.clerk.session(sameOrgUserId, owner.orgId, "org:member");
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
