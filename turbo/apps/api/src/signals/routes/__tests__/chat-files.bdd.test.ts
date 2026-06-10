@@ -4,12 +4,14 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import {
   createChatFilesBddApi,
   hostedTextFile,
   persistedAttachment,
   storageTextFile,
 } from "./helpers/api-bdd-chat-files";
+import { mockMemoryContent } from "./helpers/zero-memory";
 
 /*
 helper gap:
@@ -29,6 +31,7 @@ helper gap:
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createChatFilesBddApi(context);
+const authOrg = createAuthOrgAgentsBddApi(context);
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -677,6 +680,117 @@ describe("CHAT-03 artifacts and memory", () => {
     const activity = await api.readMemoryActivity(actor);
     expect(activity.entries).toStrictEqual([]);
     expect(activity.nextCursor).toBeNull();
+  });
+
+  it("rejects memory reads without an authenticated org context", async () => {
+    const unauthenticated = await api.requestReadMemory(null, [401]);
+    expect(unauthenticated.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+
+    const noOrg = await api.requestReadMemory(bdd.user({ orgId: null }), [401]);
+    expect(noOrg.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("publishes a memory artifact through storage APIs and reads it back", async () => {
+    const owner = bdd.user();
+    const peer = bdd.user({ orgId: owner.orgId, orgRole: "org:member" });
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/upload?sig=test",
+    );
+    api.mockObjectStorageObjectsExist();
+
+    const missing = await api.readMemory(owner);
+    expect(missing).toStrictEqual({
+      exists: false,
+      name: "memory",
+      size: 0,
+      fileCount: 0,
+      updatedAt: null,
+      files: [],
+      fileContents: [],
+    });
+
+    const files = [
+      storageTextFile("MEMORY.md", "# My Memory"),
+      storageTextFile("notes/todo.md", "Do the thing"),
+    ];
+    const prepared = await api.prepareStorage(owner, {
+      storageName: "memory",
+      storageType: "artifact",
+      files,
+      force: true,
+    });
+    if (!prepared.uploads) {
+      throw new Error("Expected memory prepare to return upload targets");
+    }
+
+    const uncommitted = await api.readMemory(owner);
+    expect(uncommitted).toStrictEqual({
+      exists: true,
+      name: "memory",
+      size: 0,
+      fileCount: 0,
+      updatedAt: expect.any(String),
+      files: [],
+      fileContents: [],
+    });
+
+    const s3Key = prepared.uploads.archive.key.replace(
+      /\/archive\.tar\.gz$/,
+      "",
+    );
+    mockMemoryContent(context, {
+      s3Key,
+      files: [
+        { path: "./MEMORY.md", content: "# My Memory" },
+        { path: "notes/todo.md", content: "Do the thing" },
+      ],
+    });
+
+    const committed = await api.commitStorage(owner, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: prepared.versionId,
+      files,
+    });
+    expect(committed).toMatchObject({ success: true, fileCount: 2 });
+
+    const populated = await api.readMemory(owner);
+    expect(populated).toStrictEqual({
+      exists: true,
+      name: "memory",
+      size: 23,
+      fileCount: 2,
+      updatedAt: expect.any(String),
+      files: [
+        { path: "MEMORY.md", size: 11 },
+        { path: "notes/todo.md", size: 12 },
+      ],
+      fileContents: [
+        { path: "MEMORY.md", content: "# My Memory" },
+        { path: "notes/todo.md", content: "Do the thing" },
+      ],
+    });
+
+    const peerMemory = await api.readMemory(peer);
+    expect(peerMemory.exists).toBeFalsy();
+
+    authOrg.mockClerkOrg(owner);
+    const key = await authOrg.createApiKey(owner, {
+      name: "BDD memory token",
+      expiresInDays: 7,
+    });
+    const bearerMemory = await api.readMemoryWithBearer(key.token, [200]);
+    if (bearerMemory.status !== 200) {
+      throw new Error("Expected the CLI bearer token to read memory");
+    }
+    expect(bearerMemory.body.exists).toBeTruthy();
+    expect(bearerMemory.body.fileContents).toStrictEqual(
+      expect.arrayContaining([{ path: "MEMORY.md", content: "# My Memory" }]),
+    );
   });
 });
 

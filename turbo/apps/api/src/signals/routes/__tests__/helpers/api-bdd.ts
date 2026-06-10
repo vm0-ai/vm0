@@ -178,6 +178,18 @@ export function createBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestReadOnboardingStatus(
+      nextUser: ApiTestUser | null,
+      statuses: readonly (200 | 401)[],
+    ) {
+      return await accept(
+        onboardingStatusClient().getStatus({
+          headers: authenticate(nextUser),
+        }),
+        statuses,
+      );
+    },
+
     async setupOnboarding(nextUser: ApiTestUser, body: OnboardingSetupBody) {
       return await accept(
         onboardingSetupClient().setup({

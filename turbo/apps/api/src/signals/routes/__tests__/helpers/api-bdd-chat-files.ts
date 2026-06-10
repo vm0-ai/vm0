@@ -853,6 +853,28 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestReadMemory(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401)[],
+    ) {
+      return await accept(
+        memoryClient().get({ headers: authenticate(context, actor) }),
+        statuses,
+      );
+    },
+
+    async readMemoryWithBearer(
+      token: string,
+      statuses: readonly (200 | 401)[],
+    ) {
+      return await accept(
+        memoryClient().get({
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        statuses,
+      );
+    },
+
     async readMemoryActivity(
       actor: ApiTestUser,
     ): Promise<MemoryActivityResponse> {

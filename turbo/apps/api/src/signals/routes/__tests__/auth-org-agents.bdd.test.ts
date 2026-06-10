@@ -7,7 +7,8 @@ import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
-import { expectApiError } from "./helpers/api-bdd";
+import { createBddApi, expectApiError } from "./helpers/api-bdd";
+import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
 
 /*
 helper gap:
@@ -24,6 +25,8 @@ helper gap:
 
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
+const bdd = createBddApi(context);
+const runsApi = createRunsSchedulesApi(context);
 
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);
@@ -526,6 +529,101 @@ describe("ORG-01 and ORG-02", () => {
     });
     await expect(api.deleteOrg(admin, nextSlug)).resolves.toStrictEqual({
       message: "Organization deleted",
+    });
+  });
+});
+
+describe("ORG-03 onboarding status mapping", () => {
+  it("rejects onboarding status without authentication", async () => {
+    const unauthenticated = await bdd.requestReadOnboardingStatus(null, [401]);
+    expect(unauthenticated.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("maps onboarding status across the setup, payment, entitlement, and agent-deletion journey", async () => {
+    const noOrg = api.user({ orgId: null });
+    const admin = api.user();
+    const member = api.user({ orgId: admin.orgId, orgRole: "org:member" });
+
+    const noOrgStatus = await api.readOnboardingStatus(noOrg);
+    expect(noOrgStatus).toStrictEqual({
+      needsOnboarding: true,
+      isAdmin: false,
+      hasOrg: false,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
+    });
+
+    const memberStatus = await api.readOnboardingStatus(member);
+    expect(memberStatus).toStrictEqual({
+      needsOnboarding: false,
+      isAdmin: false,
+      hasOrg: true,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
+    });
+
+    const adminBeforeSetup = await api.readOnboardingStatus(admin);
+    expect(adminBeforeSetup).toStrictEqual({
+      needsOnboarding: true,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
+    });
+
+    api.acceptAgentStorageWrites();
+    const setup = await api.setupOnboarding(admin, {
+      displayName: "BDD Status Agent",
+      sound: "friendly",
+    });
+    if (setup.status !== 200) {
+      throw new Error(
+        `Expected onboarding setup to succeed, got ${setup.status}`,
+      );
+    }
+    const agentId = setup.body.agentId;
+
+    const paymentPending = await api.readOnboardingStatus(admin);
+    expect(paymentPending).toStrictEqual({
+      needsOnboarding: true,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: agentId,
+      defaultAgentMetadata: {
+        displayName: "BDD Status Agent",
+        sound: "friendly",
+      },
+    });
+
+    await runsApi.grantProEntitlement(admin);
+    const entitled = await api.readOnboardingStatus(admin);
+    expect(entitled).toStrictEqual({
+      needsOnboarding: false,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: agentId,
+      defaultAgentMetadata: {
+        displayName: "BDD Status Agent",
+        sound: "friendly",
+      },
+    });
+
+    await api.deleteAgent(admin, agentId);
+    const orphaned = await api.readOnboardingStatus(admin);
+    expect(orphaned).toStrictEqual({
+      needsOnboarding: true,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
     });
   });
 });
