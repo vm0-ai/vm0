@@ -293,6 +293,12 @@ crypto/parsers (`signals/auth/__tests__/tokens.test.ts`,
 (`services/__tests__/memory-activity-*.service.test.ts`), and cron next-run
 calc. Services tests outside this list migrate to route-level BDD.
 
+`webhooks-built-in-generations.test.ts` is also kept as-is: it unit-tests pure
+provider-failure mapping helpers (`providerFailureDetailsForLog`,
+`bytePlusBuiltInGenerationError`) that are only reached by driving a failing
+provider generation through the media webhook pipeline (run + provider infra),
+so there is no API-first way to exercise just the mapping.
+
 ## Drop decisions
 
 - **Connector-owned variable filtering** (`zero-variables.test.ts` "does not
@@ -773,3 +779,18 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified (source-only): `zero-org-membership-requests.ts` (31/12/2)
   and `zero-org-membership-requests.service.ts` (16/8/2) unchanged vs `main`. No
   regressions.
+
+### Round 30 — BILLING REDEEM CODE (CHAIN-BILLING-REDEEM-CODE)
+
+- Extended `createBddApi` with the `billingRedeemCode` client.
+- Added `zero-billing-redeem-code.bdd.test.ts`: an admin redeems a code through
+  the external Atom service (MSW-mocked) using a Clerk M2M token — asserting the
+  trimmed code + org id in the outbound Atom request, the M2M minting params, and
+  the `{redeemed:true}` response; non-admin/unauthenticated callers never touch
+  Atom; missing ATOM_URL / machine secret, M2M failure, and an unreachable Atom
+  all surface as 503s; and every Atom rejection shape (404, already_used,
+  expired, org_mismatch, unknown business error, malformed JSON) maps to its
+  stable bad-request message. Env is driven by `mockEnv`/`mockOptionalEnv`.
+- Deleted `zero-billing-redeem-code.test.ts` whole.
+- Coverage verified (source-only): `zero-billing-redeem-code.ts` (70/42/9) and
+  `zero-billing-redeem.service.ts` (89/31/7) unchanged vs `main`. No regressions.
