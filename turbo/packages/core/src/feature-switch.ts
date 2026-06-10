@@ -195,6 +195,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show audit log links in integration replies",
     enabled: false,
   },
+  [FeatureSwitchKey.AudioInput]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable verbose (timestamped-segment) speech-to-text on /api/zero/voice-io/stt; when off, transcription falls back to plain text",
+    enabled: false,
+  },
   [FeatureSwitchKey.AudioOutput]: {
     maintainer: "lancy@vm0.ai",
     description:

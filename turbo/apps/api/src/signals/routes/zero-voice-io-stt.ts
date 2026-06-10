@@ -1,9 +1,12 @@
 import { command } from "ccstate";
 import { zeroVoiceIoSttContract } from "@vm0/api-contracts/contracts/zero-voice-io-stt";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
 import { audioInputQuota } from "../services/voice-io.service";
@@ -26,10 +29,31 @@ import { env } from "../../lib/env";
 
 const L = logger("ZeroVoiceIoStt");
 
+// Whether verbose (timestamped-segment) transcription is enabled for the
+// caller. This is the new, switch-gated path; when off, the route falls back
+// to plain transcription so the base STT endpoint keeps working for everyone.
+const audioInputVerboseEnabled$ = command(
+  async ({ get }, signal: AbortSignal): Promise<boolean> => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    return isFeatureEnabled(FeatureSwitchKey.AudioInput, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    });
+  },
+);
+
 const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
-  const verbose = request.query("verbose") === "true";
   const auth = get(organizationAuthContext$);
+  const verbose =
+    request.query("verbose") === "true" &&
+    (await set(audioInputVerboseEnabled$, signal));
+
   const quota = await get(audioInputQuota(auth.orgId, auth.userId));
   signal.throwIfAborted();
   if (!quota.allowed) {
@@ -168,7 +192,11 @@ export const zeroVoiceIoSttRoutes: readonly RouteEntry[] = [
   {
     route: zeroVoiceIoSttContract.post,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        requiredCapability: "file:write",
+        missingOrganizationStatus: 401,
+      },
       postSttInner$,
     ),
   },
