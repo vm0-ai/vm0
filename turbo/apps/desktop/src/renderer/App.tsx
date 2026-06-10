@@ -9,6 +9,7 @@ import {
   IconCode,
   IconExternalLink,
   IconHistory,
+  IconLoader2,
   IconLogout,
   IconMaximize,
   IconPhoto,
@@ -1105,6 +1106,20 @@ function UnsupportedPanel({ platform }: { readonly platform: string }) {
   );
 }
 
+function StartupLoadingScreen() {
+  return (
+    <section className="startup-loading" aria-live="polite">
+      <div className="startup-loading-mark" aria-hidden="true">
+        <IconLoader2 size={22} />
+      </div>
+      <div className="startup-loading-copy">
+        <h2>Preparing Computer Use</h2>
+        <p>Checking your Zero account and workspace before setup begins.</p>
+      </div>
+    </section>
+  );
+}
+
 function ComputerUseContent({
   authLoading,
   authState,
@@ -1143,6 +1158,7 @@ function ComputerUsePage() {
   const authLoadable = useLastLoadable(desktopAuthData$);
   const authState = authLoadable.state === "hasData" ? authLoadable.data : null;
   const authLoading = authLoadable.state === "loading";
+  const authInitialLoading = authLoading && authState === null;
 
   if (!hasDesktopComputerUseBridge()) {
     return (
@@ -1153,6 +1169,10 @@ function ComputerUsePage() {
   }
 
   if (loadable.state === "hasData") {
+    if (authInitialLoading) {
+      return <StartupLoadingScreen />;
+    }
+
     return (
       <ComputerUseContent
         authLoading={authLoading}
