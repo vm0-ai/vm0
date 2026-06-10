@@ -14,6 +14,10 @@ function computerUseState(
     platform: "darwin",
     supported: true,
     permissions: { accessibility: true, screenRecording: true },
+    keepAwake: {
+      enabled: false,
+      active: false,
+    },
     host: {
       status: "idle",
       hostId: null,

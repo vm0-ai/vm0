@@ -48,6 +48,12 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
       COMPUTER_USE_CHANNELS.requestScreenRecordingPermission,
     );
   },
+  setKeepAwakeEnabled(enabled: boolean): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.setKeepAwakeEnabled,
+      enabled,
+    );
+  },
   openAccessibilitySettings(): Promise<void> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.openAccessibilitySettings);
   },

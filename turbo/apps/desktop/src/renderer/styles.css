@@ -353,6 +353,45 @@ button {
   background: rgba(249, 250, 251, 0.76);
 }
 
+.checkbox-row {
+  min-height: 58px;
+  border: 1px solid rgba(30, 38, 52, 0.08);
+  border-radius: 7px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  background: rgba(249, 250, 251, 0.76);
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
+.checkbox-row:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.checkbox-row-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.checkbox-row-meta {
+  color: #3d4a5c;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
 .command-log-list {
   gap: 10px;
 }
@@ -788,6 +827,14 @@ button {
   .permission-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .checkbox-row {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .checkbox-row-meta {
+    grid-column: 2;
   }
 
   .command-log-summary {

@@ -35,6 +35,7 @@ import {
   refreshComputerUse$,
   requestAccessibilityPermission$,
   requestScreenRecordingPermission$,
+  setKeepAwakeEnabled$,
   setupComputerUseBridge$,
   startComputerUse$,
 } from "./computer-use-state";
@@ -125,6 +126,40 @@ function IconButton({
       {icon}
       <span>{children}</span>
     </button>
+  );
+}
+
+function CheckboxRow({
+  checked,
+  disabled,
+  meta,
+  onChange,
+  subtitle,
+  title,
+}: {
+  readonly checked: boolean;
+  readonly disabled?: boolean;
+  readonly meta: string;
+  readonly onChange: (checked: boolean) => void;
+  readonly subtitle: string;
+  readonly title: string;
+}) {
+  return (
+    <label className="checkbox-row">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => {
+          onChange(event.currentTarget.checked);
+        }}
+      />
+      <span className="checkbox-row-copy">
+        <span className="row-title">{title}</span>
+        <span className="row-meta">{subtitle}</span>
+      </span>
+      <span className="checkbox-row-meta">{meta}</span>
+    </label>
   );
 }
 
@@ -426,6 +461,8 @@ function RuntimePanel({
   const [startLoadable, start] = useLoadableSet(startComputerUse$);
   const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
   const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
+  const [keepAwakeLoadable, setKeepAwakeEnabled] =
+    useLoadableSet(setKeepAwakeEnabled$);
   const [orgSelectionLoadable, selectOrg] = useLoadableSet(
     openDesktopOrgSelection$,
   );
@@ -468,6 +505,16 @@ function RuntimePanel({
           <strong>{formatTimestamp(state.host.lastCommandAt)}</strong>
         </div>
       </div>
+      <CheckboxRow
+        title="Keep Mac awake"
+        subtitle="Prevents automatic system sleep. Display may still turn off."
+        meta={state.keepAwake.active ? "Active" : "Off"}
+        checked={state.keepAwake.enabled}
+        disabled={keepAwakeLoadable.state === "loading"}
+        onChange={(enabled) => {
+          void setKeepAwakeEnabled(enabled);
+        }}
+      />
       {state.host.lastError && (
         <div className="inline-alert">
           <IconAlertCircle size={16} />

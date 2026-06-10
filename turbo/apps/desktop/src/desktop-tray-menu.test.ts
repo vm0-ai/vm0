@@ -45,6 +45,10 @@ function computerUseState(
     platform: "darwin",
     supported: true,
     permissions,
+    keepAwake: {
+      enabled: false,
+      active: false,
+    },
     host: {
       ...baseHostState,
       ...host,
@@ -80,6 +84,7 @@ function trayActions(
     requestScreenRecordingPermission: vi.fn(),
     openAccessibilitySettings: vi.fn(),
     openScreenRecordingSettings: vi.fn(),
+    setKeepAwakeEnabled: vi.fn(),
     quit: vi.fn(),
     ...overrides,
   };
@@ -126,6 +131,12 @@ describe("desktop tray menu", () => {
     );
 
     expect(findItem(menu, "Show Main Window")).toBeDefined();
+    expect(findItem(menu, "Keep Mac Awake")).toStrictEqual({
+      label: "Keep Mac Awake",
+      type: "checkbox",
+      checked: false,
+      click: expect.any(Function),
+    });
     expect(findItem(menu, "Computer Use: Online")).toBeDefined();
     expect(findItem(menu, "Workspace: Max & Zoe")).toBeDefined();
     expect(findItem(menu, "No Recent Commands")).toStrictEqual({
@@ -133,6 +144,31 @@ describe("desktop tray menu", () => {
       enabled: false,
     });
     expect(findItem(menu, "Quit")).toBeDefined();
+  });
+
+  it("toggles keep-awake from the top-level menu", () => {
+    const setKeepAwakeEnabled = vi.fn();
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: {
+          ...computerUseState({ status: "online" }),
+          keepAwake: {
+            enabled: true,
+            active: true,
+          },
+        },
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions({ setKeepAwakeEnabled }),
+    );
+
+    const keepAwakeItem = findItem(menu, "Keep Mac Awake");
+
+    expect(keepAwakeItem.type).toBe("checkbox");
+    expect(keepAwakeItem.checked).toBe(true);
+    click(keepAwakeItem);
+    expect(setKeepAwakeEnabled).toHaveBeenCalledWith(false);
   });
 
   it("enables starting Computer Use when ready and signed in", () => {

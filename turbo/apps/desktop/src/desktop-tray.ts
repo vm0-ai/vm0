@@ -27,6 +27,7 @@ interface DesktopTrayControllerOptions {
   readonly requestScreenRecordingPermission: () => Promise<void>;
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
+  readonly setKeepAwakeEnabled: (enabled: boolean) => Promise<void>;
   readonly quit: () => void;
 }
 
@@ -50,6 +51,9 @@ function electronMenuItem(
   }
   if (item.enabled !== undefined) {
     template.enabled = item.enabled;
+  }
+  if (item.checked !== undefined) {
+    template.checked = item.checked;
   }
   if (item.click) {
     template.click = item.click;
@@ -190,6 +194,11 @@ export class DesktopTrayController {
           this.options.openScreenRecordingSettings();
         },
       ),
+      setKeepAwakeEnabled: (enabled) => {
+        this.runAction("set keep-awake enabled", () => {
+          return this.options.setKeepAwakeEnabled(enabled);
+        })();
+      },
       quit: () => {
         this.options.quit();
       },
