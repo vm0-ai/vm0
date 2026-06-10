@@ -16,12 +16,7 @@ export interface CustomConnectorFixture {
 interface SeedValues {
   readonly orgId?: string;
   readonly userId?: string;
-  readonly slug?: string;
-  readonly displayName?: string;
-  readonly prefixes?: readonly string[];
-  readonly headerName?: string;
-  readonly headerTemplate?: string;
-  readonly withSecret?: boolean;
+  readonly slug: string;
 }
 
 export const seedCustomConnectorOrg$ = command(
@@ -38,24 +33,14 @@ export const seedCustomConnectorOrg$ = command(
     await writeDb.insert(orgCustomConnectors).values({
       id: connectorId,
       orgId,
-      slug: values.slug ?? `connector-${connectorId.slice(0, 8)}`,
-      displayName: values.displayName ?? "Example",
-      prefixes: [...(values.prefixes ?? ["https://api.example.com/"])],
-      headerName: values.headerName ?? "Authorization",
-      headerTemplate: values.headerTemplate ?? "Bearer {{secret}}",
+      slug: values.slug,
+      displayName: "Example",
+      prefixes: ["https://api.example.com/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
       createdBy: userId,
     });
     signal.throwIfAborted();
-
-    if (values.withSecret) {
-      await writeDb.insert(orgCustomConnectorSecrets).values({
-        connectorId,
-        userId,
-        orgId,
-        encryptedValue: "encrypted-test-secret",
-      });
-      signal.throwIfAborted();
-    }
 
     return { orgId, userId, connectorId };
   },
