@@ -1,0 +1,450 @@
+import { randomUUID } from "node:crypto";
+
+import { zeroMemoryActivityContract } from "@vm0/api-contracts/contracts/zero-memory-activity";
+import type { MemoryChangeDiff } from "@vm0/db/schema/memory-change-item";
+import { createStore } from "ccstate";
+
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import {
+  deleteMemoryForFixture$,
+  type MemoryFixture,
+  seedMemoryActivitySummary$,
+  seedMemoryFixture$,
+} from "./helpers/zero-memory";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
+
+const context = testContext();
+const store = createStore();
+const mocks = createZeroRouteMocks(context);
+
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+function activityClient() {
+  return setupApp({ context })(zeroMemoryActivityContract);
+}
+
+function addedDiff(text: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    beforeExists: false,
+    afterExists: true,
+    truncated: false,
+    stats: { added: 1, removed: 0 },
+    hunks: [
+      {
+        beforeStartLine: null,
+        afterStartLine: 1,
+        lines: [{ op: "add", beforeLine: null, afterLine: 1, text }],
+      },
+    ],
+  };
+}
+
+function removedDiff(text: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    beforeExists: true,
+    afterExists: false,
+    truncated: false,
+    stats: { added: 0, removed: 1 },
+    hunks: [
+      {
+        beforeStartLine: 1,
+        afterStartLine: null,
+        lines: [{ op: "remove", beforeLine: 1, afterLine: null, text }],
+      },
+    ],
+  };
+}
+
+function updatedDiff(beforeText: string, afterText: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    beforeExists: true,
+    afterExists: true,
+    truncated: false,
+    stats: { added: 1, removed: 1 },
+    hunks: [
+      {
+        beforeStartLine: 1,
+        afterStartLine: 1,
+        lines: [
+          { op: "remove", beforeLine: 1, afterLine: null, text: beforeText },
+          { op: "add", beforeLine: null, afterLine: 1, text: afterText },
+        ],
+      },
+    ],
+  };
+}
+
+describe("GET /api/zero/memory/activity", () => {
+  const track = createFixtureTracker<MemoryFixture>((fixture) => {
+    return store.set(deleteMemoryForFixture$, fixture, context.signal);
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(activityClient().get({ headers: {} }), [401]);
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+    const response = await accept(
+      activityClient().get({ headers: authHeaders() }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns an empty timeline when the user has no summaries", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      activityClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ entries: [], nextCursor: null });
+  });
+
+  it("returns entries most-recent-day first with their items", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-05-01",
+        fromVersionId: null,
+        toVersionId: "v1",
+        summary: "Zero learned about your project setup",
+        items: [
+          {
+            filePath: "preferences/pnpm.md",
+            diff: addedDiff("Use pnpm for all package operations"),
+          },
+        ],
+      },
+      context.signal,
+    );
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-05-03",
+        fromVersionId: "v1",
+        toVersionId: "v2",
+        summary: null,
+        items: [
+          {
+            filePath: "preferences/pnpm.md",
+            diff: updatedDiff(
+              "Use pnpm for all package operations",
+              "Use pnpm 9 for all package operations",
+            ),
+          },
+          {
+            filePath: "notes/stale.md",
+            diff: removedDiff("Old note"),
+          },
+        ],
+      },
+      context.signal,
+    );
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-05-04",
+        fromVersionId: "v2",
+        toVersionId: "v3",
+        summary: null,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      activityClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      entries: [
+        {
+          date: "2025-05-03",
+          summary: null,
+          fromVersionId: "v1",
+          toVersionId: "v2",
+          // Items are ordered by `file_path`, regardless of seeded insertion
+          // order.
+          items: [
+            {
+              filePath: "notes/stale.md",
+              diff: removedDiff("Old note"),
+            },
+            {
+              filePath: "preferences/pnpm.md",
+              diff: updatedDiff(
+                "Use pnpm for all package operations",
+                "Use pnpm 9 for all package operations",
+              ),
+            },
+          ],
+        },
+        {
+          date: "2025-05-01",
+          summary: "Zero learned about your project setup",
+          fromVersionId: null,
+          toVersionId: "v1",
+          items: [
+            {
+              filePath: "preferences/pnpm.md",
+              diff: addedDiff("Use pnpm for all package operations"),
+            },
+          ],
+        },
+      ],
+      nextCursor: null,
+    });
+  });
+
+  it("paginates summaries with a date cursor", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    for (const date of ["2025-05-01", "2025-05-03"]) {
+      await store.set(
+        seedMemoryActivitySummary$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          date,
+          toVersionId: `v-${date}`,
+          summary: `Summary for ${date}`,
+          items: [
+            {
+              filePath: `${date}.md`,
+              diff: addedDiff(date),
+            },
+          ],
+        },
+        context.signal,
+      );
+    }
+    for (const date of ["2025-05-02", "2025-05-04"]) {
+      await store.set(
+        seedMemoryActivitySummary$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          date,
+          toVersionId: `empty-${date}`,
+          summary: `Empty summary for ${date}`,
+        },
+        context.signal,
+      );
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const firstPage = await accept(
+      activityClient().get({
+        headers: authHeaders(),
+        query: { limit: 1 },
+      }),
+      [200],
+    );
+
+    expect(
+      firstPage.body.entries.map((entry) => {
+        return entry.date;
+      }),
+    ).toStrictEqual(["2025-05-03"]);
+    expect(firstPage.body.entries[0]?.items).toStrictEqual([
+      {
+        filePath: "2025-05-03.md",
+        diff: addedDiff("2025-05-03"),
+      },
+    ]);
+    expect(firstPage.body.nextCursor).toBe("2025-05-03");
+
+    const secondPage = await accept(
+      activityClient().get({
+        headers: authHeaders(),
+        query: { limit: 1, cursor: firstPage.body.nextCursor ?? "" },
+      }),
+      [200],
+    );
+
+    expect(
+      secondPage.body.entries.map((entry) => {
+        return entry.date;
+      }),
+    ).toStrictEqual(["2025-05-01"]);
+    expect(secondPage.body.entries[0]?.items).toStrictEqual([
+      {
+        filePath: "2025-05-01.md",
+        diff: addedDiff("2025-05-01"),
+      },
+    ]);
+    expect(secondPage.body.nextCursor).toBeNull();
+  });
+
+  it("omits entries with no items", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-06-01",
+        toVersionId: "v9",
+        summary: "A quiet narrative day",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      activityClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.entries).toStrictEqual([]);
+    expect(response.body.nextCursor).toBeNull();
+  });
+
+  it("orders a summary's items deterministically by file_path", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    // Seeded out of file path order. All items share one batch-insert
+    // `created_at`, mirroring the cron, so the previous `created_at` ordering
+    // would leave this order undefined.
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-07-01",
+        toVersionId: "v-order",
+        summary: "Many changes in one day",
+        items: [
+          { filePath: "b.md" },
+          { filePath: "d.md" },
+          { filePath: "a.md" },
+          { filePath: "c.md" },
+        ],
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      activityClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(
+      response.body.entries[0]?.items.map((item) => {
+        return item.filePath;
+      }),
+    ).toStrictEqual(["a.md", "b.md", "c.md", "d.md"]);
+  });
+
+  it("scopes summaries to the authenticated user and org", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    // Same org, different user.
+    const otherUserId = `user_${randomUUID()}`;
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        date: "2025-05-10",
+        toVersionId: "other-user-v1",
+        summary: "Other user's memory",
+        items: [
+          {
+            filePath: "secret.md",
+            diff: addedDiff("Should not leak"),
+          },
+        ],
+      },
+      context.signal,
+    );
+    // Different org, same user id (must not leak across orgs).
+    const otherFixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: otherFixture.orgId,
+        userId: fixture.userId,
+        date: "2025-05-11",
+        toVersionId: "other-org-v1",
+        summary: "Other org's memory",
+      },
+      context.signal,
+    );
+    // The authenticated user's own summary in their own org.
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-05-12",
+        toVersionId: "mine-v1",
+        summary: "My memory",
+        items: [
+          {
+            filePath: "mine.md",
+            diff: addedDiff("Visible"),
+          },
+        ],
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      activityClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.entries).toHaveLength(1);
+    expect(response.body.entries[0]).toStrictEqual({
+      date: "2025-05-12",
+      summary: "My memory",
+      fromVersionId: null,
+      toVersionId: "mine-v1",
+      items: [
+        {
+          filePath: "mine.md",
+          diff: addedDiff("Visible"),
+        },
+      ],
+    });
+  });
+});

@@ -230,7 +230,7 @@ function normalizeHandleForConnect(handle: string): string {
   return handle.trim();
 }
 
-function signAgentPhoneConnectParams(params: {
+export function signAgentPhoneConnectParams(params: {
   readonly phoneHandle: string;
   readonly agentphoneAgentId: string;
   readonly timestamp: number;

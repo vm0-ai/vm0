@@ -301,7 +301,7 @@ function stringifyProviderFailureDetail(value: unknown): string | undefined {
     : undefined;
 }
 
-function providerFailureDetailsForLog(
+export function providerFailureDetailsForLog(
   payload: unknown,
 ): Record<string, string> {
   if (!isRecord(payload)) {

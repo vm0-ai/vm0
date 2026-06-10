@@ -232,3 +232,9 @@ export function logger(name: string): Logger {
   registry.set(name, loggerInstance);
   return loggerInstance;
 }
+
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export function __resetForTest(): void {
+  getAxiomLogger.reset();
+  loggerRegistry.reset();
+}

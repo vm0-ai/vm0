@@ -174,6 +174,39 @@ export function webhookRowToAutomation(row: {
   };
 }
 
+/**
+ * Maps an `automations` row (joined with its firing time trigger) to the
+ * Automation view the interpreter consumes for an automation-table time fire
+ * (the dormant trigger poller). The recurrence lives on the trigger row, so its
+ * `kind` (cron/once/loop) and `cronExpression`/`timezone` are threaded in here.
+ * Counterpart to `scheduleToAutomation` for the events-first time path.
+ */
+export function automationRowToTimeAutomation(row: {
+  readonly id: string;
+  readonly agentId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly instruction: string;
+  readonly triggerType: "cron" | "once" | "loop";
+  readonly cronExpression: string | null;
+  readonly timezone: string;
+}): Automation {
+  return {
+    interpreterKind: "time",
+    id: row.id,
+    agentId: row.agentId,
+    orgId: row.orgId,
+    userId: row.userId,
+    chatThreadId: row.chatThreadId,
+    prompt: row.instruction,
+    appendSystemPrompt: null,
+    triggerType: row.triggerType,
+    cronExpression: row.cronExpression,
+    timezone: row.timezone,
+  };
+}
+
 function buildSchedulePrompt(triggerType: string): string {
   return [
     "# Current Integration",

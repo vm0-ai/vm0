@@ -11,7 +11,12 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { now } from "../external/time";
 import { safeJsonParse } from "../utils";
-import { CliAuth, SandboxAuth, ZeroAuth } from "../../types/auth";
+import {
+  CliAuth,
+  ComposeJobAuth,
+  SandboxAuth,
+  ZeroAuth,
+} from "../../types/auth";
 import { singleton } from "../../lib/singleton";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
@@ -63,10 +68,16 @@ const cliTokenPayloadSchema = jwtBaseSchema.extend({
   tokenId: z.string().min(1),
 });
 
+const composeJobTokenPayloadSchema = jwtBaseSchema.extend({
+  scope: z.literal("compose-job"),
+  jobId: z.string().min(1),
+});
+
 type JwtPayload =
   | z.infer<typeof sandboxTokenPayloadSchema>
   | z.infer<typeof zeroTokenPayloadSchema>
-  | z.infer<typeof cliTokenPayloadSchema>;
+  | z.infer<typeof cliTokenPayloadSchema>
+  | z.infer<typeof composeJobTokenPayloadSchema>;
 
 function base64UrlEncode(data: Buffer | string): string {
   const buffer = typeof data === "string" ? Buffer.from(data) : data;
@@ -182,6 +193,21 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
   };
 }
 
+export function verifyComposeJobToken(token: string): ComposeJobAuth | null {
+  const parsed = composeJobTokenPayloadSchema.safeParse(
+    verifyPrefixedToken(token, SANDBOX_TOKEN_PREFIX),
+  );
+
+  if (!parsed.success) {
+    return null;
+  }
+
+  return {
+    userId: parsed.data.userId,
+    jobId: parsed.data.jobId,
+  };
+}
+
 export function verifyCliToken(token: string): CliAuth | null {
   const parsed = cliTokenPayloadSchema.safeParse(
     verifyPrefixedToken(token, PAT_TOKEN_PREFIX),
@@ -272,5 +298,15 @@ export function generateCliToken(
     exp: nowSeconds + 90 * 24 * 60 * 60,
   };
 
+  return PAT_TOKEN_PREFIX + signJwt(payload);
+}
+
+export function signSandboxJwtForTests(payload: JwtPayload): string {
+  return SANDBOX_TOKEN_PREFIX + signJwt(payload);
+}
+
+export function signPatJwtForTests(
+  payload: z.infer<typeof cliTokenPayloadSchema>,
+): string {
   return PAT_TOKEN_PREFIX + signJwt(payload);
 }

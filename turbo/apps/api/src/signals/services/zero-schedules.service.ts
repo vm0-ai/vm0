@@ -95,6 +95,7 @@ function scheduleResponse(
 
 // Re-exported from the time trigger so existing callers (the reschedule
 // callback route and the schedule tests) keep importing it from the service.
+export { calculateNextRun };
 
 type DeployScheduleBody = z.infer<
   (typeof zeroSchedulesMainContract.deploy)["body"]

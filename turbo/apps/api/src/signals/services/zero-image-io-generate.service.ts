@@ -19,7 +19,7 @@ import {
 } from "./built-in-generation-usage-idempotency";
 
 const FAL_IMAGE_QUEUE_URL_PREFIX = "https://queue.fal.run";
-const IMAGE_IO_MODEL = "gpt-image-1";
+export const IMAGE_IO_MODEL = "gpt-image-1";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
 const IMAGE_IO_MIN_PIXELS = 655_360;
 const IMAGE_IO_MAX_PIXELS = 8_294_400;
@@ -572,7 +572,7 @@ function imageModelList(): string {
   return Object.keys(IMAGE_MODEL_ALIASES).join(", ");
 }
 
-function imagePricingKey(
+export function imagePricingKey(
   model: ImageModel,
   category: ImagePricingCategory,
 ): string {
