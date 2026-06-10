@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ConnectorAuthMethodId } from "@vm0/connectors/connectors";
+import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
@@ -68,6 +69,12 @@ function mockOAuthEnv(): void {
   mockOptionalEnv("STRAVA_OAUTH_CLIENT_SECRET", "strava-test-client-secret");
   mockOptionalEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
   mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
+}
+
+function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
+  expect(authorizationUrl.searchParams.get("scope")?.split(" ")).toStrictEqual(
+    getConnectorAuthMethodAuthCodeGrantConfig("cloudflare", "oauth").scopes,
+  );
 }
 
 async function requestOauthStart(
@@ -310,7 +317,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       `${API_ORIGIN}/api/connectors/cloudflare/callback`,
     );
-    expect(authorizationUrl.searchParams.has("scope")).toBeFalsy();
+    expectCloudflareAuthorizationScopes(authorizationUrl);
     const state = authorizationUrl.searchParams.get("state");
     expect(state).toMatch(/^[0-9a-f]{64}$/);
 
@@ -359,6 +366,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       "https://api.vm7.ai:8443/api/connectors/cloudflare/callback",
     );
+    expectCloudflareAuthorizationScopes(authorizationUrl);
 
     const state = authorizationUrl.searchParams.get("state");
     const [storedState] = await db

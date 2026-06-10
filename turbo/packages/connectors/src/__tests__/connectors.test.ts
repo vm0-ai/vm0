@@ -3954,17 +3954,35 @@ describe("connector OAuth lifecycle grant helpers", () => {
   });
 
   it("declares Cloudflare OAuth as a refreshable API-origin auth-code grant", () => {
-    expect(
-      getConnectorAuthMethodAuthCodeGrantConfig("cloudflare", "oauth"),
-    ).toStrictEqual({
+    const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+      "cloudflare",
+      "oauth",
+    );
+    expect(grant).toMatchObject({
       kind: "auth-code",
-      scopes: [],
       callbackOrigin: "api",
       outputs: {
         accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
         refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
       },
     });
+    expect(grant.scopes).toHaveLength(357);
+    expect(new Set(grant.scopes).size).toBe(grant.scopes.length);
+    expect(grant.scopes).toEqual(
+      expect.arrayContaining([
+        "user-details.read",
+        "memberships.read",
+        "zone.read",
+        "dns.write",
+        "workers-scripts.write",
+        "workers-kv-storage.write",
+        "page.write",
+        "d1.write",
+        "ai.write",
+        "queues.write",
+        "workers-r2.write",
+      ]),
+    );
     expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
       featureFlag: FeatureSwitchKey.CloudflareConnector,
       client: {

@@ -21,10 +21,11 @@ function authCodeGrant() {
 
 describe("connector/providers/cloudflare", () => {
   describe("buildCloudflareAuthorizationUrl", () => {
-    it("omits scope when the connector config does not narrow scopes", () => {
+    it("uses the connector configured scopes", () => {
+      const grant = authCodeGrant();
       const url = new URL(
         buildCloudflareAuthorizationUrl(
-          authCodeGrant(),
+          grant,
           "cloudflare-client-id",
           "https://api.vm0.ai/api/connectors/cloudflare/callback",
           "test-state",
@@ -40,10 +41,12 @@ describe("connector/providers/cloudflare", () => {
       );
       expect(url.searchParams.get("response_type")).toBe("code");
       expect(url.searchParams.get("state")).toBe("test-state");
-      expect(url.searchParams.has("scope")).toBeFalsy();
+      expect(url.searchParams.get("scope")?.split(" ")).toStrictEqual(
+        grant.scopes,
+      );
     });
 
-    it("includes scope only when a connector explicitly configures scopes", () => {
+    it("uses explicit scopes when a connector explicitly configures scopes", () => {
       const url = new URL(
         buildCloudflareAuthorizationUrl(
           {
@@ -63,6 +66,7 @@ describe("connector/providers/cloudflare", () => {
       expect(url.searchParams.get("scope")).toBe(
         "workers-platform.read workers-platform.write",
       );
+      expect(url.searchParams.get("scope")).not.toContain("user-details.read");
     });
   });
 
