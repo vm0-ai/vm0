@@ -141,6 +141,10 @@ describe("/api/desktop/updates BDD", () => {
           "0.2.2",
           "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.2/Zero-darwin-arm64-0.2.2.zip",
         ),
+        "0.2.0": darwinArm64Release(
+          "0.2.0",
+          "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.0/Zero-darwin-arm64-0.2.0.zip",
+        ),
         "0.3.0": darwinArm64Release(
           "0.3.0",
           "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.3.0/Zero-darwin-arm64-0.3.0.zip",
