@@ -3829,10 +3829,7 @@ function PermissionActionCardContent({
 function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
-  const features = useLastResolved(featureSwitch$);
-  const expirationEnabled =
-    features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
-  const expirationAvailable = expirationEnabled && block.action === "allow";
+  const expirationAvailable = block.action === "allow";
   const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);

@@ -352,15 +352,15 @@ describe("zero chat thread page display - permission action card", () => {
         connectorRef: "slack",
         permission: "channels:write",
         action: "allow",
+        expiresIn: "1h",
       });
     });
-    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
     const status = within(card).getByText("Permissions updated");
     expect(status).toBeInTheDocument();
     expect(status.closest("button")).toBeNull();
   });
 
-  it("submits the default duration from permission action cards when enabled", async () => {
+  it("submits the default duration from permission action cards", async () => {
     let grantBody: unknown;
     mockPermissionAgent();
     mockPermissionMessage();
@@ -375,7 +375,6 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
 
     const card = await waitFor(() => {
@@ -410,7 +409,6 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
 
     const card = await waitFor(() => {
@@ -480,7 +478,6 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
 
     const card = await waitFor(() => {
@@ -517,7 +514,6 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
 
     const card = await waitFor(() => {
@@ -550,7 +546,6 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
 
     const card = await waitFor(() => {

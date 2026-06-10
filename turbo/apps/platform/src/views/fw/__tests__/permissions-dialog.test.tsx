@@ -403,10 +403,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorPermissionReset]: true,
-        [FeatureSwitchKey.ExpiringPermissionGrants]: true,
-      },
+      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
     });
     await openPermissionsDrawer("Notion");
     await waitFor(() => {
@@ -555,7 +552,6 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
     await openPermissionsDrawer("Notion");
 
@@ -598,7 +594,6 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
     await openPermissionsDrawer("Notion");
 
@@ -653,7 +648,6 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
     await openPermissionsDrawer("Notion");
 
@@ -694,7 +688,6 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
     await openPermissionsDrawer("Notion");
 
@@ -722,7 +715,6 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
     await openPermissionsDrawer("Notion");
 
@@ -779,7 +771,6 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
     await openPermissionsDrawer("Notion");
 
@@ -927,7 +918,6 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
     await openPermissionsDrawer("Slack");
 
@@ -957,7 +947,6 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
     });
     await openPermissionsDrawer("Slack");
 
