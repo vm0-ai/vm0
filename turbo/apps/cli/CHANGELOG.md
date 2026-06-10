@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.188.0](https://github.com/vm0-ai/vm0/compare/cli-v9.187.0...cli-v9.188.0) (2026-06-10)
+
+
+### Features
+
+* add hosted site content access ([#17021](https://github.com/vm0-ai/vm0/issues/17021)) ([05d6cc1](https://github.com/vm0-ai/vm0/commit/05d6cc19428d593167196ff6cef767fe2aca72d2))
+
+
+### Bug Fixes
+
+* **api:** measure STT WAV duration via RIFF chunk-walk, not fixed offset ([#17083](https://github.com/vm0-ai/vm0/issues/17083)) ([dfad095](https://github.com/vm0-ai/vm0/commit/dfad095f8e21d813d4ddee7eae50662e84a548ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.80.0
+    * @vm0/connectors bumped to 1.62.0
+    * @vm0/core bumped to 8.324.0
+
 ## [9.187.0](https://github.com/vm0-ai/vm0/compare/cli-v9.186.2...cli-v9.187.0) (2026-06-10)
 
 
