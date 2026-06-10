@@ -1,42 +1,45 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { delay } from "signal-timers";
 import { chatThreadRenameContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import {
-  deleteZeroChatThread$,
-  seedZeroChatThread$,
-  type ZeroChatThreadFixture,
-} from "./helpers/zero-chat-threads";
+  authHeaders,
+  createZeroChatThreadThroughApi,
+  deleteZeroChatThreadThroughApi,
+  listZeroChatThreadsThroughApi,
+  type ZeroChatThreadRouteFixture,
+} from "./helpers/zero-chat-thread-routes";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-async function getThreadRow(threadId: string) {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({
-      title: chatThreads.title,
-      renamedAt: chatThreads.renamedAt,
-    })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId));
-  return row;
+type ChatThreadListBody = Awaited<
+  ReturnType<typeof listZeroChatThreadsThroughApi>
+>;
+
+function threadFromList(body: ChatThreadListBody, threadId: string) {
+  const thread = [...body.pinned, ...body.threads].find((item) => {
+    return item.id === threadId;
+  });
+  if (!thread) {
+    throw new Error(`Expected thread ${threadId} in list response`);
+  }
+  return thread;
 }
 
 describe("POST /api/zero/chat-threads/:id/rename", () => {
-  const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-    return store.set(deleteZeroChatThread$, fixture, context.signal);
+  const track = createFixtureTracker<ZeroChatThreadRouteFixture>((fixture) => {
+    return deleteZeroChatThreadThroughApi(
+      context,
+      mocks.clerk.session,
+      fixture,
+    );
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -58,17 +61,17 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
   });
 
   it("returns 404 for an unknown thread id", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
+    mocks.clerk.session(
+      `user_${randomUUID().slice(0, 8)}`,
+      `org_${randomUUID().slice(0, 8)}`,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(chatThreadRenameContract);
 
     const response = await accept(
       client.rename({
         params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { title: "Renamed" },
       }),
       [404],
@@ -82,11 +85,10 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
 
   it("returns 404 for a thread owned by another user (cross-user isolation)", async () => {
     const otherFixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        { userId: `user_${randomUUID().slice(0, 8)}` },
-        context.signal,
-      ),
+      createZeroChatThreadThroughApi(context, mocks.clerk.session, {
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        title: "Original",
+      }),
     );
     // Authenticate as a different user — must not see another user's thread.
     mocks.clerk.session(`user_${randomUUID().slice(0, 8)}`, otherFixture.orgId);
@@ -96,7 +98,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     const response = await accept(
       client.rename({
         params: { id: otherFixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { title: "Hijacked" },
       }),
       [404],
@@ -106,15 +108,21 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
       error: { code: "NOT_FOUND" },
     });
 
-    // Title must remain untouched.
-    const row = await getThreadRow(otherFixture.threadId);
-    expect(row?.title).not.toBe("Hijacked");
+    mocks.clerk.session(otherFixture.userId, otherFixture.orgId);
+    const ownerThread = threadFromList(
+      await listZeroChatThreadsThroughApi(context),
+      otherFixture.threadId,
+    );
+    expect(ownerThread.title).toBe("Original");
+    expect(ownerThread.renamedAt).toBeNull();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
   it("sets title and renamed_at and publishes threadListChanged on success", async () => {
     const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
+      createZeroChatThreadThroughApi(context, mocks.clerk.session, {
+        title: "Original",
+      }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -123,15 +131,18 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     await accept(
       client.rename({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { title: "Renamed" },
       }),
       [204],
     );
 
-    const row = await getThreadRow(fixture.threadId);
-    expect(row?.title).toBe("Renamed");
-    expect(row?.renamedAt).toBeInstanceOf(Date);
+    const thread = threadFromList(
+      await listZeroChatThreadsThroughApi(context),
+      fixture.threadId,
+    );
+    expect(thread.title).toBe("Renamed");
+    expect(thread.renamedAt).toStrictEqual(expect.any(String));
 
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
@@ -142,7 +153,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
 
   it("renaming again refreshes renamed_at and publishes again", async () => {
     const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
+      createZeroChatThreadThroughApi(context, mocks.clerk.session),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -151,15 +162,18 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     await accept(
       client.rename({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { title: "First rename" },
       }),
       [204],
     );
-    const firstRow = await getThreadRow(fixture.threadId);
-    const firstRenamedAt = firstRow?.renamedAt;
-    expect(firstRow?.title).toBe("First rename");
-    expect(firstRenamedAt).toBeInstanceOf(Date);
+    const firstThread = threadFromList(
+      await listZeroChatThreadsThroughApi(context),
+      fixture.threadId,
+    );
+    expect(firstThread.title).toBe("First rename");
+    expect(firstThread.renamedAt).toStrictEqual(expect.any(String));
+    const firstRenamedAt = Date.parse(firstThread.renamedAt ?? "");
 
     context.mocks.ably.publish.mockClear();
     // Sleep so the second renamed_at is strictly greater than the first.
@@ -168,17 +182,20 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     await accept(
       client.rename({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { title: "Second rename" },
       }),
       [204],
     );
 
-    const secondRow = await getThreadRow(fixture.threadId);
-    expect(secondRow?.title).toBe("Second rename");
-    expect(secondRow?.renamedAt).toBeInstanceOf(Date);
-    expect(secondRow!.renamedAt!.getTime()).toBeGreaterThan(
-      firstRenamedAt!.getTime(),
+    const secondThread = threadFromList(
+      await listZeroChatThreadsThroughApi(context),
+      fixture.threadId,
+    );
+    expect(secondThread.title).toBe("Second rename");
+    expect(secondThread.renamedAt).toStrictEqual(expect.any(String));
+    expect(Date.parse(secondThread.renamedAt ?? "")).toBeGreaterThan(
+      firstRenamedAt,
     );
 
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);

@@ -1,29 +1,58 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
-import { chatThreadUnpinContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
+import {
+  chatThreadPinContract,
+  chatThreadUnpinContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import {
-  deleteZeroChatThread$,
-  seedZeroChatThread$,
-  type ZeroChatThreadFixture,
-} from "./helpers/zero-chat-threads";
+  authHeaders,
+  createZeroChatThreadThroughApi,
+  deleteZeroChatThreadThroughApi,
+  listZeroChatThreadsThroughApi,
+  type ZeroChatThreadRouteFixture,
+} from "./helpers/zero-chat-thread-routes";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+type ChatThreadListBody = Awaited<
+  ReturnType<typeof listZeroChatThreadsThroughApi>
+>;
+
+function threadFromList(body: ChatThreadListBody, threadId: string) {
+  const thread = [...body.pinned, ...body.threads].find((item) => {
+    return item.id === threadId;
+  });
+  if (!thread) {
+    throw new Error(`Expected thread ${threadId} in list response`);
+  }
+  return thread;
+}
+
+async function pinThread(threadId: string) {
+  const client = setupApp({ context })(chatThreadPinContract);
+  await accept(
+    client.pin({
+      params: { id: threadId },
+      headers: authHeaders(),
+    }),
+    [204],
+  );
+}
+
 describe("POST /api/zero/chat-threads/:id/unpin", () => {
-  const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-    return store.set(deleteZeroChatThread$, fixture, context.signal);
+  const track = createFixtureTracker<ZeroChatThreadRouteFixture>((fixture) => {
+    return deleteZeroChatThreadThroughApi(
+      context,
+      mocks.clerk.session,
+      fixture,
+    );
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -44,17 +73,17 @@ describe("POST /api/zero/chat-threads/:id/unpin", () => {
   });
 
   it("returns 404 for an unknown thread id", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
+    mocks.clerk.session(
+      `user_${randomUUID().slice(0, 8)}`,
+      `org_${randomUUID().slice(0, 8)}`,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(chatThreadUnpinContract);
 
     const response = await accept(
       client.unpin({
         params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -66,17 +95,15 @@ describe("POST /api/zero/chat-threads/:id/unpin", () => {
   });
 
   it("returns 404 for a thread owned by another user without clearing its pinned_at", async () => {
-    const otherPinnedAt = new Date("2024-06-01T00:00:00.000Z");
     const otherFixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        {
-          userId: `user_${randomUUID().slice(0, 8)}`,
-          pinnedAt: otherPinnedAt,
-        },
-        context.signal,
-      ),
+      createZeroChatThreadThroughApi(context, mocks.clerk.session, {
+        userId: `user_${randomUUID().slice(0, 8)}`,
+      }),
     );
+    mocks.clerk.session(otherFixture.userId, otherFixture.orgId);
+    await pinThread(otherFixture.threadId);
+    context.mocks.ably.publish.mockClear();
+
     // Authenticate as a different user — must not see another user's thread.
     mocks.clerk.session(`user_${randomUUID().slice(0, 8)}`, otherFixture.orgId);
 
@@ -85,7 +112,7 @@ describe("POST /api/zero/chat-threads/:id/unpin", () => {
     const response = await accept(
       client.unpin({
         params: { id: otherFixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -95,44 +122,45 @@ describe("POST /api/zero/chat-threads/:id/unpin", () => {
     });
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
 
-    // Cross-user-no-leak: the other user's pinned_at must NOT have been cleared.
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ pinnedAt: chatThreads.pinnedAt })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, otherFixture.threadId));
-    expect(row?.pinnedAt).toBeInstanceOf(Date);
+    mocks.clerk.session(otherFixture.userId, otherFixture.orgId);
+    const ownerList = await listZeroChatThreadsThroughApi(context);
+    expect(
+      ownerList.pinned.map((thread) => {
+        return thread.id;
+      }),
+    ).toContain(otherFixture.threadId);
+    expect(
+      threadFromList(ownerList, otherFixture.threadId).pinnedAt,
+    ).toStrictEqual(expect.any(String));
   });
 
   it("clears pinned_at and publishes threadListChanged on success", async () => {
     const fixture = await track(
-      store.set(
-        seedZeroChatThread$,
-        { pinnedAt: new Date("2024-06-01T00:00:00.000Z") },
-        context.signal,
-      ),
+      createZeroChatThreadThroughApi(context, mocks.clerk.session),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    await pinThread(fixture.threadId);
+    context.mocks.ably.publish.mockClear();
 
     const client = setupApp({ context })(chatThreadUnpinContract);
 
     const response = await accept(
       client.unpin({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
     expect(response.body).toBeUndefined();
 
-    // DB read-after-write
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ pinnedAt: chatThreads.pinnedAt })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, fixture.threadId));
-    expect(row?.pinnedAt).toBeNull();
+    const list = await listZeroChatThreadsThroughApi(context);
+    expect(
+      list.pinned.map((thread) => {
+        return thread.id;
+      }),
+    ).not.toContain(fixture.threadId);
+    expect(threadFromList(list, fixture.threadId).pinnedAt).toBeNull();
 
     // Ably publish (single threadListChanged event with null payload).
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
@@ -144,7 +172,7 @@ describe("POST /api/zero/chat-threads/:id/unpin", () => {
 
   it("is idempotent — unpinning an already-unpinned thread still succeeds and publishes", async () => {
     const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
+      createZeroChatThreadThroughApi(context, mocks.clerk.session),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -153,19 +181,15 @@ describe("POST /api/zero/chat-threads/:id/unpin", () => {
     const response = await accept(
       client.unpin({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
     expect(response.body).toBeUndefined();
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ pinnedAt: chatThreads.pinnedAt })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, fixture.threadId));
-    expect(row?.pinnedAt).toBeNull();
+    const list = await listZeroChatThreadsThroughApi(context);
+    expect(threadFromList(list, fixture.threadId).pinnedAt).toBeNull();
 
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
