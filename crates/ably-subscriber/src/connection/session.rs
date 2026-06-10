@@ -38,10 +38,11 @@ pub(crate) struct SessionState {
     /// resets after a successful channel attach, and reconnect commits reset it
     /// before scheduling any suspended retry on the new transport.
     channel_retry_count: u32,
-    /// Deadline set for a sent channel attach operation. This is separate from
-    /// `channel_retry_at`: operation deadlines time out active attaches, while
-    /// retry deadlines start the next attach attempt. Reconnect, suspended
-    /// retry, and failure cleanup clear stale attach deadlines.
+    /// Optional deadline tracked for a started channel attach operation. This
+    /// is separate from `channel_retry_at`: operation deadlines time out active
+    /// attaches, while retry deadlines start the next attach attempt.
+    /// Reconnect, suspended retry, and failure cleanup clear stale attach
+    /// deadlines.
     channel_operation_deadline: Option<Instant>,
     /// A reconnect can restore the transport while channel attach is still
     /// suspended. In that case `Event::Connected` is held for a later `ATTACHED`
@@ -112,9 +113,9 @@ impl SessionState {
         self.conn_state.can_resume()
     }
 
-    // Channel attach has two scheduled states: an operation deadline while an
-    // ATTACH is in flight, then a retry deadline if that attach is suspended
-    // by timeout or DETACHED response.
+    // Channel attach tracks separate timers: an operation deadline may be set
+    // when ATTACH starts, and a retry deadline is scheduled if that attach is
+    // suspended by timeout or DETACHED response.
     pub(super) fn begin_channel_attach(&mut self, realtime_request_timeout: Duration) -> bool {
         self.lifecycle.request_channel_attaching();
         if self.lifecycle.channel != ChannelLifecycleState::Attaching
