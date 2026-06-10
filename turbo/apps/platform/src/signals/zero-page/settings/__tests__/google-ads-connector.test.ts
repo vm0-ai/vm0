@@ -54,4 +54,36 @@ describe("google ads connector", () => {
     expect(metaAds?.label).toBe("Meta Ads");
     expect(metaAds?.availableAuthMethods).toStrictEqual(["oauth"]);
   });
+
+  it("hides TikTok Ads by default", async () => {
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const connectors = await context.store.get(allConnectorTypes$);
+    const tiktokAds = connectors.find((connector) => {
+      return connector.type === "tiktok-ads";
+    });
+
+    expect(tiktokAds).toBeUndefined();
+  });
+
+  it("shows TikTok Ads when its feature switch is enabled", async () => {
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.TikTokAdsConnector]: true },
+      withoutRender: true,
+    });
+
+    const connectors = await context.store.get(allConnectorTypes$);
+    const tiktokAds = connectors.find((connector) => {
+      return connector.type === "tiktok-ads";
+    });
+
+    expect(tiktokAds?.label).toBe("TikTok Ads");
+    expect(tiktokAds?.availableAuthMethods).toStrictEqual(["oauth"]);
+  });
 });

@@ -261,6 +261,7 @@ import { supermemoryFirewall } from "./supermemory.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { testOauthFirewall } from "./test-oauth.generated";
 import { ticketmasterFirewall } from "./ticketmaster.generated";
+import { tiktokAdsFirewall } from "./tiktok-ads.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { togetherFirewall } from "./together.generated";
@@ -517,6 +518,7 @@ const CONNECTOR_FIREWALLS = {
   tavily: tavilyFirewall,
   "test-oauth": testOauthFirewall,
   ticketmaster: ticketmasterFirewall,
+  "tiktok-ads": tiktokAdsFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   together: togetherFirewall,

@@ -2438,6 +2438,79 @@ describe("POST /api/zero/runs", () => {
     });
   });
 
+  it("adds the TikTok Ads token and firewall for authorized connector runs", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "tiktok-ads",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "tiktok-ads",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "TIKTOK_ADS_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("tiktok-ads-access"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "TIKTOK_ADS_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("tiktok-ads-refresh"),
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "tiktok ads connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly auth?: {
+            readonly headers?: Record<string, string>;
+          };
+        }[];
+      }[];
+    };
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      TIKTOK_ADS_TOKEN: "tiktok-ads-access",
+    });
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      TIKTOK_ADS_TOKEN: "tiktok-ads",
+    });
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "tiktok-ads";
+    });
+    expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
+      "Access-Token": ["$", "{{ secrets.TIKTOK_ADS_TOKEN }}"].join(""),
+    });
+  });
+
   it("injects authorized custom connector firewalls and secrets", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);

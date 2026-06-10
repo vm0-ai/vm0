@@ -102,6 +102,7 @@ import { supabaseProvider } from "./connectors/supabase/provider";
 import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
+import { tiktokAdsProvider } from "./connectors/tiktok-ads/provider";
 import { xProvider } from "./connectors/x/provider";
 import { xeroProvider } from "./connectors/xero/provider";
 import { zoomProvider } from "./connectors/zoom/provider";
@@ -509,6 +510,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   vercel: { oauth: authCodeProviderEntry(vercelProvider) },
   webflow: { oauth: authCodeProviderEntry(webflowProvider) },
   "meta-ads": { oauth: authCodeRefreshProviderEntry(metaAdsProvider) },
+  "tiktok-ads": { oauth: authCodeRefreshProviderEntry(tiktokAdsProvider) },
   x: { oauth: authCodeRefreshProviderEntry(xProvider) },
   xero: { oauth: authCodeRefreshProviderEntry(xeroProvider) },
   zoom: { oauth: authCodeRefreshProviderEntry(zoomProvider) },

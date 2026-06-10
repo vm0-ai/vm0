@@ -2246,6 +2246,44 @@ describe("GET /api/connectors/:type/callback", () => {
     });
   });
 
+  it("accepts auth_code as an OAuth callback authorization code", async () => {
+    const dynamicOAuth = useDynamicTestOAuthExchange();
+    restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
+    const { exchanges } = dynamicOAuth;
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { auth_code: "auth-code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    expect(exchanges).toHaveLength(1);
+    expect(exchanges[0]?.code).toBe("auth-code-123");
+    await expect(
+      findConnector({
+        orgId,
+        userId,
+        type: "test-oauth",
+      }),
+    ).resolves.toMatchObject({
+      type: "test-oauth",
+      authMethod: "oauth",
+      externalId: "dynamic-user-id",
+      needsReconnect: false,
+    });
+  });
+
   it("stores tokens through method-specific grant output names", async () => {
     const dynamicOAuth = useDynamicTestOAuthExchange({
       authMethod: "api",

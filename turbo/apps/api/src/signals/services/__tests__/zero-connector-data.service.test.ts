@@ -257,6 +257,59 @@ describe("zeroConnectorList", () => {
     );
   });
 
+  it("reports TikTok Ads OAuth runtime token binding", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    await writeDb.insert(connectors).values({
+      orgId,
+      userId,
+      type: "tiktok-ads",
+      authMethod: "oauth",
+    });
+    await writeDb.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: {
+        [FeatureSwitchKey.TikTokAdsConnector]: true,
+      },
+    });
+    await writeDb.insert(secrets).values([
+      {
+        orgId,
+        userId,
+        name: "TIKTOK_ADS_ACCESS_TOKEN",
+        encryptedValue: "encrypted_tiktok_ads_access_token",
+        type: "connector",
+      },
+      {
+        orgId,
+        userId,
+        name: "TIKTOK_ADS_REFRESH_TOKEN",
+        encryptedValue: "encrypted_tiktok_ads_refresh_token",
+        type: "connector",
+      },
+    ]);
+
+    const list = await store.get(zeroConnectorList({ orgId, userId }));
+
+    expect(list.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectorType: "tiktok-ads",
+          authMethod: "oauth",
+          namespace: "secrets",
+          name: "TIKTOK_ADS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_ACCESS_TOKEN",
+          },
+        },
+      ]),
+    );
+  });
+
   it("reports variable-backed connector env names as structured provided bindings", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

@@ -219,6 +219,7 @@
     "generate:tavily": "tsx src/index.ts tavily",
     "generate:test-oauth": "tsx src/index.ts test-oauth",
     "generate:ticketmaster": "tsx src/index.ts ticketmaster",
+    "generate:tiktok-ads": "tsx src/index.ts tiktok-ads",
     "generate:tldv": "tsx src/index.ts tldv",
     "generate:todoist": "tsx src/index.ts todoist",
     "generate:tripo": "tsx src/index.ts tripo",

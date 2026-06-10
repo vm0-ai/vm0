@@ -216,6 +216,7 @@ import { generate as generateSupermemory } from "./supermemory";
 import { generate as generateTavily } from "./tavily";
 import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTicketmaster } from "./ticketmaster";
+import { generate as generateTikTokAds } from "./tiktok-ads";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTogether } from "./together";
@@ -454,6 +455,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tavily: generateTavily,
   "test-oauth": generateTestOauth,
   ticketmaster: generateTicketmaster,
+  "tiktok-ads": generateTikTokAds,
   tldv: generateTldv,
   todoist: generateTodoist,
   together: generateTogether,

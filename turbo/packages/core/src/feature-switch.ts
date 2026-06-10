@@ -124,6 +124,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Meta Ads Manager connector",
     enabled: false,
   },
+  [FeatureSwitchKey.TikTokAdsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the TikTok Ads Manager connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Stripe payment connector integration",

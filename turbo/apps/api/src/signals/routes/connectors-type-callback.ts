@@ -505,7 +505,7 @@ const callbackConnectorInner$ = command(
       );
     }
 
-    const code = query.code;
+    const code = query.code ?? query.auth_code;
     if (!code) {
       if (state) {
         const invalidStateResponse =

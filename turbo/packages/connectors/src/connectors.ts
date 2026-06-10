@@ -155,6 +155,7 @@ import { mercury } from "./connectors/mercury";
 import { meshy } from "./connectors/meshy";
 import { metaAds } from "./connectors/meta-ads";
 import { metabase } from "./connectors/metabase";
+import { tiktokAds } from "./connectors/tiktok-ads";
 import { minimax } from "./connectors/minimax";
 import { minio } from "./connectors/minio";
 import { miro } from "./connectors/miro";
@@ -1134,6 +1135,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...meshy,
   ...metaAds,
   ...metabase,
+  ...tiktokAds,
   ...minimax,
   ...minio,
   ...miro,

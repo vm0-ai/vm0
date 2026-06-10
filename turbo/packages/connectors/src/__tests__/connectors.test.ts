@@ -212,6 +212,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   mailchimp: "https://login.mailchimp.com/oauth2/authorize",
   mercury: "https://oauth2.mercury.com/oauth2/auth",
   "meta-ads": "https://www.facebook.com/v22.0/dialog/oauth",
+  "tiktok-ads": "https://business-api.tiktok.com/portal/auth",
   monday: "https://auth.monday.com/oauth2/authorize",
   neon: "https://oauth2.neon.tech/oauth2/auth",
   notion: "https://api.notion.com/v1/oauth/authorize",
@@ -2486,6 +2487,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
+  it("exposes TikTok Ads OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("tiktok-ads", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("tiktok-ads", {
+        [FeatureSwitchKey.TikTokAdsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
   it("exposes Google Search Console OAuth only when its switch is enabled", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-search-console", {}),
@@ -2761,6 +2773,44 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     });
   });
 
+  it("returns refresh metadata for TikTok Ads", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("tiktok-ads", "oauth"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        refreshToken: {
+          valueRef: "$secrets.TIKTOK_ADS_REFRESH_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      outputs: {
+        accessToken: {
+          valueRef: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_ACCESS_TOKEN",
+          },
+        },
+        refreshToken: {
+          valueRef: "$secrets.TIKTOK_ADS_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      refreshableSecrets: ["TIKTOK_ADS_ACCESS_TOKEN"],
+      envBindings: {
+        TIKTOK_ADS_TOKEN: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
+    });
+  });
+
   it("supports multi-input and multi-output refresh metadata", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("test-oauth", "api"),
@@ -2989,6 +3039,13 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       "META_ADS_REFRESH_TOKEN",
     ]);
   });
+
+  it("keeps TikTok Ads runtime token connector-owned", () => {
+    expect(getConnectorOwnedSecretNames("tiktok-ads", "oauth")).toStrictEqual([
+      "TIKTOK_ADS_ACCESS_TOKEN",
+      "TIKTOK_ADS_REFRESH_TOKEN",
+    ]);
+  });
 });
 
 describe("getConnectorAuthMethodRuntimeMetadata", () => {
@@ -3149,6 +3206,28 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
           source: {
             kind: "connector-secret",
             name: "META_ADS_ACCESS_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
+  it("returns TikTok Ads runtime token binding metadata", () => {
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("tiktok-ads", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["TIKTOK_ADS_ACCESS_TOKEN", "TIKTOK_ADS_REFRESH_TOKEN"],
+        variables: [],
+      },
+      runtimeBindings: [
+        {
+          envName: "TIKTOK_ADS_TOKEN",
+          valueRef: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_ACCESS_TOKEN",
           },
         },
       ],
