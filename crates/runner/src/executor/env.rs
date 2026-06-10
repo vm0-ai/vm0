@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
+use super::session_restore::canonical_codex_thread_id;
 use super::storage::format_guest_exec_failure;
 use super::{
     DEFAULT_EXEC_TIMEOUT, GUEST_AGENT_TUNING_ENV_KEYS, GUEST_USER_ENV_DIR_NAME,
@@ -314,7 +315,16 @@ pub(super) fn build_env_json_with_host_env(
 
     // Resume session ID
     if let Some(session) = &context.resume_session {
-        env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
+        let session_id = if effective_cli_framework(&context.cli_agent_type)
+            == EffectiveCliFramework::Codex
+        {
+            canonical_codex_thread_id(&session.session_id).ok_or_else(|| {
+                RunnerError::Internal(format!("invalid codex session_id: {}", session.session_id))
+            })?
+        } else {
+            session.session_id.clone()
+        };
+        env.insert("VM0_RESUME_SESSION_ID".into(), session_id);
     }
 
     // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_CoffeeSafeLocal...)

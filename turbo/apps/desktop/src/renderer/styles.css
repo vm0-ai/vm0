@@ -132,9 +132,9 @@ button {
 }
 
 .step-card-expanded {
-  min-height: 224px;
+  min-height: 168px;
   padding: 18px;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
 }
 
@@ -221,28 +221,6 @@ button {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.step-guidance {
-  border: 1px solid rgba(37, 99, 235, 0.16);
-  border-radius: 8px;
-  padding: 14px;
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  background: #eff8ff;
-}
-
-.step-guidance strong {
-  color: #175cd3;
-  font-size: 13px;
-  line-height: 1.25;
-}
-
-.step-guidance span {
-  color: #475467;
-  font-size: 13px;
-  line-height: 1.4;
 }
 
 .compact-step-main {

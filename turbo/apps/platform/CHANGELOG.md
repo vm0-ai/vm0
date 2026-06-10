@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.432.0](https://github.com/vm0-ai/vm0/compare/app-v0.431.1...app-v0.432.0) (2026-06-10)
+
+
+### Features
+
+* enable expiring permission grants by default ([#17030](https://github.com/vm0-ai/vm0/issues/17030)) ([17746e8](https://github.com/vm0-ai/vm0/commit/17746e81c006590b7e6f8270ccd7b7a5459f09ad))
+
+
+### Bug Fixes
+
+* update diffbot connector icon color ([#17047](https://github.com/vm0-ai/vm0/issues/17047)) ([8b9f58a](https://github.com/vm0-ai/vm0/commit/8b9f58a677268f34a5c72c770dd6b1dcc182d336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.78.1
+    * @vm0/connectors bumped to 1.60.0
+    * @vm0/core bumped to 8.322.0
+
 ## [0.431.1](https://github.com/vm0-ai/vm0/compare/app-v0.431.0...app-v0.431.1) (2026-06-10)
 
 

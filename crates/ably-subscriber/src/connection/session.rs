@@ -1,3 +1,9 @@
+//! Session bookkeeping for the realtime event loop.
+//!
+//! `EventLoopState` drives this module while it owns the WebSocket transport.
+//! The state here is private implementation detail, but it determines
+//! externally visible subscription events and reconnect behavior.
+
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -9,13 +15,39 @@ use super::state::{
 use crate::protocol::ProtocolMessage;
 use crate::types::TokenDetails;
 
+/// Mutable session state owned by the realtime event loop.
+///
+/// `ConnState` stores transport metadata such as connection keys, channel
+/// serials, TTLs, and token renewal deadlines. `RealtimeStateMachine` stores
+/// the current connection and channel lifecycle phases. `SessionState` owns the
+/// timers, counters, and pending event markers that coordinate those two state
+/// models with event-loop behavior.
 pub(crate) struct SessionState {
     conn_state: ConnState,
     lifecycle: RealtimeStateMachine,
+    /// Consecutive token renewal failures. Successful renewal and committed
+    /// connected reconnects reset this counter; reaching the configured max
+    /// marks the lifecycle failed.
     token_renewal_failures: u32,
+    /// Next suspended-channel reattach attempt. It is scheduled from a
+    /// suspended channel while the connection can send events, then cleared
+    /// when consumed, superseded by a new attach, reset by reconnect/suspended
+    /// retry, or dropped by explicit channel/connection failure cleanup.
     channel_retry_at: Option<Instant>,
+    /// Backoff counter used when scheduling suspended-channel retries. It
+    /// resets after a successful channel attach, and reconnect commits reset it
+    /// before scheduling any suspended retry on the new transport.
     channel_retry_count: u32,
+    /// Optional deadline tracked for a started channel attach operation. This
+    /// is separate from `channel_retry_at`: operation deadlines time out active
+    /// attaches, while retry deadlines start the next attach attempt.
+    /// Reconnect, suspended retry, and explicit channel/connection failure
+    /// cleanup clear stale attach deadlines.
     channel_operation_deadline: Option<Instant>,
+    /// A reconnect can restore the transport while channel attach is still
+    /// suspended. In that case `Event::Connected` is held for a later `ATTACHED`
+    /// message unless channel failure or suspended cleanup clears the pending
+    /// marker.
     connected_event_pending: bool,
 }
 
@@ -82,6 +114,9 @@ impl SessionState {
         self.conn_state.can_resume()
     }
 
+    // Channel attach tracks separate timers: an operation deadline may be set
+    // when ATTACH starts, and a retry deadline is scheduled if that attach is
+    // suspended by timeout or DETACHED response.
     pub(super) fn begin_channel_attach(&mut self, realtime_request_timeout: Duration) -> bool {
         self.lifecycle.request_channel_attaching();
         if self.lifecycle.channel != ChannelLifecycleState::Attaching
@@ -130,6 +165,8 @@ impl SessionState {
         self.schedule_channel_retry(channel_retry_timeout);
     }
 
+    // A successful attach resolves pending channel work and restarts retry
+    // backoff from zero for the next suspension.
     pub(super) fn mark_channel_attached(&mut self) {
         self.lifecycle.notify_channel_attached();
         self.channel_retry_at = None;
@@ -175,6 +212,11 @@ impl SessionState {
             && !self.conn_state.can_resume()
     }
 
+    // Suspended retry means the session can no longer resume the previous
+    // connection, either because the resumable window expired or because no
+    // resume key is available. Clear resume metadata, channel serial, pending
+    // channel deadlines, and deferred connected emission before future attempts
+    // use a fresh connection.
     pub(super) fn enter_suspended_retry_state(&mut self) {
         self.conn_state.clear_resume_state();
         self.lifecycle.notify_suspended();
@@ -209,6 +251,10 @@ impl SessionState {
         pending
     }
 
+    // Token renewal failures are consecutive. A successful renewal or
+    // committed connected reconnect establishes valid token/transport state and
+    // resets the count; reaching max_failures makes the session fail
+    // terminally.
     pub(super) fn record_successful_token_renewal(&mut self) {
         self.token_renewal_failures = 0;
     }
@@ -240,6 +286,11 @@ impl SessionState {
         self.lifecycle.request_connecting();
     }
 
+    // Reconnect commit outcomes separate transport recovery from subscription
+    // readiness. If the channel reattaches during reconnect, the caller can
+    // emit `Event::Connected` immediately. If the transport reconnects but the
+    // channel is suspended, hold that event for a later ATTACHED message unless
+    // channel failure or suspended cleanup clears the pending marker first.
     pub(super) fn commit_reconnect_attached(
         &mut self,
         connected_msg: &ProtocolMessage,
@@ -283,6 +334,7 @@ impl SessionState {
     }
 
     fn schedule_channel_retry(&mut self, channel_retry_timeout: Duration) {
+        // A retry supersedes any in-flight attach deadline.
         self.channel_operation_deadline = None;
         if self.lifecycle.channel == ChannelLifecycleState::Suspended
             && self.lifecycle.connection.send_events()

@@ -748,6 +748,177 @@ class TestHandleFirewallRequest:
         )
         assert "Firewall https://api.github.com: api.github.com" in log_text
 
+    async def test_standard_auth_filters_unsafe_resolved_headers(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
+        flow = _firewall_flow(
+            real_flow,
+            path="/repos?existing=1",
+        )
+        api_entry = _api_entry(
+            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        token_meta = _token_meta(
+            headers={
+                "Connection": "Authorization, X-Injected",
+                "Host": "evil.example.com",
+                "Content-Length": "999",
+                "Transfer-Encoding": "chunked",
+                "Keep-Alive": "timeout=5",
+                "Proxy-Authenticate": "Basic realm=proxy",
+                "Proxy-Authorization": "Basic secret",
+                "Proxy-Connection": "keep-alive",
+                "TE": "trailers",
+                "Trailer": "X-Trailer",
+                "Upgrade": "websocket",
+                "Authorization": "Bearer real-token",
+                "X-Injected": "trusted",
+            },
+        )
+        token_meta["query"] = {"api_key": "secret"}
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        header_names = {name.lower() for name, _value in flow.request.headers.items(multi=True)}
+        assert flow.request.headers["Host"] == "api.github.com"
+        assert "connection" not in header_names
+        assert "content-length" not in header_names
+        assert "transfer-encoding" not in header_names
+        assert "keep-alive" not in header_names
+        assert "proxy-authenticate" not in header_names
+        assert "proxy-authorization" not in header_names
+        assert "proxy-connection" not in header_names
+        assert "te" not in header_names
+        assert "trailer" not in header_names
+        assert "upgrade" not in header_names
+        assert flow.request.headers["Authorization"] == "Bearer real-token"
+        assert flow.request.headers["X-Injected"] == "trusted"
+        assert flow.request.query["existing"] == "1"
+        assert flow.request.query["api_key"] == "secret"
+
+    async def test_standard_auth_filters_unsafe_headers_before_aws_sigv4_signing(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        placeholder_authorization = (
+            "AWS4-HMAC-SHA256 "
+            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+            "SignedHeaders=content-type;host;x-amz-date, "
+            "Signature=placeholder"
+        )
+        flow = real_flow(
+            with_response=False,
+            host="sts.amazonaws.com",
+            path="/",
+            method="POST",
+            request_body=b"Action=GetCallerIdentity&Version=2011-06-15",
+            request_headers=headers(
+                ("Host", "sts.amazonaws.com"),
+                ("Content-Type", "application/x-www-form-urlencoded"),
+                ("X-Amz-Date", "20260101T000000Z"),
+                ("Authorization", placeholder_authorization),
+            ),
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = _api_entry(
+            base="https://sts.amazonaws.com",
+            auth_config={
+                "headers": {"Host": "${{ secrets.UNSAFE_HOST }}"},
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                },
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry, rule="POST /", rel_path="/")
+        token_meta = _token_meta(
+            headers={
+                "Host": "evil.example.com",
+                "X-Amz-Meta-Test": "trusted-meta",
+            },
+        )
+        token_meta["aws_sigv4"] = AwsSigV4Credentials(
+            "AKIDEXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+            "real-session-token",
+        )
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        assert flow.request.headers["host"] == "sts.amazonaws.com"
+        assert flow.request.headers["x-amz-meta-test"] == "trusted-meta"
+        assert flow.request.headers["x-amz-security-token"] == "real-session-token"
+        assert (
+            "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"
+            in flow.request.headers["authorization"]
+        )
+        assert "evil.example.com" not in flow.request.headers["authorization"]
+
+    @pytest.mark.parametrize(
+        "resolved_headers",
+        [
+            pytest.param({"": "value"}, id="empty-name"),
+            pytest.param({"Bad\nName": "value"}, id="newline-name"),
+            pytest.param({":authority": "evil.example.com"}, id="pseudo-header-name"),
+            pytest.param({"X-Test": "bad\r\nX-Injected: value"}, id="newline-value"),
+        ],
+    )
+    async def test_standard_auth_rejects_malformed_resolved_headers(
+        self,
+        resolved_headers: dict[str, str],
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        token_meta = _token_meta(
+            headers={
+                **resolved_headers,
+                "Authorization": "Bearer real-token",
+            },
+        )
+        token_meta["query"] = {"api_key": "secret"}
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "invalid_resolved_auth_header"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "invalid_resolved_auth_header"
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+
     async def test_missing_billable_firewalls_falls_back_to_empty(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):

@@ -4178,154 +4178,167 @@
     "content": {
       "claude-fable-5": {
         "name": "Claude Fable 5",
-        "pageTitle": "Claude Fable 5 en VM0",
-        "tagline": "El modelo insignia Claude 5 de Anthropic para las ejecuciones de agente más difíciles. Fable 5 ofrece contexto de 1M tokens, entrada de visión y código, caché de prompts y más margen de razonamiento que la línea Claude 4.",
-        "cardIntro": "El modelo insignia Claude 5 de Anthropic para trabajo agéntico difícil, bases de código grandes y razonamiento de alto riesgo. Más calidad que Opus 4.x, con un precio por token más alto.",
-        "metaTitle": "Claude Fable 5: precios, capacidades y routing en VM0",
-        "metaDescription": "Claude Fable 5 en VM0. El modelo insignia Claude 5 de Anthropic del 9 de junio de 2026, con contexto de 1M tokens, entrada de imagen, caché de prompts, precios de proveedor $10/$50 y soporte Built-in y BYOK en VM0.",
-        "summary": "Claude Fable 5 es el modelo insignia Claude 5 de Anthropic, lanzado el 9 de junio de 2026 y expuesto en la API first-party como claude-fable-5. En VM0 es un modelo Built-in de gama alta para ejecuciones de agente que necesitan el razonamiento de Anthropic más fuerte disponible, especialmente trabajo largo sobre bases de código, uso profundo de herramientas y tareas donde Sonnet u Opus 4.x llegan claramente a su techo.\n\nEl intercambio está en el coste y la política de datos. El precio de lista del proveedor es $10 entrada / $50 salida por 1M tokens, con lecturas de caché de prompts a $1 y escrituras de caché a $12,50 por 1M tokens. Anthropic también documenta Claude Fable 5 como un modelo con retención de 30 días, así que no es la opción correcta para cargas que requieren zero data retention.",
+        "pageTitle": "Claude Fable 5",
+        "tagline": "El modelo mas capaz disponible publicamente de Anthropic. Lanzado el 9 de junio de 2026 como la primera version general de la clase Mythos, con codificacion, trabajo de conocimiento y vision de primer nivel, y limites de seguridad estrictos que recurren a Opus 4.8 en solicitudes de alto riesgo.",
+        "cardIntro": "El modelo publico mas potente de Anthropic y la primera version general de la clase Mythos. Estado del arte en casi todos los benchmarks, con repliegue de seguridad integrado a Opus 4.8.",
+        "metaTitle": "Claude Fable 5: Benchmarks, precios y capacidades",
+        "metaDescription": "Resena de Claude Fable 5. El buque insignia de Anthropic del 9 de junio de 2026 y primer modelo publico de clase Mythos, con contexto de 1M tokens, vision, precio de proveedor $10/$50, multiplicador x3.3 en VM0 y repliegue de seguridad a Opus 4.8.",
+        "summary": "Claude Fable 5 es el modelo mas capaz disponible de forma general de Anthropic, lanzado el 9 de junio de 2026 como la primera version publica de su linea restringida Mythos. Anthropic lo describe como estado del arte en casi todos los benchmarks probados de ingenieria de software, trabajo de conocimiento, vision e investigacion, con una ventaja que crece a medida que las tareas se hacen mas largas y complejas.\n\nEl principal compromiso es el precio y la postura de seguridad. Fable 5 cuesta $10 por 1M de tokens de entrada y $50 por 1M de salida, el doble que Opus 4.8, y lleva un multiplicador x3.3 en VM0. En dominios de alto riesgo como ciberseguridad, biologia y quimica rechaza y recurre a Opus 4.8, devolviendo un rechazo en lugar de un error y sin cobrar tarifas de Fable por la solicitud redirigida. Anthropic informa que al menos el 95% de las sesiones de Fable se ejecutan enteramente en el propio modelo.",
         "releaseDate": "9 de junio de 2026",
-        "familyPosition": "Modelo de nivel superior en la generación Claude 5. Úsalo por encima de Claude Opus 4.8 cuando el paso de razonamiento más difícil importe más que el coste unitario.",
+        "familyPosition": "El modelo mas capaz disponible publicamente de Anthropic, situado por encima de la linea Opus 4. En VM0 con multiplicador x3.3; Opus 4.8 sigue siendo el predeterminado recomendado para la mayoria de los agentes.",
         "background": [
-          "Claude Fable 5 es el primer modelo Claude 5 ampliamente disponible en la línea curada de VM0. Entra por encima de los modelos Claude 4 Opus y Sonnet y conserva las fortalezas de Anthropic de las que dependen los agentes de VM0: uso fiable de herramientas, fuerte comprensión de código, coherencia en contexto largo y entrada multimodal.",
-          "Para usuarios de VM0, la razón práctica para elegir Fable 5 es la escalación. Mantén la mayoría de agentes de producción en Sonnet u Opus hasta que una ejecución necesite planificación más profunda, depuración más difícil o ejecución más fiable sobre una ventana de contexto muy grande. Fable 5 está pensado para esos pasos caros pero importantes.",
-          "El modelo está disponible mediante routing VM0 Built-in, claves API de Anthropic, Claude Code OAuth, OpenRouter y Vercel AI Gateway. OpenRouter y Vercel usan el id de gateway anthropic/claude-fable-5, mientras que las rutas nativas de Anthropic usan claude-fable-5."
+          "Claude Fable 5 se lanzo el 9 de junio de 2026 como el primer modelo disponible de forma general de la clase Mythos de Anthropic, que la empresa habia retenido por considerarla demasiado potente para un lanzamiento sin restricciones. Fable 5 es la version publica con salvaguardas; Mythos 5 sigue restringido a organizaciones aprobadas.",
+          "Anthropic posiciona a Fable 5 como estado del arte en casi todos los benchmarks de capacidad que probo, con las mayores mejoras en trabajo largo y complejo. Evaluadores externos lo confirmaron: Hex informo que Fable fue el primer modelo en alcanzar el 90% en su benchmark central de analitica de tareas de larga duracion, y Genspark dijo que supero a todos los demas modelos en sus evaluaciones, con resultados especialmente fuertes en diseno de UI y codificacion de juegos.",
+          "El modelo se entrega con limites de seguridad estrictos. En areas de alto riesgo bloquea la respuesta y recurre a Opus 4.8; Anthropic realizo un bug bounty externo de mas de 1.000 horas y red-teaming adicional que no encontro jailbreaks universales. Fable 5 y Mythos 5 son Modelos Cubiertos con retencion de datos de 30 dias y no estan disponibles bajo condiciones de retencion cero de datos."
         ],
-        "architecture": "Claude Fable 5 usa la generación Claude 5 de Anthropic con una ventana de contexto de 1M tokens, entrada de texto, imagen y código, y caché de prompts de Anthropic. VM0 enruta el modelo Built-in a Anthropic y normaliza alias de gateway como anthropic/claude-fable-5 para OpenRouter y Vercel AI Gateway. Anthropic documenta este modelo con retención de 30 días.",
+        "architecture": "Fable 5 mantiene la ventana de contexto de 1M tokens y hasta 128K tokens de salida, facturados al precio estandar de entrada en toda la ventana. Admite vision, uso de herramientas, memoria, compactacion y pensamiento adaptativo. Las solicitudes de alto riesgo se redirigen a Opus 4.8 y devuelven `stop_reason: \"refusal\"` como respuesta exitosa en lugar de un error de API; las solicitudes redirigidas no se facturan a tarifas de Fable.",
         "specs": [
           {
             "label": "Familia",
-            "value": "Generación Claude 5"
+            "value": "Clase Claude Mythos (version publica)"
           },
           {
             "label": "Modalidades",
-            "value": "Texto, visión, código"
+            "value": "Texto, vision, codigo"
           },
           {
             "label": "Idiomas",
-            "value": "Inglés primero, multilingüe"
-          },
-          {
-            "label": "Caché de prompts",
-            "value": "Soportado (Anthropic)"
+            "value": "Ingles primero, multilingue"
           },
           {
             "label": "Ventana de contexto",
             "value": "1M tokens"
           },
           {
-            "label": "ID de modelo API",
-            "value": "claude-fable-5"
+            "label": "Salida maxima",
+            "value": "Hasta 128K tokens"
           },
           {
-            "label": "ID de modelo gateway",
-            "value": "anthropic/claude-fable-5"
+            "label": "Cacheo de prompts",
+            "value": "Compatible (Anthropic)"
           },
           {
             "label": "Precio de lista del proveedor",
-            "value": "$10 entrada / $50 salida por 1M"
+            "value": "$10 entrada / $50 salida por 1M (el doble de Opus 4.8)"
           }
         ],
-        "benchmarksNote": "La cobertura pública de benchmarks para Claude Fable 5 todavía es temprana. Trátalo como el nivel premium de razonamiento Claude 5 de Anthropic, no como reemplazo predeterminado de modelos de producción más baratos.",
+        "benchmarksNote": "Senales informadas por el proveedor y por terceros para Fable 5. Anthropic informa resultados de estado del arte en casi todos los benchmarks probados, con mayor ventaja en tareas mas largas. Tratar como orientativo y validar con tu propio conjunto de regresion de agentes en VM0.",
         "benchmarks": [
           {
-            "name": "Codificación agéntica",
-            "score": "Nivel insignia",
-            "note": "para las ejecuciones más difíciles de planificación y depuración de código"
+            "name": "Benchmark de analitica de Hex",
+            "score": "90%",
+            "note": "primer modelo en alcanzar el 90% en tareas analiticas de larga duracion (Hex, tercero)"
           },
           {
-            "name": "Trabajo de contexto largo",
-            "score": "Contexto 1M",
-            "note": "diseñado para repositorios y transcripciones muy grandes"
+            "name": "Evaluaciones de agentes de Genspark",
+            "score": "Modelo lider",
+            "note": "supero a todos los demas modelos evaluados; fuerte en diseno de UI y codificacion de juegos (tercero)"
           },
           {
-            "name": "Razonamiento multimodal",
-            "score": "Texto + visión",
-            "note": "la entrada de imagen está soportada mediante rutas compatibles con VM0"
+            "name": "Suite de capacidades de Anthropic",
+            "score": "Estado del arte",
+            "note": "informado por el proveedor en ingenieria de software, trabajo de conocimiento, vision e investigacion"
+          },
+          {
+            "name": "Robustez adversarial",
+            "score": "0 jailbreaks universales",
+            "note": "mas de 1.000 horas de bug bounty externo mas red-teaming"
           }
         ],
         "performance": [
           {
-            "title": "Margen de razonamiento",
-            "body": "Fable 5 es el objetivo de escalación cuando Opus 4.8 o Sonnet 4.6 fallan en un paso difícil de planificación, depuración o síntesis."
+            "title": "Capacidad de frontera en trabajo largo y complejo",
+            "body": "Anthropic informa que la ventaja de Fable sobre sus otros modelos crece cuanto mas larga y compleja es la tarea. Para ejecuciones de agentes de varias horas, investigacion profunda y grandes trabajos analiticos, es el modelo publico mas fuerte de Anthropic."
           },
           {
-            "title": "Estabilidad de contexto largo",
-            "body": "La ventana de 1M tokens admite bases de código grandes, transcripciones largas y ejecuciones de investigación con múltiples fuentes sin resumir agresivamente."
+            "title": "Ingenieria de software y analitica",
+            "body": "Los evaluadores externos colocan a Fable en la cima: primero en alcanzar el 90% en el benchmark de analitica de larga duracion de Hex, y modelo lider en las evaluaciones de agentes de Genspark, con resultados destacados en diseno de UI y codificacion de juegos."
           },
           {
-            "title": "Ejecuciones con muchas herramientas",
-            "body": "Los modelos Anthropic siguen siendo fuertes en uso estructurado de herramientas, y Fable 5 es la opción premium cuando una cadena larga de llamadas debe mantenerse enfocada."
+            "title": "Vision y trabajo de conocimiento",
+            "body": "La vision nativa junto con puntuaciones de estado del arte en trabajo de conocimiento hacen de Fable una buena opcion para flujos que combinan documentos, capturas y diagramas con razonamiento de alto riesgo."
           },
           {
-            "title": "Perfil de coste",
-            "body": "El modelo es caro frente a Sonnet y Opus 4.x, así que úsalo para pasos concretos de alto valor, no para cada turno de un agente rutinario."
+            "title": "Repliegue de seguridad a Opus 4.8",
+            "body": "En dominios de alto riesgo (ciber, bio, quimica) Fable rechaza y redirige a Opus 4.8, devolviendo un rechazo en lugar de un error. Anthropic informa que al menos el 95% de las sesiones permanecen enteramente en Fable, y no se cobran tarifas de Fable por las solicitudes redirigidas."
+          },
+          {
+            "title": "Perfil de costo",
+            "body": "Fable cuesta $10/$50 por 1M tokens, el doble que Opus 4.8, y lleva un multiplicador x3.3 en VM0. Es una eleccion premium deliberada para el trabajo mas dificil, no un predeterminado para bucles de agente rutinarios."
           }
         ],
         "bestForExamples": [
           {
-            "title": "El planificador de migración para una base de código grande",
-            "body": "Lee notas de arquitectura, historial de issues y muchos archivos fuente, y luego planifica una refactorización de varios pasos donde omitir una dependencia o un caso límite sería costoso."
+            "title": "La ejecucion de agente de varias horas que debe terminar bien",
+            "body": "Migraciones de horizonte largo, investigacion profunda y trabajos analiticos de varios pasos donde la creciente ventaja de Fable en tareas complejas justifica el sobreprecio y una respuesta incorrecta es cara."
           },
           {
-            "title": "El agente de análisis de incidentes",
-            "body": "Combina logs, trazas, historial de despliegues y contexto de código para explicar una regresión en producción y proponer un rollback o camino de corrección concreto."
+            "title": "La carga analitica al limite de lo posible",
+            "body": "Analisis complejos y de larga duracion del tipo que Hex evalua. Fable fue el primer modelo en superar el 90% alli, asi que es la opcion cuando los modelos mas baratos se estancan en los casos dificiles."
           },
           {
-            "title": "La revisión exigente final",
-            "body": "Se ejecuta después de que modelos más baratos producen un parche, buscando fallos sutiles de lógica, seguridad, facturación o concurrencia antes de enviar el cambio."
+            "title": "La tarea exigente de UI o construccion de producto",
+            "body": "Genspark destaco a Fable en diseno de UI y codificacion de juegos. Recurrir a el cuando la calidad de la interfaz o app generada importa mas que el costo de tokens."
           }
         ],
-        "avoidFor": "Evita Fable 5 para clasificación de alto volumen, respuestas rutinarias de soporte, microtareas sensibles a latencia y cargas que requieren zero data retention. Usa Sonnet, Kimi, MiniMax o DeepSeek cuando el throughput y el coste unitario importan más que la máxima profundidad de razonamiento.",
+        "avoidFor": "Omitir Fable 5 en bucles de agente rutinarios de alto volumen donde Opus 4.8 o Sonnet 4.6 ya alcanzan el nivel de calidad por una fraccion del costo, en chat sensible a la latencia donde los modelos mas baratos son mas rapidos, y en trabajo de ciberseguridad, biologia o quimica que Fable rechazara y redirigira a Opus 4.8 de todos modos.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.8",
-            "body": "Opus 4.8 es más barato y sigue siendo un predeterminado premium fuerte. Fable 5 es el paso superior cuando la tarea necesita la capa de razonamiento más nueva de Anthropic."
-          },
-          {
-            "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 es la línea base de coste y el predeterminado para la mayoría de agentes VM0. Fable 5 es para la minoría de ejecuciones donde el techo de razonamiento de Sonnet se vuelve visible."
+            "body": "Opus 4.8 (x1.7) sigue siendo el predeterminado recomendado para la mayoria de los agentes y es a lo que Fable recurre en solicitudes de alto riesgo. Ascender a Fable 5 (x3.3) para las tareas mas dificiles y largas donde su creciente ventaja vale el doble del precio del proveedor; mantener Opus 4.8 en el resto."
           },
           {
             "vs": "GPT-5.5",
-            "body": "Ambos son opciones premium de razonamiento. Elige Fable 5 cuando el comportamiento de herramientas de Anthropic, los flujos de Claude Code o los prompts compatibles con Claude encajen mejor."
+            "body": "Ambos son modelos de frontera de primer nivel. Fable lidera en los benchmarks de tareas largas y analitica de Anthropic y de varios terceros, pero a mayor precio (x3.3 vs x2). Elegir Fable para el trabajo de varios pasos mas complejo; GPT-5.5 sigue siendo fuerte y mas barato para codificacion agentica en terminal."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 (x1) es el predeterminado de trabajo para la mayoria de los bucles. El patron habitual es Fable 5 (u Opus 4.8) como planificador que delega en workers Sonnet o de bajo costo, reservando Fable para los pocos pasos que realmente necesitan capacidad de frontera."
           }
         ],
-        "verdict": "Usa Claude Fable 5 como modelo de escalación deliberado. No es la forma más barata de ejecutar agentes, pero es el modelo Anthropic al que acudir cuando el paso más difícil merece el gasto.",
+        "verdict": "El modelo mas capaz que Anthropic ofrece publicamente y una eleccion premium deliberada. Recurrir a Fable 5 para el trabajo mas dificil, largo y de mayor riesgo; mantener Opus 4.8 como predeterminado y Sonnet 4.6 como el caballo de batalla mas barato por debajo.",
         "faqs": [
           {
-            "q": "¿Qué id de modelo usa Claude Fable 5?",
-            "a": "Las rutas nativas de Anthropic usan claude-fable-5. OpenRouter y Vercel AI Gateway usan anthropic/claude-fable-5."
+            "q": "Cuando se lanzo Claude Fable 5?",
+            "a": "Anthropic lanzo Fable 5 el 9 de junio de 2026 como el primer modelo disponible de forma general de su clase Mythos. Esta disponible en la API de Claude (ID de modelo `claude-fable-5`), Amazon Bedrock, Vertex AI, Microsoft Foundry y VM0."
           },
           {
-            "q": "¿Claude Fable 5 soporta entrada de imagen?",
-            "a": "Sí. VM0 marca Fable 5 como compatible con entradas de texto, visión y código."
+            "q": "Como se compara el precio de Fable 5 con Opus 4.8?",
+            "a": "Fable 5 cuesta $10 por 1M de tokens de entrada y $50 por 1M de salida, el doble que los $5/$25 de Opus 4.8. La entrada cacheada se factura a $1,00 por 1M (un descuento de 10x). En VM0 lleva un multiplicador x3.3."
           },
           {
-            "q": "¿Cuánto cuesta Claude Fable 5 en el proveedor?",
-            "a": "El precio de lista del proveedor es $10 de entrada y $50 de salida por 1M tokens, con lecturas de caché a $1 y escrituras de caché a $12,50 por 1M tokens."
+            "q": "Que ocurre con las solicitudes de alto riesgo?",
+            "a": "En dominios de alto riesgo como ciberseguridad, biologia y quimica, Fable rechaza y redirige a Opus 4.8. La API devuelve un rechazo como respuesta exitosa, no un error, y no se cobran tarifas de Fable por la solicitud redirigida. Anthropic informa que al menos el 95% de las sesiones se ejecutan enteramente en Fable."
           },
           {
-            "q": "¿Debería Fable 5 reemplazar a Sonnet como predeterminado?",
-            "a": "Normalmente no. Mantén agentes rutinarios en Sonnet u Opus y escala a Fable 5 para los pasos más difíciles de razonamiento, depuración y revisión."
+            "q": "En que se diferencia Fable 5 de Mythos 5?",
+            "a": "Fable 5 es la version publica con salvaguardas de la clase Mythos. Mythos 5 es la misma tecnologia subyacente sin las salvaguardas publicas y sigue restringido a organizaciones que Anthropic ha aprobado."
+          },
+          {
+            "q": "Deberia usar Fable 5 como mi modelo predeterminado?",
+            "a": "Normalmente no. Opus 4.8 es el predeterminado recomendado para la mayoria de los agentes; Fable 5 es una eleccion premium para las tareas mas dificiles, largas y de mayor riesgo. Reservarlo para pasos que realmente necesiten capacidad de frontera y dejar el resto a niveles mas baratos."
+          },
+          {
+            "q": "Admite Fable 5 cacheo de prompts y vision?",
+            "a": "Si. Admite cacheo de prompts (entrada cacheada a $1,00 por 1M, un descuento de 10x), una ventana de contexto de 1M tokens, vision, uso de herramientas y memoria."
           }
         ],
         "alternatives": [
           {
             "slug": "claude-opus-4-8",
-            "reason": "Modelo premium de Anthropic con menor coste unitario"
+            "reason": "Predeterminado recomendado; a lo que Fable recurre en solicitudes de alto riesgo"
           },
           {
             "slug": "claude-sonnet-4-6",
-            "reason": "Modelo de trabajo predeterminado de VM0 para la mayoría de turnos de agente"
+            "reason": "Caballo de batalla mas barato para la mayoria de los bucles de agente"
           },
           {
             "slug": "gpt-5-5",
-            "reason": "Modelo alternativo de razonamiento premium"
+            "reason": "Alternativa de frontera, mas barata para codificacion agentica en terminal"
           }
         ],
-        "routingNotes": "VM0 Built-in enruta Claude Fable 5 mediante Anthropic. BYOK está soportado con claves API de Anthropic, Claude Code OAuth, OpenRouter y Vercel AI Gateway.",
-        "vm0Notes": "Fable 5 es un modelo core de alto coste en la línea Built-in. Conviene usarlo como objetivo de escalación para ejecuciones que necesitan máxima profundidad de razonamiento, mientras modelos más baratos manejan llamadas rutinarias a herramientas y trabajo de alto volumen."
+        "routingNotes": "En VM0, Fable 5 se enruta a la API de Mensajes de Anthropic y se expone de dos formas: a traves del pool de creditos VM0 Managed y a traves de una clave de API de Anthropic directa. Las solicitudes de alto riesgo son redirigidas por Anthropic a Opus 4.8 y no se facturan a tarifas de Fable.",
+        "vm0Notes": "El cacheo de prompts esta activado por defecto en VM0, lo que reduce el costo de los system prompts repetidos, las definiciones de herramientas y el material de referencia pegado. Fable 5 lleva el multiplicador mas alto del catalogo (x3.3) para reflejar su doble precio de proveedor, por lo que el patron habitual es mantener Opus 4.8 o Sonnet 4.6 en todas partes y enrutar solo los pasos mas dificiles a Fable 5."
       },
       "claude-opus-4-8": {
         "name": "Claude Opus 4.8",

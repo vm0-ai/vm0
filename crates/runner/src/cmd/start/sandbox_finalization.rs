@@ -23,7 +23,7 @@ use super::ownership::OwnershipTransitions;
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::idle_pool::{
     DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkRequest, IdleParkRequestParts,
-    ParkResult, ParkingGate, StorageFingerprints,
+    ParkResult, ParkingGate,
 };
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -33,6 +33,7 @@ use crate::provider::CompletionAuth;
 use crate::resource_budget::BudgetLease;
 use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
+use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionRequest,
 };
@@ -671,7 +672,7 @@ mod tests {
                 network_log_session: Some(network_log_session),
                 workspace_image: None,
                 workspace_promotable: false,
-                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
                 device_rate_limits: None,
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
                 idle_pool: Arc::clone(&self.idle_pool),
@@ -721,7 +722,7 @@ mod tests {
         sandbox_id: SandboxId,
         session_id: &str,
         terminal_status: WorkspaceCacheTerminalStatus,
-        storage_fingerprints: crate::idle_pool::StorageFingerprints,
+        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints,
     ) -> WorkspaceImagePromotionContext {
         lease
             .into_promotion_context(WorkspaceImagePromotionRequest {
@@ -869,7 +870,7 @@ mod tests {
             sandbox_id,
             "sess-promote",
             WorkspaceCacheTerminalStatus::Success,
-            crate::idle_pool::StorageFingerprints::default(),
+            crate::storage_fingerprints::StorageFingerprints::default(),
         );
 
         let promoted =
@@ -903,7 +904,7 @@ mod tests {
                 prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, session_id)
                     .await;
             let sandbox = MockSandbox::new(format!("workspace-promotion-{session_id}"));
-            let storage_fingerprints = crate::idle_pool::StorageFingerprints {
+            let storage_fingerprints = crate::storage_fingerprints::StorageFingerprints {
                 storages: std::collections::HashMap::from([(
                     CANONICAL_WORKING_DIR.to_owned(),
                     ("repo".to_owned(), "v1".to_owned()),
@@ -978,7 +979,7 @@ mod tests {
             sandbox_id,
             "sess-failed",
             WorkspaceCacheTerminalStatus::Success,
-            crate::idle_pool::StorageFingerprints::default(),
+            crate::storage_fingerprints::StorageFingerprints::default(),
         );
 
         let promoted =
@@ -1071,7 +1072,7 @@ mod tests {
             device_rate_limits: None,
             budget_lease: existing_lease,
             source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
         })
         .with_last_completed_at(local_completed_at());
         assert!(matches!(
@@ -1162,7 +1163,7 @@ mod tests {
             old_sandbox_id,
             session_id,
             WorkspaceCacheTerminalStatus::Success,
-            crate::idle_pool::StorageFingerprints::default(),
+            crate::storage_fingerprints::StorageFingerprints::default(),
         );
         let destroy_gate = MockLifecycleGate::new();
         let existing_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -1192,7 +1193,7 @@ mod tests {
             profile_name: "vm0/default".into(),
             device_rate_limits: None,
             budget_lease: existing_lease,
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             workspace_promotion: Some(old_promotion),
         })
         .park_for_idle()

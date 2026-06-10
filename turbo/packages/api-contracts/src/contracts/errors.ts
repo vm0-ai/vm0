@@ -122,6 +122,20 @@ export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
 const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
   "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
 
+const CLAUDE_CODE_LIMIT_SNIPPETS = [
+  "usage limit",
+  "usage_limit",
+  "usage-limit",
+  "rate limit",
+  "rate_limit",
+  "rate-limit",
+  "subscription limit",
+  "ai limit reached",
+  "code limit reached",
+  "5-hour limit",
+  "five-hour limit",
+] as const;
+
 const codexOAuthReconnectRequiredRunErrorBodySchema = z.object({
   error: z.literal("TOKEN_REFRESH_FAILED"),
   connectors: z.tuple([z.literal("codex-oauth-token")]),
@@ -275,9 +289,21 @@ function hasActionableRunErrorSnippet(errorMessage: string): boolean {
   });
 }
 
+function isClaudeCodeLimitError(errorMessage: string): boolean {
+  const normalized = errorMessage.toLowerCase();
+  if (!normalized.includes("claude")) {
+    return false;
+  }
+
+  return CLAUDE_CODE_LIMIT_SNIPPETS.some((snippet) => {
+    return normalized.includes(snippet);
+  });
+}
+
 export function isActionableRunError(errorMessage: string): boolean {
   return (
     isCodexOAuthReconnectRequiredRunError(errorMessage) ||
+    isClaudeCodeLimitError(errorMessage) ||
     hasActionableRunErrorSnippet(errorMessage)
   );
 }
@@ -326,7 +352,7 @@ export function formatRunErrorForExternalSurface(params: {
     return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
   }
 
-  return hasActionableRunErrorSnippet(errorMessage)
+  return isActionableRunError(errorMessage)
     ? errorMessage
     : CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
 }

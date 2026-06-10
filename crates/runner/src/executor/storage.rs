@@ -7,8 +7,8 @@ use super::{
     DEFAULT_EXEC_TIMEOUT, GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES, RunnerError, RunnerResult,
     guest_runtime_dir,
 };
-use crate::idle_pool::StorageFingerprints;
 use crate::paths::guest;
+use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
 };

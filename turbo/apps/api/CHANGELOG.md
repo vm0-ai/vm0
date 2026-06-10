@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.124.0](https://github.com/vm0-ai/vm0/compare/api-v1.123.0...api-v1.124.0) (2026-06-10)
+
+
+### Features
+
+* **api:** carry append_system_prompt onto automations ([#17034](https://github.com/vm0-ai/vm0/issues/17034)) ([e87d407](https://github.com/vm0-ai/vm0/commit/e87d4078e7c8b4e6c449668ac25df1e54e26051c))
+* **api:** carry schedule chip onto automation chat messages ([#17049](https://github.com/vm0-ai/vm0/issues/17049)) ([a68d443](https://github.com/vm0-ai/vm0/commit/a68d4438dd8f2fcb61fc82243952c4720ce0c40e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.78.1
+    * @vm0/connectors bumped to 1.60.0
+    * @vm0/core bumped to 8.322.0
+    * @vm0/db bumped to 1.40.0
+
 ## [1.123.0](https://github.com/vm0-ai/vm0/compare/api-v1.122.0...api-v1.123.0) (2026-06-10)
 
 

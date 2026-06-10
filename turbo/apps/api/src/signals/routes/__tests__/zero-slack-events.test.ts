@@ -25,6 +25,7 @@ import {
   countSlackWebhookConnections$,
   countSlackWebhookInstallations$,
   deleteSlackWebhookFixture$,
+  seedSlackWebhookAgent$,
   seedSlackWebhookOrphanCompose$,
   seedSlackWebhookFixture$,
   seedSlackThreadSession$,
@@ -215,6 +216,14 @@ function latestPostEphemeralCall(): {
     readonly channel?: string;
     readonly user?: string;
   };
+}
+
+function latestViewPublishCall(): { readonly view?: unknown } {
+  const call = context.mocks.slack.views.publish.mock.calls.at(-1);
+  if (!call) {
+    throw new Error("Expected Slack views.publish to be called");
+  }
+  return call[0] as { readonly view?: unknown };
 }
 
 describe("POST /api/zero/slack/events", () => {
@@ -486,6 +495,51 @@ describe("POST /api/zero/slack/events", () => {
     expect(latestPostMessageCall().text).toContain("could not be found");
   });
 
+  it("does not run a private default agent owned by another user", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: false },
+        context.signal,
+      ),
+    );
+    const hiddenAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_other_${randomBytes(8).toString("hex")}`,
+        namePrefix: "hidden-default",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookDefaultAgent$,
+      { orgId: fixture.orgId, composeId: hiddenAgentId },
+      context.signal,
+    );
+
+    const dm = await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "message",
+        channel_type: "im",
+        user: fixture.slackUserId,
+        text: "hello in dm",
+        ts: "1710000003.100000",
+        channel: "D-test",
+      },
+    });
+    await clearAllDetached();
+
+    expect(dm.status).toBe(200);
+    expect(latestPostMessageCall().text).toContain("not available");
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).not.toHaveBeenCalled();
+  });
+
   it("filters direct message events by channel type, bot marker, and subtype", async () => {
     const fixture = await track(
       store.set(
@@ -609,6 +663,57 @@ describe("POST /api/zero/slack/events", () => {
         context.signal,
       ),
     ).resolves.toBe(0);
+  });
+
+  it("shows the App Home switch action when a visible agent exists without a visible default", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: false },
+        context.signal,
+      ),
+    );
+    const hiddenDefaultAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "home-hidden-default",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookDefaultAgent$,
+      { orgId: fixture.orgId, composeId: hiddenDefaultAgentId },
+      context.signal,
+    );
+    await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "home-visible-agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+
+    await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "app_home_opened",
+        user: fixture.slackUserId,
+        tab: "home",
+        channel: "D-home",
+      },
+    });
+    await clearAllDetached();
+
+    expect(JSON.stringify(latestViewPublishCall().view ?? "")).toContain(
+      "home_switch_agent",
+    );
   });
 
   it("handles App Home and Messages tab edge cases", async () => {

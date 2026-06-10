@@ -133,7 +133,14 @@ function CalendarEntryPopover<T extends ScheduleEntry>({
               {agentLabel}
             </p>
           )}
-          <p className="text-xs text-muted-foreground">{entry.time}</p>
+          <p className="text-xs text-muted-foreground">
+            {entry.time}
+            {entry.timezone && (
+              <span className="ml-1">
+                · {entry.timezone.replace(/_/g, " ")}
+              </span>
+            )}
+          </p>
           {entry.description && (
             <p className="text-sm font-medium text-foreground leading-snug">
               {entry.description}
@@ -168,8 +175,22 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
   const selectedDay = useGet(calendarSelectedDay$);
   const setSelectedDay = useSet(setCalendarSelectedDay$);
 
+  const uniqueTimezones = [
+    ...new Set(
+      enabledEntries
+        .filter((e) => {
+          return e.timezone && !/Every \d+ (minutes?|seconds?)/.test(e.time);
+        })
+        .map((e) => {
+          return e.timezone ?? "";
+        }),
+    ),
+  ];
+  const primaryTimezone =
+    uniqueTimezones.length === 1 ? uniqueTimezones[0] : null;
+
   const loopEntries = enabledEntries.filter((e) => {
-    return e.time.match(/Every \d+ (minutes?|seconds?)/);
+    return /Every \d+ (minutes?|seconds?)/.test(e.time);
   });
   const onceEntries = enabledEntries.filter((e) => {
     return e.time.startsWith("Once on");
@@ -187,9 +208,16 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
   return (
     <section className="flex flex-col gap-8 p-5">
       <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Week view
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Week view
+          </h3>
+          {primaryTimezone && (
+            <span className="text-xs text-muted-foreground/70">
+              {primaryTimezone.replace(/_/g, " ")}
+            </span>
+          )}
+        </div>
         <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
           {/* Mobile: single-day view */}
           <div className="md:hidden">

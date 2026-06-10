@@ -27,7 +27,7 @@ use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completi
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{self, ExecutionFailureKind, ExecutorConfig};
-use crate::idle_pool::{ParkingGate, ReusableIdleSandbox, StorageFingerprints};
+use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
@@ -35,6 +35,7 @@ use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::StatusTracker;
+use crate::storage_fingerprints::StorageFingerprints;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 
@@ -448,7 +449,7 @@ pub(super) fn spawn_job(
     let storage_fingerprints = context
         .storage_manifest
         .as_ref()
-        .map(crate::idle_pool::StorageFingerprints::from_manifest)
+        .map(crate::storage_fingerprints::StorageFingerprints::from_manifest)
         .unwrap_or_default();
 
     let provider = Arc::clone(&ctx.provider);
@@ -1316,7 +1317,7 @@ mod tests {
                 device_rate_limits: None,
                 budget_lease: lease,
                 source_ip: "10.0.0.1".into(),
-                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             });
         assert!(matches!(
             fixture.idle_pool.lock().await.park(candidate),

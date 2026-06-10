@@ -14,6 +14,7 @@ import {
   getClerkPublishableKey,
 } from "../src/lib/shared/clerk-config";
 import { getAllowedRedirectOrigins, getAppUrl } from "../src/lib/zero/url";
+import { serializeJsonLd } from "../src/lib/json-ld";
 import { SafeGoogleOneTap } from "./components/SafeGoogleOneTap";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { AttributionCapture } from "./components/AttributionCapture";
@@ -255,7 +256,7 @@ export default async function RootLayout({
             type="application/ld+json"
             suppressHydrationWarning
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify({
+              __html: serializeJsonLd({
                 "@context": "https://schema.org",
                 "@type": "Organization",
                 name: "VM0",
@@ -282,7 +283,7 @@ export default async function RootLayout({
             type="application/ld+json"
             suppressHydrationWarning
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify({
+              __html: serializeJsonLd({
                 "@context": "https://schema.org",
                 "@type": "WebSite",
                 name: "VM0",
@@ -296,7 +297,7 @@ export default async function RootLayout({
             type="application/ld+json"
             suppressHydrationWarning
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify({
+              __html: serializeJsonLd({
                 "@context": "https://schema.org",
                 "@type": "SoftwareApplication",
                 name: "VM0",

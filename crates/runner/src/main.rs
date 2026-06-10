@@ -39,6 +39,7 @@ mod runtime_overrides;
 mod state_file;
 mod status;
 mod storage_cache;
+mod storage_fingerprints;
 mod telemetry;
 mod types;
 mod workspace_image_cache;

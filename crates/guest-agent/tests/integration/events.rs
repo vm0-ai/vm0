@@ -209,6 +209,55 @@ async fn send_event_keeps_existing_session_metadata() {
     mock.delete_async().await;
 }
 
+#[tokio::test]
+async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+    let _session_files = SessionCheckpointFilesGuard::new();
+
+    let sid_file = guest_agent::paths::session_id_file();
+    let hist_file = guest_agent::paths::session_history_path_file();
+    let session_id = "session-repair";
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(200);
+    });
+
+    for seed_empty_marker in [false, true] {
+        let _ = std::fs::remove_file(sid_file);
+        let _ = std::fs::remove_file(hist_file);
+        guest_agent::paths::write_private(sid_file, session_id).unwrap();
+        if seed_empty_marker {
+            guest_agent::paths::write_private(hist_file, "").unwrap();
+        } else {
+            assert!(
+                !std::path::Path::new(hist_file).exists(),
+                "history marker should start missing"
+            );
+        }
+
+        let masker = SecretMasker::from_raw("");
+        let event = json!({"type": "assistant", "data": "later"});
+        let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+
+        assert!(result.is_ok());
+        assert_eq!(
+            std::fs::read_to_string(sid_file).unwrap(),
+            session_id,
+            "later events must keep the existing session id"
+        );
+        let history = std::fs::read_to_string(hist_file).unwrap();
+        assert!(
+            history.ends_with(&format!("/{session_id}.jsonl")),
+            "repaired history marker should point at the existing session id, got: {history}"
+        );
+    }
+
+    mock.assert_calls_async(2).await;
+    mock.delete_async().await;
+}
+
 // =========================================================================
 // Session ID extraction
 // =========================================================================
@@ -260,6 +309,48 @@ async fn send_event_extracts_claude_session_id() {
     mock.delete_async().await;
     let _ = std::fs::remove_file(sid_file);
     let _ = std::fs::remove_file(hist_file);
+}
+
+#[tokio::test]
+async fn send_event_rejects_unsafe_claude_session_id() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+    let _session_files = SessionCheckpointFilesGuard::new();
+
+    let sid_file = guest_agent::paths::session_id_file();
+    let hist_file = guest_agent::paths::session_history_path_file();
+    let invalid_session_ids = ["../escape", "nested/id", "nested\\id", ".", "..", "bad\nid"];
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(200);
+    });
+
+    for session_id in invalid_session_ids {
+        let _ = std::fs::remove_file(sid_file);
+        let _ = std::fs::remove_file(hist_file);
+
+        let masker = SecretMasker::from_raw("");
+        let event = json!({
+            "type": "system",
+            "subtype": "init",
+            "session_id": session_id
+        });
+        let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+
+        assert!(result.is_ok());
+        assert!(
+            !std::path::Path::new(sid_file).exists(),
+            "unsafe session_id must not be persisted: {session_id:?}"
+        );
+        assert!(
+            !std::path::Path::new(hist_file).exists(),
+            "unsafe session_id must not write a history marker: {session_id:?}"
+        );
+    }
+
+    mock.assert_calls_async(invalid_session_ids.len()).await;
+    mock.delete_async().await;
 }
 
 #[tokio::test]

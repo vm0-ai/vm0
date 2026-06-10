@@ -492,13 +492,6 @@ function AuthStepCard({
           )}
         </div>
       </div>
-      <aside className="step-guidance">
-        <strong>Next</strong>
-        <span>
-          After the account and workspace are ready, Zero will ask for the macOS
-          permissions needed by Computer Use.
-        </span>
-      </aside>
     </section>
   );
 }
@@ -669,13 +662,6 @@ function PermissionsStepCard({
           />
         </div>
       </div>
-      <aside className="step-guidance">
-        <strong>Runtime is hidden</strong>
-        <span>
-          Runtime status and command history appear after both permissions are
-          ready.
-        </span>
-      </aside>
     </section>
   );
 }

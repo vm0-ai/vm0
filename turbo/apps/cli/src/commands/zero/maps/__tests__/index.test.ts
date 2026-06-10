@@ -118,7 +118,106 @@ describe("zero maps command", () => {
     expect(requestBody).toEqual({
       query: "coffee near Union Square SF",
       limit: 5,
+      fields: "pro",
     });
+  });
+
+  it("posts Enterprise places search fieldsets to the maps API", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/maps/places/search",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({
+            operation: "places.search",
+            provider: "google-maps",
+            creditsCharged: 42,
+            billingCategory: "places.text_search.enterprise",
+            result: { places: [] },
+          });
+        },
+      ),
+    );
+
+    await zeroMapsCommand.parseAsync([
+      "node",
+      "cli",
+      "places",
+      "search",
+      "--query",
+      "coffee near Union Square SF",
+      "--fields",
+      "enterprise",
+      "--json",
+    ]);
+
+    expect(requestBody).toEqual({
+      query: "coffee near Union Square SF",
+      limit: 5,
+      fields: "enterprise",
+    });
+  });
+
+  it("posts Enterprise place details fieldsets to the maps API", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/maps/places/details",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({
+            operation: "places.details",
+            provider: "google-maps",
+            creditsCharged: 24,
+            billingCategory: "places.details.enterprise",
+            result: { id: "ChIJtest" },
+          });
+        },
+      ),
+    );
+
+    await zeroMapsCommand.parseAsync([
+      "node",
+      "cli",
+      "places",
+      "details",
+      "--place-id",
+      "ChIJtest",
+      "--fields",
+      "enterprise",
+      "--json",
+    ]);
+
+    expect(requestBody).toEqual({
+      placeId: "ChIJtest",
+      fields: "enterprise",
+    });
+  });
+
+  it("documents Enterprise fieldsets in places help output", () => {
+    const placesCommand = zeroMapsCommand.commands.find((command) => {
+      return command.name() === "places";
+    });
+    if (!placesCommand) {
+      throw new Error("places command not found");
+    }
+    const searchCommand = placesCommand.commands.find((command) => {
+      return command.name() === "search";
+    });
+    const detailsCommand = placesCommand.commands.find((command) => {
+      return command.name() === "details";
+    });
+    if (!searchCommand || !detailsCommand) {
+      throw new Error("places fieldset commands not found");
+    }
+
+    expect(searchCommand.helpInformation()).toContain(
+      "Field set: pro or enterprise",
+    );
+    expect(detailsCommand.helpInformation()).toContain(
+      "Field set: essentials, pro, or enterprise",
+    );
   });
 
   it("renders credit metadata in human output", async () => {

@@ -2,10 +2,7 @@ use chrono::Utc;
 use serde_json::Value;
 use std::io;
 
-use crate::session::{
-    build_session_path, codex_home, emit_events, ensure_runtime_session_path_usable,
-    write_session_file,
-};
+use crate::session::{codex_home, emit_events, persist_new_session};
 
 /// Embedded JSONL fixtures selectable via `MOCK_CODEX_FIXTURE=<name>`.
 ///
@@ -34,8 +31,8 @@ pub fn lookup_fixture(name: &str) -> Option<&'static str> {
 }
 
 /// Run a fixture: parse JSONL, extract thread id from `thread.started`,
-/// emit events to stdout, and persist the session file under `$CODEX_HOME`
-/// so checkpoint reads see the same content the CLI saw.
+/// persist the session file under `$CODEX_HOME`, and then emit the same
+/// events to stdout so checkpoint reads see the same content the CLI saw.
 pub fn run_fixture(content: &str) -> io::Result<()> {
     let events = parse_fixture_events(content)?;
     let thread_id = extract_thread_id(&events).ok_or_else(|| {
@@ -45,13 +42,10 @@ pub fn run_fixture(content: &str) -> io::Result<()> {
         )
     })?;
     let home = codex_home();
-    let path = build_session_path(&home, Utc::now().date_naive(), &thread_id)?;
-    ensure_runtime_session_path_usable(&home, &path)?;
+    persist_new_session(&home, Utc::now().date_naive(), &thread_id, &events)?;
 
     let mut stdout = io::stdout().lock();
-    emit_events(&mut stdout, &events)?;
-
-    write_session_file(&path, &events)
+    emit_events(&mut stdout, &events)
 }
 
 /// Parse JSONL fixture content into a vector of `Value`. Empty lines

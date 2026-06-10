@@ -23,10 +23,11 @@ import matching
 from auth_base_forwarder import (
     MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     ForwardedRequestTooLargeError,
+    InvalidResolvedAuthHeaderError,
     forward_request,
     forwarded_request_header_pairs,
     header_pairs,
-    trusted_request_header_pairs,
+    resolved_auth_header_pairs,
 )
 from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
 from logging_utils import log_proxy_entry
@@ -623,7 +624,7 @@ def _merge_auth_headers(
     auth_headers: dict[str, str],
 ) -> list[tuple[str, str]]:
     pairs = header_pairs(headers)
-    auth_pairs = trusted_request_header_pairs(auth_headers)
+    auth_pairs = resolved_auth_header_pairs(auth_headers)
     override_names = {name.lower() for name, _value in auth_pairs}
     return [
         (name, value) for name, value in pairs if name.lower() not in override_names
@@ -783,7 +784,7 @@ def _apply_header_query_injection(
     headers: dict[str, str],
     resolved_query: dict | None,
 ) -> None:
-    for header_name, header_value in headers.items():
+    for header_name, header_value in resolved_auth_header_pairs(headers):
         flow.request.headers[header_name] = header_value
     if resolved_query:
         for key, value in resolved_query.items():
@@ -1027,6 +1028,32 @@ def _set_firewall_auth_resolution_failure(
     return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
 
+def _set_invalid_resolved_auth_header_response(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+    error: InvalidResolvedAuthHeaderError,
+) -> None:
+    log_proxy_entry(
+        proxy_log_path,
+        "error",
+        "Invalid resolved auth header",
+        type="firewall",
+        firewall_base=firewall_base,
+        error_type=type(error).__name__,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=502,
+        action="ALLOW",
+        error_code="invalid_resolved_auth_header",
+        message=str(error),
+        permission=allow.name,
+    )
+
+
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -1131,23 +1158,34 @@ async def _apply_resolved_firewall_auth(
     resolved_base = token_meta.get("base")
     aws_sigv4 = token_meta.get("aws_sigv4")
 
-    if resolved_base:
-        return await _apply_url_rewrite(
+    try:
+        if resolved_base:
+            return await _apply_url_rewrite(
+                flow,
+                allow=allow,
+                resolved_base=resolved_base,
+                headers=headers,
+                resolved_query=resolved_query,
+                aws_sigv4=aws_sigv4,
+                firewall_base=firewall_base,
+                proxy_log_path=proxy_log_path,
+            )
+
+        _apply_header_query_injection(
             flow,
-            allow=allow,
-            resolved_base=resolved_base,
             headers=headers,
             resolved_query=resolved_query,
-            aws_sigv4=aws_sigv4,
-            firewall_base=firewall_base,
-            proxy_log_path=proxy_log_path,
         )
+    except InvalidResolvedAuthHeaderError as e:
+        _set_invalid_resolved_auth_header_response(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+            error=e,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    _apply_header_query_injection(
-        flow,
-        headers=headers,
-        resolved_query=resolved_query,
-    )
     if aws_sigv4 is not None:
         try:
             _sign_flow_request_with_aws_sigv4(flow, aws_sigv4)

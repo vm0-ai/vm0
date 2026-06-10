@@ -20,7 +20,7 @@ const context = testContext();
 const store = createStore();
 
 // The one-time, idempotent backfill data migration under test. 0442 ran while
-// automation_triggers still had retry_started_at (added 0440, dropped 0445);
+// automation_triggers still had retry_started_at (added 0440, dropped 0446);
 // strip those references so the historical SQL replays against the current
 // schema — fresh databases run the chain in order and are unaffected.
 const BACKFILL_SQL = readFileSync(
