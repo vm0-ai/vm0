@@ -212,10 +212,19 @@ const firewallAuthErrorSchema = z.object({
   }),
 });
 
+const firewallAwsSigv4AuthSchema = z
+  .object({
+    accessKeyId: z.string().min(1),
+    secretAccessKey: z.string().min(1),
+    sessionToken: z.string().min(1).optional(),
+  })
+  .strict();
+
 const firewallAuthResponseSchema = z.object({
   headers: z.record(z.string(), z.string()),
   base: z.string().optional(),
   query: z.record(z.string(), z.string()).optional(),
+  awsSigv4: firewallAwsSigv4AuthSchema.optional(),
   // Effective addon cache expiry as Unix seconds. Access token expiry is the
   // normal source; billable firewall auth can shorten it to force credit
   // re-authorization. Null means non-expiring only for non-billable auth.
@@ -241,6 +250,7 @@ export const webhookFirewallAuthContract = c.router({
       authHeaders: z.record(z.string(), z.string()),
       authBase: z.string().optional(),
       authQuery: z.record(z.string(), z.string()).optional(),
+      authAwsSigv4: firewallAwsSigv4AuthSchema.optional(),
       // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`)
       // to the connector or provider owner that can refresh/resolve access.
       secretConnectorMap: z.record(z.string(), z.string()).optional(),

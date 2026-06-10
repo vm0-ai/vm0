@@ -28,6 +28,7 @@ from auth_base_forwarder import (
     header_pairs,
     trusted_request_header_pairs,
 )
+from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
 from logging_utils import log_proxy_entry
 from url_utils import build_rewrite_url
 
@@ -103,6 +104,7 @@ class _FirewallAuthPayload:
     resolved_secrets: list[str] = field(default_factory=list)
     base: str | None = None
     query: dict[str, str] | None = None
+    aws_sigv4: AwsSigV4Credentials | None = None
 
 
 @dataclass
@@ -366,6 +368,17 @@ def _parse_optional_string_map(
     return _parse_string_map(value, field_name)
 
 
+def _parse_optional_string(decoded: dict[object, object], field_name: str) -> str | None:
+    value = decoded.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise _malformed_firewall_auth_success(f"{field_name} must be a string")
+    if value == "":
+        raise _malformed_firewall_auth_success(f"{field_name} must not be empty")
+    return value
+
+
 def _parse_optional_string_list(decoded: dict[object, object], field_name: str) -> list[str]:
     value = decoded.get(field_name)
     if value is None:
@@ -375,6 +388,27 @@ def _parse_optional_string_list(decoded: dict[object, object], field_name: str) 
     if not all(isinstance(item, str) for item in value):
         raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
     return list(value)
+
+
+def _parse_optional_aws_sigv4_credentials(
+    decoded: dict[object, object],
+) -> AwsSigV4Credentials | None:
+    value = decoded.get("awsSigv4")
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise _malformed_firewall_auth_success("awsSigv4 must be an object")
+    access_key_id = value.get("accessKeyId")
+    secret_access_key = value.get("secretAccessKey")
+    if not isinstance(access_key_id, str) or not access_key_id:
+        raise _malformed_firewall_auth_success("awsSigv4.accessKeyId is required")
+    if not isinstance(secret_access_key, str) or not secret_access_key:
+        raise _malformed_firewall_auth_success("awsSigv4.secretAccessKey is required")
+    return AwsSigV4Credentials(
+        access_key_id=access_key_id,
+        secret_access_key=secret_access_key,
+        session_token=_parse_optional_string(value, "sessionToken"),
+    )
 
 
 def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
@@ -393,11 +427,13 @@ def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
     refreshed_connectors = _parse_optional_string_list(decoded_map, "refreshedConnectors")
     refreshed_secrets = _parse_optional_string_list(decoded_map, "refreshedSecrets")
     query = _parse_optional_string_map(decoded_map, "query")
+    aws_sigv4 = _parse_optional_aws_sigv4_credentials(decoded_map)
     payload = _FirewallAuthPayload(
         headers=headers,
         resolved_secrets=resolved_secrets,
         base=base,
         query=query,
+        aws_sigv4=aws_sigv4,
     )
     return _FirewallAuthSuccess(
         payload=payload,
@@ -418,6 +454,7 @@ def _fetch_firewall_headers_sync(
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
+    auth_aws_sigv4: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
 ) -> _FirewallAuthSuccess:
@@ -432,6 +469,8 @@ def _fetch_firewall_headers_sync(
         body["authBase"] = auth_base
     if auth_query:
         body["authQuery"] = auth_query
+    if auth_aws_sigv4:
+        body["authAwsSigv4"] = auth_aws_sigv4
     if secret_connector_map:
         body["secretConnectorMap"] = secret_connector_map
     if secret_connector_metadata_map:
@@ -487,6 +526,7 @@ async def fetch_firewall_headers(
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
+    auth_aws_sigv4: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
 ) -> _FirewallAuthSuccess:
@@ -524,6 +564,7 @@ async def fetch_firewall_headers(
         vars_map=vars_map,
         auth_base=auth_base,
         auth_query=auth_query,
+        auth_aws_sigv4=auth_aws_sigv4,
         firewall_billable=firewall_billable,
         force_refresh=force_refresh,
     )
@@ -569,6 +610,8 @@ def _build_token_meta(
         token_meta["base"] = payload.base
     if payload.query is not None:
         token_meta["query"] = payload.query
+    if payload.aws_sigv4 is not None:
+        token_meta["aws_sigv4"] = payload.aws_sigv4
     return token_meta
 
 
@@ -598,6 +641,7 @@ async def get_firewall_headers(
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
+    auth_aws_sigv4: dict | None = None,
     firewall_billable: bool = False,
 ) -> dict:
     """Get firewall auth headers with TTL-based caching.
@@ -647,6 +691,7 @@ async def get_firewall_headers(
             vars_map=vars_map,
             auth_base=auth_base,
             auth_query=auth_query,
+            auth_aws_sigv4=auth_aws_sigv4,
             firewall_billable=firewall_billable,
             force_refresh=force_refresh,
         )
@@ -695,6 +740,40 @@ def _apply_header_query_injection(
     if resolved_query:
         for key, value in resolved_query.items():
             flow.request.query[key] = value
+
+
+def _sign_flow_request_with_aws_sigv4(
+    flow: http.HTTPFlow,
+    credentials: AwsSigV4Credentials,
+) -> None:
+    signed_url, signed_headers = sign_request(
+        method=flow.request.method,
+        url=flow.request.url,
+        headers=header_pairs(flow.request.headers),
+        body=flow.request.raw_content,
+        credentials=credentials,
+    )
+    flow.request.url = signed_url
+    flow.request.headers = http.Headers(
+        [(name.encode(), value.encode()) for name, value in signed_headers]
+    )
+
+
+def _sign_forwarded_request_with_aws_sigv4(
+    *,
+    method: str,
+    url: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+    credentials: AwsSigV4Credentials,
+) -> tuple[str, list[tuple[str, str]]]:
+    return sign_request(
+        method=method,
+        url=url,
+        headers=headers,
+        body=body,
+        credentials=credentials,
+    )
 
 
 def _set_url_rewrite_forward_failed(
@@ -764,6 +843,7 @@ async def _apply_url_rewrite(
     resolved_base: str,
     headers: dict[str, str],
     resolved_query: dict | None,
+    aws_sigv4: AwsSigV4Credentials | None,
     firewall_base: str,
     proxy_log_path: str,
 ) -> FirewallAuthHandlingResult:
@@ -789,6 +869,25 @@ async def _apply_url_rewrite(
     # intentionally replace any client-supplied value with the same name.
     req_headers = _merge_auth_headers(forwarded_request_header_pairs(flow.request.headers), headers)
     req_body = flow.request.raw_content if flow.request.raw_content is not None else None
+    if aws_sigv4 is not None:
+        try:
+            new_url, req_headers = _sign_forwarded_request_with_aws_sigv4(
+                method=flow.request.method,
+                url=new_url,
+                headers=req_headers,
+                body=req_body,
+                credentials=aws_sigv4,
+            )
+        except AwsSigV4SigningError as e:
+            _set_matched_firewall_failure_response(
+                flow,
+                status=502,
+                action="ALLOW",
+                error_code="aws_sigv4_auth_failed",
+                message=str(e),
+                permission=allow.name,
+            )
+            return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
     try:
         status, resp_body, resp_headers = await forward_request(
@@ -839,6 +938,7 @@ async def _apply_resolved_firewall_auth(
     headers = token_meta["headers"]
     resolved_query = token_meta.get("query")
     resolved_base = token_meta.get("base")
+    aws_sigv4 = token_meta.get("aws_sigv4")
 
     if resolved_base:
         return await _apply_url_rewrite(
@@ -847,6 +947,7 @@ async def _apply_resolved_firewall_auth(
             resolved_base=resolved_base,
             headers=headers,
             resolved_query=resolved_query,
+            aws_sigv4=aws_sigv4,
             firewall_base=firewall_base,
             proxy_log_path=proxy_log_path,
         )
@@ -856,6 +957,19 @@ async def _apply_resolved_firewall_auth(
         headers=headers,
         resolved_query=resolved_query,
     )
+    if aws_sigv4 is not None:
+        try:
+            _sign_flow_request_with_aws_sigv4(flow, aws_sigv4)
+        except AwsSigV4SigningError as e:
+            _set_matched_firewall_failure_response(
+                flow,
+                status=502,
+                action="ALLOW",
+                error_code="aws_sigv4_auth_failed",
+                message=str(e),
+                permission=allow.name,
+            )
+            return FirewallAuthHandlingResult.LOCAL_RESPONSE
     return FirewallAuthHandlingResult.CONTINUE_UPSTREAM
 
 
@@ -874,6 +988,7 @@ async def handle_firewall_request(
     auth_headers = api_entry.get("auth", {}).get("headers", {})
     auth_base = api_entry.get("auth", {}).get("base")
     auth_query = api_entry.get("auth", {}).get("query")
+    auth_aws_sigv4 = api_entry.get("auth", {}).get("awsSigv4")
     secret_connector_map = vm_info.get("secretConnectorMap")
     secret_connector_metadata_map = vm_info.get("secretConnectorMetadataMap")
     vars_map = vm_info.get("vars")
@@ -919,6 +1034,7 @@ async def handle_firewall_request(
             vars_map=vars_map,
             auth_base=auth_base,
             auth_query=auth_query,
+            auth_aws_sigv4=auth_aws_sigv4,
             firewall_billable=firewall_billable,
         )
     except ConnectorNotConfiguredError as e:

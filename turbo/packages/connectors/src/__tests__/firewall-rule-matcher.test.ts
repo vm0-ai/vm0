@@ -1249,6 +1249,83 @@ describe("findMatchingPermissions", () => {
     ).toEqual([]);
   });
 
+  it("accepts awsSigv4 auth configs", () => {
+    const config: FirewallConfig = {
+      name: "aws",
+      apis: [
+        {
+          base: "https://sts.amazonaws.com",
+          auth: {
+            headers: {},
+            awsSigv4: {
+              accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+              secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+              sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
+            },
+          },
+          permissions: [{ name: "identity", rules: ["GET /"] }],
+        },
+      ],
+    };
+
+    expect(findMatchingPermissions("GET", "/", config)).toEqual(["identity"]);
+  });
+
+  it("ignores malformed awsSigv4 auth configs", () => {
+    const config: FirewallConfig = {
+      name: "aws",
+      apis: [
+        {
+          base: "https://sts.amazonaws.com",
+          auth: {
+            headers: {
+              Authorization: "Bearer ${{ secrets.TOKEN }}",
+            },
+            awsSigv4: {
+              accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+              secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            },
+          },
+          permissions: [{ name: "mixed", rules: ["GET /"] }],
+        },
+        {
+          base: "https://iam.amazonaws.com",
+          auth: {
+            headers: {},
+            awsSigv4: {
+              accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+              secretAccessKey: "",
+            },
+          },
+          permissions: [{ name: "missing", rules: ["GET /"] }],
+        },
+      ],
+    };
+
+    expect(findMatchingPermissions("GET", "/", config)).toEqual([]);
+  });
+
+  it("ignores awsSigv4 auth configs with unsupported defaults", () => {
+    const config: FirewallConfig = {
+      name: "aws",
+      apis: [
+        {
+          base: "https://sts.amazonaws.com",
+          auth: {
+            awsSigv4: {
+              accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+              secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+              defaultRegion: "${{ vars.AWS_REGION }}",
+            },
+          },
+          permissions: [{ name: "identity", rules: ["GET /"] }],
+        },
+      ],
+    } as unknown as FirewallConfig;
+
+    expect(findMatchingPermissions("GET", "/", config)).toEqual([]);
+  });
+
   it("ignores malformed top-level firewall shapes", () => {
     const nullConfig = null as unknown as FirewallConfig;
     const arrayConfig = [] as unknown as FirewallConfig;

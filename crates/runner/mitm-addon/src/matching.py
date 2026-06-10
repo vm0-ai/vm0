@@ -785,12 +785,34 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
 
     if "headers" in raw_auth and not _is_string_record(raw_auth["headers"]):
         return False
+    if "query" in raw_auth and not _is_string_record(raw_auth["query"]):
+        return False
+    if "awsSigv4" in raw_auth:
+        raw_aws_sigv4 = raw_auth["awsSigv4"]
+        if not isinstance(raw_aws_sigv4, dict):
+            return False
+        if set(raw_aws_sigv4) - {"accessKeyId", "secretAccessKey", "sessionToken"}:
+            return False
+        if not isinstance(raw_aws_sigv4.get("accessKeyId"), str):
+            return False
+        if not raw_aws_sigv4["accessKeyId"]:
+            return False
+        if not isinstance(raw_aws_sigv4.get("secretAccessKey"), str):
+            return False
+        if not raw_aws_sigv4["secretAccessKey"]:
+            return False
+        optional_value = raw_aws_sigv4.get("sessionToken")
+        if optional_value is not None and not isinstance(optional_value, str):
+            return False
+        if optional_value == "":
+            return False
+        if raw_auth.get("headers"):
+            return False
+        if raw_auth.get("query"):
+            return False
     if "base" in raw_auth and not isinstance(raw_auth["base"], str):
         return False
-    if "base" in raw_auth and not _static_auth_base_is_valid(raw_auth["base"]):
-        return False
-
-    return "query" not in raw_auth or _is_string_record(raw_auth["query"])
+    return "base" not in raw_auth or _static_auth_base_is_valid(raw_auth["base"])
 
 
 def _path_specificity(
