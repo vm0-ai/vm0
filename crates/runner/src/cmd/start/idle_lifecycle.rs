@@ -193,11 +193,12 @@ mod tests {
 
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult,
-        ParkedIdleCandidate, StorageFingerprints, SyntheticParkedIdleCandidateParts,
+        ParkedIdleCandidate, SyntheticParkedIdleCandidateParts,
     };
     use crate::ids::RunId;
     use crate::paths::RunnerPaths;
     use crate::resource_budget::ResourceBudget;
+    use crate::storage_fingerprints::StorageFingerprints;
     use crate::workspace_image_cache::{
         SessionWorkspaceCache, WorkspaceCacheTerminalStatus, WorkspaceImagePrepareRequest,
         WorkspaceImagePromotionRequest,
@@ -345,7 +346,7 @@ mod tests {
                 device_rate_limits: None,
                 budget_lease: lease,
                 source_ip: "10.0.0.1".into(),
-                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             });
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
@@ -392,7 +393,7 @@ mod tests {
                 device_rate_limits: None,
                 budget_lease: lease,
                 source_ip: "10.0.0.1".into(),
-                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             });
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
@@ -441,7 +442,7 @@ mod tests {
                 device_rate_limits: None,
                 budget_lease: lease,
                 source_ip: "10.0.0.1".into(),
-                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             });
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),

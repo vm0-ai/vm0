@@ -48,7 +48,7 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache(
                 None,
                 WorkspaceCacheTerminalStatus::Success,
                 "2026-06-01T00:00:00.000Z".into(),
-                &crate::idle_pool::StorageFingerprints::default(),
+                &crate::storage_fingerprints::StorageFingerprints::default(),
             )
             .await
             .unwrap()

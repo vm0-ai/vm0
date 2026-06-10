@@ -311,7 +311,7 @@ pub(super) async fn execute_reused_sandbox(
     source_ip: &str,
     context: &ExecutionContext,
     config: &ExecutorConfig,
-    prev_storage: &crate::idle_pool::StorageFingerprints,
+    prev_storage: &crate::storage_fingerprints::StorageFingerprints,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> ExecuteOutcome {
