@@ -93,6 +93,15 @@ mod tests {
     }
 
     #[test]
+    fn decode_data_stacked_base64_encoding_stays_string() {
+        let data = serde_json::json!("eyJydW5JZCI6InV1aWQtMTIzIn0=");
+        for encoding in ["json/base64", "base64/json", "utf-8/base64"] {
+            let result = decode_data(data.clone(), Some(encoding));
+            assert_eq!(result, data, "encoding {encoding} should stay compact");
+        }
+    }
+
+    #[test]
     fn decode_data_invalid_base64_encoding_stays_string() {
         let data = serde_json::json!("not-valid-base64!!!");
         let result = decode_data(data.clone(), Some("base64"));
