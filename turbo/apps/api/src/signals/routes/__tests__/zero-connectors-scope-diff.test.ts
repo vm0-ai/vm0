@@ -7,8 +7,6 @@ import { eq } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { now } from "../../../lib/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   deleteOrgMembership$,
@@ -25,10 +23,6 @@ const mocks = createZeroRouteMocks(context);
 // `toStrictEqual` assertions catch any silent payload drift if the
 // canonical scope list changes upstream.
 const GITHUB_CURRENT_SCOPES = ["repo", "project", "workflow"] as const;
-
-function currentSecond(): number {
-  return Math.floor(now() / 1000);
-}
 
 async function seedGithubConnector(args: {
   readonly orgId: string;
@@ -75,72 +69,6 @@ describe("GET /api/zero/connectors/:type/scope-diff", () => {
         await store.set(deleteOrgMembership$, fixture, context.signal);
       }
     }
-  });
-
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({ params: { type: "github" }, headers: {} }),
-      [401],
-    );
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 403 for a sandbox token without connector:read capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId,
-      orgId,
-      runId: `run_${randomUUID()}`,
-      capabilities: ["file:read"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "github" },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-    expect(response.body.error.message).toBe(
-      "Missing required capability: connector:read",
-    );
-  });
-
-  it("returns 404 when no connector is configured for the type", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    mocks.clerk.session(userId, orgId);
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("returns an empty diff when stored scopes match current scopes exactly", async () => {

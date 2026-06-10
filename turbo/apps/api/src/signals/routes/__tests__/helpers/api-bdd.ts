@@ -22,7 +22,10 @@ import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list"
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
-import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorScopeDiffContract,
+  zeroConnectorsByTypeContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -214,6 +217,8 @@ export function createBddApi(context: TestContext) {
      * connected connector needs the OAuth/manual connect flow; the
      * auth/not-found rejections are reachable directly. */
     connectorByType: setupApp({ context })(zeroConnectorsByTypeContract),
+    /** ts-rest client for `/api/zero/connectors/:type/scope-diff`. */
+    connectorScopeDiff: setupApp({ context })(zeroConnectorScopeDiffContract),
     /** ts-rest client for `/api/zero/org/invite` (invite/revoke org members). */
     orgInvite: setupApp({ context })(zeroOrgInviteContract),
     /** ts-rest client for `/api/zero/org/membership-requests` (accept/reject). */

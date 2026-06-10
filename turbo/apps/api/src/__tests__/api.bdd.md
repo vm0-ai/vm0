@@ -1133,3 +1133,18 @@ First USAGE-family reduce.
   seeded connector row from the OAuth/manual connect flow (GAP-CONNECTOR-CONNECT).
 - Coverage verified (source-only): `zero-connector-data.service.ts` (389/136)
   unchanged vs `main`. No regressions.
+
+### Round 49 — CONNECTOR DELETE/SCOPE-DIFF REJECTIONS (CHAIN-CONNECTOR-BY-TYPE-MUTATIONS-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `connectorScopeDiff` client (the
+  `connectorByType` client already exposes `delete`).
+- Added `zero-connectors-by-type-mutations-rejections.bdd.test.ts`: delete
+  rejects unauthenticated/no-org 401 and 404s an unconnected type ("Connector
+  not found"); scope-diff rejects unauthenticated/no-org 401, a zero token
+  without connector:read 403, and 404s an unconnected type.
+- Reduced `zero-connectors-by-type-delete.test.ts` (11 -> 8) and
+  `zero-connectors-scope-diff.test.ts` (8 -> 4), removing the reachable
+  rejections (and the orphaned token helpers). The kept cases delete a connected
+  connector / diff stored-vs-current scopes (GAP-CONNECTOR-CONNECT).
+- Coverage verified (source-only): `zero-connector-data.service.ts` (389/136)
+  unchanged vs `main`. No regressions.

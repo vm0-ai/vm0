@@ -225,53 +225,6 @@ async function remainingSecretAndVariableState(
 describe("DELETE /api/zero/connectors/:type", () => {
   const track = createFixtureTracker<OrgMembershipFixture>(cleanupOrgData);
 
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({ params: { type: "github" }, headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 404 when no connector state exists for that type", async () => {
-    const fixture = await track(seedFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Connector not found", code: "NOT_FOUND" },
-    });
-  });
-
   it("deletes a connector row", async () => {
     const fixture = await track(seedFixture());
     await seedOAuthConnector(fixture);
