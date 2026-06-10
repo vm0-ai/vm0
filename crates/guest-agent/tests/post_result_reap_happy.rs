@@ -1,7 +1,8 @@
 //! End-to-end: CLI cleanly exits on its own after `type=result`. The
-//! reap FSM gets armed (Idle → SigtermPending) but `child.wait()`
-//! fires before any grace elapses, transitioning straight to Done.
-//! Neither SIGTERM nor SIGKILL is sent.
+//! agent either arms the reap deadline and then observes `child.wait()`,
+//! or observes `child.wait()` first and keeps the FSM in Done so the
+//! drained result event cannot re-arm it. Neither ordering sends SIGTERM
+//! or SIGKILL.
 //!
 //! Guards against the regression "reap accidentally kills healthy CLIs"
 //! by keeping the configured reap deadline beyond the test timeout and
