@@ -19,8 +19,19 @@ function filenameFromUrl(fileUrl: string): string {
   return basename(fileUrl) || "file";
 }
 
+function safeDefaultFilename(filename: string): string {
+  const component = basename(filename.replaceAll("\\", "/"));
+  if (!component || component === "." || component === "..") {
+    return "file";
+  }
+  return component;
+}
+
 function defaultOutPath(fileUrl: string, filename?: string): string {
-  return join(tmpdir(), `github-${filename || filenameFromUrl(fileUrl)}`);
+  return join(
+    tmpdir(),
+    `github-${safeDefaultFilename(filename || filenameFromUrl(fileUrl))}`,
+  );
 }
 
 export const downloadFileCommand = new Command()
