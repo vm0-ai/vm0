@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
 import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
@@ -15,11 +16,33 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-function validBody(
-  endpoint = "https://fcm.googleapis.com/fcm/send/test-endpoint-123",
-) {
+interface PushSubscriptionBody {
+  readonly endpoint: string;
+  readonly keys: {
+    readonly p256dh: string;
+    readonly auth: string;
+  };
+}
+
+function authHeaders(): { readonly authorization: string } {
+  return { authorization: "Bearer clerk-session" };
+}
+
+function client() {
+  return setupApp({ context })(pushSubscriptionsContract);
+}
+
+function testUserId(prefix: string): string {
+  return `user_${prefix}_${randomUUID().slice(0, 8)}`;
+}
+
+function endpoint(prefix: string): string {
+  return `https://fcm.googleapis.com/fcm/send/${prefix}-${randomUUID()}`;
+}
+
+function validBody(prefix: string): PushSubscriptionBody {
   return {
-    endpoint,
+    endpoint: endpoint(prefix),
     keys: {
       p256dh:
         "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8p8REfXRI",
@@ -28,9 +51,13 @@ function validBody(
   };
 }
 
-function pushSubscriptionRows(userId: string) {
-  const db = store.set(writeDb$);
-  return db
+function mockUser(userId: string): void {
+  mocks.clerk.session(userId, null);
+}
+
+async function subscriptionRows(userId: string) {
+  return await store
+    .set(writeDb$)
     .select({
       userId: pushSubscriptions.userId,
       endpoint: pushSubscriptions.endpoint,
@@ -43,7 +70,7 @@ function pushSubscriptionRows(userId: string) {
     .orderBy(pushSubscriptions.endpoint);
 }
 
-describe("POST /api/zero/push-subscriptions", () => {
+describe("POST /api/zero/push-subscriptions helper gaps", () => {
   const createdUserIds: string[] = [];
 
   afterEach(async () => {
@@ -56,35 +83,23 @@ describe("POST /api/zero/push-subscriptions", () => {
     }
   });
 
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(pushSubscriptionsContract);
-    const response = await accept(
-      client.register({ body: validBody(), headers: {} }),
-      [401],
-    );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
-  });
-
-  it("registers a push subscription and returns 201 success", async () => {
-    const userId = `user_${randomUUID().slice(0, 8)}`;
+  it("persists route-created subscription metadata", async () => {
+    const userId = testUserId("push_persist");
     createdUserIds.push(userId);
-    mocks.clerk.session(userId, null);
-    const body = validBody(
-      `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
-    );
+    mockUser(userId);
+    const body = validBody("persist");
 
-    const client = setupApp({ context })(pushSubscriptionsContract);
     const response = await accept(
-      client.register({
+      client().register({
         body,
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [201],
     );
 
     expect(response.body).toStrictEqual({ success: true });
 
-    const rows = await pushSubscriptionRows(userId);
+    const rows = await subscriptionRows(userId);
     expect(rows).toMatchObject([
       {
         userId,
@@ -96,39 +111,41 @@ describe("POST /api/zero/push-subscriptions", () => {
     expect(rows[0]?.createdAt).toBeInstanceOf(Date);
   });
 
-  it("upserts on same endpoint", async () => {
-    const userId = `user_${randomUUID().slice(0, 8)}`;
+  it("updates an existing endpoint without adding a duplicate row", async () => {
+    const userId = testUserId("push_upsert");
     createdUserIds.push(userId);
-    mocks.clerk.session(userId, null);
-    const endpoint = `https://fcm.googleapis.com/fcm/send/${randomUUID()}`;
+    mockUser(userId);
+    const body = validBody("upsert");
 
-    const client = setupApp({ context })(pushSubscriptionsContract);
-    const first = await accept(
-      client.register({
-        body: validBody(endpoint),
-        headers: { authorization: "Bearer clerk-session" },
+    const firstRegistration = await accept(
+      client().register({
+        body,
+        headers: authHeaders(),
       }),
       [201],
     );
-    expect(first.body).toStrictEqual({ success: true });
+    expect(firstRegistration.body).toStrictEqual({ success: true });
 
-    const second = await accept(
-      client.register({
+    const secondRegistration = await accept(
+      client().register({
         body: {
-          ...validBody(endpoint),
-          keys: { p256dh: "updated-p256dh-key", auth: "updated-auth-key" },
+          ...body,
+          keys: {
+            p256dh: "updated-p256dh-key",
+            auth: "updated-auth-key",
+          },
         },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [201],
     );
-    expect(second.body).toStrictEqual({ success: true });
+    expect(secondRegistration.body).toStrictEqual({ success: true });
 
-    const rows = await pushSubscriptionRows(userId);
+    const rows = await subscriptionRows(userId);
     expect(rows).toMatchObject([
       {
         userId,
-        endpoint,
+        endpoint: body.endpoint,
         p256dh: "updated-p256dh-key",
         auth: "updated-auth-key",
       },
@@ -137,13 +154,13 @@ describe("POST /api/zero/push-subscriptions", () => {
   });
 
   it("cleans up stale subscriptions for the current user", async () => {
-    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const userId = testUserId("push_stale");
     createdUserIds.push(userId);
-    mocks.clerk.session(userId, null);
+    mockUser(userId);
     mockNow(new Date("2026-05-16T00:00:00.000Z"));
-    const staleEndpoint = `https://fcm.googleapis.com/fcm/send/stale-${randomUUID()}`;
-    const freshEndpoint = `https://fcm.googleapis.com/fcm/send/fresh-${randomUUID()}`;
-    const newEndpoint = `https://fcm.googleapis.com/fcm/send/new-${randomUUID()}`;
+    const staleEndpoint = endpoint("stale");
+    const freshEndpoint = endpoint("fresh");
+    const newEndpoint = endpoint("new");
     const db = store.set(writeDb$);
     await db.insert(pushSubscriptions).values([
       {
@@ -162,11 +179,13 @@ describe("POST /api/zero/push-subscriptions", () => {
       },
     ]);
 
-    const client = setupApp({ context })(pushSubscriptionsContract);
     const response = await accept(
-      client.register({
-        body: validBody(newEndpoint),
-        headers: { authorization: "Bearer clerk-session" },
+      client().register({
+        body: {
+          ...validBody("fresh-register"),
+          endpoint: newEndpoint,
+        },
+        headers: authHeaders(),
       }),
       [201],
     );
@@ -190,24 +209,5 @@ describe("POST /api/zero/push-subscriptions", () => {
       { endpoint: freshEndpoint },
       { endpoint: newEndpoint },
     ]);
-  });
-
-  it("returns 400 for invalid body", async () => {
-    const userId = `user_${randomUUID().slice(0, 8)}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(pushSubscriptionsContract);
-    const response = await accept(
-      client.register({
-        body: {
-          endpoint: "not-a-url",
-          keys: { p256dh: "", auth: "" },
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error).toBeDefined();
   });
 });
