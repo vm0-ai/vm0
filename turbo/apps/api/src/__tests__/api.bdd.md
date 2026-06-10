@@ -521,3 +521,29 @@ round (62% reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 7 — CHAT-01 mark-read BDD
+
+Migrates the read-cursor route for chat threads. The
+`chatThreadMarkReadContract.markRead` response already returns
+`lastReadMessageId` and `changed`, so the legacy direct DB SELECT
+that verified the persisted cursor is replaced by assertions on
+the public response body.
+
+- `zero-chat-threads-mark-read.bdd.test.ts` — 7 legacy `it()`s
+  → 2 BDD `it()`s (auth boundary + a gwt-wt-wt chain that
+  exercises 404 missing → 404 cross-user → 200 with-cursor (2
+  Ably publishes: per-thread cursor signal + global
+  `threadListChanged`) → 200 no-messages (null cursor, no
+  publishes) → 200 idempotent (`changed:false` on second call,
+  no publishes)). The cross-user fixture seeds a `latest`
+  message via the helper gap (`seedZeroChatMessage$`) so the
+  cross-user 404 still has the same fixture shape as the
+  primary path; the unused message id is asserted at the end of
+  the chain to keep the helper-gap audit visible.
+
+Net test count: 7 legacy `it()`s → 2 BDD `it()`s (71% reduction).
+No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
