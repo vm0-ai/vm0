@@ -16,6 +16,7 @@ import {
 import type { RouteEntry } from "../route";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
+import { syncScheduleToAutomationSafely } from "../services/automations/schedule-dual-write";
 import { TimeTrigger } from "../services/automations/time-trigger";
 
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -94,7 +95,7 @@ function createScheduleCallbackHandler(
       shouldDisable,
     });
 
-    await writeDb
+    const [advanced] = await writeDb
       .update(zeroAgentSchedules)
       .set({
         consecutiveFailures,
@@ -102,8 +103,16 @@ function createScheduleCallbackHandler(
         nextRunAt,
         updatedAt: completedAt,
       })
-      .where(eq(zeroAgentSchedules.id, payload.data.scheduleId));
+      .where(eq(zeroAgentSchedules.id, payload.data.scheduleId))
+      .returning();
     signal.throwIfAborted();
+    if (advanced) {
+      // Mirror the completion advance (next run, failure counter, possible
+      // auto-disable) onto the events-first tables so the dormant trigger
+      // mirror tracks every fire, not just CRUD-time snapshots.
+      await syncScheduleToAutomationSafely(writeDb, advanced);
+      signal.throwIfAborted();
+    }
 
     // The run summary is owned by the chat callback (triggerSource "chat"); this
     // reschedule callback only advances next_run_at / consecutive-failure

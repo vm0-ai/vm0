@@ -19,7 +19,10 @@ import { createFixtureTracker } from "../../../routes/__tests__/helpers/zero-rou
 const context = testContext();
 const store = createStore();
 
-// The one-time, idempotent backfill data migration under test.
+// The one-time, idempotent backfill data migration under test. 0442 ran while
+// automation_triggers still had retry_started_at (added 0440, dropped 0445);
+// strip those references so the historical SQL replays against the current
+// schema — fresh databases run the chain in order and are unaffected.
 const BACKFILL_SQL = readFileSync(
   fileURLToPath(
     new URL(
@@ -28,7 +31,9 @@ const BACKFILL_SQL = readFileSync(
     ),
   ),
   "utf8",
-);
+)
+  .replaceAll('  "retry_started_at",\n', "")
+  .replaceAll('  "schedule"."retry_started_at",\n', "");
 
 // 0444 adds automations.append_system_prompt and carries it into mirrors that
 // predate the column. The DDL already ran via db:migrate; only the data UPDATE
