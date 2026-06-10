@@ -12,6 +12,7 @@ import { clearAllDetached } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
 import {
   createBddIntegrationApi,
+  telegramLoginAuth,
   type ForwardedInternalCallback,
 } from "./helpers/api-bdd-integrations";
 import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
@@ -3053,6 +3054,162 @@ describe("INT-02: Telegram integration", () => {
     expect(afterDisconnect.body).toMatchObject({
       error: { code: "NOT_FOUND" },
     });
+  });
+
+  it("refreshes telegram typing for pending webhook-dispatched runs", async () => {
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    const actor = integrations.user();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Telegram typing agent",
+    });
+
+    const typingBotId = randomInt(1_000_000_000, 9_999_999_999);
+    const typingBotToken = `${typingBotId}:bdd-typing-token`;
+    const botId = String(typingBotId);
+    const chatActions: {
+      readonly chat_id: string;
+      readonly action: string;
+    }[] = [];
+    server.use(
+      telegramDomainProbe(),
+      http.post(
+        `https://api.telegram.org/bot${typingBotToken}/sendChatAction`,
+        async ({ request }) => {
+          chatActions.push(
+            (await request.json()) as (typeof chatActions)[number],
+          );
+          return HttpResponse.json({ ok: true, result: true });
+        },
+      ),
+      http.post(
+        `https://api.telegram.org/bot${typingBotToken}/sendMessage`,
+        () => {
+          return HttpResponse.json({
+            ok: true,
+            result: { message_id: 654, chat: { id: 999_111 } },
+          });
+        },
+      ),
+    );
+    // Terminal dispatch of the run's Telegram callback settles its row
+    // (capture answers 500) instead of hitting an unhandled MSW route.
+    webhooks.captureInternalCallbackDeliveries(
+      "/api/internal/callbacks/telegram",
+    );
+
+    context.mocks.telegram.getMe.mockResolvedValue({
+      id: typingBotId,
+      username: "bdd_typing_bot",
+      can_read_all_group_messages: true,
+    });
+    let webhookSecret: string | undefined;
+    context.mocks.telegram.setWebhook.mockImplementation(
+      (...args: readonly unknown[]) => {
+        const secret = args[2];
+        if (typeof secret === "string") {
+          webhookSecret = secret;
+        }
+        return Promise.resolve();
+      },
+    );
+    await integrations.requestRegisterTelegramBot(
+      actor,
+      { botToken: typingBotToken, defaultAgentId: agent.agentId },
+      [201],
+    );
+    if (!webhookSecret) {
+      throw new Error(
+        "Expected Telegram registration to configure a webhook secret",
+      );
+    }
+
+    // Link the actor with a valid Telegram login hash — the test knows the
+    // bot token because it registered the bot through the API.
+    const telegramUserId = randomInt(100_000_000, 999_999_999);
+    await integrations.requestLinkTelegram(
+      actor,
+      {
+        telegramBotId: botId,
+        telegramAuth: telegramLoginAuth(typingBotToken, {
+          id: telegramUserId,
+          first_name: "BDD",
+          username: "bdd_typing_user",
+        }),
+      },
+      [200],
+    );
+    const linkStatus = await integrations.readTelegramLinkStatus(actor, botId);
+    expect(linkStatus).toMatchObject({ linked: true });
+
+    // A linked DM dispatches a run carrying a pending Telegram callback.
+    const dmChatId = 8_811_223;
+    const dm = await integrations.requestTelegramWebhook(
+      botId,
+      JSON.stringify({
+        update_id: 4001,
+        message: {
+          message_id: 71,
+          chat: { id: dmChatId, type: "private" },
+          from: {
+            id: telegramUserId,
+            first_name: "BDD",
+            username: "bdd_typing_user",
+          },
+          text: "summarize my telegram inbox",
+        },
+      }),
+      { "x-telegram-bot-api-secret-token": webhookSecret },
+      [200],
+    );
+    expect(dm.body).toBe("OK");
+    await clearAllDetached();
+
+    // Poll only — claiming is not needed and the callback must stay pending.
+    await runs.heartbeatRunner(runnerGroup);
+    const poll = await runs.pollRunner(runnerGroup);
+    const runId = poll.body.job?.runId;
+    if (!runId) {
+      throw new Error("Expected the Telegram DM to dispatch a run");
+    }
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+
+    const typingBody = {
+      runId,
+      events: [{ type: "assistant", sequenceNumber: 1 }],
+      context: { userId: actor.userId, orgId: actor.orgId },
+    };
+    const actionsBeforeTyping = chatActions.length;
+    const typing = await integrations.requestTelegramTypingEventConsumer(
+      typingBody,
+      webhooks.signedEventConsumerHeaders(typingBody),
+      [200],
+    );
+    expect(typing.body).toStrictEqual({ scheduled: true });
+    await clearAllDetached();
+    expect(chatActions.slice(actionsBeforeTyping)).toStrictEqual([
+      { chat_id: String(dmChatId), action: "typing" },
+    ]);
+
+    // Once the run is cancelled no Telegram callback stays pending, so a
+    // second typing refresh sends nothing.
+    await runs.requestCancelRun(actor, runId, [200]);
+    await clearAllDetached();
+    const actionsAfterCancel = chatActions.length;
+    const idleTyping = await integrations.requestTelegramTypingEventConsumer(
+      typingBody,
+      webhooks.signedEventConsumerHeaders(typingBody),
+      [200],
+    );
+    expect(idleTyping.body).toStrictEqual({ scheduled: true });
+    await clearAllDetached();
+    expect(chatActions).toHaveLength(actionsAfterCancel);
   });
 });
 

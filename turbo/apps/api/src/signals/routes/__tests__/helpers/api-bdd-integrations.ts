@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import {
@@ -43,6 +43,7 @@ import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import { internalEventConsumerTelegramTypingContract } from "@vm0/api-contracts/contracts/internal-event-consumers";
 import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import {
   zeroSlackBrowserConnectContract,
@@ -1719,5 +1720,65 @@ export function createBddIntegrationApi(context: TestContext) {
         statuses,
       );
     },
+
+    async requestTelegramTypingEventConsumer(
+      body: { readonly runId: string } & Record<string, unknown>,
+      headers: {
+        readonly "x-vm0-signature"?: string;
+        readonly "x-vm0-timestamp"?: string;
+      },
+      statuses: readonly (200 | 401)[],
+    ) {
+      const client = setupApp({ context })(
+        internalEventConsumerTelegramTypingContract,
+      );
+      return await accept(client.refresh({ headers, body }), statuses);
+    },
+  };
+}
+
+/**
+ * Valid Telegram Login Widget payload for a bot token the test registered
+ * through the API: HMAC-SHA256 over the sorted data-check string keyed with
+ * sha256(botToken), matching `verifyTelegramLogin`.
+ */
+export function telegramLoginAuth(
+  botToken: string,
+  user: {
+    readonly id: number;
+    readonly first_name?: string;
+    readonly username?: string;
+  },
+): TelegramAuthPayload {
+  const authDate = Math.floor(now() / 1000);
+  const fields: Record<string, string | number | undefined> = {
+    id: user.id,
+    first_name: user.first_name,
+    username: user.username,
+    auth_date: authDate,
+  };
+  const checkString = Object.entries(fields)
+    .filter((entry): entry is [string, string | number] => {
+      return entry[1] !== undefined;
+    })
+    .sort(([left], [right]) => {
+      return left.localeCompare(right);
+    })
+    .map(([key, value]) => {
+      return `${key}=${value}`;
+    })
+    .join("\n");
+  const hash = createHmac(
+    "sha256",
+    createHash("sha256").update(botToken).digest(),
+  )
+    .update(checkString)
+    .digest("hex");
+  return {
+    id: user.id,
+    ...(user.first_name === undefined ? {} : { first_name: user.first_name }),
+    ...(user.username === undefined ? {} : { username: user.username }),
+    auth_date: authDate,
+    hash,
   };
 }

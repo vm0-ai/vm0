@@ -912,6 +912,81 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     );
     expect(invalidBody.body).toStrictEqual({ error: "Invalid JSON body" });
   });
+
+  it("rejects agent callbacks whose runId-fallback lookup finds no callback row", async () => {
+    const missingCallback = await api.requestAgentCallback(
+      { runId: randomUUID(), status: "completed", payload: {} },
+      [404],
+    );
+    expect(missingCallback.body).toStrictEqual({ error: "Callback not found" });
+  });
+
+  it("ingests signed axiom event batches and surfaces axiom outages as 503", async () => {
+    const body = {
+      runId: "run_bdd_axiom",
+      events: [
+        { type: "assistant", sequenceNumber: 1, message: { content: [] } },
+        { type: "tool_result", sequenceNumber: 2, result: "ok" },
+      ],
+      context: { userId: "user_bdd_axiom", orgId: "org_bdd_axiom" },
+    };
+    context.mocks.axiom.ingest.mockReturnValue(true);
+    context.mocks.axiom.flush.mockResolvedValue(undefined);
+
+    const ingested = await api.requestAxiomEventConsumer(
+      body,
+      api.signedEventConsumerHeaders(body),
+      [200],
+    );
+    expect(ingested.body).toStrictEqual({ received: 2 });
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
+      "agent-run-events",
+      [
+        {
+          runId: "run_bdd_axiom",
+          userId: "user_bdd_axiom",
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: { content: [] },
+          },
+        },
+        {
+          runId: "run_bdd_axiom",
+          userId: "user_bdd_axiom",
+          sequenceNumber: 2,
+          eventType: "tool_result",
+          eventData: { type: "tool_result", sequenceNumber: 2, result: "ok" },
+        },
+      ],
+    );
+    expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
+      throwOnError: true,
+      client: "sessions",
+    });
+
+    context.mocks.axiom.ingest.mockReturnValueOnce(false);
+    const unconfigured = await api.requestAxiomEventConsumer(
+      body,
+      api.signedEventConsumerHeaders(body),
+      [503],
+    );
+    expect(unconfigured.body).toStrictEqual({
+      error: "Axiom agent-run-events dataset is not configured",
+    });
+
+    context.mocks.axiom.flush.mockRejectedValueOnce(new Error("axiom down"));
+    const flushFailed = await api.requestAxiomEventConsumer(
+      body,
+      api.signedEventConsumerHeaders(body),
+      [503],
+    );
+    expect(flushFailed.body).toStrictEqual({
+      error: "Axiom agent-run-events flush failed",
+    });
+  });
 });
 
 describe("WHCB-05: sandbox agent webhook boundaries", () => {

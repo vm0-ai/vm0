@@ -3,6 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { internalCallbacksAgentContract } from "@vm0/api-contracts/contracts/internal-callbacks-agent";
 import type { InternalCallbackBody } from "@vm0/api-contracts/contracts/internal-callbacks-shared";
 import {
+  internalEventConsumerAxiomContract,
   internalEventConsumerChatAssistantContract,
   type eventConsumerPayloadSchema,
 } from "@vm0/api-contracts/contracts/internal-event-consumers";
@@ -79,6 +80,33 @@ type EmailTriggerCallbackBody = z.infer<
 interface Vm0SignatureHeaders {
   readonly "x-vm0-signature": string;
   readonly "x-vm0-timestamp": string;
+}
+
+interface CapturedInternalCallbackDelivery {
+  readonly body: string;
+  readonly headers: Record<string, string>;
+}
+
+/**
+ * First captured delivery whose JSON envelope carries the given callback
+ * status. Throws when no such delivery was dispatched yet.
+ */
+export function callbackDeliveryWithStatus(
+  deliveries: readonly CapturedInternalCallbackDelivery[],
+  status: "completed" | "failed" | "progress",
+): CapturedInternalCallbackDelivery {
+  const delivery = deliveries.find((entry) => {
+    const parsed: unknown = JSON.parse(entry.body);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed as { readonly status?: unknown }).status === status
+    );
+  });
+  if (!delivery) {
+    throw new Error(`Expected a captured ${status} callback delivery`);
+  }
+  return delivery;
 }
 
 interface SvixHeaders {
@@ -492,6 +520,72 @@ export function createWebhookCallbackApi(context: TestContext) {
 
     signedEventConsumerHeaders(body: unknown): Vm0SignatureHeaders {
       return vm0SignatureHeaders(body);
+    },
+
+    /**
+     * Records real dispatcher deliveries POSTed to an internal callback URL
+     * without letting them reach the route (responds 500, marking the
+     * callback row failed). The captured raw body and headers form a
+     * legitimately signed request that tests replay into any callback path —
+     * `callbackRoute` resolves the row by the body's callbackId/runId, never
+     * by path, so cross-path replays still pass signature verification.
+     */
+    captureInternalCallbackDeliveries(
+      path: string,
+    ): readonly CapturedInternalCallbackDelivery[] {
+      const deliveries: CapturedInternalCallbackDelivery[] = [];
+      server.use(
+        http.post(`http://localhost:3000${path}`, async ({ request }) => {
+          deliveries.push({
+            body: await request.text(),
+            headers: Object.fromEntries(request.headers.entries()),
+          });
+          return HttpResponse.json(
+            { error: "captured for replay" },
+            { status: 500 },
+          );
+        }),
+      );
+      return deliveries;
+    },
+
+    /** Re-POSTs a captured delivery into the app verbatim on any callback path. */
+    async replayInternalCallback(
+      path: string,
+      delivery: CapturedInternalCallbackDelivery,
+      overrides: { readonly signature?: string } = {},
+    ): Promise<Response> {
+      const headers: Record<string, string> = { ...delivery.headers };
+      if (overrides.signature !== undefined) {
+        headers["x-vm0-signature"] = overrides.signature;
+      }
+      const app = createApp({ signal: context.signal });
+      return await app.request(path, {
+        method: "POST",
+        headers,
+        body: delivery.body,
+      });
+    },
+
+    /** Captured signature with one flipped hex character. */
+    tamperedSignature(delivery: CapturedInternalCallbackDelivery): string {
+      const signature = delivery.headers["x-vm0-signature"] ?? "";
+      const flipped = signature.startsWith("a") ? "b" : "a";
+      return `${flipped}${signature.slice(1)}`;
+    },
+
+    async requestAxiomEventConsumer(
+      body: EventConsumerPayload,
+      headers: Partial<Vm0SignatureHeaders>,
+      statuses: readonly (200 | 401 | 503)[],
+    ) {
+      return await accept(
+        setupApp({ context })(internalEventConsumerAxiomContract).ingest({
+          headers,
+          body,
+        }),
+        statuses,
+      );
     },
 
     async requestChatAssistantEventConsumer(

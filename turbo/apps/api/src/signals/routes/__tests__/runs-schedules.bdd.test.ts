@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
@@ -16,6 +16,10 @@ import {
   createRunsSchedulesApi,
   uniqueScheduleName,
 } from "./helpers/api-bdd-runs-schedules";
+import {
+  callbackDeliveryWithStatus,
+  createWebhookCallbackApi,
+} from "./helpers/api-bdd-webhooks";
 
 /**
  * helper gap:
@@ -1119,6 +1123,349 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     await api.deleteSchedule(actor, loopSchedule.schedule);
     await api.deleteSchedule(actor, cronSchedule.schedule);
     await api.deleteSchedule(pinActor, pinSchedule.schedule);
+  });
+});
+
+const LOOP_CALLBACK_PATH = "/api/internal/callbacks/schedule/loop";
+const CRON_CALLBACK_PATH = "/api/internal/callbacks/schedule/cron";
+const CHAT_CALLBACK_PATH = "/api/internal/callbacks/chat";
+
+/**
+ * Quiet capture handlers for every callback URL a schedule-fired run can
+ * carry (reschedule + chat, plus the events-first trigger mirrors), so
+ * terminal dispatch never hits an unhandled MSW route. Returns the captures
+ * the chains assert on.
+ */
+function captureScheduleCallbackDeliveries(
+  webhooks: ReturnType<typeof createWebhookCallbackApi>,
+) {
+  const loop = webhooks.captureInternalCallbackDeliveries(LOOP_CALLBACK_PATH);
+  const cron = webhooks.captureInternalCallbackDeliveries(CRON_CALLBACK_PATH);
+  const chat = webhooks.captureInternalCallbackDeliveries(CHAT_CALLBACK_PATH);
+  webhooks.captureInternalCallbackDeliveries(
+    "/api/internal/callbacks/trigger/loop",
+  );
+  webhooks.captureInternalCallbackDeliveries(
+    "/api/internal/callbacks/trigger/cron",
+  );
+  return { loop, cron, chat };
+}
+
+async function completeScheduleRun(
+  sandboxToken: string,
+  runId: string,
+): Promise<void> {
+  const webhooks = createWebhookCallbackApi(context);
+  const sandboxHeaders = { authorization: `Bearer ${sandboxToken}` };
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `bdd-schedule-cli-${runId}`,
+      cliAgentSessionHistoryHash: createHash("sha256")
+        .update(`bdd schedule history ${runId}`)
+        .digest("hex"),
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    { runId, exitCode: 0 },
+    sandboxHeaders,
+    [200],
+  );
+  await clearAllDetached();
+}
+
+describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", () => {
+  it("advances and skips loop schedules through replayed reschedule callbacks", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledScheduleActor();
+    const prompt = "Run the loop callback report.";
+    // Pin the clock so every replay stays inside the 5-minute signature
+    // tolerance window of its captured X-VM0-Timestamp.
+    const base = now();
+    mockNow(base);
+    const deliveries = captureScheduleCallbackDeliveries(webhooks);
+
+    const deployed = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-loop-cb"),
+      agentId,
+      intervalSeconds: 600,
+      prompt,
+      description: "Loop reschedule callback schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+
+    // Fire the due schedule (the jump stays inside PENDING_RUN_TTL).
+    mockNow(base + 601_000);
+    await executeSchedulesCronOk();
+    await clearAllDetached();
+    const thread = await chat.listThreadMessages(
+      actor,
+      deployed.schedule.chatThreadId,
+    );
+    const runId = scheduleRunIdFromThread(thread.messages, prompt);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+
+    // A sandbox heartbeat dispatches a progress delivery to the loop path;
+    // replaying it skips without touching the schedule.
+    await webhooks.requestAgentHeartbeat(
+      { runId },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await clearAllDetached();
+    const progressDelivery = callbackDeliveryWithStatus(
+      deliveries.loop,
+      "progress",
+    );
+    const progressReplay = await webhooks.replayInternalCallback(
+      LOOP_CALLBACK_PATH,
+      progressDelivery,
+    );
+    expect(progressReplay.status).toBe(200);
+    await expect(progressReplay.json()).resolves.toStrictEqual({
+      success: true,
+      skipped: true,
+    });
+    expect(
+      mustFindSchedule(
+        (await api.listSchedules(actor)).schedules,
+        deployed.schedule.id,
+      ).consecutiveFailures,
+    ).toBe(0);
+
+    await completeScheduleRun(claim.sandboxToken, runId);
+    const completedDelivery = callbackDeliveryWithStatus(
+      deliveries.loop,
+      "completed",
+    );
+    const chatCompletedDelivery = callbackDeliveryWithStatus(
+      deliveries.chat,
+      "completed",
+    );
+
+    const tamperedReplay = await webhooks.replayInternalCallback(
+      LOOP_CALLBACK_PATH,
+      completedDelivery,
+      { signature: webhooks.tamperedSignature(completedDelivery) },
+    );
+    expect(tamperedReplay.status).toBe(401);
+
+    // A signature of the wrong length fails before the timing-safe compare.
+    const malformedSignatureReplay = await webhooks.replayInternalCallback(
+      LOOP_CALLBACK_PATH,
+      completedDelivery,
+      { signature: "invalid-signature" },
+    );
+    expect(malformedSignatureReplay.status).toBe(401);
+
+    // Cross-path replays verify their signatures (callback rows resolve by
+    // callbackId, not path) and then fail the path-specific payload parse.
+    const chatOnLoop = await webhooks.replayInternalCallback(
+      LOOP_CALLBACK_PATH,
+      chatCompletedDelivery,
+    );
+    expect(chatOnLoop.status).toBe(400);
+    await expect(chatOnLoop.json()).resolves.toStrictEqual({
+      error: "Invalid or missing payload",
+    });
+    const loopOnCron = await webhooks.replayInternalCallback(
+      CRON_CALLBACK_PATH,
+      completedDelivery,
+    );
+    expect(loopOnCron.status).toBe(400);
+    await expect(loopOnCron.json()).resolves.toStrictEqual({
+      error: "Invalid or missing payload",
+    });
+
+    // The completion advance reads the interval from the database at replay
+    // time: redeploy with a new interval, move the pinned clock (still inside
+    // the signature tolerance), and replay the same captured delivery.
+    await api.deploySchedule(actor, {
+      name: deployed.schedule.name,
+      agentId,
+      intervalSeconds: 1200,
+      prompt,
+      description: "Loop reschedule callback schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+    mockNow(base + 721_000);
+    const queryCallsBefore = context.mocks.axiom.query.mock.calls.length;
+    const advancedReplay = await webhooks.replayInternalCallback(
+      LOOP_CALLBACK_PATH,
+      completedDelivery,
+    );
+    expect(advancedReplay.status).toBe(200);
+    await expect(advancedReplay.json()).resolves.toStrictEqual({
+      success: true,
+    });
+    // The reschedule callback never reads run output or writes a summary;
+    // the chat callback owns the summary (D9).
+    expect(context.mocks.axiom.query.mock.calls).toHaveLength(queryCallsBefore);
+    const advancedSchedule = mustFindSchedule(
+      (await api.listSchedules(actor)).schedules,
+      deployed.schedule.id,
+    );
+    expect(advancedSchedule).toMatchObject({
+      consecutiveFailures: 0,
+      enabled: true,
+      nextRunAt: new Date(base + 721_000 + 1_200_000).toISOString(),
+    });
+
+    // Signed-shape posts for unknown runs fail the callback lookup before
+    // signature verification.
+    const missingCallback = await webhooks.replayInternalCallback(
+      LOOP_CALLBACK_PATH,
+      {
+        body: JSON.stringify({
+          runId: randomUUID(),
+          status: "completed",
+          payload: { scheduleId: deployed.schedule.id },
+        }),
+        headers: {
+          "content-type": "application/json",
+          "x-vm0-signature": "0".repeat(64),
+          "x-vm0-timestamp": String(Math.floor(now() / 1000)),
+        },
+      },
+    );
+    expect(missingCallback.status).toBe(404);
+
+    // Disabled and deleted schedules skip the completion advance.
+    await api.disableSchedule(actor, deployed.schedule);
+    const disabledReplay = await webhooks.replayInternalCallback(
+      LOOP_CALLBACK_PATH,
+      completedDelivery,
+    );
+    expect(disabledReplay.status).toBe(200);
+    await expect(disabledReplay.json()).resolves.toStrictEqual({
+      success: true,
+      skipped: true,
+    });
+    await api.deleteSchedule(actor, deployed.schedule);
+    const deletedReplay = await webhooks.replayInternalCallback(
+      LOOP_CALLBACK_PATH,
+      completedDelivery,
+    );
+    expect(deletedReplay.status).toBe(200);
+    await expect(deletedReplay.json()).resolves.toStrictEqual({
+      success: true,
+      skipped: true,
+    });
+    clearMockNow();
+  });
+
+  it("increments cron failures and auto-disables after three replayed failed callbacks", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledScheduleActor();
+    const prompt = "Run the cron failure report.";
+    const base = now();
+    mockNow(base);
+    const deliveries = captureScheduleCallbackDeliveries(webhooks);
+
+    const deployed = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-cron-cb"),
+      agentId,
+      cronExpression: "*/5 * * * *",
+      prompt,
+      description: "Cron failure callback schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+
+    mockNow(base + 6 * 60_000);
+    await executeSchedulesCronOk();
+    await clearAllDetached();
+    const thread = await chat.listThreadMessages(
+      actor,
+      deployed.schedule.chatThreadId,
+    );
+    const runId = scheduleRunIdFromThread(thread.messages, prompt);
+
+    // Cancelling the dispatched run delivers a failed callback
+    // (error "Run cancelled") that the chain replays three times — the
+    // handler re-reads consecutiveFailures from the database on each replay.
+    await api.requestCancelRun(actor, runId, [200]);
+    await clearAllDetached();
+    const failedDelivery = callbackDeliveryWithStatus(
+      deliveries.cron,
+      "failed",
+    );
+
+    // "*/5 * * * *" advances to the next 5-minute boundary after the pinned
+    // clock, computed here instead of importing the cron service.
+    const expectedNextRunAt = new Date(
+      (Math.floor((base + 6 * 60_000) / 300_000) + 1) * 300_000,
+    ).toISOString();
+
+    const firstReplay = await webhooks.replayInternalCallback(
+      CRON_CALLBACK_PATH,
+      failedDelivery,
+    );
+    expect(firstReplay.status).toBe(200);
+    await expect(firstReplay.json()).resolves.toStrictEqual({ success: true });
+    expect(
+      mustFindSchedule(
+        (await api.listSchedules(actor)).schedules,
+        deployed.schedule.id,
+      ),
+    ).toMatchObject({
+      consecutiveFailures: 1,
+      enabled: true,
+      nextRunAt: expectedNextRunAt,
+    });
+
+    const secondReplay = await webhooks.replayInternalCallback(
+      CRON_CALLBACK_PATH,
+      failedDelivery,
+    );
+    expect(secondReplay.status).toBe(200);
+    expect(
+      mustFindSchedule(
+        (await api.listSchedules(actor)).schedules,
+        deployed.schedule.id,
+      ),
+    ).toMatchObject({ consecutiveFailures: 2, enabled: true });
+
+    const thirdReplay = await webhooks.replayInternalCallback(
+      CRON_CALLBACK_PATH,
+      failedDelivery,
+    );
+    expect(thirdReplay.status).toBe(200);
+    expect(
+      mustFindSchedule(
+        (await api.listSchedules(actor)).schedules,
+        deployed.schedule.id,
+      ),
+    ).toMatchObject({
+      consecutiveFailures: 3,
+      enabled: false,
+      nextRunAt: null,
+    });
+
+    // The fourth replay hits the disabled arm of the cron handler.
+    const fourthReplay = await webhooks.replayInternalCallback(
+      CRON_CALLBACK_PATH,
+      failedDelivery,
+    );
+    expect(fourthReplay.status).toBe(200);
+    await expect(fourthReplay.json()).resolves.toStrictEqual({
+      success: true,
+      skipped: true,
+    });
+
+    await api.deleteSchedule(actor, deployed.schedule);
+    clearMockNow();
   });
 });
 

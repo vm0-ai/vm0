@@ -32,6 +32,13 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 
+function orgOf(actor: ApiTestUser): string {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor");
+  }
+  return actor.orgId;
+}
+
 interface LinkedAgentPhoneActor {
   readonly actor: ApiTestUser;
   readonly phone: string;
@@ -216,6 +223,22 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     );
     expect(run1.appendSystemPrompt).toContain(`Message ID: ${messageId1}`);
 
+    // A signed typing event-consumer POST refreshes the iMessage indicator
+    // while the run's AgentPhone callback is still pending.
+    const typingBody = {
+      runId: run1.runId,
+      events: [{ type: "assistant", sequenceNumber: 1 }],
+      context: { userId: actor.userId, orgId: orgOf(actor) },
+    };
+    const typingScheduled = await ap.requestAgentPhoneTypingEventConsumer(
+      typingBody,
+      webhooks.signedEventConsumerHeaders(typingBody),
+      [200],
+    );
+    expect(typingScheduled.body).toStrictEqual({ scheduled: true });
+    await clearAllDetached();
+    expect(sends.typing).toStrictEqual([conversationId, conversationId]);
+
     // Sandbox progress refreshes the typing indicator through the callback.
     await webhooks.requestAgentHeartbeat(
       { runId: run1.runId },
@@ -223,7 +246,11 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       [200],
     );
     await clearAllDetached();
-    expect(sends.typing).toStrictEqual([conversationId, conversationId]);
+    expect(sends.typing).toStrictEqual([
+      conversationId,
+      conversationId,
+      conversationId,
+    ]);
 
     // Completion converts markdown output to iMessage plain text, without
     // an audit link or a non-default-agent footer.
