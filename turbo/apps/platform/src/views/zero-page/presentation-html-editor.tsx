@@ -850,6 +850,76 @@ function PresentationEditorWorkspace({
   );
 }
 
+async function runFillEmptySpeakerNotes(ctx: {
+  readonly buildEditedHtml: () => string;
+  readonly markDirty: () => void;
+  readonly params: {
+    readonly activeSlideIdRef: MutableValue<string>;
+    readonly createClient: ZeroClientFactory;
+    readonly pageSignal: AbortSignal;
+    readonly slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
+  };
+  readonly setPublishing: (publishing: boolean) => void;
+  readonly setStatus: (value: string) => void;
+}): Promise<void> {
+  const { params } = ctx;
+  if (
+    !params.slidesRef.current.some((slide) => {
+      return slide.notes.trim().length === 0;
+    })
+  ) {
+    toast.info("All speaker notes are filled");
+    return;
+  }
+
+  ctx.setPublishing(true);
+  ctx.setStatus("Generating speaker notes");
+  const generated = await tapError(
+    generatePresentationSpeakerNotes({
+      createClient: params.createClient,
+      html: ctx.buildEditedHtml(),
+      signal: params.pageSignal,
+    }).finally(() => {
+      ctx.setPublishing(false);
+      ctx.markDirty();
+    }),
+    (error) => {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Speaker notes generation failed",
+        );
+      }
+    },
+  );
+  if (!generated) {
+    return;
+  }
+
+  const result = applyPresentationSpeakerNotesPatch({
+    patch: generated,
+    slides: params.slidesRef.current,
+  });
+  if (result.appliedCount === 0) {
+    toast.info("No speaker notes were added");
+    return;
+  }
+
+  params.slidesRef.current = result.slides;
+  syncNotesPanel(
+    params.slidesRef.current.find((slide) => {
+      return slide.id === params.activeSlideIdRef.current;
+    }),
+  );
+  ctx.markDirty();
+  toast.success(
+    `Added speaker notes to ${String(result.appliedCount)} slide${
+      result.appliedCount === 1 ? "" : "s"
+    }`,
+  );
+}
+
 function createPresentationEditorController(params: {
   readonly activeSlideIdRef: MutableValue<string>;
   readonly blocksRef: MutableValue<readonly PresentationEditBlock[]>;
@@ -936,62 +1006,14 @@ function createPresentationEditorController(params: {
       sourceUrl: params.sourceUrl,
     });
   };
-  const fillEmptySpeakerNotes = async () => {
-    if (
-      !params.slidesRef.current.some((slide) => {
-        return slide.notes.trim().length === 0;
-      })
-    ) {
-      toast.info("All speaker notes are filled");
-      return;
-    }
-
-    setPublishing(true);
-    setStatus("Generating speaker notes");
-    const generated = await tapError(
-      generatePresentationSpeakerNotes({
-        createClient: params.createClient,
-        html: buildEditedHtml(),
-        signal: params.pageSignal,
-      }).finally(() => {
-        setPublishing(false);
-        markDirty();
-      }),
-      (error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "Speaker notes generation failed",
-          );
-        }
-      },
-    );
-    if (!generated) {
-      return;
-    }
-
-    const result = applyPresentationSpeakerNotesPatch({
-      patch: generated,
-      slides: params.slidesRef.current,
+  const fillEmptySpeakerNotes = () => {
+    return runFillEmptySpeakerNotes({
+      buildEditedHtml,
+      markDirty,
+      params,
+      setPublishing,
+      setStatus,
     });
-    if (result.appliedCount === 0) {
-      toast.info("No speaker notes were added");
-      return;
-    }
-
-    params.slidesRef.current = result.slides;
-    syncNotesPanel(
-      params.slidesRef.current.find((slide) => {
-        return slide.id === params.activeSlideIdRef.current;
-      }),
-    );
-    markDirty();
-    toast.success(
-      `Added speaker notes to ${String(result.appliedCount)} slide${
-        result.appliedCount === 1 ? "" : "s"
-      }`,
-    );
   };
   const showSlide = (slideId: string) => {
     params.activeSlideIdRef.current = slideId;

@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
 
 import { command } from "ccstate";
-import type {
-  GeneratePresentationSpeakerNotesRequest,
-  HostedArtifactKind,
-  HostedSitePrepareRequest,
-  HostedSiteRedeployPresentationHtmlRequest,
-  PresentationSpeakerNotesPatch,
+import {
+  type GeneratePresentationSpeakerNotesRequest,
+  type HostedArtifactKind,
+  type HostedSitePrepareRequest,
+  type HostedSiteRedeployPresentationHtmlRequest,
+  type PresentationSpeakerNotesPatch,
+  presentationSpeakerNotesPatchSchema,
 } from "@vm0/api-contracts/contracts/zero-host";
-import { presentationSpeakerNotesPatchSchema } from "@vm0/api-contracts/contracts/zero-host";
 import {
   hostedDeployments,
   hostedSites,
