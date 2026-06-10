@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import type StripeSDK from "stripe";
 import type { z } from "zod";
+import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
+import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
   automationRunContract,
   automationsByNameContract,
@@ -49,11 +53,14 @@ import {
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
+import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
+import { now } from "../../../../lib/time";
 import {
   accept,
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { mockStripeClient } from "../../../external/stripe-client";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -181,6 +188,123 @@ function runnerHeartbeatBody(
 
 export function createRunsSchedulesApi(context: TestContext) {
   return {
+    configureRunnerGroup(): string {
+      const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
+      mockOptionalEnv("RUNNER_DEFAULT_GROUP", group);
+      return group;
+    },
+
+    acceptStorageDownloads(): void {
+      context.mocks.s3.getSignedUrl.mockResolvedValue(
+        "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
+      );
+    },
+
+    acceptTelemetryIngest(): void {
+      context.mocks.axiom.ingest.mockResolvedValue(true);
+      context.mocks.axiom.query.mockResolvedValue([]);
+    },
+
+    async grantProEntitlement(actor: ApiTestUser): Promise<void> {
+      mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+      mockEnv(
+        "ZERO_PRICE",
+        JSON.stringify({ pro: ["price_bdd_pro"], team: ["price_bdd_team"] }),
+      );
+      mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
+
+      await accept(
+        setupApp({ context })(onboardingSetupContract).setup({
+          headers: authenticate(context, actor),
+          body: { displayName: "BDD Entitled Agent" },
+        }),
+        [200, 409],
+      );
+
+      const suffix = randomUUID().slice(0, 8);
+      const customerId = `cus_bdd_${suffix}`;
+      const subscriptionId = `sub_bdd_${suffix}`;
+      context.mocks.stripe.customers.retrieve.mockResolvedValue({
+        id: customerId,
+        metadata: { orgId: actor.orgId },
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subscriptionId,
+        status: "active",
+        customer: customerId,
+        cancel_at_period_end: false,
+        cancel_at: null,
+        schedule: null,
+        trial_end: null,
+        metadata: {},
+        items: { data: [{ price: { id: "price_bdd_pro" } }] },
+      });
+      const invoicePaidEvent = {
+        type: "invoice.paid",
+        data: {
+          object: {
+            id: `in_bdd_${suffix}`,
+            customer: customerId,
+            metadata: {},
+            parent: { subscription_details: { subscription: subscriptionId } },
+            lines: {
+              data: [
+                {
+                  parent: { type: "subscription_item_details" },
+                  period: { end: Math.floor(now() / 1000) + 30 * 86_400 },
+                },
+              ],
+            },
+          },
+        },
+      };
+      context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(
+        invoicePaidEvent,
+      );
+      await accept(
+        setupApp({ context })(webhookStripeContract).post({
+          body: JSON.stringify(invoicePaidEvent),
+          extraHeaders: { "stripe-signature": "t=1,v1=bdd" },
+        }),
+        [200],
+      );
+
+      const billingStatus = await accept(
+        setupApp({ context })(zeroBillingStatusContract).get({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      if (billingStatus.body.tier !== "pro") {
+        throw new Error(
+          `Entitlement grant did not reach pro tier: ${billingStatus.body.tier}`,
+        );
+      }
+    },
+
+    async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
+      const response = await accept(
+        setupApp({ context })(zeroRunsMainContract).create({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        [201],
+      );
+      return response.body;
+    },
+
+    async claimRunnerJob(runId: string) {
+      const response = await accept(
+        setupApp({ context })(runnersJobClaimContract).claim({
+          headers: runnerHeaders(true),
+          params: { id: runId },
+          body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async enableAutomations(actor: ApiTestUser): Promise<void> {
       await accept(
         setupApp({ context })(zeroFeatureSwitchesContract).update({
@@ -253,6 +377,17 @@ export function createRunsSchedulesApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async readRun(actor: ApiTestUser, runId: string) {
+      const response = await accept(
+        setupApp({ context })(zeroRunsByIdContract).getById({
+          headers: authenticate(context, actor),
+          params: { id: runId },
+        }),
+        [200],
+      );
+      return response.body;
     },
 
     async requestReadRun(
@@ -332,11 +467,11 @@ export function createRunsSchedulesApi(context: TestContext) {
       );
     },
 
-    async heartbeatRunner() {
+    async heartbeatRunner(group?: string) {
       return await accept(
         setupApp({ context })(runnersHeartbeatContract).heartbeat({
           headers: runnerHeaders(true),
-          body: runnerHeartbeatBody(),
+          body: runnerHeartbeatBody({ group }),
         }),
         [200],
       );
@@ -359,11 +494,11 @@ export function createRunsSchedulesApi(context: TestContext) {
       );
     },
 
-    async pollRunner() {
+    async pollRunner(group?: string) {
       return await accept(
         setupApp({ context })(runnersPollContract).poll({
           headers: runnerHeaders(true),
-          body: { group: "vm0/test", profiles: ["vm0/default"] },
+          body: { group: group ?? "vm0/test", profiles: ["vm0/default"] },
         }),
         [200],
       );

@@ -20,13 +20,13 @@ import {
  *   connector, and skill setup still needs public API helper coverage before
  *   the old DB fixture matrix can be ported without DB writes. This file covers
  *   model-provider setup through API routes and run-context GET boundaries.
- * - RUN-01/RUN-03/CHAIN-RUN successful dispatch needs a public billing
- *   entitlement helper that can move a test org out of pro-suspend without DB
- *   writes. Until then, this file covers the visible no-credit admission
- *   response and runner heartbeat/poll auth surfaces.
- * - RUN-04 checkpoint creation and persisted runner log ingestion need
- *   callback/event API helpers. This file covers missing-run GET boundaries
- *   until API helpers can create visible checkpoint and log state.
+ * - RUN-01/RUN-03/CHAIN-RUN successful dispatch is covered by
+ *   run-lifecycle.bdd.test.ts via the public Stripe invoice.paid entitlement
+ *   helper (grantProEntitlement); this file keeps the unauthenticated and
+ *   malformed admission boundaries plus runner auth surfaces.
+ * - RUN-04 persisted runner log ingestion needs callback/event API helpers.
+ *   Checkpoint creation through the sandbox webhook is covered by
+ *   run-lifecycle.bdd.test.ts; missing-run GET boundaries stay here.
  * - SCHED-01 has no standalone read-by-name route; schedule list is used as
  *   the visible read surface for create, update, enable, disable, and delete.
  * - CHAIN-SCHEDULE cron execution returns counts and exposes schedule

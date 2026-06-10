@@ -483,7 +483,7 @@ Before deleting an existing test file, fill this table for that file or route fa
 
 These gaps must be closed before the corresponding old tests can be safely deleted:
 
-- Billing and credit fixture setup that is visible through billing status.
+- ~~Billing and credit fixture setup that is visible through billing status.~~ Closed: `grantProEntitlement` in `helpers/api-bdd-runs-schedules.ts` moves an onboarded org to the pro tier with credits through the public Stripe `invoice.paid` webhook and verifies via billing status.
 - Usage event creation through product APIs plus aggregation cron helpers.
 - Run context readers for safe provider, connector, secret, grant, memory, and volume projection.
 - Connector OAuth/device-auth lifecycle helpers that expose pending, completed, expired, and replayed state.
