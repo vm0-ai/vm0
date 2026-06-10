@@ -274,6 +274,13 @@ to read the DB.
 - **GAP-STALE-RECOMPOSE** — the "recompose when the compose head is stale"
   branch needs a forced-stale `headVersionId`; no API exposes or corrupts the
   head version, so staleness can't be induced through the API.
+- **GAP-CHAT-MESSAGE-SEED** — the `mark-read` `changed:true` branch (and the
+  `changed:false` branch where a stored cursor already matches a real latest
+  message) need at least one _visible_ chat message in the thread. The only API
+  that persists chat messages is the unified `chat/messages` run endpoint, which
+  requires sandbox/run infrastructure, so a bare visible message can't be
+  produced through the API. `zero-chat-threads-mark-read.test.ts` is kept for
+  those message-bearing branches.
 
 ## Service-level exceptions (kept as-is)
 
@@ -570,3 +577,22 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified (source-only): no connector/crypto source file changed vs
   the `main` baseline. This completes the CUSTOM-CONNECTOR family in BDD except
   the create firewall-validation gap (GAP-CONNECTOR-FIREWALL-PREFIX).
+
+### Round 18 — CHAT THREAD METADATA (CHAIN-CHAT-THREAD-METADATA)
+
+- Extended `createBddApi` with chat-thread clients: `chatThreads` (create +
+  list), `chatThreadById` (get/patch/delete), `chatThreadPin`,
+  `chatThreadUnpin`, `chatThreadRename`, and `chatThreadModelSelection`.
+- Added `zero-chat-threads-metadata.bdd.test.ts`: create an agent, open a thread
+  on it, then pin -> list shows it in `pinned[]` with `pinnedAt` -> unpin ->
+  back in `threads[]` -> rename -> `title`/`renamedAt` via get+list -> pin a
+  model (`MODEL_FIRST_SELECTION_PROVIDER_ID` + `claude-sonnet-4-6`) -> detail
+  shows `selectedModel` -> clear (null) -> `selectedModel` null again. Plus a
+  per-user isolation matrix (cross-user 404 on every route), unknown-404,
+  empty-rename / unsupported-model 400s, unauthenticated 401s, and a no-org 401
+  for model-selection.
+- Deleted `zero-chat-threads-pin.test.ts`, `-unpin.test.ts`, `-rename.test.ts`,
+  and `-model-selection.test.ts` whole. Kept `zero-chat-threads-mark-read.test.ts`
+  for the message-bearing branches (GAP-CHAT-MESSAGE-SEED).
+- Coverage verified (source-only): pin/unpin/model-selection unchanged vs the
+  `main` baseline; rename gained a branch (empty-title 400) — no regressions.

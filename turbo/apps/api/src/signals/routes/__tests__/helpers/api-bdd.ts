@@ -4,6 +4,14 @@ import {
   apiKeysByIdContract,
   apiKeysContract,
 } from "@vm0/api-contracts/contracts/api-keys";
+import {
+  chatThreadByIdContract,
+  chatThreadModelSelectionContract,
+  chatThreadPinContract,
+  chatThreadRenameContract,
+  chatThreadsContract,
+  chatThreadUnpinContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import {
   zeroPersonalModelProvidersByTypeContract,
@@ -126,6 +134,20 @@ export function createBddApi(context: TestContext) {
     composesMain: setupApp({ context })(zeroComposesMainContract),
     /** ts-rest client for `/api/zero/composes/:id/metadata` (update). */
     composesMetadata: setupApp({ context })(zeroComposesMetadataContract),
+    /** ts-rest client for `/api/zero/chat-threads` (create + list). */
+    chatThreads: setupApp({ context })(chatThreadsContract),
+    /** ts-rest client for `/api/zero/chat-threads/:id` (get/patch/delete). */
+    chatThreadById: setupApp({ context })(chatThreadByIdContract),
+    /** ts-rest client for `/api/zero/chat-threads/:id/pin`. */
+    chatThreadPin: setupApp({ context })(chatThreadPinContract),
+    /** ts-rest client for `/api/zero/chat-threads/:id/unpin`. */
+    chatThreadUnpin: setupApp({ context })(chatThreadUnpinContract),
+    /** ts-rest client for `/api/zero/chat-threads/:id/rename`. */
+    chatThreadRename: setupApp({ context })(chatThreadRenameContract),
+    /** ts-rest client for `/api/zero/chat-threads/:id/model-selection`. */
+    chatThreadModelSelection: setupApp({ context })(
+      chatThreadModelSelectionContract,
+    ),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
