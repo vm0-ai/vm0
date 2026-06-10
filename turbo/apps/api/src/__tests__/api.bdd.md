@@ -1244,3 +1244,50 @@ Net test count: 14 legacy `it()`s covered by BDD → 5 BDD
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 29 — AGENT-01 runs telemetry BDD + legacy cleanup
+
+Migrates `agent-run-telemetry.test.ts` (16 legacy `it()`s,
+693 lines). The 16 cases split into 5 BDD test groups, one
+per public telemetry read endpoint: (a) auth + 404 cross-
+user chain (401 events unauth → 400 no-org → 404 other-user
+events + 404 other-user system log), (b) events + agent
+events chain (200 sandbox agent events → 200 events with
+run-state + framework + gap-filter + noCache + 2 axiom
+calls → 200 agent events paged from axiom with APL
+filter), (c) telemetry aggregate + 400 chain (200
+aggregated system log + 2 metrics samples from 2 Postgres
+rows → 200 empty aggregate → 400 invalid system log + 400
+invalid metrics via raw app), (d) system log + metrics
+chain (200 system log paged from axiom → 200 empty → 200
+metrics paged from axiom), (e) network logs chain (200 with
+full capture + firewall fields → 200 omitting null optional
+fields).
+
+The 400 invalid-query cases use the raw public app because
+the ts-rest client validates `limit: 1..100` client-side
+and never reaches the route. The Axiom APL assertions are
+verified through `context.mocks.axiom.query.mock.calls`
+(Axiom is a mocked external service per the BDD plan, so
+verifying the generated APL through the mock is faithful).
+The `sandboxTelemetry` row inserts are an inlined direct-
+DB write (Open Helper Gap — the public API does not expose
+a "write legacy telemetry for a run" primitive).
+
+Net test count: 16 legacy `it()`s → 5 BDD `it()`s (69%
+reduction). No per-file coverage regression.
+
+Also deletes the now-redundant legacy files for the
+compose routes already covered by Round 25-27 BDDs
+(`agent-composes-create.test.ts`,
+`agent-composes-delete.test.ts`,
+`agent-composes-metadata.test.ts`,
+`agent-composes-read.test.ts`), and the AGENT-01
+ancillary routes already covered by earlier rounds
+(`agent-checkpoints-id.test.ts`,
+`agent-runs-cancel.test.ts`,
+`agent-runs-read.test.ts`,
+`agent-sessions-id.test.ts`).
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
