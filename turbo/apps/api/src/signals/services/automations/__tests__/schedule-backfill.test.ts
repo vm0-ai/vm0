@@ -30,13 +30,13 @@ const BACKFILL_SQL = readFileSync(
   "utf8",
 );
 
-// 0443 adds automations.append_system_prompt and carries it into mirrors that
+// 0444 adds automations.append_system_prompt and carries it into mirrors that
 // predate the column. The DDL already ran via db:migrate; only the data UPDATE
 // (everything after the first statement-breakpoint) is re-runnable here.
 const APPEND_PROMPT_CARRY_SQL = readFileSync(
   fileURLToPath(
     new URL(
-      "../../../../../../../packages/db/src/migrations/0443_sweet_leo.sql",
+      "../../../../../../../packages/db/src/migrations/0444_nebulous_rockslide.sql",
       import.meta.url,
     ),
   ),
@@ -143,7 +143,7 @@ describe("backfill schedules into events-first tables", () => {
     expect(cronAutomation.agentId).toBe(fixture.composeId);
     expect(cronAutomation.instruction).toBe("Existing cron prompt");
     expect(cronAutomation.description).toBe("cron desc");
-    // 0442 predates append_system_prompt; the 0443 data carry covers it (its
+    // 0442 predates append_system_prompt; the 0444 data carry covers it (its
     // own test below).
     expect(cronAutomation.appendSystemPrompt).toBeNull();
     expect(cronAutomation.enabled).toBeTruthy();
@@ -186,8 +186,8 @@ describe("backfill schedules into events-first tables", () => {
     expect(runs).toHaveLength(0);
   });
 
-  it("carries append_system_prompt into mirrors that predate the column (0443)", async () => {
-    // Simulate a pre-0443 mirror: backfill, then null the column as if the
+  it("carries append_system_prompt into mirrors that predate the column (0444)", async () => {
+    // Simulate a pre-0444 mirror: backfill, then null the column as if the
     // mirror had been written before append_system_prompt existed.
     await runBackfill();
     const db = store.set(writeDb$);
