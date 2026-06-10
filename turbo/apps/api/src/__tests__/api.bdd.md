@@ -2119,3 +2119,58 @@ covered route files.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api
 check-types`, `pnpm -F api exec vitest run` all clean.
+
+### Round 43 — Mixed small-batch BDD (3 legacy → 8 BDD)
+
+Migrates 3 small legacy route tests into 8 BDD `it()`s:
+
+- `zero-web-download.test.ts` (11→2): auth + 400 + 404
+  chain (401 no auth → 403 no `file:read` capability →
+  400 missing file_id → 400 empty file_id → 404 file not
+  in S3), 200 happy-path chain (200 downloads a text file
+  with matching headers → 200 encodes the filename header
+  while preserving the binary body → 200 downloads an
+  image file with the image MIME type → 200 downloads an
+  office file with the office MIME type → 200 returns
+  `application/octet-stream` for unknown extensions → 200
+  scopes file lookup to the authenticated user via the S3
+  prefix).
+- `zero-api-keys.test.ts` (11→3): GET chain (401 unauth →
+  200 sorted list → 200 empty list → 200 list excludes the
+  full token), POST auth + 400 chain (401 unauth → 400 no
+  active org → 400 empty name → 400 non-positive
+  expiresInDays → 400 expiresInDays above 10-year cap),
+  POST 201 success chain (201 creates a new PAT with full
+  token returned exactly once + DB row written → 200 list
+  excludes the full token after creation).
+- `zero-billing-restore.test.ts` (8→3): preconditions
+  chain (503 STRIPE_SECRET_KEY unset → 401 unauth → 403
+  non-admin → 409 no subscription → 409 subscription not
+  scheduled for cancellation), 200 restore cancellation
+  chain (200 restores a subscription scheduled for
+  cancellation + Stripe update called with
+  `{cancel_at_period_end: false}` + DB row updated → 200
+  restores a scheduled downgrade by releasing the
+  subscription schedule + Stripe release called + DB row
+  updated), 200 payment-method chain (200 returns setup
+  checkout URL when restore requires a payment method +
+  Stripe checkout session called with the expected args).
+
+Service-Level Exceptions noted:
+
+- `zero-billing-restore.bdd.test.ts` re-sets
+  `STRIPE_SECRET_KEY` to its test value after the 503
+  step (which unsets it) so the subsequent 401 step
+  reaches the auth layer instead of failing at the
+  billing-configured check.
+- This round deletes 3 legacy files
+  (`zero-web-download.test.ts`,
+  `zero-api-keys.test.ts`,
+  `zero-billing-restore.test.ts`).
+
+Net test count: 30 legacy `it()`s → 8 BDD `it()`s (73%
+reduction). No per-file coverage regression for the
+covered route files.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api
+check-types`, `pnpm -F api exec vitest run` all clean.
