@@ -169,22 +169,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     }
   });
 
-  it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(integrationsTelegramMessageContract);
-    const response = await accept(
-      client.sendMessage({
-        body: {
-          botId: "tg-bot",
-          chatId: "-100",
-          text: "hi",
-        },
-        headers: {},
-      }),
-      [401],
-    );
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
   it("returns 401 when the token has no active organization membership", async () => {
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
       data: [],

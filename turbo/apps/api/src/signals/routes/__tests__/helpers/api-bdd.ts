@@ -60,6 +60,8 @@ import {
   integrationsSlackMessageContract,
   integrationsSlackUploadInitContract,
   integrationsSlackUploadCompleteContract,
+  integrationsTelegramMessageContract,
+  integrationsTelegramUploadCompleteContract,
 } from "@vm0/api-contracts/contracts/integrations";
 import {
   onboardingStatusContract,
@@ -271,6 +273,14 @@ export function createBddApi(context: TestContext) {
     slackUploadInit: setupApp({ context })(integrationsSlackUploadInitContract),
     slackUploadComplete: setupApp({ context })(
       integrationsSlackUploadCompleteContract,
+    ),
+    /** ts-rest clients for the sandbox-facing Telegram message + file-upload
+     * endpoints. Sending/uploading needs a zero token whose org has a seeded
+     * custom/official bot (GAP-CONNECTOR-CONNECT); the no-auth and
+     * no-org-context rejections are reachable. */
+    telegramMessage: setupApp({ context })(integrationsTelegramMessageContract),
+    telegramUploadComplete: setupApp({ context })(
+      integrationsTelegramUploadCompleteContract,
     ),
     onboardingStatus: setupApp({ context })(onboardingStatusContract),
     /** ts-rest client for `/api/zero/onboarding/setup` (admin one-shot default

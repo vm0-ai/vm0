@@ -1354,3 +1354,22 @@ First USAGE-family reduce.
   `zero-integrations-slack-upload-complete.test.ts` (7 -> 5), each dropping the
   now-unused local `sandboxToken` helper.
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 62 — TELEGRAM SANDBOX MESSAGE/UPLOAD REJECTIONS (CHAIN-TELEGRAM-SANDBOX-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `telegramMessage` and
+  `telegramUploadComplete` clients (sandbox-facing
+  `/api/zero/integrations/telegram/{message,upload-file/complete}`).
+- Added `zero-integrations-telegram-sandbox-rejections.bdd.test.ts`: the message
+  endpoint rejects a missing token (401); upload-complete rejects a zero token
+  without `telegram:write` (403 capability, checked first) and — with the
+  capability but no Clerk membership — reports "Organization context is required"
+  (403), via `mockOrgMemberships([])` + `zeroAuth`.
+- The success / unknown-bot (404) / Telegram-4xx (400) and no-org-membership
+  cases need a zero token whose org has a seeded bot through a real membership
+  (GAP-CONNECTOR-CONNECT). The upload-init endpoint keeps its 401 in legacy (its
+  only reachable rejection; removing it would orphan the S3-presign mock priming
+  and the `accept` import).
+- Reduced `zero-integrations-telegram-message.test.ts` (8 -> 7) and
+  `zero-integrations-telegram-upload-complete.test.ts` (4 -> 3).
+- Coverage verified (source-only): no regressions vs `main`.
