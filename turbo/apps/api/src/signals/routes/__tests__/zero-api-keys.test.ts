@@ -4,12 +4,9 @@ import {
   apiKeysContract,
   type ApiKeyItem,
 } from "@vm0/api-contracts/contracts/api-keys";
-import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -241,16 +238,20 @@ describe("POST /api/zero/api-keys", () => {
         new Date(response.body.createdAt).getTime(),
     ).toBe(90 * MS_PER_DAY);
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select()
-      .from(cliTokens)
-      .where(eq(cliTokens.id, response.body.id));
+    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
+    const created = listed.body.apiKeys.find((apiKey) => {
+      return apiKey.id === response.body.id;
+    });
 
-    expect(row).toBeDefined();
-    expect(row?.userId).toBe(fixture.userId);
-    expect(row?.name).toBe("CI bot");
-    expect(row?.token).toBe(response.body.token);
+    expect(created).toStrictEqual({
+      id: response.body.id,
+      name: "CI bot",
+      tokenPrefix: response.body.tokenPrefix,
+      createdAt: response.body.createdAt,
+      expiresAt: response.body.expiresAt,
+      lastUsedAt: null,
+    });
+    expect(Object.keys(created ?? {})).not.toContain("token");
   });
 
   it("rejects an empty name", async () => {
