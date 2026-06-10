@@ -4662,6 +4662,9 @@ function generationTemplateLabel(
   if (!value) {
     return null;
   }
+  if (value.type === "video") {
+    return value.selection.stylePresetId;
+  }
   const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
     return (
       candidate.designSystemId === value.selection.designSystemId &&
@@ -4676,6 +4679,9 @@ function generationTemplateTypeLabel(
 ): string | null {
   if (!value) {
     return null;
+  }
+  if (value.type === "video") {
+    return "Video";
   }
   return "Slides";
 }

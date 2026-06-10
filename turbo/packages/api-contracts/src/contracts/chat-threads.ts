@@ -167,8 +167,16 @@ const presentationGenerationTemplateRequestSchema = z.object({
   }),
 });
 
+const videoGenerationTemplateRequestSchema = z.object({
+  type: z.literal("video"),
+  selection: z.object({
+    stylePresetId: z.string().min(1),
+  }),
+});
+
 const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   presentationGenerationTemplateRequestSchema,
+  videoGenerationTemplateRequestSchema,
 ]);
 
 const pagedChatMessageBaseSchema = z.object({
@@ -833,6 +841,7 @@ export {
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
+  videoGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
@@ -851,6 +860,9 @@ export type GenerationTemplateRequest = z.infer<
 >;
 export type PresentationGenerationTemplateRequest = z.infer<
   typeof presentationGenerationTemplateRequestSchema
+>;
+export type VideoGenerationTemplateRequest = z.infer<
+  typeof videoGenerationTemplateRequestSchema
 >;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;

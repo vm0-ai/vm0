@@ -92,6 +92,8 @@ import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   PRESENTATION_TEMPLATE_ITEMS,
   type PresentationTemplateItem,
+  VIDEO_STYLE_PRESETS,
+  type VideoStylePreset,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -468,6 +470,9 @@ function toPresentationGenerationTemplate(
 function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
 ): string | undefined {
+  if (value?.type === "video") {
+    return selectedVideoTemplateItem(value)?.nameEn;
+  }
   return selectedPresentationTemplateItem(value)?.title;
 }
 
@@ -505,6 +510,123 @@ function presentationTemplateMatchesSearch(
     formatPresentationTemplateKind(item.templateId),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function isSelectedVideoTemplate(
+  item: VideoStylePreset,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return value?.type === "video" && value.selection.stylePresetId === item.id;
+}
+
+function toVideoGenerationTemplate(
+  item: VideoStylePreset,
+): GenerationTemplateRequest {
+  return {
+    type: "video",
+    selection: { stylePresetId: item.id },
+  };
+}
+
+function selectedVideoTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): VideoStylePreset | undefined {
+  if (value?.type !== "video") {
+    return undefined;
+  }
+  return VIDEO_STYLE_PRESETS.find((item) => {
+    return item.id === value.selection.stylePresetId;
+  });
+}
+
+function videoTemplateMatchesSearch(
+  item: VideoStylePreset,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [
+    item.nameEn,
+    item.nameZh,
+    item.category,
+    ...item.tags,
+  ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function VideoTemplateCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: VideoStylePreset;
+  selected: boolean;
+  onSelect: (item: VideoStylePreset) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+        {item.sampleVideoUrl ? (
+          <video
+            src={item.sampleVideoUrl}
+            className="h-full w-full object-cover"
+            preload="metadata"
+            playsInline
+            muted
+            loop
+            onMouseEnter={(e) => {
+              const video = e.currentTarget as HTMLVideoElement;
+              detach(video.play(), Reason.DomCallback);
+            }}
+            onMouseLeave={(e) => {
+              const v = e.currentTarget as HTMLVideoElement;
+              v.pause();
+              v.currentTime = 0;
+            }}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            <IconTemplate size={28} stroke={1.5} />
+          </div>
+        )}
+      </div>
+      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.nameEn}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {item.nameZh}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            aria-label={`Select video style ${item.nameEn}`}
+            aria-pressed={selected}
+            onClick={() => {
+              onSelect(item);
+            }}
+            className={cn(
+              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            Use
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function TemplateSectionHeader({
@@ -787,10 +909,14 @@ function TemplatePickerDialog({
   value,
   onChange,
   onClose,
+  hasPptTab,
+  hasVideoTab,
 }: {
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
+  hasPptTab: boolean;
+  hasVideoTab: boolean;
 }) {
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
@@ -804,12 +930,20 @@ function TemplatePickerDialog({
     PRESENTATION_TEMPLATE_ITEMS.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
-  const filteredItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
+  const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
   });
+  const filteredVideoItems = VIDEO_STYLE_PRESETS.filter((item) => {
+    return videoTemplateMatchesSearch(item, search);
+  });
 
-  const handleSelect = (item: PresentationTemplateItem) => {
+  const handleSelectPresentation = (item: PresentationTemplateItem) => {
     onChange(toPresentationGenerationTemplate(item));
+    onClose();
+  };
+
+  const handleSelectVideo = (item: VideoStylePreset) => {
+    onChange(toVideoGenerationTemplate(item));
     onClose();
   };
 
@@ -817,6 +951,10 @@ function TemplatePickerDialog({
     setSelectedSlideIndex(0);
     setPreviewSlug(item.slug);
   };
+
+  const defaultCategory = hasPptTab ? "slides" : "video";
+  const effectiveCategory =
+    category === "slides" && !hasPptTab ? "video" : category;
 
   return (
     <Dialog
@@ -846,7 +984,7 @@ function TemplatePickerDialog({
             onBack={() => {
               setPreviewSlug(null);
             }}
-            onSelect={handleSelect}
+            onSelect={handleSelectPresentation}
           />
         ) : (
           <>
@@ -854,18 +992,35 @@ function TemplatePickerDialog({
               <DialogTitle>Templates</DialogTitle>
             </DialogHeader>
             <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <Tabs value={category} onValueChange={setCategory}>
+              <Tabs
+                value={effectiveCategory || defaultCategory}
+                onValueChange={setCategory}
+              >
                 <TabsList className="h-auto rounded-none bg-transparent p-0">
-                  <TabsTrigger
-                    value="slides"
-                    className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                  >
-                    <IconChartBar
-                      className="h-5 w-5 text-blue-500"
-                      stroke={1.8}
-                    />
-                    PPT
-                  </TabsTrigger>
+                  {hasPptTab && (
+                    <TabsTrigger
+                      value="slides"
+                      className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                    >
+                      <IconChartBar
+                        className="h-5 w-5 text-blue-500"
+                        stroke={1.8}
+                      />
+                      PPT
+                    </TabsTrigger>
+                  )}
+                  {hasVideoTab && (
+                    <TabsTrigger
+                      value="video"
+                      className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                    >
+                      <IconTemplate
+                        className="h-5 w-5 text-purple-500"
+                        stroke={1.8}
+                      />
+                      Video
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               </Tabs>
               <div className="relative w-full sm:w-64">
@@ -884,75 +1039,104 @@ function TemplatePickerDialog({
                 />
               </div>
             </div>
-            {category === "slides" && (
-              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
-                <TemplateSectionHeader
-                  label="VM0 templates"
-                  count={filteredItems.length}
-                />
-                {filteredItems.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredItems.map((item) => {
-                      const selected = isSelectedPresentationTemplate(
-                        item,
-                        value,
-                      );
-                      return (
-                        <div
-                          key={item.slug}
-                          className={cn(
-                            "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-                            selected
-                              ? "border-primary ring-1 ring-primary"
-                              : "border-border",
-                          )}
-                        >
-                          <TemplatePreview
-                            item={item}
-                            onPreview={handlePreview}
-                          />
-                          <div className="flex items-start justify-between gap-3 px-3.5 py-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {item.title}
-                              </p>
-                              <p className="mt-1 truncate text-xs text-muted-foreground">
-                                {formatPresentationTemplateKind(
-                                  item.templateId,
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 items-center">
-                              <button
-                                type="button"
-                                aria-label={`Select template ${item.title}`}
-                                aria-pressed={selected}
-                                onClick={() => {
-                                  handleSelect(item);
-                                }}
-                                className={cn(
-                                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                  selected
-                                    ? "border-primary/40 bg-primary/10 text-primary"
-                                    : "border-border bg-background text-foreground hover:bg-muted",
-                                )}
-                              >
-                                Use
-                              </button>
+            {(effectiveCategory || defaultCategory) === "slides" &&
+              hasPptTab && (
+                <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+                  <TemplateSectionHeader
+                    label="VM0 templates"
+                    count={filteredPptItems.length}
+                  />
+                  {filteredPptItems.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {filteredPptItems.map((item) => {
+                        const selected = isSelectedPresentationTemplate(
+                          item,
+                          value,
+                        );
+                        return (
+                          <div
+                            key={item.slug}
+                            className={cn(
+                              "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+                              selected
+                                ? "border-primary ring-1 ring-primary"
+                                : "border-border",
+                            )}
+                          >
+                            <TemplatePreview
+                              item={item}
+                              onPreview={handlePreview}
+                            />
+                            <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-foreground">
+                                  {item.title}
+                                </p>
+                                <p className="mt-1 truncate text-xs text-muted-foreground">
+                                  {formatPresentationTemplateKind(
+                                    item.templateId,
+                                  )}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center">
+                                <button
+                                  type="button"
+                                  aria-label={`Select template ${item.title}`}
+                                  aria-pressed={selected}
+                                  onClick={() => {
+                                    handleSelectPresentation(item);
+                                  }}
+                                  className={cn(
+                                    "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    selected
+                                      ? "border-primary/40 bg-primary/10 text-primary"
+                                      : "border-border bg-background text-foreground hover:bg-muted",
+                                  )}
+                                >
+                                  Use
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <TemplateEmptyPanel
-                    title="No matches"
-                    description="Try a different search."
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <TemplateEmptyPanel
+                      title="No matches"
+                      description="Try a different search."
+                    />
+                  )}
+                </div>
+              )}
+            {(effectiveCategory || defaultCategory) === "video" &&
+              hasVideoTab && (
+                <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+                  <TemplateSectionHeader
+                    label="VM0 video styles"
+                    count={filteredVideoItems.length}
                   />
-                )}
-              </div>
-            )}
+                  {filteredVideoItems.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {filteredVideoItems.map((item) => {
+                        return (
+                          <VideoTemplateCard
+                            key={item.id}
+                            item={item}
+                            selected={isSelectedVideoTemplate(item, value)}
+                            onSelect={handleSelectVideo}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <TemplateEmptyPanel
+                      title="No matches"
+                      description="Try a different search."
+                    />
+                  )}
+                </div>
+              )}
           </>
         )}
       </DialogContent>
@@ -1000,6 +1184,46 @@ function SelectedTemplateChip({
   );
 }
 
+function SelectedVideoTemplateChip({
+  item,
+  onRemove,
+}: {
+  item: VideoStylePreset;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+            <IconTemplate
+              size={12}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          </span>
+          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+            Video
+          </span>
+          <span className="h-3.5 w-px shrink-0 bg-border/70" />
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.nameEn}
+          </span>
+          <button
+            type="button"
+            aria-label={`Remove video style ${item.nameEn}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
 function SelectedTemplateChipSlot({
   picker,
   onDraftChange,
@@ -1007,22 +1231,45 @@ function SelectedTemplateChipSlot({
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
 }) {
-  const selectedItem = selectedPresentationTemplateItem(picker?.value);
-  if (!selectedItem || !picker) {
+  const presentationItem = selectedPresentationTemplateItem(picker?.value);
+  const videoItem = selectedVideoTemplateItem(picker?.value);
+  if (!picker) {
     return null;
   }
-  return (
-    <SelectedTemplateChip
-      item={selectedItem}
-      onRemove={() => {
-        picker.onChange(undefined);
-        onDraftChange?.();
-      }}
-    />
-  );
+  if (presentationItem) {
+    return (
+      <SelectedTemplateChip
+        item={presentationItem}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
+  if (videoItem) {
+    return (
+      <SelectedVideoTemplateChip
+        item={videoItem}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
+  return null;
 }
 
-function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
+function TemplatePickerButton({
+  picker,
+  hasPptTab,
+  hasVideoTab,
+}: {
+  picker: ComposerTemplatePicker;
+  hasPptTab: boolean;
+  hasVideoTab: boolean;
+}) {
   const open = useGet(templatePickerOpen$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
@@ -1065,6 +1312,8 @@ function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
           onClose={() => {
             setOpen(false);
           }}
+          hasPptTab={hasPptTab}
+          hasVideoTab={hasVideoTab}
         />
       )}
     </>
@@ -1077,10 +1326,18 @@ function ComposerTemplatePickerSlot({
   picker: ComposerTemplatePicker | undefined;
 }) {
   const features = useLastResolved(featureSwitch$);
-  if (!picker || !features?.[FeatureSwitchKey.ChatTemplatePicker]) {
+  const hasPptTab = Boolean(features?.[FeatureSwitchKey.ChatTemplatePicker]);
+  const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
+  if (!picker || (!hasPptTab && !hasVideoTab)) {
     return null;
   }
-  return <TemplatePickerButton picker={picker} />;
+  return (
+    <TemplatePickerButton
+      picker={picker}
+      hasPptTab={hasPptTab}
+      hasVideoTab={hasVideoTab}
+    />
+  );
 }
 
 function ConnectorTriggerIcons({

@@ -22,6 +22,13 @@ export {
   type PresentationTemplateItem,
 } from "./presentation-template-items";
 export {
+  VIDEO_STYLE_PRESETS,
+  VIDEO_DIMENSION_DESCRIPTIONS,
+  type VideoStylePreset,
+  type VideoStyleDimensions,
+  type VideoStyleCategory,
+} from "./video-style-preset-items";
+export {
   initContract,
   apiErrorSchema,
   ApiError,

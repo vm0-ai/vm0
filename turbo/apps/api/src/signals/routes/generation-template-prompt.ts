@@ -1,4 +1,5 @@
 import { findDesignSystem, findTemplate } from "@vm0/core/resource-registry";
+import { VIDEO_STYLE_PRESETS, VIDEO_DIMENSION_DESCRIPTIONS } from "@vm0/core";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -8,7 +9,16 @@ interface PresentationGenerationTemplateInput {
   };
 }
 
-type GenerationTemplateInput = PresentationGenerationTemplateInput;
+interface VideoGenerationTemplateInput {
+  readonly type: "video";
+  readonly selection: {
+    readonly stylePresetId: string;
+  };
+}
+
+type GenerationTemplateInput =
+  | PresentationGenerationTemplateInput
+  | VideoGenerationTemplateInput;
 
 type GenerationTemplatePromptResult =
   | {
@@ -25,6 +35,37 @@ export function buildGenerationTemplatePrompt(
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
     return { status: "resolved", prompt: "" };
+  }
+
+  if (generationTemplate.type === "video") {
+    const preset = VIDEO_STYLE_PRESETS.find(
+      (p) => p.id === generationTemplate.selection.stylePresetId,
+    );
+    if (!preset) {
+      return { status: "invalid", message: "Unknown video style preset" };
+    }
+    const describeSlug = (slug: string): string => {
+      const desc = VIDEO_DIMENSION_DESCRIPTIONS[slug];
+      return desc ? `${slug} — ${desc}` : slug;
+    };
+    return {
+      status: "resolved",
+      prompt: [
+        `## Video Style: ${preset.nameEn}`,
+        "",
+        "Apply these style constraints to the user's scene:",
+        `- Visual Tone: ${describeSlug(preset.dimensions.visualTone)}`,
+        `- Camera Style: ${describeSlug(preset.dimensions.cameraStyle)}`,
+        `- Editing Pace: ${describeSlug(preset.dimensions.editingPace)}`,
+        `- Narrative Mode: ${describeSlug(preset.dimensions.narrativeMode)}`,
+        `- Production Type: ${describeSlug(preset.dimensions.productionType)}`,
+        `- Emotional Tone: ${describeSlug(preset.dimensions.emotionalTone)}`,
+        `- Style Reference: ${describeSlug(preset.dimensions.styleReference)}`,
+        "",
+        "Generate a single video prompt (2–3 sentences) that applies the above style to the user's scene.",
+        "End with: safe for all audiences, positive and uplifting, no violence, no explicit content",
+      ].join("\n"),
+    };
   }
 
   const template = findTemplate(generationTemplate.selection.templateId);

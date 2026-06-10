@@ -24,8 +24,16 @@ export interface ChatMessagePresentationGenerationTemplate {
   };
 }
 
+export interface ChatMessageVideoGenerationTemplate {
+  readonly type: "video";
+  readonly selection: {
+    readonly stylePresetId: string;
+  };
+}
+
 export type ChatMessageGenerationTemplate =
-  ChatMessagePresentationGenerationTemplate;
+  | ChatMessagePresentationGenerationTemplate
+  | ChatMessageVideoGenerationTemplate;
 
 export type ChatMessageRecommendedFollowupKind = "talk" | "generate";
 export type ChatMessageRecommendedFollowupGenerationType =
