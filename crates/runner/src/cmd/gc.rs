@@ -1092,6 +1092,17 @@ async fn gc_orphaned_version_service_locks(home: &HomePaths, dry_run: bool) -> R
         let lock_path = entry.path();
         match probe_existing_lock(&lock_path) {
             ExistingLockProbe::Free(lock) => {
+                // A version can be recreated between the initial stat and
+                // acquiring the free service lock.
+                match version_bin_is_gc_enumerable_dir(&version_bin).await {
+                    Ok(true) => continue,
+                    Ok(false) => {}
+                    Err(e) => {
+                        warn!("{e}");
+                        continue;
+                    }
+                }
+
                 if remove_unused_lock_after_probe(&lock_path, &lock, name, dry_run).await {
                     removed += 1;
                 }
