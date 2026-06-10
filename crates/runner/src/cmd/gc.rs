@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -9,6 +9,7 @@ use tracing::{info, warn};
 
 use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
+use crate::host_file;
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths};
 use crate::r2_cache::R2ImageCache;
@@ -552,6 +553,17 @@ enum LockProbe {
     Error(String),
 }
 
+enum ExistingLockProbe {
+    /// Lock acquired — resource is not in use.
+    Free(Flock<std::fs::File>),
+    /// Lock held by another process.
+    Held,
+    /// The path no longer exists.
+    Missing,
+    /// Could not probe (file error).
+    Error(String),
+}
+
 fn lock_metadata_inode_is_current(
     lock_meta: std::fs::Metadata,
     path: &Path,
@@ -603,6 +615,76 @@ fn probe_lock(path: &Path) -> LockProbe {
         }
     }
     LockProbe::Error(format!("lock path {} changed during probe", path.display()))
+}
+
+fn open_existing_lock_file(path: &Path) -> Result<Option<std::fs::File>, String> {
+    host_file::validate_file_parent(path, "lock directory")
+        .map_err(|e| format!("validate lock parent {}: {e}", path.display()))?;
+    let file = match std::fs::File::options()
+        .read(true)
+        .write(true)
+        .custom_flags(host_file::private_file_open_flags())
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("open lock {}: {e}", path.display())),
+    };
+    validate_existing_lock_file_for_probe(&file, path)?;
+    Ok(Some(file))
+}
+
+fn validate_existing_lock_file_for_probe(file: &std::fs::File, path: &Path) -> Result<(), String> {
+    const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
+    let meta = file
+        .metadata()
+        .map_err(|e| format!("stat lock {}: {e}", path.display()))?;
+    if !meta.file_type().is_file() {
+        return Err(format!("{} is not a regular lock file", path.display()));
+    }
+
+    let expected_uid = nix::unistd::geteuid().as_raw();
+    if meta.uid() != expected_uid {
+        return Err(format!(
+            "{} is owned by uid {}, but runner euid is {expected_uid}",
+            path.display(),
+            meta.uid()
+        ));
+    }
+
+    let mode = meta.mode() & 0o7777;
+    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
+        return Err(format!("{} is group/other writable", path.display()));
+    }
+    Ok(())
+}
+
+/// Try a nonblocking exclusive flock without creating a missing lock path.
+fn probe_existing_lock(path: &Path) -> ExistingLockProbe {
+    const MAX_STALE_INODE_RETRIES: usize = 16;
+    for _ in 0..MAX_STALE_INODE_RETRIES {
+        let file = match open_existing_lock_file(path) {
+            Ok(Some(file)) => file,
+            Ok(None) => return ExistingLockProbe::Missing,
+            Err(e) => return ExistingLockProbe::Error(e),
+        };
+        match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+            Ok(lock) => match lock_probe_inode_is_current(&lock, path) {
+                Ok(true) => return ExistingLockProbe::Free(lock),
+                Ok(false) => continue,
+                Err(e) => return ExistingLockProbe::Error(e),
+            },
+            Err((file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
+                match lock_file_inode_is_current(&file, path) {
+                    Ok(true) => return ExistingLockProbe::Held,
+                    Ok(false) => continue,
+                    Err(e) => return ExistingLockProbe::Error(e),
+                }
+            }
+            Err((_, e)) => return ExistingLockProbe::Error(e.to_string()),
+        }
+    }
+    ExistingLockProbe::Error(format!("lock path {} changed during probe", path.display()))
 }
 
 /// Like `next_entry()`, but logs a warning and returns `None` on I/O error
@@ -1008,13 +1090,14 @@ async fn gc_orphaned_version_service_locks(home: &HomePaths, dry_run: bool) -> R
         }
 
         let lock_path = entry.path();
-        match probe_lock(&lock_path) {
-            LockProbe::Free(lock) => {
+        match probe_existing_lock(&lock_path) {
+            ExistingLockProbe::Free(lock) => {
                 if remove_unused_lock_after_probe(&lock_path, &lock, name, dry_run).await {
                     removed += 1;
                 }
             }
-            LockProbe::Held | LockProbe::Error(_) => {}
+            ExistingLockProbe::Held | ExistingLockProbe::Missing => {}
+            ExistingLockProbe::Error(e) => warn!("cannot probe service lock {name}: {e}"),
         }
     }
 
@@ -2013,6 +2096,27 @@ mod tests {
     }
 
     #[test]
+    fn probe_existing_lock_missing_path_does_not_create_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("locks").join("test.lock");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+        match probe_existing_lock(&path) {
+            ExistingLockProbe::Missing => {}
+            _ => panic!("missing lock path must not be probeable"),
+        }
+
+        assert!(
+            !path.exists(),
+            "existing-lock probe must not create a missing lock"
+        );
+        assert!(
+            dir.path().join("locks").exists(),
+            "test setup should leave the existing parent dir intact"
+        );
+    }
+
+    #[test]
     fn probe_lock_held_when_shared_lock_exists() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.lock");
@@ -2612,6 +2716,32 @@ mod tests {
             service_lock.exists(),
             "non-semver service locks belong outside version GC"
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_skips_symlink_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let service_lock = test_version_service_lock(&home, "v1.0.0");
+        let target = dir.path().join("outside-lock-target");
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+        std::fs::write(&target, "outside").unwrap();
+        std::os::unix::fs::symlink(&target, &service_lock).unwrap();
+
+        let removed = gc_orphaned_version_service_locks(&home, false)
+            .await
+            .unwrap();
+
+        assert_eq!(removed, 0);
+        assert!(
+            std::fs::symlink_metadata(&service_lock)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "symlink lock path must be left untouched"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "outside");
     }
 
     #[tokio::test]
