@@ -42,8 +42,13 @@ describe("connector/providers/cloudflare", () => {
       expect(url.searchParams.get("response_type")).toBe("code");
       expect(url.searchParams.get("state")).toBe("test-state");
       expect(url.searchParams.get("scope")?.split(" ")).toStrictEqual(
-        grant.scopes,
+        grant.authorizationScopes,
       );
+      expect(grant.scopes).not.toContain("offline_access");
+      expect(grant.authorizationScopes).toStrictEqual([
+        ...grant.scopes,
+        "offline_access",
+      ]);
     });
 
     it("uses explicit scopes when a connector explicitly configures scopes", () => {

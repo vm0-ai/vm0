@@ -11,6 +11,7 @@ import {
 import {
   connectorAuthMethodHasGrantKind,
   getConnectorAuthMethod,
+  getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodGrantMetadata,
   getConnectorGrantOutputTarget,
   type ConnectorOutputTarget,
@@ -1805,17 +1806,23 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.searchParams.get("type")).toBe("cloudflare");
     expect(url.searchParams.get("username")).toBe("Cloudflare User");
 
-    await expect(
-      findConnector({ orgId, userId, type: "cloudflare" }),
-    ).resolves.toMatchObject({
+    const connector = await findConnector({
+      orgId,
+      userId,
+      type: "cloudflare",
+    });
+    expect(connector).toMatchObject({
       type: "cloudflare",
       authMethod: "oauth",
       externalId: "cloudflare-user-123",
       externalUsername: "Cloudflare User",
       externalEmail: "cloudflare@example.com",
-      oauthScopes: "[]",
       needsReconnect: false,
     });
+    expect(JSON.parse(connector!.oauthScopes!)).toStrictEqual(
+      getConnectorAuthMethodAuthCodeGrantConfig("cloudflare", "oauth").scopes,
+    );
+    expect(JSON.parse(connector!.oauthScopes!)).not.toContain("offline_access");
     await expect(
       findDecryptedSecret({
         orgId,

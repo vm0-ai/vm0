@@ -72,9 +72,14 @@ function mockOAuthEnv(): void {
 }
 
 function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
-  expect(authorizationUrl.searchParams.get("scope")?.split(" ")).toStrictEqual(
-    getConnectorAuthMethodAuthCodeGrantConfig("cloudflare", "oauth").scopes,
+  const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+    "cloudflare",
+    "oauth",
   );
+  expect(authorizationUrl.searchParams.get("scope")?.split(" ")).toStrictEqual(
+    grant.authorizationScopes,
+  );
+  expect(grant.scopes).not.toContain("offline_access");
 }
 
 async function requestOauthStart(

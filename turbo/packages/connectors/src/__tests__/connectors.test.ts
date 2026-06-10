@@ -3992,6 +3992,11 @@ describe("connector OAuth lifecycle grant helpers", () => {
         "workers-r2.metadata_read",
       ]),
     );
+    expect(grant.scopes).not.toContain("offline_access");
+    expect(grant.authorizationScopes).toStrictEqual([
+      ...grant.scopes,
+      "offline_access",
+    ]);
     expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
       featureFlag: FeatureSwitchKey.CloudflareConnector,
       client: {

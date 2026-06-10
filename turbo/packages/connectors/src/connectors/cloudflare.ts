@@ -356,6 +356,11 @@ const CLOUDFLARE_OAUTH_SCOPES = [
   "zone.write",
 ];
 
+const CLOUDFLARE_OAUTH_AUTHORIZATION_SCOPES = [
+  ...CLOUDFLARE_OAUTH_SCOPES,
+  "offline_access",
+];
+
 export const cloudflare = {
   cloudflare: {
     label: "Cloudflare",
@@ -380,6 +385,7 @@ export const cloudflare = {
         grant: {
           kind: "auth-code",
           scopes: CLOUDFLARE_OAUTH_SCOPES,
+          authorizationScopes: CLOUDFLARE_OAUTH_AUTHORIZATION_SCOPES,
           callbackOrigin: "api",
           outputs: {
             accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",

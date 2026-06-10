@@ -54,6 +54,12 @@ function cloudflareTokenRequestHeaders(
   };
 }
 
+function cloudflareAuthorizationScopes(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
+): readonly string[] {
+  return authCodeGrant.authorizationScopes ?? authCodeGrant.scopes;
+}
+
 export function buildCloudflareAuthorizationUrl(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
@@ -66,8 +72,9 @@ export function buildCloudflareAuthorizationUrl(
     response_type: "code",
     state,
   });
-  if (authCodeGrant.scopes.length > 0) {
-    params.set("scope", authCodeGrant.scopes.join(" "));
+  const scopes = cloudflareAuthorizationScopes(authCodeGrant);
+  if (scopes.length > 0) {
+    params.set("scope", scopes.join(" "));
   }
 
   return `${CLOUDFLARE_AUTHORIZATION_URL}?${params.toString()}`;
