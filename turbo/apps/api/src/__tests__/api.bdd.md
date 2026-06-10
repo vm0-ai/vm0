@@ -411,3 +411,49 @@ Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 
 Aggregate coverage: 87.22% / 72.82% / 93.35% / 87.22% on both main
 and this branch — at parity or marginally better.
+
+### Round 4 — additional route families BDD
+
+Migrated 6 more small/test-light route families to BDD shape.
+Continues DEVELOPER-01 (`zero-memory-activity`,
+`zero-built-in-generation`) and enters the AGENT-01 family
+(`zero-runs-queue`, `zero-composes-by-id`, `zero-composes-by-name`,
+`zero-composes-delete`).
+
+- `zero-memory-activity.bdd.test.ts` — 7 legacy `it()`s → 3 BDD
+  `it()`s (auth-boundary + timeline chain sharing the seeded
+  summaries + pagination chain with limit/cursor). All Then
+  assertions remain on the GET contract; the legacy 3 single-test
+  per-shape tests collapse into one gwt-wt-wt chain that
+  exercises empty → populated → scope isolation.
+- `zero-built-in-generation.bdd.test.ts` — 2 legacy `it()`s → 1
+  BDD `it()` (stale vs fresh chain). The legacy direct DB SELECT
+  that verified the post-mutation state is replaced by assertions
+  on the GET contract response (which carries the row state) and
+  on the Ably publish mock.
+- `zero-runs-queue.bdd.test.ts` — 5 legacy `it()`s → 2 BDD
+  `it()`s (auth-boundary + queue-shape chain that exercises empty
+  → 1 running task → 403 sandbox). The chain shares the
+  `seedUsageInsightFixture$` / `seedCompose$` / `seedRun$`
+  transitional helpers (recorded as helper gaps).
+- `zero-composes-by-id.bdd.test.ts` — 6 legacy `it()`s → 2 BDD
+  `it()`s (auth-boundary + read chain: malformed-id boundary,
+  404 missing, 200 own, 404 cross-org). The malformed-id check
+  uses `app.request` directly because the contract won't accept
+  a non-UUID path param.
+- `zero-composes-by-name.bdd.test.ts` — 5 legacy `it()`s → 2 BDD
+  `it()`s (auth-boundary + read chain: 200 found → 404 missing
+  → 404 cross-org).
+- `zero-composes-delete.bdd.test.ts` — 5 legacy `it()`s → 2 BDD
+  `it()`s (auth-boundary + ownership chain: 404 unknown → 204
+  own (verified via re-GET) → 404 cross-org victim preserved
+  (verified via re-GET as victim) → 409 pending run (verified
+  by re-attempted DELETE that still returns 409)). The legacy
+  direct DB reads verifying post-delete state are replaced by
+  follow-up HTTP requests that observe the same outcome.
+
+Net test count: 30 legacy `it()`s → 12 BDD `it()`s across this
+round (60% reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
