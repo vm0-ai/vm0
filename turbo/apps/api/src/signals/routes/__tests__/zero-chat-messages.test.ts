@@ -7,7 +7,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import {
   agentComposes,
   agentComposeVersions,
@@ -678,6 +678,61 @@ describe("POST /api/zero/chat/messages", () => {
     expect(response.body.error.message).toBe(
       "Generation template does not support the requested type",
     );
+  });
+
+  it("adds video style preset guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const preset = VIDEO_STYLE_PRESETS[0]!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a cinematic video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: preset.id,
+        },
+      },
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.appendSystemPrompt).toContain(`## Video Style: ${preset.nameEn}`);
+    expect(run?.appendSystemPrompt).toContain("- Visual Tone:");
+    expect(run?.appendSystemPrompt).toContain("- Style Reference:");
+    expect(run?.appendSystemPrompt).toContain(
+      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+    );
+  });
+
+  it("rejects unknown video style preset", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a video",
+          generationTemplate: {
+            type: "video",
+            selection: {
+              stylePresetId: "preset:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(response.body.error.message).toBe("Unknown video style preset");
   });
 
   it("queues generation template when the thread has an active run", async () => {

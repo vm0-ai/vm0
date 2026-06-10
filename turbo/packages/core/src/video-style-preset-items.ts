@@ -201,7 +201,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "symmetrical_pastel_quirky",
     },
     scene: "grand-hotel-lobby",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6126d21a-1a19-4b2a-914a-0eec6335bf1f/video-6126d21a.mp4",
     tags: ["story-emotion", "quirky", "pastel", "symmetry", "deadpan", "retro"],
   },
   {
@@ -219,7 +220,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "imax_epic_cinematic",
     },
     scene: "mountain-horizon",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df99de74-8eea-420c-86d1-c104ba5ba6b6/video-df99de74.mp4",
     tags: ["story-emotion", "epic", "imax", "dramatic", "cinematic", "grand"],
   },
   {
@@ -237,7 +239,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "slowburn_moody_romance",
     },
     scene: "rain-on-window",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/feda268d-7b6c-4c5d-b3c8-89ab1dcc29cd/video-feda268d.mp4",
     tags: [
       "story-emotion",
       "moody",
@@ -262,7 +265,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "indie_naturalistic",
     },
     scene: "forest-clearing",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e4fbe51f-45c9-4689-8681-1e102af0a55e/video-e4fbe51f.mp4",
     tags: [
       "story-emotion",
       "indie",
@@ -287,7 +291,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "film_noir",
     },
     scene: "rain-on-window",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dc649267-41d8-4fbc-b253-29e407791ac6/video-dc649267.mp4",
     tags: [
       "story-emotion",
       "noir",
@@ -312,7 +317,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "tech_minimalist_reveal",
     },
     scene: "laptop-open",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6f1e98ef-7fc1-48b0-b1db-cd1ee58a0bd4/video-6f1e98ef.mp4",
     tags: ["brand-product", "minimalist", "product", "tech", "clean", "white"],
   },
   {
@@ -357,7 +363,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "athletic_motivation_ad",
     },
     scene: "extreme-sports",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/104ad36a-4d0c-472b-8416-d04cc2f06e75/video-104ad36a.mp4",
     tags: ["energy-sports", "sports", "motivation", "fast", "energy", "ad"],
   },
   {
@@ -375,7 +382,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "nature_documentary",
     },
     scene: "mountain-horizon",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75e08761-7cdf-42ea-b8f3-eadb31586de6/video-75e08761.mp4",
     tags: [
       "story-emotion",
       "nature",
@@ -400,7 +408,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "shortform_viral",
     },
     scene: "summer-beach-crew",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4bac1319-dba7-47a0-bc1b-4d1e932f71fd/video-4bac1319.mp4",
     tags: ["energy-sports", "viral", "shortform", "trending", "fast", "social"],
   },
   {
@@ -418,7 +427,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "hand_drawn_fantasy_anime",
     },
     scene: "forest-spirit-path",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da7c7c2d-3383-4796-8e83-b0e112127387/video-da7c7c2d.mp4",
     tags: [
       "fantasy-art",
       "anime",
@@ -443,7 +453,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "chinese_ink",
     },
     scene: "mountain-horizon",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8314b0ae-6051-4daa-b789-51bec466ba66/video-8314b0ae.mp4",
     tags: ["fantasy-art", "ink", "chinese", "zen", "minimalist", "eastern"],
   },
   {
@@ -461,7 +472,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       styleReference: "pop_art",
     },
     scene: "abstract-color-burst",
-    sampleVideoUrl: "",
+    sampleVideoUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92c22511-a22e-4c9c-9489-b452eabaa16b/video-92c22511.mp4",
     tags: ["fantasy-art", "pop-art", "bold", "colorful", "graphic", "retro"],
   },
   {
