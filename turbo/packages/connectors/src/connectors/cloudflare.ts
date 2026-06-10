@@ -1,4 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const cloudflare = {
   cloudflare: {
@@ -7,6 +8,50 @@ export const cloudflare = {
     helpText:
       "Connect your Cloudflare account to manage DNS, zones, workers, and other Cloudflare services",
     authMethods: {
+      oauth: {
+        featureFlag: FeatureSwitchKey.CloudflareConnector,
+        label: "OAuth",
+        helpText: "Sign in with Cloudflare to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "CLOUDFLARE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["CLOUDFLARE_ACCESS_TOKEN", "CLOUDFLARE_REFRESH_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "auth-code",
+          scopes: [],
+          callbackOrigin: "api",
+          outputs: {
+            accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+            refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+          },
+        },
+        access: {
+          kind: "refresh-token",
+          inputs: {
+            refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+            refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["CLOUDFLARE_ACCESS_TOKEN"],
+          envBindings: {
+            CLOUDFLARE_TOKEN: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+          },
+        },
+        revoke: {
+          kind: "token-revoke",
+          inputs: {
+            refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+          },
+        },
+      },
       "api-token": {
         label: "API Token",
         helpText:

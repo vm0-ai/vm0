@@ -336,9 +336,12 @@ export interface ConnectorManualGrantConfig {
   readonly fields: Record<string, ConnectorManualGrantFieldConfig>;
 }
 
+export type ConnectorAuthCodeCallbackOrigin = "web" | "api";
+
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
   readonly scopes: string[];
+  readonly callbackOrigin?: ConnectorAuthCodeCallbackOrigin;
   readonly outputs: ConnectorGrantOutputBindings;
 }
 

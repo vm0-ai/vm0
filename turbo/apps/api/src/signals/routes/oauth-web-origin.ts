@@ -54,6 +54,10 @@ export function getOAuthWebOrigin(_request: Request): string {
   return new URL(env("VM0_WEB_URL")).origin;
 }
 
+export function getOAuthApiOrigin(_request: Request): string {
+  return new URL(env("VM0_API_URL")).origin;
+}
+
 export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
   const webOrigin = request.headers.get(WEB_ORIGIN_HEADER);
   if (webOrigin && isTrustedWebOrigin(webOrigin)) {

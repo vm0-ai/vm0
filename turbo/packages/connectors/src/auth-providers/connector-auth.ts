@@ -60,6 +60,7 @@ import { awsProvider } from "./connectors/aws/provider";
 import { base44Provider } from "./connectors/base44/provider";
 import { canvaProvider } from "./connectors/canva/provider";
 import { closeProvider } from "./connectors/close/provider";
+import { cloudflareProvider } from "./connectors/cloudflare/provider";
 import { deelProvider } from "./connectors/deel/provider";
 import { docusignProvider } from "./connectors/docusign/provider";
 import { dropboxProvider } from "./connectors/dropbox/provider";
@@ -438,6 +439,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   base44: { oauth: deviceAuthRefreshProviderEntry(base44Provider) },
   canva: { oauth: authCodeRefreshProviderEntry(canvaProvider) },
   close: { oauth: authCodeRefreshProviderEntry(closeProvider) },
+  cloudflare: {
+    oauth: authCodeRefreshTokenRevokeProviderEntry(cloudflareProvider),
+  },
   deel: { oauth: authCodeRefreshProviderEntry(deelProvider) },
   docusign: { oauth: authCodeRefreshProviderEntry(docusignProvider) },
   dropbox: { oauth: authCodeRefreshProviderEntry(dropboxProvider) },

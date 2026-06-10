@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ConnectorAuthMethodId } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
@@ -38,6 +39,11 @@ function mockOAuthEnv(): void {
   mockOptionalEnv(
     "AIRTABLE_OAUTH_CLIENT_SECRET",
     "airtable-test-client-secret",
+  );
+  mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_ID", "cloudflare-test-client-id");
+  mockOptionalEnv(
+    "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+    "cloudflare-test-client-secret",
   );
   mockOptionalEnv("DOCUSIGN_OAUTH_CLIENT_ID", "docusign-test-client-id");
   mockOptionalEnv(
@@ -95,6 +101,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
   const stateIds: string[] = [];
 
   beforeEach(() => {
+    mockEnv("VM0_API_URL", API_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockOAuthEnv();
   });
@@ -269,6 +276,59 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
     expect(storedState!.codeVerifier).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+  });
+
+  it("uses the configured API origin for Cloudflare OAuth callback URLs", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.CloudflareConnector]: true },
+    });
+
+    const response = await requestOauthStart("cloudflare", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: WEB_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://dash.cloudflare.com/oauth2/auth",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "cloudflare-test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+    );
+    expect(authorizationUrl.searchParams.has("scope")).toBeFalsy();
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/);
+
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState).toMatchObject({
+      state,
+      type: "cloudflare",
+      authMethod: "oauth",
+      userId,
+      orgId,
+      redirectUri: `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+      consumedAt: null,
+    });
   });
 
   it("returns 401 instead of relying on browser cookies when unauthenticated", async () => {

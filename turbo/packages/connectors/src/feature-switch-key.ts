@@ -8,6 +8,7 @@ export enum FeatureSwitchKey {
   AhrefsConnector = "ahrefsConnector",
   BentomlConnector = "bentomlConnector",
   CanvaConnector = "canvaConnector",
+  CloudflareConnector = "cloudflareConnector",
   DeelConnector = "deelConnector",
   DocuSignConnector = "docusignConnector",
   DropboxConnector = "dropboxConnector",

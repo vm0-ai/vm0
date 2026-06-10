@@ -36,7 +36,9 @@ import {
   connectorAuthMethodRefHasAccessKind,
   connectorAuthMethodRefHasGrantKind,
   connectorAuthMethodRefHasRevokeKind,
+  connectorAuthCodeCallbacksUseOnlyApiOrigin,
   getAvailableConnectorAuthMethodIds,
+  getConnectorAuthMethodAuthCodeCallbackOrigin,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
@@ -191,6 +193,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   asana: "https://app.asana.com/-/oauth_authorize",
   canva: "https://www.canva.com/api/oauth/authorize",
   close: "https://app.close.com/oauth2/authorize/",
+  cloudflare: "https://dash.cloudflare.com/oauth2/auth",
   deel: "https://app.deel.com/oauth2/authorize",
   docusign: "https://account-d.docusign.com/oauth/auth",
   dropbox: "https://www.dropbox.com/oauth2/authorize",
@@ -2497,6 +2500,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
+  it("exposes Cloudflare OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+      "api-token",
+    ]);
+    expect(
+      getAvailableConnectorAuthMethodIds("cloudflare", {
+        [FeatureSwitchKey.CloudflareConnector]: true,
+      }),
+    ).toStrictEqual(["oauth", "api-token"]);
+  });
+
   it("exposes Ashby API-token auth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([
       "api-token",
@@ -3441,6 +3455,21 @@ describe("getConnectorEnvBindingEntries", () => {
     ]);
   });
 
+  it("preserves Cloudflare runtime env compatibility across auth methods", () => {
+    expect(getConnectorEnvBindingEntries("cloudflare")).toEqual([
+      {
+        authMethod: "oauth",
+        envName: "CLOUDFLARE_TOKEN",
+        valueRef: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+      },
+      {
+        authMethod: "api-token",
+        envName: "CLOUDFLARE_TOKEN",
+        valueRef: "$secrets.CLOUDFLARE_TOKEN",
+      },
+    ]);
+  });
+
   it("returns correct env binding entries for OAuth-only connector", () => {
     expect(envBindingsForSingleMethod("github", "oauth")).toEqual({
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
@@ -3909,6 +3938,60 @@ describe("connector OAuth lifecycle grant helpers", () => {
         clientType: "confidential",
         clientIdEnv: "GH_OAUTH_CLIENT_ID",
         clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
+      },
+    });
+  });
+
+  it("defaults auth-code callbacks to web origin unless configured", () => {
+    expect(
+      getConnectorAuthMethodAuthCodeCallbackOrigin("github", "oauth"),
+    ).toBe("web");
+    expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("github")).toBe(false);
+    expect(
+      getConnectorAuthMethodAuthCodeCallbackOrigin("cloudflare", "oauth"),
+    ).toBe("api");
+    expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("cloudflare")).toBe(true);
+  });
+
+  it("declares Cloudflare OAuth as a refreshable API-origin auth-code grant", () => {
+    expect(
+      getConnectorAuthMethodAuthCodeGrantConfig("cloudflare", "oauth"),
+    ).toStrictEqual({
+      kind: "auth-code",
+      scopes: [],
+      callbackOrigin: "api",
+      outputs: {
+        accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+        refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+      },
+    });
+    expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
+      featureFlag: FeatureSwitchKey.CloudflareConnector,
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        clientIdEnv: "CLOUDFLARE_OAUTH_CLIENT_ID",
+        clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+      },
+      access: {
+        kind: "refresh-token",
+        inputs: {
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
+        outputs: {
+          accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
+        refreshableSecrets: ["CLOUDFLARE_ACCESS_TOKEN"],
+        envBindings: {
+          CLOUDFLARE_TOKEN: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+        },
+      },
+      revoke: {
+        kind: "token-revoke",
+        inputs: {
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
       },
     });
   });

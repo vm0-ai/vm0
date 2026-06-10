@@ -91,6 +91,8 @@ const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
 const INTERVALS_ICU_TOKEN_URL = "https://intervals.icu/api/oauth/token";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
+const CLOUDFLARE_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
+const CLOUDFLARE_USERINFO_URL = "https://dash.cloudflare.com/oauth2/userinfo";
 
 function callbackUrl(
   type: string,
@@ -169,6 +171,8 @@ function expectConnectorErrorRedirect(
 }
 
 function mockOAuthEnv(): void {
+  mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_ID", "cloudflare-client-id");
+  mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_SECRET", "cloudflare-client-secret");
   mockOptionalEnv("DEEL_OAUTH_CLIENT_ID", "deel-client-id");
   mockOptionalEnv("DEEL_OAUTH_CLIENT_SECRET", "deel-client-secret");
   mockOptionalEnv("DOCUSIGN_OAUTH_CLIENT_ID", "docusign-client-id");
@@ -1737,6 +1741,95 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(response.headers.get("location")).toBe(
       `${WEB_ORIGIN}/api/connectors/github/callback?code=code-123&state=state-123`,
     );
+  });
+
+  it("handles Cloudflare API-origin callback requests without canonical redirect", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "cloudflare",
+      userId,
+      orgId,
+      state: "cloudflare-state",
+      redirectUri: `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+    });
+
+    let tokenRequestBody: URLSearchParams | undefined;
+    let tokenRequestAuthorization: string | null = null;
+    server.use(
+      http.post(CLOUDFLARE_TOKEN_URL, async ({ request }) => {
+        tokenRequestAuthorization = request.headers.get("authorization");
+        tokenRequestBody = new URLSearchParams(await request.text());
+        return HttpResponse.json({
+          access_token: "cloudflare-access-token",
+          refresh_token: "cloudflare-refresh-token",
+          expires_in: 7200,
+          scope: "workers-platform.read workers-platform.write",
+        });
+      }),
+      http.get(CLOUDFLARE_USERINFO_URL, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer cloudflare-access-token",
+        );
+        return HttpResponse.json({
+          sub: "cloudflare-user-123",
+          email: "cloudflare@example.com",
+          name: "Cloudflare User",
+        });
+      }),
+    );
+
+    const response = await requestCallback({
+      type: "cloudflare",
+      query: { code: "cloudflare-code", state: "cloudflare-state" },
+      headers: callbackHeaders({ stateCookie: "cloudflare-state" }),
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(307);
+    expect(tokenRequestAuthorization).toBe(
+      `Basic ${btoa("cloudflare-client-id:cloudflare-client-secret")}`,
+    );
+    expect(tokenRequestBody?.get("client_secret")).toBeNull();
+    expect(tokenRequestBody?.get("code")).toBe("cloudflare-code");
+    expect(tokenRequestBody?.get("redirect_uri")).toBe(
+      `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+    );
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.origin).toBe(BASE_URL);
+    expect(url.pathname).toBe("/connector/success");
+    expect(url.searchParams.get("type")).toBe("cloudflare");
+    expect(url.searchParams.get("username")).toBe("Cloudflare User");
+
+    await expect(
+      findConnector({ orgId, userId, type: "cloudflare" }),
+    ).resolves.toMatchObject({
+      type: "cloudflare",
+      authMethod: "oauth",
+      externalId: "cloudflare-user-123",
+      externalUsername: "Cloudflare User",
+      externalEmail: "cloudflare@example.com",
+      oauthScopes: "[]",
+      needsReconnect: false,
+    });
+    await expect(
+      findDecryptedSecret({
+        orgId,
+        userId,
+        name: "CLOUDFLARE_ACCESS_TOKEN",
+      }),
+    ).resolves.toBe("cloudflare-access-token");
+    await expect(
+      findDecryptedSecret({
+        orgId,
+        userId,
+        name: "CLOUDFLARE_REFRESH_TOKEN",
+      }),
+    ).resolves.toBe("cloudflare-refresh-token");
   });
 
   it("rejects callbacks when the stored auth method is not auth-code", async () => {

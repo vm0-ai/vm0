@@ -464,10 +464,6 @@ const callbackConnectorInner$ = command(
     const { type } = get(pathParamsOf(connectorsTypeCallbackContract.callback));
     const query = get(queryOf(connectorsTypeCallbackContract.callback));
     const request = get(request$).raw;
-    const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrl(request);
-    if (canonicalRedirectUrl) {
-      return connectorOAuthRedirectResponse(canonicalRedirectUrl);
-    }
     const origin = getConnectorOAuthOrigin(request);
 
     const connectorTypeResult = resolveAuthCodeConnectorType(origin, type);
@@ -475,6 +471,13 @@ const callbackConnectorInner$ = command(
       return connectorTypeResult.response;
     }
     const { connectorType } = connectorTypeResult;
+    const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrl(
+      request,
+      connectorType,
+    );
+    if (canonicalRedirectUrl) {
+      return connectorOAuthRedirectResponse(canonicalRedirectUrl);
+    }
 
     const writeDb = set(writeDb$);
     const state = query.state;
