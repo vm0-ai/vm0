@@ -2,10 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -237,25 +235,16 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     },
   );
 
-  async function getEnabledIds(
-    orgId: string,
-    userId: string,
-    agentId: string,
-  ): Promise<readonly string[]> {
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select({ customConnectorId: userCustomConnectors.customConnectorId })
-      .from(userCustomConnectors)
-      .where(
-        and(
-          eq(userCustomConnectors.orgId, orgId),
-          eq(userCustomConnectors.userId, userId),
-          eq(userCustomConnectors.agentId, agentId),
-        ),
-      );
-    return rows.map((r) => {
-      return r.customConnectorId;
-    });
+  async function getEnabledIds(agentId: string): Promise<readonly string[]> {
+    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+    const response = await accept(
+      client.get({
+        params: { id: agentId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    return response.body.enabledIds;
   }
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -314,7 +303,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("sets enabled ids and round-trips via DB read-after-write", async () => {
+  it("sets enabled ids and round-trips through the GET route", async () => {
     const fixture = await track(
       store.set(
         seedTeamCompose$,
@@ -355,11 +344,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
       new Set([c1.connectorId, c2.connectorId]),
     );
 
-    const persisted = await getEnabledIds(
-      fixture.orgId,
-      fixture.userId,
-      agentId,
-    );
+    const persisted = await getEnabledIds(agentId);
     expect(new Set(persisted)).toStrictEqual(
       new Set([c1.connectorId, c2.connectorId]),
     );
@@ -411,11 +396,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
       [200],
     );
 
-    const persisted = await getEnabledIds(
-      fixture.orgId,
-      fixture.userId,
-      agentId,
-    );
+    const persisted = await getEnabledIds(agentId);
     expect(persisted).toStrictEqual([c2.connectorId]);
   });
 
@@ -458,11 +439,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
       [200],
     );
 
-    const persisted = await getEnabledIds(
-      fixture.orgId,
-      fixture.userId,
-      agentId,
-    );
+    const persisted = await getEnabledIds(agentId);
     expect(persisted).toStrictEqual([]);
   });
 
@@ -500,11 +477,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
       },
     });
 
-    const persisted = await getEnabledIds(
-      fixture.orgId,
-      fixture.userId,
-      agentId,
-    );
+    const persisted = await getEnabledIds(agentId);
     expect(persisted).toStrictEqual([]);
   });
 });
