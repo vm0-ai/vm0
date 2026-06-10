@@ -27,6 +27,7 @@ import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usag
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsByTypeContract,
+  zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroBillingAutoRechargeContract,
@@ -244,6 +245,10 @@ export function createBddApi(context: TestContext) {
     /** ts-rest client for `/api/zero/connectors/:type` (get/delete by type). A
      * connected connector needs the OAuth/manual connect flow; the
      * auth/not-found rejections are reachable directly. */
+    /** ts-rest client for `/api/zero/connectors` (list configured connectors). A
+     * populated list needs connected connector rows (GAP-CONNECTOR-CONNECT); the
+     * auth and empty-list cases are reachable directly. */
+    connectorsList: setupApp({ context })(zeroConnectorsMainContract),
     connectorByType: setupApp({ context })(zeroConnectorsByTypeContract),
     /** ts-rest client for `/api/zero/connectors/:type/scope-diff`. */
     connectorScopeDiff: setupApp({ context })(zeroConnectorScopeDiffContract),

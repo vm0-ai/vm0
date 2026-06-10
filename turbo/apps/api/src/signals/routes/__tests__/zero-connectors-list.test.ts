@@ -58,25 +58,6 @@ describe("GET /api/zero/connectors", () => {
     }
   });
 
-  it("returns an empty connectors list", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorsMainContract);
-    const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    expect(response.body.connectors).toStrictEqual([]);
-    expect(Array.isArray(response.body.configuredTypes)).toBeTruthy();
-    expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
-  });
-
   it("returns connectors when present", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -128,13 +109,6 @@ describe("GET /api/zero/connectors", () => {
     expect(openai).toBeUndefined();
   });
 
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsMainContract);
-    const response = await accept(client.list({ headers: {} }), [401]);
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
   it("skips oauth rows whose type no longer exists in the contract", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -158,17 +132,5 @@ describe("GET /api/zero/connectors", () => {
       return (c.type as string) === "__removed_connector__";
     });
     expect(orphan).toBeUndefined();
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(zeroConnectorsMainContract);
-    const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 });

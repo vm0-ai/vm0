@@ -1248,3 +1248,16 @@ First USAGE-family reduce.
 - Reduced `integrations-github-delete.test.ts` (8 -> 6) and
   `integrations-github-patch.test.ts` (12 -> 9).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 56 — CONNECTOR LIST REJECTIONS (CHAIN-CONNECTORS-LIST-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `connectorsList` client (`/api/zero/connectors`).
+- Added `zero-connectors-list-rejections.bdd.test.ts`: the list rejects
+  unauthenticated and org-less callers (401) and returns an empty list
+  (`connectors: []`, array `configuredTypes` + `connectorProvidedBindings`) for a
+  fresh org.
+- A populated list, the legacy-secret-inference guard and the
+  skip-unknown-oauth-type filtering need connected connector rows from the
+  OAuth/manual connect flow (GAP-CONNECTOR-CONNECT) and stay in the kept legacy.
+- Reduced `zero-connectors-list.test.ts` (6 -> 3).
+- Coverage verified (source-only): no regressions vs `main`.
