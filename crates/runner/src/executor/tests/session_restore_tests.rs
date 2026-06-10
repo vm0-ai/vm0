@@ -280,6 +280,7 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert!(exec_calls[0].stdin_bytes.is_none());
     assert!(exec_calls[0].cmd.contains("/home/user/.codex/sessions"));
     assert!(exec_calls[0].cmd.contains("find \"$root\" -type f"));
+    assert!(exec_calls[0].cmd.contains("-iname"));
     assert!(exec_calls[0].cmd.contains(".jsonl.zst"));
     assert!(exec_calls[0].cmd.contains("id_no_dashes"));
     assert!(exec_calls[0].cmd.contains("-delete"));

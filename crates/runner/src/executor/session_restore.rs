@@ -166,10 +166,10 @@ if [ -d "$root" ]; then
   id="$VM0_CODEX_RESTORE_SESSION_ID"
   id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
   find "$root" -type f \( \
-    -name "*${id}*.jsonl" -o \
-    -name "*${id}*.jsonl.zst" -o \
-    -name "*${id_no_dashes}*.jsonl" -o \
-    -name "*${id_no_dashes}*.jsonl.zst" \
+    -iname "*${id}*.jsonl" -o \
+    -iname "*${id}*.jsonl.zst" -o \
+    -iname "*${id_no_dashes}*.jsonl" -o \
+    -iname "*${id_no_dashes}*.jsonl.zst" \
   \) -delete
 fi"#;
     let env = [("VM0_CODEX_RESTORE_SESSION_ID", session_id)];
