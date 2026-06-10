@@ -26,8 +26,8 @@ pub(crate) struct SessionState {
     conn_state: ConnState,
     lifecycle: RealtimeStateMachine,
     /// Consecutive token renewal failures. Successful renewal and committed
-    /// reconnects reset this counter; reaching the configured max marks the
-    /// lifecycle failed.
+    /// connected reconnects reset this counter; reaching the configured max
+    /// marks the lifecycle failed.
     token_renewal_failures: u32,
     /// Next suspended-channel reattach attempt. This is only scheduled while
     /// the channel is suspended and the connection can send events.
@@ -207,9 +207,11 @@ impl SessionState {
             && !self.conn_state.can_resume()
     }
 
-    // Suspended retry means the resumable connection window has expired. Clear
-    // resume metadata, channel serial, pending channel work, and deferred
-    // connected emission before future attempts use a fresh connection.
+    // Suspended retry means the session can no longer resume the previous
+    // connection, either because the resumable window expired or because no
+    // resume key is available. Clear resume metadata, channel serial, pending
+    // channel work, and deferred connected emission before future attempts use
+    // a fresh connection.
     pub(super) fn enter_suspended_retry_state(&mut self) {
         self.conn_state.clear_resume_state();
         self.lifecycle.notify_suspended();
@@ -245,8 +247,9 @@ impl SessionState {
     }
 
     // Token renewal failures are consecutive. A successful renewal or
-    // committed reconnect establishes valid token/transport state and resets
-    // the count; reaching max_failures makes the session fail terminally.
+    // committed connected reconnect establishes valid token/transport state and
+    // resets the count; reaching max_failures makes the session fail
+    // terminally.
     pub(super) fn record_successful_token_renewal(&mut self) {
         self.token_renewal_failures = 0;
     }
