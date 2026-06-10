@@ -25,6 +25,15 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy `zero-chat-threads-github-prs.test.ts`.
+// The legacy direct DB SELECTs that verified connector / feature
+// switch presence are replaced by assertions on the public list
+// contract's `prs` array. The "agent not authorized" and "feature
+// switch off" cases share the same precondition (GitHub connector
+// seeded, agent has no grant or feature switch disabled) and are
+// exercised through a single chain step. The 6 legacy `it()`s
+// collapse into 2 BDD `it()`s (auth boundary + a PR check chain).
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -118,22 +127,109 @@ async function deleteGithubConnectorRows(
   ]);
 }
 
-describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
-  const trackThread = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-    return store.set(deleteZeroChatThread$, fixture, context.signal);
-  });
-  const trackGithubConnector = createFixtureTracker<GithubConnectorScope>(
-    deleteGithubConnectorRows,
-  );
+function authHeaders(): { readonly authorization: string } {
+  return { authorization: "Bearer clerk-session" };
+}
 
-  it("returns GitHub PR check status for pull requests mentioned in the thread", async () => {
-    const fixture = await trackThread(
+function listClient() {
+  return setupApp({ context })(chatThreadGithubPrsContract);
+}
+
+describe("BDD GET /api/zero/chat-threads/:threadId/github-prs — auth boundary", () => {
+  it("returns 401 when unauthenticated", async () => {
+    // When + Then: no auth header → 401.
+    const response = await accept(
+      listClient().list({
+        params: { threadId: randomUUID() },
+        headers: {},
+      }),
+      [401],
+    );
+    expect(response.body.error.message).toContain("Not authenticated");
+  });
+});
+
+const trackThread = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
+  return store.set(deleteZeroChatThread$, fixture, context.signal);
+});
+const trackGithubConnector = createFixtureTracker<GithubConnectorScope>(
+  deleteGithubConnectorRows,
+);
+
+describe("BDD GET /api/zero/chat-threads/:threadId/github-prs — PR check chain", () => {
+  it("gwt-wt-wt: 403 agent not authorized → 403 feature switch off → 404 malformed threadId → 200 PR with checks (success rollup) → 200 PR with conflicts (mergeStatus: conflicts) → 200 PR with pending rollup (no check runs)", async () => {
+    const c = listClient();
+
+    // Given: a thread whose agent has not authorized the GitHub
+    // connector (connector + secret seeded, but no userConnectors
+    // grant for the agent).
+    const noAuthFixture = await trackThread(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
-    await trackGithubConnector(seedGithubConnector({ fixture }));
+    await trackGithubConnector(
+      seedGithubConnector({ fixture: noAuthFixture, authorizeAgent: false }),
+    );
+    mocks.clerk.session(noAuthFixture.userId, noAuthFixture.orgId);
+
+    // When + Then: 403.
+    const noAuth = await accept(
+      c.list({
+        params: { threadId: noAuthFixture.threadId },
+        headers: authHeaders(),
+      }),
+      [403],
+    );
+    expect(noAuth.body.error.message).toBe(
+      "GitHub connector is not authorized for this agent",
+    );
+
+    // Given: a thread whose user has the connector but the feature
+    // switch is off.
+    const noFeatureFixture = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await trackGithubConnector(
+      seedGithubConnector({
+        fixture: noFeatureFixture,
+        enableFeature: false,
+      }),
+    );
+    mocks.clerk.session(noFeatureFixture.userId, noFeatureFixture.orgId);
+
+    // When + Then: 403.
+    const noFeature = await accept(
+      c.list({
+        params: { threadId: noFeatureFixture.threadId },
+        headers: authHeaders(),
+      }),
+      [403],
+    );
+    expect(noFeature.body.error.message).toBe(
+      "GitHub PR tracking is not enabled",
+    );
+
+    // Given: a fully authorized thread.
+    const okFixture = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await trackGithubConnector(seedGithubConnector({ fixture: okFixture }));
+    mocks.clerk.session(okFixture.userId, okFixture.orgId);
+
+    // When + Then: 404 for a malformed threadId.
+    const malformed = await accept(
+      c.list({
+        params: { threadId: "not-a-uuid" },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(malformed.body.error.message).toBe("Chat thread not found");
+
+    // Given: an assistant message mentioning a PR + a GitHub mock
+    // returning ready checks.
     await store.set(
       seedZeroChatMessage$,
-      fixture,
+      okFixture,
       {
         role: "assistant",
         content:
@@ -141,8 +237,6 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
     server.use(
       http.get(
         "https://api.github.com/repos/vm0-ai/vm0/pulls/15070",
@@ -182,24 +276,21 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
       http.get(
         "https://api.github.com/repos/vm0-ai/vm0/commits/abc123/status",
         () => {
-          return HttpResponse.json({
-            state: "success",
-            statuses: [],
-          });
+          return HttpResponse.json({ state: "success", statuses: [] });
         },
       ),
     );
 
-    const client = setupApp({ context })(chatThreadGithubPrsContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+    // When + Then: the public list reports the PR with `mergeStatus:
+    // ready` and `rollup: success`.
+    const success = await accept(
+      c.list({
+        params: { threadId: okFixture.threadId },
+        headers: authHeaders(),
       }),
       [200],
     );
-
-    expect(response.body.prs).toStrictEqual([
+    expect(success.body.prs).toStrictEqual([
       {
         repo: "vm0-ai/vm0",
         number: 15_070,
@@ -221,16 +312,11 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
         ],
       },
     ]);
-  });
 
-  it("returns conflict merge status when GitHub reports an unmergeable PR", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    await trackGithubConnector(seedGithubConnector({ fixture }));
+    // Given: a different PR with a conflict merge state.
     await store.set(
       seedZeroChatMessage$,
-      fixture,
+      okFixture,
       {
         role: "assistant",
         content:
@@ -238,8 +324,6 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
     server.use(
       http.get("https://api.github.com/repos/vm0-ai/vm0/pulls/15071", () => {
         return HttpResponse.json({
@@ -262,39 +346,34 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
       http.get(
         "https://api.github.com/repos/vm0-ai/vm0/commits/def456/status",
         () => {
-          return HttpResponse.json({
-            state: "success",
-            statuses: [],
-          });
+          return HttpResponse.json({ state: "success", statuses: [] });
         },
       ),
     );
 
-    const client = setupApp({ context })(chatThreadGithubPrsContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+    // When + Then: the list reports `mergeStatus: conflicts` and
+    // `rollup: none` for the conflict PR.
+    const conflicts = await accept(
+      c.list({
+        params: { threadId: okFixture.threadId },
+        headers: authHeaders(),
       }),
       [200],
     );
-
-    expect(response.body.prs[0]).toMatchObject({
+    const conflictPr = conflicts.body.prs.find((p) => {
+      return p.number === 15_071;
+    });
+    expect(conflictPr).toMatchObject({
       repo: "vm0-ai/vm0",
       number: 15_071,
       mergeStatus: "conflicts",
       rollup: "none",
     });
-  });
 
-  it("surfaces pending aggregate commit status when GitHub returns no status contexts", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    await trackGithubConnector(seedGithubConnector({ fixture }));
+    // Given: a third PR with no check runs but a pending status.
     await store.set(
       seedZeroChatMessage$,
-      fixture,
+      okFixture,
       {
         role: "assistant",
         content:
@@ -302,8 +381,6 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
     server.use(
       http.get("https://api.github.com/repos/vm0-ai/vm0/pulls/15072", () => {
         return HttpResponse.json({
@@ -326,24 +403,24 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
       http.get(
         "https://api.github.com/repos/vm0-ai/vm0/commits/ghi789/status",
         () => {
-          return HttpResponse.json({
-            state: "pending",
-            statuses: [],
-          });
+          return HttpResponse.json({ state: "pending", statuses: [] });
         },
       ),
     );
 
-    const client = setupApp({ context })(chatThreadGithubPrsContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+    // When + Then: the list reports `mergeStatus: null` and
+    // `rollup: pending` with a synthetic `GitHub status` check.
+    const pending = await accept(
+      c.list({
+        params: { threadId: okFixture.threadId },
+        headers: authHeaders(),
       }),
       [200],
     );
-
-    expect(response.body.prs[0]).toMatchObject({
+    const pendingPr = pending.body.prs.find((p) => {
+      return p.number === 15_072;
+    });
+    expect(pendingPr).toMatchObject({
       repo: "vm0-ai/vm0",
       number: 15_072,
       mergeStatus: null,
@@ -359,70 +436,5 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
         },
       ],
     });
-  });
-
-  it("returns 403 when the agent has not authorized the GitHub connector", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    await trackGithubConnector(
-      seedGithubConnector({ fixture, authorizeAgent: false }),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadGithubPrsContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "GitHub connector is not authorized for this agent",
-    );
-  });
-
-  it("returns 403 when the feature switch is off", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    await trackGithubConnector(
-      seedGithubConnector({ fixture, enableFeature: false }),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadGithubPrsContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "GitHub PR tracking is not enabled",
-    );
-  });
-
-  it("returns 404 for malformed thread IDs", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    await trackGithubConnector(seedGithubConnector({ fixture }));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadGithubPrsContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: "not-a-uuid" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Chat thread not found");
   });
 });

@@ -735,3 +735,30 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 14 — CHAT-01 github-prs BDD
+
+Migrates the per-thread GitHub PR check status route. The
+legacy direct DB SELECTs that verified connector / feature
+switch presence are replaced by assertions on the public
+list contract's `prs` array. The "agent not authorized" and
+"feature switch off" cases share the same precondition and
+chain naturally in a single GWT-WT-WT walk.
+
+- `zero-chat-threads-github-prs.bdd.test.ts` — 6 legacy
+  `it()`s → 2 BDD `it()`s (auth boundary + a PR check chain:
+  403 agent not authorized → 403 feature switch off → 404
+  malformed threadId → 200 PR with checks (success rollup) →
+  200 PR with conflicts (mergeStatus: conflicts) → 200 PR
+  with pending rollup (no check runs)). The GitHub API mocks
+  are shared across the three 200 cases — each step layers a
+  new MSW handler for the next PR number. Multiple PR
+  references in the same thread accumulate in `body.prs`, so
+  the chain finds the PR by `number` rather than indexing
+  `prs[0]`.
+
+Net test count: 6 legacy `it()`s → 2 BDD `it()`s (67%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
