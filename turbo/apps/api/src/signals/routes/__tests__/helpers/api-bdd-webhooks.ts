@@ -106,17 +106,9 @@ interface GithubWebhookResponse {
 
 type BuiltInGenerationProvider = "fal" | "byteplus";
 const RESEND_WEBHOOK_SECRET = "whsec_test";
-const GOOGLE_ADS_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const GOOGLE_ADS_UPLOAD_URL =
-  "https://googleads.googleapis.com/v24/customers/1001302527:uploadClickConversions";
-
 interface StripeWebhookResponse {
   readonly status: 200 | 500;
   readonly body: unknown;
-}
-
-interface GoogleAdsUploadCapture {
-  readonly uploads: readonly unknown[];
 }
 
 function serializedTsRestBody(body: unknown): string {
@@ -295,39 +287,6 @@ export function createWebhookCallbackApi(context: TestContext) {
         );
       }
       return { status, body };
-    },
-
-    configureGoogleAdsConversionEnv(): void {
-      mockOptionalEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID", "100-130-2527");
-      mockOptionalEnv("GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN", "bdd-dev-token");
-      mockOptionalEnv("GOOGLE_ADS_OFFLINE_CLIENT_ID", "bdd-ads-client-id");
-      mockOptionalEnv(
-        "GOOGLE_ADS_OFFLINE_CLIENT_SECRET",
-        "bdd-ads-client-secret",
-      );
-      mockOptionalEnv("GOOGLE_ADS_OFFLINE_REFRESH_TOKEN", "bdd-refresh-token");
-      mockOptionalEnv(
-        "GOOGLE_ADS_FREE_TRIAL_CONVERSION_ACTION_ID",
-        "7615812424",
-      );
-      mockOptionalEnv(
-        "GOOGLE_ADS_PAID_SUBSCRIBER_CONVERSION_ACTION_ID",
-        "9876543210",
-      );
-    },
-
-    captureGoogleAdsUploads(): GoogleAdsUploadCapture {
-      const uploads: unknown[] = [];
-      server.use(
-        http.post(GOOGLE_ADS_TOKEN_URL, () => {
-          return HttpResponse.json({ access_token: "bdd-ads-access-token" });
-        }),
-        http.post(GOOGLE_ADS_UPLOAD_URL, async ({ request }) => {
-          uploads.push(await request.json());
-          return HttpResponse.json({ results: [], jobId: "bdd-ads-job" });
-        }),
-      );
-      return { uploads };
     },
 
     acceptNextStripeWebhookEvent(event: unknown): void {

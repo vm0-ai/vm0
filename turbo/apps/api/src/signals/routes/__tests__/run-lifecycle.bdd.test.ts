@@ -392,12 +392,46 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       bearer,
       first.runId,
       [200],
+      {
+        telemetry: {
+          jobDiscoveredToClaimRequestMs: 1234,
+          localAdmissionToClaimRequestMs: 56,
+        },
+      },
     );
     if (claimed.status !== 200) {
       throw new Error("Expected the user runner claim to succeed");
     }
     expect(claimed.body.prompt).toBe("user runner job one");
     expect(claimed.body.sandboxToken).not.toBe("");
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "job_discovered_to_claim_request",
+          sandbox_type: "runner",
+          run_id: first.runId,
+          duration_ms: 1234,
+          success: true,
+          profile: "vm0/default",
+          auth_type: "user",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "local_admission_to_claim_request",
+          sandbox_type: "runner",
+          run_id: first.runId,
+          duration_ms: 56,
+          success: true,
+          profile: "vm0/default",
+          auth_type: "user",
+        }),
+      ],
+    );
     const claimedRun = await api.readRun(actor, first.runId);
     expect(claimedRun.status).toBe("running");
 

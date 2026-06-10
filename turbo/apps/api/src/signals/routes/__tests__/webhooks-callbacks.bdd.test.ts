@@ -1495,9 +1495,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(clamped.currentPeriodEnd).toBe(isoOf(trialEnd3));
     expect(clamped.creditExpiry.nextExpiryDate).toBe(isoOf(trialEnd3));
 
-    // A trialing checkout completion uploads the free-trial conversion.
-    api.configureGoogleAdsConversionEnv();
-    const ads = api.captureGoogleAdsUploads();
+    // A trialing checkout completion binds the customer without re-granting.
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
       proSubscription({
         id: subscriptionId,
@@ -1520,19 +1518,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    expect(ads.uploads).toHaveLength(1);
-    expect(ads.uploads[0]).toMatchObject({
-      conversions: [
-        expect.objectContaining({
-          gclid: "bdd-trial-gclid",
-          orderId: trialSessionId,
-          conversionValue: 20,
-          conversionAction: "customers/1001302527/conversionActions/7615812424",
-          currencyCode: "USD",
-        }),
-      ],
-      partialFailure: true,
-    });
+    const afterTrialCheckout = await billing.readBillingStatus(actor);
+    expect(afterTrialCheckout.credits).toBe(20_000);
   });
 
   it("upgrades to team, drains the queue, and cancels the replaced pro subscription", async () => {
@@ -2561,77 +2548,6 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
     expect((await billing.readBillingStatus(actor)).credits).toBe(40_000);
-  });
-
-  it("uploads paid-subscriber conversions only for positive paid invoices", async () => {
-    const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
-    const billing = createBillingMediaApi(context);
-    const actor = bdd.user();
-    const granted = await runs.grantProEntitlement(actor);
-    api.configureGoogleAdsConversionEnv();
-    const ads = api.captureGoogleAdsUploads();
-
-    const paidInvoiceId = `in_bdd_ads_paid_${randomUUID().slice(0, 8)}`;
-    await api.postStripeEvent(
-      stripeEvent({
-        type: "invoice.paid",
-        object: {
-          id: paidInvoiceId,
-          customer: granted.customerId,
-          amount_paid: 12_345,
-          subtotal: 0,
-          metadata: {},
-          parent: {
-            subscription_details: {
-              subscription: granted.subscriptionId,
-              metadata: { gclid: "bdd-paid-gclid" },
-            },
-          },
-          lines: subscriptionLines(epochSeconds(30)),
-        },
-      }),
-      [200],
-    );
-    expect(ads.uploads).toHaveLength(1);
-    expect(ads.uploads[0]).toMatchObject({
-      conversions: [
-        expect.objectContaining({
-          gclid: "bdd-paid-gclid",
-          orderId: paidInvoiceId,
-          conversionValue: 123.45,
-          conversionAction: "customers/1001302527/conversionActions/9876543210",
-          currencyCode: "USD",
-          conversionEnvironment: "WEB",
-        }),
-      ],
-      partialFailure: true,
-    });
-    expect((await billing.readBillingStatus(actor)).credits).toBe(40_000);
-
-    // Zero-amount invoices grant credits but upload no conversion.
-    await api.postStripeEvent(
-      stripeEvent({
-        type: "invoice.paid",
-        object: {
-          id: `in_bdd_ads_zero_${randomUUID().slice(0, 8)}`,
-          customer: granted.customerId,
-          amount_paid: 0,
-          subtotal: 10_000,
-          metadata: {},
-          parent: {
-            subscription_details: {
-              subscription: granted.subscriptionId,
-              metadata: { gclid: "bdd-zero-gclid" },
-            },
-          },
-          lines: subscriptionLines(epochSeconds(45)),
-        },
-      }),
-      [200],
-    );
-    expect(ads.uploads).toHaveLength(1);
-    expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
   });
 });
 

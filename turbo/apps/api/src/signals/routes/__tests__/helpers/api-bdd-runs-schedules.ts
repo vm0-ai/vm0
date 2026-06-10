@@ -381,12 +381,13 @@ export function createRunsSchedulesApi(context: TestContext) {
       authorization: string | undefined,
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      body: z.infer<(typeof runnersJobClaimContract.claim)["body"]> = {},
     ) {
       return await accept(
         setupApp({ context })(runnersJobClaimContract).claim({
           headers: authorization === undefined ? {} : { authorization },
           params: { id: runId },
-          body: {},
+          body,
         }),
         statuses,
       );

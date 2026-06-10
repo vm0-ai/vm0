@@ -1777,14 +1777,9 @@ describe("FILE-02: audio transcription v1 and Gemini generate-image provider con
       301,
     );
 
-    // Non-WAV/WebM uploads estimate duration from size at the minimum
-    // bitrate of 1,000 bytes/second.
-    await expectDurationRejected(
-      new Uint8Array(301_000),
-      "long.mp3",
-      "audio/mpeg",
-      301,
-    );
+    // Compressed audio reads the real container duration since #17143;
+    // unparseable mp3 bytes carry no duration and pass the gate.
+    await expectTranscribed(new Uint8Array(301_000), "long.mp3", "audio/mpeg");
 
     // WebM with a TimecodeScale of one millisecond and a float64 Duration of
     // 301,000ms exceeds the request limit. The Duration size is a two-byte
