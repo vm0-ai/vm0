@@ -3,7 +3,7 @@ import {
   IconDownload,
   IconLoader2,
   IconPresentation,
-  IconScript,
+  IconSparkles,
 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
@@ -232,9 +232,10 @@ function PresentationEditorHeader({
         title="Generate PPT script"
         disabled={!onGenerateSpeakerNotes}
         onClick={onGenerateSpeakerNotes}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
       >
-        <IconScript size={16} stroke={1.5} />
+        <IconSparkles size={16} stroke={1.5} />
+        Transcript
       </button>
       <button
         type="button"
