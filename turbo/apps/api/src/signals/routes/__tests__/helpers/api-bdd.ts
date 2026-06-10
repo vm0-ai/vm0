@@ -20,6 +20,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import {
+  zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
   zeroBillingDowngradeContract,
   zeroBillingInvoicesContract,
@@ -212,6 +213,10 @@ export function createBddApi(context: TestContext) {
      * tier-transition cases need seeded org/Stripe state; only the
      * auth/validation/config rejections before the price check are reachable. */
     billingCheckout: setupApp({ context })(zeroBillingCheckoutContract),
+    /** ts-rest client for `/api/zero/billing/auto-recharge` (get/update). With
+     * no org metadata the config reads the legacy default; the funded toggles
+     * need a seeded tier. */
+    billingAutoRecharge: setupApp({ context })(zeroBillingAutoRechargeContract),
     /** ts-rest client for `/api/zero/billing/downgrade`. */
     billingDowngrade: setupApp({ context })(zeroBillingDowngradeContract),
     /** ts-rest client for `/api/zero/billing/restore`. */

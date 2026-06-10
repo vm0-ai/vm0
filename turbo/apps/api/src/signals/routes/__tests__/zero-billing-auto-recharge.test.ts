@@ -27,40 +27,6 @@ describe("GET /api/zero/billing/auto-recharge", () => {
     return store.set(deleteAutoRechargeOrg$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
-
-    const response = await accept(client.get({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
-  it("returns 401 when the user has no active org", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
-
-    const response = await accept(
-      client.get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
   it("returns the org auto-recharge config from the api implementation", async () => {
     const fixture = await track(
       store.set(
@@ -112,51 +78,11 @@ describe("GET /api/zero/billing/auto-recharge", () => {
       amount: null,
     });
   });
-
-  it("returns the legacy default when the org metadata row does not exist", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
-
-    const response = await accept(
-      client.get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      enabled: false,
-      threshold: null,
-      amount: null,
-    });
-  });
 });
 
 describe("PUT /api/zero/billing/auto-recharge", () => {
   const track = createFixtureTracker<AutoRechargeOrgFixture>((fixture) => {
     return store.set(deleteAutoRechargeOrg$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
-
-    const response = await accept(
-      client.update({
-        body: { enabled: true, threshold: 1000, amount: 5000 },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
   });
 
   it("enables auto-recharge for pro tier org", async () => {
@@ -460,30 +386,6 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
     expect(response.body).toMatchObject({
       error: {
         message: "threshold must be less than amount to avoid recharge loops",
-      },
-    });
-  });
-
-  it("returns 403 for non-admin member", async () => {
-    const fixture = await track(
-      store.set(seedAutoRechargeOrg$, { tier: "pro" }, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
-
-    const response = await accept(
-      client.update({
-        body: { enabled: true, threshold: 1000, amount: 5000 },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only org admins can update auto-recharge settings",
-        code: "FORBIDDEN",
       },
     });
   });

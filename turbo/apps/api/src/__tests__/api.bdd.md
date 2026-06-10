@@ -1013,3 +1013,20 @@ But every rejection \_before* the credit check is reachable.
   `zero-billing-restore.ts` (23/14), and their services (102/54, 26/14)
   unchanged vs `main`. No regressions. This rounds out the BILLING family
   (redeem-code, portal, invoices, checkout, downgrade, restore).
+
+### Round 42 — BILLING AUTO-RECHARGE DEFAULT + ROUTE REJECTIONS (CHAIN-BILLING-AUTO-RECHARGE-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `billingAutoRecharge` (get/update) client.
+- Added `zero-billing-auto-recharge-rejections.bdd.test.ts`: GET reads the legacy
+  default for an org with no metadata row (`{enabled:false, threshold:null,
+amount:null}`) and rejects unauthenticated/no-org reads 401; PUT rejects
+  unauthenticated 401 and non-admin 403 (the route role check, before any billing
+  work).
+- Reduced `zero-billing-auto-recharge.test.ts` from 17 to 12 cases, removing only
+  the auth/no-org/legacy-default/non-admin cases. The threshold/amount validation
+  cases stay in the kept legacy: they run _inside_ `updateAutoRechargeConfig$`
+  after the tier is resolved from seeded org metadata, so a fresh org can't reach
+  them (it short-circuits on the paid-tier guard) — converting them would drop a
+  `billing.service.ts` statement (caught and corrected via the coverage gate).
+- Coverage verified (source-only): `zero-billing-auto-recharge.ts` (22/8) and
+  `billing.service.ts` (28/31) unchanged vs `main`. No regressions.
