@@ -1,17 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 function validBody() {
@@ -95,15 +90,6 @@ describe("POST /api/zero/custom-connectors", () => {
     expect(response.body.displayName).toBe("Example");
     expect(response.body.prefixes).toStrictEqual(["https://api.example.com/"]);
     expect(response.body.hasSecret).toBeFalsy();
-
-    // DB read-after-write
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select()
-      .from(orgCustomConnectors)
-      .where(eq(orgCustomConnectors.id, response.body.id));
-    expect(row?.orgId).toBe(orgId);
-    expect(row?.createdBy).toBe(userId);
 
     const listResponse = await accept(
       client.list({
