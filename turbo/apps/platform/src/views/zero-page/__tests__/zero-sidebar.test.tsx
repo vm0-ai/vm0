@@ -537,4 +537,76 @@ describe("zero sidebar", () => {
 
     createDeferred.resolve();
   });
+
+  it("opens settings from the account menu and changes debug capture", async () => {
+    prepareDefaultAgent();
+    context.mocks.data.userPreferences({
+      captureNetworkBodiesRemaining: 0,
+    });
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("New chat with Zero")).toBeInTheDocument();
+    });
+    const accountName = await screen.findByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Account menu trigger not found");
+    }
+
+    click(accountButton);
+
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("Alex Rivera")).toBeInTheDocument();
+    expect(
+      within(menu).getByText("alex.rivera@example.test"),
+    ).toBeInTheDocument();
+
+    click(within(menu).getByText("Settings"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Settings" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Preference" }),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Debug"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Debug" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
+      expect(screen.getByText("Disabled")).toBeInTheDocument();
+    });
+
+    click(screen.getByRole("switch"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Enabled for the next 3 runs"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByRole("switch"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Disabled")).toBeInTheDocument();
+    });
+  });
 });
