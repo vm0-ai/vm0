@@ -654,3 +654,57 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 11 — CONNECTOR-01 list + AGENT-01 user-connectors BDD
+
+Migrates the public connectors list and the per-agent
+user-connectors filter. The legacy direct DB SELECTs that
+verified connector row presence / absence are replaced by
+assertions on the public list contract's `connectors` array.
+The "no inference from legacy secrets" check is preserved by
+seeding a user-owned `OPENAI_TOKEN` secret (no public API to
+produce one) and asserting the response has no `openai`
+connector.
+
+- `zero-connectors-list.bdd.test.ts` — 6 legacy `it()`s → 2 BDD
+  `it()`s (auth boundary + a list chain: empty → with `github`
+  → orphan removed → no inference from legacy secrets).
+- `zero-agents.bdd.test.ts` — 1 legacy `it()` preserved as 1
+  BDD `it()`. The test seeds two connector grants
+  (`nano-banana` and `github`) and asserts the public
+  `enabledTypes` array contains only the registered type. The
+  helper gap (direct seed of `userConnectors`) is preserved
+  because the test exercises the registry-filter logic, not
+  a write path.
+
+Net test count: 7 legacy `it()`s → 3 BDD `it()`s (57%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
+
+### Round 12 — CHAT-01 model-selection BDD
+
+Migrates the per-thread model-selection route. The legacy
+direct DB SELECTs that verified the persisted `selectedModel`
+column are replaced by assertions on the public detail
+contract's `selectedModel` field. The "victim row preserved"
+check is preserved by re-fetching the detail of the other
+user's thread (as the owner) and asserting `selectedModel` is
+still null.
+
+- `zero-chat-threads-model-selection.bdd.test.ts` — 6 legacy
+  `it()`s → 2 BDD `it()`s (auth boundary + a selection chain:
+  404 missing → 404 cross-user (victim selectedModel preserved)
+  → 204 set (selectedModel updated + 1 publish) → 204 clears
+  (selectedModel null + 1 publish) → 400 invalid model-first).
+  The prior-selection precondition for the clear step is
+  produced by the previous set step in the same chain — no
+  direct DB write is needed because the public route now
+  produces the state needed for the clear path.
+
+Net test count: 6 legacy `it()`s → 2 BDD `it()`s (67%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
