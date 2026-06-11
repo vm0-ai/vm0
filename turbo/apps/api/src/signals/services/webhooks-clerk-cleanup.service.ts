@@ -33,7 +33,7 @@ import { variables } from "@vm0/db/schema/variable";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, ne } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -113,9 +113,9 @@ async function cancelLastAdminOrgsStripeSubscriptions(
       );
 
     if ((result?.adminCount ?? 0) <= 1) {
-      await tapError(cancelStripeSubscription(db, orgId), (error) => {
+      await tapError(markStripeSubscriptionsNonRenewing(db, orgId), (error) => {
         L.warn(
-          "failed to cancel stripe subscription for org with banned last admin",
+          "failed to mark stripe subscriptions non-renewing for org with banned last admin",
           { userId, orgId, error },
         );
       });
@@ -172,9 +172,13 @@ async function cleanupWorkspaceInstallation(
     .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
 }
 
-async function cancelStripeSubscription(db: Db, orgId: string): Promise<void> {
+async function markStripeSubscriptionsNonRenewing(
+  db: Db,
+  orgId: string,
+): Promise<void> {
   const [meta] = await db
     .select({
+      stripeCustomerId: orgMetadata.stripeCustomerId,
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       subscriptionStatus: orgMetadata.subscriptionStatus,
     })
@@ -182,11 +186,58 @@ async function cancelStripeSubscription(db: Db, orgId: string): Promise<void> {
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  if (!meta?.stripeSubscriptionId || meta.subscriptionStatus === "canceled") {
+  if (!meta?.stripeCustomerId && !meta?.stripeSubscriptionId) {
     return;
   }
 
-  await getStripeClient().subscriptions.cancel(meta.stripeSubscriptionId);
+  const stripe = getStripeClient();
+  const renewingSubscriptionIds = new Set<string>();
+  const nonRenewingSubscriptionIds = new Set<string>();
+
+  if (meta.stripeCustomerId) {
+    let startingAfter: string | undefined;
+
+    while (true) {
+      const subscriptions = await stripe.subscriptions.list({
+        customer: meta.stripeCustomerId,
+        status: "all",
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+
+      for (const subscription of subscriptions.data) {
+        if (
+          subscription.status === "canceled" ||
+          subscription.cancel_at_period_end
+        ) {
+          nonRenewingSubscriptionIds.add(subscription.id);
+        } else {
+          renewingSubscriptionIds.add(subscription.id);
+        }
+      }
+
+      const lastSubscription =
+        subscriptions.data[subscriptions.data.length - 1];
+      if (!subscriptions.has_more || !lastSubscription) {
+        break;
+      }
+      startingAfter = lastSubscription.id;
+    }
+  }
+
+  if (
+    meta.stripeSubscriptionId &&
+    meta.subscriptionStatus !== "canceled" &&
+    !nonRenewingSubscriptionIds.has(meta.stripeSubscriptionId)
+  ) {
+    renewingSubscriptionIds.add(meta.stripeSubscriptionId);
+  }
+
+  for (const subscriptionId of renewingSubscriptionIds) {
+    await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+    });
+  }
 }
 
 async function deregisterOrgTelegramWebhooks(
@@ -331,9 +382,9 @@ const cleanupOrgExternalServices$ = command(
       readonly run: () => Promise<void>;
     }[] = [
       {
-        name: "stripe subscription",
+        name: "stripe subscriptions",
         run: () => {
-          return cancelStripeSubscription(db, orgId);
+          return markStripeSubscriptionsNonRenewing(db, orgId);
         },
       },
       {
@@ -392,6 +443,47 @@ const cleanupUserExternalServices$ = command(
     }
   },
 );
+
+async function emptyOrgIdsAfterDeletingUser(
+  db: Db,
+  userId: string,
+): Promise<readonly string[]> {
+  const membershipRows = await db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId));
+  const createdRows = await db
+    .select({ orgId: orgCache.orgId })
+    .from(orgCache)
+    .where(eq(orgCache.createdBy, userId));
+
+  const candidateOrgIds = new Set<string>();
+  for (const row of membershipRows) {
+    candidateOrgIds.add(row.orgId);
+  }
+  for (const row of createdRows) {
+    candidateOrgIds.add(row.orgId);
+  }
+
+  const emptyOrgIds: string[] = [];
+  for (const orgId of candidateOrgIds) {
+    const [remainingMember] = await db
+      .select({ userId: orgMembersCache.userId })
+      .from(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, orgId),
+          ne(orgMembersCache.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!remainingMember) {
+      emptyOrgIds.push(orgId);
+    }
+  }
+
+  return emptyOrgIds;
+}
 
 function deleteObjectsForPrefixes(
   bucket: string,
@@ -634,11 +726,29 @@ export const cleanupClerkDeletedOrg$ = command(
 export const cleanupClerkDeletedUser$ = command(
   async ({ get, set }, userId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
+    const emptyOrgIds = await emptyOrgIdsAfterDeletingUser(db, userId);
+    signal.throwIfAborted();
+
     await set(cleanupUserExternalServices$, db, userId, signal);
     signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await set(cleanupOrgExternalServices$, db, orgId, signal);
+      signal.throwIfAborted();
+    }
+
     await get(deleteUserS3Data(db, userId));
     signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await get(deleteOrgS3Data(db, orgId));
+      signal.throwIfAborted();
+    }
+
     await deleteUserData(db, userId);
+    signal.throwIfAborted();
+    for (const orgId of emptyOrgIds) {
+      await deleteOrgData(db, orgId);
+      signal.throwIfAborted();
+    }
   },
 );
 

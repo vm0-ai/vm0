@@ -2,6 +2,9 @@ import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -32,6 +35,38 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 const context = testContext();
 const api = createWebhookCallbackApi(context);
 const store = createStore();
+
+interface OrgCleanupRows {
+  readonly cache: readonly { readonly orgId: string }[];
+  readonly metadata: readonly {
+    readonly stripeCustomerId: string | null;
+    readonly stripeSubscriptionId: string | null;
+  }[];
+  readonly members: readonly { readonly userId: string }[];
+}
+
+async function readOrgCleanupRows(orgId: string): Promise<OrgCleanupRows> {
+  const db = store.set(writeDb$);
+  const [cache, metadata, members] = await Promise.all([
+    db
+      .select({ orgId: orgCache.orgId })
+      .from(orgCache)
+      .where(eq(orgCache.orgId, orgId)),
+    db
+      .select({
+        stripeCustomerId: orgMetadata.stripeCustomerId,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId)),
+    db
+      .select({ userId: orgMembersCache.userId })
+      .from(orgMembersCache)
+      .where(eq(orgMembersCache.orgId, orgId)),
+  ]);
+
+  return { cache, metadata, members };
+}
 
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
@@ -3035,11 +3070,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     ).resolves.toHaveLength(1);
     expect((await runs.listAutomations(actor)).automations).toHaveLength(1);
 
-    // The first delivery hits a failing Stripe cancellation (a per-step
+    // The first delivery hits a failing Stripe subscription update (a per-step
     // failure the cleanup continues over) and then a failing org S3 listing,
     // which aborts the rest of the cleanup without surfacing in the
     // webhook response.
-    context.mocks.stripe.subscriptions.cancel.mockRejectedValueOnce(
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    context.mocks.stripe.subscriptions.update.mockRejectedValueOnce(
       new Error("stripe unavailable"),
     );
     context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
@@ -3051,8 +3090,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(firstDelivery.body).toBe("OK");
     await flushWaitUntilForTest();
     await waitForExpectation(() => {
-      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
         granted.subscriptionId,
+        { cancel_at_period_end: true },
       );
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
         botToken,
@@ -3115,9 +3155,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       expect((await runs.listAutomations(actor)).automations).toStrictEqual([]);
     });
 
-    // An org without a live subscription skips the Stripe cancellation.
-    const cancelCalls =
-      context.mocks.stripe.subscriptions.cancel.mock.calls.length;
+    // An org without a live subscription skips the Stripe update.
+    const updateCalls =
+      context.mocks.stripe.subscriptions.update.mock.calls.length;
     const plainActor = bdd.user();
     await bdd.setupOnboarding(plainActor, {
       displayName: "BDD Plain Teardown",
@@ -3133,9 +3173,148 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         return agents.length;
       })
       .toBe(0);
-    expect(context.mocks.stripe.subscriptions.cancel.mock.calls).toHaveLength(
-      cancelCalls,
+    expect(context.mocks.stripe.subscriptions.update.mock.calls).toHaveLength(
+      updateCalls,
     );
+  });
+
+  it("marks every Stripe subscription non-renewing and deletes an empty org after a verified user.deleted event", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+
+    const actor = bdd.user();
+    const granted = await runs.grantProEntitlement(actor);
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const extraSubscriptionId = `sub_bdd_extra_${suffix}`;
+    const nonRenewingSubscriptionId = `sub_bdd_nonrenewing_${suffix}`;
+    context.mocks.stripe.subscriptions.list
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: granted.subscriptionId,
+            status: "active",
+            cancel_at_period_end: false,
+          },
+          {
+            id: nonRenewingSubscriptionId,
+            status: "active",
+            cancel_at_period_end: true,
+          },
+        ],
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: extraSubscriptionId,
+            status: "trialing",
+            cancel_at_period_end: false,
+          },
+        ],
+        has_more: false,
+      });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+    context.mocks.s3.send.mockResolvedValue({});
+
+    api.verifyNextClerkWebhook({
+      type: "user.deleted",
+      data: { id: actor.userId },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+
+    await waitForExpectation(() => {
+      expect(context.mocks.stripe.subscriptions.list).toHaveBeenNthCalledWith(
+        1,
+        {
+          customer: granted.customerId,
+          status: "all",
+          limit: 100,
+        },
+      );
+      expect(context.mocks.stripe.subscriptions.list).toHaveBeenNthCalledWith(
+        2,
+        {
+          customer: granted.customerId,
+          status: "all",
+          limit: 100,
+          starting_after: nonRenewingSubscriptionId,
+        },
+      );
+      expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledTimes(
+        2,
+      );
+      expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+        1,
+        granted.subscriptionId,
+        { cancel_at_period_end: true },
+      );
+      expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+        2,
+        extraSubscriptionId,
+        { cancel_at_period_end: true },
+      );
+      expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    });
+    await expect
+      .poll(async () => {
+        const rows = await readOrgCleanupRows(orgId);
+        return [rows.cache.length, rows.metadata.length, rows.members.length];
+      })
+      .toStrictEqual([0, 0, 0]);
+  });
+
+  it("does not update a Stripe subscription already canceled upstream", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+
+    const actor = bdd.user();
+    const granted = await runs.grantProEntitlement(actor);
+    const orgId = orgOf(actor);
+    context.mocks.stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [
+        {
+          id: granted.subscriptionId,
+          status: "canceled",
+          cancel_at_period_end: false,
+        },
+      ],
+      has_more: false,
+    });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+    context.mocks.s3.send.mockResolvedValue({});
+
+    api.verifyNextClerkWebhook({
+      type: "user.deleted",
+      data: { id: actor.userId },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+
+    await waitForExpectation(() => {
+      expect(context.mocks.stripe.subscriptions.list).toHaveBeenCalledWith({
+        customer: granted.customerId,
+        status: "all",
+        limit: 100,
+      });
+      expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+      expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    });
+    await expect
+      .poll(async () => {
+        const rows = await readOrgCleanupRows(orgId);
+        return [rows.cache.length, rows.metadata.length, rows.members.length];
+      })
+      .toStrictEqual([0, 0, 0]);
   });
 
   it("cleans up user state after a verified user.deleted event", async () => {
@@ -3150,9 +3329,22 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     acceptGithubGrantRevocations();
 
     const doomed = bdd.user();
-    await runs.grantProEntitlement(doomed);
+    const granted = await runs.grantProEntitlement(doomed);
     await runs.ensureOrgModelProvider(doomed);
     const peer = bdd.user({ orgId: doomed.orgId, orgRole: "org:member" });
+    await store
+      .set(writeDb$)
+      .insert(orgMembersCache)
+      .values({
+        orgId: orgOf(peer),
+        userId: peer.userId,
+        role: "member",
+        cachedAt: nowDate(),
+      })
+      .onConflictDoUpdate({
+        target: [orgMembersCache.orgId, orgMembersCache.userId],
+        set: { role: "member", cachedAt: nowDate() },
+      });
     const sharedAgent = await bdd.createAgent(peer, {
       displayName: "BDD Shared Grant Agent",
       visibility: "public",
@@ -3250,6 +3442,17 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       permission: "chat:write",
       action: "deny",
     });
+    expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    const rows = await readOrgCleanupRows(orgOf(doomed));
+    expect(rows.metadata).toStrictEqual([
+      {
+        stripeCustomerId: granted.customerId,
+        stripeSubscriptionId: granted.subscriptionId,
+      },
+    ]);
+    expect(rows.members).toStrictEqual([{ userId: peer.userId }]);
   });
 
   it("suspends user-owned runs and automations after a verified user.banned event", async () => {
@@ -3292,9 +3495,11 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       .where(eq(automationTriggers.automationId, created.automation.id));
     expect(initialTrigger?.nextRunAt).not.toBeNull();
 
-    context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
-      id: granted.subscriptionId,
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
     });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
     api.verifyNextClerkWebhook({
       type: "user.banned",
       data: { id: banned.userId },
@@ -3305,9 +3510,11 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     const bannedRun = await runs.readRun(banned, run.runId);
     expect(bannedRun.status).toBe("cancelled");
-    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
       granted.subscriptionId,
+      { cancel_at_period_end: true },
     );
+    expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
 
     const [storedAutomation] = await db
       .select({ enabled: automations.enabled })
