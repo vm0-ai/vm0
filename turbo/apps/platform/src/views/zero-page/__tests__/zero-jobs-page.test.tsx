@@ -13,12 +13,13 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { automationsByNameContract } from "@vm0/api-contracts/contracts/automations";
+import { automationsV2ByRefContract } from "@vm0/api-contracts/contracts/automations-v2";
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
+import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
 import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
@@ -197,8 +198,6 @@ describe("zero jobs page", () => {
     expect(findSectionCreateButton("Public")).toBeInTheDocument();
     expect(findSectionCreateButton("Private")).toBeInTheDocument();
 
-    // The `zeroAutomations` switch is globally on (#17307), so the sidebar nav
-    // item is labeled with the Automations product noun by default.
     click(screen.getByText("Automations"));
 
     await waitFor(() => {
@@ -371,36 +370,58 @@ describe("zero jobs page", () => {
         prompt: "Summarize launch risks",
       }),
     ];
-    let capturedDeployBody: unknown = null;
+    let capturedUpdateBody: unknown = null;
+    let capturedTriggerBody: unknown = null;
     context.mocks.data.schedules(schedules);
-    // The `zeroAutomations` switch is globally on (#17307), so schedule edits
-    // deploy through the Automations update endpoint (name in the path).
     context.mocks.api(
-      automationsByNameContract.update,
-      ({ params, body, respond }) => {
-        capturedDeployBody = { ...body, name: params.name };
+      automationsV2ByRefContract.update,
+      ({ body, respond }) => {
+        capturedUpdateBody = body;
         const currentSchedule = schedules[0];
         if (!currentSchedule) {
           throw new Error("schedule fixture not found");
         }
         const updated = createMockScheduleResponse({
           ...currentSchedule,
-          name: params.name,
-          agentId: body.agentId,
-          triggerType: "cron",
-          cronExpression: body.cronExpression ?? null,
-          atTime: null,
-          intervalSeconds: null,
-          timezone: body.timezone ?? "UTC",
-          prompt: body.prompt,
-          description: body.description ?? null,
-          appendSystemPrompt: body.appendSystemPrompt ?? null,
-          enabled: body.enabled ?? true,
+          prompt: body.instruction ?? currentSchedule.prompt,
+          description:
+            body.description === undefined
+              ? currentSchedule.description
+              : body.description,
           updatedAt: "2026-03-10T00:05:00Z",
         });
         schedules = [updated];
         context.mocks.data.schedules(schedules);
-        return respond(200, { automation: updated, created: false });
+        return respond(200, toMockAutomationResponse(updated));
+      },
+    );
+    context.mocks.api(
+      automationsV2ByRefContract.addTrigger,
+      ({ body, respond }) => {
+        capturedTriggerBody = body;
+        const currentSchedule = schedules[0];
+        if (!currentSchedule) {
+          throw new Error("schedule fixture not found");
+        }
+        if (body.kind !== "cron") {
+          throw new Error("expected a cron trigger replacement");
+        }
+        const updated = createMockScheduleResponse({
+          ...currentSchedule,
+          triggerType: "cron",
+          cronExpression: body.cronExpression,
+          atTime: null,
+          intervalSeconds: null,
+          timezone: body.timezone ?? "UTC",
+          updatedAt: "2026-03-10T00:05:00Z",
+        });
+        schedules = [updated];
+        context.mocks.data.schedules(schedules);
+        const trigger = toMockAutomationResponse(updated).triggers[0];
+        if (!trigger) {
+          throw new Error("expected a projected trigger");
+        }
+        return respond(201, { trigger });
       },
     );
 
@@ -460,12 +481,13 @@ describe("zero jobs page", () => {
       expect(
         screen.getAllByText("Every week on Wednesday at 10:15 PM")[0],
       ).toBeInTheDocument();
-      expect(capturedDeployBody).toMatchObject({
-        name: "monday-risk-review",
-        agentId,
+      expect(capturedUpdateBody).toMatchObject({
+        instruction: "Summarize launch risks",
+      });
+      expect(capturedTriggerBody).toMatchObject({
+        kind: "cron",
         cronExpression: "45 16 * * 3",
         timezone: "Asia/Kolkata",
-        prompt: "Summarize launch risks",
       });
     });
   });

@@ -14,12 +14,11 @@ import {
   type CronTimeOption,
 } from "../cron.ts";
 import {
-  automationsModeEnabled$,
-  listSchedulesVia,
-  deployScheduleVia,
-  setScheduleEnabledVia,
-  deleteScheduleVia,
-} from "../automations-mode.ts";
+  listSchedules,
+  deploySchedule,
+  setScheduleEnabled,
+  deleteSchedule,
+} from "../automations-api.ts";
 import type { ScheduleEntry } from "../../../views/zero-page/zero-schedule-card.tsx";
 
 // ---------------------------------------------------------------------------
@@ -128,10 +127,7 @@ const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
   if (!detail) {
     return [];
   }
-  const schedules = await listSchedulesVia(
-    get(zeroClient$),
-    get(automationsModeEnabled$),
-  );
+  const schedules = await listSchedules(get(zeroClient$));
   return schedules.filter((s) => {
     return s.agentId === detail.agentId;
   });
@@ -239,12 +235,7 @@ export const saveAgentSchedule$ = command(
       body = { ...base, cronExpression };
     }
 
-    await deployScheduleVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      body,
-      params.editName !== undefined,
-    );
+    await deploySchedule(get(zeroClient$), body, params.editName !== undefined);
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -264,15 +255,11 @@ export const toggleAgentScheduleEnabled$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    await setScheduleEnabledVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      {
-        name: params.name,
-        agentId: detail.agentId,
-        enabled: params.enabled,
-      },
-    );
+    await setScheduleEnabled(get(zeroClient$), {
+      name: params.name,
+      agentId: detail.agentId,
+      enabled: params.enabled,
+    });
     signal.throwIfAborted();
 
     set(reloadAgentSchedule$);
@@ -287,7 +274,7 @@ export const deleteAgentSchedule$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    await deleteScheduleVia(get(zeroClient$), get(automationsModeEnabled$), {
+    await deleteSchedule(get(zeroClient$), {
       name: scheduleName,
       agentId: detail.agentId,
     });

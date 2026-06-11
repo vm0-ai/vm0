@@ -60,9 +60,6 @@ interface ManageNavItem {
   readonly activeKeys: readonly RouteKey[];
   readonly pathname: string;
   readonly label: string;
-  // Label override when the Automations surface is enabled (the product noun
-  // switches with the zeroAutomations feature, mirroring the page titles).
-  readonly automationsLabel?: string;
   readonly icon: NavIcon;
   readonly featureGate?: FeatureSwitchKey;
 }
@@ -94,8 +91,7 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     id: "schedules",
     activeKeys: ["schedules", "scheduleDetail"],
     pathname: "/schedules",
-    label: "Scheduled",
-    automationsLabel: "Automations",
+    label: "Automations",
     icon: IconCalendar as NavIcon,
   },
   {
@@ -142,16 +138,11 @@ function ChatThreadsSectionWithKey() {
 function useResolvedNavItems() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
-  const automationsMode = features?.[FeatureSwitchKey.ZeroAutomations] ?? false;
   const manageNav = MANAGE_NAV.filter((item) => {
     if (item.featureGate && !features?.[item.featureGate]) {
       return false;
     }
     return true;
-  }).map((item) => {
-    return automationsMode && item.automationsLabel
-      ? { ...item, label: item.automationsLabel }
-      : item;
   });
   const footerNav = FOOTER_NAV.map((item) => {
     return {

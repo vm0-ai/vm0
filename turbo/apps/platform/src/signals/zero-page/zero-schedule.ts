@@ -18,13 +18,12 @@ import {
   type CronTimeOption,
 } from "./cron.ts";
 import {
-  automationsModeEnabled$,
-  listSchedulesVia,
-  deployScheduleVia,
-  setScheduleEnabledVia,
-  deleteScheduleVia,
-  runScheduleNowVia,
-} from "./automations-mode.ts";
+  listSchedules,
+  deploySchedule,
+  setScheduleEnabled,
+  deleteSchedule,
+  runScheduleNow as runScheduleNowApi,
+} from "./automations-api.ts";
 import { ApiError } from "../../lib/accept.ts";
 import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
@@ -251,11 +250,9 @@ export const allOrgScheduleEntries$ = computed(async (get) => {
 
 export const fetchAllOrgSchedules$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const schedules = await listSchedulesVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      { signal },
-    ).finally(() => {
+    const schedules = await listSchedules(get(zeroClient$), {
+      signal,
+    }).finally(() => {
       set(internalAllSchedulesLoaded$, true);
     });
     signal.throwIfAborted();
@@ -273,9 +270,8 @@ export const saveOrgSchedule$ = command(
     try {
       const body = buildScheduleBody(params.agentId, params);
 
-      const result = await deployScheduleVia(
+      const result = await deploySchedule(
         get(zeroClient$),
-        get(automationsModeEnabled$),
         body,
         params.editName !== undefined,
       );
@@ -307,15 +303,11 @@ export const toggleOrgScheduleEnabled$ = command(
     params: { name: string; enabled: boolean; agentId: string },
     signal: AbortSignal,
   ) => {
-    await setScheduleEnabledVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      {
-        name: params.name,
-        agentId: params.agentId,
-        enabled: params.enabled,
-      },
-    );
+    await setScheduleEnabled(get(zeroClient$), {
+      name: params.name,
+      agentId: params.agentId,
+      enabled: params.enabled,
+    });
     signal.throwIfAborted();
 
     await set(fetchAllOrgSchedules$, signal);
@@ -328,7 +320,7 @@ export const deleteOrgSchedule$ = command(
     params: { name: string; agentId: string },
     signal: AbortSignal,
   ) => {
-    await deleteScheduleVia(get(zeroClient$), get(automationsModeEnabled$), {
+    await deleteSchedule(get(zeroClient$), {
       name: params.name,
       agentId: params.agentId,
     });
@@ -351,11 +343,7 @@ export const runScheduleNow$ = command(
     });
     let runId: string;
     try {
-      runId = await runScheduleNowVia(
-        get(zeroClient$),
-        get(automationsModeEnabled$),
-        scheduleId,
-      );
+      runId = await runScheduleNowApi(get(zeroClient$), scheduleId);
       signal.throwIfAborted();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Run failed";

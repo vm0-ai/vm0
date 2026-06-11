@@ -50,7 +50,6 @@ import {
   runScheduleNow$,
   type OrgScheduleEntry,
 } from "../../signals/zero-page/zero-schedule.ts";
-import { automationsModeEnabled$ } from "../../signals/zero-page/automations-mode.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
@@ -515,17 +514,6 @@ function DeleteScheduleDialogContainer() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Surface labels — the page is the same surface either way; only the product
-// noun changes when the `zeroAutomations` switch is on (see automations-mode).
-// ---------------------------------------------------------------------------
-
-const SCHEDULES_LABELS = {
-  title: "Scheduled tasks",
-  subtitle: "Automated tasks scheduled across all agents in your workspace.",
-  addButton: "Add schedule",
-} as const;
-
 const AUTOMATIONS_LABELS = {
   title: "Automations",
   subtitle: "Automations running across all agents in your workspace.",
@@ -537,8 +525,7 @@ const AUTOMATIONS_LABELS = {
 // ---------------------------------------------------------------------------
 
 export function ZeroSchedulePage() {
-  const automationsMode = useGet(automationsModeEnabled$);
-  const labels = automationsMode ? AUTOMATIONS_LABELS : SCHEDULES_LABELS;
+  const labels = AUTOMATIONS_LABELS;
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const defaultComposeId =
     statusLoadable.state === "hasData"

@@ -1,0 +1,286 @@
+import {
+  automationsV2MainContract,
+  automationsV2ByRefContract,
+  automationTriggersV2Contract,
+  type AutomationResponseV2,
+  type AutomationTriggerResponse,
+  type CreateTriggerRequest,
+} from "@vm0/api-contracts/contracts/automations-v2";
+import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+import { nowDate } from "../../lib/time.ts";
+import { mockApi } from "../msw-contract.ts";
+import { getMockSchedules, setMockSchedules } from "./schedules-store.ts";
+
+// The Automation resource API over the shared schedule store: each store row
+// (flat single-trigger projection) is served as an automation carrying one
+// time trigger. Trigger ids are minted per row and remembered so trigger
+// sub-resource calls can be traced back to their store row.
+
+const triggerIds = new Map<string, string>();
+
+function triggerIdFor(automationId: string): string {
+  let id = triggerIds.get(automationId);
+  if (!id) {
+    id = crypto.randomUUID();
+    triggerIds.set(automationId, id);
+  }
+  return id;
+}
+
+function automationIdForTrigger(triggerId: string): string | null {
+  for (const [automationId, id] of triggerIds) {
+    if (id === triggerId) {
+      return automationId;
+    }
+  }
+  return null;
+}
+
+function toTrigger(schedule: ScheduleResponse): AutomationTriggerResponse {
+  const base = {
+    id: triggerIdFor(schedule.id),
+    automationId: schedule.id,
+    enabled: schedule.enabled,
+    createdAt: schedule.createdAt,
+    updatedAt: schedule.updatedAt,
+    timezone: schedule.timezone,
+    nextRunAt: schedule.nextRunAt,
+    lastRunAt: schedule.lastRunAt,
+    consecutiveFailures: schedule.consecutiveFailures,
+  };
+  if (schedule.triggerType === "cron") {
+    return {
+      ...base,
+      kind: "cron",
+      cronExpression: schedule.cronExpression ?? "0 9 * * *",
+    };
+  }
+  if (schedule.triggerType === "once") {
+    return { ...base, kind: "once", atTime: schedule.atTime ?? "" };
+  }
+  return {
+    ...base,
+    kind: "loop",
+    intervalSeconds: schedule.intervalSeconds ?? 60,
+  };
+}
+
+/** Project a mock store row as its resource-API automation (for test overrides). */
+export function toMockAutomationResponse(
+  schedule: ScheduleResponse,
+): AutomationResponseV2 {
+  return {
+    id: schedule.id,
+    agentId: schedule.agentId,
+    displayName: schedule.displayName,
+    userId: schedule.userId,
+    name: schedule.name,
+    description: schedule.description,
+    instruction: schedule.prompt,
+    appendSystemPrompt: schedule.appendSystemPrompt,
+    enabled: schedule.enabled,
+    chatThreadId: schedule.chatThreadId,
+    createdAt: schedule.createdAt,
+    updatedAt: schedule.updatedAt,
+    triggers: [toTrigger(schedule)],
+  };
+}
+
+function triggerFields(
+  trigger: CreateTriggerRequest,
+): Pick<
+  ScheduleResponse,
+  "triggerType" | "cronExpression" | "atTime" | "intervalSeconds" | "timezone"
+> {
+  if (trigger.kind === "cron") {
+    return {
+      triggerType: "cron",
+      cronExpression: trigger.cronExpression,
+      atTime: null,
+      intervalSeconds: null,
+      timezone: trigger.timezone ?? "UTC",
+    };
+  }
+  if (trigger.kind === "once") {
+    return {
+      triggerType: "once",
+      cronExpression: null,
+      atTime: trigger.atTime,
+      intervalSeconds: null,
+      timezone: trigger.timezone ?? "UTC",
+    };
+  }
+  if (trigger.kind === "loop") {
+    return {
+      triggerType: "loop",
+      cronExpression: null,
+      atTime: null,
+      intervalSeconds: trigger.intervalSeconds,
+      timezone: "UTC",
+    };
+  }
+  throw new Error("Webhook triggers are not modeled by the schedule mocks");
+}
+
+function findByRef(ref: string): ScheduleResponse | undefined {
+  return getMockSchedules().find((s) => s.id === ref || s.name === ref);
+}
+
+function replaceRow(updated: ScheduleResponse): void {
+  setMockSchedules(
+    getMockSchedules().map((s) => (s.id === updated.id ? updated : s)),
+  );
+}
+
+export const apiAutomationsV2Handlers = [
+  // GET /api/v2/automations
+  mockApi(automationsV2MainContract.list, ({ respond }) =>
+    respond(200, {
+      automations: getMockSchedules().map(toMockAutomationResponse),
+    }),
+  ),
+
+  // POST /api/v2/automations
+  mockApi(automationsV2MainContract.create, ({ body, respond }) => {
+    if (!body.trigger) {
+      throw new Error("Schedule mocks expect the first-trigger sugar");
+    }
+    const now = nowDate().toISOString();
+    const row: ScheduleResponse = {
+      id: crypto.randomUUID(),
+      agentId: body.agentId,
+      displayName: null,
+      userId: "test-user-123",
+      name: body.name,
+      ...triggerFields(body.trigger),
+      prompt: body.instruction,
+      description: body.description ?? null,
+      appendSystemPrompt: body.appendSystemPrompt ?? null,
+      enabled: body.enabled ?? true,
+      nextRunAt: null,
+      lastRunAt: null,
+      retryStartedAt: null,
+      consecutiveFailures: 0,
+      chatThreadId: body.chatThreadId ?? crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setMockSchedules([...getMockSchedules(), row]);
+    return respond(201, { automation: toMockAutomationResponse(row) });
+  }),
+
+  // PATCH /api/v2/automations/:ref
+  mockApi(automationsV2ByRefContract.update, ({ params, body, respond }) => {
+    const row = findByRef(params.ref);
+    if (!row) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    const updated: ScheduleResponse = {
+      ...row,
+      ...(body.name !== undefined && { name: body.name }),
+      ...(body.instruction !== undefined && { prompt: body.instruction }),
+      ...(body.description !== undefined && { description: body.description }),
+      updatedAt: nowDate().toISOString(),
+    };
+    replaceRow(updated);
+    return respond(200, toMockAutomationResponse(updated));
+  }),
+
+  // DELETE /api/v2/automations/:ref
+  mockApi(automationsV2ByRefContract.delete, ({ params, respond }) => {
+    const row = findByRef(params.ref);
+    if (!row) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    setMockSchedules(getMockSchedules().filter((s) => s.id !== row.id));
+    return respond(204);
+  }),
+
+  // POST /api/v2/automations/:ref/enable
+  mockApi(automationsV2ByRefContract.enable, ({ params, respond }) => {
+    const row = findByRef(params.ref);
+    if (!row) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    const updated = { ...row, enabled: true };
+    replaceRow(updated);
+    return respond(200, toMockAutomationResponse(updated));
+  }),
+
+  // POST /api/v2/automations/:ref/disable
+  mockApi(automationsV2ByRefContract.disable, ({ params, respond }) => {
+    const row = findByRef(params.ref);
+    if (!row) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    const updated = { ...row, enabled: false };
+    replaceRow(updated);
+    return respond(200, toMockAutomationResponse(updated));
+  }),
+
+  // POST /api/v2/automations/:ref/run
+  mockApi(automationsV2ByRefContract.run, ({ respond }) =>
+    respond(201, { runId: crypto.randomUUID() }),
+  ),
+
+  // POST /api/v2/automations/:ref/triggers
+  mockApi(
+    automationsV2ByRefContract.addTrigger,
+    ({ params, body, respond }) => {
+      const row = findByRef(params.ref);
+      if (!row) {
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
+      }
+      const updated: ScheduleResponse = {
+        ...row,
+        ...triggerFields(body),
+        enabled: true,
+        consecutiveFailures: 0,
+        updatedAt: nowDate().toISOString(),
+      };
+      triggerIds.delete(row.id);
+      replaceRow(updated);
+      return respond(201, { trigger: toTrigger(updated) });
+    },
+  ),
+
+  // DELETE /api/v2/automation-triggers/:id
+  mockApi(automationTriggersV2Contract.remove, ({ params, respond }) => {
+    const automationId = automationIdForTrigger(params.id);
+    if (!automationId) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    // The store keeps the row (an automation may be briefly triggerless while
+    // the update flow replaces its trigger); only the trigger id mapping goes.
+    triggerIds.delete(automationId);
+    return respond(204);
+  }),
+
+  // POST /api/v2/automation-triggers/:id/enable
+  mockApi(automationTriggersV2Contract.enable, ({ params, respond }) => {
+    const automationId = automationIdForTrigger(params.id);
+    const row = automationId
+      ? getMockSchedules().find((s) => s.id === automationId)
+      : undefined;
+    if (!row) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    const updated = { ...row, consecutiveFailures: 0 };
+    replaceRow(updated);
+    return respond(200, toTrigger(updated));
+  }),
+];

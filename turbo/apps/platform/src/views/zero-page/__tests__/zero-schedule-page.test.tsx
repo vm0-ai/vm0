@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
+import {
+  automationsV2ByRefContract,
+  automationsV2MainContract,
+} from "@vm0/api-contracts/contracts/automations-v2";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,6 +13,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
+import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
 import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -158,9 +161,6 @@ function mockScheduleListEdgeStory(): void {
   ]);
 }
 
-// The `zeroAutomations` switch is globally on (#17307), so the default surface
-// is Automations mode; the legacy Schedules surface stays covered by the
-// pinned switch-off test below until the dual-mode consumers are deleted.
 async function openSchedulePage(): Promise<void> {
   detachedSetupPage({ context, path: "/schedules" });
 
@@ -174,6 +174,23 @@ async function openSchedulePage(): Promise<void> {
 
 async function openScheduleList(): Promise<void> {
   await openSchedulePage();
+  click(tabByText("List"));
+
+  await waitFor(() => {
+    expect(screen.getByText("Instruction")).toBeInTheDocument();
+    expect(screen.getByText("Schedule at")).toBeInTheDocument();
+  });
+}
+
+async function openAutomationsList(): Promise<void> {
+  detachedSetupPage({ context, path: "/schedules" });
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "Automations" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Week view")).toBeInTheDocument();
+  });
   click(tabByText("List"));
 
   await waitFor(() => {
@@ -344,7 +361,8 @@ describe("zero schedule page", () => {
     const addScheduleButtons = queryAllByRoleFast("button").filter(
       (candidate) => {
         return (
-          candidate.textContent?.replace(/\s+/g, " ").trim() === "Add schedule"
+          candidate.textContent?.replace(/\s+/g, " ").trim() ===
+          "Add automation"
         );
       },
     );
@@ -363,21 +381,23 @@ describe("zero schedule page", () => {
 
     const schedulesReady = context.mocks.deferred<void>();
 
-    context.mocks.api(automationsMainContract.list, async ({ respond }) => {
+    context.mocks.api(automationsV2MainContract.list, async ({ respond }) => {
       await schedulesReady.promise;
       return respond(200, {
         automations: [
-          createMockScheduleResponse({
-            id: "f0000001-0000-4000-a000-000000000306",
-            agentId: researchAgentId,
-            displayName: "Research Agent",
-            name: "launch-loading-check",
-            cronExpression: "45 17 * * 1-5",
-            timezone: "UTC",
-            prompt: "Check launch risks before standup",
-            description: "Launch loading check",
-            enabled: true,
-          }),
+          toMockAutomationResponse(
+            createMockScheduleResponse({
+              id: "f0000001-0000-4000-a000-000000000306",
+              agentId: researchAgentId,
+              displayName: "Research Agent",
+              name: "launch-loading-check",
+              cronExpression: "45 17 * * 1-5",
+              timezone: "UTC",
+              prompt: "Check launch risks before standup",
+              description: "Launch loading check",
+              enabled: true,
+            }),
+          ),
         ],
       });
     });
@@ -463,8 +483,11 @@ describe("zero schedule page", () => {
     mockNow();
     mockSchedulePageStory();
 
-    await openScheduleList();
+    await openAutomationsList();
 
+    expect(
+      screen.getByRole("heading", { name: "Automations" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
 
     click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
@@ -519,6 +542,28 @@ describe("zero schedule page", () => {
     });
   });
 
+  it("surfaces run-now failures from the schedule list", async () => {
+    mockSchedulePageStory();
+    context.mocks.api(automationsV2ByRefContract.run, ({ respond }) => {
+      return respond(503, {
+        error: {
+          message: "Runner queue unavailable",
+          code: "PROVIDER_UNAVAILABLE",
+        },
+      });
+    });
+
+    await openScheduleList();
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Runner queue unavailable")).toBeInTheDocument();
+      expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+    });
+  });
+
   it("deletes a schedule from the list after confirmation", async () => {
     mockSchedulePageStory();
 
@@ -568,76 +613,6 @@ describe("zero schedule page", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Office AC" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  // The switch is globally on (#17307); an explicit false override keeps the
-  // legacy Schedules surface covered until the dual-mode consumers are
-  // deleted, mirroring the pinned gating tests in the API suites.
-  it("manages schedules through the legacy surface when the switch is off", async () => {
-    mockNow();
-    mockSchedulePageStory();
-
-    detachedSetupPage({
-      context,
-      path: "/schedules",
-      featureSwitches: { [FeatureSwitchKey.ZeroAutomations]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
-      expect(screen.getByText("Week view")).toBeInTheDocument();
-    });
-    click(tabByText("List"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Instruction")).toBeInTheDocument();
-      expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
-    });
-
-    click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0],
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
-    click(menuItemByText("Run now"));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
-      expect(screen.getByText("View activity")).toBeInTheDocument();
-    });
-
-    click(
-      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
-    );
-    click(menuItemByText("Delete"));
-
-    const deleteDialog = await screen.findByRole("dialog");
-    click(buttonByText("Delete", deleteDialog));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
-    });
-
-    click(buttonByText("Add schedule"));
-
-    const createDialog = await screen.findByRole("dialog");
-    await fill(
-      within(createDialog).getByLabelText("Prompt"),
-      "Review legacy schedule coverage",
-    );
-    click(buttonByText("Create", createDialog));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", {
-          name: "Review legacy schedule coverage",
-        }),
       ).toBeInTheDocument();
     });
   });

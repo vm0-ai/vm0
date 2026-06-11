@@ -16,16 +16,15 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { optionalEnv } from "../../lib/env";
-import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { isValidTimeZone, settle } from "../utils";
+import { isValidTimeZone } from "../utils";
 import {
   automationRowToTimeAutomation,
   DefaultInterpreter,
 } from "./automations/default-interpreter";
 import { calculateNextRun, TimeTrigger } from "./automations/time-trigger";
+import { generateAutomationDescription } from "./automations/describe";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
@@ -37,11 +36,6 @@ import {
   resolveScheduleChatThreadModelPin,
 } from "../routes/zero-chat-messages";
 import { publishChatThreadSchedulesChangedSafely } from "../external/realtime";
-
-const log = logger("api:zero:schedules");
-const OPENROUTER_CHAT_COMPLETIONS_URL =
-  "https://openrouter.ai/api/v1/chat/completions";
-const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
 
 /** The time-trigger kinds the schedule surface manages (never webhook). */
 const TIME_TRIGGER_KINDS = ["cron", "once", "loop"] as const;
@@ -144,131 +138,10 @@ type RunScheduleNowResult =
       readonly response: RunCreationErrorResponse;
     };
 
-interface ChatMessage {
-  readonly role: "system" | "user" | "assistant";
-  readonly content: string;
-}
-
-interface OpenRouterResponse {
-  readonly choices: readonly {
-    readonly message: {
-      readonly content: string;
-    };
-  }[];
-}
-
 interface AgentScheduleTarget {
   readonly id: string;
   readonly name: string;
   readonly displayName: string | null;
-}
-
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^[-*_]{3,}\s*$/gm, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^["'](.+)["']$/, "$1")
-    .trim();
-}
-
-async function generateText(
-  messages: readonly ChatMessage[],
-  maxTokens: number,
-): Promise<string | null> {
-  const apiKey = optionalEnv("OPENROUTER_API_KEY");
-  if (!apiKey) {
-    return null;
-  }
-
-  const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: LIGHTWEIGHT_MODEL,
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.3,
-    }),
-  });
-
-  if (!response.ok) {
-    const settled = await settle(response.text());
-    const text = settled.ok ? settled.value : "unknown error";
-    throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
-  }
-
-  const data = (await response.json()) as OpenRouterResponse;
-  const content = data.choices[0]?.message.content.trim();
-  if (!content) {
-    throw new Error("OpenRouter returned empty content");
-  }
-  return stripMarkdown(content);
-}
-
-function buildTemplateDescription(
-  request: DeployScheduleBody,
-  agentName: string,
-): string {
-  const triggerLabel = request.cronExpression
-    ? "recurring"
-    : request.atTime
-      ? "one-time"
-      : "loop";
-  return `${agentName} ${triggerLabel} task: ${request.prompt.slice(0, 100)}`;
-}
-
-function triggerSummary(request: DeployScheduleBody): string {
-  if (request.cronExpression) {
-    return `cron: ${request.cronExpression}`;
-  }
-  if (request.atTime) {
-    return `once at ${request.atTime}`;
-  }
-  if (request.intervalSeconds !== undefined) {
-    return `loop every ${request.intervalSeconds}s`;
-  }
-  return "unknown trigger";
-}
-
-async function generateScheduleDescription(
-  request: DeployScheduleBody,
-  agentName: string,
-): Promise<string> {
-  const result = await settle(
-    generateText(
-      [
-        {
-          role: "system",
-          content:
-            "Write a one-sentence summary (max 120 chars) for a scheduled task as plain text -- no markdown, no quotes, no special formatting. Return only the summary.",
-        },
-        {
-          role: "user",
-          content: `Agent: ${agentName}\nSchedule: ${request.name}\nTrigger: ${triggerSummary(request)}\nPrompt: ${request.prompt.slice(0, 200)}`,
-        },
-      ],
-      30,
-    ),
-  );
-
-  if (!result.ok) {
-    log.warn("Schedule description generation failed, using fallback", {
-      error:
-        result.error instanceof Error
-          ? result.error.message
-          : String(result.error),
-      scheduleName: request.name,
-    });
-    return buildTemplateDescription(request, agentName);
-  }
-
-  return result.value ?? buildTemplateDescription(request, agentName);
 }
 
 function validateAtTimeNotPast(
@@ -732,8 +605,8 @@ export const deploySchedule$ = command(
       effectiveBody.description === undefined
         ? {
             ...effectiveBody,
-            description: await generateScheduleDescription(
-              effectiveBody,
+            description: await generateAutomationDescription(
+              { ...effectiveBody, instruction: effectiveBody.prompt },
               agent.name,
             ),
           }

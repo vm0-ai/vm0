@@ -249,6 +249,9 @@ describe("Automations v2 API", () => {
     expect(trigger.enabled).toBeTruthy();
     expect(trigger.nextRunAt).not.toBeNull();
     expect(Date.parse(trigger.nextRunAt!)).toBeGreaterThan(now());
+    // An omitted description is generated server-side (template fallback when
+    // no model key is configured) — parity with the legacy schedule deploy.
+    expect(created.automation.description).toMatch(/recurring task:/u);
 
     // A cron trigger on a disabled automation stays unscheduled until enable.
     const disabled = await createAutomation({
