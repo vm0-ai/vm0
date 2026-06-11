@@ -37,7 +37,7 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
  * - Version ids are sha256 hashes of canonical compose content, so the
  *   ambiguous-prefix 400 is API-constructible from the precomputed
  *   collision pair in api-bdd-composes.ts (unlike storage versions, where
- *   the same arm stayed in the legacy remnant).
+ *   the same arm is recorded as a docs exception).
  * - The delete-protection chain keeps its direct run pending (never
  *   claimed) and cancels it afterwards; pending runs stay visible inside
  *   the 15-minute pending-run TTL, so no mockNow is needed.

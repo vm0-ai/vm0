@@ -95,16 +95,3 @@ export function decryptSecretForTests(encrypted: string): string {
     decipher.final(),
   ]).toString("utf8");
 }
-
-export function decryptSecretsMapForTests(
-  encryptedData: string | null,
-): Record<string, string> | null {
-  if (!encryptedData) {
-    return null;
-  }
-
-  return JSON.parse(decryptSecretForTests(encryptedData)) as Record<
-    string,
-    string
-  >;
-}
