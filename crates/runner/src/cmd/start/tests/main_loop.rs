@@ -9,6 +9,27 @@ use super::support::{
 
 use super::super::signals::{SignalController, SignalHandlerTask, handle_resume_signal};
 use crate::idle_pool::ParkingState;
+use async_trait::async_trait;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+struct ShutdownRecordingRuntime {
+    shutdowns: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl sandbox::SandboxRuntime for ShutdownRecordingRuntime {
+    async fn create_factory(
+        &self,
+        _config: sandbox::FactoryConfig,
+    ) -> sandbox::Result<Box<dyn sandbox::SandboxFactory>> {
+        panic!("publish failure cleanup test does not create factories")
+    }
+
+    async fn shutdown(&mut self) {
+        self.shutdowns.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 fn usage_pending_path(base_dir: &std::path::Path) -> std::path::PathBuf {
     base_dir.join("mitm-addon").join("usage-pending")
@@ -43,6 +64,35 @@ fn write_usage_pending_state(
         .to_string(),
     )
     .unwrap();
+}
+
+#[tokio::test]
+async fn live_registry_publish_failure_shuts_down_runtime() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = crate::paths::HomePaths::with_root(dir.path().join("vm0-runner"));
+    std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
+    std::fs::write(home.live_runners_dir(), b"not a directory").unwrap();
+
+    let shutdowns = Arc::new(AtomicUsize::new(0));
+    let mut runtime = ShutdownRecordingRuntime {
+        shutdowns: Arc::clone(&shutdowns),
+    };
+    let metadata = crate::live_runner_registry::LiveRunnerRegistryMetadata {
+        config_path: dir.path().join("runner.yaml"),
+        base_dir: dir.path().join("base"),
+        runner_name: "test-runner".into(),
+        runner_group: "vm0/test".into(),
+    };
+
+    let error = publish_live_runner_or_shutdown_runtime(&home, metadata, &mut runtime)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error.to_string().contains("ensure live runner registry"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {

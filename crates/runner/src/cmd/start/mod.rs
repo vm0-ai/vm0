@@ -164,6 +164,20 @@ pub struct StartArgs {
     local: bool,
 }
 
+async fn publish_live_runner_or_shutdown_runtime(
+    home: &HomePaths,
+    metadata: crate::live_runner_registry::LiveRunnerRegistryMetadata,
+    runtime: &mut dyn SandboxRuntime,
+) -> RunnerResult<crate::live_runner_registry::LiveRunnerRegistryHandle> {
+    match crate::live_runner_registry::publish(home, metadata).await {
+        Ok(handle) => Ok(handle),
+        Err(e) => {
+            runtime.shutdown().await;
+            Err(e)
+        }
+    }
+}
+
 /// Load config and run the main poll loop.
 pub async fn run_start(
     args: StartArgs,
@@ -420,7 +434,7 @@ pub async fn run_start(
     };
 
     // Build sandbox runtime with shared resources (netns and NBD device pools).
-    let runtime = runtime_provider
+    let mut runtime = runtime_provider
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),
             dns_port: Some(dns_handle.port()),
@@ -499,6 +513,10 @@ pub async fn run_start(
         runner_group: group_name.clone(),
     };
 
+    let live_runner_handle =
+        publish_live_runner_or_shutdown_runtime(&home, live_runner_metadata, runtime.as_mut())
+            .await?;
+
     let config = RunConfig {
         runner: RunnerInfo {
             id: runner_id,
@@ -555,8 +573,6 @@ pub async fn run_start(
         },
     };
 
-    let live_runner_handle =
-        crate::live_runner_registry::publish(&config.paths.home, live_runner_metadata).await?;
     let run_result = run(config).await;
     if let Err(e) = live_runner_handle.remove_if_current().await {
         tracing::warn!(error = %e, "failed to remove live runner registry record");
