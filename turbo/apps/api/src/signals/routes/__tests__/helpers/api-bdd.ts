@@ -16,6 +16,10 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import {
+  composesMainContract,
+  composesListContract,
+} from "@vm0/api-contracts/contracts/composes";
+import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
@@ -221,6 +225,11 @@ export function createBddApi(context: TestContext) {
     composesById: setupApp({ context })(zeroComposesByIdContract),
     /** ts-rest client for `/api/zero/composes` (list org composes). */
     composesList: setupApp({ context })(zeroComposesListContract),
+    /** ts-rest clients for the CLI-facing `/api/agent/composes` family
+     * (get-by-name + list). A populated list / named compose needs seeded
+     * compose rows; the auth, no-org and empty-list cases are reachable. */
+    agentComposesMain: setupApp({ context })(composesMainContract),
+    agentComposesList: setupApp({ context })(composesListContract),
     /** ts-rest client for `/api/zero/composes` getByName. */
     composesMain: setupApp({ context })(zeroComposesMainContract),
     /** ts-rest client for `/api/zero/composes/:id/metadata` (update). */

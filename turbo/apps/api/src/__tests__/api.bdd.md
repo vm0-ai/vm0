@@ -1467,3 +1467,18 @@ First USAGE-family reduce.
   stay in the kept legacy.
 - Reduced `agent-runs-read.test.ts` (13 -> 9).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 69 — AGENT COMPOSES READ REJECTIONS (CHAIN-AGENT-COMPOSES-READ-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the CLI-facing `agentComposesMain`
+  (`/api/agent/composes`) and `agentComposesList` (`/api/agent/composes/list`)
+  clients (distinct from the existing zero `composesMain`/`composesList`).
+- Added `agent-composes-read-rejections.bdd.test.ts`: get-by-name rejects
+  unauthenticated callers (401); list rejects unauthenticated callers (401) and
+  org-less sessions (400 "Invalid request") and returns an empty list
+  (`{ composes: [] }`) for a fresh org.
+- Reading a named compose / a populated list, and the missing-name / malformed-id
+  400s (which need a raw request the ts-rest client can't send), need seeded
+  compose rows and stay in the kept legacy.
+- Reduced `agent-composes-read.test.ts` (20 -> 17).
+- Coverage verified (source-only): no regressions vs `main`.

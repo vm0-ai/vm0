@@ -214,18 +214,6 @@ function instructionsClient() {
 }
 
 describe("GET /api/agent/composes", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await accept(
-      mainClient().getByName({ query: { name: "missing" }, headers: {} }),
-      [401],
-    );
-
-    expect(response.body.error).toStrictEqual({
-      message: "Not authenticated",
-      code: "UNAUTHORIZED",
-    });
-  });
-
   it("returns 400 when the name query is missing", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const app = createApp({ signal: context.signal });
@@ -440,43 +428,6 @@ describe("GET /api/agent/composes/:id", () => {
 });
 
 describe("GET /api/agent/composes/list", () => {
-  it("returns 401 when unauthenticated and 400 when there is no active org", async () => {
-    const unauthenticated = await accept(
-      listClient().list({ query: {}, headers: {} }),
-      [401],
-    );
-    expect(unauthenticated.body.error.message).toBe("Not authenticated");
-
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const noOrg = await accept(
-      listClient().list({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(noOrg.body).toStrictEqual({
-      error: { message: "Invalid request", code: "BAD_REQUEST" },
-    });
-  });
-
-  it("returns an empty list for an active org with no composes", async () => {
-    const fixture = await track(
-      store.set(seedAgentComposeReadFixture$, { composes: [] }, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      listClient().list({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ composes: [] });
-  });
-
   it("lists composes for the active org with metadata", async () => {
     const orgId = `org_${randomUUID()}`;
     const fixture = await track(
