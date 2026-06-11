@@ -169,12 +169,6 @@ const APOLLO: ConnectorRef = {
   dark: true,
 };
 
-const INSTANTLY: ConnectorRef = {
-  id: "instantly",
-  label: "Instantly",
-  icon: "/assets/connectors/instantly.svg",
-};
-
 const HEYGEN: ConnectorRef = {
   id: "heygen",
   label: "HeyGen",
@@ -1076,7 +1070,12 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cold-outreach-pipeline",
     color: "#d07a5c",
-    screenshots: ["/assets/use-cases/cold-outreach-pipeline.png"],
+    screenshots: [
+      "/assets/use-cases/cold-outreach-pipeline.png",
+      "/assets/use-cases/cold-outreach-pipeline-2.png",
+      "/assets/use-cases/cold-outreach-pipeline-3.png",
+      "/assets/use-cases/cold-outreach-pipeline-4.png",
+    ],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1088,11 +1087,11 @@ export const USE_CASES: UseCase[] = [
     roles: ["sales"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
-    connectors: [APOLLO, INSTANTLY, SLACK],
+    connectors: [APOLLO, NOTION, GMAIL],
     integrations: [
       { connector: APOLLO, required: true },
-      { connector: INSTANTLY, required: true },
-      { connector: SLACK, required: false },
+      { connector: NOTION, required: true },
+      { connector: GMAIL, required: true },
     ],
     relatedSlugs: [
       "kol-cold-outreach",
