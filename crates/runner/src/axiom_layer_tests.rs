@@ -5,21 +5,15 @@
 //! that events flow through the layer → channel → dispatcher → POST
 //! endpoint with the TS-compatible payload shape.
 //!
-//! Env vars are process-global, so tests serialize on `ENV_LOCK`.
 
-use std::ffi::{OsStr, OsString};
 use std::sync::{Arc, Mutex};
 
-use super::{INTERNAL_TARGET, init, init_with_base_url, with_ingest_filter};
+use super::{INTERNAL_TARGET, init_from_env_values, init_with_base_url, with_ingest_filter};
 use httpmock::Method::POST;
 use httpmock::MockServer;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
-
-static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-const AXIOM_TOKEN_ENV: &str = "AXIOM_TOKEN_TELEMETRY";
-const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
 
 #[derive(Clone, Debug)]
 struct RecordedEvent {
@@ -78,61 +72,6 @@ where
                 message: visitor.message,
             });
     }
-}
-
-struct AxiomEnvRestore {
-    token: Option<OsString>,
-    suffix: Option<OsString>,
-}
-
-impl AxiomEnvRestore {
-    fn capture() -> Self {
-        Self {
-            token: std::env::var_os(AXIOM_TOKEN_ENV),
-            suffix: std::env::var_os(AXIOM_SUFFIX_ENV),
-        }
-    }
-}
-
-impl Drop for AxiomEnvRestore {
-    fn drop(&mut self) {
-        restore_env(AXIOM_TOKEN_ENV, self.token.as_deref());
-        restore_env(AXIOM_SUFFIX_ENV, self.suffix.as_deref());
-    }
-}
-
-fn restore_env(key: &str, value: Option<&OsStr>) {
-    // SAFETY: setenv is not thread-safe, but the restore guard is dropped
-    // before ENV_LOCK, so every Axiom env mutation stays serialized.
-    unsafe {
-        match value {
-            Some(value) => std::env::set_var(key, value),
-            None => std::env::remove_var(key),
-        }
-    }
-}
-
-fn clear_axiom_env() {
-    // SAFETY: setenv is not thread-safe, but we hold ENV_LOCK for every Axiom
-    // env mutation and restore the original values before releasing the lock.
-    unsafe {
-        std::env::remove_var(AXIOM_TOKEN_ENV);
-        std::env::remove_var(AXIOM_SUFFIX_ENV);
-    }
-}
-
-/// Acquire `ENV_LOCK`, run `f` with env state captured, restore, then unlock.
-/// `f` does the env setup and returns anything cheap (e.g. a layer + guard).
-/// The lock never spans an `.await` — `init` owns its env reads
-/// synchronously, and the returned dispatcher holds owned strings.
-fn with_env<T>(f: impl FnOnce() -> T) -> T {
-    // `unwrap_or_else` handles poison by reusing the inner guard — poisoning
-    // only means a previous test panicked while holding it, which doesn't
-    // corrupt the `()` payload.
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let _restore = AxiomEnvRestore::capture();
-    clear_axiom_env();
-    f()
 }
 
 #[tokio::test]
@@ -286,21 +225,19 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
     internal_mock.assert_calls_async(0).await;
 }
 
-#[tokio::test]
-async fn init_returns_none_when_env_missing() {
-    let result = with_env(init);
+#[test]
+fn init_returns_none_when_env_missing() {
+    let result = init_from_env_values("https://example.invalid", None, None);
     assert!(result.is_none());
 }
 
-#[tokio::test]
-async fn init_returns_none_when_token_empty() {
-    let result = with_env(|| {
-        unsafe {
-            std::env::set_var(AXIOM_TOKEN_ENV, "");
-            std::env::set_var(AXIOM_SUFFIX_ENV, "dev");
-        }
-        init()
-    });
+#[test]
+fn init_returns_none_when_token_empty() {
+    let result = init_from_env_values(
+        "https://example.invalid",
+        Some(String::new()),
+        Some("dev".to_string()),
+    );
     assert!(result.is_none());
 }
 
