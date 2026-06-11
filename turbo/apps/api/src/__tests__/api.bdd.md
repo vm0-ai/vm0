@@ -1565,3 +1565,16 @@ changed: false }`, no Ably publish).
   legacy.
 - Reduced `zero-chat-threads-artifacts-sync.test.ts` (10 -> 7).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 76 — CHAT-THREAD ARTIFACT LIST REJECTIONS (CHAIN-ARTIFACTS-LIST-REJECTIONS, reduce-legacy)
+
+- Reused the `chatThreadArtifacts` client's `list` method.
+- Added `zero-chat-threads-artifacts-rejections.bdd.test.ts`: the list rejects
+  unauthenticated callers (401) and 404s an unknown thread (a branch the legacy
+  did not exercise — it only had the seeded other-user 404).
+- Listing real artifacts (grouped by run, dedup, hosted-site / presentation
+  filtering, googleDriveSync status) needs seeded runs with uploaded files
+  (GAP-RUN-CREDITS), and the other-user 404 needs a seeded foreign thread; those
+  stay in the kept legacy.
+- Reduced `zero-chat-threads-artifacts.test.ts` (9 -> 8).
+- Coverage verified (source-only): no regressions vs `main`.

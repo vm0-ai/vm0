@@ -130,15 +130,6 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     }
   });
 
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(chatThreadArtifactsContract);
-    const response = await accept(
-      client.list({ params: { threadId: randomUUID() }, headers: {} }),
-      [401],
-    );
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
   it("returns run uploaded files grouped by run", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
