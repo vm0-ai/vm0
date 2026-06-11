@@ -104,6 +104,15 @@ async function enableAutomations(fixture: SchedulesFixture): Promise<void> {
   });
 }
 
+async function disableAutomations(fixture: SchedulesFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ZeroAutomations]: false },
+  });
+}
+
 function expectErrorCode(response: TestApiResponse): string {
   return apiErrorSchema.parse(response.body).error.code;
 }
@@ -369,6 +378,9 @@ describe("Automations API feature-switch gating", () => {
     if (!scheduleId) {
       throw new Error("Expected seeded schedule");
     }
+    // The switch is globally on (#17307); an explicit false override keeps the
+    // gating path covered until the switch is deleted.
+    await disableAutomations(fixture);
 
     const create = await requestJson(
       "/api/automations",

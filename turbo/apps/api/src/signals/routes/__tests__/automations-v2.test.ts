@@ -124,6 +124,15 @@ async function enableAutomations(
   });
 }
 
+async function disableAutomations(fixture: SchedulesFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ZeroAutomations]: false },
+  });
+}
+
 interface CreateArgs {
   readonly name: string;
   readonly agentId: string;
@@ -972,6 +981,9 @@ describe("Automations v2 API", () => {
 
   it("returns 404 on every endpoint when the feature switch is off", async () => {
     const fixture = await seedFixture();
+    // The switch is globally on (#17307); an explicit false override keeps the
+    // gating path covered until the switch is deleted.
+    await disableAutomations(fixture);
 
     const create = await accept(
       mainApi().create({

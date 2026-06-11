@@ -123,6 +123,15 @@ async function enableAutomations(
   });
 }
 
+async function disableAutomations(fixture: SchedulesFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ZeroAutomations]: false },
+  });
+}
+
 function expectErrorCode(response: TestApiResponse): string {
   return apiErrorSchema.parse(response.body).error.code;
 }
@@ -429,6 +438,9 @@ describe("Webhook automations management API", () => {
 describe("Webhook automations management feature gating", () => {
   it("returns 404 on every endpoint when the switch is off", async () => {
     const fixture = await seedFixture();
+    // The switch is globally on (#17307); an explicit false override keeps the
+    // gating path covered until the switch is deleted.
+    await disableAutomations(fixture);
 
     const create = await requestJson(
       "/api/automations/webhooks",
