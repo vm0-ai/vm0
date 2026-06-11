@@ -8,7 +8,16 @@ from urllib.parse import parse_qs, urlparse
 import auth
 import auth_base_forwarder as forwarder
 from aws_sigv4 import AwsSigV4Credentials
+from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
+
+
+def _builtin_auth_header_names() -> list[str]:
+    names: set[str] = set()
+    for firewall in BUILTIN_FIREWALLS.values():
+        for api in firewall.get("apis", []):
+            names.update(api.get("auth", {}).get("headers", {}).keys())
+    return sorted(names, key=str.lower)
 
 
 class TestAuthBaseUrlRewriteForwarding:
@@ -100,6 +109,35 @@ class TestAuthBaseUrlRewriteForwarding:
         assert ("authorization", "Bearer lower-agent") in request_headers
         assert ("AUTHORIZATION", "Bearer upper-agent") in request_headers
         assert flow.request.headers["Cookie"] == "session=agent"
+
+    async def test_forward_request_strips_builtin_auth_headers_without_resolved_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Client-provided builtin auth headers must not cross auth.base rewrites."""
+        auth_header_names = _builtin_auth_header_names()
+        assert auth_header_names
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                *[(name, f"client-{index}") for index, name in enumerate(auth_header_names)],
+                ("X-Keep", "client"),
+            ),
+        )
+        token_meta["headers"] = {}
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        forwarded_names = {name.lower() for name, _value in req_headers}
+        assert {name.lower() for name in auth_header_names}.isdisjoint(forwarded_names)
+        assert ("X-Keep", "client") in req_headers
 
     async def test_forward_request_preserves_duplicate_headers_and_auth_override(
         self, headers, real_flow, mitm_ctx, tmp_path
