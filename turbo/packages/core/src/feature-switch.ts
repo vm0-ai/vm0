@@ -326,6 +326,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatCompletedWorkFolding]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Collapse earlier Zero chat work history after a run finishes, leaving the final message visible.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatRecommendedFollowups]: {
     maintainer: "linghan@vm0.ai",
     description:

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.438.3](https://github.com/vm0-ai/vm0/compare/app-v0.438.2...app-v0.438.3) (2026-06-11)
+
+
+### Bug Fixes
+
+* aggregate team credit usage by member ([#17287](https://github.com/vm0-ai/vm0/issues/17287)) ([542d7eb](https://github.com/vm0-ai/vm0/commit/542d7eb85ecdbc188f85df346cce14c877d8e4d8))
+* reduce template picker white-screen and improve load performance ([#17236](https://github.com/vm0-ai/vm0/issues/17236)) ([72c2fc5](https://github.com/vm0-ai/vm0/commit/72c2fc51578ed4d3410a7df8437049e2eb57a120))
+* show active state on download button when dropdown is open ([#17288](https://github.com/vm0-ai/vm0/issues/17288)) ([48cee55](https://github.com/vm0-ai/vm0/commit/48cee5590e9d6049f10e020f912124b2247e6f1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.1
+    * @vm0/core bumped to 8.329.1
+
 ## [0.438.2](https://github.com/vm0-ai/vm0/compare/app-v0.438.1...app-v0.438.2) (2026-06-11)
 
 

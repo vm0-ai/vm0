@@ -7,7 +7,7 @@ import {
 } from "./computer-use-types";
 
 const HOST_STATUS_LABELS = {
-  idle: "Ready",
+  offline: "Offline",
   connecting: "Starting...",
   online: "Online",
   recovering: "Recovering",
@@ -73,7 +73,7 @@ function computerUseStatusLabel(state: DesktopTrayMenuState): string {
   if (!hasRequiredComputerUsePermissions(state.computerUse.permissions)) {
     return "Needs permissions";
   }
-  if (state.computerUse.host.status !== "idle") {
+  if (state.computerUse.host.status !== "offline") {
     return HOST_STATUS_LABELS[state.computerUse.host.status];
   }
   if (isAuthLoading(state)) {

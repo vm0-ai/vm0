@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.329.1](https://github.com/vm0-ai/vm0/compare/core-v8.329.0...core-v8.329.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* aggregate team credit usage by member ([#17287](https://github.com/vm0-ai/vm0/issues/17287)) ([542d7eb](https://github.com/vm0-ai/vm0/commit/542d7eb85ecdbc188f85df346cce14c877d8e4d8))
+* reduce template picker white-screen and improve load performance ([#17236](https://github.com/vm0-ai/vm0/issues/17236)) ([72c2fc5](https://github.com/vm0-ai/vm0/commit/72c2fc51578ed4d3410a7df8437049e2eb57a120))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.1
+
 ## [8.329.0](https://github.com/vm0-ai/vm0/compare/core-v8.328.1...core-v8.329.0) (2026-06-11)
 
 

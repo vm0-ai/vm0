@@ -99,7 +99,7 @@ describe("ComputerUseHostRuntime", () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(runtime.getState().status).toBe("idle");
+    expect(runtime.getState().status).toBe("offline");
     expect(sessionFetch).not.toHaveBeenCalled();
     expect(hostFetch).not.toHaveBeenCalled();
   });
@@ -692,7 +692,7 @@ describe("ComputerUseHostRuntime", () => {
     expect(stopCall[1]?.method).toBe("POST");
     expect(headers.get("authorization")).toBe("Bearer token-1");
     expect(runtime.getState()).toMatchObject({
-      status: "idle",
+      status: "offline",
       hostId: null,
       lastError: null,
     });
