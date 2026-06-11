@@ -61,33 +61,6 @@ describe("GET /api/zero/billing/status", () => {
     return store.set(deleteBillingStatusOrg$, fixture, context.signal);
   });
 
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingStatusContract);
-
-    const response = await accept(client.get({ headers: {} }), [401]);
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the user has no active org", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroBillingStatusContract);
-
-    const response = await accept(
-      client.get({ headers: { authorization: "Bearer clerk-session" } }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
   it("returns billing status for authenticated user", async () => {
     const fixture = await track(
       store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),
@@ -144,26 +117,6 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.credits).toBe(100_000);
-  });
-
-  it("returns 403 for zero tokens without billing read capability", async () => {
-    const token = zeroToken({
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
-      capabilities: [],
-    });
-
-    const client = setupApp({ context })(zeroBillingStatusContract);
-
-    const response = await accept(
-      client.get({ headers: { authorization: `Bearer ${token}` } }),
-      [403],
-    );
-
-    expect(response.body.error).toStrictEqual({
-      message: "Missing required capability: billing:read",
-      code: "FORBIDDEN",
-    });
   });
 
   it("returns correct data for subscribed org", async () => {

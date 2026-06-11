@@ -1438,3 +1438,17 @@ First USAGE-family reduce.
 > matching the branch's stable 257/165 + 27/32. They are time/execution-order
 > dependent and belong in the coverage-diff NOISE set alongside the slack-connect
 > oscillators.
+
+### Round 67 — BILLING STATUS REJECTIONS (CHAIN-BILLING-STATUS-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `billingStatus` client
+  (`/api/zero/billing/status`).
+- Added `zero-billing-status-rejections.bdd.test.ts`: the status rejects
+  unauthenticated and org-less callers (401), a zero token without `billing:read`
+  (403), and reports the default tier (`pro-suspend`, no subscription) for a
+  fresh org that has no `org_metadata` row.
+- The seeded free-tier / subscribed / scheduled-downgrade / cancelAtPeriodEnd and
+  credit-expiry segment breakdowns need seeded Stripe subscription + credit ledger
+  state (GAP-STRIPE-SUBSCRIPTION / GAP-RUN-CREDITS) and stay in the kept legacy.
+- Reduced `zero-billing-status.test.ts` (23 -> 20).
+- Coverage verified (source-only): no regressions vs `main`.

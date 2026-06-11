@@ -39,6 +39,7 @@ import {
   zeroBillingPortalContract,
   zeroBillingRedeemCodeContract,
   zeroBillingRestoreContract,
+  zeroBillingStatusContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
@@ -345,6 +346,10 @@ export function createBddApi(context: TestContext) {
      * rejections are reachable directly. */
     orgMembers: setupApp({ context })(zeroOrgMembersContract),
     /** ts-rest client for `/api/zero/billing/redeem-code` (consume a code). */
+    /** ts-rest client for `/api/zero/billing/status`. A subscribed/credit-expiry
+     * status needs seeded Stripe + credit-ledger state (GAP-STRIPE-SUBSCRIPTION);
+     * the auth, capability and fresh-org free-tier cases are reachable. */
+    billingStatus: setupApp({ context })(zeroBillingStatusContract),
     billingRedeemCode: setupApp({ context })(zeroBillingRedeemCodeContract),
     /** ts-rest client for `/api/zero/billing/portal` (open the Stripe portal).
      * The funded success path needs a seeded Stripe customer with no API
