@@ -15,7 +15,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   createFixtureTracker,
@@ -152,7 +152,7 @@ describe("POST /api/agent/runs/:id/cancel", () => {
       .where(eq(agentRuns.id, runId));
     expect(run?.status).toBe("cancelled");
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "queue:changed",
       null,
@@ -222,7 +222,7 @@ describe("POST /api/agent/runs/:id/cancel", () => {
       }),
       [200],
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const queueRows = await db
       .select()
@@ -276,7 +276,7 @@ describe("POST /api/agent/runs/:id/cancel", () => {
       }),
       [200],
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(callbackBody).toStrictEqual({
       callbackId,
@@ -316,7 +316,7 @@ describe("POST /api/agent/runs/:id/cancel", () => {
     );
 
     expect(response.body.status).toBe("cancelled");
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 

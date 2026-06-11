@@ -106,6 +106,9 @@ describe("zero automation setup command", () => {
       expect(logCalls).toContain("Automation");
       expect(logCalls).toContain("created");
       expect(logCalls).toContain("my-agent");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should create loop automation with interval flag", async () => {

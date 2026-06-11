@@ -1,5 +1,5 @@
 /**
- * Tests for zero automation delete command
+ * Tests for `zero automation delete` (v2 unified automations).
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -12,38 +12,6 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { deleteCommand } from "../delete";
 import chalk from "chalk";
-
-const mockCompose = {
-  id: "compose-uuid-001",
-  name: "my-agent",
-  headVersionId: "ver-001",
-  content: null,
-  createdAt: "2026-03-23T00:00:00Z",
-  updatedAt: "2026-03-23T00:00:00Z",
-};
-
-const mockAutomation = {
-  id: "auto-001",
-  agentId: "compose-uuid-001",
-  userId: "user-001",
-  name: "default",
-  triggerType: "cron",
-  cronExpression: "0 9 * * *",
-  atTime: null,
-  intervalSeconds: null,
-  timezone: "UTC",
-  prompt: "run daily check",
-  description: null,
-  appendSystemPrompt: null,
-  enabled: true,
-  nextRunAt: "2026-03-24T09:00:00Z",
-  lastRunAt: null,
-  retryStartedAt: null,
-  consecutiveFailures: 0,
-  chatThreadId: "550e8400-e29b-41d4-a716-446655440099",
-  createdAt: "2026-03-23T00:00:00Z",
-  updatedAt: "2026-03-23T00:00:00Z",
-};
 
 describe("zero automation delete command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -66,100 +34,54 @@ describe("zero automation delete command", () => {
     mockConsoleError.mockClear();
   });
 
-  describe("successful delete", () => {
-    it("should delete with --yes flag without prompting", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(mockCompose);
-        }),
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({ automations: [mockAutomation] });
-        }),
-        http.delete("http://localhost:3000/api/automations/default", () => {
+  it("should delete an automation by name with --yes", async () => {
+    let deletedRef: string | undefined;
+
+    server.use(
+      http.delete(
+        "http://localhost:3000/api/v2/automations/:ref",
+        ({ params }) => {
+          deletedRef = params.ref as string;
           return new HttpResponse(null, { status: 204 });
-        }),
-      );
+        },
+      ),
+    );
 
-      await deleteCommand.parseAsync(["node", "cli", "my-agent", "--yes"]);
+    await deleteCommand.parseAsync(["node", "cli", "alerts", "-y"]);
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Automation");
-      expect(logCalls).toContain("deleted");
-    });
-
-    it("should delete when agent identifier is a UUID", async () => {
-      const testUuid = "550e8400-e29b-41d4-a716-446655440000";
-      const uuidCompose = { ...mockCompose, id: testUuid };
-      const uuidAutomation = { ...mockAutomation, agentId: testUuid };
-
-      server.use(
-        http.get(
-          "http://localhost:3000/api/agent/composes/:id",
-          ({ params }) => {
-            if (params.id !== testUuid) {
-              return HttpResponse.json(
-                { error: { message: "Not found", code: "NOT_FOUND" } },
-                { status: 404 },
-              );
-            }
-            return HttpResponse.json(uuidCompose);
-          },
-        ),
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({ automations: [uuidAutomation] });
-        }),
-        http.delete("http://localhost:3000/api/automations/default", () => {
-          return new HttpResponse(null, { status: 204 });
-        }),
-      );
-
-      await deleteCommand.parseAsync(["node", "cli", testUuid, "--yes"]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Automation");
-      expect(logCalls).toContain("deleted");
-    });
+    expect(deletedRef).toBe("alerts");
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain('Automation "alerts" deleted');
   });
 
-  describe("error handling", () => {
-    it("should handle no automation found", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(mockCompose);
-        }),
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({ automations: [] });
-        }),
-      );
+  it("should require --yes in non-interactive mode", async () => {
+    await expect(async () => {
+      await deleteCommand.parseAsync(["node", "cli", "alerts"]);
+    }).rejects.toThrow("process.exit called");
 
-      await expect(async () => {
-        await deleteCommand.parseAsync(["node", "cli", "my-agent", "--yes"]);
-      }).rejects.toThrow("process.exit called");
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("--yes flag is required"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No automation found"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
+  it("should surface not-found errors", async () => {
+    server.use(
+      http.delete("http://localhost:3000/api/v2/automations/:ref", () => {
+        return HttpResponse.json(
+          { error: { message: "Automation not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+    );
 
-    it("should require --yes in non-interactive mode", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(mockCompose);
-        }),
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({ automations: [mockAutomation] });
-        }),
-      );
+    await expect(async () => {
+      await deleteCommand.parseAsync(["node", "cli", "missing", "-y"]);
+    }).rejects.toThrow("process.exit called");
 
-      await expect(async () => {
-        await deleteCommand.parseAsync(["node", "cli", "my-agent"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--yes flag is required"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Automation not found"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

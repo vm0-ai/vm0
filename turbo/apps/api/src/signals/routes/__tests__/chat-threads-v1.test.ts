@@ -27,7 +27,7 @@ import { and, eq } from "drizzle-orm";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   signPatJwtForTests,
   signSandboxJwtForTests,
@@ -322,7 +322,7 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
   });
 
   afterEach(async () => {
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     while (threads.length > 0) {
       const t = threads.pop();
       if (t) {
@@ -506,7 +506,7 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
   });
 
   afterEach(async () => {
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     while (threads.length > 0) {
       const t = threads.pop();
       if (t) {
@@ -710,7 +710,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
   });
 
   afterEach(async () => {
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     while (threads.length > 0) {
       const t = threads.pop();
       if (t) {
@@ -820,7 +820,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
       }),
       [201],
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const writeDb = store.set(writeDb$);
     const [threadRow] = await writeDb
@@ -939,7 +939,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
       }),
       [201],
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const writeDb = store.set(writeDb$);
     const [message] = await writeDb
@@ -1041,7 +1041,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
       }),
       [201],
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [message] = await writeDb
       .select({ runId: chatMessages.runId })
@@ -1149,7 +1149,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
       }),
       [201],
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.threadId).toBe(thread.threadId);
 

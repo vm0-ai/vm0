@@ -32,7 +32,7 @@ import { server } from "../../../mocks/server";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { generateReplyToken } from "../../services/zero-email-common.service";
@@ -1233,7 +1233,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ received: true });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const db = store.set(writeDb$);
     const runs = await db
@@ -1290,7 +1290,7 @@ describe("POST /api/zero/email/inbound", () => {
       },
     });
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const db = store.set(writeDb$);
     const runs = await db
@@ -1328,7 +1328,7 @@ describe("POST /api/zero/email/inbound", () => {
       },
     });
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const db = store.set(writeDb$);
     const [outbox] = await db
@@ -1377,7 +1377,7 @@ describe("POST /api/zero/email/inbound", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ received: true });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(resendMocks.receivingGet).not.toHaveBeenCalled();
     expect(resendMocks.send).not.toHaveBeenCalled();
   });
@@ -1406,7 +1406,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const db = store.set(writeDb$);
     const runs = await db
       .select({ id: agentRuns.id })
@@ -1446,7 +1446,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(resendMocks.receivingGet).not.toHaveBeenCalled();
     const email = lastSentEmail();
     expect(email.to).toBe(senderEmail);
@@ -1478,7 +1478,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
     expect(email.html).toContain("DMARC verification failed");
@@ -1510,7 +1510,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(resendMocks.receivingGet).not.toHaveBeenCalled();
     const email = lastSentEmail();
     expect(email.to).toBe(senderEmail);
@@ -1534,7 +1534,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(resendMocks.receivingGet).not.toHaveBeenCalled();
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
@@ -1564,7 +1564,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const db = store.set(writeDb$);
     const runs = await db
       .select({ id: agentRuns.id })
@@ -1600,7 +1600,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const db = store.set(writeDb$);
     const [run] = await db
       .select({ prompt: agentRuns.prompt })
@@ -1666,7 +1666,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const db = store.set(writeDb$);
     const [run] = await db
       .select({ prompt: agentRuns.prompt })
@@ -1729,7 +1729,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const db = store.set(writeDb$);
     const [run] = await db
       .select({ prompt: agentRuns.prompt })
@@ -1780,7 +1780,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const db = store.set(writeDb$);
     const [run] = await db
       .select({ prompt: agentRuns.prompt, sessionId: agentRuns.sessionId })
@@ -1816,7 +1816,7 @@ describe("POST /api/zero/email/inbound", () => {
       });
 
       expect(response.status).toBe(200);
-      await clearAllDetached();
+      await flushWaitUntilForTest();
       expect(resendMocks.receivingGet).not.toHaveBeenCalled();
       const email = lastSentEmail();
       expect(email.to).toBe(fx.userEmail);
@@ -1841,7 +1841,7 @@ describe("POST /api/zero/email/inbound", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
     expect(email.subject).toBe("Re: Crash");

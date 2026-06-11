@@ -1,38 +1,25 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  enableZeroAutomation,
-  resolveZeroAutomationByAgent,
-} from "../../../lib/api";
+import { enableAutomationV2 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const enableCommand = new Command()
   .name("enable")
-  .description("Enable a zero automation")
-  .argument("<agent-id>", "Agent ID")
-  .option(
-    "-n, --name <automation-name>",
-    "Automation name (required when agent has multiple automations)",
-  )
+  .description("Enable an automation (all of its triggers resume)")
+  .argument("<automation>", "Automation ID or name")
   .addHelpText(
     "after",
     `
 Examples:
-  zero automation enable <agent-id>
-  zero automation enable <agent-id> -n my-automation`,
+  zero automation enable alerts
+
+Notes:
+  - To enable a single trigger instead: zero automation trigger enable <trigger-id>`,
   )
   .action(
-    withErrorHandler(async (agentName: string, options: { name?: string }) => {
-      const resolved = await resolveZeroAutomationByAgent(
-        agentName,
-        options.name,
-      );
+    withErrorHandler(async (ref: string) => {
+      const automation = await enableAutomationV2(ref);
 
-      await enableZeroAutomation({
-        name: resolved.name,
-        agentId: resolved.agentId,
-      });
-
-      console.log(chalk.green(`✓ Automation "${resolved.name}" enabled`));
+      console.log(chalk.green(`✓ Automation "${automation.name}" enabled`));
     }),
   );

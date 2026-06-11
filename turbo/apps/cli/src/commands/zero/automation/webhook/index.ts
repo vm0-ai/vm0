@@ -8,7 +8,10 @@ import {
   deleteWebhookAutomation,
   resolveCompose,
 } from "../../../../lib/api";
-import { withErrorHandler } from "../../../../lib/command";
+import {
+  printDeprecationNotice,
+  withErrorHandler,
+} from "../../../../lib/command";
 
 /**
  * `zero automation webhook` — the events-first generic-webhook trigger surface.
@@ -113,6 +116,10 @@ Notes:
         description?: string;
         json?: boolean;
       }) => {
+        printDeprecationNotice(
+          "zero automation create --webhook / zero automation trigger add <automation> webhook",
+        );
+
         const instruction = resolveInstruction(
           options.prompt,
           options.promptFile,
@@ -211,6 +218,8 @@ Examples:
   )
   .action(
     withErrorHandler(async (options: { json?: boolean }) => {
+      printDeprecationNotice("zero automation list");
+
       const result = await listWebhookAutomations();
 
       if (options.json) {
@@ -237,6 +246,8 @@ Examples:
   .action(
     withErrorHandler(
       async (automationId: string, options: { json?: boolean }) => {
+        printDeprecationNotice("zero automation delete <automation>");
+
         await deleteWebhookAutomation(automationId);
 
         if (options.json) {
@@ -253,7 +264,9 @@ Examples:
 
 export const webhookCommand = new Command()
   .name("webhook")
-  .description("Manage webhook-triggered automations")
+  .description(
+    "(deprecated: use `zero automation create --webhook` / `zero automation trigger add`) Manage webhook-triggered automations",
+  )
   .addCommand(createCommand)
   .addCommand(listCommand)
   .addCommand(deleteCommand)

@@ -1,13 +1,24 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroAutomations } from "../../../lib/api";
-import { formatRelativeTime } from "../../../lib/domain/schedule-utils";
+import type { AutomationResponseV2 } from "@vm0/api-contracts/contracts/automations-v2";
+import { listAutomationsV2 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+
+function formatTriggerSummary(automation: AutomationResponseV2): string {
+  if (automation.triggers.length === 0) {
+    return chalk.dim("-");
+  }
+  return automation.triggers
+    .map((t) => {
+      return t.kind;
+    })
+    .join(", ");
+}
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List all zero automations")
+  .description("List automations with their triggers")
   .addHelpText(
     "after",
     `
@@ -16,67 +27,67 @@ Examples:
   )
   .action(
     withErrorHandler(async () => {
-      const result = await listZeroAutomations();
+      const { automations } = await listAutomationsV2();
 
-      if (result.automations.length === 0) {
+      if (automations.length === 0) {
         console.log(chalk.dim("No automations found"));
         console.log(
-          chalk.dim("  Create one with: zero automation setup <agent-id>"),
+          chalk.dim(
+            '  Create one with: zero automation create -n <name> --agent <agent-id> -p "<instruction>"',
+          ),
         );
         return;
       }
 
-      const agentWidth = Math.max(
-        5,
-        ...result.automations.map((a) => {
-          return a.agentId.length;
-        }),
-      );
-      const automationWidth = Math.max(
-        10,
-        ...result.automations.map((a) => {
+      const nameWidth = Math.max(
+        4,
+        ...automations.map((a) => {
           return a.name.length;
         }),
       );
-      const triggerWidth = Math.max(
-        7,
-        ...result.automations.map((a) => {
-          return a.cronExpression
-            ? a.cronExpression.length + a.timezone.length + 3
-            : a.atTime?.length || 0;
+      const idWidth = Math.max(
+        2,
+        ...automations.map((a) => {
+          return a.id.length;
+        }),
+      );
+      const agentWidth = Math.max(
+        5,
+        ...automations.map((a) => {
+          return (a.displayName ?? a.agentId).length;
         }),
       );
 
-      const header = [
-        "AGENT".padEnd(agentWidth),
-        "AUTOMATION".padEnd(automationWidth),
-        "TRIGGER".padEnd(triggerWidth),
-        "STATUS".padEnd(8),
-        "NEXT RUN",
-      ].join("  ");
-      console.log(chalk.dim(header));
+      console.log(
+        chalk.dim(
+          [
+            "NAME".padEnd(nameWidth),
+            "ID".padEnd(idWidth),
+            "AGENT".padEnd(agentWidth),
+            "STATUS".padEnd(8),
+            "TRIGGERS",
+          ].join("  "),
+        ),
+      );
 
-      for (const automation of result.automations) {
-        const trigger = automation.cronExpression
-          ? `${automation.cronExpression} (${automation.timezone})`
-          : automation.atTime || "-";
-
+      for (const automation of automations) {
         const status = automation.enabled
           ? chalk.green("enabled")
           : chalk.yellow("disabled");
-
-        const nextRun = automation.enabled
-          ? formatRelativeTime(automation.nextRunAt)
-          : "-";
-
-        const row = [
-          automation.agentId.padEnd(agentWidth),
-          automation.name.padEnd(automationWidth),
-          trigger.padEnd(triggerWidth),
-          status.padEnd(8 + (automation.enabled ? 0 : 2)),
-          nextRun,
-        ].join("  ");
-        console.log(row);
+        console.log(
+          [
+            automation.name.padEnd(nameWidth),
+            automation.id.padEnd(idWidth),
+            (automation.displayName ?? automation.agentId).padEnd(agentWidth),
+            status.padEnd(8 + (automation.enabled ? 0 : 2)),
+            formatTriggerSummary(automation),
+          ].join("  "),
+        );
       }
+
+      console.log();
+      console.log(
+        chalk.dim(`  Details: zero automation show <automation-name-or-id>`),
+      );
     }),
   );

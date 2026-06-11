@@ -6,7 +6,7 @@ import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
   countSlackWebhookConnections$,
@@ -276,7 +276,7 @@ describe("POST /api/zero/slack/commands", () => {
         text: "disconnect",
       }),
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     await expect(

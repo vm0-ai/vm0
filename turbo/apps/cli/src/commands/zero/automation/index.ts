@@ -1,31 +1,44 @@
 import { Command } from "commander";
-import { setupCommand } from "./setup";
+import { createCommand } from "./create";
 import { listCommand } from "./list";
-import { statusCommand } from "./status";
+import { showCommand } from "./show";
+import { updateCommand } from "./update";
 import { deleteCommand } from "./delete";
 import { enableCommand } from "./enable";
 import { disableCommand } from "./disable";
+import { runCommand } from "./run";
+import { triggerCommand } from "./trigger";
+import { setupCommand } from "./setup";
+import { statusCommand } from "./status";
 import { webhookCommand } from "./webhook";
 
 export const zeroAutomationCommand = new Command()
   .name("automation")
-  .description("Create or manage automations")
-  .addCommand(setupCommand)
+  .description("Create or manage automations and their triggers")
+  .addCommand(createCommand)
   .addCommand(listCommand)
-  .addCommand(statusCommand)
+  .addCommand(showCommand)
+  .addCommand(updateCommand)
   .addCommand(deleteCommand)
   .addCommand(enableCommand)
   .addCommand(disableCommand)
-  .addCommand(webhookCommand)
+  .addCommand(runCommand)
+  .addCommand(triggerCommand)
+  // Deprecated aliases — fully functional, but print a stderr notice pointing
+  // at the replacement command.
+  .addCommand(setupCommand, { hidden: true })
+  .addCommand(statusCommand, { hidden: true })
+  .addCommand(webhookCommand, { hidden: true })
   .addHelpText(
     "after",
     `
 Examples:
-  Create an automation:     zero automation setup --help
-  Check all automations:    zero automation list
-  Check automation status:  zero automation status <agent-id>
-  Pause an automation:      zero automation disable <agent-id>
-  Resume an automation:     zero automation enable <agent-id>
-  Delete an automation:     zero automation delete <agent-id>
-  Webhook-triggered:        zero automation webhook --help`,
+  Create an automation:   zero automation create -n alerts --agent <agent-id> -p "Summarize alerts" --cron "0 9 * * *"
+  List automations:       zero automation list
+  Inspect one:            zero automation show alerts
+  Fire manually:          zero automation run alerts
+  Manage triggers:        zero automation trigger --help
+  Pause an automation:    zero automation disable alerts
+  Resume an automation:   zero automation enable alerts
+  Delete an automation:   zero automation delete alerts`,
   );

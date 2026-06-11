@@ -5,7 +5,7 @@ import {
   formatDateTime,
   detectTimezone,
 } from "../../../lib/domain/schedule-utils";
-import { withErrorHandler } from "../../../lib/command";
+import { printDeprecationNotice, withErrorHandler } from "../../../lib/command";
 import type { AutomationResponse } from "@vm0/api-contracts/contracts/automations";
 
 /**
@@ -91,7 +91,9 @@ function printTimeSchedule(automation: AutomationResponse): void {
 
 export const statusCommand = new Command()
   .name("status")
-  .description("Show detailed status of a zero automation")
+  .description(
+    "(deprecated: use `zero automation show`) Show detailed status of a zero automation",
+  )
   .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <automation-name>",
@@ -112,6 +114,8 @@ Examples:
         agentName: string,
         options: { name?: string; prompt?: boolean },
       ) => {
+        printDeprecationNotice("zero automation show <automation>");
+
         const automation = await resolveZeroAutomationByAgent(
           agentName,
           options.name,

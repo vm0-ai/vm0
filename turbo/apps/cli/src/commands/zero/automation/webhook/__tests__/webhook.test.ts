@@ -133,6 +133,9 @@ describe("zero automation webhook command", () => {
       expect(logCalls).toContain("curl -X POST");
       expect(logCalls).toContain("x-vm0-signature-256");
       expect(logCalls).toContain("openssl dgst -sha256 -hmac");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should read the instruction from --prompt-file", async () => {
@@ -305,6 +308,9 @@ describe("zero automation webhook command", () => {
         "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
       );
       expect(logCalls).toContain("enabled");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should display an empty state when there are none", async () => {
@@ -383,6 +389,9 @@ describe("zero automation webhook command", () => {
       expect(deleteHitId).toBe("11111111-1111-4111-8111-111111111111");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("deleted");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should handle a not-found automation", async () => {

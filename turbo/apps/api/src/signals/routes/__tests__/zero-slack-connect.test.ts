@@ -5,7 +5,7 @@ import { createStore } from "ccstate";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -377,7 +377,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       }),
       [200],
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const artifactStorage = await store.set(
       findArtifactStorage$,
@@ -433,7 +433,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -490,7 +490,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(context.mocks.slack.chat.postEphemeral).not.toHaveBeenCalled();
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledTimes(2);
@@ -545,7 +545,7 @@ describe("POST /api/zero/integrations/slack/connect", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
       expect.objectContaining({

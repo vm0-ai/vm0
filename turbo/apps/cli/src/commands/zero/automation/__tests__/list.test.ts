@@ -1,5 +1,5 @@
 /**
- * Tests for zero automation list command
+ * Tests for `zero automation list` (v2 unified automations).
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,27 +13,46 @@ import { server } from "../../../../mocks/server";
 import { listCommand } from "../list";
 import chalk from "chalk";
 
+const AUTOMATION_ID = "11111111-1111-4111-8111-111111111111";
+
 const mockAutomation = {
-  id: "auto-001",
-  agentId: "my-agent",
+  id: AUTOMATION_ID,
+  agentId: "550e8400-e29b-41d4-a716-446655440000",
+  displayName: "my-agent",
   userId: "user-001",
-  name: "default",
-  triggerType: "cron",
-  cronExpression: "0 9 * * *",
-  atTime: null,
-  intervalSeconds: null,
-  timezone: "UTC",
-  prompt: "run daily check",
+  name: "alerts",
   description: null,
+  instruction: "Summarize alerts",
   appendSystemPrompt: null,
   enabled: true,
-  nextRunAt: "2026-03-24T09:00:00Z",
-  lastRunAt: null,
-  retryStartedAt: null,
-  consecutiveFailures: 0,
   chatThreadId: "550e8400-e29b-41d4-a716-446655440099",
-  createdAt: "2026-03-23T00:00:00Z",
-  updatedAt: "2026-03-23T00:00:00Z",
+  createdAt: "2026-06-01T00:00:00Z",
+  updatedAt: "2026-06-01T00:00:00Z",
+  triggers: [
+    {
+      id: "22222222-2222-4222-8222-222222222222",
+      automationId: AUTOMATION_ID,
+      enabled: true,
+      kind: "cron",
+      cronExpression: "0 9 * * *",
+      timezone: "UTC",
+      nextRunAt: "2026-06-12T09:00:00Z",
+      lastRunAt: null,
+      consecutiveFailures: 0,
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-01T00:00:00Z",
+    },
+    {
+      id: "33333333-3333-4333-8333-333333333333",
+      automationId: AUTOMATION_ID,
+      enabled: true,
+      kind: "webhook",
+      webhookToken: "whk_deadbeef",
+      webhookUrl: "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-01T00:00:00Z",
+    },
+  ],
 };
 
 describe("zero automation list command", () => {
@@ -57,57 +76,54 @@ describe("zero automation list command", () => {
     mockConsoleError.mockClear();
   });
 
-  describe("successful list", () => {
-    it("should display automations in table format", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({ automations: [mockAutomation] });
-        }),
-      );
+  it("should display automations with their trigger kinds", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/v2/automations", () => {
+        return HttpResponse.json({ automations: [mockAutomation] });
+      }),
+    );
 
-      await listCommand.parseAsync(["node", "cli"]);
+    await listCommand.parseAsync(["node", "cli"]);
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("my-agent");
-      expect(logCalls).toContain("default");
-      expect(logCalls).toContain("0 9 * * *");
-      expect(logCalls).toContain("enabled");
-    });
-
-    it("should display empty state message when no automations", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({ automations: [] });
-        }),
-      );
-
-      await listCommand.parseAsync(["node", "cli"]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("No automations found");
-      expect(logCalls).toContain("zero automation setup");
-    });
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("alerts");
+    expect(logCalls).toContain(AUTOMATION_ID);
+    expect(logCalls).toContain("my-agent");
+    expect(logCalls).toContain("enabled");
+    expect(logCalls).toContain("cron, webhook");
   });
 
-  describe("error handling", () => {
-    it("should handle authentication error", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json(
-            { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-            { status: 401 },
-          );
-        }),
-      );
+  it("should display empty state message when no automations", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/v2/automations", () => {
+        return HttpResponse.json({ automations: [] });
+      }),
+    );
 
-      await expect(async () => {
-        await listCommand.parseAsync(["node", "cli"]);
-      }).rejects.toThrow("process.exit called");
+    await listCommand.parseAsync(["node", "cli"]);
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Not authenticated"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("No automations found");
+    expect(logCalls).toContain("zero automation create");
+  });
+
+  it("should handle authentication error", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/v2/automations", () => {
+        return HttpResponse.json(
+          { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    await expect(async () => {
+      await listCommand.parseAsync(["node", "cli"]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Not authenticated"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

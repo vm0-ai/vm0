@@ -2,12 +2,14 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listZeroSchedules } from "../../../lib/api";
 import { formatRelativeTime } from "../../../lib/domain/schedule-utils";
-import { withErrorHandler } from "../../../lib/command";
+import { printDeprecationNotice, withErrorHandler } from "../../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List all zero schedules")
+  .description(
+    "(deprecated: use `zero automation list`) List all zero schedules",
+  )
   .addHelpText(
     "after",
     `
@@ -16,6 +18,8 @@ Examples:
   )
   .action(
     withErrorHandler(async () => {
+      printDeprecationNotice("zero automation list");
+
       const result = await listZeroSchedules();
 
       if (result.schedules.length === 0) {

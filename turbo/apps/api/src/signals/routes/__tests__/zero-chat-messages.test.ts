@@ -42,7 +42,7 @@ import { generateZeroToken, verifyZeroToken } from "../../auth/tokens";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -522,7 +522,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "hello from api chat",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.runId).toStrictEqual(expect.any(String));
     expect(response.body.threadId).toStrictEqual(expect.any(String));
@@ -606,7 +606,7 @@ describe("POST /api/zero/chat/messages", () => {
         },
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -655,7 +655,7 @@ describe("POST /api/zero/chat/messages", () => {
         },
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -792,7 +792,7 @@ describe("POST /api/zero/chat/messages", () => {
         },
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -849,7 +849,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "active deck run",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const response = await send({
       agentId: fixture.agentId,
@@ -888,14 +888,14 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "occupy org concurrency",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(active.body.status).toBe("pending");
 
     const queued = await send({
       agentId: fixture.agentId,
       prompt: "wait behind active run",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(queued.body.status).toBe("queued");
 
     const writeDb = store.set(writeDb$);
@@ -982,7 +982,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "fail before worker start",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.status).toBe("failed");
     expect(response.body.runId).toStrictEqual(expect.any(String));
@@ -1069,7 +1069,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "use the default zero agent",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.status).toBe("pending");
     const [run] = await store
@@ -1090,7 +1090,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "client thread",
       clientThreadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.threadId).toBe(clientThreadId);
     const [thread] = await store
@@ -1121,7 +1121,7 @@ describe("POST /api/zero/chat/messages", () => {
       clientThreadId,
       clientMessageId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const retry = await send({
       agentId: fixture.agentId,
@@ -1129,7 +1129,7 @@ describe("POST /api/zero/chat/messages", () => {
       clientThreadId,
       clientMessageId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(retry.body).toStrictEqual(first.body);
 
@@ -1175,7 +1175,7 @@ describe("POST /api/zero/chat/messages", () => {
       clientThreadId,
       clientMessageId: randomUUID(),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const caller = await track(seedFixture());
     const response = await accept(
@@ -1207,7 +1207,7 @@ describe("POST /api/zero/chat/messages", () => {
       clientThreadId,
       clientMessageId: randomUUID(),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const otherAgent = await track(seedFixture());
     const writeDb = store.set(writeDb$);
@@ -1258,7 +1258,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "open remote browser",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const secrets = await runExecutionSecrets(response.body.runId!);
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
@@ -1287,7 +1287,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "open remote browser",
       computerUseHostId: hostId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const secrets = await runExecutionSecrets(response.body.runId!);
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
@@ -1322,7 +1322,7 @@ describe("POST /api/zero/chat/messages", () => {
         },
       ],
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -1372,7 +1372,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "plan the API migration",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(upstreamAuthorization).toBe("Bearer title-api-key");
     const [thread] = await store
@@ -1422,7 +1422,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "rename this thread automatically",
       threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [thread] = await writeDb
       .select({ title: chatThreads.title })
@@ -1473,7 +1473,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "rename this thread automatically",
       threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [thread] = await writeDb
       .select({ title: chatThreads.title, renamedAt: chatThreads.renamedAt })
@@ -1488,7 +1488,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("queues an unassociated user message when the thread has an active run", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const second = await send({
       agentId: fixture.agentId,
@@ -1522,7 +1522,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("returns the existing queued user message for duplicate clientMessageId retries", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const clientMessageId = randomUUID();
     const queued = await send({
@@ -1566,7 +1566,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "first with client id",
       clientMessageId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const activeRetry = await send({
       agentId: fixture.agentId,
@@ -1620,14 +1620,14 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "owned message",
       clientMessageId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const otherFixture = await track(seedFixture());
     const active = await send({
       agentId: otherFixture.agentId,
       prompt: "other active run",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const response = await accept(
       client().send({
@@ -1662,7 +1662,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("rejects clientMessageId reuse from a queued recall message", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await send({
       agentId: fixture.agentId,
       prompt: "queued for recall",
@@ -1711,7 +1711,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("creates a follow-up run on an existing thread and continues the last session", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [firstRun] = await store
       .set(writeDb$)
@@ -1728,7 +1728,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "follow up",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(second.body.runId).toStrictEqual(expect.any(String));
     expect(second.body.runId).not.toBe(first.body.runId);
@@ -1750,7 +1750,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("recalls only queued user messages", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await send({
       agentId: fixture.agentId,
       prompt: "queued for recall",
@@ -1818,7 +1818,7 @@ describe("POST /api/zero/chat/messages", () => {
     const fixture = await track(seedFixture());
     proxyChatCallbackToApp();
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const interruptId = randomUUID();
     const interrupt = await send({
@@ -1861,7 +1861,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "first web context",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
     await store.set(writeDb$).insert(chatMessages).values({
       chatThreadId: first.body.threadId,
@@ -1876,7 +1876,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "follow-up web context",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -1899,7 +1899,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("injects incomplete cancelled rounds into the next run prompt", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "cancel me" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "cancelled");
 
     const second = await send({
@@ -1907,7 +1907,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "retry",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -1927,7 +1927,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "first incomplete",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "failed");
 
     const secondPrompt = `second ${"x".repeat(4100)}`;
@@ -1936,7 +1936,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: secondPrompt,
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(second.body.runId!, "timeout");
 
     const third = await send({
@@ -1944,7 +1944,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "retry after two failures",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -1996,7 +1996,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "first on opus",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const [firstRun] = await writeDb
       .select({ sessionId: agentRuns.sessionId })
       .from(agentRuns)
@@ -2015,7 +2015,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [thread] = await writeDb
       .select({ selectedModel: chatThreads.selectedModel })
@@ -2059,7 +2059,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [policy] = await writeDb
       .select({
@@ -2336,7 +2336,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "deepseek-v4-pro",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [job] = await writeDb
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -2394,7 +2394,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "deepseek-v4-pro",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await writeDb
       .select({ additionalVolumes: agentRuns.additionalVolumes })
@@ -2450,7 +2450,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "deepseek-v4-pro",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [job] = await writeDb
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -2503,7 +2503,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
 
     const byokProviderId = await seedModelProvider(
@@ -2537,7 +2537,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "continue same model after provider switch",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [thread] = await writeDb
       .select({
@@ -2623,7 +2623,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "gpt-5.5",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [job] = await writeDb
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -2874,7 +2874,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
 
     const second = await send({
@@ -2886,7 +2886,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-opus-4-7",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(second.body.runId).toStrictEqual(expect.any(String));
     const [thread] = await writeDb
@@ -2920,7 +2920,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "first on built-in",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
 
     await writeDb
@@ -2947,7 +2947,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "follow up on legacy thread",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [thread] = await writeDb
       .select({
@@ -2976,7 +2976,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
     const replacementProviderId = await seedModelProvider(
       fixture,
@@ -3007,7 +3007,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "follow up",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -3050,7 +3050,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "run codex",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [job] = await store
       .set(writeDb$)

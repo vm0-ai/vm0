@@ -25,7 +25,7 @@ import {
   getZeroUserPreferences,
   ApiRequestError,
 } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { printDeprecationNotice, withErrorHandler } from "../../../lib/command";
 
 const FREQUENCY_CHOICES = [
   { title: "Daily", value: "daily" as const, description: "Run every day" },
@@ -644,7 +644,9 @@ async function handleScheduleEnabling(params: {
 
 export const setupCommand = new Command()
   .name("setup")
-  .description("Create or edit a schedule for a zero agent")
+  .description(
+    "(deprecated: use `zero automation create`) Create or edit a schedule for a zero agent",
+  )
   .argument("<agent-id>", "Agent ID")
   .option("-n, --name <schedule-name>", 'Schedule name (default: "default")')
   .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once|loop")
@@ -678,6 +680,10 @@ Notes:
   )
   .action(
     withErrorHandler(async (agentIdentifier: string, options: SetupOptions) => {
+      printDeprecationNotice(
+        "zero automation create / zero automation trigger add",
+      );
+
       // 1. Resolve agent identifier (UUID or name) to compose ID
       const compose = await resolveCompose(agentIdentifier);
       if (!compose) {

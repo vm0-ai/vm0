@@ -36,7 +36,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
 const store = createStore();
@@ -675,7 +675,7 @@ describe("POST /api/zero/video-io/generate", () => {
         completion_tokens: 123_456,
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const webhookUrl = new URL(callbackUrl);
     expect(webhookUrl.origin).toBe(WEB_ORIGIN);
     expect(webhookUrl.pathname).toBe(
@@ -893,7 +893,7 @@ describe("POST /api/zero/video-io/generate", () => {
         completion_tokens: 100_000,
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(observedBody).toMatchObject({
       model: "dreamina-seedance-2-0-260128",
@@ -1000,7 +1000,7 @@ describe("POST /api/zero/video-io/generate", () => {
         completion_tokens: 200_000,
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(observedBody).toMatchObject({
       model: "dreamina-seedance-2-0-260128",
@@ -1152,7 +1152,7 @@ describe("POST /api/zero/video-io/generate", () => {
         file_size: VIDEO_BYTES.byteLength,
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const webhookUrl = new URL(readFalWebhookUrl(observedRequestUrl));
     expect(webhookUrl.origin).toBe(WEB_ORIGIN);
@@ -1278,7 +1278,7 @@ describe("POST /api/zero/video-io/generate", () => {
         content_type: "video/mp4",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(observedBody).toMatchObject({
       prompt: "a vertical concert stage reveal",

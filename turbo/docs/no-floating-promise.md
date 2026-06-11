@@ -135,6 +135,14 @@ const loadPagedMessages$ = command(
 
 Always use `await Promise.all([...])` for starting multiple long-running async operations.
 
+## Testing Note
+
+Do not manually `await clearAllDetached()` from inside a test body to make a
+flaky assertion pass. Test setup files call it during teardown so detached work
+from one test cannot leak into the next test. If a test is flaky before teardown,
+look for the floating promise or missing domain-level synchronization instead
+of adding waits, manual clears, or extra `detach()` calls.
+
 ## Fix Recipes
 
 When `ccstate/no-void-statement` fires, pick the recipe that matches the call

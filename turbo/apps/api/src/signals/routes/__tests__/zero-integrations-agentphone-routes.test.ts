@@ -38,7 +38,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { signAgentPhoneConnectParams } from "../../services/zero-agentphone.service";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
@@ -753,7 +753,7 @@ describe("AgentPhone migrated API routes", () => {
       body: rawBody,
     });
     expect(accepted.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     await expect(readAgentPhoneMessage("ap-inbound-1")).resolves.toMatchObject({
       phoneHandle,
@@ -804,7 +804,7 @@ describe("AgentPhone migrated API routes", () => {
       body: rawBody,
     });
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(sendCalls).toStrictEqual([]);
     const [run] = await writeDb
@@ -874,7 +874,7 @@ describe("AgentPhone migrated API routes", () => {
       body: rawBody,
     });
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(sendCalls).toStrictEqual([]);
     const [run] = await writeDb
@@ -916,7 +916,7 @@ describe("AgentPhone migrated API routes", () => {
       },
     });
     expect(accepted.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     await expect(readAgentPhoneMessage(messageId)).resolves.toMatchObject({
       conversationId: fixture.conversationId,
@@ -958,7 +958,7 @@ describe("AgentPhone migrated API routes", () => {
       ],
     });
     expect(accepted.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const run = await latestRunForAgentPhoneGroup(fixture);
     expect(run?.prompt).toBe("summarize this thread");
@@ -999,7 +999,7 @@ describe("AgentPhone migrated API routes", () => {
       },
     });
     expect(accepted.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(sendCalls[0]).toStrictEqual(
       expect.objectContaining({
@@ -1048,7 +1048,7 @@ describe("AgentPhone migrated API routes", () => {
       },
     });
     expect(accepted.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     await expect(
       readAgentPhoneLink(fixture.phoneHandle),
