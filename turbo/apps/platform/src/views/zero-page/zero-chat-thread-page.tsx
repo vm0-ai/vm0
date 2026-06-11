@@ -61,7 +61,11 @@ import type {
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_STYLE_PRESETS,
+} from "@vm0/core";
 import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -4720,6 +4724,16 @@ function generationTemplateLabel(
     });
     return item?.nameEn ?? formatTemplateIdLabel(value.selection.stylePresetId);
   }
+  if (value.type === "illustration") {
+    const item = ILLUSTRATION_TEMPLATE_ITEMS.find((candidate) => {
+      return (
+        candidate.illustrationStyleId === value.selection.illustrationStyleId
+      );
+    });
+    return (
+      item?.title ?? formatTemplateIdLabel(value.selection.illustrationStyleId)
+    );
+  }
   const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
     return (
       candidate.designSystemId === value.selection.designSystemId &&
@@ -4738,6 +4752,9 @@ function generationTemplateTypeLabel(
   if (value.type === "video") {
     return "Video";
   }
+  if (value.type === "illustration") {
+    return "Illustration";
+  }
   return "Slides";
 }
 
@@ -4750,7 +4767,7 @@ function UserMessageGenerationTemplate({
   const templateLabelEnabled =
     generationTemplate?.type === "video"
       ? (features?.[FeatureSwitchKey.VideoTemplatePicker] ?? false)
-      : (features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false);
+      : true;
   if (!templateLabelEnabled) {
     return null;
   }
@@ -4767,6 +4784,8 @@ function UserMessageGenerationTemplate({
     >
       {generationTemplate?.type === "video" ? (
         <IconVideo size={15} stroke={1.8} className="shrink-0" />
+      ) : generationTemplate?.type === "illustration" ? (
+        <IconPhoto size={15} stroke={1.8} className="shrink-0" />
       ) : (
         <IconPresentation size={15} stroke={1.8} className="shrink-0" />
       )}

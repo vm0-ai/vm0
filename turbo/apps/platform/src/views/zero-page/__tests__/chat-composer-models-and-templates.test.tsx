@@ -7,7 +7,11 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_STYLE_PRESETS,
+} from "@vm0/core";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
@@ -1116,6 +1120,75 @@ describe("chat composer templates", () => {
       );
       expect(
         screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("selects and removes an illustration style from the picker", async () => {
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Illustration")).toBeInTheDocument();
+    });
+    click(tabByText("Illustration"));
+
+    await waitFor(() => {
+      expect(screen.getByText("VM0 illustration styles")).toBeInTheDocument();
+      expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
+      expect(
+        screen.getByTitle(`${illustrationTemplate.title} illustration preview`),
+      ).toHaveAttribute("src", illustrationTemplate.previewImage);
+      expect(screen.getAllByTitle(/ illustration preview$/u)).toHaveLength(
+        ILLUSTRATION_TEMPLATE_ITEMS.length,
+      );
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "no matching style");
+    await waitFor(() => {
+      expect(screen.getByText("No matches")).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "ink");
+    click(
+      screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
+      ).toBeInTheDocument();
+    });
+
+    click(
+      screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(
+        screen.queryByLabelText(
+          `Remove template ${illustrationTemplate.title}`,
+        ),
       ).not.toBeInTheDocument();
     });
   });

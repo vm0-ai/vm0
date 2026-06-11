@@ -1,3 +1,6 @@
+export const ILLUSTRATION_ASSET_BASE =
+  "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
+
 export interface IllustrationStyle {
   slug: string;
   title: string;
@@ -468,3 +471,33 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     ],
   },
 ];
+
+export interface IllustrationTemplateItem {
+  readonly slug: string;
+  readonly title: string;
+  readonly illustrationStyleId: string;
+  readonly previewImage: string;
+  readonly previewImages: readonly string[];
+  readonly variationCount: number;
+  readonly tag: "illustration";
+}
+
+function illustrationPreviewImage(style: IllustrationStyle): string {
+  const cover = style.cover ?? `images/${style.image}`;
+  return `${ILLUSTRATION_ASSET_BASE}/${cover}`;
+}
+
+export const ILLUSTRATION_TEMPLATE_ITEMS: readonly IllustrationTemplateItem[] =
+  ILLUSTRATION_STYLES.map((style) => {
+    return {
+      slug: style.slug,
+      title: style.title,
+      illustrationStyleId: `image-style:${style.slug}`,
+      previewImage: illustrationPreviewImage(style),
+      previewImages: style.refs.map((ref) => {
+        return `${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${ref}`;
+      }),
+      variationCount: style.refs.length,
+      tag: "illustration",
+    };
+  });

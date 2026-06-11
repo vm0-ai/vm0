@@ -28,6 +28,7 @@ import {
   IconPaperclip,
   IconPlayerStop,
   IconPlug,
+  IconPhoto,
   IconPlus,
   IconSearch,
   IconTemplate,
@@ -92,7 +93,9 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  type IllustrationTemplateItem,
   type PresentationTemplateItem,
   VIDEO_STYLE_GROUPS,
   VIDEO_STYLE_PRESETS,
@@ -493,7 +496,10 @@ function selectedTemplateTitle(
   if (value?.type === "video") {
     return selectedVideoTemplateItem(value)?.nameEn;
   }
-  return selectedPresentationTemplateItem(value)?.title;
+  return (
+    selectedPresentationTemplateItem(value)?.title ??
+    selectedIllustrationTemplateItem(value)?.title
+  );
 }
 
 function selectedPresentationTemplateItem(
@@ -507,12 +513,50 @@ function selectedPresentationTemplateItem(
   });
 }
 
+function isSelectedIllustrationTemplate(
+  item: IllustrationTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "illustration" &&
+    value.selection.illustrationStyleId === item.illustrationStyleId
+  );
+}
+
+function toIllustrationGenerationTemplate(
+  item: IllustrationTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "illustration",
+    selection: {
+      illustrationStyleId: item.illustrationStyleId,
+    },
+  };
+}
+
+function selectedIllustrationTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): IllustrationTemplateItem | undefined {
+  if (value?.type !== "illustration") {
+    return undefined;
+  }
+  return ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+    return isSelectedIllustrationTemplate(item, value);
+  });
+}
+
 function formatPresentationTemplateKind(templateId: string): string {
   const label = templateId
     .replace(/^template:/, "")
     .replace(/^html-ppt-/, "")
     .replace(/-/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function formatIllustrationTemplateKind(
+  item: IllustrationTemplateItem,
+): string {
+  return `${item.variationCount} variations`;
 }
 
 function presentationTemplateMatchesSearch(
@@ -528,6 +572,22 @@ function presentationTemplateMatchesSearch(
     item.designSystemId,
     item.templateId,
     formatPresentationTemplateKind(item.templateId),
+  ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function illustrationTemplateMatchesSearch(
+  item: IllustrationTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [
+    item.title,
+    item.illustrationStyleId,
+    formatIllustrationTemplateKind(item),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
@@ -930,17 +990,124 @@ function TemplatePreviewPage({
   );
 }
 
+function IllustrationTemplatePreview({
+  item,
+}: {
+  item: IllustrationTemplateItem;
+}) {
+  return (
+    <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+      <img
+        src={item.previewImage}
+        alt=""
+        title={`${item.title} illustration preview`}
+        className="h-full w-full object-cover"
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
+function TemplatePickerTabs({
+  selectedCategory,
+  hasPptTab,
+  hasIllustrationTab,
+  hasVideoTab,
+  onChange,
+}: {
+  selectedCategory: string;
+  hasPptTab: boolean;
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Tabs value={selectedCategory} onValueChange={onChange} className="-mb-px">
+      <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
+        {hasPptTab && (
+          <TabsTrigger
+            value="slides"
+            className={cn(
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              selectedCategory === "slides"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <IconPresentation
+              className={cn(
+                "h-5 w-5",
+                selectedCategory === "slides"
+                  ? "text-blue-500"
+                  : "text-muted-foreground",
+              )}
+              stroke={1.8}
+            />
+            PPT
+          </TabsTrigger>
+        )}
+        {hasIllustrationTab && (
+          <TabsTrigger
+            value="illustration"
+            className={cn(
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              selectedCategory === "illustration"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <IconPhoto
+              className={cn(
+                "h-5 w-5",
+                selectedCategory === "illustration"
+                  ? "text-emerald-500"
+                  : "text-muted-foreground",
+              )}
+              stroke={1.8}
+            />
+            Illustration
+          </TabsTrigger>
+        )}
+        {hasVideoTab && (
+          <TabsTrigger
+            value="video"
+            className={cn(
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              selectedCategory === "video"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <IconVideo
+              className={cn(
+                "h-5 w-5",
+                selectedCategory === "video"
+                  ? "text-purple-500"
+                  : "text-muted-foreground",
+              )}
+              stroke={1.8}
+            />
+            Video
+          </TabsTrigger>
+        )}
+      </TabsList>
+    </Tabs>
+  );
+}
+
 function TemplatePickerDialog({
   value,
   onChange,
   onClose,
   hasPptTab,
+  hasIllustrationTab,
   hasVideoTab,
 }: {
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
   hasPptTab: boolean;
+  hasIllustrationTab: boolean;
   hasVideoTab: boolean;
 }) {
   const category = useGet(templatePickerCategory$);
@@ -960,6 +1127,11 @@ function TemplatePickerDialog({
   const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
   });
+  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS.filter(
+    (item) => {
+      return illustrationTemplateMatchesSearch(item, search);
+    },
+  );
   const filteredVideoItems = VIDEO_STYLE_PRESETS.filter((item) => {
     return (
       videoTemplateMatchesGroup(item, videoGroup) &&
@@ -981,15 +1153,26 @@ function TemplatePickerDialog({
     onClose();
   };
 
+  const handleSelectIllustration = (item: IllustrationTemplateItem) => {
+    onChange(toIllustrationGenerationTemplate(item));
+    onClose();
+  };
+
   const handlePreview = (item: PresentationTemplateItem) => {
     setSelectedSlideIndex(0);
     setPreviewSlug(item.slug);
   };
 
-  const defaultCategory = hasPptTab ? "slides" : "video";
+  const defaultCategory = "slides";
   const effectiveCategory =
-    category === "slides" && !hasPptTab ? "video" : category;
-  const selectedCategory = effectiveCategory || defaultCategory;
+    category === "video" && !hasVideoTab ? defaultCategory : category;
+  const selectedCategory = [
+    ...(hasPptTab ? ["slides"] : []),
+    ...(hasIllustrationTab ? ["illustration"] : []),
+    ...(hasVideoTab ? ["video"] : []),
+  ].includes(effectiveCategory)
+    ? effectiveCategory
+    : defaultCategory;
 
   return (
     <Dialog
@@ -1027,58 +1210,13 @@ function TemplatePickerDialog({
               <DialogTitle>Templates</DialogTitle>
             </DialogHeader>
             <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
-              <Tabs
-                value={selectedCategory}
-                onValueChange={setCategory}
-                className="-mb-px"
-              >
-                <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
-                  {hasPptTab && (
-                    <TabsTrigger
-                      value="slides"
-                      className={cn(
-                        "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
-                        selectedCategory === "slides"
-                          ? "border-foreground text-foreground"
-                          : "border-transparent text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      <IconPresentation
-                        className={cn(
-                          "h-5 w-5",
-                          selectedCategory === "slides"
-                            ? "text-blue-500"
-                            : "text-muted-foreground",
-                        )}
-                        stroke={1.8}
-                      />
-                      PPT
-                    </TabsTrigger>
-                  )}
-                  {hasVideoTab && (
-                    <TabsTrigger
-                      value="video"
-                      className={cn(
-                        "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
-                        selectedCategory === "video"
-                          ? "border-foreground text-foreground"
-                          : "border-transparent text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      <IconVideo
-                        className={cn(
-                          "h-5 w-5",
-                          selectedCategory === "video"
-                            ? "text-purple-500"
-                            : "text-muted-foreground",
-                        )}
-                        stroke={1.8}
-                      />
-                      Video
-                    </TabsTrigger>
-                  )}
-                </TabsList>
-              </Tabs>
+              <TemplatePickerTabs
+                selectedCategory={selectedCategory}
+                hasPptTab={hasPptTab}
+                hasIllustrationTab={hasIllustrationTab}
+                hasVideoTab={hasVideoTab}
+                onChange={setCategory}
+              />
               <div className="w-full pb-3 sm:w-64">
                 <div className="relative">
                   <IconSearch
@@ -1142,6 +1280,70 @@ function TemplatePickerDialog({
                                 aria-pressed={selected}
                                 onClick={() => {
                                   handleSelectPresentation(item);
+                                }}
+                                className={cn(
+                                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                  selected
+                                    ? "border-primary/40 bg-primary/10 text-primary"
+                                    : "border-border bg-background text-foreground hover:bg-muted",
+                                )}
+                              >
+                                Use
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
+            {selectedCategory === "illustration" && (
+              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+                <TemplateSectionHeader
+                  label="VM0 illustration styles"
+                  count={filteredIllustrationItems.length}
+                />
+                {filteredIllustrationItems.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredIllustrationItems.map((item) => {
+                      const selected = isSelectedIllustrationTemplate(
+                        item,
+                        value,
+                      );
+                      return (
+                        <div
+                          key={item.illustrationStyleId}
+                          className={cn(
+                            "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+                            selected
+                              ? "border-primary ring-1 ring-primary"
+                              : "border-border",
+                          )}
+                        >
+                          <IllustrationTemplatePreview item={item} />
+                          <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {item.title}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                {formatIllustrationTemplateKind(item)}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center">
+                              <button
+                                type="button"
+                                aria-label={`Select template ${item.title}`}
+                                aria-pressed={selected}
+                                onClick={() => {
+                                  handleSelectIllustration(item);
                                 }}
                                 className={cn(
                                   "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1303,6 +1505,47 @@ function SelectedVideoTemplateChip({
   );
 }
 
+function SelectedIllustrationTemplateChip({
+  item,
+  onRemove,
+}: {
+  item: IllustrationTemplateItem;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+            <img
+              src={item.previewImage}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          </span>
+          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+            Illustration
+          </span>
+          <span className="h-3.5 w-px shrink-0 bg-border/70" />
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.title}
+          </span>
+          <button
+            type="button"
+            aria-label={`Remove template ${item.title}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
 function SelectedTemplateChipSlot({
   picker,
   onDraftChange,
@@ -1311,6 +1554,7 @@ function SelectedTemplateChipSlot({
   onDraftChange: (() => void) | undefined;
 }) {
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
+  const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   if (!picker) {
     return null;
@@ -1337,16 +1581,29 @@ function SelectedTemplateChipSlot({
       />
     );
   }
+  if (illustrationItem) {
+    return (
+      <SelectedIllustrationTemplateChip
+        item={illustrationItem}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
   return null;
 }
 
 function TemplatePickerButton({
   picker,
   hasPptTab,
+  hasIllustrationTab,
   hasVideoTab,
 }: {
   picker: ComposerTemplatePicker;
   hasPptTab: boolean;
+  hasIllustrationTab: boolean;
   hasVideoTab: boolean;
 }) {
   const open = useGet(templatePickerOpen$);
@@ -1394,6 +1651,7 @@ function TemplatePickerButton({
             setOpen(false);
           }}
           hasPptTab={hasPptTab}
+          hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
         />
       )}
@@ -1407,15 +1665,20 @@ function ComposerTemplatePickerSlot({
   picker: ComposerTemplatePicker | undefined;
 }) {
   const features = useLastResolved(featureSwitch$);
-  const hasPptTab = Boolean(features?.[FeatureSwitchKey.ChatTemplatePicker]);
+  const hasChatTemplatePicker = Boolean(
+    features?.[FeatureSwitchKey.ChatTemplatePicker],
+  );
+  const hasPptTab = hasChatTemplatePicker;
+  const hasIllustrationTab = hasChatTemplatePicker;
   const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
-  if (!picker || (!hasPptTab && !hasVideoTab)) {
+  if (!picker || (!hasChatTemplatePicker && !hasVideoTab)) {
     return null;
   }
   return (
     <TemplatePickerButton
       picker={picker}
       hasPptTab={hasPptTab}
+      hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
     />
   );
