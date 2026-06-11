@@ -77,7 +77,6 @@ function mockQueuedThread(): void {
       id: THREAD_ID,
       title: null,
       agentId: "c0000000-0000-4000-a000-000000000001",
-      latestSessionId: null,
       activeRunIds: ["run-queued"],
       draftContent: null,
       draftAttachments: null,

@@ -268,18 +268,6 @@ function parseHostedArtifactKindFromMetadata(
   return parseHostedArtifactKind(metadata.artifactKind);
 }
 
-function hasAgentSessionId(
-  value: unknown,
-): value is { readonly agentSessionId: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "agentSessionId" in value &&
-    typeof (value as { readonly agentSessionId: unknown }).agentSessionId ===
-      "string"
-  );
-}
-
 function buildReportableErrorMessage(runId: string): string {
   return `${CHAT_RUN_REPORTABLE_ERROR_MESSAGE} [Report this issue](/runs/${encodeURIComponent(runId)}/report-error)`;
 }
@@ -637,13 +625,10 @@ function toPagedMessage(
   });
 }
 
-// Single zero_runs JOIN agent_runs scan used to derive activeRuns,
-// latestSessionId, and latestRunProviderType in JS. Replaces three near-
-// identical queries that each paid the same join cost on the hot
-// chat-thread detail path. Rows are ordered newest-first so the latest-N
-// scans below match the previous LIMIT semantics.
-const LATEST_SESSION_ID_SCAN_DEPTH = 5;
-
+// Single zero_runs JOIN agent_runs scan used to derive activeRunIds and
+// latestRunProviderType in JS. Replaces near-identical queries that each
+// paid the same join cost on the hot chat-thread detail path. Rows are
+// ordered newest-first.
 function isActiveRunStatus(status: string): boolean {
   return status === "queued" || status === "pending" || status === "running";
 }
@@ -652,7 +637,6 @@ interface ThreadRunSummaryRow {
   readonly id: string;
   readonly modelProvider: string | null;
   readonly status: string;
-  readonly result: unknown;
 }
 
 function threadRunSummaries(
@@ -664,7 +648,6 @@ function threadRunSummaries(
         id: zeroRuns.id,
         modelProvider: zeroRuns.modelProvider,
         status: agentRuns.status,
-        result: agentRuns.result,
       })
       .from(zeroRuns)
       .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
@@ -673,29 +656,16 @@ function threadRunSummaries(
   });
 }
 
-function pickActiveRuns(
+function pickActiveRunIds(
   rows: readonly ThreadRunSummaryRow[],
-): readonly { readonly id: string; readonly status: string }[] {
-  const active: { id: string; status: string }[] = [];
+): readonly string[] {
+  const active: string[] = [];
   for (const row of rows) {
     if (isActiveRunStatus(row.status)) {
-      active.push({ id: row.id, status: row.status });
+      active.push(row.id);
     }
   }
   return active;
-}
-
-function pickLatestSessionId(
-  rows: readonly ThreadRunSummaryRow[],
-): string | null {
-  const limit = Math.min(rows.length, LATEST_SESSION_ID_SCAN_DEPTH);
-  for (let i = 0; i < limit; i++) {
-    const row = rows[i]!;
-    if (hasAgentSessionId(row.result)) {
-      return row.result.agentSessionId;
-    }
-  }
-  return null;
 }
 
 function pickLatestRunProviderType(
@@ -718,23 +688,17 @@ export function zeroChatThreadDetail(args: {
       get(threadRunSummaries(args.threadId)),
       get(effectiveModelFirstThreadPin({ thread, userId: args.userId })),
     ]);
-    const activeRuns = pickActiveRuns(runSummaries);
-    const latestSessionId = pickLatestSessionId(runSummaries);
     const latestRunProviderTypeRaw = pickLatestRunProviderType(runSummaries);
 
     return {
       id: thread.id,
       title: thread.title,
       agentId: thread.agentComposeId,
-      latestSessionId,
       lastReadMessageId: thread.lastReadMessageId,
       latestSessionProviderType: formatLatestSessionProviderType(
         latestRunProviderTypeRaw,
       ),
-      activeRunIds: activeRuns.map((run) => {
-        return run.id;
-      }),
-      activeRuns: [...activeRuns],
+      activeRunIds: [...pickActiveRunIds(runSummaries)],
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
       draftContent: thread.draftContent,

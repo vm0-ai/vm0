@@ -99,7 +99,6 @@ function setupChatThread({
       id: THREAD_ID,
       title: null,
       agentId: AGENT_ID,
-      latestSessionId: null,
       activeRunIds: [],
       draftContent: null,
       draftAttachments: null,
