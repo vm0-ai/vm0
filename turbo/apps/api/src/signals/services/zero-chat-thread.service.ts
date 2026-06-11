@@ -19,7 +19,6 @@ import {
   isActionableRunError,
   isGenericRunErrorForDisplay,
 } from "@vm0/api-contracts/contracts/errors";
-import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
@@ -270,16 +269,6 @@ function parseHostedArtifactKindFromMetadata(
 
 function buildReportableErrorMessage(runId: string): string {
   return `${CHAT_RUN_REPORTABLE_ERROR_MESSAGE} [Report this issue](/runs/${encodeURIComponent(runId)}/report-error)`;
-}
-
-function formatLatestSessionProviderType(
-  value: string | null,
-): ChatThreadDetail["latestSessionProviderType"] {
-  if (value === null) {
-    return null;
-  }
-  const parsed = modelProviderTypeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
 }
 
 function ownedChatThread(
@@ -625,9 +614,8 @@ function toPagedMessage(
   });
 }
 
-// Single zero_runs JOIN agent_runs scan used to derive activeRunIds and
-// latestRunProviderType in JS. Replaces near-identical queries that each
-// paid the same join cost on the hot chat-thread detail path. Rows are
+// Single zero_runs JOIN agent_runs scan used to derive activeRunIds in JS,
+// paying the join cost once on the hot chat-thread detail path. Rows are
 // ordered newest-first.
 function isActiveRunStatus(status: string): boolean {
   return status === "queued" || status === "pending" || status === "running";
@@ -635,7 +623,6 @@ function isActiveRunStatus(status: string): boolean {
 
 interface ThreadRunSummaryRow {
   readonly id: string;
-  readonly modelProvider: string | null;
   readonly status: string;
 }
 
@@ -646,7 +633,6 @@ function threadRunSummaries(
     return await get(db$)
       .select({
         id: zeroRuns.id,
-        modelProvider: zeroRuns.modelProvider,
         status: agentRuns.status,
       })
       .from(zeroRuns)
@@ -668,12 +654,6 @@ function pickActiveRunIds(
   return active;
 }
 
-function pickLatestRunProviderType(
-  rows: readonly ThreadRunSummaryRow[],
-): string | null {
-  return rows[0]?.modelProvider ?? null;
-}
-
 export function zeroChatThreadDetail(args: {
   readonly threadId: string;
   readonly userId: string;
@@ -688,16 +668,11 @@ export function zeroChatThreadDetail(args: {
       get(threadRunSummaries(args.threadId)),
       get(effectiveModelFirstThreadPin({ thread, userId: args.userId })),
     ]);
-    const latestRunProviderTypeRaw = pickLatestRunProviderType(runSummaries);
-
     return {
       id: thread.id,
       title: thread.title,
       agentId: thread.agentComposeId,
       lastReadMessageId: thread.lastReadMessageId,
-      latestSessionProviderType: formatLatestSessionProviderType(
-        latestRunProviderTypeRaw,
-      ),
       activeRunIds: [...pickActiveRunIds(runSummaries)],
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),

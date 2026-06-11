@@ -253,13 +253,6 @@ const chatThreadDetailSchema = z.object({
    * back-compat with fixtures/tests that predate the read marker field.
    */
   lastReadMessageId: z.string().nullable().optional(),
-  /**
-   * Provider type of the latest run in this thread, if any. Null when the
-   * thread has no runs yet. Optional so older fixtures/tests that predate
-   * the field still validate. Not read by the web client; the BYOK smoke
-   * e2e asserts it to verify provider routing (t-codex-zero-byok-smoke).
-   */
-  latestSessionProviderType: modelProviderTypeSchema.nullable().optional(),
   activeRunIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
