@@ -23,7 +23,8 @@ from typing import TypeGuard
 
 from mitmproxy import http
 
-import body_utils
+import body_decoding
+from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import (
@@ -304,8 +305,8 @@ def extract_openai_responses_usage_from_json(
     """
 
     if headers:
-        body = body_utils.decompress_body(
-            body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+        body = body_decoding.decompress_body(
+            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
     usage, _error = _extract_openai_responses_usage_from_decoded_json_body(body)
     return usage
@@ -331,8 +332,8 @@ def extract_openai_responses_usage_with_error_from_json(
     """
 
     if headers:
-        body, decompress_error = body_utils.decompress_json_usage_body(
-            body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+        body, decompress_error = body_decoding.decompress_json_usage_body(
+            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
         if decompress_error:
             return None, decompress_error

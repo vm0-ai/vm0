@@ -80,6 +80,15 @@ async function enableCreditUsageRecords(fixture: UsageFixture): Promise<void> {
   });
 }
 
+async function disableCreditUsageRecords(fixture: UsageFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.CreditUsageRecords]: false },
+  });
+}
+
 describe("GET /api/zero/usage/record", () => {
   const track = createFixtureTracker<UsageFixture>((fixture) => {
     return store.set(deleteUsageFixture$, fixture, context.signal);
@@ -145,6 +154,7 @@ describe("GET /api/zero/usage/record", () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
+    await disableCreditUsageRecords(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(

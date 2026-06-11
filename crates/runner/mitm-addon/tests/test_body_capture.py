@@ -10,17 +10,18 @@ import pytest
 import zstandard
 from mitmproxy import http
 
-from body_utils import (
-    STREAM_BUFFER_LIMIT,
-    STREAM_DECODE_CHUNK_LIMIT,
+from body_capture import (
     _encode_body,
     _is_text_content,
     _sanitize_headers_for_capture,
     _truncate_bytes_utf8_safe,
     add_capture_fields,
+)
+from body_decoding import (
     create_stream_decode_feed,
     decompress_body,
 )
+from body_limits import STREAM_BUFFER_LIMIT, STREAM_DECODE_CHUNK_LIMIT
 from usage import (
     extract_anthropic_messages_usage_from_json,
     extract_anthropic_messages_usage_with_error_from_json,
@@ -47,7 +48,7 @@ def _track_brotli_decompressor(monkeypatch):
         def is_finished(self) -> bool:
             return self._inner.is_finished()
 
-    monkeypatch.setattr("body_utils.brotli.Decompressor", CountingDecompressor)
+    monkeypatch.setattr("body_decoding.brotli.Decompressor", CountingDecompressor)
     return stats
 
 
@@ -106,6 +107,7 @@ class TestEncodeBody:
         body = b"\xff\xfe invalid utf8"
         encoded, encoding = _encode_body(body, "text/plain")
         assert encoding == "base64"
+        assert encoded is not None
         assert base64.b64decode(encoded) == body
 
 
@@ -1441,7 +1443,7 @@ class TestExtractAnthropicUsageFromJson:
     def test_handles_large_gzipped_body(self, headers):
         """Body that decompresses past the legacy 64 KB cap should still parse.
 
-        Regression test for the silent 64 KB default in body_utils.decompress_body
+        Regression test for the silent 64 KB default in body_decoding.decompress_body
         which used to truncate large model-provider non-SSE responses and cause
         usage extraction to silently fail.
         """
@@ -1722,7 +1724,7 @@ class TestStreamDecodeFeed:
                 stats["decompressobj"] += 1
                 raise AssertionError("streaming usage decoder must not use decompressobj")
 
-        monkeypatch.setattr("body_utils.zstandard.ZstdDecompressor", CountingZstdDecompressor)
+        monkeypatch.setattr("body_decoding.zstandard.ZstdDecompressor", CountingZstdDecompressor)
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
         assert parse is not None
@@ -1822,7 +1824,7 @@ class TestStreamDecodeFeed:
             proxies.append(proxy)
             return proxy
 
-        monkeypatch.setattr("body_utils.zlib.decompressobj", factory)
+        monkeypatch.setattr("body_decoding.zlib.decompressobj", factory)
         chunks: list[bytes] = []
         with mitm_ctx():
             parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)

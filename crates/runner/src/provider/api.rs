@@ -11,7 +11,7 @@ use api_contracts::generated::routes;
 use reqwest::{RequestBuilder, Response, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 
-use super::api_ably_supervisor::{AblySupervisor, PollOutcome, PollWakeups};
+use super::api_ably_supervisor::{AblySupervisor, PollOutcome, PollReason, PollWakeups};
 use super::{ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobProvider};
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
@@ -35,6 +35,8 @@ struct ClaimRequestTelemetry {
     job_discovered_to_claim_request_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     local_admission_to_claim_request_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    poll_reason: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +168,10 @@ impl JobProvider for ApiProvider {
                         .experimental_profile
                         .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                     info!(run_id = %job.run_id, %profile, poll_reason = ?reason, "poll: job found");
-                    return Some(JobCandidate::new(job.run_id, profile));
+                    return Some(
+                        JobCandidate::new(job.run_id, profile)
+                            .with_poll_reason(poll_reason_value(reason)),
+                    );
                 }
                 Ok(None) => {
                     self.poll_wakeups
@@ -431,7 +436,18 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             local_admission_to_claim_request_ms: candidate
                 .local_admission_elapsed()
                 .map(duration_ms),
+            poll_reason: candidate.poll_reason().map(String::from),
         },
+    }
+}
+
+fn poll_reason_value(reason: PollReason) -> &'static str {
+    match reason {
+        PollReason::Immediate => "immediate",
+        PollReason::Deferred => "deferred",
+        PollReason::WakeupRetry => "wakeup_retry",
+        PollReason::Slow => "slow",
+        PollReason::Fast => "fast",
     }
 }
 
@@ -631,7 +647,8 @@ mod tests {
             crate::profile::DEFAULT_PROFILE.to_string(),
             now.checked_sub(Duration::from_millis(25)).unwrap(),
             Some(now.checked_sub(Duration::from_millis(7)).unwrap()),
-        );
+        )
+        .with_poll_reason("deferred");
 
         let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
 
@@ -645,6 +662,7 @@ mod tests {
                 .as_u64()
                 .is_some_and(|value| value >= 7)
         );
+        assert_eq!(body["telemetry"]["pollReason"], "deferred");
     }
 
     #[test]
@@ -669,6 +687,7 @@ mod tests {
                 .get("localAdmissionToClaimRequestMs")
                 .is_none()
         );
+        assert!(body["telemetry"].get("pollReason").is_none());
     }
 
     async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {

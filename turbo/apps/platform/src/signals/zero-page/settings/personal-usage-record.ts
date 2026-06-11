@@ -3,7 +3,6 @@ import {
   zeroUsageRecordContract,
   type UsageRecordRange,
   type UsageRecordScope,
-  type UsageRecordSource,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
@@ -24,16 +23,10 @@ export const setCreditBalanceTab$ = command(
 
 const PAGE_STEP = 20;
 
-const legacyUsagePageSize$ = state(PAGE_STEP);
 const myUsagePageSize$ = state(PAGE_STEP);
 const teamUsagePageSize$ = state(PAGE_STEP);
-const sourceFilter$ = state<UsageRecordSource | null>(null);
 const myUsageRangeState$ = state<UsageRecordRange>("today");
 const teamUsageRangeState$ = state<UsageRecordRange>("billingPeriod");
-
-export const usageSourceFilter$ = computed((get) => {
-  return get(sourceFilter$);
-});
 
 export const myUsageRange$ = computed((get) => {
   return get(myUsageRangeState$);
@@ -47,13 +40,6 @@ export const setMyUsageRange$ = command(({ set }, range: UsageRecordRange) => {
   set(myUsageRangeState$, range);
   set(myUsagePageSize$, PAGE_STEP);
 });
-
-export const setUsageSourceFilter$ = command(
-  ({ set }, source: UsageRecordSource | null) => {
-    set(sourceFilter$, source);
-    set(legacyUsagePageSize$, PAGE_STEP);
-  },
-);
 
 export const setTeamUsageRange$ = command(
   ({ set }, range: UsageRecordRange) => {
@@ -72,28 +58,9 @@ export const loadMoreUsageRecord$ = command(
   },
 );
 
-export const loadMoreLegacyUsageRecord$ = command(({ get, set }) => {
-  set(legacyUsagePageSize$, get(legacyUsagePageSize$) + PAGE_STEP);
-});
-
 function currentTimeZone(): string {
   return new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
-
-export const usageRecordAsync$ = computed(async (get) => {
-  const pageSize = get(legacyUsagePageSize$);
-  const source = get(sourceFilter$);
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroUsageRecordContract);
-  const result = await accept(
-    client.get({
-      query: { page: 1, pageSize, ...(source ? { source } : {}) },
-    }),
-    [200],
-    { toast: false },
-  );
-  return result.body;
-});
 
 export const myUsageRecordAsync$ = computed(async (get) => {
   const pageSize = get(myUsagePageSize$);
