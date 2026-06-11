@@ -1170,7 +1170,7 @@ export const runScheduleNow$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
-        triggerSource: "schedule",
+        triggerSource: "automation",
         chatThreadId: runInput.chatThreadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:

@@ -221,6 +221,7 @@ describe("HOOK-02: webhook automation management", () => {
         body: {
           switches: {
             [FeatureSwitchKey.ZeroAutomations]: true,
+            [FeatureSwitchKey.AutomationWebhookTriggers]: true,
           },
         },
       }),

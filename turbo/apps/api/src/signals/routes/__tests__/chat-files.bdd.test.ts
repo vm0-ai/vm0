@@ -53,7 +53,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       title: "Launch notes",
       agentId: compose.composeId,
       activeRunIds: [],
-      activeRuns: [],
       draftContent: null,
       draftAttachments: null,
     });

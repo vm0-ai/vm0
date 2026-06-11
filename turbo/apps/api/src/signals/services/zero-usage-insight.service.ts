@@ -369,7 +369,7 @@ function queryUsageInsightSourceBuckets(db: Db, p: UsageInsightSqlParams) {
           WHEN zr.trigger_source = 'web' THEN 'chat'
           WHEN zr.trigger_source = 'slack' THEN 'slack'
           WHEN zr.trigger_source = 'email' THEN 'email'
-          WHEN zr.trigger_source = 'schedule' THEN 'schedule'
+          WHEN zr.trigger_source IN ('schedule', 'automation') THEN 'schedule'
           ELSE 'others'
         END AS bucket,
         COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
@@ -517,7 +517,7 @@ async function queryUsageInsightTopSchedules(
         FROM usage_rows ${USAGE_ROW_ALIAS}
         INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
         LEFT JOIN automations a ON a.id = zr.automation_id
-        WHERE zr.trigger_source = 'schedule'
+        WHERE zr.trigger_source IN ('schedule', 'automation')
           AND zr.automation_id IS NOT NULL
         GROUP BY zr.automation_id, a.name, a.description
       )
@@ -563,7 +563,7 @@ async function queryUsageInsightTopSchedules(
             ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
           FROM usage_rows ${USAGE_ROW_ALIAS}
           INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
-          WHERE zr.trigger_source = 'schedule' AND zr.automation_id IS NOT NULL
+          WHERE zr.trigger_source IN ('schedule', 'automation') AND zr.automation_id IS NOT NULL
           GROUP BY zr.automation_id
         )
         SELECT COUNT(*)::bigint AS cnt FROM agg WHERE rn > 100

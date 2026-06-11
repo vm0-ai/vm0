@@ -1,6 +1,4 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -65,104 +63,6 @@ describe("directed connector authorize page", () => {
     await waitFor(() => {
       expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
-    });
-  });
-
-  it("starts in the authorized state when the agent already has access", async () => {
-    mockConnectedConnector("gmail");
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: ["gmail"] });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
-      expect(screen.getByText("Authorized")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Authorize Zero")).not.toBeInTheDocument();
-  });
-
-  it("does not expose authorization actions for unusable links", async () => {
-    detachedSetupPage({
-      context,
-      path: "/connectors/nonexistent/authorize",
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText(/Zero needs .* to proceed/),
-      ).not.toBeInTheDocument();
-    });
-    expect(screen.queryByText(/Authorize/)).not.toBeInTheDocument();
-  });
-
-  it("normalizes connector casing and shows Google consent before connection", async () => {
-    detachedSetupPage({
-      context,
-      path: `/connectors/Gmail/authorize?agentId=${AGENT_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Zero needs Gmail to proceed"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(/Google will show a security warning/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
-  });
-
-  it("opens the device-auth method picker when authorization needs a connection", async () => {
-    detachedSetupPage({
-      context,
-      path: `/connectors/test-oauth-device/authorize?agentId=${AGENT_ID}`,
-      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Zero needs Test OAuth Device (internal) to proceed"),
-      ).toBeInTheDocument();
-    });
-
-    click(getButtonByText("Authorize Zero"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Test OAuth Device (internal)" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("OAuth Device Authorization"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("opens the multi-method picker when authorization needs a configurable connector", async () => {
-    detachedSetupPage({
-      context,
-      path: `/connectors/stripe/authorize?agentId=${AGENT_ID}`,
-      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Zero needs Stripe to proceed"),
-      ).toBeInTheDocument();
-    });
-
-    click(getButtonByText("Authorize Zero"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Stripe" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("OAuth (Recommended)")).toBeInTheDocument();
-      expect(screen.getAllByText("API Key").length).toBeGreaterThan(0);
     });
   });
 

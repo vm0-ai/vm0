@@ -264,7 +264,6 @@ function mockSidebarThreadStory(
       id: params.id,
       title: thread?.title ?? null,
       agentId: thread?.agent.id ?? AGENT_ID,
-      latestSessionId: null,
       activeRunIds: [],
       draftContent: null,
       draftAttachments: null,
@@ -346,7 +345,6 @@ describe("zero sidebar", () => {
         title:
           params.id === EXISTING_THREAD_ID ? "Existing conversation" : null,
         agentId: AGENT_ID,
-        latestSessionId: null,
         activeRunIds: [],
         draftContent: null,
         draftAttachments: null,
@@ -624,7 +622,6 @@ describe("zero sidebar", () => {
         id: params.id,
         title: null,
         agentId: RESEARCH_AGENT_ID,
-        latestSessionId: null,
         activeRunIds: [],
         draftContent: null,
         draftAttachments: null,

@@ -13,6 +13,7 @@ import { agentRuns } from "./agent-run";
 
 export const RUN_UPLOADED_FILE_SOURCES = [
   "schedule",
+  "automation",
   "web",
   "slack",
   "email",

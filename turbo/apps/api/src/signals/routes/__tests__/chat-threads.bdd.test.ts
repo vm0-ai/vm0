@@ -376,10 +376,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     let detail = await chat.readThread(actor, run.threadId);
     expect(detail.selectedModel).toBe("claude-sonnet-4-6");
     expect(detail.activeRunIds).toContain(run.runId);
-    expect(detail.activeRuns).toContainEqual({
-      id: run.runId,
-      status: "pending",
-    });
 
     // Clearing the explicit pin keeps the detail's model: the first run that
     // carried a selected model backfills it, with no provider route.
@@ -404,7 +400,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     await cancelChatRun(actor, run.runId);
     detail = await chat.readThread(actor, run.threadId);
-    expect(detail.activeRuns).toStrictEqual([]);
     expect(detail.activeRunIds).toStrictEqual([]);
   }, 90_000);
 

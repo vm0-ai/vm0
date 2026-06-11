@@ -2162,6 +2162,24 @@ function captureScheduleRunCallbacks(): void {
   );
 }
 
+async function expectSingleLogSourceMatch(args: {
+  readonly actor: ApiTestUser;
+  readonly triggerSource: "schedule" | "automation";
+  readonly runId: string;
+}): Promise<void> {
+  const response = await reads.requestListLogs(
+    args.actor,
+    { triggerSource: args.triggerSource },
+    [200],
+  );
+  mustOk(response, `${args.triggerSource}-source log list`);
+  expect(
+    response.body.data.map((entry) => {
+      return entry.id;
+    }),
+  ).toStrictEqual([args.runId]);
+}
+
 describe("RUN-04/OPS-01: zero run logs", () => {
   it("lists run logs with filters, paging, zero tokens, and detail residue", async () => {
     const actor = await entitledActor();
@@ -2274,7 +2292,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       return entry.id === scheduleRun.body.runId;
     });
     expect(scheduleEntry).toMatchObject({
-      triggerSource: "schedule",
+      triggerSource: "automation",
       scheduleId: schedule.schedule.id,
     });
 
@@ -2374,19 +2392,16 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         .sort(),
     ).toStrictEqual([webRun.runId, secondAgentRun.runId].sort());
 
-    const bySource = await reads.requestListLogs(
+    await expectSingleLogSourceMatch({
       actor,
-      { triggerSource: "schedule" },
-      [200],
-    );
-    if (bySource.status !== 200) {
-      throw new Error("Expected the source-filtered list to succeed");
-    }
-    expect(
-      bySource.body.data.map((entry) => {
-        return entry.id;
-      }),
-    ).toStrictEqual([scheduleRun.body.runId]);
+      triggerSource: "schedule",
+      runId: scheduleRun.body.runId,
+    });
+    await expectSingleLogSourceMatch({
+      actor,
+      triggerSource: "automation",
+      runId: scheduleRun.body.runId,
+    });
 
     const noSourceMatch = await reads.requestListLogs(
       actor,
@@ -2413,8 +2428,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
 
     expect(listed.body.filters.statuses).toContain("cancelled");
     expect([...listed.body.filters.sources].sort()).toStrictEqual([
+      "automation",
       "cli",
-      "schedule",
       "web",
     ]);
     expect(listed.body.filters.agents).toContain(agentOne.agentId);
@@ -2428,7 +2443,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     );
     expect(scheduleDetail.body).toMatchObject({
       id: scheduleRun.body.runId,
-      triggerSource: "schedule",
+      triggerSource: "automation",
       scheduleId: schedule.schedule.id,
     });
 

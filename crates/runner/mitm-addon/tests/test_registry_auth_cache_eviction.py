@@ -65,32 +65,42 @@ class TestRegistryAuthCacheEviction:
         assert force_refresh_pending(("run-other", "api-0"))
         assert last_force_refresh_at(("run-other", "api-0")) == 200.0
 
-    def test_parse_failure_evicts_header_cache_once(self, registry_file):
+    def test_repeated_parse_failure_does_not_re_evict_auth_state(
+        self,
+        registry_file,
+    ):
         """Unavailable registry clears auth state once when ownership is unknown."""
         registry.load_registry(str(registry_file))
 
+        old_cache_key = ("run-abc-123", "api-0")
         set_cached_headers(
-            ("run-abc-123", "api-0"),
+            old_cache_key,
             headers={"Authorization": "Bearer tok"},
         )
-        mark_force_refresh(("run-abc-123", "api-0"))
-        set_last_force_refresh_at(("run-abc-123", "api-0"), 100.0)
+        mark_force_refresh(old_cache_key)
+        set_last_force_refresh_at(old_cache_key, 100.0)
 
         registry_file.write_text("{ broken while evicting cache")
 
-        with (
-            patch.object(registry.ctx, "log", MagicMock(), create=True),
-            patch.object(
-                registry,
-                "evict_all_cache_keys",
-                wraps=registry.evict_all_cache_keys,
-            ) as evict_spy,
-        ):
-            registry.load_registry(str(registry_file))
-            registry.load_registry(str(registry_file))
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            assert registry.load_registry(str(registry_file)) == {}
 
-        assert evict_spy.call_count == 1
-        assert not has_auth_state(("run-abc-123", "api-0"))
+        assert not has_auth_state(old_cache_key)
+
+        new_cache_key = ("run-after-failure", "api-0")
+        set_cached_headers(
+            new_cache_key,
+            headers={"Authorization": "Bearer after-failure"},
+        )
+        mark_force_refresh(new_cache_key)
+        set_last_force_refresh_at(new_cache_key, 200.0)
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            assert registry.load_registry(str(registry_file)) == {}
+
+        assert cached_headers(new_cache_key)
+        assert force_refresh_pending(new_cache_key)
+        assert last_force_refresh_at(new_cache_key) == 200.0
 
     def test_evicts_marker_only_auth_state_on_run_removal(self, registry_file):
         """Registry eviction removes auth state even when it has no cached headers."""

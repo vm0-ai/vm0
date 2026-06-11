@@ -230,7 +230,7 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
     "- Discover available commands: `zero --help`.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
-    "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
+    "- Automate recurring tasks: `zero automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
     ...buildIntegrationToolsPrompt(triggerSource),
     "- Maps, geocoding, directions, and places: use `zero maps --help`.",

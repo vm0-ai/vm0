@@ -1360,7 +1360,7 @@ describe("CHAT-02: incomplete-round context", () => {
 });
 
 describe("CHAT-02: prior rounds and thread titles", () => {
-  it("carries prior completed rounds, generates the thread title, and consumes recommended follow-ups", async () => {
+  it("carries prior completed rounds, generates the thread title, and rejects lifecycle follow-up revokes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.proxyChatCallbackToApp();
     await chatCallbacks.enableChatRecommendedFollowups(actor);
@@ -1430,14 +1430,37 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     if (!recommender) {
       throw new Error("Expected a recommended follow-ups message");
     }
+    expect(recommender.runLifecycleEvent).toBe("completed");
 
-    // Sending the follow-up consumes the recommendation: the new user
-    // message revokes the recommender message.
+    const lifecycleFollowup = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "use the lifecycle follow-up",
+        revokesMessageId: recommender.id,
+      },
+      [400],
+    );
+    expectApiError(lifecycleFollowup.body);
+    expect(lifecycleFollowup.body.error.message).toBe(
+      "Recommended follow-up is no longer available",
+    );
+
+    const normalRecommender = assistantMessages(afterFirst.messages).find(
+      (message) => {
+        return (
+          message.runLifecycleEvent === undefined &&
+          (message.recommendedFollowups?.length ?? 0) > 0
+        );
+      },
+    );
+    expect(normalRecommender).toBeUndefined();
+
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "follow-up question",
-      revokesMessageId: recommender.id,
     });
     await drainDetached(1);
     expect((await chat.readThread(actor, first.threadId)).title).toBe(
@@ -1454,28 +1477,6 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(appended).toContain("- RELATIVE_INDEX: 0");
     expect(appended).not.toContain("follow-up question");
 
-    const afterSecond = await chat.listThreadMessages(actor, first.threadId);
-    expect(
-      userMessages(afterSecond.messages).find((message) => {
-        return message.runId === second.runId;
-      })?.revokesMessageId,
-    ).toBe(recommender.id);
-
-    // The same recommendation cannot be consumed twice.
-    const reusedFollowup = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt: "reuse the follow-up",
-        revokesMessageId: recommender.id,
-      },
-      [409],
-    );
-    expectApiError(reusedFollowup.body);
-    expect(reusedFollowup.body.error.message).toBe(
-      "Recommended follow-up has already been used",
-    );
     await cancelChatRun(actor, second.runId);
 
     await chat.renameThread(actor, first.threadId, "Manual Migration Title");

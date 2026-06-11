@@ -69,7 +69,6 @@ function mockThreadDetails(): void {
       id: params.id,
       title: null,
       agentId: "c0000000-0000-4000-a000-000000000001",
-      latestSessionId: null,
       activeRunIds: [],
       draftContent: null,
       draftAttachments: null,
@@ -153,7 +152,6 @@ describe("chat drafts", () => {
         id: params.id,
         title: "Saved draft",
         agentId: "c0000000-0000-4000-a000-000000000001",
-        latestSessionId: null,
         activeRunIds: [],
         draftContent: "Review the saved launch brief",
         draftAttachments: [
@@ -188,7 +186,6 @@ describe("chat drafts", () => {
         id: threadId,
         title: "Draft sync",
         agentId: "c0000000-0000-4000-a000-000000000001",
-        latestSessionId: null,
         activeRunIds: [],
         draftContent: "Review the saved launch brief",
         draftAttachments: [

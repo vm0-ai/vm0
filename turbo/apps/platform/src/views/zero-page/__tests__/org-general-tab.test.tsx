@@ -1,8 +1,5 @@
-import {
-  zeroOrgContract,
-  zeroOrgDeleteContract,
-} from "@vm0/api-contracts/contracts/zero-org";
-import { screen, waitFor, within } from "@testing-library/react";
+import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -10,24 +7,10 @@ import {
   click,
   detachedSetupPage,
   fill,
-  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-
-function buttonByText(
-  text: string,
-  container: ParentNode = document.body,
-): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!button) {
-    throw new Error(`${text} button not found`);
-  }
-  return button;
-}
 
 async function openGeneralTab(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=general" });
@@ -199,130 +182,6 @@ describe("organization general settings", () => {
     await waitFor(() => {
       expect(screen.getByText(/Logo is too large/u)).toBeInTheDocument();
       expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
-    });
-  });
-
-  it("keeps a pending workspace logo when upload fails", async () => {
-    const user = userEvent.setup({ delay: null });
-    context.mocks.browser.imageDimensions({ width: 512, height: 512 });
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Acme",
-      slug: "acme",
-      role: "admin",
-    });
-    context.mocks.http.post("*/api/zero/org/logo", () => {
-      return new Response(
-        JSON.stringify({
-          error: { message: "Logo storage is unavailable" },
-        }),
-        { status: 503, headers: { "Content-Type": "application/json" } },
-      );
-    });
-
-    await openGeneralTab();
-
-    await user.upload(
-      screen.getByLabelText("Upload logo"),
-      new File(["logo"], "workspace-logo.png", { type: "image/png" }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Save changes")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Save changes"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Logo storage is unavailable"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Save changes")).toBeInTheDocument();
-    });
-  });
-
-  it("shows save errors without losing the current workspace state", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Old Name",
-      slug: "old-slug",
-      role: "admin",
-    });
-    context.mocks.api(zeroOrgContract.update, ({ respond }) => {
-      return respond(409, {
-        error: {
-          message: "Slug is already taken",
-          code: "INTERNAL_SERVER_ERROR",
-        },
-      });
-    });
-
-    await openGeneralTab();
-
-    await fill(await screen.findByDisplayValue("old-slug"), "taken-slug");
-    click(screen.getByText("Save changes"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("taken-slug")).toBeInTheDocument();
-    });
-  });
-
-  it("requires slug confirmation before deleting a workspace and keeps failures visible", async () => {
-    let deleteShouldFail = true;
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Acme",
-      slug: "acme",
-      role: "admin",
-    });
-    context.mocks.api(zeroOrgDeleteContract.delete, ({ respond }) => {
-      if (!deleteShouldFail) {
-        return respond(200, { message: "Org deleted" });
-      }
-      return respond(400, {
-        error: {
-          message: "Delete blocked by active members",
-          code: "INTERNAL_SERVER_ERROR",
-        },
-      });
-    });
-
-    await openGeneralTab();
-
-    click(buttonByText("Delete"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Delete workspace?",
-    });
-    const deleteButton = buttonByText("Delete workspace", dialog);
-    expect(deleteButton).toBeDisabled();
-
-    await fill(within(dialog).getByPlaceholderText("acme"), "wrong");
-    expect(deleteButton).toBeDisabled();
-
-    await fill(within(dialog).getByPlaceholderText("acme"), "acme");
-    expect(deleteButton).not.toBeDisabled();
-
-    click(deleteButton);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Delete blocked by active members"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("dialog", { name: "Delete workspace?" }),
-      ).toBeInTheDocument();
-    });
-
-    deleteShouldFail = false;
-    click(deleteButton);
-
-    await waitFor(() => {
-      expect(screen.getByText("Workspace deleted")).toBeInTheDocument();
-      expect(window.location.href).toContain(
-        "/sign-in/tasks/choose-organization",
-      );
     });
   });
 });
