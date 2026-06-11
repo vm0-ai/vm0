@@ -2532,6 +2532,60 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("refreshes online computers when the chat composer popover opens", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-refresh";
+    let hostOnline = true;
+    let requestCount = 0;
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      requestCount += 1;
+      return respond(200, {
+        hosts: [
+          {
+            id: "host-refresh",
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: hostOnline ? "online" : "offline",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Studio Mac")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Computer Use"));
+    await waitFor(() => {
+      expect(screen.queryByText("Connect my computer")).not.toBeInTheDocument();
+    });
+
+    const requestCountAfterFirstOpen = requestCount;
+    hostOnline = false;
+
+    await user.click(screen.getByLabelText("Computer Use"));
+
+    await waitFor(() => {
+      expect(requestCount).toBeGreaterThan(requestCountAfterFirstOpen);
+      expect(screen.queryByText("Studio Mac")).not.toBeInTheDocument();
+      expect(screen.getByText("No online computers")).toBeInTheDocument();
+    });
+  });
+
   it("sends the selected Computer Use host with the chat request", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "computer-use-send";

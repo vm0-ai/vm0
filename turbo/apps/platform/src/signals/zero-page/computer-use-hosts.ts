@@ -1,4 +1,4 @@
-import { computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   zeroComputerUseHostsContract,
   type ComputerUseHost,
@@ -16,6 +16,14 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   ZERO_DESKTOP_RELEASE_PATH,
   resolveApiBaseForNavigation("api"),
 ).toString();
+
+const computerUseHostsReload$ = state(0);
+
+export const reloadOnlineComputerUseHosts$ = command(({ set }) => {
+  set(computerUseHostsReload$, (n) => {
+    return n + 1;
+  });
+});
 
 interface OnlineComputerUseHost extends Pick<
   ComputerUseHost,
@@ -40,6 +48,7 @@ export function selectedOnlineComputerUseHostId(
 
 export const onlineComputerUseHosts$ = computed(
   async (get): Promise<OnlineComputerUseHost[]> => {
+    get(computerUseHostsReload$);
     const switches = get(featureSwitch$);
     if (!switches[FeatureSwitchKey.ComputerUse]) {
       return [];
