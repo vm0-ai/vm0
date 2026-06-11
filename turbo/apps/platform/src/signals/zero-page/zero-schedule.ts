@@ -290,7 +290,9 @@ export const saveOrgSchedule$ = command(
     }
     signal.throwIfAborted();
 
-    toast.success(params.editName ? "Schedule updated" : "Schedule created");
+    toast.success(
+      params.editName ? "Automation updated" : "Automation created",
+    );
     await set(fetchAllOrgSchedules$, signal);
 
     return scheduleId;
@@ -326,7 +328,7 @@ export const deleteOrgSchedule$ = command(
     });
     signal.throwIfAborted();
 
-    toast.success("Schedule deleted");
+    toast.success("Automation deleted");
     await set(fetchAllOrgSchedules$, signal);
   },
 );

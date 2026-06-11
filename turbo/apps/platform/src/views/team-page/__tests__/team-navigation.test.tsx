@@ -455,7 +455,7 @@ describe("team page navigation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Research Agent's scheduled tasks"),
+        screen.getByText("Research Agent's automations"),
       ).toBeInTheDocument();
     });
     expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
@@ -465,7 +465,7 @@ describe("team page navigation", () => {
     click(menuItemByText("Edit"));
 
     const editDialog = await screen.findByRole("dialog");
-    expect(within(editDialog).getByText("Edit schedule")).toBeInTheDocument();
+    expect(within(editDialog).getByText("Edit automation")).toBeInTheDocument();
     await fill(
       within(editDialog).getByDisplayValue("Research digest"),
       "Research digest summary",
@@ -473,17 +473,17 @@ describe("team page navigation", () => {
     click(buttonByText("Save"));
 
     await waitFor(() => {
-      expect(screen.getByText("Schedule updated")).toBeInTheDocument();
+      expect(screen.getByText("Automation updated")).toBeInTheDocument();
       expect(
         screen.getAllByText("Research digest summary")[0],
       ).toBeInTheDocument();
     });
 
-    click(buttonByText("Add schedule"));
+    click(buttonByText("Add automation"));
 
     const createScheduleDialog = await screen.findByRole("dialog");
     expect(
-      within(createScheduleDialog).getByText("Add schedule"),
+      within(createScheduleDialog).getByText("Add automation"),
     ).toBeInTheDocument();
     await fill(
       within(createScheduleDialog).getByLabelText("Prompt"),
@@ -492,7 +492,7 @@ describe("team page navigation", () => {
     click(buttonByText("Create"));
 
     await waitFor(() => {
-      expect(screen.getByText("Schedule created")).toBeInTheDocument();
+      expect(screen.getByText("Automation created")).toBeInTheDocument();
       expect(
         screen.getAllByText("Collect weekly research links")[0],
       ).toBeInTheDocument();
@@ -512,7 +512,7 @@ describe("team page navigation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Research Agent's scheduled tasks"),
+        screen.getByText("Research Agent's automations"),
       ).toBeInTheDocument();
     });
     expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
@@ -521,7 +521,7 @@ describe("team page navigation", () => {
     click(menuItemByText("Run now"));
 
     await waitFor(() => {
-      expect(buttonByText("Add schedule")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
 
     click(

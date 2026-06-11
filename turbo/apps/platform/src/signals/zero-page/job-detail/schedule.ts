@@ -238,7 +238,9 @@ export const saveAgentSchedule$ = command(
     await deploySchedule(get(zeroClient$), body, params.editName !== undefined);
     signal.throwIfAborted();
 
-    toast.success(params.editName ? "Schedule updated" : "Schedule created");
+    toast.success(
+      params.editName ? "Automation updated" : "Automation created",
+    );
     set(reloadAgentSchedule$);
   },
 );
@@ -280,7 +282,7 @@ export const deleteAgentSchedule$ = command(
     });
     signal.throwIfAborted();
 
-    toast.success("Schedule deleted");
+    toast.success("Automation deleted");
     set(reloadAgentSchedule$);
   },
 );

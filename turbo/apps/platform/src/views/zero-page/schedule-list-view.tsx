@@ -376,7 +376,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
             onClick={onNew}
           >
             <IconPlus size={14} stroke={2} />
-            Add schedule
+            Add automation
           </Button>
         )}
       </div>

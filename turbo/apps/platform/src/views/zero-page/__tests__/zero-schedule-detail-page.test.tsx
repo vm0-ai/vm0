@@ -160,7 +160,7 @@ describe("zero schedule detail page", () => {
       expect(
         screen.getByText("This schedule doesn't exist or was removed."),
       ).toBeInTheDocument();
-      expect(screen.getByText("Back to scheduled tasks")).toBeInTheDocument();
+      expect(screen.getByText("Back to automations")).toBeInTheDocument();
     });
   });
 
@@ -227,7 +227,7 @@ describe("zero schedule detail page", () => {
     click(buttonByText("Save"));
 
     await waitFor(() => {
-      expect(screen.getByText("Schedule updated")).toBeInTheDocument();
+      expect(screen.getByText("Automation updated")).toBeInTheDocument();
       expect(
         screen.getByText("Send a concise launch brief"),
       ).toBeInTheDocument();
@@ -295,7 +295,7 @@ describe("zero schedule detail page", () => {
     click(buttonByText("Save"));
 
     await waitFor(() => {
-      expect(screen.getByText("Schedule updated")).toBeInTheDocument();
+      expect(screen.getByText("Automation updated")).toBeInTheDocument();
     });
     expect(screen.getByDisplayValue(/Team morning brief/u)).toBeInTheDocument();
   });
@@ -443,20 +443,20 @@ describe("zero schedule detail page", () => {
     });
     expect(screen.getByLabelText("Enable this schedule")).toBeInTheDocument();
 
-    click(buttonByText("Delete schedule"));
+    click(buttonByText("Delete automation"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+    expect(screen.getByText("Delete automation?")).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
 
     await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
     });
 
-    click(buttonByText("Delete schedule"));
+    click(buttonByText("Delete automation"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -465,7 +465,7 @@ describe("zero schedule detail page", () => {
     click(buttonByText("Cancel"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
     });
   });
 
@@ -487,7 +487,7 @@ describe("zero schedule detail page", () => {
       expect(screen.getByText("View activity")).toBeInTheDocument();
     });
 
-    click(buttonByText("Delete schedule"));
+    click(buttonByText("Delete automation"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -496,7 +496,7 @@ describe("zero schedule detail page", () => {
     click(buttonByText("Delete"));
 
     await waitFor(() => {
-      expect(screen.getByText("Schedule deleted")).toBeInTheDocument();
+      expect(screen.getByText("Automation deleted")).toBeInTheDocument();
       // Deletion returns to the schedules surface, which renders the
       // Automations product noun now that the switch is globally on (#17307).
       expect(

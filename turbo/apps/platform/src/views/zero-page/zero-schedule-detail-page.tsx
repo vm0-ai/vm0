@@ -196,7 +196,7 @@ function ScheduleNotFound() {
           pathname="/automations"
           className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
         >
-          Back to scheduled tasks
+          Back to automations
         </Link>
       </div>
     </div>
@@ -456,7 +456,7 @@ function ScheduleSettingsForm({
                   }}
                 >
                   <IconTrash size={14} stroke={1.5} />
-                  Delete schedule
+                  Delete automation
                 </Button>
               </div>
             </div>
@@ -484,7 +484,7 @@ function ScheduleSettingsForm({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete schedule?</DialogTitle>
+            <DialogTitle>Delete automation?</DialogTitle>
             <DialogDescription>
               This will permanently delete the schedule{" "}
               <span className="font-medium text-foreground">

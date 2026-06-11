@@ -588,7 +588,7 @@ function ScheduleFormDialogInner({
     onSave(current);
   };
 
-  const title = mode === "edit" ? "Edit schedule" : "Add schedule";
+  const title = mode === "edit" ? "Edit automation" : "Add automation";
   const saveLabel = getSaveLabel(mode, saving);
 
   return (

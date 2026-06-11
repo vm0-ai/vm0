@@ -429,7 +429,7 @@ describe("zero jobs page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Research Agent's scheduled tasks"),
+        screen.getByText("Research Agent's automations"),
       ).toBeInTheDocument();
       expect(
         screen.getAllByText("Every week on Monday at 9:17 AM")[0],
@@ -443,7 +443,7 @@ describe("zero jobs page", () => {
     );
     click(menuItemByText("Edit"));
     const editScheduleDialog = await screen.findByRole("dialog", {
-      name: "Edit schedule",
+      name: "Edit automation",
     });
 
     expect(
@@ -582,7 +582,7 @@ describe("zero jobs page", () => {
       expect(screen.getAllByText("Release checklist").length).toBeGreaterThan(
         0,
       );
-      expect(screen.getByText("Add schedule")).toBeInTheDocument();
+      expect(screen.getByText("Add automation")).toBeInTheDocument();
     });
     expect(
       screen.getAllByText("Every weekday at 2:30 PM")[0],
@@ -608,9 +608,9 @@ describe("zero jobs page", () => {
       expect(screen.getByText("Instruction")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Add schedule"));
+    click(screen.getByText("Add automation"));
     const createScheduleDialog = await screen.findByRole("dialog", {
-      name: "Add schedule",
+      name: "Add automation",
     });
     await fill(screen.getByLabelText("Prompt"), "Prepare launch summary");
     click(buttonByText("Create", createScheduleDialog));
@@ -626,7 +626,7 @@ describe("zero jobs page", () => {
     );
     click(menuItemByText("Edit"));
     const editScheduleDialog = await screen.findByRole("dialog", {
-      name: "Edit schedule",
+      name: "Edit automation",
     });
     expect(
       within(editScheduleDialog).getByText("Day of week"),
@@ -667,7 +667,7 @@ describe("zero jobs page", () => {
     click(menuItemByText("Delete"));
     const deleteScheduleDialog = await screen.findByRole("dialog");
     expect(
-      within(deleteScheduleDialog).getByText("Delete schedule?"),
+      within(deleteScheduleDialog).getByText("Delete automation?"),
     ).toBeInTheDocument();
     expect(
       within(deleteScheduleDialog).getByText("monthly-risk-audit"),
@@ -675,7 +675,7 @@ describe("zero jobs page", () => {
     click(buttonByText("Cancel", deleteScheduleDialog));
 
     await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
     });
 
     click(

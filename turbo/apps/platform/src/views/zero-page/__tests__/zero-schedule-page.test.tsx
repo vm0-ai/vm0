@@ -228,7 +228,9 @@ describe("zero schedule page", () => {
     click(buttonByText("Add automation"));
 
     const createDialog = await screen.findByRole("dialog");
-    expect(within(createDialog).getByText("Add schedule")).toBeInTheDocument();
+    expect(
+      within(createDialog).getByText("Add automation"),
+    ).toBeInTheDocument();
     expect(within(createDialog).getByText("Agent")).toBeInTheDocument();
     expect(within(createDialog).getByText("Prompt")).toBeInTheDocument();
     await fill(
@@ -578,7 +580,7 @@ describe("zero schedule page", () => {
 
     const deleteDialog = await screen.findByRole("dialog");
     expect(
-      within(deleteDialog).getByText("Delete schedule?"),
+      within(deleteDialog).getByText("Delete automation?"),
     ).toBeInTheDocument();
     expect(
       within(deleteDialog).getByText("weekday-morning-brief"),
@@ -587,7 +589,7 @@ describe("zero schedule page", () => {
     click(buttonByText("Cancel", deleteDialog));
 
     await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
     });
 
     click(
