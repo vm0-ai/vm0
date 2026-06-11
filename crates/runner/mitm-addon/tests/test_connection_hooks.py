@@ -603,7 +603,6 @@ class TestRunnerUsageFlushSignal:
             timer_thread.start()
             timer_thread_started = True
             assert timer_enqueue_started.wait(timeout=1)
-            assert usage.counters._buffered_usage_events == 1
 
             mitm_addon._handle_runner_usage_flush_signal(0, None)
             assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)

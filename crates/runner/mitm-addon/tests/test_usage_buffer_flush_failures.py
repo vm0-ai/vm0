@@ -199,7 +199,7 @@ def test_overlapping_flush_defers_live_snapshot_while_enqueueing(tmp_path):
             [event(source_key="source-2")],
             path,
         )
-        assert usage.flush_usage_events(trigger="runner") == 0
+        assert usage.flush_usage_events(trigger="test") == 0
         assert payload["runId"] == "run-1"
         assert usage.counters._buffered_usage_events == 2
         assert log_type == "usage_event"
