@@ -60,6 +60,9 @@ WHERE message."run_id" = agent_runs."id"
   AND message."content" IS NULL
   AND message."error" IS NULL
   AND message."sequence_number" IS NULL
+  AND message."revokes_message_id" IS NULL
+  AND message."interrupts_run_id" IS NULL
+  AND message."run_event_id" IS NULL
   AND message."recommended_followups" IS NULL
   AND agent_runs."error" IS NOT NULL
   AND btrim(agent_runs."error") <> '';
