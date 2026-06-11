@@ -63,8 +63,9 @@ function usageRows(): UsageRecordRow[] {
   ];
 }
 
-function mockPersonalUsageStory(): void {
+function mockPersonalUsageStory(): string[] {
   const rows = usageRows();
+  const requestedRanges: string[] = [];
 
   context.mocks.data.org({
     id: "org_1",
@@ -104,11 +105,7 @@ function mockPersonalUsageStory(): void {
     });
   });
   context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {
-    const filteredRows = query.source
-      ? rows.filter((row) => {
-          return row.source === query.source;
-        })
-      : rows;
+    requestedRanges.push(query.range);
     const offset = (query.page - 1) * query.pageSize;
 
     return respond(200, {
@@ -116,36 +113,38 @@ function mockPersonalUsageStory(): void {
         start: "2026-03-01T00:00:00.000Z",
         end: "2026-04-01T00:00:00.000Z",
       },
-      rows: filteredRows.slice(offset, offset + query.pageSize),
+      rows: rows.slice(offset, offset + query.pageSize),
       pagination: {
         page: query.page,
         pageSize: query.pageSize,
-        total: filteredRows.length,
+        total: rows.length,
       },
     });
   });
+  return requestedRanges;
 }
 
 async function openUsageSettings(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=usage" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByTestId("credit-balance-info")).toBeInTheDocument();
+    expect(screen.getByText("Today")).toBeInTheDocument();
   });
 }
 
 describe("personal usage settings", () => {
-  it("shows personal usage, loads more, and filters by source", async () => {
-    mockPersonalUsageStory();
+  it("shows personal usage, loads more, and changes the usage range", async () => {
+    const requestedRanges = mockPersonalUsageStory();
     await openUsageSettings();
 
     await waitFor(() => {
-      expect(screen.getByText("12,500")).toBeInTheDocument();
       expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
       expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
     });
     expect(screen.getByText("980 credits")).toBeInTheDocument();
     expect(screen.queryByText("Extended CLI audit")).not.toBeInTheDocument();
+    expect(screen.queryByText("All sources")).not.toBeInTheDocument();
+    expect(requestedRanges).toContain("today");
 
     click(screen.getByText("Load more"));
 
@@ -153,24 +152,12 @@ describe("personal usage settings", () => {
       expect(screen.getByText("Extended CLI audit")).toBeInTheDocument();
     });
 
-    click(screen.getByText("All sources"));
-    click(await screen.findByText("Slack"));
+    click(screen.getByText("Today"));
+    click(await screen.findByText("Last 7 days"));
 
     await waitFor(() => {
-      expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
-      expect(
-        screen.queryByText("Quarterly planning chat"),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText("Extended CLI audit")).not.toBeInTheDocument();
-    });
-
-    click(screen.getByText("Slack"));
-    click(await screen.findByText("Telegram"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("No usage from this source yet."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Last 7 days")).toBeInTheDocument();
+      expect(requestedRanges).toContain("7d");
     });
   });
 });
