@@ -43,9 +43,14 @@ setup() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-firewall-${UNIQUE_ID}"
     export ARTIFACT_NAME="e2e-firewall-artifact-${UNIQUE_ID}"
+    export AGENT_ID=""
+    export THREAD_ID=""
 }
 
 teardown() {
+    [ -n "$THREAD_ID" ] && zero_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
+    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" -y >/dev/null 2>&1 || true
+
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
@@ -99,59 +104,12 @@ setup_test_connector() {
     fi
 }
 
-enable_slack_for_compose() {
-    local compose_id="$1"
-    zero_curl "/api/zero/agents/${compose_id}/user-connectors" \
+authorize_slack_for_agent() {
+    local agent_id="$1"
+    zero_curl "/api/zero/agents/${agent_id}/user-connectors" \
         -X PUT \
         -d '{"enabledTypes":["slack"]}' \
         >/dev/null
-}
-
-run_zero_agent_via_api() {
-    local agent_id="$1"
-    local prompt="$2"
-    local expected_log="${3:-}"
-    local payload body run_id logs status_value start timeout
-
-    payload=$(jq -nc \
-        --arg agentId "$agent_id" \
-        --arg prompt "$prompt" \
-        '{agentId: $agentId, prompt: $prompt}')
-
-    body=$(zero_curl "/api/zero/runs" -X POST -d "$payload") || {
-        echo "# Failed to create zero run"
-        return 1
-    }
-
-    run_id=$(printf '%s' "$body" | jq -r '.runId // ""')
-    [ -n "$run_id" ] || {
-        echo "# Failed to extract runId from zero run response"
-        echo "# Response: $body"
-        return 1
-    }
-
-    echo "Run ID:   $run_id"
-    wait_for_zero_run_completed "$run_id" || return 1
-    echo "Run completed successfully"
-
-    timeout="${ZERO_RUN_LOG_TIMEOUT:-30}"
-    start=$SECONDS
-    logs=""
-    status_value=1
-    while (( SECONDS - start < timeout )); do
-        logs="$($VM0_CLI logs "$run_id" --all 2>&1)"
-        status_value=$?
-        if [[ "$status_value" -eq 0 && ( -z "$expected_log" || "$logs" == *"$expected_log"* ) ]]; then
-            echo "$logs"
-            return 0
-        fi
-        sleep 2
-    done
-
-    echo "# Timed out (${timeout}s) waiting for run logs containing: $expected_log"
-    echo "# Last logs command status: $status_value"
-    echo "$logs"
-    return 1
 }
 
 @test "firewall: placeholder env vars" {
@@ -188,41 +146,33 @@ EOF
 }
 
 @test "firewall: slack default write permission deny in zero run" {
-    cat > "$TEST_DIR/vm0-slack-deny.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${AGENT_NAME}-slack-deny:
-    description: "Slack default write permission deny test"
-    framework: claude-code
-    environment:
-      SLACK_TOKEN: \${{ secrets.SLACK_TOKEN }}
-EOF
-
-    create_artifact "$ARTIFACT_NAME-slack-deny"
-
-    run $VM0_CLI compose --yes --json "$TEST_DIR/vm0-slack-deny.yaml"
-    echo "$output"
-    assert_success
-
-    local COMPOSE_ID
-    COMPOSE_ID=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
-    [ -n "$COMPOSE_ID" ] || {
-        echo "# Failed to extract composeId from compose output"
+    local create_out
+    create_out=$($ZERO_CLI agent create --display-name "${AGENT_NAME}-slack-deny")
+    AGENT_ID=$(echo "$create_out" | grep -oP 'Agent ID:\s+\K[a-f0-9-]{36}')
+    [ -n "$AGENT_ID" ] || {
+        echo "# Failed to extract Agent ID from: $create_out" >&2
         return 1
     }
 
-    run enable_slack_for_compose "$COMPOSE_ID"
+    run authorize_slack_for_agent "$AGENT_ID"
     echo "$output"
     assert_success
 
-    run run_zero_agent_via_api "$COMPOSE_ID" \
+    zero_chat_run_with_model_selection \
+        "$AGENT_ID" \
         "BODY_FILE=\$(mktemp) && SLACK_STATUS=\$(curl -sS -o \"\$BODY_FILE\" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H \"Authorization: Bearer \$SLACK_TOKEN\" -H 'Content-Type: application/json' --data '{\"channel\":\"C0000000000\",\"text\":\"e2e\"}') && echo \"SLACK_WRITE_STATUS=\$SLACK_STATUS\" && echo \"SLACK_WRITE_BODY=\$(cat \"\$BODY_FILE\")\"" \
-        "SLACK_WRITE_STATUS=403"
+        "$(zero_model_first_selection_provider_id)" \
+        "claude-sonnet-4-6" \
+        false \
+        false
+    THREAD_ID="$LAST_THREAD_ID"
 
-    echo "$output"
-    assert_success
-    assert_output --partial "Run completed successfully"
+    wait_for_zero_run_completed "$LAST_RUN_ID"
+    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
+        "SLACK_WRITE_STATUS=403" \
+        '"error": "permission_denied"' \
+        '"permissions": ["chat:write"]'
+
     assert_output --partial "SLACK_WRITE_STATUS=403"
     assert_output --partial '"error": "permission_denied"'
     assert_output --partial '"permissions": ["chat:write"]'
