@@ -1201,9 +1201,9 @@ export const runAutomationNowV2$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
-        // B2 on #16847 (a dedicated "manual"/"automation" trigger source) is
-        // deferred: manual fires keep the schedule source the run-now surface
-        // has always used.
+        // Manual fires record automation provenance; trigger_source follows
+        // (#17307). Historical rows may still carry "schedule" until the
+        // backfill migration lands.
         triggerSource: "automation",
         chatThreadId: runInput.chatThreadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
