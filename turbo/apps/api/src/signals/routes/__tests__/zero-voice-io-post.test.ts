@@ -251,7 +251,6 @@ async function deleteSpeechPricing(): Promise<void> {
 }
 
 async function seedVoiceFixture(options: {
-  readonly audioInputEnabled?: boolean;
   readonly audioOutputEnabled?: boolean;
   readonly credits?: number;
   readonly tier?: OrgTier;
@@ -277,9 +276,6 @@ async function seedVoiceFixture(options: {
   });
 
   const switches: Record<string, boolean> = {};
-  if (options.audioInputEnabled) {
-    switches[FeatureSwitchKey.AudioInput] = true;
-  }
   if (options.audioOutputEnabled) {
     switches[FeatureSwitchKey.AudioOutput] = true;
   }
@@ -865,7 +861,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("uses whisper-1 and verbose_json when ?verbose=true, returns segments", async () => {
-    const fixture = await track(seedVoiceFixture({ audioInputEnabled: true }));
+    const fixture = await track(seedVoiceFixture({}));
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     let observedModel: FormDataEntryValue | null = null;
@@ -898,35 +894,6 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(observedResponseFormat).toBe("verbose_json");
   });
 
-  it("falls back to plain transcription when ?verbose=true but AudioInput is off", async () => {
-    const fixture = await track(seedVoiceFixture({}));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    let observedModel: FormDataEntryValue | null = null;
-    let observedResponseFormat: FormDataEntryValue | null = null;
-    server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, async ({ request }) => {
-        const form = await request.formData();
-        observedModel = form.get("model");
-        observedResponseFormat = form.get("response_format");
-        return HttpResponse.json({ text: "hello world" });
-      }),
-    );
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/zero/voice-io/stt?verbose=true", {
-      method: "POST",
-      headers: authHeaders(),
-      body: sttForm(sttFile(wavBytes(2))),
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({
-      text: "hello world",
-    });
-    expect(observedModel).toBe(VOICE_IO_STT_MODEL);
-    expect(observedResponseFormat).toBe("json");
-  });
 
   it("authorizes a sandbox token carrying file:write on /stt", async () => {
     const fixture = await track(seedVoiceFixture({}));
