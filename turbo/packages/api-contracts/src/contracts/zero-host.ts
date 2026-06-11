@@ -53,6 +53,10 @@ export const hostedSiteFileSchema = z.object({
   immutable: z.boolean().optional(),
 });
 
+export const hostedSiteDownloadFileSchema = hostedSiteFileSchema.extend({
+  downloadUrl: z.string().url(),
+});
+
 export const hostedSitePrepareRequestSchema = z
   .object({
     site: hostedSiteSlugSchema,
@@ -130,7 +134,7 @@ export const hostedSiteFilesResponseSchema = z.object({
   url: z.string().url(),
   fileCount: z.number().int().nonnegative(),
   size: z.number().int().nonnegative(),
-  files: z.array(hostedSiteFileSchema),
+  files: z.array(hostedSiteDownloadFileSchema),
 });
 
 export const zeroHostContract = c.router({

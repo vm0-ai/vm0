@@ -42,6 +42,7 @@ function hostState(
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
+    recovery: null,
     errorLog: [],
     recentAuditEvents: [],
     localCommandLog: [],

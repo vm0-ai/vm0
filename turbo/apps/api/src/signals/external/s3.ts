@@ -293,6 +293,20 @@ export function generateHostedSitesPresignedPutUrl(
   );
 }
 
+export function generateHostedSitesPresignedGetUrl(
+  bucket: string,
+  key: string,
+  expiresIn: number,
+  usePublicEndpoint = false,
+): Computed<Promise<string>> {
+  return generatePresignedGetUrlWithClient(
+    usePublicEndpoint ? hostedSitesPublicS3Client$ : hostedSitesS3Client$,
+    bucket,
+    key,
+    expiresIn,
+  );
+}
+
 export function generatePresignedGetUrl(
   bucket: string,
   key: string,

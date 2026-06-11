@@ -173,7 +173,7 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
-  it("clears a command polling error when the next idle claim succeeds", async () => {
+  it("clears command polling recovery when the next idle claim succeeds", async () => {
     vi.useFakeTimers();
     const heartbeat = deferred<Response>();
     let nextCalls = 0;
@@ -198,8 +198,13 @@ describe("ComputerUseHostRuntime", () => {
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(runtime.getState()).toMatchObject({
-      status: "error",
+      status: "recovering",
       lastError: "Computer Use command claim failed: 500",
+      recovery: {
+        phase: "command_poll",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
     });
 
     await vi.advanceTimersByTimeAsync(2_000);
@@ -441,6 +446,229 @@ describe("ComputerUseHostRuntime", () => {
       status: "online",
       lastError: null,
     });
+
+    await runtime.stop();
+  });
+
+  it("retries transient start failures with recovery state", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
+    let startCalls = 0;
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.includes("/api/zero/computer-use/audit-events")) {
+        return jsonResponse({ auditEvents: [] });
+      }
+      startCalls++;
+      return startCalls === 1
+        ? new Response("{}", { status: 503 })
+        : jsonResponse({ hostId: "host-1", hostToken: "token-1" });
+    });
+    const { runtime } = createRuntime({ sessionFetch });
+
+    await runtime.start();
+
+    expect(startCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Failed to start Computer Use host: 503",
+      recovery: {
+        phase: "start",
+        attempt: 1,
+        retryDelayMs: 2_000,
+        nextRetryAt: "2026-06-10T10:00:02.000Z",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(startCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(startCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      hostId: "host-1",
+      lastError: null,
+      recovery: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("recovers heartbeat failures before polling for more commands", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
+    let heartbeatCalls = 0;
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        heartbeatCalls++;
+        return heartbeatCalls === 1
+          ? new Response("{}", { status: 503 })
+          : jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(heartbeatCalls).toBe(1);
+    expect(nextCalls).toBe(0);
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Computer Use heartbeat failed: 503",
+      recovery: {
+        phase: "heartbeat",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(heartbeatCalls).toBe(2);
+    expect(nextCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("backs off command claim failures and clears recovery after idle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? new Response("{}", { status: 500 })
+          : jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Computer Use command claim failed: 500",
+      recovery: {
+        phase: "command_poll",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("honors Retry-After when command claim is rate limited", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? new Response("{}", {
+              status: 429,
+              headers: { "retry-after": "7" },
+            })
+          : jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      recovery: {
+        phase: "command_poll",
+        attempt: 1,
+        retryDelayMs: 7_000,
+        nextRetryAt: "2026-06-10T10:00:09.000Z",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(6_999);
+    expect(nextCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(nextCalls).toBe(2);
+
+    await runtime.stop();
+  });
+
+  it("keeps the runtime online when audit history refresh fails", async () => {
+    vi.useFakeTimers();
+    let heartbeatCalls = 0;
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.includes("/api/zero/computer-use/audit-events")) {
+        return new Response("{}", { status: 503 });
+      }
+      return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
+    });
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        heartbeatCalls++;
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ sessionFetch, hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+      errorLog: [
+        {
+          source: "audit",
+          message: "Computer Use audit history refresh failed: 503",
+        },
+      ],
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(heartbeatCalls).toBe(2);
 
     await runtime.stop();
   });

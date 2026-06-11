@@ -63,6 +63,7 @@ const STATUS_LABELS = {
   idle: "Idle",
   connecting: "Connecting",
   online: "Online",
+  recovering: "Recovering",
   unauthenticated: "Signed out",
   needs_organization: "Select workspace",
   disabled: "Disabled",
@@ -76,11 +77,21 @@ const COMMAND_STATUS_LABELS = {
 } as const satisfies Record<CommandLogEntry["status"], string>;
 
 const RUNTIME_ERROR_SOURCE_LABELS = {
+  audit: "Audit history",
   start: "Start",
   stop: "Stop",
   heartbeat: "Heartbeat",
   command_poll: "Command poll",
 } as const satisfies Record<RuntimeErrorEntry["source"], string>;
+
+const RECOVERY_PHASE_LABELS = {
+  start: "Start",
+  heartbeat: "Heartbeat",
+  command_poll: "Command poll",
+} as const satisfies Record<
+  NonNullable<DesktopComputerUseState["host"]["recovery"]>["phase"],
+  string
+>;
 
 const RESULT_SUMMARY_KEYS_TO_SKIP = new Set([
   "appState",
@@ -231,6 +242,16 @@ function formatDuration(value: number | null): string {
     return `${value} ms`;
   }
   return `${(value / 1_000).toFixed(1)} s`;
+}
+
+function formatRecoveryDelay(value: number): string {
+  if (value < 1_000) {
+    return "now";
+  }
+  if (value < 60_000) {
+    return `${Math.ceil(value / 1_000)}s`;
+  }
+  return `${Math.ceil(value / 60_000)}m`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -684,11 +705,13 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   const startDisabled =
     state.host.status === "connecting" ||
     state.host.status === "online" ||
+    state.host.status === "recovering" ||
     startLoadable.state === "loading";
   const stopDisabled =
-    state.host.status !== "online" || stopLoadable.state === "loading";
+    (state.host.status !== "online" && state.host.status !== "recovering") ||
+    stopLoadable.state === "loading";
   const hasErrorDetails =
-    state.host.status === "error" &&
+    (state.host.status === "error" || state.host.status === "recovering") &&
     (state.host.lastError !== null || state.host.errorLog.length > 0);
 
   return (
@@ -726,6 +749,7 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
           <strong>{formatTimestamp(state.host.lastCommandAt)}</strong>
         </div>
       </div>
+      {state.host.recovery && <RuntimeRecoveryAlert state={state} />}
       <CheckboxRow
         title="Keep Mac awake"
         subtitle="Prevents automatic system sleep and display sleep."
@@ -779,6 +803,27 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
 }
 
+function RuntimeRecoveryAlert({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const recovery = state.host.recovery;
+  if (!recovery) {
+    return null;
+  }
+  return (
+    <div className="inline-alert">
+      <IconRefresh size={16} />
+      <span>
+        {`${RECOVERY_PHASE_LABELS[recovery.phase]} retry attempt ${
+          recovery.attempt
+        }; next retry in ${formatRecoveryDelay(recovery.retryDelayMs)}.`}
+      </span>
+    </div>
+  );
+}
+
 function RuntimeErrorDetailsModal({
   onClose,
   state,
@@ -806,6 +851,7 @@ function RuntimeErrorDetailsModal({
     lastHeartbeatAt: state.host.lastHeartbeatAt,
     lastCommandAt: state.host.lastCommandAt,
     lastError: state.host.lastError,
+    recovery: state.host.recovery,
     errorLog: state.host.errorLog,
   };
 
@@ -844,6 +890,11 @@ function RuntimeErrorDetailsModal({
                 "Host ID": state.host.hostId ?? "Not registered",
                 "Last heartbeat": formatTimestamp(state.host.lastHeartbeatAt),
                 "Last command": formatTimestamp(state.host.lastCommandAt),
+                Recovery: state.host.recovery
+                  ? `${RECOVERY_PHASE_LABELS[state.host.recovery.phase]} attempt ${
+                      state.host.recovery.attempt
+                    }`
+                  : "None",
                 "Captured errors": state.host.errorLog.length,
               }}
             />

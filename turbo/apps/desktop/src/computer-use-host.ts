@@ -10,6 +10,7 @@ import type {
   ComputerUsePermissionState,
   ComputerUseRuntimeAuditEvent,
   ComputerUseRuntimeErrorLogEntry,
+  ComputerUseRuntimeRecoveryPhase,
   ComputerUseRuntimeErrorSource,
 } from "./computer-use-types";
 import {
@@ -18,6 +19,9 @@ import {
 } from "./computer-use-startup-gate";
 
 const ONLINE_POLL_MS = 2_000;
+const RECOVERY_RETRY_BASE_MS = 2_000;
+const RECOVERY_RETRY_MAX_MS = 60_000;
+const RECOVERY_RETRY_AFTER_MAX_MS = 5 * 60_000;
 const COMMAND_COMPLETION_RETRY_DELAY_MS = 2_000;
 const COMMAND_COMPLETION_MAX_ATTEMPTS = 3;
 const AUTH_ME_PATH = "/api/auth/me";
@@ -74,13 +78,78 @@ type RuntimeErrorStateUpdate = Partial<
     | "hostId"
     | "lastHeartbeatAt"
     | "lastCommandAt"
+    | "recovery"
     | "recentAuditEvents"
     | "localCommandLog"
   >
 >;
 
+class ComputerUseHttpError extends Error {
+  readonly status: number;
+  readonly retryAfterMs: number | null;
+
+  constructor(message: string, response: Response) {
+    super(message);
+    this.name = "ComputerUseHttpError";
+    this.status = response.status;
+    this.retryAfterMs = retryAfterDelayMs(response);
+  }
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function retryDelayForAttempt(attempt: number): number {
+  return Math.min(
+    RECOVERY_RETRY_MAX_MS,
+    RECOVERY_RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1),
+  );
+}
+
+function retryAfterDelayMs(response: Response): number | null {
+  const value = response.headers.get("retry-after");
+  if (!value) {
+    return null;
+  }
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1_000, RECOVERY_RETRY_AFTER_MAX_MS);
+  }
+
+  const retryAtMs = Date.parse(value);
+  if (Number.isNaN(retryAtMs)) {
+    return null;
+  }
+  return Math.min(
+    Math.max(0, retryAtMs - Date.now()),
+    RECOVERY_RETRY_AFTER_MAX_MS,
+  );
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function isRetryableRuntimeError(error: unknown): boolean {
+  if (error instanceof ComputerUseHttpError) {
+    return isRetryableStatus(error.status);
+  }
+  if (
+    error instanceof Error &&
+    error.message === "Computer Use host token is not available"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function retryAfterMsFromError(error: unknown): number | null {
+  if (error instanceof ComputerUseHttpError) {
+    return error.retryAfterMs;
+  }
+  return null;
 }
 
 function commandFailureFromError(
@@ -138,6 +207,7 @@ export class ComputerUseHostRuntime {
   private running = false;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private commandTimer: NodeJS.Timeout | null = null;
+  private recoveryTimer: NodeJS.Timeout | null = null;
   private commandExecutionRunning = false;
   private hostToken: string | null = null;
   private nextErrorLogId = 0;
@@ -147,6 +217,7 @@ export class ComputerUseHostRuntime {
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
+    recovery: null,
     errorLog: [],
     recentAuditEvents: [],
     localCommandLog: [],
@@ -179,8 +250,7 @@ export class ComputerUseHostRuntime {
       this.scheduleHeartbeat(nextDelay);
       this.scheduleCommandPoll(nextDelay);
     } catch (error) {
-      this.setRuntimeErrorState("start", error);
-      this.running = false;
+      this.handleRuntimeFailure("start", error);
     }
   }
 
@@ -188,16 +258,18 @@ export class ComputerUseHostRuntime {
     this.running = false;
     this.clearHeartbeatTimer();
     this.clearCommandTimer();
+    this.clearRecoveryTimer();
     const hostToken = this.hostToken;
-    if (!hostToken) {
-      return;
-    }
-    this.hostToken = null;
     this.setState({
       status: "idle",
       hostId: null,
       lastError: null,
+      recovery: null,
     });
+    if (!hostToken) {
+      return;
+    }
+    this.hostToken = null;
     try {
       await this.stopHost(hostToken);
     } catch (error) {
@@ -222,15 +294,13 @@ export class ComputerUseHostRuntime {
     this.onChange();
   }
 
-  private setRuntimeErrorState(
+  private appendRuntimeErrorLog(
     source: ComputerUseRuntimeErrorSource,
     error: unknown,
-    update: RuntimeErrorStateUpdate = {},
-  ): void {
+    hostId = this.state.hostId,
+  ): ComputerUseRuntimeErrorLogEntry {
     const message = errorMessage(error);
     const occurredAt = new Date().toISOString();
-    const hostId =
-      "hostId" in update ? (update.hostId ?? null) : this.state.hostId;
     const entry: ComputerUseRuntimeErrorLogEntry = {
       id: `${occurredAt}-${this.nextErrorLogId++}`,
       source,
@@ -240,10 +310,50 @@ export class ComputerUseHostRuntime {
       status: "error",
     };
     this.setState({
+      errorLog: [entry, ...this.state.errorLog].slice(0, ERROR_LOG_LIMIT),
+    });
+    return entry;
+  }
+
+  private setRuntimeErrorState(
+    source: ComputerUseRuntimeErrorSource,
+    error: unknown,
+    update: RuntimeErrorStateUpdate = {},
+  ): void {
+    const hostId =
+      "hostId" in update ? (update.hostId ?? null) : this.state.hostId;
+    const entry = this.appendRuntimeErrorLog(source, error, hostId);
+    this.setState({
       ...update,
       status: "error",
-      lastError: message,
-      errorLog: [entry, ...this.state.errorLog].slice(0, ERROR_LOG_LIMIT),
+      hostId,
+      lastError: entry.message,
+      recovery: null,
+    });
+  }
+
+  private setRuntimeRecoveryState(
+    phase: ComputerUseRuntimeRecoveryPhase,
+    error: unknown,
+    retryDelayMs: number,
+  ): void {
+    const entry = this.appendRuntimeErrorLog(phase, error);
+    const lastRetryAt = new Date();
+    this.setState({
+      status: "recovering",
+      lastError: entry.message,
+      recovery: {
+        phase,
+        attempt:
+          this.state.recovery?.phase === phase
+            ? this.state.recovery.attempt + 1
+            : 1,
+        lastRetryAt: lastRetryAt.toISOString(),
+        nextRetryAt: new Date(
+          lastRetryAt.getTime() + retryDelayMs,
+        ).toISOString(),
+        retryDelayMs,
+      },
     });
   }
 
@@ -315,6 +425,115 @@ export class ComputerUseHostRuntime {
     this.commandTimer = null;
   }
 
+  private clearRecoveryTimer(): void {
+    if (!this.recoveryTimer) {
+      return;
+    }
+    this.clearScheduledTimeout(this.recoveryTimer);
+    this.recoveryTimer = null;
+  }
+
+  private scheduleRecovery(
+    phase: ComputerUseRuntimeRecoveryPhase,
+    error: unknown,
+  ): void {
+    if (!this.running) {
+      return;
+    }
+    this.clearRecoveryTimer();
+    const nextAttempt =
+      this.state.recovery?.phase === phase
+        ? this.state.recovery.attempt + 1
+        : 1;
+    const retryDelayMs =
+      retryAfterMsFromError(error) ?? retryDelayForAttempt(nextAttempt);
+    this.setRuntimeRecoveryState(phase, error, retryDelayMs);
+    this.recoveryTimer = this.scheduleTimeout(() => {
+      this.recoveryTimer = null;
+      void this.recoverRuntime(phase);
+    }, retryDelayMs);
+  }
+
+  private handleRuntimeFailure(
+    phase: ComputerUseRuntimeRecoveryPhase,
+    error: unknown,
+  ): "scheduled_recovery" | "stopped" {
+    if (!this.running) {
+      return "stopped";
+    }
+    if (!isRetryableRuntimeError(error)) {
+      this.setRuntimeErrorState(phase, error);
+      this.running = false;
+      this.clearHeartbeatTimer();
+      this.clearCommandTimer();
+      this.clearRecoveryTimer();
+      return "stopped";
+    }
+
+    if (phase !== "command_poll") {
+      this.clearCommandTimer();
+    }
+    this.scheduleRecovery(phase, error);
+    return "scheduled_recovery";
+  }
+
+  private clearRecoveryState(phase: ComputerUseRuntimeRecoveryPhase): void {
+    if (this.state.recovery?.phase !== phase) {
+      return;
+    }
+    this.clearRecoveryTimer();
+    this.setState({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+  }
+
+  private async recoverRuntime(
+    phase: ComputerUseRuntimeRecoveryPhase,
+  ): Promise<void> {
+    if (!this.running) {
+      return;
+    }
+    if (phase === "start") {
+      await this.recoverStart();
+      return;
+    }
+    if (phase === "heartbeat") {
+      await this.recoverHeartbeat();
+      return;
+    }
+    await this.commandLoop();
+  }
+
+  private async recoverStart(): Promise<void> {
+    try {
+      const nextDelay = await this.startHost();
+      if (nextDelay === null) {
+        this.running = false;
+        return;
+      }
+      this.scheduleHeartbeat(nextDelay);
+      this.scheduleCommandPoll(nextDelay);
+    } catch (error) {
+      this.handleRuntimeFailure("start", error);
+    }
+  }
+
+  private async recoverHeartbeat(): Promise<void> {
+    try {
+      if (!this.hostToken || !(await this.heartbeat())) {
+        this.running = false;
+        this.clearCommandTimer();
+        return;
+      }
+      this.scheduleHeartbeat(ONLINE_POLL_MS);
+      this.scheduleCommandPoll(0);
+    } catch (error) {
+      this.handleRuntimeFailure("heartbeat", error);
+    }
+  }
+
   private scheduleHeartbeat(delayMs: number): void {
     if (!this.running) {
       return;
@@ -344,9 +563,7 @@ export class ComputerUseHostRuntime {
       }
       this.scheduleHeartbeat(ONLINE_POLL_MS);
     } catch (error) {
-      this.setRuntimeErrorState("heartbeat", error);
-      this.running = false;
-      this.clearCommandTimer();
+      this.handleRuntimeFailure("heartbeat", error);
     }
   }
 
@@ -355,15 +572,21 @@ export class ComputerUseHostRuntime {
       return;
     }
     this.commandExecutionRunning = true;
+    let scheduleNextPoll = true;
     try {
       await this.claimAndExecuteCommand();
     } catch (error) {
-      if (this.running) {
-        this.setRuntimeErrorState("command_poll", error);
-      }
+      scheduleNextPoll =
+        this.handleRuntimeFailure("command_poll", error) !==
+        "scheduled_recovery";
     } finally {
       this.commandExecutionRunning = false;
-      if (this.running && this.hostToken) {
+      if (
+        scheduleNextPoll &&
+        this.running &&
+        this.hostToken &&
+        this.state.recovery?.phase !== "command_poll"
+      ) {
         this.scheduleCommandPoll(ONLINE_POLL_MS);
       }
     }
@@ -384,11 +607,13 @@ export class ComputerUseHostRuntime {
         this.setState({
           status: "needs_organization",
           lastError: COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
+          recovery: null,
         });
       } else {
         this.setState({
           status: "unauthenticated",
           lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
+          recovery: null,
         });
       }
       return null;
@@ -397,6 +622,7 @@ export class ComputerUseHostRuntime {
       this.setState({
         status: "disabled",
         lastError: "Computer Use is disabled for this account.",
+        recovery: null,
       });
       return null;
     }
@@ -409,16 +635,21 @@ export class ComputerUseHostRuntime {
       return null;
     }
     if (!response.ok) {
-      throw new Error(`Failed to start Computer Use host: ${response.status}`);
+      throw new ComputerUseHttpError(
+        `Failed to start Computer Use host: ${response.status}`,
+        response,
+      );
     }
 
     const body = (await response.json()) as ComputerUseHostStartResponse;
     this.hostToken = body.hostToken;
+    this.clearRecoveryTimer();
     this.setState({
       status: "online",
       hostId: body.hostId,
       lastHeartbeatAt: new Date().toISOString(),
       lastError: null,
+      recovery: null,
     });
     return ONLINE_POLL_MS;
   }
@@ -444,6 +675,7 @@ export class ComputerUseHostRuntime {
         status: "unauthenticated",
         hostId: null,
         lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
+        recovery: null,
       });
       return false;
     }
@@ -457,12 +689,20 @@ export class ComputerUseHostRuntime {
       return false;
     }
     if (!response.ok) {
-      throw new Error(`Computer Use heartbeat failed: ${response.status}`);
+      throw new ComputerUseHttpError(
+        `Computer Use heartbeat failed: ${response.status}`,
+        response,
+      );
     }
+    const commandPollRecovery =
+      this.state.recovery?.phase === "command_poll"
+        ? this.state.recovery
+        : null;
     this.setState({
-      status: "online",
+      status: commandPollRecovery ? "recovering" : "online",
       lastHeartbeatAt: new Date().toISOString(),
-      lastError: null,
+      lastError: commandPollRecovery ? this.state.lastError : null,
+      recovery: commandPollRecovery,
     });
     await this.refreshAuditEvents();
     return true;
@@ -486,9 +726,11 @@ export class ComputerUseHostRuntime {
       return;
     }
     if (!response.ok) {
-      throw new Error(
+      this.appendRuntimeErrorLog(
+        "audit",
         `Computer Use audit history refresh failed: ${response.status}`,
       );
+      return;
     }
 
     const body = (await response.json()) as ComputerUseAuditEventsResponse;
@@ -508,17 +750,17 @@ export class ComputerUseHostRuntime {
       },
     );
     if (!next.ok) {
-      throw new Error(`Computer Use command claim failed: ${next.status}`);
+      throw new ComputerUseHttpError(
+        `Computer Use command claim failed: ${next.status}`,
+        next,
+      );
     }
     const body = (await next.json()) as ComputerUseHostNextResponse;
     if (body.status === "idle") {
       if (!this.running || !this.hostToken) {
         return;
       }
-      this.setState({
-        status: "online",
-        lastError: null,
-      });
+      this.clearRecoveryState("command_poll");
       return;
     }
 
@@ -552,6 +794,7 @@ export class ComputerUseHostRuntime {
       status: "online",
       lastCommandAt: new Date().toISOString(),
       lastError: null,
+      recovery: null,
     });
     await this.refreshAuditEvents();
   }
@@ -577,8 +820,9 @@ export class ComputerUseHostRuntime {
         if (response.ok) {
           return;
         }
-        lastError = new Error(
+        lastError = new ComputerUseHttpError(
           `Computer Use command completion failed: ${response.status}`,
+          response,
         );
       } catch (error) {
         lastError =

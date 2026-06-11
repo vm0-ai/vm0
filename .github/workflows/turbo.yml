@@ -1397,6 +1397,7 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.platform-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true'
       )
@@ -1467,6 +1468,7 @@ jobs:
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.platform-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&

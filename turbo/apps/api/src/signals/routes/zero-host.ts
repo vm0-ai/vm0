@@ -127,6 +127,9 @@ const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (result.status === "not_found") {
     return notFound(result.message);
   }
+  if (result.status === "config_error") {
+    return internalError(result.message);
+  }
 
   return { status: 200 as const, body: result.body };
 });
