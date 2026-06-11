@@ -361,9 +361,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ZeroAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Expose the Automations API surface (/api/automations) over the shared automation service. When disabled, the new endpoints 404 and only the legacy /api/zero/schedules surface is reachable.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Expose the Automations API surface (/api/automations) over the shared automation service. Fully on since #17307 (the schedule surface is being retired); the switch is removed once the dual-mode consumers are gone.",
+    enabled: true,
   },
   [FeatureSwitchKey.AutomationWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",
