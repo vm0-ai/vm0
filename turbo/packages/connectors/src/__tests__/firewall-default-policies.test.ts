@@ -54,6 +54,16 @@ describe("getDefaultFirewallPolicies", () => {
     expect(Object.keys(policy.policies)).toHaveLength(0);
     expect(policy.unknownPolicy).toBe("allow");
   });
+
+  it("should default Cloudflare read-only permissions to allow and write permissions to deny", () => {
+    const policy = getDefaultFirewallPolicies("cloudflare");
+
+    expect(policy.policies["dns-firewall.read"]).toBe("allow");
+    expect(policy.policies["dns-firewall.write"]).toBe("deny");
+    expect(policy.policies["account-waf.read"]).toBe("allow");
+    expect(policy.policies["account-waf.write"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("allow");
+  });
 });
 
 describe("resolveFirewallPolicies", () => {
