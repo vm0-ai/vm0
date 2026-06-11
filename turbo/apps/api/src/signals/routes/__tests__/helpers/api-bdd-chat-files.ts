@@ -5,6 +5,7 @@ import {
   chatSearchContract,
   chatThreadArtifactsContract,
   chatThreadByIdContract,
+  chatThreadGithubPrsContract,
   chatThreadMarkReadContract,
   chatThreadModelSelectionContract,
   chatThreadPinContract,
@@ -22,6 +23,11 @@ import {
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadV1GetContract,
+  chatThreadV1MessagesContract,
+  chatThreadV1SendContract,
+} from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import {
@@ -282,6 +288,34 @@ export function createChatFilesBddApi(context: TestContext) {
     return setupApp({ context })(chatSearchContract);
   }
 
+  function threadGithubPrsClient() {
+    return setupApp({ context })(chatThreadGithubPrsContract);
+  }
+
+  function threadV1Client() {
+    return setupApp({ context })(chatThreadV1GetContract);
+  }
+
+  function threadV1MessagesClient() {
+    return setupApp({ context })(chatThreadV1MessagesContract);
+  }
+
+  function threadV1SendClient() {
+    return setupApp({ context })(chatThreadV1SendContract);
+  }
+
+  /**
+   * Raw-bearer auth headers for tokens that are not Clerk sessions (PATs,
+   * run-scoped sandbox tokens). Forces the Clerk fall-through branch to
+   * report unauthenticated so a stale session mock can never leak in.
+   */
+  function bearerAuth(authorization: string | undefined): AuthHeaders {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    return authorization === undefined ? {} : { authorization };
+  }
+
   function uploadsClient() {
     return setupApp({ context })(zeroUploadsContract);
   }
@@ -417,6 +451,24 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestListThreads(
+      actor: ApiTestUser | null,
+      query: {
+        readonly agentId?: string;
+        readonly limit?: number;
+        readonly cursor?: string;
+      },
+      statuses: readonly (200 | 401 | 404)[],
+    ) {
+      return await accept(
+        threadsClient().list({
+          headers: authenticate(context, actor),
+          query,
+        }),
+        statuses,
+      );
+    },
+
     async readThread(
       actor: ApiTestUser,
       threadId: string,
@@ -473,6 +525,36 @@ export function createChatFilesBddApi(context: TestContext) {
           body: requestBody,
         }),
         [204],
+      );
+    },
+
+    async requestPatchThread(
+      actor: ApiTestUser | null,
+      threadId: string,
+      body: {
+        readonly draftContent?: string | null;
+        readonly draftAttachments?: readonly PersistedAttachment[] | null;
+      },
+      statuses: readonly (204 | 400 | 401 | 404)[],
+    ) {
+      return await accept(
+        threadByIdClient().patch({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+          body: {
+            ...(body.draftContent === undefined
+              ? {}
+              : { draftContent: body.draftContent }),
+            ...(body.draftAttachments === undefined
+              ? {}
+              : {
+                  draftAttachments: body.draftAttachments
+                    ? [...body.draftAttachments]
+                    : null,
+                }),
+          },
+        }),
+        statuses,
       );
     },
 
@@ -627,6 +709,20 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async requestDeleteThread(
+      actor: ApiTestUser | null,
+      threadId: string,
+      statuses: readonly (204 | 400 | 401 | 404)[],
+    ) {
+      return await accept(
+        threadByIdClient().delete({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+        }),
+        statuses,
+      );
+    },
+
     async listThreadMessages(
       actor: ApiTestUser,
       threadId: string,
@@ -717,6 +813,87 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async requestSearchChat(
+      actor: ApiTestUser | null,
+      keyword: string,
+      query: {
+        readonly agentId?: string;
+        readonly since?: number;
+        readonly limit?: number;
+        readonly before?: number;
+        readonly after?: number;
+      },
+      statuses: readonly (200 | 400 | 401 | 403)[],
+    ) {
+      return await accept(
+        chatSearchClient().search({
+          headers: authenticate(context, actor),
+          query: { keyword, ...query },
+        }),
+        statuses,
+      );
+    },
+
+    async searchChatWithBearer(
+      authorization: string,
+      keyword: string,
+      statuses: readonly (200 | 401 | 403)[],
+    ) {
+      return await accept(
+        chatSearchClient().search({
+          headers: bearerAuth(authorization),
+          query: { keyword },
+        }),
+        statuses,
+      );
+    },
+
+    async requestThreadGithubPrs(
+      actor: ApiTestUser | null,
+      threadId: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        threadGithubPrsClient().list({
+          headers: authenticate(context, actor),
+          params: { threadId },
+        }),
+        statuses,
+      );
+    },
+
+    async requestSyncThreadArtifact(
+      actor: ApiTestUser | null,
+      threadId: string,
+      body: { readonly runId: string; readonly fileId: string },
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        threadArtifactsClient().syncGoogleDrive({
+          headers: authenticate(context, actor),
+          params: { threadId },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestSyncThreadArtifactUnchecked(
+      actor: ApiTestUser,
+      threadId: string,
+      body: unknown,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        threadArtifactsClient().syncGoogleDrive({
+          headers: authenticate(context, actor),
+          params: { threadId },
+          body: body as { runId: string; fileId: string },
+        }),
+        statuses,
+      );
     },
 
     async requestSendMessage(
@@ -896,6 +1073,21 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    /** Upload complete with a run-scoped bearer so the file records its run. */
+    async completeUploadWithBearer(
+      authorization: string,
+      body: { readonly id: string; readonly contentType?: string },
+      statuses: readonly (200 | 400 | 401 | 402 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        uploadsClient().complete({
+          headers: bearerAuth(authorization),
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async prepareStorage(
       actor: ApiTestUser,
       body: {
@@ -1032,6 +1224,98 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { deploymentId },
           body: {},
+        }),
+        statuses,
+      );
+    },
+
+    /** Hosted-site prepare with a run-scoped bearer (deployment records the run). */
+    async prepareHostedSiteWithBearer(
+      authorization: string,
+      body: HostedSitePrepareRequest,
+    ): Promise<HostedSitePrepareResponse> {
+      const response = await accept(
+        hostClient().prepare({
+          headers: bearerAuth(authorization),
+          body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async completeHostedSiteWithBearer(
+      authorization: string,
+      deploymentId: string,
+    ): Promise<HostedSiteCompleteResponse> {
+      const response = await accept(
+        hostClient().complete({
+          headers: bearerAuth(authorization),
+          params: { deploymentId },
+          body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestV1Thread(
+      authorization: string | undefined,
+      threadId: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        threadV1Client().get({
+          headers: bearerAuth(authorization),
+          params: { threadId },
+        }),
+        statuses,
+      );
+    },
+
+    async requestV1ThreadMessages(
+      authorization: string | undefined,
+      threadId: string,
+      query: {
+        readonly sinceId?: string;
+        readonly beforeId?: string;
+        readonly limit?: number;
+      },
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        threadV1MessagesClient().list({
+          headers: bearerAuth(authorization),
+          params: { threadId },
+          query,
+        }),
+        statuses,
+      );
+    },
+
+    async requestV1Send(
+      authorization: string | undefined,
+      body: { readonly prompt: string; readonly threadId: string },
+      statuses: readonly (201 | 400 | 401 | 403 | 404 | 409)[],
+    ) {
+      return await accept(
+        threadV1SendClient().send({
+          headers: bearerAuth(authorization),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestV1SendUnchecked(
+      authorization: string,
+      body: unknown,
+      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        threadV1SendClient().send({
+          headers: bearerAuth(authorization),
+          body: body as { prompt: string; threadId: string },
         }),
         statuses,
       );

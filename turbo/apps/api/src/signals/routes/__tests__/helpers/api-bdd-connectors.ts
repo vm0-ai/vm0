@@ -235,6 +235,105 @@ export function mockSlackConnectorOAuth(): void {
   );
 }
 
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
+const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
+
+interface GoogleDriveConnectorOAuthOptions {
+  /**
+   * Omit refresh_token from the authorization-code exchange so the stored
+   * connector has no refresh path (Drive 401s then resolve to "unknown").
+   */
+  readonly omitRefreshToken?: boolean;
+}
+
+/**
+ * Google Drive connector OAuth provider boundary: env client credentials,
+ * the oauth2 token endpoint (authorization_code exchanges succeed; refresh
+ * grants fail with invalid_grant so refresh outcomes stay deterministic),
+ * and the Google userinfo endpoint.
+ */
+export function mockGoogleDriveConnectorOAuth(
+  options: GoogleDriveConnectorOAuthOptions = {},
+): void {
+  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
+
+  server.use(
+    http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      if (body.get("grant_type") !== "authorization_code") {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Refresh is not granted by this fixture",
+          },
+          { status: 400 },
+        );
+      }
+      const code = body.get("code") ?? "missing-code";
+      return HttpResponse.json({
+        access_token: `drive-access-${code}`,
+        ...(options.omitRefreshToken
+          ? {}
+          : { refresh_token: `drive-refresh-${code}` }),
+        expires_in: 3600,
+        token_type: "Bearer",
+        scope:
+          "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email",
+      });
+    }),
+    http.get(GOOGLE_USERINFO_URL, () => {
+      return HttpResponse.json({
+        id: "bdd-drive-user-id",
+        email: "bdd-drive@example.test",
+        name: "BDD Drive User",
+      });
+    }),
+  );
+}
+
+interface GoogleDriveFileFixture {
+  readonly id: string;
+  readonly name: string;
+  readonly webViewLink?: string | null;
+  readonly appProperties?: Readonly<Record<string, string>>;
+}
+
+type GoogleDriveFilesListResponse =
+  | { readonly status: 200; readonly files: readonly GoogleDriveFileFixture[] }
+  | { readonly status: 401 | 500 };
+
+interface GoogleDriveFilesListRecorder {
+  readonly queries: string[];
+}
+
+/**
+ * Thin recorder over GET https://www.googleapis.com/drive/v3/files: every
+ * call records the `q` search expression and answers with the fixture's
+ * response. Handlers resolve immediately — the artifact status lookup runs
+ * under an AbortSignal.timeout(2000).
+ */
+export function mockGoogleDriveFilesList(
+  respond: () => GoogleDriveFilesListResponse,
+): GoogleDriveFilesListRecorder {
+  const recorded: GoogleDriveFilesListRecorder = { queries: [] };
+
+  server.use(
+    http.get(GOOGLE_DRIVE_FILES_URL, ({ request }) => {
+      recorded.queries.push(new URL(request.url).searchParams.get("q") ?? "");
+      const response = respond();
+      if (response.status !== 200) {
+        return new HttpResponse(null, { status: response.status });
+      }
+      return HttpResponse.json({ files: [...response.files] });
+    }),
+  );
+
+  return recorded;
+}
+
 function newGithubAppPrivateKeyBase64(): string {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const pem = privateKey.export({ type: "pkcs8", format: "pem" });

@@ -1646,6 +1646,70 @@ describe("CHAT-02: generation templates and attachments", () => {
   }, 60_000);
 });
 
+describe("CHAT-02: queued attachments on auto-send", () => {
+  it("carries queued attachments into the auto-sent follow-up run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.proxyChatCallbackToApp();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor before the queued attachment",
+    });
+    await drainDetached(1);
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const fileId = randomUUID();
+    const queuedId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queued with attachment",
+        clientMessageId: queuedId,
+        attachFiles: [
+          {
+            id: fileId,
+            filename: "notes.txt",
+            contentType: "text/plain",
+            size: 12,
+          },
+        ],
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    // Completing the anchor run promotes the queued message into a fresh
+    // run whose prompt carries the resolved attachment references.
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await drainDetached(1);
+
+    const messages = await chat.listThreadMessages(actor, anchor.threadId);
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.revokesMessageId === queuedId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued message to auto-send into a run");
+    }
+    expect(promoted.content).toBe("queued with attachment");
+    expect(promoted.attachFiles?.[0]).toMatchObject({
+      id: fileId,
+      filename: "notes.txt",
+      contentType: "text/plain",
+      size: 12,
+      url: expect.stringContaining(`${fileId}/notes.txt`),
+    });
+
+    const followUp = await api.readRun(actor, promoted.runId);
+    expect(followUp.prompt).toContain("queued with attachment");
+    expect(followUp.prompt).toContain("[Web file] notes.txt (text/plain)");
+    expect(followUp.prompt).toContain(`[ID] ${fileId}`);
+    await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+});
+
 describe("CHAT-02/FILE-03: computer-use host grants", () => {
   it("grants computer-use capability only for a selected online host", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
