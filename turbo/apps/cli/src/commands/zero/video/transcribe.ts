@@ -42,7 +42,10 @@ export const transcribeCommand = new Command()
   )
   .option("--url <presigned-url>", "Pre-signed or public URL of the video file")
   .option("--file-id <id>", "Web file ID (alternative to --url)")
-  .option("--file <path>", "Local file path (alternative to --url or --file-id)")
+  .option(
+    "--file <path>",
+    "Local file path (alternative to --url or --file-id)",
+  )
   .option(
     "--no-timestamps",
     "Output plain text only, without per-segment timestamps",

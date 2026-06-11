@@ -147,13 +147,14 @@ describe("zero video transcribe command", () => {
         }),
       );
 
-      await transcribeCommand.parseAsync(
-        ["--file", "/tmp/some-video.mp4"],
-        { from: "user" },
-      );
+      await transcribeCommand.parseAsync(["--file", "/tmp/some-video.mp4"], {
+        from: "user",
+      });
 
       const execCalls = vi.mocked(execFileSync).mock.calls;
-      const curlCalls = execCalls.filter((c) => c[0] === "curl");
+      const curlCalls = execCalls.filter((c) => {
+        return c[0] === "curl";
+      });
       expect(curlCalls).toHaveLength(0);
     });
 
@@ -162,17 +163,14 @@ describe("zero video transcribe command", () => {
         http.post(STT_URL, () => {
           return HttpResponse.json({
             text: "Local file transcript.",
-            segments: [
-              { start: 0, end: 2, text: " Local file transcript." },
-            ],
+            segments: [{ start: 0, end: 2, text: " Local file transcript." }],
           });
         }),
       );
 
-      await transcribeCommand.parseAsync(
-        ["--file", "/tmp/some-video.mp4"],
-        { from: "user" },
-      );
+      await transcribeCommand.parseAsync(["--file", "/tmp/some-video.mp4"], {
+        from: "user",
+      });
 
       const output = readStdout();
       expect(output).toContain("## Transcript");
