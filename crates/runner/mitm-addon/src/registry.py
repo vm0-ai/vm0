@@ -170,7 +170,7 @@ def _resolve_base_url_template(
     return resolved
 
 
-def _resolve_builtin_firewall_entry(entry: dict, vm: dict) -> dict:
+def _resolve_builtin_firewall_entry(entry: dict) -> dict:
     raw_name = entry.get("name")
     if not isinstance(raw_name, str) or raw_name == "":
         raise _FirewallEntryResolutionError(
@@ -235,7 +235,7 @@ def _resolve_firewall_entries(vm: dict) -> list[dict] | None:
 
         kind = entry.get("kind")
         if kind == "builtin":
-            resolved.append(_resolve_builtin_firewall_entry(entry, vm))
+            resolved.append(_resolve_builtin_firewall_entry(entry))
             continue
         if kind == "inline":
             firewall = entry.get("firewall")
