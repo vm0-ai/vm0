@@ -127,10 +127,7 @@ describe("migration 0450 merge chat followups marker", () => {
         })
         .from(chatMessages)
         .where(
-          inArray(chatMessages.id, [
-            legacyPlaceholder!.id,
-            queueRevoker!.id,
-          ]),
+          inArray(chatMessages.id, [legacyPlaceholder!.id, queueRevoker!.id]),
         )
         .orderBy(asc(chatMessages.id));
 
