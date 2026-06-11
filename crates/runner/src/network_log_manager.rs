@@ -118,10 +118,9 @@ struct PathWriteBatch {
     lines: Vec<String>,
 }
 
-enum AdmissionState {
-    Accepted,
-    Retry,
-    Rejected,
+struct SourceSnapshot {
+    path: PathBuf,
+    generation: u64,
 }
 
 #[cfg(test)]
@@ -314,65 +313,60 @@ impl NetworkLogManager {
             }
         };
 
-        loop {
-            let Some(path) = self.source_path(source_ip).await else {
+        let Some(snapshot) = self.source_snapshot(source_ip).await else {
+            return false;
+        };
+        let writer_pool = self.writer_pool().await;
+        let Some(sender) = writer_pool.sender_for_path(&snapshot.path) else {
+            warn!("network log writer pool has no shards");
+            return false;
+        };
+        let permit = match sender.reserve_owned().await {
+            Ok(permit) => permit,
+            Err(_) => {
+                warn!(
+                    path = %snapshot.path.display(),
+                    "network log writer shard closed before append was accepted"
+                );
                 return false;
-            };
-            let writer_pool = self.writer_pool().await;
-            let Some(sender) = writer_pool.sender_for_path(&path) else {
-                warn!("network log writer pool has no shards");
-                return false;
-            };
-            let permit = match sender.reserve_owned().await {
-                Ok(permit) => permit,
-                Err(_) => {
-                    warn!(
-                        path = %path.display(),
-                        "network log writer shard closed before append was accepted"
-                    );
-                    return false;
-                }
-            };
-
-            match self.try_accept_path(source_ip, &path).await {
-                AdmissionState::Accepted => {
-                    permit.send(QueuedAppend { path, line });
-                    return true;
-                }
-                AdmissionState::Retry => {}
-                AdmissionState::Rejected => return false,
             }
+        };
+
+        if !self.try_accept_snapshot(source_ip, &snapshot).await {
+            return false;
         }
+        permit.send(QueuedAppend {
+            path: snapshot.path,
+            line,
+        });
+        true
     }
 
-    async fn source_path(&self, source_ip: &str) -> Option<PathBuf> {
+    async fn source_snapshot(&self, source_ip: &str) -> Option<SourceSnapshot> {
         let state = self.inner.state.lock().await;
         state
             .source_paths
             .get(source_ip)
-            .map(SourceState::path)
-            .cloned()
+            .map(|source| SourceSnapshot {
+                path: source.path().clone(),
+                generation: source.generation(),
+            })
     }
 
-    async fn try_accept_path(&self, source_ip: &str, path: &Path) -> AdmissionState {
+    async fn try_accept_snapshot(&self, source_ip: &str, snapshot: &SourceSnapshot) -> bool {
         let mut state = self.inner.state.lock().await;
-        let Some(current_path) = state
-            .source_paths
-            .get(source_ip)
-            .map(SourceState::path)
-            .cloned()
-        else {
-            return AdmissionState::Rejected;
+        let Some(source_state) = state.source_paths.get(source_ip) else {
+            return false;
         };
-        if current_path != path {
-            return AdmissionState::Retry;
+        if !source_state.matches(&snapshot.path, snapshot.generation) {
+            return false;
         }
         let path_state = state
             .pending_paths
-            .entry(current_path)
+            .entry(snapshot.path.clone())
             .or_insert_with(PathState::new);
         path_state.pending += 1;
-        AdmissionState::Accepted
+        true
     }
 
     async fn writer_pool(&self) -> WriterPool {
@@ -421,17 +415,14 @@ impl NetworkLogManager {
     /// Wait until all currently accepted Rust-side writes for `path` finish.
     pub async fn flush_path(&self, path: &Path) {
         loop {
-            let Some(notify) = ({
+            let notified = {
                 let state = self.inner.state.lock().await;
-                state
-                    .pending_paths
-                    .get(path)
-                    .map(|path_state| path_state.notify.clone())
-            }) else {
-                return;
+                let Some(path_state) = state.pending_paths.get(path) else {
+                    return;
+                };
+                path_state.notify.clone().notified_owned()
             };
 
-            let notified = notify.notified_owned();
             tokio::pin!(notified);
             // Register before rechecking pending state so a concurrent final
             // completion cannot notify between the check and the await.
@@ -452,7 +443,8 @@ impl NetworkLogManager {
     async fn before_close_upload_flush_for_test(&self) {
         if let Some(gate) = self.inner.close_gate.as_ref() {
             gate.before_flush.notify_one();
-            let _permit = gate.release.acquire().await.expect("close gate closed");
+            let permit = gate.release.acquire().await.expect("close gate closed");
+            permit.forget();
         }
     }
 }
@@ -612,7 +604,8 @@ async fn write_path_batch(
     #[cfg(test)]
     if let Some(gate) = write_gate {
         gate.started.notify_one();
-        let _permit = gate.release.acquire().await.expect("write gate closed");
+        let permit = gate.release.acquire().await.expect("write gate closed");
+        permit.forget();
     }
 
     let path = batch.path;
@@ -1003,15 +996,10 @@ mod tests {
                 .await
         );
 
-        let append_manager = manager.clone();
-        let third = tokio::spawn(async move {
-            append_manager
-                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"third.test"}))
-                .await
-        });
+        let third = manager.append_for_ip("10.200.0.2", json!({"type":"dns","host":"third.test"}));
         let mut third = std::pin::pin!(third);
         let pending = poll_fn(|cx| match third.as_mut().poll(cx) {
-            Poll::Ready(result) => Poll::Ready(Some(result.unwrap())),
+            Poll::Ready(accepted) => Poll::Ready(Some(accepted)),
             Poll::Pending => Poll::Ready(None),
         })
         .await;
@@ -1023,8 +1011,67 @@ mod tests {
         manager.unregister_source_ip("10.200.0.2").await;
         release.add_permits(2);
         assert!(
-            !third.await.unwrap(),
+            !third.await,
             "append waiting for capacity must re-check source mapping before acceptance"
+        );
+        manager.flush_path(&path).await;
+
+        let lines = read_json_lines(&path);
+        let hosts: Vec<&str> = lines
+            .iter()
+            .map(|line| line["host"].as_str().unwrap())
+            .collect();
+        assert_eq!(hosts, ["first.test", "second.test"]);
+    }
+
+    #[tokio::test]
+    async fn queue_full_rejects_row_after_source_reregister_same_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let manager = NetworkLogManager::new_with_write_gate_and_config(
+            started.clone(),
+            release.clone(),
+            WriterConfig {
+                shards: 1,
+                queue_capacity: 1,
+                max_batch_rows: 1,
+                max_batch_bytes: DEFAULT_MAX_BATCH_BYTES,
+            },
+        );
+
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"first.test"}))
+                .await
+        );
+        started.notified().await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"second.test"}))
+                .await
+        );
+
+        let third = manager.append_for_ip("10.200.0.2", json!({"type":"dns","host":"third.test"}));
+        let mut third = std::pin::pin!(third);
+        let pending = poll_fn(|cx| match third.as_mut().poll(cx) {
+            Poll::Ready(accepted) => Poll::Ready(Some(accepted)),
+            Poll::Pending => Poll::Ready(None),
+        })
+        .await;
+        assert_eq!(
+            pending, None,
+            "third append should wait for bounded queue capacity"
+        );
+
+        manager.unregister_source_ip("10.200.0.2").await;
+        let _new_session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        release.add_permits(2);
+        assert!(
+            !third.await,
+            "append waiting for capacity must not cross source generations"
         );
         manager.flush_path(&path).await;
 
