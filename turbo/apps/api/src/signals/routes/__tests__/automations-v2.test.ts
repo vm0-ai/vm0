@@ -698,7 +698,7 @@ describe("Automations v2 API", () => {
 
     const db = store.set(writeDb$);
     // Provenance: the automation alone — no trigger fired this run. B2 is
-    // deferred, so the trigger source stays "schedule".
+    // deferred, so the run records the automation trigger source.
     const [zeroRun] = await db
       .select({
         triggerSource: zeroRuns.triggerSource,
@@ -709,7 +709,7 @@ describe("Automations v2 API", () => {
       .from(zeroRuns)
       .where(eq(zeroRuns.id, runId));
     expect(zeroRun).toStrictEqual({
-      triggerSource: "schedule",
+      triggerSource: "automation",
       automationId: created.automation.id,
       triggerId: null,
       chatThreadId: created.automation.chatThreadId,

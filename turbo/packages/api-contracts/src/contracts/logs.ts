@@ -40,6 +40,9 @@ const logStatusSchema = z.enum([
  * Trigger source enum — how the run was initiated
  */
 export const triggerSourceSchema = z.enum([
+  // "automation" supersedes "schedule" (#17307); both appear on historical
+  // rows until the backfill migration lands.
+  "automation",
   "schedule",
   "web",
   "slack",

@@ -675,6 +675,40 @@ describe("GET /api/zero/logs", () => {
       expect(run?.scheduleId).toBe(scheduleId);
     });
 
+    it("matches both 'schedule' and 'automation' rows when filtering by either value", async () => {
+      const { fixture, composeId } = await setupComposeForSource();
+      for (const triggerSource of ["schedule", "automation"] as const) {
+        await store.set(
+          seedRun$,
+          {
+            orgId: fixture.orgId,
+            userId: fixture.userId,
+            composeId,
+            status: "completed",
+            triggerSource,
+          },
+          context.signal,
+        );
+      }
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+
+      for (const filter of ["schedule", "automation"] as const) {
+        const response = await accept(
+          logsClient().list({
+            query: { triggerSource: filter },
+            headers: authHeaders(),
+          }),
+          [200],
+        );
+        const sources = response.body.data
+          .map((r) => {
+            return r.triggerSource;
+          })
+          .sort();
+        expect(sources).toStrictEqual(["automation", "schedule"]);
+      }
+    });
+
     it("returns null scheduleId for non-schedule runs", async () => {
       const { fixture, composeId } = await setupComposeForSource();
       await store.set(

@@ -496,39 +496,40 @@ describe("POST /api/zero/banking/*", () => {
     expect(authRequestCount).toBe(0);
   });
 
-  it("denies scheduled runs unless the banking grant allows them", async () => {
-    const fixture = await track(
-      seedBankingFixture({ triggerSource: "schedule" }),
-    );
-    let authRequestCount = 0;
-    server.use(
-      http.post(FINICITY_AUTH_URL, () => {
-        authRequestCount += 1;
-        return HttpResponse.json({ token: "test-app-token" });
-      }),
-    );
+  it.each(["schedule", "automation"] as const)(
+    "denies %s-triggered runs unless the banking grant allows them",
+    async (triggerSource) => {
+      const fixture = await track(seedBankingFixture({ triggerSource }));
+      let authRequestCount = 0;
+      server.use(
+        http.post(FINICITY_AUTH_URL, () => {
+          authRequestCount += 1;
+          return HttpResponse.json({ token: "test-app-token" });
+        }),
+      );
 
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
-        body: {},
-      }),
-      [403],
-    );
+      const client = setupApp({ context })(zeroBankingContract);
+      const response = await accept(
+        client.accounts({
+          headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+          body: {},
+        }),
+        [403],
+      );
 
-    expect(response.body.error.message).toBe(
-      "Banking is not enabled for scheduled runs",
-    );
-    expect(authRequestCount).toBe(0);
-    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
-      {
-        action: "accounts.read",
-        status: "denied",
-        failureCode: "SCHEDULE_NOT_ALLOWED",
-      },
-    ]);
-  });
+      expect(response.body.error.message).toBe(
+        "Banking is not enabled for scheduled runs",
+      );
+      expect(authRequestCount).toBe(0);
+      await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
+        {
+          action: "accounts.read",
+          status: "denied",
+          failureCode: "SCHEDULE_NOT_ALLOWED",
+        },
+      ]);
+    },
+  );
 
   it("denies revoked banking connections before provider access", async () => {
     const fixture = await track(

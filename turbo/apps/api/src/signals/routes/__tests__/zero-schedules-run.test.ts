@@ -223,7 +223,7 @@ describe("POST /api/zero/schedules/run", () => {
       .from(zeroRuns)
       .where(eq(zeroRuns.id, body.runId));
     expect(zeroRun).toStrictEqual({
-      triggerSource: "schedule",
+      triggerSource: "automation",
       automationId: scheduleId,
       triggerId: trigger?.id,
     });
@@ -274,7 +274,7 @@ describe("POST /api/zero/schedules/run", () => {
       .from(zeroRuns)
       .where(eq(zeroRuns.id, body.runId));
     expect(zeroRun).toStrictEqual({
-      triggerSource: "schedule",
+      triggerSource: "automation",
       chatThreadId: threadId,
     });
 

@@ -87,6 +87,7 @@ function sourceExpr(triggerSource: string): string {
   return `
     CASE
       WHEN ${triggerSource} = 'web' THEN 'chat'
+      WHEN ${triggerSource} = 'automation' THEN 'schedule'
       WHEN ${triggerSource} IN (${passthroughList}) THEN ${triggerSource}
       ELSE 'other'
     END`;

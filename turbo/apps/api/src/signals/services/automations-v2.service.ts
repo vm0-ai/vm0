@@ -1204,7 +1204,7 @@ export const runAutomationNowV2$ = command(
         // B2 on #16847 (a dedicated "manual"/"automation" trigger source) is
         // deferred: manual fires keep the schedule source the run-now surface
         // has always used.
-        triggerSource: "schedule",
+        triggerSource: "automation",
         chatThreadId: runInput.chatThreadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:

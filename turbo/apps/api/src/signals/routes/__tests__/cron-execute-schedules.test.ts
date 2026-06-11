@@ -252,7 +252,7 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
     const runs = await findMirrorRuns(scheduleId);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toBe("Daily task");
-    expect(runs[0]?.triggerSource).toBe("schedule");
+    expect(runs[0]?.triggerSource).toBe("automation");
     expect(runs[0]?.automationId).toBe(mirror?.automationId);
     expect(runs[0]?.triggerId).toBe(mirror?.trigger.id);
 
