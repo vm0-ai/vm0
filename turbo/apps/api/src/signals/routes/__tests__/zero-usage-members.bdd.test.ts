@@ -21,6 +21,19 @@ import {
   type UsageFixture,
 } from "./helpers/zero-usage";
 
+// BDD migration of the legacy `zero-usage-members.test.ts`.
+// The 8 legacy `it()`s collapse into 3 BDD `it()`s: (1)
+// auth + empty + pending exclusion chain (401
+// unauthenticated → 200 empty result for free tier with
+// no billing period → 200 excludes pending records from
+// aggregation), (2) aggregation chain (200 single user
+// with processed records → 200 multiple users sorted by
+// credits → 200 includes processed usage_event records in
+// member totals), (3) token rollup + processedAt chain
+// (200 rolls up Realtime and transcription categories
+// into flat token totals → 200 uses processedAt for
+// billing-period membership).
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -72,36 +85,39 @@ function mockClerkUserLookup(): void {
   });
 }
 
-describe("GET /api/zero/usage/members", () => {
-  const track = createFixtureTracker<UsageFixture>((fixture) => {
-    return store.set(deleteUsageFixture$, fixture, context.signal);
-  });
+const track = createFixtureTracker<UsageFixture>((fixture) => {
+  return store.set(deleteUsageFixture$, fixture, context.signal);
+});
 
-  it("returns 401 when not authenticated", async () => {
-    const response = await accept(apiClient().get({ headers: {} }), [401]);
+describe("BDD GET /api/zero/usage/members — auth + empty + pending chain", () => {
+  it("gwt-wt-wt: 401 unauthenticated → 200 empty result for free tier with no billing period → 200 excludes pending records from aggregation", async () => {
+    // Given: no auth header.
 
-    expect(response.body).toStrictEqual({
+    // When + Then: 401.
+    const noAuth = await accept(apiClient().get({ headers: {} }), [401]);
+    expect(noAuth.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("returns empty result for free tier org with no billing period", async () => {
-    const fixture = await track(
+    // Given: a free-tier fixture with no billing period.
+
+    // When + Then: 200 — empty result.
+    const emptyFixture = await track(
       store.set(seedUsageFixture$, { currentPeriodEnd: null }, context.signal),
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
+    mocks.clerk.session(emptyFixture.userId, emptyFixture.orgId);
+    const emptyResponse = await accept(
       apiClient().get({ headers: authHeaders() }),
       [200],
     );
+    expect(emptyResponse.body).toStrictEqual({ period: null, members: [] });
 
-    expect(response.body).toStrictEqual({ period: null, members: [] });
-  });
+    // Given: a pro-tier fixture + a processed + a pending
+    // model usage.
 
-  it("returns aggregated usage for a single user with processed records", async () => {
+    // When + Then: 200 — pending record is excluded.
     mockClerkUserLookup();
-    const fixture = await track(
+    const pendingFixture = await track(
       store.set(
         seedUsageFixture$,
         { currentPeriodEnd: periodEndFromNow(), tier: "pro" },
@@ -111,8 +127,57 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: pendingFixture.orgId,
+        userId: pendingFixture.userId,
+        inputTokens: 1000,
+        creditsCharged: 50,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: pendingFixture.orgId,
+        userId: pendingFixture.userId,
+        inputTokens: 5000,
+        creditsCharged: 0,
+        status: "pending",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(pendingFixture.userId, pendingFixture.orgId);
+    const pendingResponse = await accept(
+      apiClient().get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(pendingResponse.body.members).toHaveLength(1);
+    expect(pendingResponse.body.members[0]).toMatchObject({
+      inputTokens: 1000,
+      creditsCharged: 50,
+    });
+  });
+});
+
+describe("BDD GET /api/zero/usage/members — aggregation chain", () => {
+  it("gwt-wt-wt: 200 single user with processed records → 200 multiple users sorted by credits → 200 includes processed usage_event records in member totals", async () => {
+    // Given: a pro-tier fixture + 2 processed model usage
+    // rows for a single user.
+
+    // When + Then: 200 — single member with summed tokens
+    // + credits.
+    mockClerkUserLookup();
+    const singleFixture = await track(
+      store.set(
+        seedUsageFixture$,
+        { currentPeriodEnd: periodEndFromNow(), tier: "pro" },
+        context.signal,
+      ),
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: singleFixture.orgId,
+        userId: singleFixture.userId,
         inputTokens: 1000,
         outputTokens: 500,
         cacheReadInputTokens: 200,
@@ -124,8 +189,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: singleFixture.orgId,
+        userId: singleFixture.userId,
         inputTokens: 2000,
         outputTokens: 1000,
         cacheReadInputTokens: 300,
@@ -134,29 +199,30 @@ describe("GET /api/zero/usage/members", () => {
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
+    mocks.clerk.session(singleFixture.userId, singleFixture.orgId);
+    const singleResponse = await accept(
       apiClient().get({ headers: authHeaders() }),
       [200],
     );
-
-    expect(response.body.period).not.toBeNull();
-    expect(response.body.members).toHaveLength(1);
-    expect(response.body.members[0]).toMatchObject({
-      userId: fixture.userId,
-      email: `${fixture.userId}@example.com`,
+    expect(singleResponse.body.period).not.toBeNull();
+    expect(singleResponse.body.members).toHaveLength(1);
+    expect(singleResponse.body.members[0]).toMatchObject({
+      userId: singleFixture.userId,
+      email: `${singleFixture.userId}@example.com`,
       inputTokens: 3000,
       outputTokens: 1500,
       cacheReadInputTokens: 500,
       cacheCreationInputTokens: 250,
       creditsCharged: 150,
     });
-  });
 
-  it("returns separate aggregation for multiple users sorted by credits", async () => {
+    // Given: a pro-tier fixture + model usage for 2 users
+    // with different credit totals.
+
+    // When + Then: 200 — 2 members sorted by credits
+    // (descending).
     mockClerkUserLookup();
-    const fixture = await track(
+    const multiFixture = await track(
       store.set(
         seedUsageFixture$,
         { currentPeriodEnd: periodEndFromNow(), tier: "pro" },
@@ -168,7 +234,7 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
+        orgId: multiFixture.orgId,
         userId: user1,
         inputTokens: 1000,
         outputTokens: 500,
@@ -179,7 +245,7 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
+        orgId: multiFixture.orgId,
         userId: user2,
         inputTokens: 3000,
         outputTokens: 1500,
@@ -187,23 +253,27 @@ describe("GET /api/zero/usage/members", () => {
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
+    mocks.clerk.session(multiFixture.userId, multiFixture.orgId);
+    const multiResponse = await accept(
       apiClient().get({ headers: authHeaders() }),
       [200],
     );
+    expect(multiResponse.body.members).toHaveLength(2);
+    expect(multiResponse.body.members[0]?.userId).toBe(user2);
+    expect(multiResponse.body.members[0]?.creditsCharged).toBe(200);
+    expect(multiResponse.body.members[1]?.userId).toBe(user1);
+    expect(multiResponse.body.members[1]?.creditsCharged).toBe(50);
 
-    expect(response.body.members).toHaveLength(2);
-    expect(response.body.members[0]?.userId).toBe(user2);
-    expect(response.body.members[0]?.creditsCharged).toBe(200);
-    expect(response.body.members[1]?.userId).toBe(user1);
-    expect(response.body.members[1]?.creditsCharged).toBe(50);
-  });
+    // Given: a pro-tier fixture + 1 model usage + 6 usage
+    // events (4 token categories, 1 bare credit, 1
+    // pending) for 2 users.
 
-  it("excludes pending records from aggregation", async () => {
+    // When + Then: 200 — 2 members, the mixed user merges
+    // model + processed events, the event-only user has 0
+    // tokens + only credits, and the pending event is
+    // excluded.
     mockClerkUserLookup();
-    const fixture = await track(
+    const eventsFixture = await track(
       store.set(
         seedUsageFixture$,
         { currentPeriodEnd: periodEndFromNow(), tier: "pro" },
@@ -213,52 +283,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        inputTokens: 1000,
-        creditsCharged: 50,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        inputTokens: 5000,
-        creditsCharged: 0,
-        status: "pending",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body.members).toHaveLength(1);
-    expect(response.body.members[0]).toMatchObject({
-      inputTokens: 1000,
-      creditsCharged: 50,
-    });
-  });
-
-  it("includes processed usage_event records in member totals", async () => {
-    mockClerkUserLookup();
-    const fixture = await track(
-      store.set(
-        seedUsageFixture$,
-        { currentPeriodEnd: periodEndFromNow(), tier: "pro" },
-        context.signal,
-      ),
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: eventsFixture.orgId,
+        userId: eventsFixture.userId,
         inputTokens: 1000,
         outputTokens: 500,
         cacheReadInputTokens: 200,
@@ -270,8 +296,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertUsageEvent$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: eventsFixture.orgId,
+        userId: eventsFixture.userId,
         kind: "model",
         provider: "claude-sonnet-4-6",
         category: "tokens.input",
@@ -283,8 +309,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertUsageEvent$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: eventsFixture.orgId,
+        userId: eventsFixture.userId,
         kind: "model",
         provider: "claude-sonnet-4-6",
         category: "tokens.output",
@@ -296,8 +322,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertUsageEvent$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: eventsFixture.orgId,
+        userId: eventsFixture.userId,
         kind: "model",
         provider: "claude-sonnet-4-6",
         category: "tokens.cache_read",
@@ -309,8 +335,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertUsageEvent$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: eventsFixture.orgId,
+        userId: eventsFixture.userId,
         kind: "model",
         provider: "claude-sonnet-4-6",
         category: "tokens.cache_creation",
@@ -322,8 +348,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertUsageEvent$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: eventsFixture.orgId,
+        userId: eventsFixture.userId,
         creditsCharged: 20,
       },
       context.signal,
@@ -331,8 +357,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertUsageEvent$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: eventsFixture.orgId,
+        userId: eventsFixture.userId,
         kind: "model",
         provider: "claude-sonnet-4-6",
         category: "tokens.input",
@@ -346,22 +372,20 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertUsageEvent$,
       {
-        orgId: fixture.orgId,
+        orgId: eventsFixture.orgId,
         userId: eventOnlyUserId,
         creditsCharged: 200,
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
+    mocks.clerk.session(eventsFixture.userId, eventsFixture.orgId);
+    const eventsResponse = await accept(
       apiClient().get({ headers: authHeaders() }),
       [200],
     );
-
-    expect(response.body.members).toHaveLength(2);
-    const mixedMember = response.body.members.find((member) => {
-      return member.userId === fixture.userId;
+    expect(eventsResponse.body.members).toHaveLength(2);
+    const mixedMember = eventsResponse.body.members.find((member) => {
+      return member.userId === eventsFixture.userId;
     });
     expect(mixedMember).toMatchObject({
       inputTokens: 1300,
@@ -370,8 +394,7 @@ describe("GET /api/zero/usage/members", () => {
       cacheCreationInputTokens: 140,
       creditsCharged: 124,
     });
-
-    const eventOnlyMember = response.body.members.find((member) => {
+    const eventOnlyMember = eventsResponse.body.members.find((member) => {
       return member.userId === eventOnlyUserId;
     });
     expect(eventOnlyMember).toMatchObject({
@@ -382,10 +405,17 @@ describe("GET /api/zero/usage/members", () => {
       creditsCharged: 200,
     });
   });
+});
 
-  it("rolls up Realtime and transcription categories into flat token totals", async () => {
+describe("BDD GET /api/zero/usage/members — token rollup + processedAt chain", () => {
+  it("gwt-wt-wt: 200 rolls up Realtime and transcription categories into flat token totals → 200 uses processedAt for billing-period membership", async () => {
+    // Given: a pro-tier fixture + Realtime + transcription
+    // token events.
+
+    // When + Then: 200 — the Realtime + transcription
+    // categories are rolled up into flat token totals.
     mockClerkUserLookup();
-    const fixture = await track(
+    const realtimeFixture = await track(
       store.set(
         seedUsageFixture$,
         { currentPeriodEnd: periodEndFromNow(), tier: "pro" },
@@ -407,8 +437,8 @@ describe("GET /api/zero/usage/members", () => {
       await store.set(
         insertUsageEvent$,
         {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
+          orgId: realtimeFixture.orgId,
+          userId: realtimeFixture.userId,
           kind: "model",
           provider: REALTIME_PROVIDER,
           category,
@@ -417,7 +447,6 @@ describe("GET /api/zero/usage/members", () => {
         context.signal,
       );
     }
-
     const transcriptionQuantities: Record<
       (typeof TRANSCRIPTION_TOKEN_CATEGORIES)[number],
       number
@@ -430,8 +459,8 @@ describe("GET /api/zero/usage/members", () => {
       await store.set(
         insertUsageEvent$,
         {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
+          orgId: realtimeFixture.orgId,
+          userId: realtimeFixture.userId,
           kind: "model",
           provider: TRANSCRIPTION_PROVIDER,
           category,
@@ -440,27 +469,29 @@ describe("GET /api/zero/usage/members", () => {
         context.signal,
       );
     }
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
+    mocks.clerk.session(realtimeFixture.userId, realtimeFixture.orgId);
+    const realtimeResponse = await accept(
       apiClient().get({ headers: authHeaders() }),
       [200],
     );
-
-    expect(response.body.members).toHaveLength(1);
-    expect(response.body.members[0]).toMatchObject({
+    expect(realtimeResponse.body.members).toHaveLength(1);
+    expect(realtimeResponse.body.members[0]).toMatchObject({
       inputTokens: 825,
       outputTokens: 115,
       cacheReadInputTokens: 100,
       cacheCreationInputTokens: 0,
     });
-  });
 
-  it("uses processedAt for billing-period membership", async () => {
+    // Given: a pro-tier fixture with explicit period
+    // boundaries + 2 model usage rows + 1 usage event
+    // whose processedAt falls in different periods.
+
+    // When + Then: 200 — only records with processedAt
+    // inside the current billing period are aggregated.
     mockClerkUserLookup();
     const periodEnd = new Date("2099-04-01T00:00:00.000Z");
     const periodStart = new Date("2099-03-01T00:00:00.000Z");
-    const fixture = await track(
+    const processedAtFixture = await track(
       store.set(
         seedUsageFixture$,
         { currentPeriodEnd: periodEnd, tier: "pro" },
@@ -470,8 +501,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: processedAtFixture.orgId,
+        userId: processedAtFixture.userId,
         inputTokens: 10,
         outputTokens: 5,
         creditsCharged: 10,
@@ -482,8 +513,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: processedAtFixture.orgId,
+        userId: processedAtFixture.userId,
         inputTokens: 999,
         outputTokens: 999,
         creditsCharged: 999,
@@ -494,8 +525,8 @@ describe("GET /api/zero/usage/members", () => {
     await store.set(
       insertUsageEvent$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: processedAtFixture.orgId,
+        userId: processedAtFixture.userId,
         kind: "model",
         provider: "claude-sonnet-4-6",
         category: "tokens.input",
@@ -505,15 +536,13 @@ describe("GET /api/zero/usage/members", () => {
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
+    mocks.clerk.session(processedAtFixture.userId, processedAtFixture.orgId);
+    const processedAtResponse = await accept(
       apiClient().get({ headers: authHeaders() }),
       [200],
     );
-
-    expect(response.body.members).toHaveLength(1);
-    expect(response.body.members[0]).toMatchObject({
+    expect(processedAtResponse.body.members).toHaveLength(1);
+    expect(processedAtResponse.body.members[0]).toMatchObject({
       inputTokens: 10,
       outputTokens: 5,
       creditsCharged: 10,
