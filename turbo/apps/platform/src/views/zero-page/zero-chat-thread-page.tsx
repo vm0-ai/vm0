@@ -1883,7 +1883,7 @@ function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
       className={cn(
         fullscreen
           ? "fixed inset-0 z-[100] flex flex-col bg-background"
-          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background",
+          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
         "animate-in fade-in duration-[180ms] ease",
       )}
       data-testid="artifact-inbox"
