@@ -14,6 +14,7 @@ import {
 } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createEmailApi } from "./helpers/api-bdd-email";
+import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import {
   createRunsSchedulesApi,
   uniqueScheduleName,
@@ -644,6 +645,105 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     );
     expectApiError(deleteAgain.body);
     expect(deleteAgain.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("manually runs a schedule through chat, claim, model, and grant surfaces", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledScheduleActor();
+
+    const provider = await api.createOrgModelProvider(actor, {
+      type: "anthropic-api-key",
+      secret: "schedule-model-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-7",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: provider.providerId,
+      },
+    ]);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-schedule-grant",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+    });
+
+    const deployed = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-run-now"),
+      agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "Manual run test",
+      description: "Run-now schedule description",
+      appendSystemPrompt: "Use the schedule-specific context.",
+      timezone: "UTC",
+      enabled: false,
+    });
+
+    const created = await api.runScheduleNow(
+      actor,
+      deployed.schedule.id,
+      [201],
+    );
+    if (created.status !== 201) {
+      throw new Error("Expected schedule run-now to create a run");
+    }
+    const runId = created.body.runId;
+
+    const thread = await chat.listThreadMessages(
+      actor,
+      deployed.schedule.chatThreadId,
+    );
+    const userMessage = thread.messages.find((message) => {
+      return message.role === "user" && message.runId === runId;
+    });
+    expect(userMessage).toMatchObject({
+      content: "Manual run test",
+      scheduleTitle: deployed.schedule.name,
+      scheduleSnapshot: {
+        id: deployed.schedule.id,
+        title: deployed.schedule.name,
+        description: "Run-now schedule description",
+      },
+    });
+    expect(userMessage?.scheduleId).toBeUndefined();
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    expect(claim.prompt).toBe("Manual run test");
+    expect(claim.appendSystemPrompt).toContain(
+      "# Current Integration\nYou are currently running inside: Schedule",
+    );
+    expect(claim.appendSystemPrompt).toContain("Trigger type: cron");
+    expect(claim.appendSystemPrompt).toContain(
+      "Use the schedule-specific context.",
+    );
+    expect(claim.environment?.ANTHROPIC_MODEL).toBe("claude-opus-4-7");
+    expect(claim.networkPolicies?.slack?.allow).toContain("chat:write");
+    expect(claim.networkPolicies?.slack?.deny).not.toContain("chat:write");
+
+    const conflict = await api.runScheduleNow(
+      actor,
+      deployed.schedule.id,
+      [409],
+    );
+    expectApiError(conflict.body);
+    expect(conflict.body.error.code).toBe("CONFLICT");
+
+    await api.requestCancelRun(actor, runId, [200]);
+    await clearAllDetached();
+    await api.deleteSchedule(actor, deployed.schedule);
   });
 
   it("redeploys a cron schedule and exposes updated state through schedule list", async () => {

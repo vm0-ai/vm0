@@ -189,7 +189,9 @@ async function startCodexDeviceAuth(args: {
   readonly scope: CodexDeviceAuthScope;
   readonly signal: AbortSignal;
 }) {
-  const client = args.createClient(zeroCodexDeviceAuthContract);
+  const client = args.createClient(zeroCodexDeviceAuthContract, {
+    apiBase: "www",
+  });
   const result = await accept(
     client.start({
       body: { scope: args.scope },
@@ -206,7 +208,9 @@ async function completeCodexDeviceAuth(args: {
   readonly sessionToken: string;
   readonly signal: AbortSignal;
 }) {
-  const client = args.createClient(zeroCodexDeviceAuthContract);
+  const client = args.createClient(zeroCodexDeviceAuthContract, {
+    apiBase: "www",
+  });
   const result = await accept(
     client.complete({
       body: { sessionToken: args.sessionToken },
@@ -223,7 +227,9 @@ async function cancelCodexDeviceAuth(args: {
   readonly sessionToken: string;
   readonly signal: AbortSignal;
 }) {
-  const client = args.createClient(zeroCodexDeviceAuthContract);
+  const client = args.createClient(zeroCodexDeviceAuthContract, {
+    apiBase: "www",
+  });
   const result = await accept(
     client.cancel({
       body: { sessionToken: args.sessionToken },

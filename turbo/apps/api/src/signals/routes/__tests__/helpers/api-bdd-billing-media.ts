@@ -43,7 +43,10 @@ import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
-import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
+import {
+  zeroUsageRecordContract,
+  type UsageRecordRange,
+} from "@vm0/api-contracts/contracts/zero-usage-record";
 import { zeroVideoIoGenerateContract } from "@vm0/api-contracts/contracts/zero-video-io-generate";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroVoiceIoSpeechContract } from "@vm0/api-contracts/contracts/zero-voice-io-speech";
@@ -439,9 +442,33 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
-    async readUsageMembers(actor: ApiTestUser) {
+    async readUsageMembers(
+      actor: ApiTestUser,
+      query: {
+        readonly range?: UsageRecordRange;
+        readonly tz?: string;
+      } = {},
+    ) {
       const client = setupApp({ context })(zeroUsageMembersContract);
-      return await accept(client.get({ headers: authenticate(actor) }), [200]);
+      return await accept(
+        client.get({ headers: authenticate(actor), query }),
+        [200],
+      );
+    },
+
+    async requestUsageMembers(
+      actor: ApiTestUser,
+      query: {
+        readonly range?: UsageRecordRange;
+        readonly tz?: string;
+      },
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroUsageMembersContract);
+      return await accept(
+        client.get({ headers: authenticate(actor), query }),
+        statuses,
+      );
     },
 
     async readUsageRuns(

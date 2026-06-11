@@ -16,6 +16,7 @@ mod ids;
 mod image_hash;
 mod io_limits;
 mod kmsg_log;
+mod live_runner_instances;
 mod local_queue;
 mod lock;
 mod log_file;

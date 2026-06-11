@@ -109,8 +109,6 @@ export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   symmetrical_pastel_quirky:
     "Wes Anderson-esque deadpan symmetry with pastel palette",
   imax_epic_cinematic: "IMAX-scale epic with sweeping aerial scope",
-  slowburn_moody_romance:
-    "slow-burn atmospheric romance in the manner of arthouse cinema",
   indie_naturalistic:
     "indie naturalistic — raw handheld authenticity, available light",
   film_noir: "classic film noir — shadow, silhouette, moral ambiguity",
@@ -213,26 +211,6 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df99de74-8eea-420c-86d1-c104ba5ba6b6/video-df99de74.mp4",
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2c0eb943-f65a-4225-beaa-78246f7c4a1b/thumbnail-imax-epic-cinematic.jpg",
-  },
-  {
-    id: "slowburn-moody-romance",
-    nameZh: "情绪诗意·慢燃暖光",
-    nameEn: "Slow Burn Moody Romance",
-    category: "cinematic",
-    dimensions: {
-      visualTone: "warm_natural",
-      cameraStyle: "handheld_raw",
-      editingPace: "slow_meditative",
-      narrativeMode: "observational",
-      productionType: "live_action",
-      emotionalTone: "melancholic",
-      styleReference: "slowburn_moody_romance",
-    },
-    scene: "rain-on-window",
-    sampleVideoUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/feda268d-7b6c-4c5d-b3c8-89ab1dcc29cd/video-feda268d.mp4",
-    sampleVideoThumbnailUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/acda23ea-0eb2-421a-a3bd-e2d23958d163/thumbnail-slowburn-moody-romance.jpg",
   },
   {
     id: "indie-naturalistic",

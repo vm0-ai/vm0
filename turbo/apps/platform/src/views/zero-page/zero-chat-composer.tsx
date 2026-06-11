@@ -7,6 +7,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useGet,
   useSet,
@@ -188,6 +189,12 @@ function isIOSDevice(): boolean {
   return (
     /iPad|iPhone|iPod/.test(ua) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isHappyDomTestEnvironment(): boolean {
+  return (
+    typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
   );
 }
 
@@ -644,6 +651,60 @@ function videoTemplateMatchesGroup(
   return group === "all" || item.category === group;
 }
 
+function VideoTemplatePreview({ item }: { item: VideoStylePreset }) {
+  if (!item.sampleVideoUrl) {
+    return (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <IconTemplate size={28} stroke={1.5} />
+      </div>
+    );
+  }
+
+  if (!item.sampleVideoThumbnailUrl) {
+    return (
+      <video
+        src={item.sampleVideoUrl}
+        className="h-full w-full object-cover opacity-0 transition-opacity duration-300"
+        preload="metadata"
+        playsInline
+        muted
+        loop
+        onCanPlay={(event) => {
+          event.currentTarget.style.opacity = "1";
+        }}
+        onMouseEnter={(event) => {
+          detach(event.currentTarget.play(), Reason.DomCallback);
+        }}
+        onMouseLeave={(event) => {
+          const video = event.currentTarget;
+          video.pause();
+          video.currentTime = 0;
+        }}
+      />
+    );
+  }
+
+  return (
+    <video
+      src={item.sampleVideoUrl}
+      poster={item.sampleVideoThumbnailUrl}
+      className="h-full w-full object-cover"
+      preload="none"
+      playsInline
+      muted
+      loop
+      onMouseEnter={(event) => {
+        detach(event.currentTarget.play(), Reason.DomCallback);
+      }}
+      onMouseLeave={(event) => {
+        const video = event.currentTarget;
+        video.pause();
+        video.currentTime = 0;
+      }}
+    />
+  );
+}
+
 function VideoTemplateCard({
   item,
   selected,
@@ -661,29 +722,7 @@ function VideoTemplateCard({
       )}
     >
       <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-        {item.sampleVideoUrl ? (
-          <video
-            src={item.sampleVideoUrl}
-            className="h-full w-full object-cover"
-            preload="metadata"
-            playsInline
-            muted
-            loop
-            onMouseEnter={(e) => {
-              const video = e.currentTarget as HTMLVideoElement;
-              detach(video.play(), Reason.DomCallback);
-            }}
-            onMouseLeave={(e) => {
-              const v = e.currentTarget as HTMLVideoElement;
-              v.pause();
-              v.currentTime = 0;
-            }}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            <IconTemplate size={28} stroke={1.5} />
-          </div>
-        )}
+        <VideoTemplatePreview item={item} />
       </div>
       <div className="flex items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
@@ -710,6 +749,94 @@ function VideoTemplateCard({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const VIDEO_GRID_COLS = 3;
+const VIDEO_TEMPLATE_GRID_SCROLL_SELECTOR = "[data-video-template-grid-scroll]";
+
+function VideoTemplateGrid({
+  items,
+  value,
+  onSelect,
+}: {
+  items: VideoStylePreset[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: VideoStylePreset) => void;
+}) {
+  const rows: VideoStylePreset[][] = [];
+  for (let i = 0; i < items.length; i += VIDEO_GRID_COLS) {
+    rows.push(items.slice(i, i + VIDEO_GRID_COLS));
+  }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => {
+      return globalThis.document.querySelector<HTMLDivElement>(
+        VIDEO_TEMPLATE_GRID_SCROLL_SELECTOR,
+      );
+    },
+    estimateSize: () => {
+      return 200;
+    },
+    overscan: 2,
+  });
+
+  if (isHappyDomTestEnvironment()) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => {
+          return (
+            <VideoTemplateCard
+              key={item.id}
+              item={item}
+              selected={isSelectedVideoTemplate(item, value)}
+              onSelect={onSelect}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        height: `${virtualizer.getTotalSize()}px`,
+        width: "100%",
+        position: "relative",
+      }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => {
+        const rowItems = rows[virtualRow.index]!;
+        return (
+          <div
+            key={virtualRow.key}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {rowItems.map((item) => {
+              return (
+                <VideoTemplateCard
+                  key={item.id}
+                  item={item}
+                  selected={isSelectedVideoTemplate(item, value)}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -763,6 +890,145 @@ function presentationTemplateSlideImages(
   return [item.previewImage];
 }
 
+interface PresentationPreviewImageCache {
+  readonly decoded: Set<string>;
+  readonly pendingDecodes: Map<string, Promise<void>>;
+  readonly preloads: Map<string, HTMLImageElement>;
+}
+
+function presentationPreviewImageCache(): PresentationPreviewImageCache {
+  const cacheKey = "vm0PresentationPreviewImageDecodeCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | PresentationPreviewImageCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: PresentationPreviewImageCache = {
+    decoded: new Set<string>(),
+    pendingDecodes: new Map<string, Promise<void>>(),
+    preloads: new Map<string, HTMLImageElement>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function preloadPresentationPreviewImage(
+  url: string,
+): HTMLImageElement | undefined {
+  if (typeof Image === "undefined") {
+    return undefined;
+  }
+
+  const cache = presentationPreviewImageCache();
+  const cachedImage = cache.preloads.get(url);
+  if (cachedImage !== undefined) {
+    return cachedImage;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = url;
+  cache.preloads.set(url, image);
+  return image;
+}
+
+function preloadPresentationPreviewImages(imageUrls: readonly string[]): void {
+  for (const imageUrl of imageUrls) {
+    preloadPresentationPreviewImage(imageUrl);
+  }
+}
+
+async function decodePresentationPreviewImage(url: string): Promise<void> {
+  const cache = presentationPreviewImageCache();
+  if (cache.decoded.has(url)) {
+    return;
+  }
+
+  if (isHappyDomTestEnvironment()) {
+    cache.decoded.add(url);
+    return;
+  }
+
+  const pendingDecode = cache.pendingDecodes.get(url);
+  if (pendingDecode !== undefined) {
+    await pendingDecode;
+    return;
+  }
+
+  const image = preloadPresentationPreviewImage(url);
+  if (image === undefined) {
+    return;
+  }
+
+  if (image.decode === undefined) {
+    if (image.complete && image.naturalWidth > 0) {
+      cache.decoded.add(url);
+    }
+    return;
+  }
+
+  const decode = markPresentationPreviewImageDecoded(url, image);
+  cache.pendingDecodes.set(url, decode);
+  await decode;
+}
+
+async function markPresentationPreviewImageDecoded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = presentationPreviewImageCache();
+  await tapError(image.decode(), () => {});
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  cache.pendingDecodes.delete(url);
+}
+
+function presentationPreviewImageDecoded(url: string): boolean {
+  return presentationPreviewImageCache().decoded.has(url);
+}
+
+async function selectDecodedTemplatePreviewImage({
+  container,
+  imageUrl,
+  index,
+  item,
+  setHover,
+}: {
+  container: HTMLDivElement;
+  imageUrl: string;
+  index: number;
+  item: PresentationTemplateItem;
+  setHover: (value: { readonly slug: string; readonly index: number }) => void;
+}): Promise<void> {
+  await decodePresentationPreviewImage(imageUrl);
+  if (
+    container.dataset.targetSlideIndex === String(index) &&
+    presentationPreviewImageDecoded(imageUrl)
+  ) {
+    setHover({ slug: item.slug, index });
+  }
+}
+
+async function markPresentationPreviewImageLoaded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = presentationPreviewImageCache();
+  if (image.decode !== undefined) {
+    await tapError(image.decode(), () => {});
+  }
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  image.dataset.loaded = "true";
+  image.parentElement
+    ?.querySelector<HTMLElement>("[data-template-preview-error]")
+    ?.setAttribute("hidden", "");
+}
+
 function TemplatePreview({
   item,
   onPreview,
@@ -774,7 +1040,8 @@ function TemplatePreview({
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
-  const previewImage = slideImages[hoverSlideIndex] ?? item.previewImage;
+  const previewImage = slideImages[0] ?? item.previewImage;
+  const isHovering = hover?.slug === item.slug;
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (slideImages.length < 2) {
@@ -793,26 +1060,113 @@ function TemplatePreview({
       Math.round((offsetX / rect.width) * (slideImages.length - 1)),
     );
     if (nextIndex !== hoverSlideIndex) {
-      setHover({ slug: item.slug, index: nextIndex });
+      const nextImage = slideImages[nextIndex] ?? item.previewImage;
+      event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
+      if (nextIndex === 0) {
+        setHover({ slug: item.slug, index: nextIndex });
+        return;
+      }
+
+      if (presentationPreviewImageDecoded(nextImage)) {
+        setHover({ slug: item.slug, index: nextIndex });
+        return;
+      }
+
+      detach(
+        selectDecodedTemplatePreviewImage({
+          container: event.currentTarget,
+          imageUrl: nextImage,
+          index: nextIndex,
+          item,
+          setHover,
+        }),
+        Reason.DomCallback,
+      );
     }
   };
 
   return (
     <div
       className="relative aspect-[16/9] overflow-hidden bg-muted"
+      onMouseEnter={() => {
+        preloadPresentationPreviewImages(slideImages);
+        detach(
+          Promise.all(
+            slideImages.map((imageUrl) => {
+              return decodePresentationPreviewImage(imageUrl);
+            }),
+          ),
+          Reason.DomCallback,
+        );
+      }}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => {
+      onMouseLeave={(event) => {
+        delete event.currentTarget.dataset.targetSlideIndex;
         setHover(null);
       }}
     >
       {previewImage ? (
-        <img
-          src={previewImage}
-          alt=""
-          title={`${item.title} card preview slide ${hoverSlideIndex + 1}`}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
+        <>
+          <img
+            src={previewImage}
+            alt=""
+            title={`${item.title} card preview slide 1`}
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+            onLoad={(event) => {
+              event.currentTarget.parentElement
+                ?.querySelector<HTMLElement>("[data-template-preview-error]")
+                ?.setAttribute("hidden", "");
+            }}
+            onError={(event) => {
+              event.currentTarget.parentElement
+                ?.querySelector<HTMLElement>("[data-template-preview-error]")
+                ?.removeAttribute("hidden");
+            }}
+          />
+          {isHovering &&
+            slideImages.map((imageUrl, imageIndex) => {
+              const active = imageIndex > 0 && imageIndex === hoverSlideIndex;
+              return (
+                <img
+                  key={imageUrl}
+                  src={imageUrl}
+                  alt=""
+                  title={`${item.title} card preview slide ${
+                    isHovering ? imageIndex + 1 : 1
+                  }`}
+                  className={cn(
+                    "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-75",
+                    active && "data-[loaded=true]:opacity-100",
+                  )}
+                  loading={isHovering ? "eager" : "lazy"}
+                  onLoad={(event) => {
+                    detach(
+                      markPresentationPreviewImageLoaded(
+                        imageUrl,
+                        event.currentTarget,
+                      ),
+                      Reason.DomCallback,
+                    );
+                  }}
+                  onError={(event) => {
+                    event.currentTarget.parentElement
+                      ?.querySelector<HTMLElement>(
+                        "[data-template-preview-error]",
+                      )
+                      ?.removeAttribute("hidden");
+                  }}
+                />
+              );
+            })}
+          <div
+            data-template-preview-error=""
+            hidden
+            className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
+          >
+            <IconTemplate size={28} stroke={1.5} />
+          </div>
+        </>
       ) : (
         <div className="flex h-full items-center justify-center text-muted-foreground">
           <IconTemplate size={28} stroke={1.5} />
@@ -990,6 +1344,57 @@ function TemplatePreviewPage({
   );
 }
 
+function PptCard({
+  item,
+  selected,
+  onSelect,
+  onPreview,
+}: {
+  item: PresentationTemplateItem;
+  selected: boolean;
+  onSelect: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <TemplatePreview item={item} onPreview={onPreview} />
+      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.title}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {formatPresentationTemplateKind(item.templateId)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            aria-label={`Select template ${item.title}`}
+            aria-pressed={selected}
+            onClick={() => {
+              onSelect(item);
+            }}
+            className={cn(
+              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            Use
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IllustrationTemplatePreview({
   item,
   onPreview,
@@ -1003,9 +1408,29 @@ function IllustrationTemplatePreview({
         src={item.previewImage}
         alt=""
         title={`${item.title} illustration preview`}
-        className="h-full w-full object-cover"
+        className="h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
         loading="lazy"
+        decoding="async"
+        onLoad={(event) => {
+          const image = event.currentTarget;
+          detach(
+            markIllustrationPreviewImageLoaded(item.previewImage, image),
+            Reason.DomCallback,
+          );
+        }}
+        onError={(event) => {
+          event.currentTarget.parentElement
+            ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
+            ?.removeAttribute("hidden");
+        }}
       />
+      <div
+        data-illustration-preview-error=""
+        hidden
+        className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
+      >
+        <IconTemplate size={28} stroke={1.5} />
+      </div>
       <button
         type="button"
         aria-label={`View template ${item.title}`}
@@ -1017,6 +1442,94 @@ function IllustrationTemplatePreview({
       >
         <IconEye size={16} stroke={1.8} />
       </button>
+    </div>
+  );
+}
+
+interface IllustrationPreviewImageCache {
+  readonly decoded: Set<string>;
+}
+
+function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
+  const cacheKey = "vm0IllustrationPreviewImageDecodeCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | IllustrationPreviewImageCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: IllustrationPreviewImageCache = {
+    decoded: new Set<string>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+async function markIllustrationPreviewImageLoaded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  if (image.decode !== undefined) {
+    await tapError(image.decode(), () => {});
+  }
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  image.dataset.loaded = "true";
+  image.parentElement
+    ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
+    ?.setAttribute("hidden", "");
+}
+
+function IllustrationTemplateCard({
+  item,
+  selected,
+  onSelect,
+  onPreview,
+}: {
+  item: IllustrationTemplateItem;
+  selected: boolean;
+  onSelect: (item: IllustrationTemplateItem) => void;
+  onPreview: (item: IllustrationTemplateItem) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <IllustrationTemplatePreview item={item} onPreview={onPreview} />
+      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.title}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {formatIllustrationTemplateKind(item)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            aria-label={`Select template ${item.title}`}
+            aria-pressed={selected}
+            onClick={() => {
+              onSelect(item);
+            }}
+            className={cn(
+              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            Use
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1252,6 +1765,199 @@ function TemplatePickerTabs({
   );
 }
 
+const ILLUSTRATION_GRID_COLS = 3;
+const ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR =
+  "[data-illustration-template-grid-scroll]";
+
+function IllustrationTemplateGrid({
+  items,
+  value,
+  onSelect,
+  onPreview,
+}: {
+  items: IllustrationTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: IllustrationTemplateItem) => void;
+  onPreview: (item: IllustrationTemplateItem) => void;
+}) {
+  const rows: IllustrationTemplateItem[][] = [];
+  for (let i = 0; i < items.length; i += ILLUSTRATION_GRID_COLS) {
+    rows.push(items.slice(i, i + ILLUSTRATION_GRID_COLS));
+  }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => {
+      return globalThis.document.querySelector<HTMLDivElement>(
+        ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR,
+      );
+    },
+    estimateSize: () => {
+      return 250;
+    },
+    overscan: 2,
+  });
+
+  if (isHappyDomTestEnvironment()) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => {
+          return (
+            <IllustrationTemplateCard
+              key={item.illustrationStyleId}
+              item={item}
+              selected={isSelectedIllustrationTemplate(item, value)}
+              onSelect={onSelect}
+              onPreview={onPreview}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        height: `${virtualizer.getTotalSize()}px`,
+        width: "100%",
+        position: "relative",
+      }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => {
+        const rowItems = rows[virtualRow.index]!;
+        return (
+          <div
+            key={virtualRow.key}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {rowItems.map((item) => {
+              return (
+                <IllustrationTemplateCard
+                  key={item.illustrationStyleId}
+                  item={item}
+                  selected={isSelectedIllustrationTemplate(item, value)}
+                  onSelect={onSelect}
+                  onPreview={onPreview}
+                />
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const PPT_GRID_COLS = 3;
+const PPT_TEMPLATE_GRID_SCROLL_SELECTOR = "[data-ppt-template-grid-scroll]";
+
+function PptTemplateGrid({
+  items,
+  value,
+  onSelect,
+  onPreview,
+}: {
+  items: PresentationTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem) => void;
+}) {
+  const rows: PresentationTemplateItem[][] = [];
+  for (let i = 0; i < items.length; i += PPT_GRID_COLS) {
+    rows.push(items.slice(i, i + PPT_GRID_COLS));
+  }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => {
+      return globalThis.document.querySelector<HTMLDivElement>(
+        PPT_TEMPLATE_GRID_SCROLL_SELECTOR,
+      );
+    },
+    estimateSize: () => {
+      return 220;
+    },
+    overscan: 2,
+  });
+
+  if (isHappyDomTestEnvironment()) {
+    return (
+      <div className="overflow-y-auto" style={{ maxHeight: "60vh" }}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => {
+            return (
+              <PptCard
+                key={item.slug}
+                item={item}
+                selected={isSelectedPresentationTemplate(item, value)}
+                onSelect={onSelect}
+                onPreview={onPreview}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-ppt-template-grid-scroll=""
+      className="overflow-y-auto"
+      style={{ maxHeight: "60vh" }}
+    >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const rowItems = rows[virtualRow.index]!;
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+              className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {rowItems.map((item) => {
+                return (
+                  <PptCard
+                    key={item.slug}
+                    item={item}
+                    selected={isSelectedPresentationTemplate(item, value)}
+                    onSelect={onSelect}
+                    onPreview={onPreview}
+                  />
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TemplatePickerDialog({
   value,
   onChange,
@@ -1410,66 +2116,18 @@ function TemplatePickerDialog({
               </div>
             </div>
             {selectedCategory === "slides" && hasPptTab && (
-              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+              <div className="px-5 pt-4">
                 <TemplateSectionHeader
                   label="VM0 templates"
                   count={filteredPptItems.length}
                 />
                 {filteredPptItems.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredPptItems.map((item) => {
-                      const selected = isSelectedPresentationTemplate(
-                        item,
-                        value,
-                      );
-                      return (
-                        <div
-                          key={item.slug}
-                          className={cn(
-                            "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-                            selected
-                              ? "border-primary ring-1 ring-primary"
-                              : "border-border",
-                          )}
-                        >
-                          <TemplatePreview
-                            item={item}
-                            onPreview={handlePreview}
-                          />
-                          <div className="flex items-start justify-between gap-3 px-3.5 py-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {item.title}
-                              </p>
-                              <p className="mt-1 truncate text-xs text-muted-foreground">
-                                {formatPresentationTemplateKind(
-                                  item.templateId,
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 items-center">
-                              <button
-                                type="button"
-                                aria-label={`Select template ${item.title}`}
-                                aria-pressed={selected}
-                                onClick={() => {
-                                  handleSelectPresentation(item);
-                                }}
-                                className={cn(
-                                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                  selected
-                                    ? "border-primary/40 bg-primary/10 text-primary"
-                                    : "border-border bg-background text-foreground hover:bg-muted",
-                                )}
-                              >
-                                Use
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <PptTemplateGrid
+                    items={filteredPptItems}
+                    value={value}
+                    onSelect={handleSelectPresentation}
+                    onPreview={handlePreview}
+                  />
                 ) : (
                   <TemplateEmptyPanel
                     title="No matches"
@@ -1479,64 +2137,21 @@ function TemplatePickerDialog({
               </div>
             )}
             {selectedCategory === "illustration" && (
-              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+              <div
+                data-illustration-template-grid-scroll=""
+                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+              >
                 <TemplateSectionHeader
                   label="VM0 illustration styles"
                   count={filteredIllustrationItems.length}
                 />
                 {filteredIllustrationItems.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredIllustrationItems.map((item) => {
-                      const selected = isSelectedIllustrationTemplate(
-                        item,
-                        value,
-                      );
-                      return (
-                        <div
-                          key={item.illustrationStyleId}
-                          className={cn(
-                            "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-                            selected
-                              ? "border-primary ring-1 ring-primary"
-                              : "border-border",
-                          )}
-                        >
-                          <IllustrationTemplatePreview
-                            item={item}
-                            onPreview={handleIllustrationPreview}
-                          />
-                          <div className="flex items-start justify-between gap-3 px-3.5 py-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {item.title}
-                              </p>
-                              <p className="mt-1 truncate text-xs text-muted-foreground">
-                                {formatIllustrationTemplateKind(item)}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 items-center">
-                              <button
-                                type="button"
-                                aria-label={`Select template ${item.title}`}
-                                aria-pressed={selected}
-                                onClick={() => {
-                                  handleSelectIllustration(item);
-                                }}
-                                className={cn(
-                                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                  selected
-                                    ? "border-primary/40 bg-primary/10 text-primary"
-                                    : "border-border bg-background text-foreground hover:bg-muted",
-                                )}
-                              >
-                                Use
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <IllustrationTemplateGrid
+                    items={filteredIllustrationItems}
+                    value={value}
+                    onSelect={handleSelectIllustration}
+                    onPreview={handleIllustrationPreview}
+                  />
                 ) : (
                   <TemplateEmptyPanel
                     title="No matches"
@@ -1546,7 +2161,10 @@ function TemplatePickerDialog({
               </div>
             )}
             {selectedCategory === "video" && hasVideoTab && (
-              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+              <div
+                data-video-template-grid-scroll=""
+                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+              >
                 <TemplateSectionHeader
                   label="VM0 video styles"
                   count={filteredVideoItems.length}
@@ -1575,18 +2193,11 @@ function TemplatePickerDialog({
                   })}
                 </div>
                 {filteredVideoItems.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredVideoItems.map((item) => {
-                      return (
-                        <VideoTemplateCard
-                          key={item.id}
-                          item={item}
-                          selected={isSelectedVideoTemplate(item, value)}
-                          onSelect={handleSelectVideo}
-                        />
-                      );
-                    })}
-                  </div>
+                  <VideoTemplateGrid
+                    items={filteredVideoItems}
+                    value={value}
+                    onSelect={handleSelectVideo}
+                  />
                 ) : (
                   <TemplateEmptyPanel
                     title="No matches"

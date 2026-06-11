@@ -8,7 +8,7 @@ function getConfiguredApiUrl(): string {
 
 const CONFIGURED_API_URL = getConfiguredApiUrl();
 
-export type ApiHostTarget = "api" | "www";
+type ApiHostTarget = "api" | "www";
 
 function trimTrailingSlash(base: string): string {
   return base.endsWith("/") ? base.slice(0, -1) : base;
@@ -55,12 +55,11 @@ export function resolveApiBaseForTarget(target: ApiHostTarget): string {
   return trimTrailingSlash(configuredApiBase(target));
 }
 
-export function resolveApiBase(useApiBackend: boolean): string {
-  return resolveApiBaseForTarget(useApiBackend ? "api" : "www");
+export function resolveApiBase(): string {
+  return resolveApiBaseForTarget("api");
 }
 
-export function resolveApiBaseForNavigation(useApiBackend: boolean): string {
-  const target = useApiBackend ? "api" : "www";
+export function resolveApiBaseForNavigation(target: ApiHostTarget): string {
   if (isLocalhostBrowser()) {
     return configuredApiBase(target);
   }

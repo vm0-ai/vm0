@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { usageRecordRangeSchema } from "./zero-usage-record";
 
 const c = initContract();
 
@@ -32,12 +33,18 @@ export const zeroUsageMembersContract = c.router({
     method: "GET",
     path: "/api/zero/usage/members",
     headers: authHeadersSchema,
+    query: z.object({
+      range: usageRecordRangeSchema.default("billingPeriod"),
+      tz: z.string().default("UTC"),
+    }),
     responses: {
       200: usageMembersResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get per-member usage for current billing period",
+    summary: "Get per-member usage for a selected period",
   },
 });
 

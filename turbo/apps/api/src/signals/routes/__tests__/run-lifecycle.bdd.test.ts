@@ -2464,6 +2464,22 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const nonAdmin = bdd.user({
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+
+    const forbidden = await billing.requestUsageMembers(nonAdmin, {}, [403]);
+    expectApiError(forbidden.body);
+    expect(forbidden.body.error.code).toBe("FORBIDDEN");
+
+    const invalidTimezone = await billing.requestUsageMembers(
+      actor,
+      { tz: "Not/A/Timezone" },
+      [400],
+    );
+    expectApiError(invalidTimezone.body);
+    expect(invalidTimezone.body.error.code).toBe("BAD_REQUEST");
 
     const beforeUsage = await billing.readUsageMembers(actor);
     expect(beforeUsage.body.period).not.toBeNull();
@@ -2496,9 +2512,9 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
         events: [
           {
             idempotencyKey: randomUUID(),
-            kind: "connector",
-            provider: "github",
-            category: "api_request",
+            kind: "image",
+            provider: "gpt-image-2",
+            category: "output_image.low.standard",
             quantity: 1,
           },
         ],
@@ -2512,9 +2528,9 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
         events: [
           {
             idempotencyKey: randomUUID(),
-            kind: "connector",
-            provider: "github",
-            category: "api_request",
+            kind: "image",
+            provider: "gpt-image-2",
+            category: "output_image.low.standard",
             quantity: 2,
           },
         ],
@@ -2524,19 +2540,34 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     );
     await billing.processUsageEvents();
 
-    const aggregated = await billing.readUsageMembers(actor);
+    const aggregated = await billing.readUsageMembers(actor, {
+      range: "7d",
+      tz: "UTC",
+    });
     expect(aggregated.body.members).toHaveLength(2);
     expect(
       aggregated.body.members.map((entry) => {
         return entry.userId;
       }),
-    ).toStrictEqual(expect.arrayContaining([actor.userId, member.userId]));
-    for (const entry of aggregated.body.members) {
-      expect(entry.email).toStrictEqual(expect.any(String));
-      expect(entry.inputTokens).toBe(0);
-      expect(entry.outputTokens).toBe(0);
-      expect(entry.creditsCharged).toBeGreaterThanOrEqual(0);
-    }
+    ).toStrictEqual([member.userId, actor.userId]);
+    expect(aggregated.body.members[0]).toMatchObject({
+      userId: member.userId,
+      email: expect.any(String),
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      creditsCharged: 14,
+    });
+    expect(aggregated.body.members[1]).toMatchObject({
+      userId: actor.userId,
+      email: expect.any(String),
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      creditsCharged: 7,
+    });
 
     await api.requestCancelRun(actor, actorRun.runId, [200]);
     await api.requestCancelRun(member, memberRun.runId, [200]);

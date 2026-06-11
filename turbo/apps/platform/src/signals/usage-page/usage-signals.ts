@@ -8,6 +8,14 @@ import { accept } from "../../lib/accept.ts";
 export const usageMembersAsync$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroUsageMembersContract);
-  const result = await accept(client.get(), [200]);
+  const result = await accept(
+    client.get({
+      query: {
+        range: "billingPeriod",
+        tz: new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      },
+    }),
+    [200],
+  );
   return result.body;
 });
