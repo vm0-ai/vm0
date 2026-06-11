@@ -27,45 +27,6 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(chatThreadMarkReadContract);
-
-    const response = await accept(
-      client.markRead({
-        params: { id: randomUUID() },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
-  });
-
-  it("returns 404 for an unknown thread id", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadMarkReadContract);
-
-    const response = await accept(
-      client.markRead({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toMatchObject({
-      error: { code: "NOT_FOUND" },
-    });
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
-  });
-
   it("returns 404 for a thread owned by another user (cross-user isolation)", async () => {
     const otherFixture = await track(
       store.set(
@@ -184,29 +145,6 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
 
     expect(response.body).toStrictEqual({
       lastReadMessageId: messageId,
-      changed: false,
-    });
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
-  });
-
-  it("returns changed:false with null id when the thread has no messages", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadMarkReadContract);
-
-    const response = await accept(
-      client.markRead({
-        params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      lastReadMessageId: null,
       changed: false,
     });
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();

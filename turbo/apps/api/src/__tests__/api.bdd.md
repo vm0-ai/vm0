@@ -1495,3 +1495,18 @@ First USAGE-family reduce.
   foreign checkpoint; those stay in the kept legacy.
 - Reduced `agent-checkpoints-id.test.ts` (7 -> 4).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 71 — CHAT-THREAD MARK-READ REJECTIONS (CHAIN-CHAT-MARK-READ-REJECTIONS, reduce-legacy + GWT chain)
+
+- Extended `createBddApi` with the `chatThreadMarkRead` client
+  (`/api/zero/chat-threads/:id/mark-read`).
+- Added `zero-chat-threads-mark-read-rejections.bdd.test.ts`: mark-read rejects
+  unauthenticated callers (401) and 404s an unknown thread; plus a full
+  Given-When-Then — an admin onboards an agent, creates a fresh thread, and
+  marking the empty thread as read is a no-op (`{ lastReadMessageId: null,
+changed: false }`, no Ably publish).
+- Advancing the read position past real messages (changed:true publish +
+  idempotency) needs seeded chat messages (GAP-CHAT-MESSAGE-SEED), and the
+  other-user 404 needs a seeded foreign thread; those stay in the kept legacy.
+- Reduced `zero-chat-threads-mark-read.test.ts` (7 -> 4).
+- Coverage verified (source-only): no regressions vs `main`.

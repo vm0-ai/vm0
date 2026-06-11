@@ -7,6 +7,7 @@ import {
 import {
   chatSearchContract,
   chatThreadByIdContract,
+  chatThreadMarkReadContract,
   chatThreadMessagesContract,
   chatThreadModelSelectionContract,
   chatThreadPinContract,
@@ -247,6 +248,11 @@ export function createBddApi(context: TestContext) {
      * with content need a funded run that emits them (GAP-CHAT-MESSAGE-SEED); the
      * auth, not-found and empty-thread cases are reachable directly. */
     chatThreadMessages: setupApp({ context })(chatThreadMessagesContract),
+    /** ts-rest client for `/api/zero/chat-threads/:id/mark-read`. Marking a
+     * read position past real messages needs seeded messages
+     * (GAP-CHAT-MESSAGE-SEED); the auth, not-found and no-messages cases are
+     * reachable directly. */
+    chatThreadMarkRead: setupApp({ context })(chatThreadMarkReadContract),
     /** ts-rest client for `/api/zero/chat/search` (keyword search across the
      * caller's chat messages). Matching results need seeded messages
      * (GAP-CHAT-MESSAGE-SEED); the auth, capability and empty-result cases are
