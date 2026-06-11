@@ -46,10 +46,6 @@ export const transcribeCommand = new Command()
     "--file <path>",
     "Local file path (alternative to --url or --file-id)",
   )
-  .option(
-    "--no-timestamps",
-    "Output plain text only, without per-segment timestamps",
-  )
   .addHelpText(
     "after",
     `
@@ -57,7 +53,6 @@ Examples:
   Transcribe from URL:      zero video transcribe --url "https://..."
   Transcribe a web file:    zero video transcribe --file-id abc-123-def
   Transcribe a local file:  zero video transcribe --file /tmp/video.mp4
-  Plain text only:          zero video transcribe --url "https://..." --no-timestamps
 
 Output:
   Structured Markdown printed to stdout:
@@ -77,7 +72,6 @@ Notes:
         url?: string;
         fileId?: string;
         file?: string;
-        timestamps: boolean;
       }) => {
         if (!options.url && !options.fileId && !options.file) {
           process.stderr.write(
@@ -128,9 +122,7 @@ Notes:
             { stdio: ["ignore", "ignore", "pipe"] },
           );
 
-          const result = await transcribeAudio(tmpAudio, {
-            verbose: options.timestamps !== false,
-          });
+          const result = await transcribeAudio(tmpAudio, { verbose: true });
 
           process.stdout.write(
             formatTranscript(result.text, result.segments) + "\n",
