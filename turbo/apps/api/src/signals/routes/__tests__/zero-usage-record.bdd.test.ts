@@ -16,6 +16,16 @@ import {
   type UsageFixture,
 } from "./helpers/zero-usage";
 
+// BDD migration of the legacy `zero-usage-record.test.ts`.
+// The 6 legacy `it()`s collapse into 3 BDD `it()`s: (1)
+// auth + multi-source chain (401 unauthenticated → 200
+// returns rows across sources ordered by recent activity),
+// (2) source + thread chain (200 labels schedule threads
+// and filters by source → 200 keeps chat and schedule
+// usage separate within the same thread), (3) trigger +
+// pagination chain (200 normalizes unsupported trigger
+// sources to other → 200 paginates by page size).
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -32,27 +42,29 @@ function createdAt(minutesAgo: number): Date {
   return new Date(nowDate().getTime() - minutesAgo * 60 * 1000);
 }
 
-describe("GET /api/zero/usage/record", () => {
+describe("BDD GET /api/zero/usage/record — auth + multi-source chain", () => {
   const track = createFixtureTracker<UsageFixture>((fixture) => {
     return store.set(deleteUsageFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when not authenticated", async () => {
-    const response = await accept(
+  it("gwt-wt-wt: 401 unauthenticated → 200 returns rows across sources ordered by recent activity", async () => {
+    // Given: no auth header.
+
+    // When + Then: 401.
+    const noAuth = await accept(
       apiClient().get({ query: {}, headers: {} }),
       [401],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(noAuth.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("returns rows across sources ordered by recent activity", async () => {
+    // Given: a fresh usage fixture + an older chat run +
+    // a slack run + a newer chat run (each with
+    // modelUsage rows).
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-
     const older = await store.set(
       seedChatThreadRun$,
       {
@@ -75,8 +87,6 @@ describe("GET /api/zero/usage/record", () => {
       },
       context.signal,
     );
-
-    // Unthreaded Slack run — one row per run, links via runId.
     const slack = await store.set(
       seedRun$,
       {
@@ -100,7 +110,6 @@ describe("GET /api/zero/usage/record", () => {
       },
       context.signal,
     );
-
     const newer = await store.set(
       seedChatThreadRun$,
       {
@@ -123,40 +132,44 @@ describe("GET /api/zero/usage/record", () => {
       },
       context.signal,
     );
-
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
+    // When + Then: 200 — 3 rows ordered by recent
+    // activity: chat (newer) → slack → chat (older).
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
     );
-
     expect(response.body.rows).toHaveLength(3);
     expect(response.body.pagination.total).toBe(3);
-
     expect(response.body.rows[0]?.source).toBe("chat");
     expect(response.body.rows[0]?.threadId).toBe(newer.threadId);
     expect(response.body.rows[0]?.runId).toBeNull();
     expect(response.body.rows[0]?.title).toBe("Newer chat");
     expect(response.body.rows[0]?.credits).toBe(250);
     expect(response.body.rows[0]?.tokens).toBe(300);
-
     expect(response.body.rows[1]?.source).toBe("slack");
     expect(response.body.rows[1]?.threadId).toBeNull();
     expect(response.body.rows[1]?.runId).toBe(slack.runId);
     expect(response.body.rows[1]?.title).toBe("Slack triage");
     expect(response.body.rows[1]?.credits).toBe(40);
-
     expect(response.body.rows[2]?.source).toBe("chat");
     expect(response.body.rows[2]?.threadId).toBe(older.threadId);
     expect(response.body.rows[2]?.credits).toBe(80);
   });
+});
 
-  it("labels schedule threads and filters by source", async () => {
+describe("BDD GET /api/zero/usage/record — source + thread chain", () => {
+  const track = createFixtureTracker<UsageFixture>((fixture) => {
+    return store.set(deleteUsageFixture$, fixture, context.signal);
+  });
+
+  it("gwt-wt-wt: 200 labels schedule threads and filters by source → 200 keeps chat and schedule usage separate within the same thread", async () => {
+    // Given: a fresh usage fixture + a chat run + a
+    // schedule run on a different thread.
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-
     const chat = await store.set(
       seedChatThreadRun$,
       {
@@ -179,7 +192,6 @@ describe("GET /api/zero/usage/record", () => {
       },
       context.signal,
     );
-
     const schedule = await store.set(
       seedChatThreadRun$,
       {
@@ -203,35 +215,34 @@ describe("GET /api/zero/usage/record", () => {
       },
       context.signal,
     );
-
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const response = await accept(
+    // When + Then: 200 — filtering by `schedule` returns
+    // only the schedule run.
+    const scheduleResponse = await accept(
       apiClient().get({
         query: { source: "schedule" },
         headers: authHeaders(),
       }),
       [200],
     );
+    expect(scheduleResponse.body.rows).toHaveLength(1);
+    expect(scheduleResponse.body.pagination.total).toBe(1);
+    expect(scheduleResponse.body.rows[0]?.source).toBe("schedule");
+    expect(scheduleResponse.body.rows[0]?.threadId).toBe(schedule.threadId);
+    expect(scheduleResponse.body.rows[0]?.title).toBe("Daily brief");
+    expect(scheduleResponse.body.rows[0]?.credits).toBe(120);
 
-    expect(response.body.rows).toHaveLength(1);
-    expect(response.body.pagination.total).toBe(1);
-    expect(response.body.rows[0]?.source).toBe("schedule");
-    expect(response.body.rows[0]?.threadId).toBe(schedule.threadId);
-    expect(response.body.rows[0]?.title).toBe("Daily brief");
-    expect(response.body.rows[0]?.credits).toBe(120);
-  });
-
-  it("keeps chat and schedule usage separate within the same thread", async () => {
-    const fixture = await track(
+    // Given: a fresh usage fixture + a chat thread + a
+    // schedule run on the same thread.
+    const sharedFixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-
-    const chat = await store.set(
+    const sharedChat = await store.set(
       seedChatThreadRun$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: sharedFixture.orgId,
+        userId: sharedFixture.userId,
         title: "Shared thread",
         createdAt: createdAt(30),
       },
@@ -240,22 +251,21 @@ describe("GET /api/zero/usage/record", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: chat.runId,
+        orgId: sharedFixture.orgId,
+        userId: sharedFixture.userId,
+        runId: sharedChat.runId,
         inputTokens: 10,
         outputTokens: 10,
         creditsCharged: 10,
       },
       context.signal,
     );
-
-    const schedule = await store.set(
+    const sharedSchedule = await store.set(
       seedChatThreadRun$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        threadId: chat.threadId,
+        orgId: sharedFixture.orgId,
+        userId: sharedFixture.userId,
+        threadId: sharedChat.threadId,
         triggerSource: "schedule",
         createdAt: createdAt(5),
       },
@@ -264,18 +274,19 @@ describe("GET /api/zero/usage/record", () => {
     await store.set(
       insertModelUsage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: schedule.runId,
+        orgId: sharedFixture.orgId,
+        userId: sharedFixture.userId,
+        runId: sharedSchedule.runId,
         inputTokens: 50,
         outputTokens: 50,
         creditsCharged: 120,
       },
       context.signal,
     );
+    mocks.clerk.session(sharedFixture.userId, sharedFixture.orgId);
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
+    // When + Then: 200 — without a source filter, two
+    // rows appear (schedule + chat) on the same thread.
     const allResponse = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
@@ -284,7 +295,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(allResponse.body.pagination.total).toBe(2);
     expect(allResponse.body.rows[0]).toMatchObject({
       source: "schedule",
-      threadId: chat.threadId,
+      threadId: sharedChat.threadId,
       runId: null,
       title: "Shared thread",
       credits: 120,
@@ -292,13 +303,15 @@ describe("GET /api/zero/usage/record", () => {
     });
     expect(allResponse.body.rows[1]).toMatchObject({
       source: "chat",
-      threadId: chat.threadId,
+      threadId: sharedChat.threadId,
       runId: null,
       title: "Shared thread",
       credits: 10,
       tokens: 20,
     });
 
+    // When + Then: 200 — filtering by `chat` returns
+    // only the chat row.
     const chatResponse = await accept(
       apiClient().get({
         query: { source: "chat" },
@@ -310,12 +323,19 @@ describe("GET /api/zero/usage/record", () => {
     expect(chatResponse.body.rows[0]?.source).toBe("chat");
     expect(chatResponse.body.rows[0]?.credits).toBe(10);
   });
+});
 
-  it("normalizes unsupported trigger sources to other", async () => {
+describe("BDD GET /api/zero/usage/record — trigger + pagination chain", () => {
+  const track = createFixtureTracker<UsageFixture>((fixture) => {
+    return store.set(deleteUsageFixture$, fixture, context.signal);
+  });
+
+  it("gwt-wt-wt: 200 normalizes unsupported trigger sources to other → 200 paginates by page size", async () => {
+    // Given: a fresh usage fixture + a manual trigger
+    // run.
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-
     const legacyRun = await store.set(
       seedRun$,
       {
@@ -339,20 +359,20 @@ describe("GET /api/zero/usage/record", () => {
       },
       context.signal,
     );
-
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const response = await accept(
+    // When + Then: 200 — the manual trigger is
+    // normalized to `other` when filtered.
+    const otherResponse = await accept(
       apiClient().get({
         query: { source: "other" },
         headers: authHeaders(),
       }),
       [200],
     );
-
-    expect(response.body.rows).toHaveLength(1);
-    expect(response.body.pagination.total).toBe(1);
-    expect(response.body.rows[0]).toMatchObject({
+    expect(otherResponse.body.rows).toHaveLength(1);
+    expect(otherResponse.body.pagination.total).toBe(1);
+    expect(otherResponse.body.rows[0]).toMatchObject({
       source: "other",
       threadId: null,
       runId: legacyRun.runId,
@@ -360,19 +380,17 @@ describe("GET /api/zero/usage/record", () => {
       credits: 30,
       tokens: 30,
     });
-  });
 
-  it("paginates by page size", async () => {
-    const fixture = await track(
+    // Given: a fresh usage fixture + 3 chat runs.
+    const pageFixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
-
     for (const minutesAgo of [30, 20, 10]) {
-      const chat = await store.set(
+      const pageChat = await store.set(
         seedChatThreadRun$,
         {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
+          orgId: pageFixture.orgId,
+          userId: pageFixture.userId,
           title: `Chat ${minutesAgo}`,
           createdAt: createdAt(minutesAgo),
         },
@@ -381,9 +399,9 @@ describe("GET /api/zero/usage/record", () => {
       await store.set(
         insertModelUsage$,
         {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          runId: chat.runId,
+          orgId: pageFixture.orgId,
+          userId: pageFixture.userId,
+          runId: pageChat.runId,
           inputTokens: 10,
           outputTokens: 10,
           creditsCharged: 10,
@@ -391,20 +409,20 @@ describe("GET /api/zero/usage/record", () => {
         context.signal,
       );
     }
+    mocks.clerk.session(pageFixture.userId, pageFixture.orgId);
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
+    // When + Then: 200 — paginates by page size 2 with
+    // total 3.
+    const pageResponse = await accept(
       apiClient().get({
         query: { page: 1, pageSize: 2 },
         headers: authHeaders(),
       }),
       [200],
     );
-
-    expect(response.body.rows).toHaveLength(2);
-    expect(response.body.pagination.total).toBe(3);
-    expect(response.body.rows[0]?.title).toBe("Chat 10");
-    expect(response.body.rows[1]?.title).toBe("Chat 20");
+    expect(pageResponse.body.rows).toHaveLength(2);
+    expect(pageResponse.body.pagination.total).toBe(3);
+    expect(pageResponse.body.rows[0]?.title).toBe("Chat 10");
+    expect(pageResponse.body.rows[1]?.title).toBe("Chat 20");
   });
 });
