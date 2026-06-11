@@ -497,7 +497,11 @@ describe("zero schedule detail page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Schedule deleted")).toBeInTheDocument();
-      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+      // Deletion returns to the schedules surface, which renders the
+      // Automations product noun now that the switch is globally on (#17307).
+      expect(
+        screen.getByRole("heading", { name: "Automations" }),
+      ).toBeInTheDocument();
     });
   });
 });

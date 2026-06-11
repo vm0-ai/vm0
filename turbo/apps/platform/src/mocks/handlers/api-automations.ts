@@ -7,6 +7,7 @@ import {
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
+import { createStoredSchedule } from "./api-schedules.ts";
 import { getMockSchedules, setMockSchedules } from "./schedules-store.ts";
 
 // Mirrors the production Automations route: a thin product projection over the
@@ -17,7 +18,6 @@ import { getMockSchedules, setMockSchedules } from "./schedules-store.ts";
 function upsert(
   body: {
     readonly agentId: string;
-    readonly name: string;
     readonly cronExpression?: string;
     readonly atTime?: string;
     readonly intervalSeconds?: number;
@@ -31,31 +31,9 @@ function upsert(
   name: string,
 ): { automation: ScheduleResponse; created: boolean; status: 200 | 201 } {
   const now = nowDate().toISOString();
-  const automation: ScheduleResponse = {
-    id: crypto.randomUUID(),
-    agentId: body.agentId,
-    displayName: null,
-    userId: "test-user-123",
-    name,
-    triggerType: body.cronExpression ? "cron" : body.atTime ? "once" : "loop",
-    cronExpression: body.cronExpression ?? null,
-    atTime: body.atTime ?? null,
-    intervalSeconds: body.intervalSeconds ?? null,
-    timezone: body.timezone,
-    prompt: body.prompt,
-    description: body.description ?? null,
-    appendSystemPrompt: body.appendSystemPrompt ?? null,
-    enabled: body.enabled ?? true,
-    nextRunAt: null,
-    lastRunAt: null,
-    retryStartedAt: null,
-    consecutiveFailures: 0,
-    chatThreadId: body.chatThreadId ?? crypto.randomUUID(),
-    createdAt: now,
-    updatedAt: now,
-  };
   const automations = getMockSchedules();
   const existing = automations.find((s) => s.name === name);
+  const automation = createStoredSchedule({ ...body, name }, existing, now);
   if (existing) {
     setMockSchedules(
       automations.map((s) => (s.name === name ? automation : s)),
@@ -80,10 +58,7 @@ export const apiAutomationsHandlers = [
 
   // PUT /api/automations/:name
   mockApi(automationsByNameContract.update, ({ params, body, respond }) => {
-    const { automation, created, status } = upsert(
-      { ...body, name: params.name },
-      params.name,
-    );
+    const { automation, created, status } = upsert(body, params.name);
     return respond(status, { automation, created });
   }),
 

@@ -69,7 +69,10 @@ function getMockScheduleTriggerType(
   return "loop";
 }
 
-function createStoredSchedule(
+// Shared with the automations mock handlers: an automation row IS a schedule
+// row, so upserts on either surface must preserve the stored identity fields
+// (id, chatThreadId, createdAt) the same way the production service does.
+export function createStoredSchedule(
   body: MockScheduleDeployBody,
   existing: ScheduleResponse | undefined,
   now: string,

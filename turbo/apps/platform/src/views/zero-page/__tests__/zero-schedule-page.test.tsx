@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
+import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -158,31 +158,11 @@ function mockScheduleListEdgeStory(): void {
   ]);
 }
 
+// The `zeroAutomations` switch is globally on (#17307), so the default surface
+// is Automations mode; the legacy Schedules surface stays covered by the
+// pinned switch-off test below until the dual-mode consumers are deleted.
 async function openSchedulePage(): Promise<void> {
   detachedSetupPage({ context, path: "/schedules" });
-
-  await waitFor(() => {
-    expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
-    expect(screen.getByText("Week view")).toBeInTheDocument();
-  });
-}
-
-async function openScheduleList(): Promise<void> {
-  await openSchedulePage();
-  click(tabByText("List"));
-
-  await waitFor(() => {
-    expect(screen.getByText("Instruction")).toBeInTheDocument();
-    expect(screen.getByText("Schedule at")).toBeInTheDocument();
-  });
-}
-
-async function openAutomationsList(): Promise<void> {
-  detachedSetupPage({
-    context,
-    path: "/schedules",
-    featureSwitches: { [FeatureSwitchKey.ZeroAutomations]: true },
-  });
 
   await waitFor(() => {
     expect(
@@ -190,6 +170,10 @@ async function openAutomationsList(): Promise<void> {
     ).toBeInTheDocument();
     expect(screen.getByText("Week view")).toBeInTheDocument();
   });
+}
+
+async function openScheduleList(): Promise<void> {
+  await openSchedulePage();
   click(tabByText("List"));
 
   await waitFor(() => {
@@ -222,7 +206,7 @@ describe("zero schedule page", () => {
 
     await openSchedulePage();
 
-    click(buttonByText("Add schedule"));
+    click(buttonByText("Add automation"));
 
     const createDialog = await screen.findByRole("dialog");
     expect(within(createDialog).getByText("Add schedule")).toBeInTheDocument();
@@ -301,7 +285,7 @@ describe("zero schedule page", () => {
 
     await openSchedulePage();
 
-    click(buttonByText("Add schedule"));
+    click(buttonByText("Add automation"));
 
     const createDialog = await screen.findByRole("dialog");
     await fill(
@@ -379,10 +363,10 @@ describe("zero schedule page", () => {
 
     const schedulesReady = context.mocks.deferred<void>();
 
-    context.mocks.api(zeroSchedulesMainContract.list, async ({ respond }) => {
+    context.mocks.api(automationsMainContract.list, async ({ respond }) => {
       await schedulesReady.promise;
       return respond(200, {
-        schedules: [
+        automations: [
           createMockScheduleResponse({
             id: "f0000001-0000-4000-a000-000000000306",
             agentId: researchAgentId,
@@ -401,7 +385,9 @@ describe("zero schedule page", () => {
     detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
-      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Automations" }),
+      ).toBeInTheDocument();
     });
     click(tabByText("List"));
 
@@ -477,11 +463,8 @@ describe("zero schedule page", () => {
     mockNow();
     mockSchedulePageStory();
 
-    await openAutomationsList();
+    await openScheduleList();
 
-    expect(
-      screen.getByRole("heading", { name: "Automations" }),
-    ).toBeInTheDocument();
     expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
 
     click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
@@ -585,6 +568,76 @@ describe("zero schedule page", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Office AC" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // The switch is globally on (#17307); an explicit false override keeps the
+  // legacy Schedules surface covered until the dual-mode consumers are
+  // deleted, mirroring the pinned gating tests in the API suites.
+  it("manages schedules through the legacy surface when the switch is off", async () => {
+    mockNow();
+    mockSchedulePageStory();
+
+    detachedSetupPage({
+      context,
+      path: "/schedules",
+      featureSwitches: { [FeatureSwitchKey.ZeroAutomations]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+      expect(screen.getByText("Week view")).toBeInTheDocument();
+    });
+    click(tabByText("List"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Instruction")).toBeInTheDocument();
+      expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
+    });
+
+    click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0],
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
+      expect(screen.getByText("View activity")).toBeInTheDocument();
+    });
+
+    click(
+      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
+    );
+    click(menuItemByText("Delete"));
+
+    const deleteDialog = await screen.findByRole("dialog");
+    click(buttonByText("Delete", deleteDialog));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
+    });
+
+    click(buttonByText("Add schedule"));
+
+    const createDialog = await screen.findByRole("dialog");
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Review legacy schedule coverage",
+    );
+    click(buttonByText("Create", createDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", {
+          name: "Review legacy schedule coverage",
+        }),
       ).toBeInTheDocument();
     });
   });

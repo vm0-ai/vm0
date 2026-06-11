@@ -8,19 +8,21 @@ test("create a new schedule and verify it appears in the list", async ({
 }) => {
   const schedulePrompt = `E2E schedule ${Date.now()}`;
 
-  // Navigate to schedule page
+  // Navigate to schedule page — the `zeroAutomations` switch is globally on
+  // (#17307), so the surface renders the Automations product noun.
   await page.goto(`${appUrl}/schedules`);
-  await expect(
-    page.getByRole("heading", { name: "Scheduled tasks" }),
-  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible(
+    { timeout: 20_000 },
+  );
   await expect(
     page.getByTestId("app-skeleton"),
   ).toHaveAttribute("aria-hidden", "true", { timeout: 60_000 });
 
-  // Click "Add schedule" in the page header (the list empty-state may show a second button)
+  // Click "Add automation" in the page header (the list empty-state may show
+  // a second "Add schedule" button)
   await page
     .getByRole("banner")
-    .getByRole("button", { name: "Add schedule" })
+    .getByRole("button", { name: "Add automation" })
     .click();
   await expect(
     page.getByRole("heading", { name: "Add schedule" }),

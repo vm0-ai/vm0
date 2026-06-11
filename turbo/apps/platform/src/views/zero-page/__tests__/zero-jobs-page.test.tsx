@@ -13,10 +13,8 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import {
-  type ScheduleResponse,
-  zeroSchedulesMainContract,
-} from "@vm0/api-contracts/contracts/zero-schedules";
+import { automationsByNameContract } from "@vm0/api-contracts/contracts/automations";
+import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import {
   type TeamComposeItem,
   zeroTeamContract,
@@ -199,7 +197,9 @@ describe("zero jobs page", () => {
     expect(findSectionCreateButton("Public")).toBeInTheDocument();
     expect(findSectionCreateButton("Private")).toBeInTheDocument();
 
-    click(screen.getByText("Scheduled"));
+    // The `zeroAutomations` switch is globally on (#17307), so the sidebar nav
+    // item is labeled with the Automations product noun by default.
+    click(screen.getByText("Automations"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
@@ -373,31 +373,36 @@ describe("zero jobs page", () => {
     ];
     let capturedDeployBody: unknown = null;
     context.mocks.data.schedules(schedules);
-    context.mocks.api(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-      capturedDeployBody = body;
-      const currentSchedule = schedules[0];
-      if (!currentSchedule) {
-        throw new Error("schedule fixture not found");
-      }
-      const updated = createMockScheduleResponse({
-        ...currentSchedule,
-        name: body.name,
-        agentId: body.agentId,
-        triggerType: "cron",
-        cronExpression: body.cronExpression ?? null,
-        atTime: null,
-        intervalSeconds: null,
-        timezone: body.timezone ?? "UTC",
-        prompt: body.prompt,
-        description: body.description ?? null,
-        appendSystemPrompt: body.appendSystemPrompt ?? null,
-        enabled: body.enabled ?? true,
-        updatedAt: "2026-03-10T00:05:00Z",
-      });
-      schedules = [updated];
-      context.mocks.data.schedules(schedules);
-      return respond(200, { schedule: updated, created: false });
-    });
+    // The `zeroAutomations` switch is globally on (#17307), so schedule edits
+    // deploy through the Automations update endpoint (name in the path).
+    context.mocks.api(
+      automationsByNameContract.update,
+      ({ params, body, respond }) => {
+        capturedDeployBody = { ...body, name: params.name };
+        const currentSchedule = schedules[0];
+        if (!currentSchedule) {
+          throw new Error("schedule fixture not found");
+        }
+        const updated = createMockScheduleResponse({
+          ...currentSchedule,
+          name: params.name,
+          agentId: body.agentId,
+          triggerType: "cron",
+          cronExpression: body.cronExpression ?? null,
+          atTime: null,
+          intervalSeconds: null,
+          timezone: body.timezone ?? "UTC",
+          prompt: body.prompt,
+          description: body.description ?? null,
+          appendSystemPrompt: body.appendSystemPrompt ?? null,
+          enabled: body.enabled ?? true,
+          updatedAt: "2026-03-10T00:05:00Z",
+        });
+        schedules = [updated];
+        context.mocks.data.schedules(schedules);
+        return respond(200, { automation: updated, created: false });
+      },
+    );
 
     detachedSetupPage({ context, path: `/agents/${agentId}?tab=schedule` });
 
