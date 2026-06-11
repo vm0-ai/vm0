@@ -316,69 +316,6 @@ describe("POST /api/zero/chat-threads/:threadId/artifacts", () => {
     }
   });
 
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(chatThreadArtifactsContract);
-    const response = await accept(
-      client.syncGoogleDrive({
-        params: { threadId: randomUUID() },
-        body: { runId: randomUUID(), fileId: "file-1" },
-        headers: {},
-      }),
-      [401],
-    );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
-  });
-
-  it("returns 401 when authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(chatThreadArtifactsContract);
-    const response = await accept(
-      client.syncGoogleDrive({
-        params: { threadId: randomUUID() },
-        body: { runId: randomUUID(), fileId: "file-1" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
-  });
-
-  it("returns 400 with NOT_FOUND-equivalent when no Google Drive connector is configured", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const threadId = await store.set(
-      seedChatThread$,
-      { userId: fixture.userId, composeId },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadArtifactsContract);
-    const response = await accept(
-      client.syncGoogleDrive({
-        params: { threadId },
-        body: {
-          runId: "00000000-0000-4000-8000-000000000001",
-          fileId: "file-1",
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Connect Google Drive before syncing artifacts",
-        code: "BAD_REQUEST",
-      },
-    });
-  });
-
   it("returns 404 when the artifact is unknown to the caller's thread", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),

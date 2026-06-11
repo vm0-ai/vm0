@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/api-keys";
 import {
   chatSearchContract,
+  chatThreadArtifactsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
@@ -266,6 +267,11 @@ export function createBddApi(context: TestContext) {
      * (GAP-CHAT-MESSAGE-SEED); the auth, not-found and no-messages cases are
      * reachable directly. */
     chatThreadMarkRead: setupApp({ context })(chatThreadMarkReadContract),
+    /** ts-rest client for `/api/zero/chat-threads/:threadId/artifacts`
+     * (list + Google-Drive sync). Syncing a real artifact needs a connected
+     * Google Drive connector + seeded run artifacts (GAP-CONNECTOR-CONNECT /
+     * GAP-RUN-CREDITS); the auth and no-connector cases are reachable. */
+    chatThreadArtifacts: setupApp({ context })(chatThreadArtifactsContract),
     /** ts-rest client for `/api/zero/chat/search` (keyword search across the
      * caller's chat messages). Matching results need seeded messages
      * (GAP-CHAT-MESSAGE-SEED); the auth, capability and empty-result cases are

@@ -1550,3 +1550,18 @@ changed: false }`, no Ably publish).
   stay in the kept legacy.
 - Reduced `user-export.test.ts` (15 -> 11).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 75 — CHAT-THREAD ARTIFACT SYNC REJECTIONS (CHAIN-ARTIFACTS-SYNC-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `chatThreadArtifacts` client
+  (`/api/zero/chat-threads/:threadId/artifacts`).
+- Added `zero-chat-threads-artifacts-sync-rejections.bdd.test.ts`:
+  `syncGoogleDrive` rejects unauthenticated and org-less callers (401) and 400s
+  an admin with no Google Drive connector ("Connect Google Drive before syncing
+  artifacts" — the connector check precedes the thread lookup).
+- Syncing a real artifact (the full MSW Drive upload flows, unknown-artifact 404,
+  invalid-body 400) needs a connected Google Drive connector plus seeded run
+  artifacts (GAP-CONNECTOR-CONNECT / GAP-RUN-CREDITS) and stays in the kept
+  legacy.
+- Reduced `zero-chat-threads-artifacts-sync.test.ts` (10 -> 7).
+- Coverage verified (source-only): no regressions vs `main`.
