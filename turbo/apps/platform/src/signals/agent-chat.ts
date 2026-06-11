@@ -4,7 +4,6 @@ import {
   type ChatThreadListItem,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
@@ -97,20 +96,8 @@ export interface ChatThread {
   id: string;
   agentId: string;
   title: string | null;
-  latestSessionId: string | null;
   lastReadMessageId: string | null;
-  /**
-   * Provider type of the latest run in this thread. Null when the thread has
-   * no runs yet. The composer picker uses this to disable options whose base
-   * URL differs from the current session.
-   */
-  latestSessionProviderType: ModelProviderType | null;
   activeRunIds: string[];
-  /**
-   * Active (non-terminal) runs with live status. Source of truth for the
-   * queued/running distinction — `activeRunIds` is derived from these ids.
-   */
-  activeRuns: { id: string; status: string }[];
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;

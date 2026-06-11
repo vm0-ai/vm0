@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -9,6 +10,8 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { afterEach } from "vitest";
+
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -73,6 +76,7 @@ function sign(body: string, secret: string = WEBHOOK_SECRET): string {
 async function seedAutomation(args?: {
   readonly enabled?: boolean;
   readonly triggerEnabled?: boolean;
+  readonly webhookTriggersEnabled?: boolean;
 }): Promise<AutomationFixture> {
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   context.mocks.s3.send.mockResolvedValue({});
@@ -92,6 +96,16 @@ async function seedAutomation(args?: {
   mocks.clerk.session(schedules.userId, schedules.orgId);
 
   const db = store.set(writeDb$);
+  // Inbound dispatch evaluates the webhook-trigger switch against the
+  // automation's owner (#17307).
+  await db.insert(userFeatureSwitches).values({
+    orgId: schedules.orgId,
+    userId: schedules.userId,
+    switches: {
+      [FeatureSwitchKey.AutomationWebhookTriggers]:
+        args?.webhookTriggersEnabled ?? true,
+    },
+  });
   const [thread] = await db
     .insert(chatThreads)
     .values({
@@ -279,6 +293,19 @@ describe("POST /api/automations/webhooks/:token", () => {
 
   it("returns 404 for a disabled automation", async () => {
     const fixture = await seedAutomation({ enabled: false });
+    const body = JSON.stringify({ event: "ping" });
+
+    const response = await postWebhook(fixture.token, body, {
+      [SIGNATURE_HEADER]: sign(body),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 when webhook triggers are not enabled for the owner", async () => {
+    // Webhook triggers are a feature-gated NEW capability (#17307): with the
+    // switch off for the automation's owner, the inbound hook is unreachable.
+    const fixture = await seedAutomation({ webhookTriggersEnabled: false });
     const body = JSON.stringify({ event: "ping" });
 
     const response = await postWebhook(fixture.token, body, {

@@ -7,6 +7,7 @@
     "check-types": "tsc --noEmit",
     "update-specs": "tsx src/update-specs.ts",
     "update-specs:axiom": "tsx src/update-specs.ts axiom",
+    "update-specs:cloudflare": "tsx src/update-specs.ts cloudflare",
     "update-specs:deel": "tsx src/update-specs.ts deel",
     "update-specs:dropbox": "tsx src/update-specs.ts dropbox",
     "update-specs:figma": "tsx src/update-specs.ts figma",

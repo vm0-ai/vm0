@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.131.0](https://github.com/vm0-ai/vm0/compare/api-v1.130.1...api-v1.131.0) (2026-06-11)
+
+
+### Features
+
+* **api:** gate webhook triggers behind a feature switch ([#17315](https://github.com/vm0-ai/vm0/issues/17315)) ([3264d05](https://github.com/vm0-ai/vm0/commit/3264d05970511eaa7a493d97fe6cf44c46540aad))
+* **api:** record automation as the trigger source for automation runs ([#17334](https://github.com/vm0-ai/vm0/issues/17334)) ([cb7a907](https://github.com/vm0-ai/vm0/commit/cb7a907086418ad90941aeff5ff554526a6df184))
+* support multiple computer use hosts ([#17326](https://github.com/vm0-ai/vm0/issues/17326)) ([214bc55](https://github.com/vm0-ai/vm0/commit/214bc556f3223689b06f956fda0687e622255ac5))
+
+
+### Bug Fixes
+
+* log runner context validation issues ([#17322](https://github.com/vm0-ai/vm0/issues/17322)) ([4349e84](https://github.com/vm0-ai/vm0/commit/4349e84f11d356343be163cb7ab6841ce0591fe4))
+
+
+### Refactoring
+
+* drop unused soft-state fields from chat thread detail ([#17323](https://github.com/vm0-ai/vm0/issues/17323)) ([1d2618a](https://github.com/vm0-ai/vm0/commit/1d2618a6ab81ecb4aeed3cd578e9d809b9f33823))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.85.0
+    * @vm0/connectors bumped to 1.68.0
+    * @vm0/core bumped to 8.330.0
+    * @vm0/db bumped to 1.45.0
+
 ## [1.130.1](https://github.com/vm0-ai/vm0/compare/api-v1.130.0...api-v1.130.1) (2026-06-11)
 
 

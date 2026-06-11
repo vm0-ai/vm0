@@ -393,7 +393,7 @@ describe("GET /api/zero/usage/record", () => {
         orgId: fixture.orgId,
         userId: fixture.userId,
         threadId: chat.threadId,
-        triggerSource: "schedule",
+        triggerSource: "automation",
         createdAt: createdAt(5),
       },
       context.signal,

@@ -247,30 +247,13 @@ const chatThreadDetailSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   agentId: z.string(),
-  latestSessionId: z.string().nullable(),
   /**
    * ID of the latest message this user has marked read in this thread.
    * Null when the thread has never been explicitly marked read. Optional for
    * back-compat with fixtures/tests that predate the read marker field.
    */
   lastReadMessageId: z.string().nullable().optional(),
-  /**
-   * Provider type of the latest run in this thread, if any. Used by the
-   * composer's model picker to disable options whose base URL differs from
-   * the current session — switching mid-session would break continuity.
-   * Null when the thread has no runs yet. Optional so older fixtures/tests
-   * that predate the field still validate.
-   */
-  latestSessionProviderType: modelProviderTypeSchema.nullable().optional(),
   activeRunIds: z.array(z.string()),
-  /**
-   * Active (non-terminal) runs attached to this thread, with live status.
-   * Lets the UI distinguish queued runs from running runs without an extra
-   * API call. Optional for back-compat with fixtures that predate the field.
-   */
-  activeRuns: z
-    .array(z.object({ id: z.string(), status: z.string() }))
-    .optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),

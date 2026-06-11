@@ -1,10 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import { command } from "ccstate";
+import { command, computed } from "ccstate";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, count, eq, gte } from "drizzle-orm";
+
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -12,6 +15,7 @@ import { safeJsonParse, settle } from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { postAutomationUserMessage } from "../routes/zero-chat-messages";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import {
   DefaultInterpreter,
   webhookRowToAutomation,
@@ -95,6 +99,37 @@ async function isWebhookRateLimited(
   return (recent?.value ?? 0) >= RATE_LIMIT_MAX_RUNS;
 }
 
+// Signature verification is required: a trigger without a stored secret can
+// never authenticate a caller, so it is unreachable rather than open.
+async function verifyInboundSignature(args: {
+  readonly encryptedSecret: string | null;
+  readonly signature: string | null;
+  readonly rawBody: string;
+}): Promise<boolean> {
+  if (!args.encryptedSecret || !args.signature) {
+    return false;
+  }
+  const secret = await decryptStoredSecretValue(args.encryptedSecret);
+  return await verifySignature({
+    secret,
+    signature: args.signature,
+    body: args.rawBody,
+  });
+}
+
+// Webhook triggers are feature-gated (#17307). Inbound calls carry no
+// requester auth, so the switch is evaluated against the automation's owner.
+function webhookTriggersEnabledForOwner(orgId: string, userId: string) {
+  return computed(async (get) => {
+    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
+    return isFeatureEnabled(FeatureSwitchKey.AutomationWebhookTriggers, {
+      orgId,
+      userId,
+      overrides,
+    });
+  });
+}
+
 /**
  * Dispatch an inbound webhook: resolve the automation by trigger token, verify
  * the HMAC signature, enforce the per-automation rate limit, then interpret the
@@ -104,7 +139,7 @@ async function isWebhookRateLimited(
  */
 export const dispatchAutomationWebhook$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly token: string;
       readonly signature: string | null;
@@ -146,21 +181,21 @@ export const dispatchAutomationWebhook$ = command(
       return { kind: "not_found" };
     }
 
-    // Signature verification is required: a trigger without a stored secret can
-    // never authenticate a caller, so it is unreachable rather than open.
-    if (!row.encryptedSecret || !args.signature) {
-      return { kind: "unauthorized" };
+    const gateEnabled = await get(
+      webhookTriggersEnabledForOwner(row.orgId, row.userId),
+    );
+    signal.throwIfAborted();
+    if (!gateEnabled) {
+      return { kind: "not_found" };
     }
 
-    const secret = await decryptStoredSecretValue(row.encryptedSecret);
-    signal.throwIfAborted();
-    const verified = await verifySignature({
-      secret,
+    const authorized = await verifyInboundSignature({
+      encryptedSecret: row.encryptedSecret,
       signature: args.signature,
-      body: args.rawBody,
+      rawBody: args.rawBody,
     });
     signal.throwIfAborted();
-    if (!verified) {
+    if (!authorized) {
       return { kind: "unauthorized" };
     }
 

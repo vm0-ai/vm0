@@ -133,9 +133,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
       id: fixture.threadId,
       title: "Uploads",
       agentId: fixture.composeId,
-      latestSessionId: null,
       activeRunIds: [],
-      activeRuns: [],
       draftContent: null,
       draftAttachments: null,
       modelProviderId: null,
@@ -237,7 +235,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
     expect(response.body.title).toBe("Detail thread");
     expect(response.body.agentId).toBe(fixture.composeId);
     expect(response.body).not.toHaveProperty("chatMessages");
-    expect(response.body.latestSessionId).toBeNull();
     expect(response.body.createdAt).toStrictEqual(expect.any(String));
     expect(response.body.updatedAt).toStrictEqual(expect.any(String));
     expect(response.body.draftContent).toBeNull();
@@ -417,7 +414,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
     expect(response.body.threads[0]?.title).toBe("After AI update");
   });
 
-  it("returns activeRuns with live status for non-terminal runs", async () => {
+  it("returns activeRunIds for non-terminal runs", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, { title: "Active runs" }, context.signal),
     );
@@ -478,19 +475,13 @@ describe("GET /api/zero/chat-threads/:id", () => {
       [200],
     );
 
-    expect(response.body.activeRuns).toHaveLength(2);
-    const byStatus = new Map<string, string>();
-    for (const r of response.body.activeRuns ?? []) {
-      byStatus.set(r.status, r.id);
-    }
-    expect(byStatus.get("queued")).toBe(queuedRunId);
-    expect(byStatus.get("running")).toBe(runningRunId);
+    expect(response.body).not.toHaveProperty("activeRuns");
     expect(new Set(response.body.activeRunIds)).toStrictEqual(
       new Set([queuedRunId, runningRunId]),
     );
   });
 
-  it("returns empty activeRuns when all runs are terminal", async () => {
+  it("returns empty activeRunIds when all runs are terminal", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, { title: "All done" }, context.signal),
     );
@@ -521,7 +512,6 @@ describe("GET /api/zero/chat-threads/:id", () => {
       [200],
     );
 
-    expect(response.body.activeRuns).toStrictEqual([]);
     expect(response.body.activeRunIds).toStrictEqual([]);
   });
 });

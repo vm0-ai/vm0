@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.114.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.113.1...runner-rs-v0.114.0) (2026-06-11)
+
+
+### Features
+
+* add cloudflare firewall permissions ([#17284](https://github.com/vm0-ai/vm0/issues/17284)) ([74d4165](https://github.com/vm0-ai/vm0/commit/74d4165e373251359d4d1e101390793958e00254))
+
+
+### Refactoring
+
+* **mitm-addon:** split firewall request matching tests ([#17333](https://github.com/vm0-ai/vm0/issues/17333)) ([f9fabb9](https://github.com/vm0-ai/vm0/commit/f9fabb9c49b78fe2a318cde7dfb36a3bf9a22862))
+
 ## [0.113.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.113.0...runner-rs-v0.113.1) (2026-06-11)
 
 

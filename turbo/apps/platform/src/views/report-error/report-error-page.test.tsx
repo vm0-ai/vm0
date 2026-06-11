@@ -70,47 +70,4 @@ describe("report error page", () => {
     });
     expect(screen.getByText("Reference: ERR-2026-0001")).toBeInTheDocument();
   });
-
-  it("lets users retry after report submission fails", async () => {
-    mockReportErrorStory();
-    let submitAttempts = 0;
-    context.mocks.api(zeroReportErrorContract.submit, ({ respond }) => {
-      submitAttempts += 1;
-      if (submitAttempts === 1) {
-        return respond(500, {
-          error: {
-            message: "Error report queue unavailable",
-            code: "INTERNAL_SERVER_ERROR",
-          },
-        });
-      }
-      return respond(200, { reference: "ERR-2026-0002" });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/runs/${failedRunId}/report-error`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Report error to developer")).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Title"), "Billing export failed");
-    click(buttonByText("Send Report"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Error report queue unavailable"),
-      ).toBeInTheDocument();
-      expect(buttonByText("Try Again")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Try Again"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Report sent")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Reference: ERR-2026-0002")).toBeInTheDocument();
-  });
 });

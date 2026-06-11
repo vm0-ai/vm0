@@ -37,13 +37,13 @@ describe("builtin firewall catalog", () => {
     });
   });
 
-  it("renders deterministic multiline Python JSON", () => {
+  it("renders deterministic compact Python JSON", () => {
     const firstRender = renderPythonBuiltinFirewallCatalog();
     const secondRender = renderPythonBuiltinFirewallCatalog();
 
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("BUILTIN_FIREWALLS = json.loads(");
-    expect(firstRender).toContain('"github": {');
+    expect(firstRender).toContain('"github":{');
     expect(firstRender).not.toContain('json.loads("{\\n');
   });
 });

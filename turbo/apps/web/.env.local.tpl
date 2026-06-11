@@ -34,7 +34,7 @@ SENTRY_ORG=
 SENTRY_PROJECT=
 
 # Optional: Paid-onboarding origin
-PAID_ONBOARDING_URL=
+PAID_ONBOARDING_URL=https://so.vm7.ai:8441
 
 # Optional: Vercel preview proxy bypass
 VERCEL_AUTOMATION_BYPASS_SECRET=

@@ -214,6 +214,29 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
+  it("records the automation trigger source for an automation run upload", async () => {
+    const fixture = await seedRunFixture({ triggerSource: "automation" });
+    const fileId = randomUUID();
+    mocks.s3.listObjects([s3Object(fixture.userId, fileId, "report.pdf")]);
+
+    const token = zeroToken(fixture);
+    await accept(
+      apiClient().complete({
+        headers: authHeaders(token),
+        body: { id: fileId },
+      }),
+      [200],
+    );
+
+    const rows = await findUploadedFiles(fileId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      runId: fixture.runId,
+      source: "automation",
+      externalId: fileId,
+    });
+  });
+
   it("publishes the artifacts changed signal for a chat-thread run upload", async () => {
     const fixture = await seedRunFixture({ withChatThread: true });
     const fileId = randomUUID();

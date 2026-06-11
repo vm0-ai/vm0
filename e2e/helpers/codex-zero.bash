@@ -141,7 +141,6 @@ wait_for_chat_assistant_done() {
 # /api/zero/integrations/chat/message, whose handler only inserts an
 # assistant message with runId=null and creates the thread WITHOUT the
 # pin parameter — no run is dispatched, so the codex CLI never executes
-# and latestSessionProviderType stays null
 # (turbo/apps/web/app/api/zero/integrations/chat/message/route.ts:17-77).
 #
 # Exports on success:
@@ -180,28 +179,4 @@ send_chat_run_message() {
         echo "# send_chat_run_message: bad response: $body" >&2
         return 1
     }
-}
-
-# Print the latestSessionProviderType of a chat thread.
-#
-# `latestSessionProviderType` is derived server-side as the
-# `zero_runs.modelProvider` of the most recent run on the thread (see
-# `getLatestRunProviderTypeForThread` in
-# turbo/apps/web/src/lib/zero/chat-thread/chat-message-service.ts and
-# turbo/apps/web/app/api/zero/chat-threads/[id]/route.ts:62). For this
-# BYOK smoke test the org's only provider is openai-api-key, so once the
-# run completes the field MUST be "openai-api-key" — proving the BYOK
-# provider routing chain (provider -> codex framework dispatch) resolved
-# end-to-end.
-#
-# We assert on this rather than the run's `framework` because (a)
-# /api/zero/runs/:id does not project framework (`getRunResponseSchema`),
-# and (b) /api/zero/runs/:id/telemetry/agent derives framework from
-# `compose.agents.<name>.framework` via `extractFrameworkFromCompose` —
-# intentionally absent from the test compose, so it would fall back to
-# "claude-code" and produce a structural false-negative.
-get_thread_provider_type() {
-    local thread_id="$1"
-    _codex_zero_curl "/api/zero/chat-threads/$thread_id" 2>/dev/null \
-        | jq -r '.latestSessionProviderType // ""'
 }

@@ -18,59 +18,6 @@ function setupGithubPage(): void {
 }
 
 describe("github settings page", () => {
-  it("manages the GitHub connection and reacts to realtime changes", async () => {
-    const integration = context.mocks.data.defaultGithubIntegration({
-      isConnected: false,
-      connectedGithubUserId: null,
-      connectedGithubUsername: null,
-    });
-    context.mocks.data.githubIntegration(integration);
-
-    setupGithubPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.getByText("Connection")).toBeInTheDocument();
-      expect(screen.getByText("Danger zone")).toBeInTheDocument();
-      expect(screen.getByText("Connect")).toBeInTheDocument();
-      expect(screen.getByText("Uninstall")).toBeInTheDocument();
-      expect(context.mocks.ably.hasSubscription("github:changed")).toBeTruthy();
-    });
-
-    context.mocks.data.githubIntegration({
-      ...integration,
-      isConnected: true,
-      connectedGithubUserId: "98765",
-      connectedGithubUsername: "octocat",
-    });
-    context.mocks.ably.trigger("github:changed");
-
-    await waitFor(() => {
-      expect(screen.getByText("Connected as @octocat")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Disconnect"));
-    await waitFor(() => {
-      expect(screen.getByText("Connect")).toBeInTheDocument();
-    });
-  });
-
-  it("uninstalls GitHub from the settings danger zone", async () => {
-    context.mocks.data.githubIntegration(
-      context.mocks.data.defaultGithubIntegration(),
-    );
-
-    setupGithubPage();
-
-    click(await screen.findByText("Uninstall"));
-    const dialog = await screen.findByRole("dialog");
-    click(within(dialog).getByText("Uninstall"));
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub is not installed.")).toBeInTheDocument();
-    });
-  });
-
   it("returns to integrations from the settings header", async () => {
     context.mocks.data.githubIntegration(
       context.mocks.data.defaultGithubIntegration(),

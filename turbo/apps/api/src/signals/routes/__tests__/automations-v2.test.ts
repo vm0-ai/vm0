@@ -108,12 +108,19 @@ async function seedFixture(): Promise<SchedulesFixture> {
   return fixture;
 }
 
-async function enableAutomations(fixture: SchedulesFixture): Promise<void> {
+async function enableAutomations(
+  fixture: SchedulesFixture,
+  options?: { readonly webhookTriggers?: boolean },
+): Promise<void> {
   const db = store.set(writeDb$);
   await db.insert(userFeatureSwitches).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ZeroAutomations]: true },
+    switches: {
+      [FeatureSwitchKey.ZeroAutomations]: true,
+      [FeatureSwitchKey.AutomationWebhookTriggers]:
+        options?.webhookTriggers ?? true,
+    },
   });
 }
 
@@ -284,6 +291,63 @@ describe("Automations v2 API", () => {
       [200],
     );
     expect(Object.keys(shown.body)).not.toContain("webhookSecret");
+  });
+
+  it("rejects webhook trigger creation and rotation while the switch is off", async () => {
+    // Webhook triggers are a feature-gated NEW capability (#17307): with the
+    // switch off the surface stays feature-equivalent to legacy schedules.
+    const fixture = await seedFixture();
+    await enableAutomations(fixture, { webhookTriggers: false });
+
+    const viaSugar = await accept(
+      mainApi().create({
+        body: {
+          name: "gated-webhook",
+          agentId: fixture.composeId,
+          instruction: "Handle the hook",
+          trigger: { kind: "webhook" },
+        },
+        headers: SESSION_HEADERS,
+      }),
+      [400],
+    );
+    expect(viaSugar.body.error.message).toContain("not enabled");
+
+    const created = await createAutomation({
+      name: "gated-add",
+      agentId: fixture.composeId,
+    });
+    const viaAdd = await accept(
+      refApi().addTrigger({
+        params: { ref: created.automation.id },
+        body: { kind: "webhook" },
+        headers: SESSION_HEADERS,
+      }),
+      [400],
+    );
+    expect(viaAdd.body.error.message).toContain("not enabled");
+
+    // Rotation is gated before trigger resolution, so any id is rejected.
+    const viaRotate = await accept(
+      triggerApi().rotateSecret({
+        params: { id: "00000000-0000-0000-0000-000000000000" },
+        headers: SESSION_HEADERS,
+        body: {},
+      }),
+      [400],
+    );
+    expect(viaRotate.body.error.message).toContain("not enabled");
+
+    // Time triggers stay fully available.
+    const cron = await accept(
+      refApi().addTrigger({
+        params: { ref: created.automation.id },
+        body: { kind: "cron", cronExpression: "0 9 * * *" },
+        headers: SESSION_HEADERS,
+      }),
+      [201],
+    );
+    expect(cron.body.trigger.kind).toBe("cron");
   });
 
   it("rejects an invalid cron expression, a past atTime, and a bad timezone", async () => {
@@ -698,7 +762,7 @@ describe("Automations v2 API", () => {
 
     const db = store.set(writeDb$);
     // Provenance: the automation alone — no trigger fired this run. B2 is
-    // deferred, so the trigger source stays "schedule".
+    // deferred, so the run records the automation trigger source.
     const [zeroRun] = await db
       .select({
         triggerSource: zeroRuns.triggerSource,
@@ -709,7 +773,7 @@ describe("Automations v2 API", () => {
       .from(zeroRuns)
       .where(eq(zeroRuns.id, runId));
     expect(zeroRun).toStrictEqual({
-      triggerSource: "schedule",
+      triggerSource: "automation",
       automationId: created.automation.id,
       triggerId: null,
       chatThreadId: created.automation.chatThreadId,

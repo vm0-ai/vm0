@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.439.0](https://github.com/vm0-ai/vm0/compare/app-v0.438.3...app-v0.439.0) (2026-06-11)
+
+
+### Features
+
+* **api:** record automation as the trigger source for automation runs ([#17334](https://github.com/vm0-ai/vm0/issues/17334)) ([cb7a907](https://github.com/vm0-ai/vm0/commit/cb7a907086418ad90941aeff5ff554526a6df184))
+* collapse completed chat work history ([#17327](https://github.com/vm0-ai/vm0/issues/17327)) ([e61d31c](https://github.com/vm0-ai/vm0/commit/e61d31c6eba09fabc120d60bef8b6021d651108a))
+* support multiple computer use hosts ([#17326](https://github.com/vm0-ai/vm0/issues/17326)) ([214bc55](https://github.com/vm0-ai/vm0/commit/214bc556f3223689b06f956fda0687e622255ac5))
+
+
+### Bug Fixes
+
+* refresh computer use hosts on popover open ([#17328](https://github.com/vm0-ai/vm0/issues/17328)) ([81f6324](https://github.com/vm0-ai/vm0/commit/81f632405c387a558348c0f37eddfbfe52dd3c95))
+
+
+### Refactoring
+
+* drop unused soft-state fields from chat thread detail ([#17323](https://github.com/vm0-ai/vm0/issues/17323)) ([1d2618a](https://github.com/vm0-ai/vm0/commit/1d2618a6ab81ecb4aeed3cd578e9d809b9f33823))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.85.0
+    * @vm0/connectors bumped to 1.68.0
+    * @vm0/core bumped to 8.330.0
+
 ## [0.438.3](https://github.com/vm0-ai/vm0/compare/app-v0.438.2...app-v0.438.3) (2026-06-11)
 
 

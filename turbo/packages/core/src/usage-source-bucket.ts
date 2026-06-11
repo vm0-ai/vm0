@@ -22,6 +22,7 @@ export function triggerSourceToBucket(
     case "email":
       return "email";
     case "schedule":
+    case "automation":
       return "schedule";
     default:
       // telegram, github, cli, agent, phone, agentphone, null

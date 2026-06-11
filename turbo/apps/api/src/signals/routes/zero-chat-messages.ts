@@ -714,7 +714,7 @@ async function latestSessionForThread(
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
     // D7: only web-source runs join the thread's session-continuity chain, so a
-    // chat-mode scheduled run (triggerSource "schedule") never resumes a web
+    // chat-mode automation run (triggerSource "automation") never resumes a web
     // session and a later web turn never resumes a scheduled one. The 'web'
     // filter (before .limit) is mirrored in latestSessionForThreadFromDb
     // (internal-callbacks-chat.ts) and latestSessionIdForThread

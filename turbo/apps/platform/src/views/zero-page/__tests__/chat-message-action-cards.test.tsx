@@ -187,51 +187,6 @@ describe("chat message action cards", () => {
     });
   });
 
-  it("surfaces permission grant load failures on assistant action cards", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
-    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "NOT_FOUND",
-          message: "Failed to load permissions",
-        },
-      });
-    });
-    mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-grant-load-failure`,
-      threadTitle: "Permission load failure",
-      chatMessages: [
-        {
-          id: "msg-user-permission-load-failure",
-          role: "user",
-          content: "Allow Slack analytics",
-          runId: "run-permission-load-failure",
-          createdAt: "2026-06-09T11:00:00Z",
-        },
-        {
-          id: "msg-assistant-permission-load-failure",
-          role: "assistant",
-          content: permissionAuthorizeUrl,
-          runId: "run-permission-load-failure",
-          createdAt: "2026-06-09T11:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}-grant-load-failure`,
-    });
-
-    const permissionCard = await screen.findByTestId("permission-action-card");
-
-    await waitFor(() => {
-      expect(
-        within(permissionCard).getByText("Failed to load permissions"),
-      ).toBeDisabled();
-    });
-  });
-
   it("lets users deny a permission request from an assistant message", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;

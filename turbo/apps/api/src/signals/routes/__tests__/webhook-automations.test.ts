@@ -107,12 +107,19 @@ async function seedFixture(): Promise<SchedulesFixture> {
   return fixture;
 }
 
-async function enableAutomations(fixture: SchedulesFixture): Promise<void> {
+async function enableAutomations(
+  fixture: SchedulesFixture,
+  options?: { readonly webhookTriggers?: boolean },
+): Promise<void> {
   const db = store.set(writeDb$);
   await db.insert(userFeatureSwitches).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ZeroAutomations]: true },
+    switches: {
+      [FeatureSwitchKey.ZeroAutomations]: true,
+      [FeatureSwitchKey.AutomationWebhookTriggers]:
+        options?.webhookTriggers ?? true,
+    },
   });
 }
 
@@ -445,6 +452,24 @@ describe("Webhook automations management feature gating", () => {
       { method: "DELETE", headers: SESSION_HEADERS },
     );
     expect(del).toBe(404);
+  });
+
+  it("returns 404 creating when only the webhook trigger switch is off", async () => {
+    // Creating a webhook automation mints a webhook trigger, so it is gated
+    // by AutomationWebhookTriggers even with ZeroAutomations on (#17307).
+    const fixture = await seedFixture();
+    await enableAutomations(fixture, { webhookTriggers: false });
+
+    const create = await requestJson(
+      "/api/automations/webhooks",
+      jsonInit("POST", {
+        name: "blocked",
+        instruction: "Should not be created.",
+        agentId: fixture.composeId,
+      }),
+    );
+    expect(create.status).toBe(404);
+    expect(expectErrorCode(create)).toBe("NOT_FOUND");
   });
 
   it("returns 401 when unauthenticated", async () => {

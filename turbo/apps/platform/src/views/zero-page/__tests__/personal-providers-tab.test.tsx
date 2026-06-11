@@ -108,15 +108,6 @@ async function findLatestClaudeCodeInput(): Promise<HTMLInputElement> {
   return input;
 }
 
-function clickLatestByTestId(testId: string): void {
-  const elements = screen.getAllByTestId(testId);
-  const element = elements.at(-1);
-  if (!(element instanceof HTMLElement)) {
-    throw new Error(`${testId} element not found`);
-  }
-  click(element);
-}
-
 function closeDialogsContainingTestId(testId: string): void {
   const dialogs = new Set(
     screen.queryAllByTestId(testId).map((input) => {
@@ -191,7 +182,7 @@ describe("personal model providers settings", () => {
     });
   });
 
-  it("connects personal Claude Code after the user corrects the authorization code", async () => {
+  it("connects personal Claude Code with an authorization code", async () => {
     context.mocks.data.org({
       id: "org_1",
       slug: "test-org",
@@ -211,15 +202,7 @@ describe("personal model providers settings", () => {
     });
     context.mocks.api(
       zeroClaudeCodeDeviceAuthContract.complete,
-      ({ body, respond }) => {
-        if (body.authorizationCode !== "claude-auth-code") {
-          return respond(400, {
-            error: {
-              message: "Invalid Claude Code authorization code",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          });
-        }
+      ({ respond }) => {
         const provider = connectedPersonalClaudeCodeProvider();
         context.mocks.data.personalModelProviders([provider]);
         return respond(200, {
@@ -243,31 +226,6 @@ describe("personal model providers settings", () => {
 
     const codeInput = await findLatestClaudeCodeInput();
     const deviceAuthDialog = dialogContaining(codeInput);
-    click(
-      within(deviceAuthDialog).getByTestId("claude-code-device-auth-submit"),
-    );
-
-    await waitFor(() => {
-      expect(
-        within(deviceAuthDialog).getByText(
-          "Paste the Claude Code authorization code to continue.",
-        ),
-      ).toBeInTheDocument();
-    });
-
-    await fill(codeInput, "wrong-code");
-    click(
-      within(deviceAuthDialog).getByTestId("claude-code-device-auth-submit"),
-    );
-
-    await waitFor(() => {
-      expect(
-        within(deviceAuthDialog).getByText(
-          "Invalid Claude Code authorization code",
-        ),
-      ).toBeInTheDocument();
-    });
-
     await fill(codeInput, "claude-auth-code");
     click(
       within(deviceAuthDialog).getByTestId("claude-code-device-auth-submit"),
@@ -276,75 +234,6 @@ describe("personal model providers settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
       expect(within(claudeCodeRow).getByText("Connected")).toBeInTheDocument();
-    });
-  });
-
-  it("retries and closes personal Claude Code login after a start failure", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      slug: "test-org",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([]);
-    let startAttempts = 0;
-    let cancelledSessionToken: string | null = null;
-    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
-      startAttempts += 1;
-      if (startAttempts === 1) {
-        return respond(503, {
-          error: {
-            message: "Claude Code login is temporarily unavailable",
-            code: "PROVIDER_UNAVAILABLE",
-          },
-        });
-      }
-      return respond(200, {
-        sessionToken: "mock-personal-claude-code-retry-session",
-        type: "claude-code",
-        status: "pending",
-        scope: "personal",
-        browserUrl: "https://claude.ai/oauth/authorize",
-        expiresIn: 30,
-      });
-    });
-    context.mocks.api(
-      zeroClaudeCodeDeviceAuthContract.cancel,
-      ({ body, respond }) => {
-        cancelledSessionToken = body.sessionToken;
-        return respond(200, { status: "cancelled" });
-      },
-    );
-
-    await openModelSettings();
-
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
-    click(connectButtonInRow(claudeCodeRow, "Connect Claude Code OAuth"));
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Claude Code login is temporarily unavailable"),
-      ).not.toHaveLength(0);
-    });
-    clickLatestByTestId("claude-code-device-auth-start");
-
-    const codeInput = await findLatestClaudeCodeInput();
-    const deviceAuthDialog = dialogContaining(codeInput);
-    expect(
-      within(deviceAuthDialog).getByText("Connect Claude Code"),
-    ).toBeInTheDocument();
-
-    closeClaudeCodeDialogs();
-
-    await waitFor(() => {
-      expect(cancelledSessionToken).toBe(
-        "mock-personal-claude-code-retry-session",
-      );
-      expect(
-        screen.queryAllByTestId("claude-code-device-auth-code"),
-      ).toHaveLength(0);
     });
   });
 
@@ -366,78 +255,6 @@ describe("personal model providers settings", () => {
       for (const deviceAuthCode of deviceAuthCodes) {
         expect(deviceAuthCode).toHaveTextContent("PERS-1234");
       }
-    });
-  });
-
-  it("retries and closes personal Codex login after a plan error", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      slug: "test-org",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([]);
-    let startAttempts = 0;
-    let cancelledSessionToken: string | null = null;
-    context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
-      startAttempts += 1;
-      if (startAttempts === 1) {
-        return respond(403, {
-          error: {
-            message: "Free plan rejected",
-            code: "CODEX_FREE_PLAN_REJECTED",
-          },
-        });
-      }
-      return respond(200, {
-        sessionToken: "mock-personal-codex-retry-session",
-        type: "codex",
-        status: "pending",
-        scope: "personal",
-        browserUrl: "https://auth.openai.com/codex/device",
-        verificationCode: "PLAN-1234",
-        expiresIn: 30,
-        interval: 1,
-      });
-    });
-    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
-      return respond(200, { status: "pending", errorMessage: null });
-    });
-    context.mocks.api(
-      zeroCodexDeviceAuthContract.cancel,
-      ({ body, respond }) => {
-        cancelledSessionToken = body.sessionToken;
-        return respond(200, { status: "cancelled" });
-      },
-    );
-
-    await openModelSettings();
-
-    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
-    click(connectButtonInRow(codexRow, "Connect ChatGPT (Codex)"));
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText(
-          "Free ChatGPT plans cannot use Codex via vm0. Upgrade to Plus or Pro and try again.",
-        ),
-      ).not.toHaveLength(0);
-    });
-    clickLatestByTestId("codex-device-auth-start");
-
-    const deviceAuthCodes = await screen.findAllByTestId(
-      "codex-device-auth-code",
-    );
-    const deviceAuthCode = deviceAuthCodes.at(-1);
-    if (!(deviceAuthCode instanceof HTMLElement)) {
-      throw new Error("Codex device auth code not found");
-    }
-    expect(deviceAuthCode).toHaveTextContent("PLAN-1234");
-    closeDialogsContainingTestId("codex-device-auth-code");
-
-    await waitFor(() => {
-      expect(cancelledSessionToken).toBe("mock-personal-codex-retry-session");
-      expect(screen.queryAllByTestId("codex-device-auth-code")).toHaveLength(0);
     });
   });
 

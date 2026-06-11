@@ -223,7 +223,6 @@ function mockThread(options?: {
       id: THREAD_ID,
       title: "My thread",
       agentId: AGENT_ID,
-      latestSessionId: null,
       activeRunIds: options?.activeRunIds ?? [],
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",

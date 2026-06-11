@@ -340,7 +340,7 @@ describe("Automations API parity with the legacy schedule surface", () => {
 
       // Same agent run + same chat-thread rendering for this trigger type.
       expect(newArtifacts).toStrictEqual(oldArtifacts);
-      expect(newArtifacts.triggerSource).toBe("schedule");
+      expect(newArtifacts.triggerSource).toBe("automation");
       expect(newArtifacts.callbackPaths).toContain(
         "/api/internal/callbacks/chat",
       );

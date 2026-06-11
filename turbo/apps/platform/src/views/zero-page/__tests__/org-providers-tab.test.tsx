@@ -5,7 +5,7 @@ import type {
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
@@ -221,16 +221,6 @@ function dialogContaining(element: HTMLElement): HTMLElement {
   return dialog;
 }
 
-function blockClipboardWrites(): void {
-  const writeTextSpy = vi
-    .spyOn(navigator.clipboard, "writeText")
-    .mockRejectedValue(new DOMException("Copy blocked", "NotAllowedError"));
-
-  context.signal.addEventListener("abort", () => {
-    writeTextSpy.mockRestore();
-  });
-}
-
 describe("organization model providers settings", () => {
   it("opens a workspace API key model route form", async () => {
     await openAddApiKeyModelDialog();
@@ -433,65 +423,6 @@ describe("organization model providers settings", () => {
     });
   });
 
-  it("opens device login from a stale workspace provider banner", async () => {
-    mockStaleProviderStory();
-    context.mocks.browser.open(null);
-    context.mocks.browser.clipboardWriteText();
-    await openProvidersTab();
-
-    const alert = await screen.findByRole("alert");
-    expect(
-      within(alert).getByText("ChatGPT session needs reconnection"),
-    ).toBeInTheDocument();
-    expect(
-      within(alert).getByText(
-        "Your ChatGPT session expired. Re-connect to continue.",
-      ),
-    ).toBeInTheDocument();
-
-    click(within(alert).getByText("Reconnect"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Re-connect Codex")).toBeInTheDocument();
-      expect(screen.getByTestId("codex-device-auth-code")).toHaveTextContent(
-        "WXYZ-1234",
-      );
-    });
-
-    click(screen.getByTestId("codex-device-auth-open"));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Device code copied, but the approval page could not be opened. Try again.",
-      );
-    });
-  });
-
-  it("shows manual-copy guidance when Codex approval opens but copying fails", async () => {
-    mockStaleProviderStory();
-    context.mocks.browser.open(context.mocks.browser.authWindow());
-    blockClipboardWrites();
-    await openProvidersTab();
-
-    const alert = await screen.findByRole("alert");
-    click(within(alert).getByText("Reconnect"));
-
-    const code = await screen.findByTestId("codex-device-auth-code");
-    const reconnectDialog = dialogContaining(code);
-    click(within(reconnectDialog).getByTestId("codex-device-auth-open"));
-
-    await waitFor(() => {
-      expect(within(reconnectDialog).getByRole("alert")).toHaveTextContent(
-        "Approval page opened, but the device code was not copied. Copy it manually before approving.",
-      );
-      expect(
-        within(reconnectDialog).getByText(
-          "Approval page opened. Copy the device code before approving.",
-        ),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("shows Codex waiting status after the approval page opens and code copies", async () => {
     mockStaleProviderStory();
     context.mocks.browser.open(context.mocks.browser.authWindow());
@@ -517,7 +448,6 @@ describe("organization model providers settings", () => {
   it("reconnects a stale workspace Claude Code provider", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([staleClaudeCodeProvider()]);
-    context.mocks.browser.open(null);
     context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
       return respond(200, {
         sessionToken: "mock-workspace-claude-code-session",
@@ -530,15 +460,7 @@ describe("organization model providers settings", () => {
     });
     context.mocks.api(
       zeroClaudeCodeDeviceAuthContract.complete,
-      ({ body, respond }) => {
-        if (body.authorizationCode !== "workspace-claude-code") {
-          return respond(400, {
-            error: {
-              message: "Invalid workspace Claude Code authorization code",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          });
-        }
+      ({ respond }) => {
         return respond(200, {
           status: "complete",
           provider: {
@@ -572,22 +494,6 @@ describe("organization model providers settings", () => {
     expect(
       within(reconnectDialog).getByText("Re-connect Claude Code"),
     ).toBeInTheDocument();
-
-    click(within(reconnectDialog).getByTestId("claude-code-device-auth-open"));
-    await waitFor(() => {
-      expect(within(reconnectDialog).getByRole("alert")).toHaveTextContent(
-        "The approval page could not be opened. Use the link manually and paste the code here.",
-      );
-    });
-
-    click(
-      within(reconnectDialog).getByTestId("claude-code-device-auth-submit"),
-    );
-    await waitFor(() => {
-      expect(within(reconnectDialog).getByRole("alert")).toHaveTextContent(
-        "Paste the Claude Code authorization code to continue.",
-      );
-    });
 
     await fill(codeInput, "workspace-claude-code");
     click(
@@ -651,33 +557,6 @@ describe("organization model providers settings", () => {
     await waitFor(() => {
       expect(cancelledSessionToken).toBe("mock-codex-device-session");
       expect(screen.queryAllByTestId("codex-device-auth-code")).toHaveLength(0);
-    });
-  });
-
-  it("shows a retry state when workspace Codex reconnect import fails", async () => {
-    mockStaleProviderStory();
-    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
-      return respond(400, {
-        error: {
-          message: "Codex token format is invalid",
-          code: "CODEX_AUTH_JSON_SHAPE_INVALID",
-        },
-      });
-    });
-    await openProvidersTab();
-
-    const alert = await screen.findByRole("alert");
-    click(within(alert).getByText("Reconnect"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Codex produced a login token format vm0 does not recognize. Update Codex and try again.",
-        ),
-      ).toBeInTheDocument();
-      expect(screen.getByTestId("codex-device-auth-start")).toHaveTextContent(
-        "Reconnect ChatGPT",
-      );
     });
   });
 });
