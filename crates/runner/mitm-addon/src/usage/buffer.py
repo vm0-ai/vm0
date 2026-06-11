@@ -365,7 +365,8 @@ class UsageEventBuffer:
     ) -> None:
         self._lock = threading.Lock()
         # Serializes snapshot/enqueue ownership. Ordinary flushes defer if busy;
-        # shutdown waits so daemon timer work cannot outlive process teardown.
+        # lifecycle drains wait so their acknowledgement snapshots follow drain
+        # ownership instead of only recording signal receipt.
         self._flush_owner_lock: _FlushOwnerLock = (
             flush_owner_lock if flush_owner_lock is not None else threading.Lock()
         )
@@ -446,7 +447,7 @@ class UsageEventBuffer:
             self._flush_owner_lock.release()
 
     def _acquire_flush_ownership(self, trigger: UsageFlushTrigger) -> bool:
-        return self._flush_owner_lock.acquire(blocking=trigger == "shutdown")
+        return self._flush_owner_lock.acquire(blocking=trigger in ("runner", "shutdown"))
 
     def _defer_unowned_flush(self, trigger: UsageFlushTrigger) -> None:
         timer_to_cancel: _TimerHandle | None = None
