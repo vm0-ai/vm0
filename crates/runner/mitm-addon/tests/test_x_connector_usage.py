@@ -722,11 +722,11 @@ class TestXConnectorUsage:
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
 
         with patch(
-            "mitmproxy.net.encoding.decode",
-            side_effect=AssertionError("request body should not be decoded"),
-        ):
+            "usage.providers.connectors.x.billing_body.decode_request_body_for_billing"
+        ) as decode_request_body:
             p = self._call_and_get_single_billing(flow)
 
+        decode_request_body.assert_not_called()
         assert p["category"] == "user.read"
         assert p["quantity"] == 1
 
