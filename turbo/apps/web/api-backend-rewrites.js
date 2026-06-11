@@ -552,6 +552,7 @@ export const API_BACKEND_REWRITES = [
     "/api/cron/computer-use-screenshot-cleanup",
   ],
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
+  ["/api/cron/execute-automations", "/api/cron/execute-automations"],
   ["/api/cron/execute-schedules", "/api/cron/execute-schedules"],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
   [

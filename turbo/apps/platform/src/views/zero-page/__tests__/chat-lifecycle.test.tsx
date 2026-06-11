@@ -1937,7 +1937,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(
         screen.getByLabelText("Open schedule Launch review"),
-      ).toHaveAttribute("href", `/schedules/${scheduleId}`);
+      ).toHaveAttribute("href", `/automations/${scheduleId}`);
       expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
     });
   });
