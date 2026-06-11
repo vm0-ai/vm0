@@ -2326,3 +2326,56 @@ Quality gates: `pnpm -F api lint` (pre-existing warnings
 in unrelated test files), `pnpm -F api check-types`,
 `pnpm -F api exec vitest run` (253 files / 2618 tests) all
 clean.
+
+### Round 46 — DEVELOPER-01 zero-developer-support BDD
+
+Migrates `zero-developer-support.test.ts` (13 legacy
+`it()`s, 619 lines) into 5 BDD `it()`s: (a) auth + not-found
+chain (401 unauth → 403 no run scope → 400 RUN_NOT_FOUND),
+(b) single-run consent chain (200 deterministic consent code
+
+- 200 same code on repeat + 400 INVALID_CONSENT_CODE + 200
+  valid consent + reference), (c) cross-run session chain
+  (200 same consent across runs in same session + 200 accept
+  consent from other run + 200 with reference), (d) bundle
+  content chain (200 no-session runId fallback + 200
+  chat-history.jsonl includes user prompt + 200 multi-run
+  session collects all prompts in order), (e) optional
+  dependency chain (200 succeeds when Axiom query fails + 200
+  creates Plain thread when PLAIN_API_KEY configured).
+
+The BDD form keeps the same direct-access helpers as the
+legacy test: `s3.send` call list for the uploaded ZIP body
+(via `putObjectInput` / `findAllZipUploads` + indexed
+`uploadedZipAt(index)`) and the Axiom query call list for
+the `runId in` APL substring. These are internal-service
+observations, not user-observable, so they are tolerated as
+"internal helper gaps" — the public API does not expose a
+way to retrieve the uploaded ZIP body or the Axiom
+backing-query. The chain uses a new
+`uploadedZipAt(index)` helper so multi-sub-step chains can
+read each sub-step's own ZIP body (the legacy
+`uploadedZip` helper returned the first ZIP body, which
+collides when a chain has multiple sub-steps that each
+upload a ZIP).
+
+Notable: chain (d) has three sub-steps that each upload a
+ZIP, so `uploadedZipAt(0/1/2)` indexes the per-sub-step ZIP
+body for chat-history assertions. Chain (b) has one ZIP
+upload (the valid-consent submit), so `putObjectInput()`
+(index 0) is correct. Chain (e) has two ZIP uploads (one
+per sub-step), but neither sub-step asserts on ZIP body
+content — only on the `ds-` reference and the
+`plainCallCount` MSW counter, so no index access is
+required.
+
+Net test count: 13 legacy `it()`s → 5 BDD `it()`s (62%
+reduction). No per-file coverage regression for the covered
+route file.
+
+Deletes the now-redundant `zero-developer-support.test.ts`.
+
+Quality gates: `pnpm -F api lint` (pre-existing warnings in
+unrelated `zero-banking.bdd.test.ts`; my new file is
+clean), `pnpm -F api check-types`, `pnpm -F api exec vitest
+run` (253 files / 2610 tests) all clean.
