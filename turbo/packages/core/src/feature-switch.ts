@@ -356,7 +356,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show ranged personal and team credit usage records in settings, and enable scoped/ranged /api/zero/usage/record queries.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroAutomations]: {
     maintainer: "lancy@vm0.ai",

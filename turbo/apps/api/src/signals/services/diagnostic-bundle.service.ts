@@ -23,6 +23,7 @@ import { db$, type Db } from "../external/db";
 import { settle, tapError } from "../utils";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { createPlainSupportThread } from "./plain-support.service";
+import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
 
 const log = logger("service:diagnostic-bundle");
 
@@ -684,7 +685,7 @@ function assembleActivityLog(
         ),
       ),
       get(queryNetworkLogs(run.id)),
-      tapError(get(queryRunContext(run.id)), (error) => {
+      tapError(get(queryRunContext(run)), (error) => {
         log.warn("Failed to collect run context", { error: String(error) });
       }),
     ]);
@@ -862,16 +863,29 @@ function queryNetworkLogs(
 }
 
 function queryRunContext(
-  runId: string,
+  run: RunMeta,
 ): Computed<Promise<Record<string, unknown> | null>> {
   return computed(async (get): Promise<Record<string, unknown> | null> => {
     const dataset = getDatasetName("run-context");
     const apl = `['${dataset}']
-| where runId == "${escapeAplString(runId)}"
+| where runId == "${escapeAplString(run.id)}"
 | limit 1`;
 
     const results = (await get(queryAxiom(apl))) as Record<string, unknown>[];
-    return results[0] ?? null;
+    const snapshot = results[0];
+    if (!snapshot) {
+      return null;
+    }
+    const normalizedSnapshot = normalizeRunContextSnapshot(snapshot);
+    return {
+      ...normalizedSnapshot,
+      runId: normalizedSnapshot.runId ?? run.id,
+      prompt: normalizedSnapshot.prompt ?? run.prompt,
+      appendSystemPrompt:
+        normalizedSnapshot.appendSystemPrompt !== undefined
+          ? normalizedSnapshot.appendSystemPrompt
+          : (run.appendSystemPrompt ?? null),
+    };
   });
 }
 

@@ -34,12 +34,9 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import {
-  loadMoreLegacyUsageRecord$,
   loadMoreUsageRecord$,
   myUsageRecordAsync$,
   teamUsageRecordAsync$,
-  usageRecordAsync$,
-  usageSourceFilter$,
 } from "../../../../signals/zero-page/settings/personal-usage-record.ts";
 import { setSettingsDialogOpen$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -99,14 +96,6 @@ const RANGE_OPTIONS = [
   label: string;
 }[];
 
-const FILTER_OPTIONS = [
-  "chat",
-  "schedule",
-  "slack",
-  "telegram",
-  "other",
-] as const satisfies readonly UsageRecordSource[];
-
 const ROW_CLASS =
   "block px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50";
 
@@ -145,55 +134,6 @@ function rangeLabel(range: UsageRecordRange): string {
 
 function usageRowKey(row: UsageRecordRow): string {
   return `${row.source}:${row.threadId ?? row.runId ?? row.lastActivityAt}:${row.member?.userId ?? "mine"}`;
-}
-
-export function SourceFilter({
-  value,
-  onChange,
-}: {
-  value: UsageRecordSource | null;
-  onChange: (source: UsageRecordSource | null) => void;
-}) {
-  const label = value ? SOURCE_META[value].label : "All sources";
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
-        >
-          {label}
-          <IconChevronDown
-            size={14}
-            stroke={1.5}
-            className="ml-1.5 text-muted-foreground"
-          />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem
-          onClick={() => {
-            onChange(null);
-          }}
-        >
-          All sources
-        </DropdownMenuItem>
-        {FILTER_OPTIONS.map((source) => {
-          return (
-            <DropdownMenuItem
-              key={source}
-              onClick={() => {
-                onChange(source);
-              }}
-            >
-              {SOURCE_META[source].label}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }
 
 export function UsageRangeSelect({
@@ -440,59 +380,6 @@ function UsageRecordContent({
                   className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
                   onClick={() => {
                     loadMore(scope);
-                  }}
-                >
-                  Load more
-                </Button>
-              </div>
-            )}
-          </div>
-        ))}
-    </section>
-  );
-}
-
-export function LegacyPersonalUsageRecord() {
-  const loadable = useLastLoadable(usageRecordAsync$);
-  const loadMore = useSet(loadMoreLegacyUsageRecord$);
-  const filter = useGet(usageSourceFilter$);
-
-  return (
-    <section className="flex flex-col gap-4">
-      {loadable.state === "loading" && <UsageRecordSkeleton />}
-      {loadable.state === "hasError" && (
-        <p className="text-sm text-muted-foreground" role="alert">
-          Couldn&apos;t load your usage record. Please try again later.
-        </p>
-      )}
-      {loadable.state === "hasData" &&
-        (loadable.data.rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {filter
-              ? "No usage from this source yet."
-              : "No usage yet. Your runs will show up here as you use credits."}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <TooltipProvider delayDuration={100}>
-              <div
-                className="overflow-hidden rounded-xl bg-card"
-                style={{ border: CARD_BORDER }}
-              >
-                {loadable.data.rows.map((row) => {
-                  return <UsageRow key={usageRowKey(row)} row={row} />;
-                })}
-              </div>
-            </TooltipProvider>
-            {loadable.data.rows.length < loadable.data.pagination.total && (
-              <div className="flex justify-center">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
-                  onClick={() => {
-                    loadMore();
                   }}
                 >
                   Load more

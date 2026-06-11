@@ -496,11 +496,13 @@ def match_host(host: str, pattern: str) -> dict | None:
     ({name+}, {name*}) must appear in the first (leftmost) position.
 
     - Literal segments must match exactly (case-insensitive).
-    - {name} matches a single host segment.
+    - {name} matches a single host segment, captured in lowercase.
     - prefix{name}suffix matches a host segment case-insensitively, with
-      the non-empty middle captured into `name` (case preserved from host).
+      the non-empty middle captured into `name` in lowercase.
     - {name+} matches one or more leading host segments. Must be first.
+      Captures preserve the input case supplied to match_host().
     - {name*} matches zero or more leading host segments. Must be first.
+      Non-empty captures preserve the input case supplied to match_host().
     """
     pattern_segs = _compile_segments(tuple(reversed(pattern.split("."))))
     if pattern_segs is None:
@@ -682,6 +684,22 @@ def _compiled_base_params_are_valid(base: _CompiledBase) -> bool:
         param_names.add(segment.name)
 
     return True
+
+
+def firewall_base_config_is_valid(raw_base: str) -> bool:
+    """Return whether a firewall base URL is valid for runtime matching."""
+    base = _compile_base(raw_base)
+    if base is None:
+        return False
+    return not (
+        base.has_query_or_fragment
+        or base.raw_syntax_malformed
+        or base.param_parse_malformed
+        or base.parts.host_malformed
+        or base.parts.has_userinfo
+        or base.parts.port_malformed
+        or not _compiled_base_params_are_valid(base)
+    )
 
 
 def _compiled_base_is_invalid_for_match_base_url(base: _CompiledBase) -> bool:

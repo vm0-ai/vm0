@@ -7,7 +7,11 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_STYLE_PRESETS,
+} from "@vm0/core";
 import {
   agentComposes,
   agentComposeVersions,
@@ -684,6 +688,44 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run?.appendSystemPrompt).not.toContain(item.scene);
   });
 
+  it("adds illustration generation template guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const item = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make an illustrated launch card",
+      generationTemplate: {
+        type: "illustration",
+        selection: {
+          illustrationStyleId: item.illustrationStyleId,
+        },
+      },
+    });
+    await flushWaitUntilForTest();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.prompt).toBe("make an illustrated launch card");
+    expect(run?.appendSystemPrompt).toContain("Type: illustration");
+    expect(run?.appendSystemPrompt).toContain("Tag: illustration");
+    expect(run?.appendSystemPrompt).toContain(
+      `Image style ID: ${item.illustrationStyleId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain("Instructions:");
+    expect(run?.appendSystemPrompt).toContain(
+      "- Keep the user's prompt as the source of the requested content.",
+    );
+  });
+
   it("rejects unknown generation template resources", async () => {
     const fixture = await track(seedFixture());
     const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
@@ -748,6 +790,26 @@ describe("POST /api/zero/chat/messages", () => {
     );
     expect(unknownVideoStyle.body.error.message).toBe(
       "Unknown video style preset",
+    );
+
+    const unknownIllustrationStyle = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make an illustration",
+          generationTemplate: {
+            type: "illustration",
+            selection: {
+              illustrationStyleId: "image-style:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownIllustrationStyle.body.error.message).toBe(
+      "Unknown generation image style",
     );
   });
 

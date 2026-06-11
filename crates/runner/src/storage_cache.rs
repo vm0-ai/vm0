@@ -23,8 +23,10 @@
 //! `guest-download` understands after #10805. The PR adding this module
 //! must not merge before #10805 is on `main`.
 
+use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
@@ -104,6 +106,38 @@ enum DownloadBody {
     OverSize { observed_size: u64 },
 }
 
+enum CachedArchive {
+    Hit(Bytes),
+    Missing,
+    OverSize { observed_size: u64 },
+}
+
+#[derive(Default)]
+struct GuestWriteLocks {
+    inner: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+}
+
+impl GuestWriteLocks {
+    async fn write_file(
+        &self,
+        sandbox: &dyn Sandbox,
+        guest_path: &str,
+        bytes: &[u8],
+    ) -> RunnerResult<()> {
+        let lock = {
+            let mut locks = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            Arc::clone(
+                locks
+                    .entry(guest_path.to_string())
+                    .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+            )
+        };
+        let _guard = lock.lock().await;
+        sandbox.write_file(guest_path, bytes).await?;
+        Ok(())
+    }
+}
+
 /// Populate the runner-side cache for eligible entries in `manifest`.
 ///
 /// Mutates `manifest.storages[i].archive_url` / `manifest.artifacts[i].archive_url`
@@ -128,6 +162,7 @@ pub async fn populate_cache(
     let http = Client::builder()
         .build()
         .map_err(|e| RunnerError::Internal(format!("build http client: {e}")))?;
+    let guest_writes = GuestWriteLocks::default();
 
     // `buffer_unordered` drives up to CONCURRENCY futures concurrently while
     // keeping their borrows alive on the caller's stack. Unlike
@@ -136,8 +171,9 @@ pub async fn populate_cache(
     let outcomes: Vec<(CacheTarget, RunnerResult<TargetOutcome>)> = stream::iter(targets)
         .map(|target| {
             let http = http.clone();
+            let guest_writes = &guest_writes;
             async move {
-                let res = process_one(&target, &http, home, sandbox).await;
+                let res = process_one(&target, &http, home, sandbox, guest_writes).await;
                 (target, res)
             }
         })
@@ -213,48 +249,49 @@ async fn process_one(
     http: &Client,
     home: &HomePaths,
     sandbox: &dyn Sandbox,
+    guest_writes: &GuestWriteLocks,
 ) -> RunnerResult<TargetOutcome> {
-    // Acquire the per-version flock (blocking, cross-process dedup).
-    // Disk-check happens under the lock so we never race with a writer.
     let lock_path = home.storage_lock(&target.name, &target.version);
-    let _guard = lock::acquire(lock_path).await?;
-
     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
     let archive_path = cache_dir.join("archive.tar.gz");
 
-    // 1. Fast path: disk hit. Read the bytes directly and skip the network.
-    //    This also makes the hit path resilient to transient probe failures.
-    match fs::metadata(&archive_path).await {
-        Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
-            match read_cached_archive(&archive_path, CACHE_MAX_SIZE).await? {
-                DownloadBody::Complete(bytes) => {
-                    touch_mtime(&cache_dir);
-                    let guest_path = guest_archive_path(&target.name, &target.version);
-                    sandbox.write_file(&guest_path, &bytes).await?;
-                    return Ok(TargetOutcome::Hit);
-                }
-                DownloadBody::OverSize { observed_size } => {
-                    evict_oversized_cache(target, &cache_dir, observed_size).await?;
-                }
-            }
-        }
-        Ok(metadata) => {
-            evict_oversized_cache(target, &cache_dir, metadata.len()).await?;
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "stat cached {}: {e}",
-                archive_path.display()
-            )));
+    // Fast path: a cache hit only needs reader ownership. Once bytes are in
+    // memory, the guest copy no longer depends on the on-disk cache entry.
+    {
+        let reader = lock::acquire_shared(lock_path.clone()).await?;
+        if let CachedArchive::Hit(bytes) = read_cache_entry(&cache_dir, &archive_path).await? {
+            let guest_path = guest_archive_path(&target.name, &target.version);
+            drop(reader);
+            guest_writes
+                .write_file(sandbox, &guest_path, &bytes)
+                .await?;
+            return Ok(TargetOutcome::Hit);
         }
     }
 
-    // 2. Miss path: probe size via `GET` + `Range: bytes=0-0`. A probe
-    //    failure is treated as passthrough — the entry keeps its original
-    //    R2 URL and the guest downloads it as today. The failure reason is
-    //    threaded into the outcome so telemetry can distinguish transient
-    //    5xx from missing / malformed size headers.
+    // Mutation path: re-check under exclusive ownership because another runner
+    // may have populated or repaired the cache while this task waited.
+    let writer = lock::acquire(lock_path).await?;
+    match read_cache_entry(&cache_dir, &archive_path).await? {
+        CachedArchive::Hit(bytes) => {
+            let guest_path = guest_archive_path(&target.name, &target.version);
+            drop(writer);
+            guest_writes
+                .write_file(sandbox, &guest_path, &bytes)
+                .await?;
+            return Ok(TargetOutcome::Hit);
+        }
+        CachedArchive::Missing => {}
+        CachedArchive::OverSize { observed_size } => {
+            evict_oversized_cache(target, &cache_dir, observed_size).await?;
+        }
+    }
+
+    // Miss path: probe size via `GET` + `Range: bytes=0-0`. A probe failure is
+    // treated as passthrough — the entry keeps its original R2 URL and the
+    // guest downloads it as today. The exclusive lock stays held through cache
+    // population so same-key runners do not duplicate downloads or race on the
+    // staging directory.
     let size = match probe_size(http, &target.archive_url).await {
         Ok(Some(n)) => n,
         Ok(None) => {
@@ -288,10 +325,8 @@ async fn process_one(
         return Ok(TargetOutcome::SkippedOverSize);
     }
 
-    // 3. Download, stage, fsync, atomic rename, then push to guest.
-    //    `Bytes` is Arc-backed, so passing `&bytes[..]` to both the disk
-    //    writer and the sandbox `write_file` costs zero extra allocation
-    //    over the single response body.
+    // Download, stage, fsync, atomic rename, then release cache ownership before
+    // pushing the bytes to the guest.
     let t = Instant::now();
     let bytes = match download_tarball(http, &target.archive_url, CACHE_MAX_SIZE).await? {
         DownloadBody::Complete(bytes) => bytes,
@@ -312,11 +347,38 @@ async fn process_one(
     };
     write_to_cache(&cache_dir, &bytes).await?;
     let guest_path = guest_archive_path(&target.name, &target.version);
-    sandbox.write_file(&guest_path, &bytes).await?;
+    drop(writer);
+    guest_writes
+        .write_file(sandbox, &guest_path, &bytes)
+        .await?;
 
     Ok(TargetOutcome::Miss {
         download_duration: t.elapsed(),
     })
+}
+
+async fn read_cache_entry(cache_dir: &Path, archive_path: &Path) -> RunnerResult<CachedArchive> {
+    match fs::metadata(archive_path).await {
+        Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
+            match read_cached_archive(archive_path, CACHE_MAX_SIZE).await? {
+                DownloadBody::Complete(bytes) => {
+                    touch_mtime(cache_dir);
+                    Ok(CachedArchive::Hit(bytes))
+                }
+                DownloadBody::OverSize { observed_size } => {
+                    Ok(CachedArchive::OverSize { observed_size })
+                }
+            }
+        }
+        Ok(metadata) => Ok(CachedArchive::OverSize {
+            observed_size: metadata.len(),
+        }),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(CachedArchive::Missing),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "stat cached {}: {e}",
+            archive_path.display()
+        ))),
+    }
 }
 
 async fn probe_size(http: &Client, url: &str) -> RunnerResult<Option<u64>> {
@@ -682,10 +744,13 @@ fn rewrite_entry_url(
 mod tests {
     use super::*;
 
+    use async_trait::async_trait;
     use httpmock::Method::{GET, HEAD};
     use httpmock::prelude::*;
     use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
-    use sandbox_mock::MockSandbox;
+    use sandbox_mock::{MockLifecycleGate, MockSandbox};
+    use std::collections::HashSet;
+    use std::sync::{Arc, Mutex};
     use tokio::io::AsyncWriteExt as _;
     use tokio::net::TcpListener;
 
@@ -726,6 +791,129 @@ mod tests {
     fn tarball_bytes() -> Vec<u8> {
         // A small payload is enough — the cache treats it as opaque bytes.
         b"pretend-tar-gz-bytes".to_vec()
+    }
+
+    fn write_cached_archive(home: &HomePaths, name: &str, version: &str, bytes: &[u8]) {
+        let cache_dir = home.storage_cache_dir(name, version);
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(cache_dir.join("archive.tar.gz"), bytes).unwrap();
+    }
+
+    struct SamePathConcurrentWriteDetectingSandbox {
+        inner: MockSandbox,
+        gate: MockLifecycleGate,
+        active_paths: Mutex<HashSet<String>>,
+    }
+
+    impl SamePathConcurrentWriteDetectingSandbox {
+        fn new(id: impl Into<String>) -> Self {
+            let inner = MockSandbox::new(id);
+            let gate = MockLifecycleGate::new();
+            inner.set_write_file_lifecycle_gate(gate.clone());
+            Self {
+                inner,
+                gate,
+                active_paths: Mutex::new(HashSet::new()),
+            }
+        }
+
+        fn gate(&self) -> MockLifecycleGate {
+            self.gate.clone()
+        }
+
+        fn write_file_calls(&self) -> Vec<sandbox_mock::WriteFileCall> {
+            self.inner.write_file_calls()
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for SamePathConcurrentWriteDetectingSandbox {
+        fn id(&self) -> &str {
+            self.inner.id()
+        }
+
+        fn source_ip(&self) -> &str {
+            self.inner.source_ip()
+        }
+
+        fn process_pid(&self) -> Option<u32> {
+            self.inner.process_pid()
+        }
+
+        async fn start(&mut self) -> sandbox::Result<()> {
+            self.inner.start().await
+        }
+
+        async fn stop(&mut self) -> sandbox::Result<()> {
+            self.inner.stop().await
+        }
+
+        async fn kill(&mut self) -> sandbox::Result<()> {
+            self.inner.kill().await
+        }
+
+        async fn park(&mut self) -> sandbox::Result<()> {
+            self.inner.park().await
+        }
+
+        async fn unpark(&mut self) -> sandbox::Result<()> {
+            self.inner.unpark().await
+        }
+
+        async fn exec(
+            &self,
+            request: &sandbox::ExecRequest<'_>,
+        ) -> sandbox::Result<sandbox::ExecResult> {
+            self.inner.exec(request).await
+        }
+
+        async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+            self.inner.read_file(path, max_bytes).await
+        }
+
+        async fn copy_file(
+            &self,
+            path: &str,
+            host_path: &Path,
+            options: sandbox::CopyFileOptions,
+        ) -> sandbox::Result<sandbox::CopyFileResult> {
+            self.inner.copy_file(path, host_path, options).await
+        }
+
+        async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+            {
+                let mut active_paths = self.active_paths.lock().unwrap_or_else(|e| e.into_inner());
+                if !active_paths.insert(path.to_string()) {
+                    return Err(SandboxError::Operation {
+                        operation: SandboxOperation::WriteFile,
+                        reason: SandboxOperationReason::Other,
+                        message: format!("concurrent write_file to {path}"),
+                    });
+                }
+            }
+
+            let result = self.inner.write_file(path, content).await;
+            self.active_paths
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(path);
+            result
+        }
+
+        async fn start_process(
+            &self,
+            request: &sandbox::StartProcessRequest<'_>,
+        ) -> sandbox::Result<sandbox::GuestProcessHandle> {
+            self.inner.start_process(request).await
+        }
+
+        async fn wait_process(
+            &self,
+            handle: sandbox::GuestProcessHandle,
+            timeout: Duration,
+        ) -> sandbox::Result<sandbox::ProcessExit> {
+            self.inner.wait_process(handle, timeout).await
+        }
     }
 
     fn sandbox_write_file_error(message: impl Into<String>) -> SandboxError {
@@ -1411,6 +1599,154 @@ mod tests {
             }
             DownloadBody::OverSize { observed_size } => assert_eq!(observed_size, 7),
         }
+    }
+
+    #[tokio::test]
+    async fn warmed_cache_hits_do_not_serialize_guest_writes_across_sandboxes() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let name = "warm-shared";
+        let version = "v1";
+        write_cached_archive(&home, name, version, &tarball_bytes());
+
+        let sandbox_a = Arc::new(MockSandbox::new("test-a"));
+        let sandbox_b = Arc::new(MockSandbox::new("test-b"));
+        let gate_a = MockLifecycleGate::new();
+        let gate_b = MockLifecycleGate::new();
+        sandbox_a.set_write_file_lifecycle_gate(gate_a.clone());
+        sandbox_b.set_write_file_lifecycle_gate(gate_b.clone());
+
+        let task_a = {
+            let home = home.clone();
+            let sandbox = Arc::clone(&sandbox_a);
+            tokio::spawn(async move {
+                let mut manifest = manifest_single_storage(
+                    "https://r2.example.com/ignored-a.tar.gz".to_string(),
+                    name,
+                    version,
+                );
+                let mut telemetry = new_telemetry();
+                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
+                    .await
+                    .unwrap();
+                manifest
+            })
+        };
+        gate_a
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert!(
+            !task_a.is_finished(),
+            "first guest write should wait on its sandbox gate"
+        );
+
+        let task_b = {
+            let home = home.clone();
+            let sandbox = Arc::clone(&sandbox_b);
+            tokio::spawn(async move {
+                let mut manifest = manifest_single_storage(
+                    "https://r2.example.com/ignored-b.tar.gz".to_string(),
+                    name,
+                    version,
+                );
+                let mut telemetry = new_telemetry();
+                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
+                    .await
+                    .unwrap();
+                manifest
+            })
+        };
+        gate_b
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        gate_b.release_one();
+        let manifest_b = task_b.await.unwrap();
+        gate_a.release_one();
+        let manifest_a = task_a.await.unwrap();
+
+        let expected = format!("file://{}", guest_archive_path(name, version));
+        assert_eq!(
+            manifest_a.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            manifest_b.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_same_key_targets_serialize_same_guest_path_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let name = "duplicate-key";
+        let version = "v1";
+        write_cached_archive(&home, name, version, &tarball_bytes());
+
+        let sandbox = Arc::new(SamePathConcurrentWriteDetectingSandbox::new("test"));
+        let gate = sandbox.gate();
+
+        let task = {
+            let home = home.clone();
+            let sandbox = Arc::clone(&sandbox);
+            tokio::spawn(async move {
+                let mut manifest = GuestDownloadManifest {
+                    storages: vec![
+                        GuestDownloadStorageEntry {
+                            mount_path: "/mnt/duplicate-a".into(),
+                            archive_url: Some("https://r2.example.com/duplicate-a.tar.gz".into()),
+                            cached: false,
+                            instructions_target_filename: None,
+                            vas_storage_name: name.to_string(),
+                            vas_version_id: version.to_string(),
+                        },
+                        GuestDownloadStorageEntry {
+                            mount_path: "/mnt/duplicate-b".into(),
+                            archive_url: Some("https://r2.example.com/duplicate-b.tar.gz".into()),
+                            cached: false,
+                            instructions_target_filename: None,
+                            vas_storage_name: name.to_string(),
+                            vas_version_id: version.to_string(),
+                        },
+                    ],
+                    artifacts: Vec::new(),
+                    cleanup_paths: Vec::new(),
+                };
+                let mut telemetry = new_telemetry();
+                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry).await?;
+                Ok::<GuestDownloadManifest, RunnerError>(manifest)
+            })
+        };
+
+        gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
+        assert_eq!(
+            sandbox.write_file_calls().len(),
+            1,
+            "first duplicate guest path write should be blocked in the sandbox"
+        );
+
+        gate.release_one();
+        gate.wait_entered(2, Duration::from_secs(5)).await.unwrap();
+        gate.release_one();
+        let manifest = task.await.unwrap().unwrap();
+        assert_eq!(
+            sandbox.write_file_calls().len(),
+            2,
+            "second duplicate guest path write should start after the first is released"
+        );
+
+        let expected = format!("file://{}", guest_archive_path(name, version));
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            manifest.storages[1].archive_url.as_deref(),
+            Some(expected.as_str())
+        );
     }
 
     #[tokio::test]

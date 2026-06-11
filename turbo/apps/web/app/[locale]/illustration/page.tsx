@@ -2,11 +2,10 @@ import type { Metadata } from "next";
 import { Fraunces } from "next/font/google";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
+import { ILLUSTRATION_ASSET_BASE, ILLUSTRATION_STYLES } from "@vm0/core";
 import { IllustrationGalleryClient } from "./IllustrationGalleryClient";
-import { ILLUSTRATION_STYLES } from "./data";
 
 const BASE_URL = "https://www.vm0.ai";
-const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -73,7 +72,7 @@ export default async function IllustrationPage({ params }: PageProps) {
         "@type": "ListItem",
         position: i + 1,
         name: style.title,
-        image: `${ASSET_BASE}/images/${style.image}`,
+        image: `${ILLUSTRATION_ASSET_BASE}/images/${style.image}`,
       };
     }),
   };

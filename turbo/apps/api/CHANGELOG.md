@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.129.0](https://github.com/vm0-ai/vm0/compare/api-v1.128.1...api-v1.129.0) (2026-06-11)
+
+
+### Features
+
+* add runner claim pickup telemetry ([#17268](https://github.com/vm0-ai/vm0/issues/17268)) ([270d94e](https://github.com/vm0-ai/vm0/commit/270d94ed8ca7820d4c097c38484871e8373b104b))
+* **db:** drop zero_agent_schedules and retire the legacy schedule paths ([#17258](https://github.com/vm0-ai/vm0/issues/17258)) ([8f89943](https://github.com/vm0-ai/vm0/commit/8f89943a31309f02c35a1c58e1d1cabfc5cfa8ba))
+
+
+### Bug Fixes
+
+* show usage range filter in credit balance ([#17260](https://github.com/vm0-ai/vm0/issues/17260)) ([bdb1d0c](https://github.com/vm0-ai/vm0/commit/bdb1d0c4c0f8c59481fd993908b4ae933b44c324))
+* store run context maps as Axiom entries ([#17232](https://github.com/vm0-ai/vm0/issues/17232)) ([c8ebf36](https://github.com/vm0-ai/vm0/commit/c8ebf363f3c6b60dd7d13094ab9e60327147d05d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.83.0
+    * @vm0/core bumped to 8.328.1
+    * @vm0/db bumped to 1.44.0
+
 ## [1.128.1](https://github.com/vm0-ai/vm0/compare/api-v1.128.0...api-v1.128.1) (2026-06-11)
 
 

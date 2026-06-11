@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.112.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.112.0...runner-rs-v0.112.1) (2026-06-11)
+
+
+### Performance Improvements
+
+* avoid serializing storage cache hit writes ([#17271](https://github.com/vm0-ai/vm0/issues/17271)) ([0f1864d](https://github.com/vm0-ai/vm0/commit/0f1864d71e3eb41d549b3c083bca0509605983d0))
+
+## [0.112.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.3...runner-rs-v0.112.0) (2026-06-11)
+
+
+### Features
+
+* add runner claim pickup telemetry ([#17268](https://github.com/vm0-ai/vm0/issues/17268)) ([270d94e](https://github.com/vm0-ai/vm0/commit/270d94ed8ca7820d4c097c38484871e8373b104b))
+
+## [0.111.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.2...runner-rs-v0.111.3) (2026-06-11)
+
+
+### Bug Fixes
+
+* **mitm-addon:** block runner usage flush ownership ([#17230](https://github.com/vm0-ai/vm0/issues/17230)) ([53e5555](https://github.com/vm0-ai/vm0/commit/53e55556d580a7afdc20a665b202746b0d97cd55))
+
+
+### Refactoring
+
+* **runner:** name storage fingerprint entries ([#17231](https://github.com/vm0-ai/vm0/issues/17231)) ([d2ead29](https://github.com/vm0-ai/vm0/commit/d2ead29d04278670853472900735a8a254143cfb))
+
 ## [0.111.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.1...runner-rs-v0.111.2) (2026-06-11)
 
 

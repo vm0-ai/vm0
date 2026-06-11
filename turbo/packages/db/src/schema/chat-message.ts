@@ -30,9 +30,17 @@ export interface ChatMessageVideoGenerationTemplate {
   };
 }
 
+export interface ChatMessageIllustrationGenerationTemplate {
+  readonly type: "illustration";
+  readonly selection: {
+    readonly illustrationStyleId: string;
+  };
+}
+
 export type ChatMessageGenerationTemplate =
   | ChatMessagePresentationGenerationTemplate
-  | ChatMessageVideoGenerationTemplate;
+  | ChatMessageVideoGenerationTemplate
+  | ChatMessageIllustrationGenerationTemplate;
 
 export type ChatMessageRecommendedFollowupKind = "talk" | "generate";
 export type ChatMessageRecommendedFollowupGenerationType =

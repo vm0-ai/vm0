@@ -22,6 +22,10 @@ class TestMatchHost:
         result = matching.match_host("a.b.c.example.com", "{sub+}.example.com")
         assert result == {"sub": "a.b.c"}
 
+    def test_greedy_plus_preserves_runtime_host_case(self):
+        result = matching.match_host("Foo.Bar.example.com", "{sub+}.example.com")
+        assert result == {"sub": "Foo.Bar"}
+
     def test_greedy_plus_matches_single(self):
         result = matching.match_host("x.example.com", "{sub+}.example.com")
         assert result == {"sub": "x"}
@@ -33,6 +37,10 @@ class TestMatchHost:
     def test_greedy_star_matches_multi(self):
         result = matching.match_host("a.b.example.com", "{sub*}.example.com")
         assert result == {"sub": "a.b"}
+
+    def test_greedy_star_preserves_runtime_host_case(self):
+        result = matching.match_host("Foo.Bar.example.com", "{sub*}.example.com")
+        assert result == {"sub": "Foo.Bar"}
 
     def test_greedy_star_matches_zero(self):
         result = matching.match_host("example.com", "{sub*}.example.com")
