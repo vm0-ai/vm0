@@ -589,9 +589,23 @@ impl MitmProxy {
             self.child = None;
             return Ok(());
         }
-        child.kill().await.map_err(|e| {
-            RunnerError::Internal(format!("kill mitmdump process after startup failure: {e}"))
-        })?;
+        if let Err(kill_error) = child.start_kill() {
+            if child
+                .try_wait()
+                .map_err(|e| RunnerError::Internal(format!("recheck mitmdump process: {e}")))?
+                .is_some()
+            {
+                self.child = None;
+                return Ok(());
+            }
+            return Err(RunnerError::Internal(format!(
+                "kill mitmdump process after startup failure: {kill_error}"
+            )));
+        }
+        child
+            .wait()
+            .await
+            .map_err(|e| RunnerError::Internal(format!("wait for killed mitmdump process: {e}")))?;
         self.child = None;
         Ok(())
     }
