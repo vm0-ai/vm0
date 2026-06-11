@@ -1640,6 +1640,24 @@ describe("POST /api/agent/runs", () => {
       AWS_REGION: "us-west-2",
       AWS_DEFAULT_REGION: "us-west-2",
     });
+    const snapshot = runContextSnapshot(response.body.runId);
+    if (!snapshot) {
+      throw new Error("expected run context snapshot");
+    }
+    expect(snapshot).not.toHaveProperty("networkPolicies");
+    expect(snapshot.networkPolicyEntries).toStrictEqual(
+      expect.arrayContaining([
+        {
+          name: "aws",
+          policy: {
+            allow: [],
+            deny: [],
+            ask: [],
+            unknownPolicy: "allow",
+          },
+        },
+      ]),
+    );
   });
 
   it("injects an org model provider when the compose omits a framework API key", async () => {
