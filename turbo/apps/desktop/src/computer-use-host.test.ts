@@ -173,7 +173,7 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
-  it("clears a command polling error when the next idle claim succeeds", async () => {
+  it("clears command polling recovery when the next idle claim succeeds", async () => {
     vi.useFakeTimers();
     const heartbeat = deferred<Response>();
     let nextCalls = 0;
@@ -198,8 +198,13 @@ describe("ComputerUseHostRuntime", () => {
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(runtime.getState()).toMatchObject({
-      status: "error",
+      status: "recovering",
       lastError: "Computer Use command claim failed: 500",
+      recovery: {
+        phase: "command_poll",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
     });
 
     await vi.advanceTimersByTimeAsync(2_000);
