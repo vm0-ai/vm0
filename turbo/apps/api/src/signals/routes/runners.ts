@@ -40,6 +40,49 @@ const L = logger("Runners");
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
+const MAX_VALIDATION_ISSUES_TO_LOG = 10;
+
+interface ValidationIssueLike {
+  readonly path: readonly PropertyKey[];
+  readonly code: string;
+  readonly message: string;
+}
+
+function validationIssuePath(path: readonly PropertyKey[]): string {
+  if (path.length === 0) {
+    return "<root>";
+  }
+  return path
+    .map((segment) => {
+      return String(segment);
+    })
+    .join(".");
+}
+
+function warnInvalidStoredExecutionContext(
+  runId: string,
+  issues: readonly ValidationIssueLike[],
+): void {
+  const validationIssueCount = issues.length;
+  const validationIssues = issues
+    .slice(0, MAX_VALIDATION_ISSUES_TO_LOG)
+    .map((issue) => {
+      return {
+        path: validationIssuePath(issue.path),
+        code: issue.code,
+        message: issue.message,
+      };
+    });
+  L.warn(INVALID_EXECUTION_CONTEXT_ERROR, {
+    runId,
+    validationIssueCount,
+    validationIssues,
+    validationIssuesOmitted: Math.max(
+      0,
+      validationIssueCount - MAX_VALIDATION_ISSUES_TO_LOG,
+    ),
+  });
+}
 
 const unauthorizedNotAuthenticated = Object.freeze({
   status: 401 as const,
@@ -715,7 +758,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     jobWithRun.job.executionContext,
   );
   if (!storedContextResult.success) {
-    L.warn(INVALID_EXECUTION_CONTEXT_ERROR, { runId });
+    warnInvalidStoredExecutionContext(runId, storedContextResult.error.issues);
     const poisonResult = await failPoisonQueuedJob(
       db,
       runId,
