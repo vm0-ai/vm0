@@ -24,6 +24,8 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
+// Carries only the LEGACY read capability: proves the schedule:* alias still
+// authenticates (normalized to automation:read) while delete stays forbidden.
 function zeroTokenWithoutScheduleDelete(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -205,7 +207,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Missing required capability: schedule:delete",
+        message: "Missing required capability: automation:delete",
         code: "FORBIDDEN",
       },
     });

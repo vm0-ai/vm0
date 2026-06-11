@@ -198,7 +198,7 @@ export const zeroSchedulesRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       deployInner$,
     ),
@@ -209,7 +209,7 @@ export const zeroSchedulesRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:read",
+        requiredCapability: "automation:read",
       },
       listSchedulesInner$,
     ),
@@ -220,7 +220,7 @@ export const zeroSchedulesRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:delete",
+        requiredCapability: "automation:delete",
       },
       deleteInner$,
     ),
@@ -231,7 +231,7 @@ export const zeroSchedulesRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       disableInner$,
     ),
@@ -242,7 +242,7 @@ export const zeroSchedulesRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       enableInner$,
     ),

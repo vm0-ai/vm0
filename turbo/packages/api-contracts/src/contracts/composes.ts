@@ -42,9 +42,9 @@ export const ZERO_CAPABILITIES = [
   "agent:delete",
   "agent-run:read",
   "agent-run:write",
-  "schedule:read",
-  "schedule:write",
-  "schedule:delete",
+  "automation:read",
+  "automation:write",
+  "automation:delete",
   "github:read",
   "github:write",
   "slack:write",
@@ -86,12 +86,15 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "agent:delete": { group: "Agent", label: "Delete agents" },
     "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
     "agent-run:write": { group: "Agent Runs", label: "Create & cancel runs" },
-    "schedule:read": { group: "Schedules", label: "View schedules" },
-    "schedule:write": {
-      group: "Schedules",
-      label: "Create & manage schedules",
+    "automation:read": { group: "Automations", label: "View automations" },
+    "automation:write": {
+      group: "Automations",
+      label: "Create & manage automations",
     },
-    "schedule:delete": { group: "Schedules", label: "Delete schedules" },
+    "automation:delete": {
+      group: "Automations",
+      label: "Delete automations",
+    },
     "github:read": {
       group: "Integrations",
       label: "Download GitHub files",

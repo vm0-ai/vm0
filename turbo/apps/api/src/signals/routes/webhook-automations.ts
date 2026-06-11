@@ -114,7 +114,7 @@ export const webhookAutomationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       createInner$,
     ),
@@ -125,7 +125,7 @@ export const webhookAutomationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:read",
+        requiredCapability: "automation:read",
       },
       listInner$,
     ),
@@ -136,7 +136,7 @@ export const webhookAutomationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:delete",
+        requiredCapability: "automation:delete",
       },
       deleteInner$,
     ),

@@ -323,7 +323,7 @@ export const automationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       createInner$,
     ),
@@ -334,7 +334,7 @@ export const automationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:read",
+        requiredCapability: "automation:read",
       },
       listInner$,
     ),
@@ -345,7 +345,7 @@ export const automationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       updateInner$,
     ),
@@ -356,7 +356,7 @@ export const automationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:delete",
+        requiredCapability: "automation:delete",
       },
       deleteInner$,
     ),
@@ -367,7 +367,7 @@ export const automationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       disableInner$,
     ),
@@ -378,7 +378,7 @@ export const automationsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       enableInner$,
     ),
