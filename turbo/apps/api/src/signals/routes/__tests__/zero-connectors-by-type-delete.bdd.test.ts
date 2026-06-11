@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
+import { clearMockedEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
@@ -23,6 +23,28 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy
+// `zero-connectors-by-type-delete.test.ts`. The 10 legacy
+// `it()`s collapse into 3 BDD `it()`s:
+// (1) auth + not-found chain (401 unauth → 401 no org →
+// 404 no connector state),
+// (2) OAuth + GitHub revoke chain (204 deletes connector
+// row + 204 revokes GitHub access token before deleting
+// + 204 keeps local deletion authoritative when GitHub
+// revoke fails),
+// (3) secret + variable cascade chain (204 deletes Slock
+// connector + token secrets + 204 deletes only the
+// matching connector's variables + 204 deletes Atlassian
+// API-token secrets + variables + 404 preserves legacy
+// user-owned credentials without a connector row + 204
+// deletes optional Gitlab API-token secrets + variables).
+//
+// Service-Level Exception: connector rows + secrets +
+// variables are seeded directly via `writeDb$` because no
+// public route creates a connector (connectors are
+// provisioned by the OAuth callback flow, not the public
+// API).
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -35,10 +57,15 @@ async function cleanupOrgData(fixture: OrgMembershipFixture): Promise<void> {
   await store.set(deleteOrgMembership$, fixture, context.signal);
 }
 
-function seedFixture(): Promise<OrgMembershipFixture> {
+async function trackFixture(): Promise<OrgMembershipFixture> {
   const orgId = `org_${randomUUID()}`;
   const userId = `user_${randomUUID()}`;
-  return store.set(seedOrgMembership$, { orgId, userId }, context.signal);
+  const fixture = await store.set(
+    seedOrgMembership$,
+    { orgId, userId },
+    context.signal,
+  );
+  return track(Promise.resolve(fixture));
 }
 
 async function seedOAuthConnector(
@@ -218,90 +245,106 @@ async function remainingSecretAndVariableState(
         ),
       ),
   ]);
-
   return { secrets: secretRows.length, variables: variableRows.length };
 }
 
-describe("DELETE /api/zero/connectors/:type", () => {
-  const track = createFixtureTracker<OrgMembershipFixture>(cleanupOrgData);
+const track = createFixtureTracker<OrgMembershipFixture>(cleanupOrgData);
 
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({ params: { type: "github" }, headers: {} }),
-      [401],
-    );
+function client() {
+  return setupApp({ context })(zeroConnectorsByTypeContract);
+}
 
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
+describe("BDD DELETE /api/zero/connectors/:type — auth + not-found chain", () => {
+  afterEach(() => {
+    clearMockedEnv();
   });
 
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+  it("gwt-wt-wt: 401 unauth → 401 no org → 404 no connector state", async () => {
+    // Given: no auth header.
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+    // When + Then: 401.
+    const noAuth = await accept(
+      client().delete({ params: { type: "github" }, headers: {} }),
+      [401],
+    );
+    expect(noAuth.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+
+    // Given: a Clerk session with no org.
+
+    // When + Then: 401.
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+    const noOrg = await accept(
+      client().delete({
         params: { type: "github" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [401],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(noOrg.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("returns 404 when no connector state exists for that type", async () => {
-    const fixture = await track(seedFixture());
+    // Given: a fixture with no connector state.
+
+    // When + Then: 404 — Connector not found.
+    const fixture = await trackFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+    const notFoundResponse = await accept(
+      client().delete({
         params: { type: "github" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(notFoundResponse.body).toStrictEqual({
       error: { message: "Connector not found", code: "NOT_FOUND" },
     });
   });
+});
 
-  it("deletes a connector row", async () => {
-    const fixture = await track(seedFixture());
-    await seedOAuthConnector(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+describe("BDD DELETE /api/zero/connectors/:type — OAuth + GitHub revoke chain", () => {
+  afterEach(() => {
+    clearMockedEnv();
+  });
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+  it("gwt-wt-wt: 204 deletes connector row → 204 revokes GitHub access token before deleting → 204 keeps local deletion authoritative when GitHub revoke fails", async () => {
+    // Given: a fixture with a GitHub OAuth connector.
+
+    // When + Then: 204 — the connector row is removed.
+    const simpleFixture = await trackFixture();
+    await seedOAuthConnector(simpleFixture);
+    mocks.clerk.session(simpleFixture.userId, simpleFixture.orgId);
+    const simpleResponse = await accept(
+      client().delete({
         params: { type: "github" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [204],
     );
+    expect(simpleResponse.body).toBeUndefined();
+    await expect(remainingConnectorCount(simpleFixture)).resolves.toBe(0);
 
-    expect(response.body).toBeUndefined();
-    await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
-  });
+    // Given: a fixture with a GitHub OAuth connector +
+    // a GITHUB_ACCESS_TOKEN secret +
+    // GH_OAUTH_CLIENT_ID/SECRET env set + a GitHub
+    // revoke endpoint that captures the request body.
 
-  it("revokes the configured connector token input before deleting local state", async () => {
-    const fixture = await track(seedFixture());
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
+    // When + Then: 204 — the revoke endpoint receives
+    // { access_token: <decrypted> } + the connector +
+    // secret are removed.
+    const revokeFixture = await trackFixture();
+    const revokeWriteDb = store.set(writeDb$);
+    await revokeWriteDb.insert(connectors).values({
+      orgId: revokeFixture.orgId,
+      userId: revokeFixture.userId,
       type: "github",
       authMethod: "oauth",
     });
-    await writeDb.insert(secrets).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
+    await revokeWriteDb.insert(secrets).values({
+      orgId: revokeFixture.orgId,
+      userId: revokeFixture.userId,
       name: "GITHUB_ACCESS_TOKEN",
       encryptedValue: encryptSecretForTests("gh-revoke-input-token"),
       type: "connector",
@@ -318,42 +361,44 @@ describe("DELETE /api/zero/connectors/:type", () => {
         },
       ),
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+    mocks.clerk.session(revokeFixture.userId, revokeFixture.orgId);
+    const revokeResponse = await accept(
+      client().delete({
         params: { type: "github" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [204],
     );
-
-    expect(response.body).toBeUndefined();
+    expect(revokeResponse.body).toBeUndefined();
     expect(revokeBody).toBe(
       JSON.stringify({ access_token: "gh-revoke-input-token" }),
     );
-    await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
+    await expect(remainingConnectorCount(revokeFixture)).resolves.toBe(0);
     await expect(
-      remainingSecretAndVariableState(fixture),
+      remainingSecretAndVariableState(revokeFixture),
     ).resolves.toStrictEqual({
       secrets: 0,
       variables: 0,
     });
-  });
 
-  it("keeps local deletion authoritative when remote token revoke fails", async () => {
-    const fixture = await track(seedFixture());
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
+    // Given: a fixture with a GitHub OAuth connector +
+    // a GITHUB_ACCESS_TOKEN secret +
+    // GH_OAUTH_CLIENT_ID/SECRET env set + a GitHub
+    // revoke endpoint that returns 500.
+
+    // When + Then: 204 — the local connector + secret
+    // are still removed despite the upstream failure.
+    const failingFixture = await trackFixture();
+    const failingWriteDb = store.set(writeDb$);
+    await failingWriteDb.insert(connectors).values({
+      orgId: failingFixture.orgId,
+      userId: failingFixture.userId,
       type: "github",
       authMethod: "oauth",
     });
-    await writeDb.insert(secrets).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
+    await failingWriteDb.insert(secrets).values({
+      orgId: failingFixture.orgId,
+      userId: failingFixture.userId,
       name: "GITHUB_ACCESS_TOKEN",
       encryptedValue: encryptSecretForTests("gh-access-token"),
       type: "connector",
@@ -373,95 +418,101 @@ describe("DELETE /api/zero/connectors/:type", () => {
         },
       ),
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+    mocks.clerk.session(failingFixture.userId, failingFixture.orgId);
+    const failingResponse = await accept(
+      client().delete({
         params: { type: "github" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [204],
     );
-
-    expect(response.body).toBeUndefined();
-    await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
+    expect(failingResponse.body).toBeUndefined();
+    await expect(remainingConnectorCount(failingFixture)).resolves.toBe(0);
     await expect(
-      remainingSecretAndVariableState(fixture),
+      remainingSecretAndVariableState(failingFixture),
     ).resolves.toStrictEqual({
       secrets: 0,
       variables: 0,
     });
   });
+});
 
-  it("deletes connector token secrets", async () => {
-    const fixture = await track(seedFixture());
-    await seedSlockOAuthConnectorState(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+describe("BDD DELETE /api/zero/connectors/:type — secret + variable cascade chain", () => {
+  afterEach(() => {
+    clearMockedEnv();
+  });
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+  it("gwt-wt-wt: 204 deletes Slock connector + token secrets → 204 deletes only matching connector's variables → 204 deletes Atlassian API-token secrets + variables → 404 preserves legacy user-owned credentials without a connector row → 204 deletes optional Gitlab API-token secrets + variables", async () => {
+    // Given: a fixture with a Slock OAuth connector +
+    // 3 Slock connector secrets.
+
+    // When + Then: 204 — connector + all 3 secrets are
+    // removed.
+    const slockFixture = await trackFixture();
+    await seedSlockOAuthConnectorState(slockFixture);
+    mocks.clerk.session(slockFixture.userId, slockFixture.orgId);
+    const slockResponse = await accept(
+      client().delete({
         params: { type: "slock" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [204],
     );
-
-    expect(response.body).toBeUndefined();
-    await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
+    expect(slockResponse.body).toBeUndefined();
+    await expect(remainingConnectorCount(slockFixture)).resolves.toBe(0);
     await expect(
-      remainingSecretAndVariableState(fixture),
+      remainingSecretAndVariableState(slockFixture),
     ).resolves.toStrictEqual({
       secrets: 0,
       variables: 0,
     });
-  });
 
-  it("deletes connector-owned variables for stored connector rows", async () => {
-    const fixture = await track(seedFixture());
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
+    // Given: a fixture with an Atlassian connector +
+    // 3 connector-owned variables (2 Atlassian, 1
+    // Gitlab).
+
+    // When + Then: 204 — only the 2 Atlassian variables
+    // are removed, the Gitlab variable remains.
+    const variablesFixture = await trackFixture();
+    const variablesWriteDb = store.set(writeDb$);
+    await variablesWriteDb.insert(connectors).values({
+      orgId: variablesFixture.orgId,
+      userId: variablesFixture.userId,
       type: "atlassian",
       authMethod: "api-token",
     });
-    await writeDb.insert(variables).values([
+    await variablesWriteDb.insert(variables).values([
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: variablesFixture.orgId,
+        userId: variablesFixture.userId,
         name: "ATLASSIAN_EMAIL",
         value: "test@example.com",
         type: "connector",
       },
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: variablesFixture.orgId,
+        userId: variablesFixture.userId,
         name: "ATLASSIAN_DOMAIN",
         value: "example",
         type: "connector",
       },
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: variablesFixture.orgId,
+        userId: variablesFixture.userId,
         name: "GITLAB_HOST",
         value: "gitlab.example.com",
         type: "connector",
       },
     ]);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    mocks.clerk.session(variablesFixture.userId, variablesFixture.orgId);
     await accept(
-      client.delete({
+      client().delete({
         params: { type: "atlassian" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [204],
     );
-
-    const remainingVariables = await writeDb
+    const remainingVariables = await variablesWriteDb
       .select({
         name: variables.name,
         value: variables.value,
@@ -470,8 +521,8 @@ describe("DELETE /api/zero/connectors/:type", () => {
       .from(variables)
       .where(
         and(
-          eq(variables.orgId, fixture.orgId),
-          eq(variables.userId, fixture.userId),
+          eq(variables.orgId, variablesFixture.orgId),
+          eq(variables.userId, variablesFixture.userId),
         ),
       );
     expect(remainingVariables).toStrictEqual([
@@ -481,73 +532,75 @@ describe("DELETE /api/zero/connectors/:type", () => {
         type: "connector",
       },
     ]);
-  });
 
-  it("deletes API-token connector secrets and variables", async () => {
-    const fixture = await track(seedFixture());
-    await seedAtlassianApiTokenState(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fixture with an Atlassian API-token
+    // connector + 1 secret + 2 variables.
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+    // When + Then: 204 — secret + variables are
+    // removed.
+    const atlassianFixture = await trackFixture();
+    await seedAtlassianApiTokenState(atlassianFixture);
+    mocks.clerk.session(atlassianFixture.userId, atlassianFixture.orgId);
+    const atlassianResponse = await accept(
+      client().delete({
         params: { type: "atlassian" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [204],
     );
-
-    expect(response.body).toBeUndefined();
+    expect(atlassianResponse.body).toBeUndefined();
     await expect(
-      remainingSecretAndVariableState(fixture),
+      remainingSecretAndVariableState(atlassianFixture),
     ).resolves.toStrictEqual({
       secrets: 0,
       variables: 0,
     });
-  });
 
-  it("returns 404 and preserves legacy user-owned credential state without a connector row", async () => {
-    const fixture = await track(seedFixture());
-    await seedLegacyAtlassianUserCredentialState(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fixture with a user-owned legacy
+    // Atlassian secret + 2 user-owned variables + no
+    // connector row.
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+    // When + Then: 404 — the connector row is missing
+    // + the legacy user-owned credentials remain
+    // untouched.
+    const legacyFixture = await trackFixture();
+    await seedLegacyAtlassianUserCredentialState(legacyFixture);
+    mocks.clerk.session(legacyFixture.userId, legacyFixture.orgId);
+    const legacyResponse = await accept(
+      client().delete({
         params: { type: "atlassian" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(legacyResponse.body).toStrictEqual({
       error: { message: "Connector not found", code: "NOT_FOUND" },
     });
     await expect(
-      remainingSecretAndVariableState(fixture),
+      remainingSecretAndVariableState(legacyFixture),
     ).resolves.toStrictEqual({
       secrets: 1,
       variables: 2,
     });
-  });
 
-  it("deletes optional API-token connector variables", async () => {
-    const fixture = await track(seedFixture());
-    await seedGitlabApiTokenState(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fixture with a Gitlab API-token
+    // connector + 1 secret + 1 optional variable.
 
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.delete({
+    // When + Then: 204 — secret + variable are
+    // removed.
+    const gitlabFixture = await trackFixture();
+    await seedGitlabApiTokenState(gitlabFixture);
+    mocks.clerk.session(gitlabFixture.userId, gitlabFixture.orgId);
+    const gitlabResponse = await accept(
+      client().delete({
         params: { type: "gitlab" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [204],
     );
-
-    expect(response.body).toBeUndefined();
+    expect(gitlabResponse.body).toBeUndefined();
     await expect(
-      remainingSecretAndVariableState(fixture),
+      remainingSecretAndVariableState(gitlabFixture),
     ).resolves.toStrictEqual({
       secrets: 0,
       variables: 0,
