@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { Footer } from "../../components/Footer";
 import {
   ILLUSTRATION_ASSET_BASE,
@@ -115,9 +116,9 @@ function HeroSection() {
           on the same palette, line, and cast — not one-off prompt roulette.
         </p>
         <div className="illu-hero-actions">
-          <a className="illu-btn illu-btn-primary" href={SIGNUP_HREF}>
+          <Link className="illu-btn illu-btn-primary" href={SIGNUP_HREF}>
             Try a style in Zero
-          </a>
+          </Link>
           <a className="illu-btn illu-btn-secondary" href="#gallery">
             Browse the gallery
           </a>
@@ -275,9 +276,9 @@ function FinalCtaSection() {
           Pick a style, hand Zero the idea, and get illustration that matches
           the rest of your brand.
         </p>
-        <a className="illu-btn illu-btn-primary" href={SIGNUP_HREF}>
+        <Link className="illu-btn illu-btn-primary" href={SIGNUP_HREF}>
           Start in Zero
-        </a>
+        </Link>
       </div>
     </section>
   );
