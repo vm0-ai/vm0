@@ -2,8 +2,6 @@
  * Builtin firewall configs registry.
  *
  * Generated configs are imported here and exposed as a lookup map.
- * The firewall loader checks this registry before falling back to
- * remote GitHub fetch.
  */
 
 import {

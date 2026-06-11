@@ -23,7 +23,6 @@
     "./contracts/firewall-rule-matcher": null,
     "./contracts/firewalls": null,
     "./feature-switch-key": null,
-    "./firewall-loader": null,
     "./firewalls": null,
     "./firewalls/*": null
   },

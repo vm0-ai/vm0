@@ -792,13 +792,9 @@ export {
   getSkillNameFromPath,
   parseGitHubUrl,
   resolveSkillRef,
-  resolveFirewallRef,
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
   DEFAULT_SKILLS_BRANCH,
-  DEFAULT_FIREWALLS_OWNER,
-  DEFAULT_FIREWALLS_REPO,
-  DEFAULT_FIREWALLS_BRANCH,
   type ParsedGitHubTreeUrl,
   type ParsedGitHubUrl,
 } from "./github-url";
@@ -825,11 +821,6 @@ export {
   type SkillFrontmatter,
 } from "./skill-frontmatter";
 export { stripMetadataFrontmatter } from "./instructions-frontmatter";
-export {
-  buildFirewallYamlUrl,
-  fetchFirewallConfig,
-  type FetchFn,
-} from "./firewall-loader";
 export {
   getPermissionCategories,
   groupPermissionsByCategory,

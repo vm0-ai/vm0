@@ -150,13 +150,6 @@ export const DEFAULT_SKILLS_REPO = "vm0-skills";
 /** Default branch for bare skill name resolution */
 export const DEFAULT_SKILLS_BRANCH = "main";
 
-export {
-  DEFAULT_FIREWALLS_OWNER,
-  DEFAULT_FIREWALLS_REPO,
-  DEFAULT_FIREWALLS_BRANCH,
-  resolveFirewallRef,
-} from "@vm0/connectors/github-url";
-
 /**
  * Resolve a skill reference to a full GitHub tree URL.
  *
