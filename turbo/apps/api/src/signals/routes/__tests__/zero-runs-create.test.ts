@@ -111,6 +111,63 @@ function getInlineFirewallEntry(
   }
   return entry;
 }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function runContextSnapshot(
+  runId: string,
+): Record<string, unknown> | undefined {
+  for (const [dataset, events] of context.mocks.axiom.ingest.mock.calls) {
+    if (dataset !== "run-context") {
+      continue;
+    }
+    const snapshots = events as readonly Record<string, unknown>[];
+    const snapshot = snapshots.find((event) => {
+      return event.runId === runId;
+    });
+    if (snapshot) {
+      return snapshot;
+    }
+  }
+  return undefined;
+}
+
+function runContextSnapshotFirewalls(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  const snapshot = runContextSnapshot(runId);
+  if (!snapshot) {
+    throw new Error(`Missing run-context snapshot for run: ${runId}`);
+  }
+  if (!Array.isArray(snapshot.firewalls)) {
+    throw new Error(`Missing run-context firewalls for run: ${runId}`);
+  }
+  return snapshot.firewalls.map((firewall) => {
+    if (!isRecord(firewall)) {
+      throw new Error(`Invalid run-context firewall for run: ${runId}`);
+    }
+    return firewall;
+  });
+}
+
+function hasObjectKey(value: unknown, key: string): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => {
+      return hasObjectKey(item, key);
+    });
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    Object.hasOwn(value, key) ||
+    Object.values(value).some((item) => {
+      return hasObjectKey(item, key);
+    })
+  );
+}
 const SLACK_READ_PERMISSION = "channels:read";
 const SLACK_WRITE_PERMISSION = "chat:write";
 
@@ -1935,6 +1992,12 @@ describe("POST /api/zero/runs", () => {
     expect(
       getBuiltinFirewallEntry(executionContext.firewalls, "cloudflare"),
     ).toMatchObject({ kind: "builtin", name: "cloudflare" });
+
+    const snapshotFirewalls = runContextSnapshotFirewalls(response.body.runId);
+    expect(snapshotFirewalls).toStrictEqual([
+      { kind: "builtin", name: "cloudflare" },
+    ]);
+    expect(snapshotFirewalls[0]).not.toHaveProperty("apis");
   });
 
   it("maps static connector env aliases", async () => {
@@ -2711,6 +2774,19 @@ describe("POST /api/zero/runs", () => {
     expect(
       executionContext.networkPolicies["internal-api"]?.unknownPolicy,
     ).toBe("allow");
+
+    const snapshotFirewalls = runContextSnapshotFirewalls(response.body.runId);
+    expect(snapshotFirewalls).toMatchObject([
+      {
+        name: "internal-api",
+        apis: [
+          {
+            base: "https://{hostWildcard1}.internal.example.com/api/",
+          },
+        ],
+      },
+    ]);
+    expect(hasObjectKey(snapshotFirewalls, "auth")).toBeFalsy();
   });
 
   it("keeps connector-owned vars out of custom connector firewall base URLs", async () => {

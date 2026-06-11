@@ -20,7 +20,6 @@ import {
   getVm0Vendor,
   hasAuthMethods,
   isSupportedRunModel,
-  MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   type ModelProviderEnvBindings,
@@ -3111,58 +3110,45 @@ function sanitizeEnvironment(
   return sanitized;
 }
 
-function builtinFirewallByName(
-  name: string,
-): ExpandedFirewallConfig | undefined {
-  if (isFirewallConnectorType(name)) {
-    return getConnectorFirewall(name);
-  }
-  return Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS).find((firewall) => {
-    return firewall.name === name;
-  });
+function sanitizedFirewallSnapshot(
+  firewall: Firewall,
+): Extract<RunContextResponse["firewalls"][number], { apis: unknown }> {
+  return {
+    name: firewall.name,
+    apis: firewall.apis.map((api) => {
+      return {
+        base: api.base,
+        permissions: api.permissions?.map((permission) => {
+          return {
+            name: permission.name,
+            description: permission.description,
+            rules: permission.rules,
+          };
+        }),
+      };
+    }),
+  };
 }
 
-function fullFirewallsForEntry(
+function firewallSnapshotEntry(
   entry: ExecutionFirewallEntry,
-): readonly Firewall[] {
+): RunContextResponse["firewalls"][number] {
   if (entry.kind === "inline") {
-    return [entry.firewall];
+    return sanitizedFirewallSnapshot(entry.firewall);
   }
-  const firewall = builtinFirewallByName(entry.name);
-  if (!firewall) {
-    return [];
-  }
-  return resolveFirewallBaseUrlVars(
-    [runtimeFirewall(firewall)],
-    entry.baseUrlVars,
-  );
+  return entry.baseUrlVars
+    ? { kind: "builtin", name: entry.name, baseUrlVars: entry.baseUrlVars }
+    : { kind: "builtin", name: entry.name };
 }
 
-function sanitizeFirewalls(
+function firewallSnapshots(
   firewalls: ExecutionFirewalls | null | undefined,
 ): RunContextResponse["firewalls"] {
   if (!firewalls) {
     return [];
   }
-  const fullFirewalls = firewalls.flatMap((entry) => {
-    return [...fullFirewallsForEntry(entry)];
-  });
-  return fullFirewalls.map((firewall) => {
-    return {
-      name: firewall.name,
-      apis: firewall.apis.map((api) => {
-        return {
-          base: api.base,
-          permissions: api.permissions?.map((permission) => {
-            return {
-              name: permission.name,
-              description: permission.description,
-              rules: permission.rules,
-            };
-          }),
-        };
-      }),
-    };
+  return firewalls.map((entry) => {
+    return firewallSnapshotEntry(entry);
   });
 }
 
@@ -3187,7 +3173,7 @@ function ingestRunContextSnapshot(args: {
     sessionId: storedContext.resumeSession?.sessionId ?? null,
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
-    firewalls: sanitizeFirewalls(storedContext.firewalls),
+    firewalls: firewallSnapshots(storedContext.firewalls),
     networkPolicyEntries: networkPoliciesRecordToEntries(
       storedContext.networkPolicies,
     ),
