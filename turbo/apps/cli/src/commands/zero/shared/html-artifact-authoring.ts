@@ -223,11 +223,14 @@ export function createHtmlArtifactAuthoringPacket(
     "- Run the final hosting command only after the artifact looks correct.",
     "",
     "## Publish",
+    "The hosted URL is the preview and user-accessible view for this static HTML artifact.",
     `When everything is OK, publish it with:`,
     "",
     "```bash",
     hostCommand,
     "```",
+    "",
+    "File upload is a separate delivery channel for when the user needs a local file copy, not another way to preview the same hosted artifact.",
   ].join("\n");
 
   return {

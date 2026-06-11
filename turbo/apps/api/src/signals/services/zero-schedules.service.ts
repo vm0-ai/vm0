@@ -127,7 +127,7 @@ type DeployScheduleResult =
   | { readonly kind: "bad_request"; readonly message: string }
   | { readonly kind: "schedule_past"; readonly message: string };
 
-type RunCreationErrorResponse = {
+export type RunCreationErrorResponse = {
   readonly status: 400 | 402 | 403 | 404 | 429 | 503;
   readonly body: {
     readonly error: {
@@ -411,7 +411,12 @@ interface ScheduleMutationArgs {
   readonly name: string;
 }
 
-async function loadAgentForDeploy(
+/**
+ * Load an agent the user may target, scoped to the org and the user's
+ * visibility: the agent gate shared by the schedule deploy and the v2
+ * automation create.
+ */
+export async function loadAgentForDeploy(
   db: Db,
   args: {
     readonly orgId: string;
@@ -959,14 +964,18 @@ type ScheduleRunModelContext =
     }
   | {
       readonly ok: false;
-      readonly failure: Exclude<RunScheduleNowResult, { kind: "ok" }>;
+      readonly failure: {
+        readonly kind: "run_error";
+        readonly response: RunCreationErrorResponse;
+      };
     };
 
-// Resolve the model context for a scheduled run: the thread model pin (org
-// default if unpinned) and the admitted provider. No user is present to receive
-// a model-config / credits error, so failures surface as run_error (normalized
-// to 400) feeding the manual run-now response.
-async function resolveScheduleRunModelContext(args: {
+// Resolve the model context for a manually-fired automation run: the thread
+// model pin (org default if unpinned) and the admitted provider. No user is
+// present to receive a model-config / credits error, so failures surface as
+// run_error (normalized to 400) feeding the run-now response. Shared by the
+// schedule run-now and the v2 automation run-now.
+export async function resolveScheduleRunModelContext(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -1012,19 +1021,24 @@ async function resolveScheduleRunModelContext(args: {
   };
 }
 
-// After the run is created: render it as a web-chat turn (with the schedule
-// chip), persist the resolved model fields, and stamp the trigger's lastRunId
-// for the skip-if-active check.
-async function persistManualRunSideEffects(args: {
+// After a manual run is created: render it as a web-chat turn (with the
+// schedule chip), persist the resolved model fields, and stamp the run as
+// lastRunId on every trigger of the automation so the per-trigger
+// skip-if-active checks (the poller and the run-now conflict) see the active
+// manual run. Shared by the schedule run-now (whose automation carries a
+// single time trigger, so the stamp is identical to the historic per-trigger
+// one) and the v2 automation run-now (where a manual fire belongs to no
+// trigger in particular).
+export async function persistManualRunSideEffects(args: {
   readonly db: Db;
-  readonly view: ScheduleView;
+  readonly automation: typeof automations.$inferSelect;
   readonly runId: string;
   readonly queued: boolean;
   readonly prompt: string;
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
 }): Promise<void> {
-  const { automation, trigger } = args.view;
+  const { automation } = args;
   await postAutomationUserMessage({
     db: args.db,
     threadId: automation.chatThreadId,
@@ -1050,7 +1064,7 @@ async function persistManualRunSideEffects(args: {
   await args.db
     .update(automationTriggers)
     .set({ lastRunId: args.runId })
-    .where(eq(automationTriggers.id, trigger.id));
+    .where(eq(automationTriggers.automationId, automation.id));
 }
 
 // Manually fire a schedule as a web-chat turn in its linked thread. The id is
@@ -1179,7 +1193,7 @@ export const runScheduleNow$ = command(
 
     await persistManualRunSideEffects({
       db,
-      view,
+      automation,
       runId: result.body.runId,
       queued: result.body.status === "queued",
       prompt: runInput.prompt,

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.10.1...desktop-v0.11.0) (2026-06-11)
+
+
+### Features
+
+* **desktop:** silently install idle auto-updates ([#17226](https://github.com/vm0-ai/vm0/issues/17226)) ([a2dc3fd](https://github.com/vm0-ai/vm0/commit/a2dc3fddbf643e69faf19a083f10e62d36988038))
+
+
+### Bug Fixes
+
+* add desktop computer use recovery ([#17223](https://github.com/vm0-ai/vm0/issues/17223)) ([0cbe669](https://github.com/vm0-ai/vm0/commit/0cbe669468ffbbb811c7aeeeb8a9ae6252074b85))
+* clear desktop computer use claim errors on idle ([#17216](https://github.com/vm0-ai/vm0/issues/17216)) ([ab84df4](https://github.com/vm0-ai/vm0/commit/ab84df4575253bb87b9d6b158d3ef565d56c3bf7))
+
 ## [0.10.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.10.0...desktop-v0.10.1) (2026-06-11)
 
 

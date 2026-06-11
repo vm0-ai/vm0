@@ -85,6 +85,9 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain(
         `zero host ./generated/mockups/${command}-demo --site ${command}-demo`,
       );
+      expect(stdout).toContain(
+        "The hosted URL is the preview and user-accessible view for this static HTML artifact.",
+      );
     },
   );
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [8.328.0](https://github.com/vm0-ai/vm0/compare/core-v8.327.0...core-v8.328.0) (2026-06-11)
+
+
+### Features
+
+* add credit usage range controls ([#17192](https://github.com/vm0-ai/vm0/issues/17192)) ([0c9eafb](https://github.com/vm0-ai/vm0/commit/0c9eafb0e208e60edaed58b1612105a0b875a4db))
+* enable chat thread rename ([#17218](https://github.com/vm0-ai/vm0/issues/17218)) ([9f74397](https://github.com/vm0-ai/vm0/commit/9f743971ada9832fb08c367dfc4e9f3e4a7c020a))
+* promote computer-use to seed skill ([#17224](https://github.com/vm0-ai/vm0/issues/17224)) ([ea828c1](https://github.com/vm0-ai/vm0/commit/ea828c17a224e259da51003d3af24576647beaa0))
+
+
+### Refactoring
+
+* **connectors:** remove github yaml firewall loading ([#17217](https://github.com/vm0-ai/vm0/issues/17217)) ([59886f7](https://github.com/vm0-ai/vm0/commit/59886f7063474359be682d8163fa5dde654cfeaf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.82.0
+    * @vm0/connectors bumped to 1.66.0
+
 ## [8.327.0](https://github.com/vm0-ai/vm0/compare/core-v8.326.0...core-v8.327.0) (2026-06-11)
 
 
