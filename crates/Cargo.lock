@@ -2570,7 +2570,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.112.1"
+version = "0.113.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2788,7 +2788,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.20"
+version = "0.37.21"
 dependencies = [
  "async-trait",
  "base64",

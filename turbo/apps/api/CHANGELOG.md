@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.130.0](https://github.com/vm0-ai/vm0/compare/api-v1.129.0...api-v1.130.0) (2026-06-11)
+
+
+### Features
+
+* send compact builtin firewall refs to runner ([#17252](https://github.com/vm0-ai/vm0/issues/17252)) ([e65864a](https://github.com/vm0-ai/vm0/commit/e65864afdea65f6ded9b9de7c3bcc057184852aa))
+
+
+### Bug Fixes
+
+* add illustration template preview ([#17276](https://github.com/vm0-ai/vm0/issues/17276)) ([51e0bb1](https://github.com/vm0-ai/vm0/commit/51e0bb1e6bb0db65cc17335a2c3f5742ae68b8e3))
+* **api:** remove audioInputVerbose feature flag, always use verbose STT ([#17253](https://github.com/vm0-ai/vm0/issues/17253)) ([60c89bc](https://github.com/vm0-ai/vm0/commit/60c89bcc0b76bb10f947f0f707077c275227a430))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.0
+    * @vm0/connectors bumped to 1.67.0
+    * @vm0/core bumped to 8.329.0
+    * @vm0/db bumped to 1.44.1
+
 ## [1.129.0](https://github.com/vm0-ai/vm0/compare/api-v1.128.1...api-v1.129.0) (2026-06-11)
 
 

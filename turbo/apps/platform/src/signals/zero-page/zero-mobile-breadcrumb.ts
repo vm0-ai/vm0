@@ -76,7 +76,13 @@ const activityDetailBreadcrumb$ = computed(
   },
 );
 
-const scheduleBreadcrumb$ = computed((get): MobileBreadcrumb => {
+const scheduleBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
+  // The product noun switches with the zeroAutomations feature, mirroring the
+  // page titles and the sidebar.
+  const features = await get(featureSwitch$);
+  const section = features[FeatureSwitchKey.ZeroAutomations]
+    ? "Automations"
+    : "Scheduled";
   const params = get(pathParams$) as Params;
   const scheduleId = getStringParam(params, "scheduleId");
   if (scheduleId) {
@@ -86,13 +92,13 @@ const scheduleBreadcrumb$ = computed((get): MobileBreadcrumb => {
     });
     if (entry) {
       return {
-        section: "Scheduled",
+        section,
         sectionPath: ROUTES.schedules,
         name: scheduleTitleExcerpt(entry),
       };
     }
   }
-  return { section: "Scheduled", sectionPath: ROUTES.schedules };
+  return { section, sectionPath: ROUTES.schedules };
 });
 
 const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
