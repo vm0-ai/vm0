@@ -310,6 +310,24 @@ describe("connectors page", () => {
     expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
   });
 
+  it("shows Google Maps approval guidance before OAuth", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.GoogleMapsConnector]: true },
+    });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "maps");
+    click(await screen.findByLabelText("Connect Google Maps"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Google Maps" });
+    expect(
+      within(dialog).getByText(/Google will show a security warning/),
+    ).toBeInTheDocument();
+  });
+
   it("shows a partially gated connector with only ungated auth methods", async () => {
     mockConnectors([]);
 
