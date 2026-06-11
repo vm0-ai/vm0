@@ -295,10 +295,10 @@ function mockActiveRunThread(threadId: string): void {
         role: "assistant",
         content: null,
         runId: "run-active",
-        status: "running",
         createdAt: "2026-06-09T10:00:01Z",
       },
     ],
+    activeRunIds: ["run-active"],
   });
 }
 
@@ -376,7 +376,6 @@ function mockServerQueuedThreadStories(): void {
           content: null,
           runId: "run-server-queued-visible",
           runEventId: "queue:queued",
-          status: "queued" as const,
           createdAt: "2026-06-09T10:00:01Z",
         },
       ] satisfies PagedChatMessage[],
@@ -399,7 +398,6 @@ function mockServerQueuedThreadStories(): void {
           content: null,
           runId: "run-server-queued-resolved",
           runEventId: "queue:queued",
-          status: "queued" as const,
           createdAt: "2026-06-09T10:05:01Z",
         },
         {
@@ -407,7 +405,6 @@ function mockServerQueuedThreadStories(): void {
           role: "assistant" as const,
           content: "Queued deployment is running now.",
           runId: "run-server-queued-resolved",
-          status: "completed" as const,
           createdAt: "2026-06-09T10:05:02Z",
         },
         {
@@ -818,7 +815,6 @@ function mockFailedAssistantThread({
         role: "assistant",
         content: null,
         runId: `${threadId}-run`,
-        status: "failed",
         error,
         runLifecycleEvent: "failed",
         createdAt: "2026-06-09T10:00:01Z",
@@ -1127,10 +1123,10 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           runId: "run-active",
-          status: "running",
           createdAt: "2026-06-09T10:00:01Z",
         },
       ],
+      activeRunIds: ["run-active"],
       onQueuedMessageAppend: (body) => {
         queuedBody = body;
       },
@@ -1230,7 +1226,6 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-server-queued",
           runEventId: "queue:queued",
-          status: "queued",
           createdAt: "2026-06-09T10:00:01Z",
         },
         {
@@ -1247,6 +1242,7 @@ describe("chat lifecycle", () => {
       onRecallMessageAppend: (body) => {
         recalls.push(body.revokesMessageId);
       },
+      activeRunIds: ["run-server-queued"],
     });
 
     detachedSetupPage({
@@ -1317,7 +1313,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: "Use the old launch plan.",
           runId: "run-corrected-answer",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
         {
@@ -1326,7 +1321,6 @@ describe("chat lifecycle", () => {
           content: "Use the revised launch plan with updated owners.",
           runId: "run-corrected-answer",
           revokesMessageId: "msg-stale-answer",
-          status: "completed",
           createdAt: "2026-06-09T10:02:00Z",
         },
       ],
@@ -1364,7 +1358,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           runId: "run-restored-interrupt",
-          status: "running",
           createdAt: "2026-06-09T10:01:00Z",
         },
         {
@@ -1380,7 +1373,6 @@ describe("chat lifecycle", () => {
           content: "Run cancelled",
           runId: "run-restored-interrupt",
           error: "Run cancelled",
-          status: "cancelled",
           runLifecycleEvent: "cancelled",
           createdAt: "2026-06-09T10:03:00Z",
         },
@@ -1677,7 +1669,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId,
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -1718,7 +1709,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-assistant-copy",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -2180,7 +2170,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-feedback",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -2247,7 +2236,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-feedback-summary",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -2321,7 +2309,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-feedback-edit",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -2414,14 +2401,22 @@ describe("chat lifecycle", () => {
           id: "msg-followup-user",
           role: "user",
           content: "Package this launch plan",
-          runId: undefined,
+          runId: "run-followup",
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
           id: "msg-followup-assistant",
           role: "assistant",
           content: assistantReply,
-          runId: undefined,
+          runId: "run-followup",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-followup-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-followup",
+          runLifecycleEvent: "completed",
           recommendedFollowups: [
             {
               prompt: followupPrompt,
@@ -2452,7 +2447,7 @@ describe("chat lifecycle", () => {
               kind: "talk",
             },
           ],
-          createdAt: "2026-06-09T10:01:00Z",
+          createdAt: "2026-06-09T10:01:01Z",
         },
       ],
     });
@@ -2773,7 +2768,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId,
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -3085,7 +3079,6 @@ describe("chat lifecycle", () => {
                 role: "assistant",
                 content: null,
                 runId: "run-active",
-                status: "running",
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],

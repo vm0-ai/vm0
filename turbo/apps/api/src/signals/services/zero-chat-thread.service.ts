@@ -112,8 +112,6 @@ type ChatMessageRow = {
   readonly runLifecycleEvent: string | null;
   readonly sequenceNumber: number | null;
   readonly createdAt: Date;
-  readonly runStatus: string | null;
-  readonly runError: string | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
@@ -219,8 +217,6 @@ const messageColumns = {
   runLifecycleEvent: chatMessages.runLifecycleEvent,
   sequenceNumber: chatMessages.sequenceNumber,
   createdAt: chatMessages.createdAt,
-  runStatus: agentRuns.status,
-  runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
@@ -538,13 +534,6 @@ export function formatChatRunErrorMessage(params: {
   return formatRunErrorLikeWebMessage(params);
 }
 
-function chatMessageStatus(row: ChatMessageRow): string | undefined {
-  if (row.role !== "assistant") {
-    return undefined;
-  }
-  return row.runStatus ?? undefined;
-}
-
 function lifecycleEventOrUndefined(
   value: string | null,
 ): "completed" | "failed" | "cancelled" | undefined {
@@ -608,30 +597,10 @@ function normalizeRecommendedFollowups(
 }
 
 function toPagedMessage(
-  threadId: string,
   userId: string,
   row: ChatMessageRow,
 ): Computed<Promise<PagedChatMessage>> {
   return computed(async (get): Promise<PagedChatMessage> => {
-    const isLifecycleMarker = row.runLifecycleEvent !== null;
-    const isLegacyPlaceholder =
-      !isLifecycleMarker &&
-      row.sequenceNumber === null &&
-      row.content === null &&
-      !row.error;
-    const rawEffectiveError = isLegacyPlaceholder
-      ? (row.runError ?? undefined)
-      : (row.error ?? undefined);
-    const effectiveError =
-      rawEffectiveError && isLegacyPlaceholder && row.runId
-        ? await get(
-            formatChatRunErrorMessage({
-              chatThreadId: threadId,
-              runId: row.runId,
-              errorMessage: rawEffectiveError,
-            }),
-          )
-        : rawEffectiveError;
     const attachFiles = await get(chatMessageAttachFiles(userId, row));
 
     const role = messageRoleSchema.parse(row.role);
@@ -643,7 +612,7 @@ function toPagedMessage(
       runEventId: row.runEventId ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
-      error: effectiveError,
+      error: row.error ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
       createdAt: row.createdAt.toISOString(),
@@ -660,7 +629,6 @@ function toPagedMessage(
     return {
       ...message,
       role: "assistant" as const,
-      status: chatMessageStatus(row),
       runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
       recommendedFollowups: normalizeRecommendedFollowups(
         row.recommendedFollowups,
@@ -1266,7 +1234,6 @@ export function zeroChatThreadMessagesPage(args: {
       const latestRows = await db
         .select(messageColumns)
         .from(chatMessages)
-        .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
         .where(threadFilter)
         .orderBy(
           desc(chatMessages.createdAt),
@@ -1301,7 +1268,6 @@ export function zeroChatThreadMessagesPage(args: {
         rows = await db
           .select(messageColumns)
           .from(chatMessages)
-          .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
           .where(and(threadFilter, cursorAfterCondition))
           .orderBy(
             asc(chatMessages.createdAt),
@@ -1312,7 +1278,6 @@ export function zeroChatThreadMessagesPage(args: {
         const previousRows = await db
           .select(messageColumns)
           .from(chatMessages)
-          .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
           .where(and(threadFilter, cursorBeforeCondition))
           .orderBy(
             desc(chatMessages.createdAt),
@@ -1327,7 +1292,7 @@ export function zeroChatThreadMessagesPage(args: {
     return {
       messages: await Promise.all(
         rows.map((row) => {
-          return get(toPagedMessage(args.threadId, args.userId, row));
+          return get(toPagedMessage(args.userId, row));
         }),
       ),
       hasHistoryBefore,

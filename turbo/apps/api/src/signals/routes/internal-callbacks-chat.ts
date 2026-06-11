@@ -484,7 +484,6 @@ async function insertRunLifecycleMarker(args: {
   readonly recommendedFollowups?: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
   const markerCreatedAt = nowDate();
-  const recommendedFollowupsCreatedAt = new Date(markerCreatedAt.getTime() + 1);
   const inserted = await args.db.transaction(async (tx) => {
     const marker = await tx
       .insert(chatMessages)
@@ -494,6 +493,8 @@ async function insertRunLifecycleMarker(args: {
         content: null,
         runId: args.runId,
         runLifecycleEvent: args.event,
+        recommendedFollowups:
+          args.event === "completed" ? args.recommendedFollowups : undefined,
         createdAt: markerCreatedAt,
       })
       .onConflictDoNothing({
@@ -503,20 +504,6 @@ async function insertRunLifecycleMarker(args: {
       .returning({ id: chatMessages.id });
     if (marker.length === 0) {
       return false;
-    }
-    if (
-      args.event === "completed" &&
-      args.recommendedFollowups &&
-      args.recommendedFollowups.length > 0
-    ) {
-      await tx.insert(chatMessages).values({
-        chatThreadId: args.threadId,
-        role: "assistant",
-        content: null,
-        runId: args.runId,
-        recommendedFollowups: args.recommendedFollowups,
-        createdAt: recommendedFollowupsCreatedAt,
-      });
     }
     await touchChatThreadLastMessageAt(tx, args.threadId);
     return true;

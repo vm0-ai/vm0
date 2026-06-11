@@ -254,10 +254,10 @@ function mockActiveTemplateThread(): void {
         role: "assistant",
         content: null,
         runId: "run-template-active",
-        status: "running",
         createdAt: "2026-06-09T10:00:01Z",
       },
     ],
+    activeRunIds: ["run-template-active"],
   });
 }
 

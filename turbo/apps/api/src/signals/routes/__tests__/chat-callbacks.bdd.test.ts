@@ -351,6 +351,9 @@ describe("CHAT-02: completed chat callback", () => {
         return message.content;
       }),
     ).toStrictEqual(["final answer"]);
+    expect(
+      eventBackedContents(after.messages, first.runId)[0],
+    ).not.toHaveProperty("status");
 
     const marker = lifecycleMarkers(
       after.messages,
@@ -361,7 +364,15 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker.content).toBeNull();
-    expect(marker.recommendedFollowups ?? []).toHaveLength(0);
+    expect(marker).not.toHaveProperty("status");
+    expect(marker.recommendedFollowups).toStrictEqual([
+      { prompt: "Turn this into a checklist", kind: "talk" },
+      {
+        prompt: "Generate a landing page for this plan",
+        kind: "generate",
+        generationType: "website",
+      },
+    ]);
 
     const recommender = assistantMessages(after.messages).find((message) => {
       return (
@@ -370,21 +381,7 @@ describe("CHAT-02: completed chat callback", () => {
         (message.recommendedFollowups?.length ?? 0) > 0
       );
     });
-    if (!recommender) {
-      throw new Error("Expected a recommended follow-ups message");
-    }
-    expect(recommender.content).toBeNull();
-    expect(recommender.recommendedFollowups).toStrictEqual([
-      { prompt: "Turn this into a checklist", kind: "talk" },
-      {
-        prompt: "Generate a landing page for this plan",
-        kind: "generate",
-        generationType: "website",
-      },
-    ]);
-    expect(Date.parse(recommender.createdAt)).toBeGreaterThan(
-      Date.parse(marker.createdAt),
-    );
+    expect(recommender).toBeUndefined();
 
     expect((await chat.readThread(actor, first.threadId)).title).toBe(
       "Debugging Node Apps",

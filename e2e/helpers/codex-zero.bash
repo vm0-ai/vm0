@@ -73,8 +73,9 @@ disable_codex_beta() {
 }
 
 # Poll /api/zero/chat-threads/:id/messages until the newest assistant row
-# reaches a terminal status. Completed runs also append a null-content
-# lifecycle marker, so LAST_MSG_CONTENT comes from the latest non-blank
+# carries a terminal runLifecycleEvent (the paged message API no longer
+# exposes agent run status; terminal runs append a null-content lifecycle
+# marker row instead). LAST_MSG_CONTENT comes from the latest non-blank
 # assistant content row for the same run.
 # On success, exports:
 #   LAST_RUN_ID      — runId of the assistant message
@@ -89,7 +90,7 @@ wait_for_chat_assistant_done() {
         body=$(_codex_zero_curl "/api/zero/chat-threads/$thread_id/messages?limit=50" 2>/dev/null || true)
         if [[ -n "$body" ]]; then
             status_value=$(printf '%s' "$body" \
-                | jq -r '[.messages[] | select(.role == "assistant")] | last | .status // ""' 2>/dev/null)
+                | jq -r '[.messages[] | select(.role == "assistant")] | last | .runLifecycleEvent // ""' 2>/dev/null)
             # Per-poll diagnostic: bats's BATS_TEST_TIMEOUT kills the test before
             # the trailing "timed out" lines below run, so emit progress here.
             echo "# poll t=$((SECONDS - start))s status=${status_value:-EMPTY}" >&2
