@@ -86,7 +86,7 @@ const scheduleBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   const params = get(pathParams$) as Params;
   const scheduleId = getStringParam(params, "scheduleId");
   if (scheduleId) {
-    const entries = get(allOrgScheduleEntries$);
+    const entries = await get(allOrgScheduleEntries$);
     const entry = entries.find((e) => {
       return e.id === scheduleId;
     });

@@ -28,6 +28,7 @@ import {
 import { ApiError } from "../../lib/accept.ts";
 import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
+import { userPreferences$ } from "./settings/user-preferences.ts";
 
 const SCHEDULE_TIME_PAST_MESSAGE = "Scheduled time must be in the future";
 
@@ -50,7 +51,12 @@ export const setScheduleTabSaving$ = command(({ set }, value: boolean) => {
 // Convert ScheduleResponse to display time string
 // ---------------------------------------------------------------------------
 
-function scheduleToTimeString(s: ScheduleResponse): string {
+function scheduleToTimeString(
+  s: ScheduleResponse,
+  displayTimezone?: string,
+): string {
+  const tz = displayTimezone ?? s.timezone ?? "UTC";
+
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
     if (s.intervalSeconds % 60 === 0) {
       const minutes = s.intervalSeconds / 60;
@@ -60,17 +66,14 @@ function scheduleToTimeString(s: ScheduleResponse): string {
   }
 
   if (s.triggerType === "once" && s.atTime) {
-    const { date, hour, minute } = atTimeInTimezone(
-      s.atTime,
-      s.timezone ?? "UTC",
-    );
+    const { date, hour, minute } = atTimeInTimezone(s.atTime, tz);
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
   }
 
   if (s.cronExpression) {
-    return cronToTimeString(s.cronExpression, s.timezone ?? "UTC");
+    return cronToTimeString(s.cronExpression, tz);
   }
 
   return "Scheduled";
@@ -200,7 +203,7 @@ export interface OrgScheduleEntry {
   description: string | null;
   enabled: boolean;
   name: string;
-  /** IANA timezone stored on the server */
+  /** IANA timezone used for display (user's preferred timezone) */
   timezone: string;
   intervalSeconds: number | null;
   agentId: string;
@@ -218,8 +221,11 @@ export const allOrgSchedulesLoaded$ = computed((get) => {
   return get(internalAllSchedulesLoaded$);
 });
 
-export const allOrgScheduleEntries$ = computed((get) => {
+export const allOrgScheduleEntries$ = computed(async (get) => {
   const schedules = get(internalAllSchedules$);
+  const prefs = await get(userPreferences$);
+  const displayTz =
+    prefs?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   return [...schedules]
     .sort((a, b) => {
       return b.createdAt.localeCompare(a.createdAt);
@@ -227,12 +233,12 @@ export const allOrgScheduleEntries$ = computed((get) => {
     .map((s): OrgScheduleEntry => {
       return {
         id: s.id,
-        time: scheduleToTimeString(s),
+        time: scheduleToTimeString(s, displayTz),
         prompt: s.prompt,
         description: s.description,
         enabled: s.enabled,
         name: s.name,
-        timezone: s.timezone,
+        timezone: displayTz,
         intervalSeconds: s.intervalSeconds,
         agentId: s.agentId,
         displayName: s.displayName,
