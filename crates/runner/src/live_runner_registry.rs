@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use chrono::SecondsFormat;
@@ -73,6 +74,7 @@ pub(crate) async fn publish(
             home.live_runners_dir().display()
         ))
     })?;
+    remove_stale_records(home).await;
     crate::state_file::write_private_atomic(&path, &content).await?;
 
     Ok(LiveRunnerRegistryHandle { path, identity })
@@ -128,6 +130,59 @@ async fn read_valid_record(path: &Path) -> Option<LiveRunnerRegistryRecord> {
     } else {
         None
     }
+}
+
+async fn remove_stale_records(home: &HomePaths) {
+    let dir = home.live_runners_dir();
+    let mut entries = match tokio::fs::read_dir(&dir).await {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::debug!(path = %dir.display(), error = %e, "cannot scan live runner registry");
+            return;
+        }
+    };
+
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(e) => {
+                tracing::debug!(path = %dir.display(), error = %e, "cannot read live runner registry entry");
+                break;
+            }
+        };
+        if !is_stable_record_file_name(&entry.file_name()) {
+            continue;
+        }
+        let path = entry.path();
+        if read_valid_record(&path).await.is_some() {
+            continue;
+        }
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => {
+                tracing::debug!(path = %path.display(), "removed stale live runner registry record");
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                tracing::debug!(path = %path.display(), error = %e, "cannot remove stale live runner registry record");
+            }
+        }
+    }
+}
+
+fn is_stable_record_file_name(name: &OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    let Some(stem) = name.strip_suffix(".json") else {
+        return false;
+    };
+    let Some((pid, starttime)) = stem.split_once('-') else {
+        return false;
+    };
+    [pid, starttime]
+        .into_iter()
+        .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
 }
 
 async fn record_is_live(record: &LiveRunnerRegistryRecord) -> bool {
@@ -342,6 +397,80 @@ mod tests {
         let result = read_valid_record(&path).await;
 
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn publish_removes_stale_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        crate::host_file::ensure_dir(
+            &home.live_runners_dir(),
+            crate::host_file::DirMode::Private,
+            "live runner registry",
+        )
+        .unwrap();
+        let stale_record = LiveRunnerRegistryRecord {
+            pid: u32::MAX,
+            starttime: 1,
+            euid: current_euid(),
+            config_path: dir.path().join("stale-runner.yaml"),
+            base_dir: dir.path().join("stale-base"),
+            runner_name: "stale-runner".into(),
+            runner_group: "vm0/test".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+        };
+        let stale_path = home.live_runner_record_path(stale_record.pid, stale_record.starttime);
+        write_record(&stale_path, &stale_record).await;
+
+        let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+
+        assert!(!stale_path.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn publish_keeps_other_live_runner_records() {
+        struct ChildGuard(std::process::Child);
+
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+
+        let child = ChildGuard(
+            std::process::Command::new("sleep")
+                .arg("30")
+                .spawn()
+                .unwrap(),
+        );
+        let child_pid = child.0.id();
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        crate::host_file::ensure_dir(
+            &home.live_runners_dir(),
+            crate::host_file::DirMode::Private,
+            "live runner registry",
+        )
+        .unwrap();
+        let child_stat = process::read_process_stat(child_pid).await.unwrap();
+        let live_record = LiveRunnerRegistryRecord {
+            pid: child_pid,
+            starttime: child_stat.starttime,
+            euid: current_euid(),
+            config_path: dir.path().join("other-runner.yaml"),
+            base_dir: dir.path().join("other-base"),
+            runner_name: "other-runner".into(),
+            runner_group: "vm0/test".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+        };
+        let live_path = home.live_runner_record_path(live_record.pid, live_record.starttime);
+        write_record(&live_path, &live_record).await;
+
+        let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+
+        assert!(live_path.exists());
     }
 
     #[tokio::test]
