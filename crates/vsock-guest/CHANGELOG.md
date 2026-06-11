@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.18.28](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.27...vsock-guest-v0.18.28) (2026-06-11)
+
+
+### Documentation
+
+* **vsock-guest:** document exec control sink state ([#17229](https://github.com/vm0-ai/vm0/issues/17229)) ([c3ef87d](https://github.com/vm0-ai/vm0/commit/c3ef87d66708738231dff9a057a1d0131d51fc28))
+
+## [0.18.27](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.26...vsock-guest-v0.18.27) (2026-06-11)
+
+
+### Refactoring
+
+* **vsock-guest:** reuse error response helper in quiesce tests ([#17211](https://github.com/vm0-ai/vm0/issues/17211)) ([dffb510](https://github.com/vm0-ai/vm0/commit/dffb510c78312551d81e5b4d675853dc53d3f71d))
+
 ## [0.18.26](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.25...vsock-guest-v0.18.26) (2026-06-09)
 
 

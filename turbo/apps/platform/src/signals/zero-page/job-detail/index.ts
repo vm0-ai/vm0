@@ -25,10 +25,8 @@ export { updateAgentSettings$ } from "./settings.ts";
 
 export {
   agentAuthorizedConnectors$,
-  agentConnectorsDirty$,
   authorizeAgentConnector$,
   deauthorizeAgentConnector$,
-  discardAgentConnectorsDraft$,
   saveAgentConnectors$,
 } from "./connectors.ts";
 
@@ -38,7 +36,6 @@ export {
   toggleAgentScheduleEnabled$,
   deleteAgentSchedule$,
 } from "./schedule.ts";
-export type { AgentScheduleSaveParams } from "./schedule.ts";
 
 export { deleteAgent$ } from "./delete.ts";
 

@@ -887,6 +887,7 @@ pub struct MockSandbox {
     copy_file_calls: Mutex<Vec<CopyFileCall>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
     write_file_calls: Mutex<Vec<WriteFileCall>>,
+    write_file_gate: Mutex<Option<MockLifecycleGate>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when simulating a non-closing
     /// channel (e.g. wait_process_error override). Without this, the sender is
@@ -919,6 +920,7 @@ impl MockSandbox {
             copy_file_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
+            write_file_gate: Mutex::new(None),
             overrides,
             stdout_tx: Mutex::new(None),
         }
@@ -997,6 +999,22 @@ impl MockSandbox {
     /// recorded in [`MockSandboxOverrides::write_file_calls`].
     pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
         self.write_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Block every write_file call with a durable lifecycle gate.
+    ///
+    /// Calls are recorded before they enter the gate, so tests can assert that a
+    /// write was attempted while keeping the mock response pending.
+    pub fn set_write_file_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.write_file_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the durable write_file gate for future write calls.
+    ///
+    /// Already-entered writes keep waiting on their cloned gate until the test
+    /// releases it.
+    pub fn clear_write_file_lifecycle_gate(&self) {
+        *self.write_file_gate.lock_ignoring_poison() = None;
     }
 }
 
@@ -1273,6 +1291,10 @@ impl Sandbox for MockSandbox {
             .push(call.clone());
         if let Some(overrides) = &self.overrides {
             overrides.write_file_calls.lock_ignoring_poison().push(call);
+        }
+        let gate = self.write_file_gate.lock_ignoring_poison().clone();
+        if let Some(gate) = gate {
+            gate.enter_and_wait().await;
         }
         self.write_file_results
             .lock_ignoring_poison()
@@ -3504,6 +3526,25 @@ mod tests {
 
         // Falls back to default Ok.
         sandbox.write_file("/tmp/test.txt", b"data").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sandbox_write_file_lifecycle_gate_blocks_until_released() {
+        let sandbox = Arc::new(MockSandbox::new("test-1"));
+        let gate = MockLifecycleGate::new();
+        sandbox.set_write_file_lifecycle_gate(gate.clone());
+
+        let task = {
+            let sandbox = Arc::clone(&sandbox);
+            tokio::spawn(async move { sandbox.write_file("/tmp/test.txt", b"data").await })
+        };
+
+        gate.wait_entered(1, test_timeout()).await.unwrap();
+        assert_eq!(sandbox.write_file_calls().len(), 1);
+        assert!(!task.is_finished(), "write_file must wait for gate release");
+
+        gate.release_one();
+        task.await.unwrap().unwrap();
     }
 
     #[tokio::test]

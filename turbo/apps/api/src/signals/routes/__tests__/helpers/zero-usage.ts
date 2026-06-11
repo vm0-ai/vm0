@@ -12,6 +12,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, inArray } from "drizzle-orm";
@@ -40,6 +41,7 @@ interface InsertUsageEventArgs {
   readonly quantity?: number;
   readonly creditsCharged?: number | null;
   readonly status?: string;
+  readonly createdAt?: Date;
   readonly processedAt?: Date | null;
 }
 
@@ -53,6 +55,7 @@ interface InsertModelUsageArgs {
   readonly cacheCreationInputTokens?: number;
   readonly creditsCharged?: number | null;
   readonly status?: string;
+  readonly createdAt?: Date;
   readonly processedAt?: Date | null;
 }
 
@@ -170,6 +173,11 @@ export const deleteUsageFixture$ = command(
       .where(eq(orgMembersMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
 
+    await db
+      .delete(userFeatureSwitches)
+      .where(eq(userFeatureSwitches.orgId, fixture.orgId));
+    signal.throwIfAborted();
+
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
 
@@ -220,6 +228,7 @@ export const insertUsageEvent$ = command(
         quantity: args.quantity ?? 1,
         creditsCharged: args.creditsCharged ?? null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       })
@@ -257,6 +266,7 @@ export const insertModelUsage$ = command(
         quantity: args.inputTokens ?? 0,
         creditsCharged: args.creditsCharged ?? null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       },
@@ -270,6 +280,7 @@ export const insertModelUsage$ = command(
         quantity: args.outputTokens ?? 0,
         creditsCharged: null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       },
@@ -283,6 +294,7 @@ export const insertModelUsage$ = command(
         quantity: args.cacheReadInputTokens ?? 0,
         creditsCharged: null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       },
@@ -296,6 +308,7 @@ export const insertModelUsage$ = command(
         quantity: args.cacheCreationInputTokens ?? 0,
         creditsCharged: null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       },

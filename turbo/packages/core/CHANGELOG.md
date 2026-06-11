@@ -1,5 +1,75 @@
 # Changelog
 
+## [8.328.1](https://github.com/vm0-ai/vm0/compare/core-v8.328.0...core-v8.328.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* show usage range filter in credit balance ([#17260](https://github.com/vm0-ai/vm0/issues/17260)) ([bdb1d0c](https://github.com/vm0-ai/vm0/commit/bdb1d0c4c0f8c59481fd993908b4ae933b44c324))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.83.0
+
+## [8.328.0](https://github.com/vm0-ai/vm0/compare/core-v8.327.0...core-v8.328.0) (2026-06-11)
+
+
+### Features
+
+* add credit usage range controls ([#17192](https://github.com/vm0-ai/vm0/issues/17192)) ([0c9eafb](https://github.com/vm0-ai/vm0/commit/0c9eafb0e208e60edaed58b1612105a0b875a4db))
+* enable chat thread rename ([#17218](https://github.com/vm0-ai/vm0/issues/17218)) ([9f74397](https://github.com/vm0-ai/vm0/commit/9f743971ada9832fb08c367dfc4e9f3e4a7c020a))
+* promote computer-use to seed skill ([#17224](https://github.com/vm0-ai/vm0/issues/17224)) ([ea828c1](https://github.com/vm0-ai/vm0/commit/ea828c17a224e259da51003d3af24576647beaa0))
+
+
+### Refactoring
+
+* **connectors:** remove github yaml firewall loading ([#17217](https://github.com/vm0-ai/vm0/issues/17217)) ([59886f7](https://github.com/vm0-ai/vm0/commit/59886f7063474359be682d8163fa5dde654cfeaf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.82.0
+    * @vm0/connectors bumped to 1.66.0
+
+## [8.327.0](https://github.com/vm0-ai/vm0/compare/core-v8.326.0...core-v8.327.0) (2026-06-11)
+
+
+### Features
+
+* add Google Analytics connector ([#17153](https://github.com/vm0-ai/vm0/issues/17153)) ([96dee76](https://github.com/vm0-ai/vm0/commit/96dee766588b2721bbbc5c39095dba424bd36aac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.1
+    * @vm0/connectors bumped to 1.65.0
+
+## [8.326.0](https://github.com/vm0-ai/vm0/compare/core-v8.325.0...core-v8.326.0) (2026-06-11)
+
+
+### Features
+
+* add Cloudflare OAuth connector ([#17123](https://github.com/vm0-ai/vm0/issues/17123)) ([84bb1e0](https://github.com/vm0-ai/vm0/commit/84bb1e0f1d899ba051e490228ccac7aefd6656aa))
+* add Google Cloud connector ([#16302](https://github.com/vm0-ai/vm0/issues/16302)) ([edc2046](https://github.com/vm0-ai/vm0/commit/edc2046a5f599fcfc33d45d7fc68a54bf8835c09))
+* add TikTok Ads connector ([#17148](https://github.com/vm0-ai/vm0/issues/17148)) ([5e0824b](https://github.com/vm0-ai/vm0/commit/5e0824bb254f1bbef2672792bc5e56560d7717c7))
+* enable chat recommended followups ([#17189](https://github.com/vm0-ai/vm0/issues/17189)) ([d4a2e30](https://github.com/vm0-ai/vm0/commit/d4a2e30180776d97760db935e8cefe398b8822c4))
+* enable connector permission reset by default ([#17140](https://github.com/vm0-ai/vm0/issues/17140)) ([036ed23](https://github.com/vm0-ai/vm0/commit/036ed23787cf999cc9c002c0764b9382d3b99993))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.0
+    * @vm0/connectors bumped to 1.64.0
+
 ## [8.325.0](https://github.com/vm0-ai/vm0/compare/core-v8.324.0...core-v8.325.0) (2026-06-10)
 
 

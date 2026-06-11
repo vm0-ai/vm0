@@ -244,6 +244,7 @@ import { generate as generateZeptomail } from "./zeptomail";
 import { generate as generateWandb } from "./wandb";
 import { generate as generateZoom } from "./zoom";
 import { generate as generateGoogleAds } from "./google-ads";
+import { generate as generateGoogleAnalytics } from "./google-analytics";
 import { generate as generateGoogleMaps } from "./google-maps";
 import { generate as generateAltium365 } from "./altium-365";
 import { generate as generateBrowserstack } from "./browserstack";
@@ -343,6 +344,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
   gitlab: generateGitlab,
   "google-ads": generateGoogleAds,
+  "google-analytics": generateGoogleAnalytics,
   "google-cloud": generateGoogleCloud,
   granola: generateGranola,
   greenhouse: generateGreenhouse,

@@ -1,4 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const googleMaps = {
   "google-maps": {
@@ -8,6 +9,7 @@ export const googleMaps = {
       "Connect Google Maps Platform to access geocoding, places, directions, and other Maps APIs",
     authMethods: {
       "api-token": {
+        featureFlag: FeatureSwitchKey.GoogleMapsConnector,
         label: "API Key",
         helpText:
           "1. Open [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials)\n2. Select or create a project and enable the Maps APIs you need (Geocoding, Places, Directions, etc.)\n3. Go to **APIs & Services → Credentials** and click **Create credentials → API key**\n4. Copy the API key (format: `AIza…`) and restrict it to the APIs and referrers/IPs you trust",

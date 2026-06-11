@@ -1,11 +1,8 @@
 /**
  * Test-side override helper for the /api/zero/feature-switches GET handler.
  *
- * Kept separate from `api-feature-switches.ts` so it does not get pulled into
- * `mocks/browser.ts` (which aggregates default handlers via
- * `handlers/index.ts`). Importing `server` from `mocks/server.ts` transitively
- * loads `msw/node`, which references `node:http` and breaks Vitest browser
- * tests run under Vite's browser environment.
+ * Kept separate from `api-feature-switches.ts` so the default handler module
+ * remains stateless and test-specific overrides stay in test code.
  */
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";

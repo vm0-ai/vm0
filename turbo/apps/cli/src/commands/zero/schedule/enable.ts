@@ -4,11 +4,13 @@ import {
   enableZeroSchedule,
   resolveZeroScheduleByAgent,
 } from "../../../lib/api";
-import { withErrorHandler } from "../../../lib/command";
+import { printDeprecationNotice, withErrorHandler } from "../../../lib/command";
 
 export const enableCommand = new Command()
   .name("enable")
-  .description("Enable a zero schedule")
+  .description(
+    "(deprecated: use `zero automation enable`) Enable a zero schedule",
+  )
   .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <schedule-name>",
@@ -23,6 +25,8 @@ Examples:
   )
   .action(
     withErrorHandler(async (agentName: string, options: { name?: string }) => {
+      printDeprecationNotice("zero automation enable <automation>");
+
       const resolved = await resolveZeroScheduleByAgent(
         agentName,
         options.name,

@@ -153,20 +153,6 @@ export function setMockTelegramIntegration(input: {
   }
 }
 
-export function getMockTelegramIntegration(): {
-  list: TelegramListResponse;
-  statuses: Record<string, TelegramBotStatus>;
-  linkStatus: TelegramLinkStatusResponse;
-  setupStatus: TelegramSetupStatus;
-} {
-  return {
-    list: structuredClone(mockTelegramList),
-    statuses: structuredClone(mockTelegramStatuses),
-    linkStatus: structuredClone(mockLinkStatus),
-    setupStatus: structuredClone(mockTelegramSetupStatus),
-  };
-}
-
 export const apiIntegrationsTelegramHandlers = [
   mockApi(zeroIntegrationsTelegramContract.list, ({ respond }) => {
     return respond(200, mockTelegramList);

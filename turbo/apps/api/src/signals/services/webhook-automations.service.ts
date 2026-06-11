@@ -52,8 +52,27 @@ interface AutomationRow {
 }
 
 /** Full inbound URL a signed payload is POSTed to for the given token. */
-function webhookUrlForToken(token: string): string {
+export function webhookUrlForToken(token: string): string {
   return `${internalApiBaseUrl()}/api/automations/webhooks/${token}`;
+}
+
+/**
+ * Mint an unguessable URL token (identity) for a webhook trigger. The token is
+ * stored in the clear for O(1) inbound lookup. 24 random bytes (192 bits)
+ * render as a 48-char hex string; the `whk_` prefix keeps the whole token
+ * within the trigger's varchar(64) webhook_token column.
+ */
+export function mintWebhookToken(): string {
+  return `whk_${randomBytes(24).toString("hex")}`;
+}
+
+/**
+ * Mint an HMAC signing secret (authentication) for a webhook trigger. The
+ * secret is encrypted at rest and surfaced to the caller exactly once (at
+ * creation or rotation).
+ */
+export function mintWebhookSecret(): string {
+  return randomBytes(32).toString("hex");
 }
 
 function toView(
@@ -127,7 +146,7 @@ async function loadTargetAgent(
  * only a userId, so org isolation is enforced via the user — same rule the
  * schedule surface applies.)
  */
-async function isChatThreadLinkable(
+export async function isChatThreadLinkable(
   db: Db,
   args: {
     readonly chatThreadId: string;
@@ -214,13 +233,10 @@ export const createWebhookAutomation$ = command(
       }
     }
 
-    // Unguessable URL token (identity) and HMAC signing secret (authentication).
-    // The token is stored in the clear for O(1) inbound lookup; the secret is
-    // encrypted at rest and shown to the caller exactly once below. 24 random
-    // bytes (192 bits) render as a 48-char hex string; the `whk_` prefix keeps
-    // the whole token within the trigger's varchar(64) webhook_token column.
-    const webhookToken = `whk_${randomBytes(24).toString("hex")}`;
-    const secret = randomBytes(32).toString("hex");
+    // Unguessable URL token (identity) and HMAC signing secret
+    // (authentication). The secret is shown to the caller exactly once below.
+    const webhookToken = mintWebhookToken();
+    const secret = mintWebhookSecret();
     const encryptedSecret = await encryptStoredSecretValue(secret);
     signal.throwIfAborted();
 

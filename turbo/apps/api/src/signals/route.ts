@@ -4,6 +4,7 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
 import { automationsRoutes } from "./routes/automations";
+import { automationsV2Routes } from "./routes/automations-v2";
 import { agentComposesMetadataRoutes } from "./routes/agent-composes-metadata";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
@@ -42,7 +43,6 @@ import { internalCallbacksAgentRoutes } from "./routes/internal-callbacks-agent"
 import { internalCallbacksAgentPhoneRoutes } from "./routes/internal-callbacks-agentphone";
 import { internalCallbacksChatRoutes } from "./routes/internal-callbacks-chat";
 import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks-github-issues";
-import { internalCallbacksScheduleRoutes } from "./routes/internal-callbacks-schedule";
 import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
 import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
 import { internalCallbacksTriggerRoutes } from "./routes/internal-callbacks-trigger";
@@ -200,6 +200,9 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   ...authMeRoutes,
   ...automationsRoutes,
+  // The unified Automations v2 resource (#16847 slice 2): one automation,
+  // N triggers of any kind.
+  ...automationsV2Routes,
   // Webhook-automation management (create/list/delete) on the new tables. Listed
   // before the inbound webhook route so the management collection/by-id paths
   // resolve ahead of the catch-all `:token` dispatch.
@@ -214,7 +217,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalCallbacksAgentPhoneRoutes,
   ...internalCallbacksChatRoutes,
   ...internalCallbacksGithubIssuesRoutes,
-  ...internalCallbacksScheduleRoutes,
   ...internalCallbacksSlackOrgRoutes,
   ...internalCallbacksTelegramRoutes,
   ...internalCallbacksTriggerRoutes,

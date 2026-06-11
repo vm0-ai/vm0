@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-import body_utils
 import usage
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.x_flow_helpers import (
     json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
@@ -650,7 +650,7 @@ class TestXConnectorUsage:
 
     def test_tweet_create_gzip_decoded_body_over_cap_stays_conservative(self, tmp_path, real_flow):
         """A gzip body that expands beyond the billing inspection cap is not refined."""
-        long_text = "x" * body_utils.STREAM_BUFFER_LIMIT
+        long_text = "x" * STREAM_BUFFER_LIMIT
         request_body = gzip.compress(json.dumps({"text": long_text}).encode())
         flow = self._make_x_flow(
             real_flow,
@@ -670,7 +670,7 @@ class TestXConnectorUsage:
 
     def test_tweet_create_raw_body_over_cap_stays_conservative(self, tmp_path, real_flow):
         """An oversized identity request body is not refined."""
-        request_body = b"{" + b'"text":"' + b"x" * body_utils.STREAM_BUFFER_LIMIT + b'"}'
+        request_body = b"{" + b'"text":"' + b"x" * STREAM_BUFFER_LIMIT + b'"}'
         flow = self._make_x_flow(
             real_flow,
             tmp_path,

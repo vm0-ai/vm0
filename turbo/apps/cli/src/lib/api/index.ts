@@ -174,15 +174,32 @@ export {
   resolveZeroScheduleByAgent,
 } from "./domains/zero-schedules";
 
-// Domain modules - Zero Automations
+// Domain modules - Zero Automations (legacy schedule-backed, deprecated CLI surface)
 export {
   deployZeroAutomation,
   listZeroAutomations,
-  deleteZeroAutomation,
   enableZeroAutomation,
-  disableZeroAutomation,
   resolveZeroAutomationByAgent,
 } from "./domains/zero-automations";
+
+// Domain modules - Automations v2 (unified automations + triggers)
+export {
+  createAutomationV2,
+  listAutomationsV2,
+  showAutomationV2,
+  updateAutomationV2,
+  deleteAutomationV2,
+  enableAutomationV2,
+  disableAutomationV2,
+  runAutomationV2,
+  addAutomationTriggerV2,
+  listAutomationTriggersV2,
+  showAutomationTriggerV2,
+  removeAutomationTriggerV2,
+  enableAutomationTriggerV2,
+  disableAutomationTriggerV2,
+  rotateAutomationTriggerSecretV2,
+} from "./domains/automations-v2";
 
 // Domain modules - Webhook Automations
 export {

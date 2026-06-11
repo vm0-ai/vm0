@@ -496,11 +496,13 @@ def match_host(host: str, pattern: str) -> dict | None:
     ({name+}, {name*}) must appear in the first (leftmost) position.
 
     - Literal segments must match exactly (case-insensitive).
-    - {name} matches a single host segment.
+    - {name} matches a single host segment, captured in lowercase.
     - prefix{name}suffix matches a host segment case-insensitively, with
-      the non-empty middle captured into `name` (case preserved from host).
+      the non-empty middle captured into `name` in lowercase.
     - {name+} matches one or more leading host segments. Must be first.
+      Captures preserve the input case supplied to match_host().
     - {name*} matches zero or more leading host segments. Must be first.
+      Non-empty captures preserve the input case supplied to match_host().
     """
     pattern_segs = _compile_segments(tuple(reversed(pattern.split("."))))
     if pattern_segs is None:
@@ -1763,6 +1765,7 @@ def match_compiled_firewall_request(
     upper_method = method.upper()
 
     decision = _FirewallDecisionState()
+    unsafe_path: bool | None = True if url_has_backslash else None
 
     for fw_entry in compiled_firewalls.firewalls:
         policy = compiled_network_policies.policies.get(fw_entry.name)
@@ -1774,7 +1777,10 @@ def match_compiled_firewall_request(
 
             rel_path, base_params = base_result
 
-            if url_has_backslash or has_unsafe_path(url_parts.path):
+            if unsafe_path is None:
+                unsafe_path = has_unsafe_path(url_parts.path)
+
+            if unsafe_path:
                 return FirewallBlock(
                     api_entry.base.raw,
                     fw_entry.name,

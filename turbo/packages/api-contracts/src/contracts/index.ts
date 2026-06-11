@@ -1197,10 +1197,16 @@ export {
 } from "./zero-usage-insight";
 export {
   zeroUsageRecordContract,
+  usageRecordKindSchema,
+  usageRecordRangeSchema,
+  usageRecordScopeSchema,
   usageRecordSourceSchema,
   type ZeroUsageRecordContract,
+  type UsageRecordKind,
+  type UsageRecordRange,
   type UsageRecordResponse,
   type UsageRecordRow,
+  type UsageRecordScope,
   type UsageRecordSource,
 } from "./zero-usage-record";
 export {
@@ -1405,13 +1411,23 @@ export {
   type InternalCallbacksGithubIssuesContract,
 } from "./internal-callbacks-github-issues";
 export {
-  internalCallbacksScheduleContract,
-  scheduleCronCallbackPayloadSchema,
-  scheduleLoopCallbackPayloadSchema,
-  type InternalCallbacksScheduleContract,
-  type ScheduleCronCallbackPayload,
-  type ScheduleLoopCallbackPayload,
-} from "./internal-callbacks-schedule";
+  automationsV2MainContract,
+  automationsV2ByRefContract,
+  automationTriggersV2Contract,
+  automationTriggerResponseSchema,
+  automationResponseSchemaV2,
+  automationListResponseSchemaV2,
+  automationMutationResponseSchemaV2,
+  triggerMutationResponseSchema,
+  automationRunResponseSchemaV2,
+  createTriggerRequestSchema,
+  type AutomationsV2MainContract,
+  type AutomationsV2ByRefContract,
+  type AutomationTriggersV2Contract,
+  type AutomationResponseV2,
+  type AutomationTriggerResponse,
+  type CreateTriggerRequest,
+} from "./automations-v2";
 export {
   internalCallbacksTriggerContract,
   triggerCronCallbackPayloadSchema,

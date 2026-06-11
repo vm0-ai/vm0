@@ -4,24 +4,11 @@ import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-function agentCard(name: string): HTMLElement {
-  const nameElement = screen.getAllByText(name).find((element) => {
-    return element.closest("main");
-  });
-  const card = nameElement?.closest("a");
-  if (!card) {
-    throw new Error(`Agent card not found: ${name}`);
-  }
-  return card;
-}
-
-const AGENTS = [
+const agents = [
   {
     id: "c0000000-0000-4000-a000-000000000001",
     ownerId: "user_alice",
@@ -46,6 +33,17 @@ const AGENTS = [
   },
 ] satisfies TeamComposeItem[];
 
+function agentCard(name: string): HTMLElement {
+  const nameElement = screen.getAllByText(name).find((element) => {
+    return element.closest("main");
+  });
+  const card = nameElement?.closest("a");
+  if (!card) {
+    throw new Error(`Agent card not found: ${name}`);
+  }
+  return card;
+}
+
 async function expectVisibleTooltip(text: string): Promise<void> {
   const matches = await screen.findAllByText(text);
   const visibleMatch = matches.find((element) => {
@@ -60,10 +58,10 @@ async function expectVisibleTooltip(text: string): Promise<void> {
 }
 
 describe("agents page", () => {
-  it("shows public agent creator on avatar hover", async () => {
+  it("shows the creator of a public agent on hover", async () => {
     const user = userEvent.setup();
-    setMockTeam(AGENTS);
-    setMockOrgMembers({
+    context.mocks.data.team(agents);
+    context.mocks.data.orgMembers({
       members: [
         {
           userId: "user_alice",

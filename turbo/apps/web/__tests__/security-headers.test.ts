@@ -561,24 +561,6 @@ const INTERNAL_CALLBACKS_GITHUB_ISSUES_NEXT_NEGATIVE_PATHS = [
   "/api/internal/callbacks/github",
   "/api/internal/callbacks",
 ] as const;
-const INTERNAL_CALLBACKS_SCHEDULE_CRON_REWRITE_SOURCE =
-  "/api/internal/callbacks/schedule/cron";
-const INTERNAL_CALLBACKS_SCHEDULE_CRON_PATH =
-  "/api/internal/callbacks/schedule/cron";
-const INTERNAL_CALLBACKS_SCHEDULE_CRON_NEXT_NEGATIVE_PATHS = [
-  "/api/internal/callbacks/schedule/cron/extra",
-  "/api/internal/callbacks/schedule",
-  "/api/internal/callbacks",
-] as const;
-const INTERNAL_CALLBACKS_SCHEDULE_LOOP_REWRITE_SOURCE =
-  "/api/internal/callbacks/schedule/loop";
-const INTERNAL_CALLBACKS_SCHEDULE_LOOP_PATH =
-  "/api/internal/callbacks/schedule/loop";
-const INTERNAL_CALLBACKS_SCHEDULE_LOOP_NEXT_NEGATIVE_PATHS = [
-  "/api/internal/callbacks/schedule/loop/extra",
-  "/api/internal/callbacks/schedule",
-  "/api/internal/callbacks",
-] as const;
 const INTERNAL_CALLBACKS_SLACK_ORG_REWRITE_SOURCE =
   "/api/internal/callbacks/slack/org";
 const INTERNAL_CALLBACKS_SLACK_ORG_PATH = "/api/internal/callbacks/slack/org";
@@ -2412,16 +2394,6 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/internal/callbacks/github/issues",
         },
         {
-          source: INTERNAL_CALLBACKS_SCHEDULE_CRON_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/internal/callbacks/schedule/cron",
-        },
-        {
-          source: INTERNAL_CALLBACKS_SCHEDULE_LOOP_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/internal/callbacks/schedule/loop",
-        },
-        {
           source: INTERNAL_CALLBACKS_SLACK_ORG_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/internal/callbacks/slack/org",
@@ -4088,60 +4060,6 @@ describe("API backend rewrites", () => {
 
     expect(matcher(INTERNAL_CALLBACKS_GITHUB_ISSUES_PATH)).toStrictEqual({});
     for (const pathname of INTERNAL_CALLBACKS_GITHUB_ISSUES_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact internal cron schedule callback rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === INTERNAL_CALLBACKS_SCHEDULE_CRON_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: INTERNAL_CALLBACKS_SCHEDULE_CRON_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/internal/callbacks/schedule/cron",
-    });
-
-    const matcher = getPathMatch(
-      INTERNAL_CALLBACKS_SCHEDULE_CRON_REWRITE_SOURCE,
-      {
-        removeUnnamedParams: true,
-        strict: true,
-      },
-    );
-
-    expect(matcher(INTERNAL_CALLBACKS_SCHEDULE_CRON_PATH)).toStrictEqual({});
-    for (const pathname of INTERNAL_CALLBACKS_SCHEDULE_CRON_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact internal loop schedule callback rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === INTERNAL_CALLBACKS_SCHEDULE_LOOP_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: INTERNAL_CALLBACKS_SCHEDULE_LOOP_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/internal/callbacks/schedule/loop",
-    });
-
-    const matcher = getPathMatch(
-      INTERNAL_CALLBACKS_SCHEDULE_LOOP_REWRITE_SOURCE,
-      {
-        removeUnnamedParams: true,
-        strict: true,
-      },
-    );
-
-    expect(matcher(INTERNAL_CALLBACKS_SCHEDULE_LOOP_PATH)).toStrictEqual({});
-    for (const pathname of INTERNAL_CALLBACKS_SCHEDULE_LOOP_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

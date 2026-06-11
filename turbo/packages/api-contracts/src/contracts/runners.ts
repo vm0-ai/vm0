@@ -35,9 +35,18 @@ export function elapsedSinceApiStartMs(
   return Math.max(0, nowMs - apiStartTimeMs);
 }
 
+export const runnerClaimPollReasonSchema = z.enum([
+  "immediate",
+  "deferred",
+  "wakeup_retry",
+  "slow",
+  "fast",
+]);
+
 const runnerClaimTelemetrySchema = z.object({
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
   localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
+  pollReason: runnerClaimPollReasonSchema.optional(),
 });
 
 /**

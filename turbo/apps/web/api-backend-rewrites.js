@@ -17,6 +17,10 @@ const DESKTOP_AUTH_HANDOFF_COMPLETE_REWRITE_SOURCE = `/api/desktop-auth/handoff/
 const DESKTOP_AUTH_HANDOFF_COMPLETE_PATH_RE = new RegExp(
   `^/api/desktop-auth/handoff/${UUID_PATH_SEGMENT_PATTERN}/complete$`,
 );
+const ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE =
+  "/api/zero/desktop/updates/:channel/:platform/:arch/release";
+const ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE =
+  /^\/api\/zero\/desktop\/updates\/[^/]+\/[^/]+\/[^/]+\/release$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 const ZERO_RUNS_REWRITE_SOURCE = "/api/zero/runs";
@@ -71,6 +75,36 @@ const AUTOMATIONS_DISABLE_REWRITE_SOURCE = "/api/automations/:name/disable";
 const AUTOMATIONS_DISABLE_PATH_RE = /^\/api\/automations\/[^/]+\/disable$/;
 const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:name/enable";
 const AUTOMATIONS_ENABLE_PATH_RE = /^\/api\/automations\/[^/]+\/enable$/;
+const AUTOMATIONS_V2_BY_REF_REWRITE_SOURCE = "/api/v2/automations/:ref";
+const AUTOMATIONS_V2_BY_REF_PATH_RE = /^\/api\/v2\/automations\/[^/]+$/;
+const AUTOMATIONS_V2_ENABLE_REWRITE_SOURCE = "/api/v2/automations/:ref/enable";
+const AUTOMATIONS_V2_ENABLE_PATH_RE = /^\/api\/v2\/automations\/[^/]+\/enable$/;
+const AUTOMATIONS_V2_DISABLE_REWRITE_SOURCE =
+  "/api/v2/automations/:ref/disable";
+const AUTOMATIONS_V2_DISABLE_PATH_RE =
+  /^\/api\/v2\/automations\/[^/]+\/disable$/;
+const AUTOMATIONS_V2_RUN_REWRITE_SOURCE = "/api/v2/automations/:ref/run";
+const AUTOMATIONS_V2_RUN_PATH_RE = /^\/api\/v2\/automations\/[^/]+\/run$/;
+const AUTOMATIONS_V2_TRIGGERS_REWRITE_SOURCE =
+  "/api/v2/automations/:ref/triggers";
+const AUTOMATIONS_V2_TRIGGERS_PATH_RE =
+  /^\/api\/v2\/automations\/[^/]+\/triggers$/;
+const AUTOMATION_TRIGGERS_V2_BY_ID_REWRITE_SOURCE = `/api/v2/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})`;
+const AUTOMATION_TRIGGERS_V2_BY_ID_PATH_RE = new RegExp(
+  `^/api/v2/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
+const AUTOMATION_TRIGGERS_V2_ENABLE_REWRITE_SOURCE = `/api/v2/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/enable`;
+const AUTOMATION_TRIGGERS_V2_ENABLE_PATH_RE = new RegExp(
+  `^/api/v2/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/enable$`,
+);
+const AUTOMATION_TRIGGERS_V2_DISABLE_REWRITE_SOURCE = `/api/v2/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/disable`;
+const AUTOMATION_TRIGGERS_V2_DISABLE_PATH_RE = new RegExp(
+  `^/api/v2/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
+);
+const AUTOMATION_TRIGGERS_V2_ROTATE_SECRET_REWRITE_SOURCE = `/api/v2/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/rotate-secret`;
+const AUTOMATION_TRIGGERS_V2_ROTATE_SECRET_PATH_RE = new RegExp(
+  `^/api/v2/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/rotate-secret$`,
+);
 const AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE =
   "/api/automations/webhooks/:token";
 const AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE =
@@ -435,6 +469,11 @@ export const API_BACKEND_REWRITES = [
     "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
   ],
   [
+    ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE,
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+    ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE,
+  ],
+  [
     AGENT_RUN_CANCEL_REWRITE_SOURCE,
     "/api/agent/runs/:id/cancel",
     AGENT_RUN_CANCEL_PATH_RE,
@@ -622,14 +661,6 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/internal/callbacks/github/issues",
     "/api/internal/callbacks/github/issues",
-  ],
-  [
-    "/api/internal/callbacks/schedule/cron",
-    "/api/internal/callbacks/schedule/cron",
-  ],
-  [
-    "/api/internal/callbacks/schedule/loop",
-    "/api/internal/callbacks/schedule/loop",
   ],
   [
     "/api/internal/callbacks/trigger/cron",
@@ -1199,6 +1230,52 @@ export const API_BACKEND_REWRITES = [
     AUTOMATIONS_BY_NAME_REWRITE_SOURCE,
     "/api/automations/:name",
     AUTOMATIONS_BY_NAME_PATH_RE,
+  ],
+  ["/api/v2/automations", "/api/v2/automations"],
+  [
+    AUTOMATIONS_V2_ENABLE_REWRITE_SOURCE,
+    "/api/v2/automations/:ref/enable",
+    AUTOMATIONS_V2_ENABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_V2_DISABLE_REWRITE_SOURCE,
+    "/api/v2/automations/:ref/disable",
+    AUTOMATIONS_V2_DISABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_V2_RUN_REWRITE_SOURCE,
+    "/api/v2/automations/:ref/run",
+    AUTOMATIONS_V2_RUN_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_V2_TRIGGERS_REWRITE_SOURCE,
+    "/api/v2/automations/:ref/triggers",
+    AUTOMATIONS_V2_TRIGGERS_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_V2_BY_REF_REWRITE_SOURCE,
+    "/api/v2/automations/:ref",
+    AUTOMATIONS_V2_BY_REF_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_V2_BY_ID_REWRITE_SOURCE,
+    "/api/v2/automation-triggers/:id",
+    AUTOMATION_TRIGGERS_V2_BY_ID_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_V2_ENABLE_REWRITE_SOURCE,
+    "/api/v2/automation-triggers/:id/enable",
+    AUTOMATION_TRIGGERS_V2_ENABLE_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_V2_DISABLE_REWRITE_SOURCE,
+    "/api/v2/automation-triggers/:id/disable",
+    AUTOMATION_TRIGGERS_V2_DISABLE_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_V2_ROTATE_SECRET_REWRITE_SOURCE,
+    "/api/v2/automation-triggers/:id/rotate-secret",
+    AUTOMATION_TRIGGERS_V2_ROTATE_SECRET_PATH_RE,
   ],
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],

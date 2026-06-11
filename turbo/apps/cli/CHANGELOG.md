@@ -1,5 +1,66 @@
 # Changelog
 
+## [9.189.1](https://github.com/vm0-ai/vm0/compare/cli-v9.189.0...cli-v9.189.1) (2026-06-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.83.0
+    * @vm0/core bumped to 8.328.1
+
+## [9.189.0](https://github.com/vm0-ai/vm0/compare/cli-v9.188.4...cli-v9.189.0) (2026-06-11)
+
+
+### Features
+
+* **cli:** redesign zero automation commands on unified automations v2 api ([#17250](https://github.com/vm0-ai/vm0/issues/17250)) ([90180c7](https://github.com/vm0-ai/vm0/commit/90180c7ae32f5b05df0fd8326463c8d9b83be39d))
+
+
+### Bug Fixes
+
+* clarify static artifact delivery context ([#17249](https://github.com/vm0-ai/vm0/issues/17249)) ([0c2c2cc](https://github.com/vm0-ai/vm0/commit/0c2c2cc1c9cb2837b4a14beba427f9c815525368))
+
+## [9.188.4](https://github.com/vm0-ai/vm0/compare/cli-v9.188.3...cli-v9.188.4) (2026-06-11)
+
+
+### Bug Fixes
+
+* **cli:** add --file option to zero video transcribe ([#17213](https://github.com/vm0-ai/vm0/issues/17213)) ([381c4ed](https://github.com/vm0-ai/vm0/commit/381c4edb8dcbe7a317a4ad729f9b050c821beb2c))
+* download hosted site clones from r2 ([#17240](https://github.com/vm0-ai/vm0/issues/17240)) ([d0da982](https://github.com/vm0-ai/vm0/commit/d0da9827fc74145974e4bb48e7fde90169ef3b57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.82.0
+    * @vm0/connectors bumped to 1.66.0
+    * @vm0/core bumped to 8.328.0
+
+## [9.188.3](https://github.com/vm0-ai/vm0/compare/cli-v9.188.2...cli-v9.188.3) (2026-06-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.81.1
+    * @vm0/connectors bumped to 1.65.0
+    * @vm0/core bumped to 8.327.0
+
+## [9.188.2](https://github.com/vm0-ai/vm0/compare/cli-v9.188.1...cli-v9.188.2) (2026-06-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.81.0
+    * @vm0/connectors bumped to 1.64.0
+    * @vm0/core bumped to 8.326.0
+
 ## [9.188.1](https://github.com/vm0-ai/vm0/compare/cli-v9.188.0...cli-v9.188.1) (2026-06-10)
 
 

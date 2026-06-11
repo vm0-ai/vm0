@@ -999,6 +999,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::resource_budget::ResourceBudget;
+    use crate::storage_fingerprints::StorageFingerprint;
 
     use sandbox::{ResourceLimits, SandboxConfig};
     use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
@@ -1179,11 +1180,11 @@ mod tests {
         let storage_fingerprints = StorageFingerprints {
             storages: HashMap::from([(
                 "/mnt/storage".into(),
-                ("storage-a".into(), "storage-version-2".into()),
+                StorageFingerprint::new("storage-a", "storage-version-2"),
             )]),
             artifacts: HashMap::from([(
                 "/workspace".into(),
-                ("artifact-a".into(), "artifact-version-3".into()),
+                StorageFingerprint::new("artifact-a", "artifact-version-3"),
             )]),
         };
         let expected_storage_fingerprints = storage_fingerprints.clone();

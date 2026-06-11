@@ -58,7 +58,6 @@ describe("automations schema", () => {
     expect(automations.chatThreadId.name).toBe("chat_thread_id");
     expect(automations.interpreterKind.name).toBe("interpreter_kind");
     expect(automations.enabled.name).toBe("enabled");
-    expect(automations.sourceScheduleId.name).toBe("source_schedule_id");
     expect(automations.createdAt.name).toBe("created_at");
     expect(automations.updatedAt.name).toBe("updated_at");
   });
@@ -71,7 +70,6 @@ describe("automations schema", () => {
         "idx_automations_user_org",
         "idx_automations_chat_thread",
         "idx_automations_agent_name_org_user",
-        "idx_automations_source_schedule",
       ]),
     );
   });

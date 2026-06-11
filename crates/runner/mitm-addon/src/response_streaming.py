@@ -17,12 +17,14 @@ Lifecycle:
 """
 
 from collections.abc import Callable
+from typing import NamedTuple
 
 from mitmproxy import http
 
-import body_utils
+import body_decoding
 import flow_metadata_keys as metadata_keys
 import usage
+from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
@@ -35,6 +37,11 @@ _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
+
+
+class CapturedResponseStreamBody(NamedTuple):
+    buffer: bytearray
+    truncated: bool
 
 
 def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
@@ -62,7 +69,7 @@ def _make_response_chunk_parser(
     feed: _ResponseChunkParser,
     headers: http.Headers,
 ) -> _ResponseChunkParser | None:
-    return body_utils.create_stream_decode_feed(headers, feed)
+    return body_decoding.create_stream_decode_feed(headers, feed)
 
 
 def _make_model_sse_parse_error_logger(
@@ -109,7 +116,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return None
     if is_observable_model_provider:
-        if not body_utils.can_stream_decode_usage(flow.response.headers):
+        if not body_decoding.can_stream_decode_usage(flow.response.headers):
             return None
         content_type = flow.response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
@@ -146,7 +153,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
 
     if not is_billable_flow:
         return None
-    if not body_utils.can_stream_decode_usage(flow.response.headers):
+    if not body_decoding.can_stream_decode_usage(flow.response.headers):
         return None
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
@@ -181,7 +188,7 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
     # - stream_buffer is only for forensic logging / capture and is always
     #   capped at STREAM_BUFFER_LIMIT.
     # - Token usage extraction uses the incremental parsers above.
-    buf_limit = body_utils.STREAM_BUFFER_LIMIT
+    buf_limit = STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         state["total_bytes"] += len(chunk)
@@ -213,6 +220,48 @@ def streamed_response_size(flow: http.HTTPFlow) -> int | None:
     if state is None:
         return None
     return int(state["total_bytes"])
+
+
+def captured_response_stream_body(flow: http.HTTPFlow) -> CapturedResponseStreamBody | None:
+    """Return buffered response body bytes and truncation state for capture logging.
+
+    ``configure_response_stream()`` writes ``STREAM_BUFFER`` and
+    ``STREAM_BUFFER_STATE`` together. This read helper keeps the metadata
+    invariant next to the writer while staying neutral about capture log fields.
+    """
+    stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
+    stream_state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE)
+    stream_truncated = False
+    if stream_buf is None:
+        return None
+
+    # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
+    if stream_buf:
+        if not isinstance(stream_state, dict) or "truncated" not in stream_state:
+            state_description = (
+                f"keys={sorted(str(key) for key in stream_state)}"
+                if isinstance(stream_state, dict)
+                else f"type={type(stream_state).__name__}"
+            )
+            raise RuntimeError(
+                "Invalid response body capture metadata: stream_buffer is "
+                f"present and non-empty (len={len(stream_buf)}) but "
+                "stream_buffer_state is missing the truncated flag. "
+                "response_streaming.configure_response_stream() must set "
+                "stream_buffer and stream_buffer_state together "
+                f"(stream_buffer_state {state_description})."
+            )
+        stream_truncated = bool(stream_state["truncated"])
+    elif stream_state is not None and not isinstance(stream_state, dict):
+        raise RuntimeError(
+            "Invalid response body capture metadata: stream_buffer is "
+            "empty but stream_buffer_state is not a dict "
+            f"(stream_buffer_state type={type(stream_state).__name__})."
+        )
+    elif stream_state:
+        stream_truncated = bool(stream_state.get("truncated", False))
+
+    return CapturedResponseStreamBody(stream_buf, stream_truncated)
 
 
 def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:

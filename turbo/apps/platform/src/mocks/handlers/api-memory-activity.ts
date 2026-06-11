@@ -13,10 +13,6 @@ const EMPTY_ACTIVITY: MemoryActivityResponse = {
 
 let mockMemoryActivity: MemoryActivityResponse = { ...EMPTY_ACTIVITY };
 
-export function setMockMemoryActivity(activity: MemoryActivityResponse): void {
-  mockMemoryActivity = activity;
-}
-
 export function resetMockMemoryActivity(): void {
   mockMemoryActivity = { ...EMPTY_ACTIVITY };
 }

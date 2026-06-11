@@ -1,12 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  useLastLoadable,
-  useLastResolved,
-  useGet,
-  useSet,
-} from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
-import { pageSignal$ } from "../../signals/page-signal.ts";
+import { useLastResolved, useGet, useSet } from "ccstate-react";
 import {
   IconChartLine,
   IconLayoutGrid,
@@ -27,7 +20,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
-import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   sidebarOff$,
   toggleSidebarOff$,
@@ -39,12 +32,9 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
+import { defaultAgentName$ } from "../../signals/agent.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { updatePinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
-  managePinnedDialogOpen$,
-  setManagePinnedDialogOpen$,
   isScrolled$,
   setIsScrolled$,
   manageSectionCollapsed$,
@@ -54,8 +44,6 @@ import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
-import { BillingDialog } from "./billing-dialog.tsx";
-import { ManagePinnedAgentsDialog } from "./zero-sidebar-dialogs.tsx";
 
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
@@ -142,36 +130,6 @@ const FOOTER_NAV = [
 function ChatThreadsSectionWithKey() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   return <ChatThreadsSection key={currentChatAgentId} />;
-}
-
-// Leaf component: owns all dialog-related async subscriptions
-function ManagePinnedAgentsDialogContainer() {
-  const open = useGet(managePinnedDialogOpen$);
-  const setOpen = useSet(setManagePinnedDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
-  const displayNameLoadable = useLastLoadable(defaultAgentName$);
-  const displayName =
-    displayNameLoadable.state === "hasData"
-      ? (displayNameLoadable.data ?? "Zero")
-      : "Zero";
-  const subagentsLoadable = useLastLoadable(subagents$);
-  const subagentsData =
-    subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
-  const [pinLoadable, savePinnedIdsFn] = useLoadableSet(updatePinnedAgentIds$);
-  const saving = pinLoadable.state === "loading";
-  const setPinnedIds = (ids: string[]) => {
-    detach(savePinnedIdsFn(ids, pageSignal), Reason.DomCallback);
-  };
-  return (
-    <ManagePinnedAgentsDialog
-      open={open}
-      onOpenChange={setOpen}
-      displayName={displayName}
-      subagents={subagentsData}
-      onPinnedIdsChange={setPinnedIds}
-      saving={saving}
-    />
-  );
 }
 
 // Shared subscription hooks. Each sibling component pulls its own state from
@@ -638,8 +596,6 @@ export function ZeroSidebar() {
     <>
       <CollapsedSidebar />
       <ExpandedSidebar />
-      <ManagePinnedAgentsDialogContainer />
-      <BillingDialog />
     </>
   );
 }

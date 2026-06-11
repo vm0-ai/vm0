@@ -127,6 +127,7 @@ export const dispatchAutomationWebhook$ = command(
         orgId: automations.orgId,
         userId: automations.userId,
         enabled: automations.enabled,
+        triggerEnabled: automationTriggers.enabled,
         encryptedSecret: automationTriggers.encryptedSecret,
       })
       .from(automationTriggers)
@@ -138,7 +139,10 @@ export const dispatchAutomationWebhook$ = command(
       .limit(1);
     signal.throwIfAborted();
 
-    if (!row || !row.enabled) {
+    // A run fires only when automation.enabled && trigger.enabled (B3 on
+    // #16847): the automation-level switch suspends all triggers, the
+    // trigger-level switch disables just this inbound hook.
+    if (!row || !row.enabled || !row.triggerEnabled) {
       return { kind: "not_found" };
     }
 

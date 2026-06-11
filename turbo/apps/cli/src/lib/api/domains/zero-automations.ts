@@ -77,28 +77,6 @@ export async function listZeroAutomations(): Promise<AutomationListResponse> {
 }
 
 /**
- * Delete zero automation by name
- */
-export async function deleteZeroAutomation(params: {
-  name: string;
-  agentId: string;
-}): Promise<void> {
-  const config = await getClientConfig();
-  const client = initClient(automationsByNameContract, config);
-
-  const result = await client.delete({
-    params: { name: params.name },
-    query: { agentId: params.agentId },
-  });
-
-  if (result.status === 204) {
-    return;
-  }
-
-  handleError(result, `Automation "${params.name}" not found on remote`);
-}
-
-/**
  * Enable zero automation
  */
 export async function enableZeroAutomation(params: {
@@ -118,28 +96,6 @@ export async function enableZeroAutomation(params: {
   }
 
   handleError(result, `Failed to enable automation "${params.name}"`);
-}
-
-/**
- * Disable zero automation
- */
-export async function disableZeroAutomation(params: {
-  name: string;
-  agentId: string;
-}): Promise<AutomationResponse> {
-  const config = await getClientConfig();
-  const client = initClient(automationsEnableContract, config);
-
-  const result = await client.disable({
-    params: { name: params.name },
-    body: { agentId: params.agentId },
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, `Failed to disable automation "${params.name}"`);
 }
 
 /**

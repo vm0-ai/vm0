@@ -25,8 +25,6 @@ import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thre
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
-  zeroShowAboutPage$,
-  setZeroShowAboutPage$,
   sidebarExpanded$,
   setSidebarExpanded$,
   isChatRoute,
@@ -34,7 +32,6 @@ import {
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
-import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
@@ -286,8 +283,6 @@ function SettingsDialogMount() {
 }
 
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
-  const showAboutPage = useGet(zeroShowAboutPage$);
-  const setShowAboutPage = useSet(setZeroShowAboutPage$);
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
 
@@ -309,15 +304,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         <InstallBanner />
         <IosInstallModal />
         <MobileTopBar />
-        {showAboutPage ? (
-          <ZeroAboutPage
-            onBack={() => {
-              return setShowAboutPage(false);
-            }}
-          />
-        ) : (
-          children
-        )}
+        {children}
       </div>
     </div>
   );

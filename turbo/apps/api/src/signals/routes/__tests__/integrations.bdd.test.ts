@@ -11,6 +11,7 @@ import { server } from "../../../mocks/server";
 import { clearAllDetached } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
 import {
+  agentPhoneBddWebhookSecret,
   createBddIntegrationApi,
   telegramLoginAuth,
   type ForwardedInternalCallback,
@@ -35,7 +36,6 @@ const bdd = createBddApi(context);
 const integrations = createBddIntegrationApi(context);
 const runs = createRunsSchedulesApi(context);
 const webhooks = createWebhookCallbackApi(context);
-const AGENTPHONE_WEBHOOK_SECRET = "agentphone-bdd-secret";
 const TELEGRAM_BOT_ID = 99_887_766;
 const TELEGRAM_BOT_TOKEN = `${TELEGRAM_BOT_ID}:bdd-token`;
 const TELEGRAM_OFFICIAL_WEBHOOK_SECRET = "telegram-official-bdd-secret";
@@ -277,7 +277,7 @@ function agentPhoneWebhookHeaders(
   return {
     "x-webhook-signature": `sha256=${createHmac(
       "sha256",
-      AGENTPHONE_WEBHOOK_SECRET,
+      agentPhoneBddWebhookSecret(),
     )
       .update(`${timestamp}.${body}`)
       .digest("hex")}`,

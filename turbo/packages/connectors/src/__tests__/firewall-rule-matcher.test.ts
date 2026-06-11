@@ -170,6 +170,12 @@ describe("matchFirewallHost", () => {
     ).toEqual({ deployment: "Foo.Bar" });
   });
 
+  it("preserves original case for star-greedy leading host params", () => {
+    expect(
+      matchFirewallHost("Foo.Bar.bentoml.ai", "{deployment*}.bentoml.ai"),
+    ).toEqual({ deployment: "Foo.Bar" });
+  });
+
   it("requires a non-empty leading host for plus greedy params", () => {
     expect(
       matchFirewallHost("bentoml.ai", "{deployment+}.bentoml.ai"),

@@ -6,15 +6,25 @@ import {
 } from "update-electron-app";
 
 import type { DesktopConfig } from "./config";
+import { shouldNotifyUserForDesktopUpdate } from "./desktop-auto-update-policy";
 import {
   desktopUpdateFeedBaseUrl,
   shouldInstallDesktopAutoUpdates,
 } from "./desktop-update-feed";
+import type { ComputerUseHostRuntimeState } from "./computer-use-types";
 
 interface DesktopAutoUpdateOptions {
   readonly config: DesktopConfig;
   readonly apiBaseUrl: string;
+  readonly getComputerUseHostState: () => ComputerUseHostRuntimeState;
   readonly prepareForQuitAndInstall: () => Promise<void>;
+}
+
+async function restartForUpdate(
+  prepareForQuitAndInstall: () => Promise<void>,
+): Promise<void> {
+  await prepareForQuitAndInstall();
+  autoUpdater.quitAndInstall();
 }
 
 async function promptToRestartForUpdate(
@@ -36,8 +46,30 @@ async function promptToRestartForUpdate(
     return;
   }
 
-  await prepareForQuitAndInstall();
-  autoUpdater.quitAndInstall();
+  await restartForUpdate(prepareForQuitAndInstall);
+}
+
+function shouldPromptForDownloadedUpdate(
+  getComputerUseHostState: () => ComputerUseHostRuntimeState,
+): boolean {
+  try {
+    return shouldNotifyUserForDesktopUpdate(getComputerUseHostState());
+  } catch (error) {
+    console.warn("Unable to inspect Computer Use activity for update", error);
+    return true;
+  }
+}
+
+async function handleDownloadedUpdate(
+  info: IUpdateInfo,
+  options: DesktopAutoUpdateOptions,
+): Promise<void> {
+  if (shouldPromptForDownloadedUpdate(options.getComputerUseHostState)) {
+    await promptToRestartForUpdate(info, options.prepareForQuitAndInstall);
+    return;
+  }
+
+  await restartForUpdate(options.prepareForQuitAndInstall);
 }
 
 export function installDesktopAutoUpdates(
@@ -68,10 +100,7 @@ export function installDesktopAutoUpdates(
     updateInterval: "30 minutes",
     notifyUser: true,
     onNotifyUser: (info) => {
-      void promptToRestartForUpdate(
-        info,
-        options.prepareForQuitAndInstall,
-      ).catch((error) => {
+      void handleDownloadedUpdate(info, options).catch((error) => {
         console.error("Desktop update restart prompt failed", error);
       });
     },

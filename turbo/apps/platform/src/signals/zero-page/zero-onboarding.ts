@@ -133,10 +133,6 @@ export const setZeroStep$ = command(({ set }, step: ZeroOnboardingStep) => {
   captureOnboardingStep(step);
 });
 
-export const setZeroAgentName$ = command(({ set }, name: string) => {
-  set(internalAgentName$, name);
-});
-
 export const setZeroWorkspaceName$ = command(({ set }, name: string) => {
   set(internalWorkspaceName$, name);
 });

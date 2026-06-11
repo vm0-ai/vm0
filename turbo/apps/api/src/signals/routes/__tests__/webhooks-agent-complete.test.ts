@@ -31,11 +31,12 @@ import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+import { clearAllDetached } from "../../utils";
 import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
 } from "../../services/agent-run-queue-payload.service";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   deleteUsageInsightFixture$,
@@ -303,7 +304,7 @@ describe("POST /api/webhooks/agent/complete (remnant: priced usage settlement)",
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(callbackBody).toStrictEqual({
       callbackId,

@@ -10,6 +10,7 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
+import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
   chatThreads$,
@@ -295,7 +296,7 @@ const mintOptimisticPendingThread$ = command(
       agentId: args.agentId,
     });
     await set(writeThreadAgentToCache$, args.threadId, args.agentId, signal);
-    const createdAt = new Date().toISOString();
+    const createdAt = nowDate().toISOString();
     const dataSource = createLocalChatThreadDataSource({
       threadData: createPendingChatThread(
         args.threadId,
@@ -517,7 +518,7 @@ const sendNewThreadMessage$ = command(
 
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
-    const messageCreatedAt = new Date().toISOString();
+    const messageCreatedAt = nowDate().toISOString();
     set(appendOptimisticChatMessage$, {
       threadId,
       optimisticUserMessageAssociation: "run",

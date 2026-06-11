@@ -333,6 +333,7 @@ describe("CHAT-02: completed chat callback", () => {
     });
     await api.requestCancelRun(actor, sentinel.runId, [200]);
     await drainDetached(3);
+    const titlePromptCountBeforeComplete = titlePrompts.length;
 
     await chatCallbacks.registerPushSubscription(actor);
     chatCallbacks.enableVapid();
@@ -388,14 +389,15 @@ describe("CHAT-02: completed chat callback", () => {
     expect((await chat.readThread(actor, first.threadId)).title).toBe(
       "Debugging Node Apps",
     );
-    const callbackTitlePrompt = titlePrompts.find((titlePrompt) => {
-      return titlePrompt.includes("Most recent assistant reply:\nfinal answer");
+    expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
+    const initialTitlePrompt = titlePrompts.find((titlePrompt) => {
+      return titlePrompt.includes(`Most recent user message:\n${prompt}`);
     });
-    if (callbackTitlePrompt === undefined) {
-      throw new Error("Expected the completion to request a thread title");
+    if (initialTitlePrompt === undefined) {
+      throw new Error("Expected the initial send to request a thread title");
     }
-    expect(callbackTitlePrompt).toContain(
-      `Most recent user message:\n${prompt}`,
+    expect(initialTitlePrompt).not.toContain(
+      "Most recent assistant reply:\nfinal answer",
     );
 
     const threads = await chat.listThreads(actor);
@@ -604,6 +606,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     ).toStrictEqual(["Already streamed."]);
 
     const beforeTitle = (await chat.readThread(actor, first.threadId)).title;
+    expect(beforeTitle).toBeNull();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterFailure();
     const fourth = await startChatRun(actor, {
@@ -975,7 +978,7 @@ describe("CHAT-02: auto-send after failures", () => {
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
-  it("starts a fresh session with prior web context when the queued model differs, and feeds prior rounds into the title prompt", async () => {
+  it("starts a fresh session with prior web context when the queued model differs, without regenerating an existing title", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.proxyChatCallbackToApp();
@@ -1085,22 +1088,13 @@ describe("CHAT-02: auto-send across a model switch", () => {
     expect(thread.selectedModel).toBe("claude-sonnet-4-6");
     expect(thread.title).toBe("Working with JSON");
 
-    const callbackTitlePrompt = titlePrompts.find((titlePrompt) => {
-      return titlePrompt.includes(
-        "Most recent assistant reply:\nUse JSON.stringify(value).",
-      );
-    });
-    if (callbackTitlePrompt === undefined) {
-      throw new Error(
-        "Expected the second completion to request a thread title",
-      );
+    expect(titlePrompts).toHaveLength(1);
+    const initialTitlePrompt = titlePrompts[0];
+    if (initialTitlePrompt === undefined) {
+      throw new Error("Expected the initial send to request a thread title");
     }
-    expect(callbackTitlePrompt).toContain("Previous conversation");
-    expect(callbackTitlePrompt).toContain("How do I parse JSON?");
-    expect(callbackTitlePrompt).toContain("Use JSON.parse(str).");
-    const priorSection =
-      callbackTitlePrompt.split("Most recent user message:")[0] ?? "";
-    expect(priorSection).not.toContain("And stringify?");
+    expect(initialTitlePrompt).toContain("How do I parse JSON?");
+    expect(initialTitlePrompt).not.toContain("Use JSON.stringify(value).");
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await drainDetached(3);

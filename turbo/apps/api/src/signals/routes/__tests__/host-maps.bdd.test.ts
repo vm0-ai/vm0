@@ -127,6 +127,9 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       status: "ready",
     });
 
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/hosted-sites/download?sig=bdd",
+    );
     const listed = await api.readHostedSiteFiles(actor, second.publicSlug);
     expect(listed).toMatchObject({
       siteId: first.siteId,
@@ -142,6 +145,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
           path: file.path,
           size: file.size,
           contentType: file.contentType,
+          downloadUrl: file.downloadUrl,
         };
       }),
     ).toStrictEqual([
@@ -149,11 +153,13 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         path: "/assets/app.js",
         size: scriptFile.size,
         contentType: "application/javascript",
+        downloadUrl: "https://r2.example.com/hosted-sites/download?sig=bdd",
       },
       {
         path: "/index.html",
         size: indexFile.size,
         contentType: "text/html; charset=utf-8",
+        downloadUrl: "https://r2.example.com/hosted-sites/download?sig=bdd",
       },
     ]);
 

@@ -6,6 +6,7 @@
 
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import type { SecretResponse } from "@vm0/api-contracts/contracts/secrets";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
 let mockSecrets: SecretResponse[] = [];
@@ -16,7 +17,7 @@ export function resetMockSecrets(): void {
 
 export const apiSecretsHandlers = [
   mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-    const now = new Date().toISOString();
+    const now = nowDate().toISOString();
     const existing = mockSecrets.find((s) => s.name === body.name);
     const created = !existing;
 

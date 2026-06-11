@@ -79,6 +79,7 @@ interface ZeroAgentSeed {
   readonly environment?: Record<string, string>;
   readonly modelProviderId?: string | null;
   readonly selectedModel?: string | null;
+  readonly customSkills?: readonly string[];
 }
 
 const seedRunnableZeroAgent$ = command(
@@ -134,7 +135,7 @@ const seedRunnableZeroAgent$ = command(
       displayName: null,
       description: null,
       sound: null,
-      customSkills: [],
+      customSkills: [...(args.customSkills ?? [])],
       modelProviderId: args.modelProviderId ?? null,
       selectedModel: args.selectedModel ?? null,
     });
@@ -659,6 +660,40 @@ describe("POST /api/zero/runs", () => {
       modelProviderId: provider.id,
       selectedModel: "agent-selected-model",
     });
+  });
+
+  it("does not let custom skills override seed skill volumes", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      customSkills: ["computer-use"],
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "use computer use", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ additionalVolumes: agentRuns.additionalVolumes })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId));
+    const volumes = run?.additionalVolumes ?? [];
+    const computerUseVolumes = volumes.filter((volume) => {
+      return volume.mountPath === "/home/user/.claude/skills/computer-use";
+    });
+
+    expect(computerUseVolumes).toHaveLength(1);
+    expect(computerUseVolumes[0]).toMatchObject({ system: true });
+    expect(
+      volumes.some((volume) => {
+        return volume.name === "custom-skill@computer-use";
+      }),
+    ).toBeFalsy();
   });
 
   it("persists agent-trigger metadata and callback for nested zero runs", async () => {

@@ -1366,6 +1366,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     await chatCallbacks.enableChatRecommendedFollowups(actor);
     mockOptionalEnv("OPENROUTER_API_KEY", "title-key");
     let upstreamAuthorization: string | null = null;
+    let titleRequests = 0;
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -1390,8 +1391,14 @@ describe("CHAT-02: prior rounds and thread titles", () => {
               ],
             });
           }
+          if (systemContent.includes("Generate a short, descriptive title")) {
+            titleRequests += 1;
+            return HttpResponse.json({
+              choices: [{ message: { content: "**Migration Plan**" } }],
+            });
+          }
           return HttpResponse.json({
-            choices: [{ message: { content: "**Migration Plan**" } }],
+            choices: [{ message: { content: "Generated summary" } }],
           });
         },
       ),
@@ -1403,6 +1410,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect((await chat.readThread(actor, first.threadId)).title).toBe(
       "Migration Plan",
     );
+    expect(titleRequests).toBe(1);
     expect(upstreamAuthorization).toBe("Bearer title-key");
 
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -1432,6 +1440,10 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       revokesMessageId: recommender.id,
     });
     await drainDetached(1);
+    expect((await chat.readThread(actor, first.threadId)).title).toBe(
+      "Migration Plan",
+    );
+    expect(titleRequests).toBe(1);
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
@@ -1465,6 +1477,19 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       "Recommended follow-up has already been used",
     );
     await cancelChatRun(actor, second.runId);
+
+    await chat.renameThread(actor, first.threadId, "Manual Migration Title");
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "manual title should stay",
+    });
+    await drainDetached(1);
+    expect((await chat.readThread(actor, first.threadId)).title).toBe(
+      "Manual Migration Title",
+    );
+    expect(titleRequests).toBe(1);
+    await cancelChatRun(actor, third.runId);
   }, 90_000);
 });
 

@@ -38,7 +38,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
 const store = createStore();
@@ -685,7 +685,7 @@ describe("POST /api/zero/image-io/generate", () => {
     releasePendingFalResponse?.();
     releasePendingFalResponse = null;
     clearMockNow();
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -982,7 +982,7 @@ describe("POST /api/zero/image-io/generate", () => {
       ],
       prompt: "A small robot paints a sunflower.",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const webhookUrl = new URL(readWebhookUrl(observedRequestUrl));
     expect(webhookUrl.origin).toBe(WEB_ORIGIN);
     expect(webhookUrl.pathname).toBe(
@@ -1207,7 +1207,7 @@ describe("POST /api/zero/image-io/generate", () => {
       ],
       prompt: "A late robot paints a sunflower.",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     releasePendingFalResponse = null;
 
     const finalStatusResponse = await app.request(
@@ -1313,7 +1313,7 @@ describe("POST /api/zero/image-io/generate", () => {
       prompt: "A precise product render.",
       seed: 99,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
       `/api/zero/built-in-generations/${generationId}`,
@@ -1447,7 +1447,7 @@ describe("POST /api/zero/image-io/generate", () => {
       prompt: "A polished product mockup.",
       seed: 42,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
       `/api/zero/built-in-generations/${generationId}`,
@@ -1565,7 +1565,7 @@ describe("POST /api/zero/image-io/generate", () => {
       description: "A launch poster with crisp product typography.",
       seed: 123,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
       `/api/zero/built-in-generations/${generationId}`,
@@ -1678,7 +1678,7 @@ describe("POST /api/zero/image-io/generate", () => {
       ],
       description: "A polished product campaign.",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
       `/api/zero/built-in-generations/${generationId}`,
@@ -1765,7 +1765,7 @@ describe("POST /api/zero/image-io/generate", () => {
       ],
       prompt: "A precise medical infographic.",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
       `/api/zero/built-in-generations/${generationId}`,
@@ -1879,7 +1879,7 @@ describe("POST /api/zero/image-io/generate", () => {
       ],
       prompt: "A compact technical diagram.",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const statusResponse = await app.request(
       `/api/zero/built-in-generations/${generationId}`,

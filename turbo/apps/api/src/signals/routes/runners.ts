@@ -535,11 +535,14 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
+  readonly apiToRunnerQueueMs: number | undefined;
+  readonly runnerQueueToClaimRequestMs: number;
   readonly apiToClaimRequestMs: number | undefined;
   readonly apiToClaimMs: number | undefined;
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly pollReason: string | undefined;
 }): void {
   waitUntil(
     publishRunChangedForUserSafely(args.userId, args.runId, {
@@ -559,18 +562,36 @@ async function recordClaimTimingMetrics(args: {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
+  readonly apiToRunnerQueueMs: number | undefined;
+  readonly runnerQueueToClaimRequestMs: number;
   readonly apiToClaimRequestMs: number | undefined;
   readonly apiToClaimMs: number | undefined;
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly pollReason: string | undefined;
 }): Promise<void> {
   await Promise.resolve();
-  const dimensions = {
+  const dimensions: Record<string, string> = {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
   };
+  if (args.pollReason) {
+    dimensions.poll_reason = args.pollReason;
+  }
+  recordClaimTimingOperation(
+    args.runId,
+    "api_to_runner_queue",
+    args.apiToRunnerQueueMs,
+    dimensions,
+  );
+  recordClaimTimingOperation(
+    args.runId,
+    "runner_queue_to_claim_request",
+    args.runnerQueueToClaimRequestMs,
+    dimensions,
+  );
   recordClaimTimingOperation(
     args.runId,
     "api_to_claim_request",
@@ -756,12 +777,21 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Run not found");
   }
 
+  const queueCreatedAtMs = jobWithRun.job.createdAt.getTime();
   scheduleClaimSucceededSideEffects({
     runId,
     userId: run.userId,
     runnerGroup: jobWithRun.job.runnerGroup,
     profile: jobWithRun.job.profile,
     authType: auth.type,
+    apiToRunnerQueueMs: elapsedSinceApiStartMs(
+      storedContext.apiStartTime,
+      queueCreatedAtMs,
+    ),
+    runnerQueueToClaimRequestMs: Math.max(
+      0,
+      claimRequestStartedAtMs - queueCreatedAtMs,
+    ),
     apiToClaimRequestMs: elapsedSinceApiStartMs(
       storedContext.apiStartTime,
       claimRequestStartedAtMs,
@@ -778,6 +808,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       body.data.telemetry?.jobDiscoveredToClaimRequestMs,
     localAdmissionToClaimRequestMs:
       body.data.telemetry?.localAdmissionToClaimRequestMs,
+    pollReason: body.data.telemetry?.pollReason,
   });
 
   return {

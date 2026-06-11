@@ -5,6 +5,7 @@ import { command } from "ccstate";
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import {
   clearMockedAuth,
+  type MockedClientSession,
   type MockedInvitation,
   type MockedMembership,
   mockOrganization,
@@ -19,7 +20,6 @@ import {
   setPathname,
   setSearch,
 } from "../signals/location";
-import { updateSearchParams$ } from "../signals/route";
 import { vi } from "vitest";
 import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
@@ -87,6 +87,9 @@ export async function setupPage(options: {
     fullName: string;
     email?: string;
     firstName?: string;
+    imageUrl?: string;
+    createOrganizationEnabled?: boolean;
+    clientSessions?: MockedClientSession[];
   } | null;
   session?: { token: string } | null;
   org?: {
@@ -102,7 +105,6 @@ export async function setupPage(options: {
   };
   debugLoggers?: string[];
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
-  withoutRender?: boolean;
 }) {
   ensureTestLocalStorage();
   createPushStateMock(options.context.signal);
@@ -161,29 +163,21 @@ export async function setupPage(options: {
     clearMockedAuth();
   });
 
-  if (options.withoutRender) {
-    await options.context.store.set(
-      bootstrap$,
-      () => {},
-      options.context.signal,
-    );
-  } else {
-    // Not wrapped in act() — background polling loops would cause act() to
-    // hang indefinitely waiting for them to settle. React "not wrapped in
-    // act" warnings are suppressed in setup.ts.
-    await options.context.store.set(
-      bootstrap$,
-      () => {
-        setupRouter(options.context.store, (element) => {
-          const { unmount } = render(element);
-          options.context.signal.addEventListener("abort", () => {
-            unmount();
-          });
+  // Not wrapped in act() — background polling loops would cause act() to
+  // hang indefinitely waiting for them to settle. React "not wrapped in
+  // act" warnings are suppressed in setup.ts.
+  await options.context.store.set(
+    bootstrap$,
+    () => {
+      setupRouter(options.context.store, (element) => {
+        const { unmount } = render(element);
+        options.context.signal.addEventListener("abort", () => {
+          unmount();
         });
-      },
-      options.context.signal,
-    );
-  }
+      });
+    },
+    options.context.signal,
+  );
 }
 
 /**
@@ -191,11 +185,8 @@ export async function setupPage(options: {
  * initiates a long-running polling loop that never resolves on its own
  * (e.g. an active run that stays in "pending" state during the test).
  *
- * Use `await setupPage(...)` when the full initialization is expected to
- * complete within the test (e.g. static threads, finished runs). Use
- * `detachedSetupPage` only when the setup intentionally runs for the
- * duration of the test — in that case pair it with `await waitFor(...)` to
- * assert the desired rendered state rather than awaiting setup completion.
+ * Tests should use `detachedSetupPage` and pair it with `await waitFor(...)`
+ * to assert the desired rendered state rather than awaiting setup completion.
  *
  * Note: because setup runs concurrently with the test body, teardown (signal
  * abort) may race with in-flight async operations. Ensure test assertions do
@@ -205,18 +196,8 @@ export function detachedSetupPage(options: Parameters<typeof setupPage>[0]) {
   detach(setupPage(options), Reason.Entrance, "test");
 }
 
-/**
- * Test helper: updates the pathname and triggers pathname$ recomputation
- * without re-running route setup. Use this in signal unit tests to simulate
- * a URL change that stays within the same route lifecycle.
- */
-export const updateTestPathname$ = command(({ set }, newPathname: string) => {
-  setPathname(newPathname);
-  set(updateSearchParams$, new URLSearchParams());
-});
-
 // Helper to create a pushState mock that updates mockLocation
-export function createPushStateMock(signal: AbortSignal) {
+function createPushStateMock(signal: AbortSignal) {
   const updateLocation = (url?: string | URL | null) => {
     if (typeof url === "string") {
       const urlObj = new URL(url, "http://localhost");

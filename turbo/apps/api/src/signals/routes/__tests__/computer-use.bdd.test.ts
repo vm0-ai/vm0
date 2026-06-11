@@ -105,14 +105,16 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const initialHosts = await api.listComputerUseHosts(actor);
     expect(initialHosts.hosts).toStrictEqual([]);
 
-    const host = await api.startComputerUseHost(actor);
+    const hostName = "lancy-macbook-pro.local";
+    const host = await api.startComputerUseHost(actor, { hostName });
     expect(host.hostToken).toMatch(/^vm0_computer_use_host_/);
 
     const hosts = await api.listComputerUseHosts(actor);
     expect(hosts.hosts).toHaveLength(1);
     expect(hosts.hosts[0]).toMatchObject({
       id: host.hostId,
-      displayName: "Zero Desktop",
+      hostName,
+      displayName: hostName,
       status: "online",
       permissions: { accessibility: true, screenRecording: true },
     });

@@ -1,5 +1,61 @@
 # Changelog
 
+## [12.422.0](https://github.com/vm0-ai/vm0/compare/web-v12.421.4...web-v12.422.0) (2026-06-11)
+
+
+### Features
+
+* **db:** drop zero_agent_schedules and retire the legacy schedule paths ([#17258](https://github.com/vm0-ai/vm0/issues/17258)) ([8f89943](https://github.com/vm0-ai/vm0/commit/8f89943a31309f02c35a1c58e1d1cabfc5cfa8ba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.83.0
+    * @vm0/core bumped to 8.328.1
+
+## [12.421.4](https://github.com/vm0-ai/vm0/compare/web-v12.421.3...web-v12.421.4) (2026-06-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.82.0
+    * @vm0/core bumped to 8.328.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.66.0
+
+## [12.421.3](https://github.com/vm0-ai/vm0/compare/web-v12.421.2...web-v12.421.3) (2026-06-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.1
+    * @vm0/core bumped to 8.327.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.65.0
+
+## [12.421.2](https://github.com/vm0-ai/vm0/compare/web-v12.421.1...web-v12.421.2) (2026-06-11)
+
+
+### Bug Fixes
+
+* route desktop connect link to release page ([#17190](https://github.com/vm0-ai/vm0/issues/17190)) ([cfa3531](https://github.com/vm0-ai/vm0/commit/cfa3531ce706ac773080c28868f7dcb6a2739bb3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.0
+    * @vm0/core bumped to 8.326.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.64.0
+
 ## [12.421.1](https://github.com/vm0-ai/vm0/compare/web-v12.421.0...web-v12.421.1) (2026-06-10)
 
 

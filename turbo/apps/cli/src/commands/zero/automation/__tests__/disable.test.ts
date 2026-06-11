@@ -1,5 +1,5 @@
 /**
- * Tests for zero automation disable command
+ * Tests for `zero automation disable` (v2 unified automations).
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -13,36 +13,20 @@ import { server } from "../../../../mocks/server";
 import { disableCommand } from "../disable";
 import chalk from "chalk";
 
-const mockCompose = {
-  id: "compose-uuid-001",
-  name: "my-agent",
-  headVersionId: "ver-001",
-  content: null,
-  createdAt: "2026-03-23T00:00:00Z",
-  updatedAt: "2026-03-23T00:00:00Z",
-};
-
 const mockAutomation = {
-  id: "auto-001",
-  agentId: "compose-uuid-001",
+  id: "11111111-1111-4111-8111-111111111111",
+  agentId: "550e8400-e29b-41d4-a716-446655440000",
+  displayName: "my-agent",
   userId: "user-001",
-  name: "default",
-  triggerType: "cron",
-  cronExpression: "0 9 * * *",
-  atTime: null,
-  intervalSeconds: null,
-  timezone: "UTC",
-  prompt: "run daily check",
+  name: "alerts",
   description: null,
+  instruction: "Summarize alerts",
   appendSystemPrompt: null,
   enabled: false,
-  nextRunAt: null,
-  lastRunAt: null,
-  retryStartedAt: null,
-  consecutiveFailures: 0,
   chatThreadId: "550e8400-e29b-41d4-a716-446655440099",
-  createdAt: "2026-03-23T00:00:00Z",
-  updatedAt: "2026-03-23T00:00:00Z",
+  createdAt: "2026-06-01T00:00:00Z",
+  updatedAt: "2026-06-01T00:00:00Z",
+  triggers: [],
 };
 
 describe("zero automation disable command", () => {
@@ -66,92 +50,43 @@ describe("zero automation disable command", () => {
     mockConsoleError.mockClear();
   });
 
-  describe("successful disable", () => {
-    it("should disable an automation", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(mockCompose);
-        }),
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({
-            automations: [{ ...mockAutomation, enabled: true }],
-          });
-        }),
-        http.post(
-          "http://localhost:3000/api/automations/default/disable",
-          () => {
-            return HttpResponse.json(mockAutomation);
-          },
-        ),
-      );
+  it("should disable an automation by ref", async () => {
+    let disabledRef: string | undefined;
 
-      await disableCommand.parseAsync(["node", "cli", "my-agent"]);
+    server.use(
+      http.post(
+        "http://localhost:3000/api/v2/automations/:ref/disable",
+        ({ params }) => {
+          disabledRef = params.ref as string;
+          return HttpResponse.json(mockAutomation);
+        },
+      ),
+    );
 
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Automation");
-      expect(logCalls).toContain("disabled");
-    });
+    await disableCommand.parseAsync(["node", "cli", "alerts"]);
 
-    it("should disable an automation when agent identifier is a UUID", async () => {
-      const testUuid = "550e8400-e29b-41d4-a716-446655440000";
-      const uuidCompose = { ...mockCompose, id: testUuid };
-      const uuidAutomation = {
-        ...mockAutomation,
-        agentId: testUuid,
-        enabled: true,
-      };
-
-      server.use(
-        http.get(
-          "http://localhost:3000/api/agent/composes/:id",
-          ({ params }) => {
-            if (params.id !== testUuid) {
-              return HttpResponse.json(
-                { error: { message: "Not found", code: "NOT_FOUND" } },
-                { status: 404 },
-              );
-            }
-            return HttpResponse.json(uuidCompose);
-          },
-        ),
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({ automations: [uuidAutomation] });
-        }),
-        http.post(
-          "http://localhost:3000/api/automations/default/disable",
-          () => {
-            return HttpResponse.json({ ...uuidAutomation, enabled: false });
-          },
-        ),
-      );
-
-      await disableCommand.parseAsync(["node", "cli", testUuid]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Automation");
-      expect(logCalls).toContain("disabled");
-    });
+    expect(disabledRef).toBe("alerts");
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain('Automation "alerts" disabled');
   });
 
-  describe("error handling", () => {
-    it("should handle no automation found", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(mockCompose);
-        }),
-        http.get("http://localhost:3000/api/automations", () => {
-          return HttpResponse.json({ automations: [] });
-        }),
-      );
+  it("should surface API errors", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/v2/automations/:ref/disable", () => {
+        return HttpResponse.json(
+          { error: { message: "Automation not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+    );
 
-      await expect(async () => {
-        await disableCommand.parseAsync(["node", "cli", "my-agent"]);
-      }).rejects.toThrow("process.exit called");
+    await expect(async () => {
+      await disableCommand.parseAsync(["node", "cli", "missing"]);
+    }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No automation found"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Automation not found"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

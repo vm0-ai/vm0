@@ -9,12 +9,6 @@ let mockUsageMembersResponse: UsageMembersResponse = {
   members: [],
 };
 
-export function setMockUsageMembers(
-  overrides: Partial<UsageMembersResponse>,
-): void {
-  mockUsageMembersResponse = { ...mockUsageMembersResponse, ...overrides };
-}
-
 export function resetMockUsageMembers(): void {
   mockUsageMembersResponse = { period: null, members: [] };
 }

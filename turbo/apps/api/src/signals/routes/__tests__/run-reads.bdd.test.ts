@@ -1802,7 +1802,13 @@ describe("RUN-04: agent run telemetry families", () => {
           {
             runId,
             sessionId: "bdd-session-1",
-            environment: { NODE_ENV: "production", EMPTY: null, NUM: 5 },
+            environment: { LEGACY_IGNORED: "legacy-map" },
+            environmentEntries: [
+              { name: "NODE_ENV", value: "production" },
+              { name: "EMPTY", value: null },
+              { name: "NUM", value: 5 },
+              { value: "missing-name" },
+            ],
             firewalls: [
               {
                 name: "test-fw",
@@ -1827,17 +1833,41 @@ describe("RUN-04: agent run telemetry families", () => {
               vasStorageName: "art-1",
               vasVersionId: "art-ver-1",
             },
-            featureFlags: { computerUse: true, dummy: null },
+            featureFlags: { legacyIgnored: true },
+            featureFlagEntries: [
+              { name: "computerUse", enabled: true },
+              { name: "dummy", enabled: null },
+              { enabled: true },
+            ],
             networkPolicies: {
-              github: {
-                allow: ["repo-read"],
+              legacyIgnored: {
+                allow: ["legacy"],
                 deny: [],
                 ask: [],
-                unknownPolicy: "allow",
+                unknownPolicy: "deny",
               },
-              broken: "nope",
-              invalid: { unknownPolicy: "bogus" },
             },
+            networkPolicyEntries: [
+              {
+                name: "github",
+                policy: {
+                  allow: ["repo-read"],
+                  deny: [],
+                  ask: [],
+                  unknownPolicy: "allow",
+                },
+              },
+              { name: "broken", policy: "nope" },
+              { name: "invalid", policy: { unknownPolicy: "bogus" } },
+              {
+                policy: {
+                  allow: ["missing-name"],
+                  deny: [],
+                  ask: [],
+                  unknownPolicy: "allow",
+                },
+              },
+            ],
           },
         ],
       },

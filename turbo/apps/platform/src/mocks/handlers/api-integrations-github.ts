@@ -106,10 +106,6 @@ export function createDefaultMockGithubIntegration(
   };
 }
 
-export function getMockGithubIntegration(): GithubInstallationResponse | null {
-  return mockGithubIntegration ? structuredClone(mockGithubIntegration) : null;
-}
-
 export const apiIntegrationsGithubHandlers = [
   mockApi(integrationsGithubContract.getInstallation, ({ respond }) => {
     if (!mockGithubIntegration) {

@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 
+import { automationTriggers } from "@vm0/db/schema/automation";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
+import { writeDb$ } from "../../external/db";
 import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
@@ -37,6 +41,7 @@ import {
  */
 
 const context = testContext();
+const store = createStore();
 
 async function entitledAutomationActor(): Promise<{
   readonly actor: ApiTestUser;
@@ -446,6 +451,20 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
       { signature: signAutomationWebhook(disabled.secret, body) },
     );
     expect(disabledPost.status).toBe(404);
+
+    const db = store.set(writeDb$);
+    await db
+      .update(automationTriggers)
+      .set({ enabled: false })
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    const disabledTriggerPost = await api.postAutomationWebhook(token, body, {
+      signature: signAutomationWebhook(created.secret, body),
+    });
+    expect(disabledTriggerPost.status).toBe(404);
+    await db
+      .update(automationTriggers)
+      .set({ enabled: true })
+      .where(eq(automationTriggers.automationId, created.automation.id));
 
     // When a correctly signed payload hits the inbound route
     const fired = await api.postAutomationWebhook(token, body, {

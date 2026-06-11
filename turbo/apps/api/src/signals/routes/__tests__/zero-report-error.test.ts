@@ -6,10 +6,13 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, expect } from "vitest";
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -534,6 +537,11 @@ describe("POST /api/zero/report-error", () => {
   it("includes run context when a same-org non-owner submits the report", async () => {
     const fixture = await seedReportRun({ prompt: "Inspect deployment" });
     mocks.clerk.session(randomUUID(), fixture.orgId);
+    await store
+      .set(writeDb$)
+      .update(agentRuns)
+      .set({ appendSystemPrompt: "database append prompt" })
+      .where(eq(agentRuns.id, fixture.runId));
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = String(args[0]);
@@ -541,8 +549,21 @@ describe("POST /api/zero/report-error", () => {
         return Promise.resolve([
           {
             runId: fixture.runId,
+            appendSystemPrompt: null,
             sessionId: "session-123",
-            environment: { NODE_ENV: "production" },
+            environmentEntries: [{ name: "NODE_ENV", value: "production" }],
+            networkPolicyEntries: [
+              {
+                name: "github",
+                policy: {
+                  allow: ["repo-read"],
+                  deny: [],
+                  ask: [],
+                  unknownPolicy: "allow",
+                },
+              },
+            ],
+            featureFlagEntries: [{ name: "apiBackend", enabled: true }],
             firewalls: [],
             volumes: [],
           },
@@ -556,11 +577,28 @@ describe("POST /api/zero/report-error", () => {
       [200],
     );
 
-    expect(activityLogJson(uploadedZip()).context).toMatchObject({
+    const activityContext = activityLogJson(uploadedZip()).context as Record<
+      string,
+      unknown
+    >;
+    expect(activityContext).toMatchObject({
       runId: fixture.runId,
+      appendSystemPrompt: null,
       sessionId: "session-123",
       environment: { NODE_ENV: "production" },
+      networkPolicies: {
+        github: {
+          allow: ["repo-read"],
+          deny: [],
+          ask: [],
+          unknownPolicy: "allow",
+        },
+      },
+      featureFlags: { apiBackend: true },
     });
+    expect(activityContext).not.toHaveProperty("environmentEntries");
+    expect(activityContext).not.toHaveProperty("networkPolicyEntries");
+    expect(activityContext).not.toHaveProperty("featureFlagEntries");
   });
 
   it("collects prompts from all runs in a multi-run session", async () => {

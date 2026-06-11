@@ -30,6 +30,8 @@ export enum FeatureSwitchKey {
   PosthogConnector = "posthogConnector",
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",
+  GoogleMapsConnector = "googleMapsConnector",
+  GoogleAnalyticsConnector = "googleAnalyticsConnector",
   GoogleSearchConsoleConnector = "googleSearchConsoleConnector",
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
@@ -60,5 +62,6 @@ export enum FeatureSwitchKey {
   ChatRecommendedFollowups = "chatRecommendedFollowups",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",
+  CreditUsageRecords = "creditUsageRecords",
   ZeroAutomations = "zeroAutomations",
 }

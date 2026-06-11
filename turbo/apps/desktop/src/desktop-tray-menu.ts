@@ -10,6 +10,7 @@ const HOST_STATUS_LABELS = {
   idle: "Ready",
   connecting: "Starting...",
   online: "Online",
+  recovering: "Recovering",
   unauthenticated: "Sign in required",
   needs_organization: "Select workspace",
   disabled: "Disabled",
@@ -102,13 +103,16 @@ function canStartComputerUse(state: DesktopTrayMenuState): boolean {
     !isAuthLoading(state) &&
     isAuthReady(state.auth) &&
     state.computerUse.host.status !== "connecting" &&
-    state.computerUse.host.status !== "online"
+    state.computerUse.host.status !== "online" &&
+    state.computerUse.host.status !== "recovering"
   );
 }
 
 function canStopComputerUse(state: DesktopTrayMenuState): boolean {
   return (
-    state.computerUse.supported && state.computerUse.host.status === "online"
+    state.computerUse.supported &&
+    (state.computerUse.host.status === "online" ||
+      state.computerUse.host.status === "recovering")
   );
 }
 
@@ -116,7 +120,10 @@ function authActionForComputerUse(
   state: DesktopTrayMenuState,
   actions: DesktopTrayMenuActions,
 ): DesktopTrayMenuItem | null {
-  if (state.computerUse.host.status === "online") {
+  if (
+    state.computerUse.host.status === "online" ||
+    state.computerUse.host.status === "recovering"
+  ) {
     return null;
   }
   if (isAuthLoading(state)) {

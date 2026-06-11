@@ -7,7 +7,7 @@ const c = initContract();
 /**
  * Webhook-automation management API. Creates/lists/deletes the events-first
  * webhook automations that live on the new `automations` + `automation_triggers`
- * tables (NOT `zero_agent_schedules`). Gated behind the `zeroAutomations`
+ * tables. Gated behind the `zeroAutomations`
  * feature switch — when off, these endpoints are not mounted (404), matching the
  * time-automation surface.
  *

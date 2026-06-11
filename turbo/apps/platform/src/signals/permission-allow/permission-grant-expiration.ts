@@ -1,6 +1,8 @@
 import { command, computed, state } from "ccstate";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 
+import { now } from "../../lib/time.ts";
+
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -31,7 +33,7 @@ export function parseUserPermissionGrantExpiresIn(
 
 export function userPermissionGrantExpiresAt(
   expiresIn: UserPermissionGrantExpiresIn | undefined,
-  nowMs = Date.now(),
+  nowMs = now(),
 ): string | null {
   switch (expiresIn) {
     case "1h": {
@@ -68,7 +70,7 @@ export function requestedUserPermissionGrantExpirationAlreadyApplies({
 
 export function permissionGrantExpiryText(
   expiresAt: string | null,
-  nowMs = Date.now(),
+  nowMs = now(),
 ): string | null {
   if (!expiresAt) {
     return null;

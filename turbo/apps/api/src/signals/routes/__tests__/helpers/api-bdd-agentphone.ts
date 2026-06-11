@@ -24,13 +24,15 @@ import {
 import { server } from "../../../../mocks/server";
 import { clearAllDetached } from "../../../utils";
 import type { ApiTestUser } from "./api-bdd";
-import { createBddIntegrationApi } from "./api-bdd-integrations";
+import {
+  agentPhoneBddWebhookSecret,
+  createBddIntegrationApi,
+} from "./api-bdd-integrations";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
 export const AGENTPHONE_BDD_PHONE_NUMBER = "+19039853128";
 const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
-const AGENTPHONE_WEBHOOK_SECRET = "agentphone-bdd-secret";
 const AGENTPHONE_CALLBACK_URL =
   "http://localhost:3000/api/internal/callbacks/agentphone";
 
@@ -101,7 +103,7 @@ function agentPhoneWebhookHeaders(
   return {
     "x-webhook-signature": `sha256=${createHmac(
       "sha256",
-      AGENTPHONE_WEBHOOK_SECRET,
+      agentPhoneBddWebhookSecret(),
     )
       .update(`${timestamp}.${body}`)
       .digest("hex")}`,

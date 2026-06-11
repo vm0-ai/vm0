@@ -1,14 +1,9 @@
 import { randomBytes } from "node:crypto";
 
 import type {
-  ScheduleCronCallbackPayload,
-  ScheduleLoopCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-schedule";
-import type {
   TriggerCronCallbackPayload,
   TriggerLoopCallbackPayload,
 } from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
-import type { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 
 import { internalApiBaseUrl } from "../../../lib/internal-api-url";
 
@@ -19,7 +14,7 @@ import { internalApiBaseUrl } from "../../../lib/internal-api-url";
  * Automation as the future hook for the first fetching interpreter (e.g. Gmail),
  * at which point a registry replaces the single impl.
  */
-export type InterpreterKind = "time" | "webhook";
+type InterpreterKind = "time" | "webhook" | "default";
 
 /**
  * Domain view of an Automation as the interpreter sees it. This is a thin
@@ -29,7 +24,7 @@ export type InterpreterKind = "time" | "webhook";
  * recurrence — its `triggerType` is "webhook" and its `cronExpression` is null —
  * and supplies its dynamic payload through the trigger event instead.
  */
-export interface Automation {
+interface Automation {
   readonly interpreterKind: InterpreterKind;
   readonly id: string;
   readonly agentId: string;
@@ -38,7 +33,7 @@ export interface Automation {
   readonly chatThreadId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
-  readonly triggerType: "cron" | "once" | "loop" | "webhook";
+  readonly triggerType: "cron" | "once" | "loop" | "webhook" | "manual";
   readonly cronExpression: string | null;
   readonly timezone: string;
 }
@@ -51,13 +46,15 @@ interface RunCallback {
 
 /**
  * The run-identity metadata an interpreter attaches to its produced run. A time
- * fire tags the originating schedule; a webhook fire tags the originating
- * automation plus the trigger that fired it (run provenance). Open for the
- * run-create layer to thread either into `zeroRunMetadata`.
+ * or webhook fire tags the originating automation plus the trigger that fired
+ * it (run provenance); a manual fire was not fired by any trigger, so its
+ * `triggerId` is absent — the run-create layer's metadata fields are all
+ * optional, this local shape just keeps `automationId` required.
  */
-type ZeroRunInputMetadata =
-  | { readonly scheduleId: string }
-  | { readonly automationId: string; readonly triggerId: string };
+type ZeroRunInputMetadata = {
+  readonly automationId: string;
+  readonly triggerId?: string;
+};
 
 /**
  * The automation-derived portion of a Zero agent-run request: the parts the
@@ -75,17 +72,6 @@ interface ZeroRunInput<
   readonly appendSystemPrompt: string;
   readonly callbacks: readonly RunCallback[];
   readonly zeroRunMetadata: Metadata;
-}
-
-/**
- * Trigger event for a time fire: the run request payload. The time path is
- * driven entirely by the Automation definition, so the event only carries the
- * schedule identity. The `kind` discriminant lets the single interpreter branch
- * between an instruction-only run (time) and a payload-context run (webhook).
- */
-interface TimeTriggerEvent {
-  readonly kind: "time";
-  readonly scheduleId: string;
 }
 
 /**
@@ -117,37 +103,25 @@ interface AutomationTimeTriggerEvent {
 }
 
 /**
- * The trigger that fired an Automation. A schedule time fire carries only the
- * schedule identity; an automation-table time fire carries the firing trigger
- * identity; a webhook fire carries the raw inbound payload. The interpreter keys
- * its context/callbacks/metadata off this discriminant.
+ * Trigger event for a manual fire (the v2 run-now endpoint): instruction-only
+ * like a time fire, but no trigger row was claimed, so the run carries neither
+ * a trigger provenance tag nor a reschedule callback — only the chat callback.
  */
-type TriggerEvent =
-  | TimeTriggerEvent
-  | AutomationTimeTriggerEvent
-  | WebhookTriggerEvent;
+interface ManualTriggerEvent {
+  readonly kind: "manual";
+}
 
 /**
- * Maps a `zero_agent_schedules` row to the Automation view the interpreter
- * consumes. All time-based schedules use the `time` interpreter kind.
+ * The trigger that fired an Automation. A schedule time fire carries only the
+ * schedule identity; an automation-table time fire carries the firing trigger
+ * identity; a webhook fire carries the raw inbound payload; a manual fire
+ * carries nothing. The interpreter keys its context/callbacks/metadata off
+ * this discriminant.
  */
-export function scheduleToAutomation(
-  schedule: typeof zeroAgentSchedules.$inferSelect,
-): Automation {
-  return {
-    interpreterKind: "time",
-    id: schedule.id,
-    agentId: schedule.agentId,
-    orgId: schedule.orgId,
-    userId: schedule.userId,
-    chatThreadId: schedule.chatThreadId,
-    prompt: schedule.prompt,
-    appendSystemPrompt: schedule.appendSystemPrompt,
-    triggerType: schedule.triggerType as "cron" | "once" | "loop",
-    cronExpression: schedule.cronExpression,
-    timezone: schedule.timezone,
-  };
-}
+type TriggerEvent =
+  | AutomationTimeTriggerEvent
+  | WebhookTriggerEvent
+  | ManualTriggerEvent;
 
 /**
  * Maps an `automations` row (joined with its firing trigger) to the Automation
@@ -211,6 +185,36 @@ export function automationRowToTimeAutomation(row: {
     triggerType: row.triggerType,
     cronExpression: row.cronExpression,
     timezone: row.timezone,
+  };
+}
+
+/**
+ * Maps an `automations` row to the Automation view the interpreter consumes for
+ * a manual fire (the v2 run-now endpoint). A manual fire is keyed off no
+ * trigger row, so the recurrence fields collapse to their inert values and the
+ * `triggerType` renders as "manual" in the schedule integration context.
+ */
+export function automationRowToManualAutomation(row: {
+  readonly id: string;
+  readonly agentId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly instruction: string;
+  readonly appendSystemPrompt: string | null;
+}): Automation {
+  return {
+    interpreterKind: "default",
+    id: row.id,
+    agentId: row.agentId,
+    orgId: row.orgId,
+    userId: row.userId,
+    chatThreadId: row.chatThreadId,
+    prompt: row.instruction,
+    appendSystemPrompt: row.appendSystemPrompt,
+    triggerType: "manual",
+    cronExpression: null,
+    timezone: "UTC",
   };
 }
 
@@ -281,44 +285,6 @@ function buildChatCallback(automation: Automation): RunCallback {
       agentId: automation.agentId,
     },
   };
-}
-
-/**
- * Time-fire callbacks: the recurrence-specific reschedule callback (next_run_at
- * / consecutive-failure bookkeeping) plus the chat callback. Only the chat
- * callback writes the run summary (D9), so callback dispatch order is safe.
- */
-function buildScheduleCallbacks(automation: Automation): RunCallback[] {
-  const callbacks: RunCallback[] = [];
-
-  if (automation.triggerType === "loop") {
-    const payload: ScheduleLoopCallbackPayload = { scheduleId: automation.id };
-    callbacks.push({
-      url: `${internalApiBaseUrl()}/api/internal/callbacks/schedule/loop`,
-      secret: generateCallbackSecret(),
-      payload,
-    });
-  } else if (
-    automation.triggerType === "cron" ||
-    automation.triggerType === "once"
-  ) {
-    const payload: ScheduleCronCallbackPayload = {
-      scheduleId: automation.id,
-      ...(automation.cronExpression && {
-        cronExpression: automation.cronExpression,
-      }),
-      timezone: automation.timezone,
-    };
-    callbacks.push({
-      url: `${internalApiBaseUrl()}/api/internal/callbacks/schedule/cron`,
-      secret: generateCallbackSecret(),
-      payload,
-    });
-  }
-
-  callbacks.push(buildChatCallback(automation));
-
-  return callbacks;
 }
 
 /**
@@ -400,31 +366,34 @@ export class DefaultInterpreter {
       });
     }
 
-    if (triggerEvent.kind === "automation-time") {
-      // Automation-table time fire (dormant trigger poller): same instruction-only
-      // schedule context as the schedule fire, but tagged with the automation +
-      // firing trigger (provenance) and carrying the trigger-keyed reschedule
-      // callback — the claim cleared next_run_at, the callback advances it.
+    // Manual fire: instruction-only schedule context, tagged with the
+    // automation alone — no trigger was claimed, so there is no trigger
+    // provenance and no reschedule callback, only the chat callback.
+    if (triggerEvent.kind === "manual") {
       return Promise.resolve({
         prompt: automation.prompt,
         agentId: automation.agentId,
         chatThreadId: automation.chatThreadId,
         appendSystemPrompt: buildScheduleAppendSystemPrompt(automation),
-        callbacks: buildTriggerCallbacks(automation, triggerEvent.triggerId),
-        zeroRunMetadata: {
-          automationId: automation.id,
-          triggerId: triggerEvent.triggerId,
-        },
+        callbacks: [buildChatCallback(automation)],
+        zeroRunMetadata: { automationId: automation.id },
       });
     }
 
+    // Time fire: instruction-only schedule context, tagged with the
+    // automation + firing trigger (provenance) and carrying the trigger-keyed
+    // reschedule callback — the claim cleared next_run_at, the callback
+    // advances it.
     return Promise.resolve({
       prompt: automation.prompt,
       agentId: automation.agentId,
       chatThreadId: automation.chatThreadId,
       appendSystemPrompt: buildScheduleAppendSystemPrompt(automation),
-      callbacks: buildScheduleCallbacks(automation),
-      zeroRunMetadata: { scheduleId: automation.id },
+      callbacks: buildTriggerCallbacks(automation, triggerEvent.triggerId),
+      zeroRunMetadata: {
+        automationId: automation.id,
+        triggerId: triggerEvent.triggerId,
+      },
     });
   }
 }

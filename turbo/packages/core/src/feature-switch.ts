@@ -165,6 +165,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
+  [FeatureSwitchKey.GoogleMapsConnector]: {
+    maintainer: "linghan@vm0.ai",
+    description: "Enable the Google Maps connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleAnalyticsConnector]: {
+    maintainer: "linghan@vm0.ai",
+    description: "Enable the Google Analytics connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
     maintainer: "linghan@vm0.ai",
     description: "Enable the Google Search Console connector",
@@ -243,7 +253,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -327,8 +337,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Generate and show recommended follow-up prompts after completed chat runs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
     maintainer: "bingjie@vm0.ai",
@@ -342,6 +351,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.CreditUsageRecords]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show ranged personal and team credit usage records in settings, and enable scoped/ranged /api/zero/usage/record queries.",
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroAutomations]: {
     maintainer: "lancy@vm0.ai",

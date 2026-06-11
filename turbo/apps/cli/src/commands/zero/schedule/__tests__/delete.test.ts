@@ -84,6 +84,9 @@ describe("zero schedule delete command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Schedule");
       expect(logCalls).toContain("deleted");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should delete when agent identifier is a UUID", async () => {

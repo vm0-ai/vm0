@@ -12,9 +12,11 @@ from typing import Literal, NamedTuple, TypedDict
 
 from mitmproxy import http
 
-import body_utils
+import billing_body
+import body_decoding
 import flow_metadata_keys as metadata_keys
 from auth import get_api_url
+from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
@@ -83,13 +85,13 @@ def _strip_request_target_query(request_target: str) -> str:
     return path_or_url
 
 
-# Single NDJSON line cap — matches ``LARGE_RESPONSE_DECOMPRESS_LIMIT`` in
-# ``body_utils.py``.  A real X tweet line (``data`` + ``includes`` +
+# Single NDJSON line cap matches ``LARGE_RESPONSE_DECOMPRESS_LIMIT``. A real X
+# tweet line (``data`` + ``includes`` +
 # ``matching_rules`` with full expansion) should never approach this size;
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
-_MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
-_REQUEST_BODY_REFINEMENT_LIMIT = body_utils.STREAM_BUFFER_LIMIT
+_MAX_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT
+_REQUEST_BODY_REFINEMENT_LIMIT = STREAM_BUFFER_LIMIT
 _REQUEST_QUERY_HINT_MAX_BYTES = 64 * 1024
 _REQUEST_QUERY_HINT_KEY_MAX_CHARS = 128
 _REQUEST_QUERY_HINT_VALUE_MAX_BYTES = 16 * 1024
@@ -404,12 +406,15 @@ def _empty_request_query_fallback_hints() -> dict:
 
 
 def _parse_request_metadata(original_url: str) -> dict:
-    """Extract billing-relevant query params from an X API request.
+    """Extract path-level request metadata from an X API request.
 
     Returns a dict with:
-      - ``is_count_endpoint``: bool — True when the request path is an X Post
+      - ``is_count_endpoint``: bool - True when the request path is an X Post
         Counts endpoint whose ``data`` array contains time buckets instead of
         returned posts.
+
+    Query-derived fallback hints are handled separately by
+    :func:`_parse_request_query_fallback_hints`.
 
     Parses the dispatcher-required original URL rather than ``pretty_url`` to
     stay consistent with the rest of the addon.
@@ -467,14 +472,17 @@ def _get_bounded_original_request_query(original_url: str) -> str | None:
 
 
 def _parse_request_query_fallback_hints(original_url: str) -> dict:
-    """Extract request-side count hints only for unparseable GET responses.
+    """Extract request-side count hints for unparseable non-count GET responses.
 
     This intentionally does not call ``parse_qs``.  Successful X responses
     normally bill from the parsed response body, so query hints are only a
-    fallback for lost response visibility.  The scanner therefore looks only
-    for the small key set that can affect billing, preserves ``parse_qs``'
-    blank-value and ``+`` behavior for those keys, and caps work on hostile
-    query strings instead of materializing every parameter.
+    fallback for lost response visibility.  ``report_usage`` merges these
+    fields only when a non-count GET response was not parsed.  The scanner
+    therefore looks only for the small key set that can affect fallback billing,
+    preserves ``parse_qs``' blank-value and ``+`` behavior for those keys, and
+    caps work on hostile query strings instead of materializing every parameter.
+
+    Returns ``request_ids_count`` and ``max_results``.
     """
     query = _get_bounded_original_request_query(original_url)
     if query is None:
@@ -585,8 +593,8 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         return result
     if not flow.response:
         return result
-    body = body_utils.decompress_body(
-        bytes(buf), flow.response.headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+    body = body_decoding.decompress_body(
+        bytes(buf), flow.response.headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
     )
     fields = _parse_x_json_response_fields_from_body(body)
     if fields is None:
@@ -628,7 +636,7 @@ def _compute_billable_counts(
       no ``data``) and zero-result searches yield primary 0, which is skipped
       from the returned dict so no empty ``usage_event`` row is created.
     - **Body NOT parsed**: fall back to request-side hints
-      ``max(ids_count, max_results, 1)``.  When the URL also carries
+      ``max(request_ids_count, max_results, 1)``.  When the URL also carries
       no hints we emit no ``usage_event`` row; :func:`report_usage`
       detects that state and writes an error log so ops can audit.
     - **Includes**: each ``includes.<key>`` is normalized to a billing
@@ -769,7 +777,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     if endpoint_bucket is None:
         return
     if bucket_needs_body_refinement(endpoint_bucket, flow.request.method, request_path):
-        request_body = body_utils.decode_request_body_for_billing(
+        request_body = billing_body.decode_request_body_for_billing(
             flow.request.raw_content,
             flow.request.headers,
             max_raw=_REQUEST_BODY_REFINEMENT_LIMIT,
@@ -784,6 +792,8 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
 
     req_meta = _parse_request_metadata(original_url)
     resp_meta = _parse_response_metadata(flow)
+    # Query-derived request hints are not general request metadata.  They are
+    # merged only when billing lost response visibility for a non-count GET.
     req_meta.update(
         _parse_request_query_fallback_hints(original_url)
         if (

@@ -4,6 +4,8 @@
 
 import { getGmtOffset } from "@vm0/core/timezone";
 
+import { now, nowDate } from "../../lib/time.ts";
+
 type ScheduleTimeOption =
   | "every-weekday"
   | "every-day"
@@ -54,15 +56,15 @@ export function isAtTimePast(
   const [y, mo, d] = date.split("-").map(Number) as [number, number, number];
   const h = Number.parseInt(hour, 10);
   const m = Number.parseInt(minute, 10);
-  return new Date(y, mo - 1, d, h, m).getTime() <= Date.now();
+  return new Date(y, mo - 1, d, h, m).getTime() <= now();
 }
 
 /** Today's date in the local timezone formatted as YYYY-MM-DD. */
 export function getTodayDateLocal(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const mo = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+  const today = nowDate();
+  const y = today.getFullYear();
+  const mo = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
   return `${y}-${mo}-${day}`;
 }
 
@@ -126,6 +128,65 @@ export function getTimezoneLabel(iana: string): string {
   const offset = getGmtOffset(iana);
   const name = TIMEZONE_LABELS[iana] ?? iana.replace(/_/g, " ");
   return `(${offset}) ${name}`;
+}
+
+export function cronUtcToLocalTime(
+  utcHour: number,
+  utcMinute: number,
+  timezone: string,
+): { hour: number; minute: number } {
+  if (timezone === "UTC" || timezone === "Etc/UTC") {
+    return { hour: utcHour, minute: utcMinute };
+  }
+  const d = nowDate();
+  d.setUTCHours(utcHour, utcMinute, 0, 0);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: timezone,
+  }).formatToParts(d);
+  return {
+    hour: Number(
+      parts.find((p) => {
+        return p.type === "hour";
+      })?.value ?? utcHour,
+    ),
+    minute: Number(
+      parts.find((p) => {
+        return p.type === "minute";
+      })?.value ?? utcMinute,
+    ),
+  };
+}
+
+export function atTimeInTimezone(
+  isoTime: string,
+  timezone: string,
+): { date: string; hour: number; minute: number } {
+  const d = new Date(isoTime);
+  const tz = timezone || "UTC";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: tz,
+  }).formatToParts(d);
+  const get = (type: string) => {
+    return (
+      parts.find((p) => {
+        return p.type === type;
+      })?.value ?? "00"
+    );
+  };
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: Number(get("hour")),
+    minute: Number(get("minute")),
+  };
 }
 
 export function buildCronExpression(opts: {

@@ -146,6 +146,10 @@ const AGENTPHONE_AGENT_ID = "agt-bdd-agentphone";
 const AGENTPHONE_PHONE_NUMBER = "+19039853128";
 const SLACK_SIGNING_SECRET = "slack-bdd-signing-secret";
 const SLACK_APP_BOT_SCOPES = "chat:write,im:write,users:read";
+
+export function agentPhoneBddWebhookSecret(): string {
+  return ["agentphone", "bdd", "webhook", "secret"].join("-");
+}
 const SLACK_APP_INTERNAL_API_URL = "https://api.vm0.test";
 
 type SlackSignatureHeaders = Record<string, string>;
@@ -562,7 +566,10 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     configureAgentPhoneWebhook(): void {
-      mockOptionalEnv("AGENTPHONE_WEBHOOK_SECRET", "agentphone-bdd-secret");
+      mockOptionalEnv(
+        "AGENTPHONE_WEBHOOK_SECRET",
+        agentPhoneBddWebhookSecret(),
+      );
       mockOptionalEnv("AGENTPHONE_PHONE_NUMBER", AGENTPHONE_PHONE_NUMBER);
     },
 

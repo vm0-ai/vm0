@@ -18,7 +18,7 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { automations } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -212,13 +212,8 @@ export const deleteUsageInsightFixture$ = command(
     }
 
     await db
-      .delete(zeroAgentSchedules)
-      .where(
-        and(
-          eq(zeroAgentSchedules.orgId, orgId),
-          eq(zeroAgentSchedules.userId, userId),
-        ),
-      );
+      .delete(automations)
+      .where(and(eq(automations.orgId, orgId), eq(automations.userId, userId)));
     signal.throwIfAborted();
 
     if (runIds.length > 0) {
@@ -388,7 +383,7 @@ export const seedRun$ = command(
     await db.insert(zeroRuns).values({
       id: run.id,
       triggerSource: args.triggerSource ?? "cli",
-      scheduleId: args.scheduleId ?? null,
+      automationId: args.scheduleId ?? null,
       chatThreadId: args.chatThreadId ?? null,
     });
     signal.throwIfAborted();
@@ -412,18 +407,18 @@ export const seedSchedule$ = command(
       throw new Error("seedSchedule$: chat thread insert returned no row");
     }
     const [row] = await db
-      .insert(zeroAgentSchedules)
+      .insert(automations)
       .values({
         agentId: args.agentId,
         userId: args.userId,
         orgId: args.orgId,
         name: args.name ?? `sched-${randomUUID().slice(0, 8)}`,
         description: args.description,
-        cronExpression: "0 0 * * *",
-        prompt: "test",
+        instruction: "test",
+        interpreterKind: "default",
         chatThreadId: thread.id,
       })
-      .returning({ id: zeroAgentSchedules.id });
+      .returning({ id: automations.id });
     signal.throwIfAborted();
     if (!row) {
       throw new Error("seedSchedule$: insert returned no row");
@@ -641,17 +636,17 @@ export const seedScheduleBatch$ = command(
           );
         }
         const [scheduleRow] = await db
-          .insert(zeroAgentSchedules)
+          .insert(automations)
           .values({
             agentId: args.composeId,
             userId: args.userId,
             orgId: args.orgId,
             name: `sched-${randomUUID().slice(0, 8)}`,
-            cronExpression: "0 0 * * *",
-            prompt: "test",
+            instruction: "test",
+            interpreterKind: "default",
             chatThreadId: thread.id,
           })
-          .returning({ id: zeroAgentSchedules.id });
+          .returning({ id: automations.id });
         if (!scheduleRow) {
           throw new Error(
             "seedScheduleBatch$: schedule insert returned no row",
@@ -695,7 +690,7 @@ export const seedScheduleBatch$ = command(
         await db.insert(zeroRuns).values({
           id: run.id,
           triggerSource: "schedule",
-          scheduleId: scheduleRow.id,
+          automationId: scheduleRow.id,
         });
         const credits = args.creditsForIndex(index);
         await db.insert(usageEvent).values({
