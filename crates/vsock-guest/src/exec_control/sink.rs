@@ -4,8 +4,9 @@
 //! thread, forwarding workers, and operation cleanup. `accept.rs` drives the
 //! process-control accept and hello handshake, while `forward.rs` waits for the
 //! sink, serializes access to the connected stream, and marks the sink failed on
-//! terminal connected-stream errors. Accept or hello failures move the sink to
-//! `Failed`; operation cleanup moves it to `Closed`.
+//! terminal connected-stream errors. While the operation is active, accept or
+//! hello failures move the sink to `Failed`; operation cleanup moves it to
+//! `Closed`.
 //!
 //! The connection state starts in `Waiting`, moves through `Handshaking` while
 //! the accepted process-control stream sends its hello, and reaches `Connected`
