@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.113.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.113.0...runner-rs-v0.113.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* **runner:** add live runner instances ([#17278](https://github.com/vm0-ai/vm0/issues/17278)) ([6d40873](https://github.com/vm0-ai/vm0/commit/6d40873f6691c8cf35fcb2aaa881ecd441ca2c64))
+
+
+### Refactoring
+
+* **mitm-addon:** split stream usage tests ([#17289](https://github.com/vm0-ai/vm0/issues/17289)) ([98246a4](https://github.com/vm0-ai/vm0/commit/98246a4c01de092483527d62a89453f5e947ee78))
+
 ## [0.113.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.112.1...runner-rs-v0.113.0) (2026-06-11)
 
 
