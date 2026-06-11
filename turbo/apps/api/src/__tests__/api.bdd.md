@@ -1590,3 +1590,17 @@ changed: false }`, no Ably publish).
   customer + session (GAP-STRIPE-CUSTOMER) and stays in the kept legacy.
 - Reduced `zero-billing-redeem.test.ts` (20 -> 18).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 78 — AGENT COMPOSE DELETE REJECTIONS (CHAIN-AGENT-COMPOSES-DELETE-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the CLI-facing `agentComposesById` client
+  (`/api/agent/composes/:id`, get + delete).
+- Added `agent-composes-delete-rejections.bdd.test.ts`: delete rejects
+  unauthenticated callers (401), a sandbox token (403 "Agent deletion is not
+  available from sandbox") and 404s an unknown compose ("Agent not found").
+- Deleting a real compose (instructions/skill volume cleanup, pending-run 409)
+  needs a seeded compose row, the malformed-id 400 needs a raw request, and the
+  zero-token 403 needs a run-scoped zero token with `agent:delete` + membership
+  the helper does not build; those stay in the kept legacy.
+- Reduced `agent-composes-delete.test.ts` (10 -> 7).
+- Coverage verified (source-only): no regressions vs `main`.

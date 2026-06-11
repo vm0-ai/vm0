@@ -20,6 +20,7 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import {
   composesMainContract,
   composesListContract,
+  composesByIdContract,
 } from "@vm0/api-contracts/contracts/composes";
 import {
   checkpointsByIdContract,
@@ -239,6 +240,10 @@ export function createBddApi(context: TestContext) {
      * compose rows; the auth, no-org and empty-list cases are reachable. */
     agentComposesMain: setupApp({ context })(composesMainContract),
     agentComposesList: setupApp({ context })(composesListContract),
+    /** ts-rest client for the CLI-facing `/api/agent/composes/:id` (get + delete).
+     * Deleting a real compose needs a seeded compose row; the auth, sandbox/zero
+     * scope-forbidden and not-found cases are reachable directly. */
+    agentComposesById: setupApp({ context })(composesByIdContract),
     /** ts-rest client for `/api/agent/checkpoints/:id` (get checkpoint by id). A
      * real checkpoint needs a funded run that produced it (GAP-RUN-CREDITS); the
      * auth and not-found cases are reachable directly. */

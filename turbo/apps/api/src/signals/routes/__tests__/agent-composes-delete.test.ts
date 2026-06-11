@@ -112,47 +112,6 @@ describe("DELETE /api/agent/composes/:id", () => {
     return store.set(cleanupAgentComposeFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(composesByIdContract);
-
-    const response = await accept(
-      client.delete({ params: { id: randomUUID() }, headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns the web-compatible sandbox deletion error", async () => {
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "sandbox",
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
-      runId: `run_${randomUUID()}`,
-      iat: seconds,
-      exp: seconds + 60,
-    });
-    const client = setupApp({ context })(composesByIdContract);
-
-    const response = await accept(
-      client.delete({
-        params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Agent deletion is not available from sandbox",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("returns the web-compatible zero token deletion error", async () => {
     const seconds = currentSecond();
     const userId = `user_${randomUUID()}`;
@@ -230,23 +189,6 @@ describe("DELETE /api/agent/composes/:id", () => {
       .where(eq(agentComposes.id, composeId));
     expect(composeRows).toHaveLength(0);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
-  });
-
-  it("returns 404 for an unknown id", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-    const client = setupApp({ context })(composesByIdContract);
-
-    const response = await accept(
-      client.delete({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Agent not found", code: "NOT_FOUND" },
-    });
   });
 
   it("returns 404 for a non-owner and keeps the compose", async () => {
