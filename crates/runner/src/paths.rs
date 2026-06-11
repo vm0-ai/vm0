@@ -544,6 +544,11 @@ mod tests {
         assert_eq!(home.bin_dir(), PathBuf::from("/test/bin"));
         assert_eq!(home.images_dir(), PathBuf::from("/test/images"));
         assert_eq!(home.logs_dir(), PathBuf::from("/test/logs"));
+        assert_eq!(home.live_runners_dir(), PathBuf::from("/test/live-runners"));
+        assert_eq!(
+            home.live_runner_record_path(123, 456),
+            PathBuf::from("/test/live-runners/123-456.json")
+        );
         assert_eq!(home.runners_dir(), PathBuf::from("/test/runners"));
         assert_eq!(home.groups_dir(), PathBuf::from("/test/groups"));
         assert_eq!(home.ca_dir(), PathBuf::from("/test/ca"));

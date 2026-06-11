@@ -236,6 +236,14 @@ mod tests {
             assert!(metadata.file_type().is_file());
             assert!(!metadata.file_type().is_symlink());
             assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+            assert_eq!(
+                std::fs::metadata(home.live_runners_dir())
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
         }
     }
 
@@ -307,6 +315,29 @@ mod tests {
         crate::state_file::write_private_atomic(&path, b"{")
             .await
             .unwrap();
+
+        let result = read_valid_record(&path).await;
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_valid_record_ignores_oversized_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        crate::host_file::ensure_dir(
+            &home.live_runners_dir(),
+            crate::host_file::DirMode::Private,
+            "live runner registry",
+        )
+        .unwrap();
+        let path = home.live_runners_dir().join("oversized.json");
+        crate::state_file::write_private_atomic(
+            &path,
+            &vec![b'a'; (LIVE_RUNNER_RECORD_MAX_BYTES + 1) as usize],
+        )
+        .await
+        .unwrap();
 
         let result = read_valid_record(&path).await;
 
