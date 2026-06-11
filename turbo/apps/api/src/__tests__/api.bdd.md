@@ -1523,3 +1523,16 @@ changed: false }`, no Ably publish).
   legacy.
 - Reduced `agent-runs-cancel.test.ts` (11 -> 9).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 73 — AGENT SESSION GET-BY-ID REJECTIONS (CHAIN-AGENT-SESSIONS-ID-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `sessionsById` client
+  (`/api/agent/sessions/:id`).
+- Added `agent-sessions-id-rejections.bdd.test.ts`: get-by-id rejects
+  unauthenticated callers (401) and 404s org-less callers and unknown sessions
+  ("Session not found").
+- Reading a real session needs a funded run that produced it (GAP-RUN-CREDITS),
+  and the other-user 403 / other-org 404 variants need a seeded foreign session;
+  those stay in the kept legacy.
+- Reduced `agent-sessions-id.test.ts` (8 -> 5).
+- Coverage verified (source-only): no regressions vs `main`.
