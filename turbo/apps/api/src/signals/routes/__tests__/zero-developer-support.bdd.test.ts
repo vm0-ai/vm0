@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import { zeroDeveloperSupportContract } from "@vm0/api-contracts/contracts/zero-developer-support";
 import AdmZip from "adm-zip";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
-import { beforeEach, expect } from "vitest";
-import { zeroDeveloperSupportContract } from "@vm0/api-contracts/contracts/zero-developer-support";
+import { beforeEach, describe, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
@@ -24,6 +24,22 @@ import {
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
+
+// BDD migration of the legacy `zero-developer-support.test.ts`. The 13
+// legacy `it()`s collapse into 5 BDD `it()`s:
+// (1) auth + not-found chain (401 unauth → 403 no run scope → 400
+// RUN_NOT_FOUND),
+// (2) single-run consent chain (200 deterministic consent code → 200
+// same code on repeat → 400 INVALID_CONSENT_CODE → 200 valid
+// consent + reference),
+// (3) cross-run session chain (200 same consent code across runs
+// in same session → 200 accept consent from other run → 200 with
+// reference),
+// (4) bundle content chain (200 no-session runId fallback → 200
+// chat-history includes user prompt → 200 multi-run session
+// collects all prompts),
+// (5) optional dependency chain (200 succeeds when Axiom query
+// fails → 200 creates Plain thread when PLAIN_API_KEY configured).
 
 const context = testContext();
 const store = createStore();
@@ -85,19 +101,39 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
-function putObjectInput(): Record<string, unknown> {
-  const call = context.mocks.s3.send.mock.calls.find(([command]) => {
-    const input = commandInput(command);
-    return input.Body !== undefined && input.ContentType === "application/zip";
-  });
-  if (!call) {
-    throw new Error("expected S3 PutObjectCommand");
-  }
-  return commandInput(call[0]);
+function findAllZipUploads(): readonly Record<string, unknown>[] {
+  return context.mocks.s3.send.mock.calls
+    .map(([command]) => {
+      return commandInput(command);
+    })
+    .filter((input) => {
+      return (
+        input.Body !== undefined && input.ContentType === "application/zip"
+      );
+    });
 }
 
-function uploadedZip(): AdmZip {
-  const body = putObjectInput().Body;
+function putObjectInput(): Record<string, unknown> {
+  const [input] = findAllZipUploads();
+  if (!input) {
+    throw new Error("expected S3 PutObjectCommand");
+  }
+  return input;
+}
+
+function zipAt(index: number): Record<string, unknown> {
+  const all = findAllZipUploads();
+  const input = all[index];
+  if (!input) {
+    throw new Error(
+      `expected at least ${index + 1} S3 PutObjectCommand(s), found ${all.length}`,
+    );
+  }
+  return input;
+}
+
+function uploadedZipAt(index: number): AdmZip {
+  const body = zipAt(index).Body;
   if (!Buffer.isBuffer(body)) {
     throw new Error("expected ZIP upload body to be a Buffer");
   }
@@ -205,65 +241,71 @@ beforeEach(() => {
   mockOptionalEnv("PLAIN_API_KEY", undefined);
 });
 
-describe("POST /api/zero/developer-support", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await accept(
+describe("BDD POST /api/zero/developer-support — auth + not-found chain", () => {
+  it("gwt-wt-wt: 401 unauth → 403 no run scope → 400 RUN_NOT_FOUND", async () => {
+    // Given: no auth header.
+
+    // When + Then: 401.
+    const noAuth = await accept(
       submitDeveloperSupport(undefined, {
         title: "Bug",
         description: "Something broke",
       }),
       [401],
     );
+    expect(noAuth.body.error.code).toBe("UNAUTHORIZED");
 
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
+    // Given: a zero token with no runId/orgId (no run scope).
 
-  it("returns 403 for auth without run scope", async () => {
-    const token = zeroToken({
+    // When + Then: 403.
+    const unscopedToken = zeroToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: randomUUID(),
     });
-
-    const response = await accept(
-      submitDeveloperSupport(token, {
+    const unscoped = await accept(
+      submitDeveloperSupport(unscopedToken, {
         title: "Bug",
         description: "Something broke",
       }),
       [403],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(unscoped.body).toStrictEqual({
       error: {
         message: "This endpoint requires a zero token with runId and orgId",
         code: "FORBIDDEN",
       },
     });
-  });
 
-  it("returns RUN_NOT_FOUND for a missing run", async () => {
+    // Given: a zero token for a runId that does not exist.
+
+    // When + Then: 400 — RUN_NOT_FOUND.
     const fixture = await seedSupportRun();
-    const token = zeroToken({
+    const missingToken = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: randomUUID(),
     });
-
-    const response = await accept(
-      submitDeveloperSupport(token, {
+    const missing = await accept(
+      submitDeveloperSupport(missingToken, {
         title: "Bug",
         description: "Something broke",
       }),
       [400],
     );
-
-    expect(response.body.error.code).toBe("RUN_NOT_FOUND");
+    expect(missing.body.error.code).toBe("RUN_NOT_FOUND");
   });
+});
 
-  it("returns a deterministic consent code when consentCode is omitted", async () => {
+describe("BDD POST /api/zero/developer-support — single-run consent chain", () => {
+  it("gwt-wt-wt: 200 deterministic consent → 200 same code on repeat → 400 INVALID_CONSENT_CODE → 200 valid consent + reference", async () => {
+    // Given: a fresh support run.
+
+    // When + Then: 200 — first call returns a 4-char hex consent
+    // code; a second call with the same fixture returns an
+    // identical response (deterministic consent).
     const fixture = await seedSupportRun();
     const token = zeroToken(fixture);
-
     const first = await accept(
       submitDeveloperSupport(token, {
         title: "Bug",
@@ -278,12 +320,49 @@ describe("POST /api/zero/developer-support", () => {
       }),
       [200],
     );
-
     expect(requireConsentCode(first.body)).toMatch(/^[0-9A-F]{4}$/);
     expect(second.body).toStrictEqual(first.body);
-  });
 
-  it("uses the same consent code across runs in the same session", async () => {
+    // Given: the same fresh run + a bogus consent code.
+
+    // When + Then: 400 — INVALID_CONSENT_CODE.
+    const invalid = await accept(
+      submitDeveloperSupport(token, {
+        title: "Bug",
+        description: "Something broke",
+        consentCode: "ZZZZ",
+      }),
+      [400],
+    );
+    expect(invalid.body.error.code).toBe("INVALID_CONSENT_CODE");
+
+    // Given: the same fixture + the valid consent code from
+    // the first step.
+
+    // When + Then: 200 — submit succeeds and returns a
+    // `ds-` reference; the uploaded ZIP is keyed under
+    // `developer-support/`.
+    const submitted = await accept(
+      submitDeveloperSupport(token, {
+        title: "Bug",
+        description: "Something broke",
+        consentCode: requireConsentCode(first.body),
+      }),
+      [200],
+    );
+    expect(requireReference(submitted.body)).toMatch(/^ds-[a-f0-9]{8}$/);
+    expect(putObjectInput().Key).toContain("developer-support/");
+  });
+});
+
+describe("BDD POST /api/zero/developer-support — cross-run session chain", () => {
+  it("gwt-wt-wt: 200 same consent across runs in same session → 200 accept consent from other run → 200 with reference", async () => {
+    // Given: a session (continuedFromSessionId) with a first
+    // run + a second run sharing the same session.
+
+    // When + Then: 200 — both runs produce the same consent
+    // code response (the consent is keyed to the session,
+    // not the run).
     const sessionId = randomUUID();
     const first = await seedSupportRun({ continuedFromSessionId: sessionId });
     const { runId: secondRunId } = await store.set(
@@ -297,7 +376,6 @@ describe("POST /api/zero/developer-support", () => {
       },
       context.signal,
     );
-
     const firstResponse = await accept(
       submitDeveloperSupport(zeroToken(first), {
         title: "Bug",
@@ -312,105 +390,55 @@ describe("POST /api/zero/developer-support", () => {
       }),
       [200],
     );
-
     expect(secondResponse.body).toStrictEqual(firstResponse.body);
-  });
 
-  it("accepts a consent code from a different run in the same session", async () => {
-    const sessionId = randomUUID();
-    const first = await seedSupportRun({ continuedFromSessionId: sessionId });
-    const { runId: secondRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: first.orgId,
-        userId: first.userId,
-        composeId: first.composeId,
-        status: "running",
-        continuedFromSessionId: sessionId,
-      },
-      context.signal,
-    );
+    // Given: the same session + the consent code from the
+    // first run + a request from the second run.
 
-    const consent = await accept(
-      submitDeveloperSupport(zeroToken(first), {
-        title: "Bug",
-        description: "Something broke",
-      }),
-      [200],
-    );
-
-    const response = await accept(
+    // When + Then: 200 — the consent code is accepted from
+    // the sibling run and a `ds-` reference is returned.
+    const accepted = await accept(
       submitDeveloperSupport(zeroToken({ ...first, runId: secondRunId }), {
         title: "Bug",
         description: "Something broke",
-        consentCode: requireConsentCode(consent.body),
+        consentCode: requireConsentCode(firstResponse.body),
       }),
       [200],
     );
-
-    expect(requireReference(response.body)).toMatch(/^ds-[a-f0-9]{8}$/);
+    expect(requireReference(accepted.body)).toMatch(/^ds-[a-f0-9]{8}$/);
   });
+});
 
-  it("returns INVALID_CONSENT_CODE for an invalid code", async () => {
-    const fixture = await seedSupportRun();
-    const response = await accept(
-      submitDeveloperSupport(zeroToken(fixture), {
-        title: "Bug",
-        description: "Something broke",
-        consentCode: "ZZZZ",
-      }),
-      [400],
-    );
+describe("BDD POST /api/zero/developer-support — bundle content chain", () => {
+  it("gwt-wt-wt: 200 no-session runId fallback → 200 chat-history includes user prompt → 200 multi-run session collects all prompts", async () => {
+    // Given: a support run with continuedFromSessionId=null.
 
-    expect(response.body.error.code).toBe("INVALID_CONSENT_CODE");
-  });
-
-  it("submits a diagnostic bundle with a valid consent code", async () => {
-    const fixture = await seedSupportRun();
-    const token = zeroToken(fixture);
-    const consent = await accept(
-      submitDeveloperSupport(token, {
+    // When + Then: 200 — consent flow succeeds + the
+    // agent-run-events Axiom query references the
+    // standalone runId (no session to expand into).
+    const noSessionFixture = await seedSupportRun({
+      continuedFromSessionId: null,
+    });
+    const noSessionToken = zeroToken(noSessionFixture);
+    const noSessionConsent = await accept(
+      submitDeveloperSupport(noSessionToken, {
         title: "Bug",
         description: "Something broke",
       }),
       [200],
     );
-
-    const response = await accept(
-      submitDeveloperSupport(token, {
+    const noSessionSubmitted = await accept(
+      submitDeveloperSupport(noSessionToken, {
         title: "Bug",
         description: "Something broke",
-        consentCode: requireConsentCode(consent.body),
+        consentCode: requireConsentCode(noSessionConsent.body),
       }),
       [200],
     );
-
-    expect(requireReference(response.body)).toMatch(/^ds-[a-f0-9]{8}$/);
-    const putInput = putObjectInput();
-    expect(putInput.Key).toContain("developer-support/");
-  });
-
-  it("falls back to the current runId when a run has no session", async () => {
-    const fixture = await seedSupportRun({ continuedFromSessionId: null });
-    const token = zeroToken(fixture);
-    const consent = await accept(
-      submitDeveloperSupport(token, {
-        title: "Bug",
-        description: "Something broke",
-      }),
-      [200],
+    expect(requireReference(noSessionSubmitted.body)).toMatch(
+      /^ds-[a-f0-9]{8}$/,
     );
-
-    const response = await accept(
-      submitDeveloperSupport(token, {
-        title: "Bug",
-        description: "Something broke",
-        consentCode: requireConsentCode(consent.body),
-      }),
-      [200],
-    );
-
-    expect(requireReference(response.body)).toMatch(/^ds-[a-f0-9]{8}$/);
+    expect(putObjectInput().Key).toContain("developer-support/");
     const agentEventsQuery = context.mocks.axiom.query.mock.calls
       .map(([apl]) => {
         return String(apl);
@@ -418,30 +446,33 @@ describe("POST /api/zero/developer-support", () => {
       .find((apl) => {
         return apl.includes("agent-run-events") && apl.includes("runId in");
       });
-    expect(agentEventsQuery).toContain(fixture.runId);
-  });
+    expect(agentEventsQuery).toContain(noSessionFixture.runId);
 
-  it("includes the user prompt in chat-history.jsonl", async () => {
-    const fixture = await seedSupportRun({ prompt: "Inspect the deployment" });
-    const token = zeroToken(fixture);
-    const consent = await accept(
-      submitDeveloperSupport(token, {
+    // Given: a support run with a custom prompt.
+
+    // When + Then: 200 — the chat-history.jsonl entry inside
+    // the uploaded ZIP records the user_prompt event with
+    // sequence number -1 and the run's prompt.
+    const promptFixture = await seedSupportRun({
+      prompt: "Inspect the deployment",
+    });
+    const promptToken = zeroToken(promptFixture);
+    const promptConsent = await accept(
+      submitDeveloperSupport(promptToken, {
         title: "Bug",
         description: "Something broke",
       }),
       [200],
     );
-
     await accept(
-      submitDeveloperSupport(token, {
+      submitDeveloperSupport(promptToken, {
         title: "Bug",
         description: "Something broke",
-        consentCode: requireConsentCode(consent.body),
+        consentCode: requireConsentCode(promptConsent.body),
       }),
       [200],
     );
-
-    const lines = zipText(uploadedZip(), "chat-history.jsonl")
+    const lines = zipText(uploadedZipAt(1), "chat-history.jsonl")
       .split("\n")
       .filter(Boolean)
       .map((line) => {
@@ -457,19 +488,23 @@ describe("POST /api/zero/developer-support", () => {
     const promptEvent = lines.find((event) => {
       return event.eventType === "user_prompt";
     });
-
     expect(promptEvent?.eventData.role).toBe("user");
     expect(promptEvent?.eventData.content).toBe("Inspect the deployment");
     expect(promptEvent?.sequenceNumber).toBe(-1);
-  });
 
-  it("collects prompts from all runs in a multi-run session", async () => {
-    const sessionId = randomUUID();
+    // Given: a multi-run session with two runs that have
+    // different prompts and the first run's result points at
+    // a shared agentSessionId.
+
+    // When + Then: 200 — chat-history.jsonl carries the
+    // user_prompt events from BOTH runs, in run order
+    // (first run first).
+    const multiSessionId = randomUUID();
     const first = await seedSupportRun({
       status: "completed",
       prompt: "First prompt",
       createdAt: new Date("2024-01-01T00:00:00Z"),
-      result: { agentSessionId: sessionId },
+      result: { agentSessionId: multiSessionId },
     });
     const { runId: secondRunId } = await store.set(
       seedRun$,
@@ -480,29 +515,27 @@ describe("POST /api/zero/developer-support", () => {
         status: "running",
         prompt: "Second prompt",
         createdAt: new Date("2024-01-01T01:00:00Z"),
-        continuedFromSessionId: sessionId,
+        continuedFromSessionId: multiSessionId,
       },
       context.signal,
     );
-    const token = zeroToken({ ...first, runId: secondRunId });
-    const consent = await accept(
-      submitDeveloperSupport(token, {
+    const multiToken = zeroToken({ ...first, runId: secondRunId });
+    const multiConsent = await accept(
+      submitDeveloperSupport(multiToken, {
         title: "Session bug",
         description: "Something broke",
       }),
       [200],
     );
-
     await accept(
-      submitDeveloperSupport(token, {
+      submitDeveloperSupport(multiToken, {
         title: "Session bug",
         description: "Something broke",
-        consentCode: requireConsentCode(consent.body),
+        consentCode: requireConsentCode(multiConsent.body),
       }),
       [200],
     );
-
-    const lines = zipText(uploadedZip(), "chat-history.jsonl")
+    const multiLines = zipText(uploadedZipAt(2), "chat-history.jsonl")
       .split("\n")
       .filter(Boolean)
       .map((line) => {
@@ -512,10 +545,9 @@ describe("POST /api/zero/developer-support", () => {
           readonly eventData: { readonly content?: string };
         };
       });
-    const promptEvents = lines.filter((event) => {
+    const promptEvents = multiLines.filter((event) => {
       return event.eventType === "user_prompt";
     });
-
     expect(
       promptEvents.map((event) => {
         return event.eventData.content;
@@ -524,8 +556,15 @@ describe("POST /api/zero/developer-support", () => {
     expect(promptEvents[0]?.runId).toBe(first.runId);
     expect(promptEvents[1]?.runId).toBe(secondRunId);
   });
+});
 
-  it("succeeds when optional Axiom log queries fail", async () => {
+describe("BDD POST /api/zero/developer-support — optional dependency chain", () => {
+  it("gwt-wt-wt: 200 succeeds when Axiom query fails → 200 creates Plain thread when PLAIN_API_KEY configured", async () => {
+    // Given: a fresh support run + a consent code.
+
+    // When + Then: 200 — the submit succeeds (returns a
+    // `ds-` reference) even after the Axiom query mock is
+    // rejected (Axiom is optional).
     const fixture = await seedSupportRun();
     const token = zeroToken(fixture);
     const consent = await accept(
@@ -536,8 +575,7 @@ describe("POST /api/zero/developer-support", () => {
       [200],
     );
     context.mocks.axiom.query.mockRejectedValue(new Error("Axiom down"));
-
-    const response = await accept(
+    const noAxiom = await accept(
       submitDeveloperSupport(token, {
         title: "Bug",
         description: "Something broke",
@@ -545,11 +583,15 @@ describe("POST /api/zero/developer-support", () => {
       }),
       [200],
     );
+    expect(requireReference(noAxiom.body)).toMatch(/^ds-[a-f0-9]{8}$/);
 
-    expect(requireReference(response.body)).toMatch(/^ds-[a-f0-9]{8}$/);
-  });
+    // Given: PLAIN_API_KEY configured + a Plain MSW handler
+    // that handles upsertTenant, upsertCustomer, createThread,
+    // and createThreadEvent in sequence.
 
-  it("creates a Plain support thread when PLAIN_API_KEY is configured", async () => {
+    // When + Then: 200 — submit succeeds and the Plain
+    // handler is called four times (one for each of the
+    // four GraphQL operations).
     mockOptionalEnv("PLAIN_API_KEY", "plainkey_test_abc");
     let plainCallCount = 0;
     server.use(
@@ -593,26 +635,24 @@ describe("POST /api/zero/developer-support", () => {
         });
       }),
     );
-    const fixture = await seedSupportRun();
-    const token = zeroToken(fixture);
-    const consent = await accept(
-      submitDeveloperSupport(token, {
+    const plainFixture = await seedSupportRun();
+    const plainToken = zeroToken(plainFixture);
+    const plainConsent = await accept(
+      submitDeveloperSupport(plainToken, {
         title: "Plain route test",
         description: "Something broke",
       }),
       [200],
     );
-
-    const response = await accept(
-      submitDeveloperSupport(token, {
+    const plain = await accept(
+      submitDeveloperSupport(plainToken, {
         title: "Plain route test",
         description: "Something broke",
-        consentCode: requireConsentCode(consent.body),
+        consentCode: requireConsentCode(plainConsent.body),
       }),
       [200],
     );
-
-    expect(requireReference(response.body)).toMatch(/^ds-[a-f0-9]{8}$/);
+    expect(requireReference(plain.body)).toMatch(/^ds-[a-f0-9]{8}$/);
     expect(plainCallCount).toBe(4);
   });
 });
