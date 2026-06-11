@@ -559,7 +559,7 @@ function Comparison() {
     <section className={`${CONTAINER} pb-[88px]`}>
       <div className="text-center">
         <p className={EYEBROW}>Compare</p>
-        <h2 className={H2}>Built for decks you'd actually present</h2>
+        <h2 className={H2}>Built for decks you&apos;d actually present</h2>
       </div>
       <div className="mx-auto mt-12 max-w-[760px] overflow-hidden rounded-[16px] border border-[hsl(var(--border))]">
         <table className="w-full border-collapse text-[15px]">
