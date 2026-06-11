@@ -647,6 +647,7 @@ describe("POST /api/runners/*", () => {
       contextOverrides: { apiStartTime: 1 },
     });
 
+    context.mocks.axiomLogging.warn.mockClear();
     const response = await claimRunnerJob({
       runId: queued.runId,
       authorization: OFFICIAL_RUNNER_TOKEN,
@@ -682,6 +683,22 @@ describe("POST /api/runners/*", () => {
     });
     expect(run?.completedAt).toBeInstanceOf(Date);
     expect(run?.startedAt).toBeNull();
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Runner job missing valid execution context",
+      expect.objectContaining({
+        context: "Runners",
+        runId: queued.runId,
+        validationIssueCount: 1,
+        validationIssues: [
+          expect.objectContaining({
+            path: "apiStartTime",
+            code: "too_small",
+            message: expect.any(String),
+          }),
+        ],
+        validationIssuesOmitted: 0,
+      }),
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${queued.runId}`,
       { status: "failed" },
