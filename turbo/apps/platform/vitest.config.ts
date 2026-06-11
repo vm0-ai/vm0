@@ -26,6 +26,18 @@ export default defineConfig({
     "import.meta.env.VITE_MOCK_LOG_DETAIL": JSON.stringify(""),
   },
   test: {
+    coverage: {
+      exclude: [
+        "src/**/__tests__/**",
+        "src/__tests__/**",
+        "src/mocks/**",
+        "src/test/**",
+        "src/lib/ably-auth.ts",
+        "src/lib/plausible.ts",
+        "src/lib/posthog.ts",
+        "src/lib/sentry.ts",
+      ],
+    },
     globals: true,
     environment: "happy-dom",
     environmentOptions: {

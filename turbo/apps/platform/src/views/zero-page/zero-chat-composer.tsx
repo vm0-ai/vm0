@@ -104,10 +104,7 @@ import {
   type VideoStylePreset,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -316,20 +313,13 @@ type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 // ---------------------------------------------------------------------------
 
 interface ComposerConnectorItem {
-  type: string;
+  type: ConnectorType;
   label: string;
   helpText: string;
   tags: readonly string[];
   connected: boolean;
   authorized: boolean;
   available: boolean;
-}
-
-function resolveConnectorLabel(
-  type: string,
-  connectorMap: Map<ConnectorType, { label: string }>,
-): string {
-  return connectorMap.get(type as ConnectorType)?.label ?? type;
 }
 
 function resolveComposerModelForSelection(
@@ -657,38 +647,6 @@ function videoTemplateMatchesGroup(
 }
 
 function VideoTemplatePreview({ item }: { item: VideoStylePreset }) {
-  if (!item.sampleVideoUrl) {
-    return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        <IconTemplate size={28} stroke={1.5} />
-      </div>
-    );
-  }
-
-  if (!item.sampleVideoThumbnailUrl) {
-    return (
-      <video
-        src={item.sampleVideoUrl}
-        className="h-full w-full object-cover opacity-0 transition-opacity duration-300"
-        preload="metadata"
-        playsInline
-        muted
-        loop
-        onCanPlay={(event) => {
-          event.currentTarget.style.opacity = "1";
-        }}
-        onMouseEnter={(event) => {
-          detach(event.currentTarget.play(), Reason.DomCallback);
-        }}
-        onMouseLeave={(event) => {
-          const video = event.currentTarget;
-          video.pause();
-          video.currentTime = 0;
-        }}
-      />
-    );
-  }
-
   return (
     <video
       src={item.sampleVideoUrl}
@@ -889,10 +847,7 @@ function TemplateEmptyPanel({
 function presentationTemplateSlideImages(
   item: PresentationTemplateItem,
 ): readonly string[] {
-  if (item.previewImages.length > 0) {
-    return item.previewImages;
-  }
-  return [item.previewImage];
+  return item.previewImages;
 }
 
 interface PresentationPreviewImageCache {
@@ -1045,7 +1000,7 @@ function TemplatePreview({
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
-  const previewImage = slideImages[0] ?? item.previewImage;
+  const previewImage = slideImages[0];
   const isHovering = hover?.slug === item.slug;
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -1065,7 +1020,7 @@ function TemplatePreview({
       Math.round((offsetX / rect.width) * (slideImages.length - 1)),
     );
     if (nextIndex !== hoverSlideIndex) {
-      const nextImage = slideImages[nextIndex] ?? item.previewImage;
+      const nextImage = slideImages[nextIndex];
       event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
       if (nextIndex === 0) {
         setHover({ slug: item.slug, index: nextIndex });
@@ -1210,7 +1165,7 @@ function TemplatePreviewPage({
     0,
     Math.min(selectedSlideIndex, slideImages.length - 1),
   );
-  const selectedSlideImage = slideImages[safeSlideIndex] ?? item.previewImage;
+  const selectedSlideImage = slideImages[safeSlideIndex];
   const hasMultipleSlides = slideImages.length > 1;
   const kind = formatPresentationTemplateKind(item.templateId);
 
@@ -1552,13 +1507,12 @@ function IllustrationPreviewPage({
   onBack: () => void;
   onSelect: (item: IllustrationTemplateItem) => void;
 }) {
-  const images =
-    item.previewImages.length > 0 ? item.previewImages : [item.previewImage];
+  const images = item.previewImages;
   const safeImageIndex = Math.max(
     0,
     Math.min(selectedImageIndex, images.length - 1),
   );
-  const selectedImage = images[safeImageIndex] ?? item.previewImage;
+  const selectedImage = images[safeImageIndex];
 
   return (
     <>
@@ -1676,7 +1630,7 @@ function resolveTemplatePickerCategory({
   if (hasVideoTab) {
     categories.push("video");
   }
-  const defaultCategory = categories[0] ?? "slides";
+  const defaultCategory = categories[0];
   if (category === "video" && !hasVideoTab) {
     return defaultCategory;
   }
@@ -2496,7 +2450,7 @@ function ConnectorTriggerIcons({
         return (
           <span key={c.type} className="relative shrink-0">
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
-              <ConnectorIcon type={c.type as ConnectorType} size={16} />
+              <ConnectorIcon type={c.type} size={16} />
             </span>
           </span>
         );
@@ -2514,7 +2468,7 @@ function AddConnectorsDialog({
   unconnected: ConnectorTypeWithStatus[];
   pollingType: string | null;
   onClose: () => void;
-  onSelect: (type: string) => void;
+  onSelect: (type: ConnectorType) => void;
 }) {
   const search = useGet(addDialogSearch$);
   const setSearch = useSet(setAddDialogSearch$);
@@ -2566,18 +2520,7 @@ function AddConnectorsDialog({
                 >
                   <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                      {item.type in CONNECTOR_TYPES ? (
-                        <ConnectorIcon
-                          type={item.type as ConnectorType}
-                          size={20}
-                        />
-                      ) : (
-                        <IconPlug
-                          size={18}
-                          stroke={1.5}
-                          className="text-muted-foreground"
-                        />
-                      )}
+                      <ConnectorIcon type={item.type} size={20} />
                     </span>
                     <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
                       {item.label}
@@ -2596,7 +2539,7 @@ function AddConnectorsDialog({
                   </div>
                   <div className="px-4 pb-4 pt-1">
                     <div className="text-xs text-muted-foreground line-clamp-2">
-                      {item.helpText ?? ""}
+                      {item.helpText}
                     </div>
                   </div>
                 </button>
@@ -2620,7 +2563,7 @@ function ConnectorsPopoverButton({
   connectorsLoading: boolean;
   savingType: string | null;
   onOpenAddDialog: () => void;
-  onToggle: (type: string, checked: boolean) => void | Promise<void>;
+  onToggle: (type: ConnectorType, checked: boolean) => void | Promise<void>;
 }) {
   const search = useGet(popoverSearch$);
   const setSearch = useSet(setPopoverSearch$);
@@ -2720,10 +2663,7 @@ function ConnectorsPopoverButton({
                       className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <ConnectorIcon
-                          type={item.type as ConnectorType}
-                          size={16}
-                        />
+                        <ConnectorIcon type={item.type} size={16} />
                       </span>
                       <span className="text-sm flex-1 truncate text-foreground">
                         {item.label}
@@ -3442,8 +3382,8 @@ export function ZeroChatComposer({
     };
   });
 
-  const handleConnectSuccess = async (type: string) => {
-    const label = resolveConnectorLabel(type, connectorMap);
+  const handleConnectSuccess = async (type: ConnectorType) => {
+    const label = connectorMap.get(type)!.label;
     await tapError(authorizeFn(type, pageSignal), () => {
       toast.error(`${label} was authorized but could not be saved`, {
         id: `connector-save-error-${type}`,
@@ -3454,7 +3394,7 @@ export function ZeroChatComposer({
     });
   };
 
-  const handleToggle = async (type: string, checked: boolean) => {
+  const handleToggle = async (type: ConnectorType, checked: boolean) => {
     setSavingType(type);
     await bestEffort(
       checked ? authorizeFn(type, pageSignal) : deauthorizeFn(type, pageSignal),
@@ -3746,7 +3686,7 @@ export function ZeroChatComposer({
           }}
           onSelect={(type) => {
             setPendingConnectType(type);
-            setSelectedConnType(type as ConnectorType);
+            setSelectedConnType(type);
           }}
         />
       )}
