@@ -1417,3 +1417,24 @@ First USAGE-family reduce.
   legacy.
 - Reduced `storages.test.ts` (25 -> 21).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 66 — CHAT-THREAD DELETE REJECTIONS (CHAIN-CHAT-THREAD-DELETE-REJECTIONS, reduce-legacy + GWT chain)
+
+- Reused the existing `chatThreadById` client's `delete` + `get`.
+- Added `zero-chat-threads-delete-rejections.bdd.test.ts`: delete rejects
+  unauthenticated callers (401, Ably not published), a malformed id (400, before
+  any DB lookup) and an unknown thread (404, "Chat thread not found"); plus a full
+  Given-When-Then — an admin onboards an agent, creates a thread, deletes it
+  (204) and the thread can then no longer be fetched (404).
+- The cascade variants (deleting linked schedules / in-flight runs / artifacts,
+  the threadListChanged Ably publish, other-user 404) need that seeded state and
+  stay in the kept legacy.
+- Reduced `zero-chat-threads-delete.test.ts` (11 -> 8).
+- Coverage verified (source-only): no regressions vs `main`.
+
+> **Coverage-tooling note (post-crash):** `zero-schedules.service.ts` and
+> `time-trigger.ts` are oscillating-coverage files — the `main` baseline itself
+> yields 260/167 vs 257/165 (and 27/33 vs 27/32) on identical code across runs,
+> matching the branch's stable 257/165 + 27/32. They are time/execution-order
+> dependent and belong in the coverage-diff NOISE set alongside the slack-connect
+> oscillators.

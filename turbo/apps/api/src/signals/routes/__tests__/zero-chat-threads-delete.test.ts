@@ -69,41 +69,6 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
       .onConflictDoNothing();
   }
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(chatThreadByIdContract);
-
-    const response = await accept(
-      client.delete({ params: { id: randomUUID() }, headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
-  });
-
-  it("returns 404 for an unknown thread id", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toMatchObject({
-      error: { code: "NOT_FOUND", message: "Chat thread not found" },
-    });
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
-  });
-
   it("deletes the thread and removes it from the DB (read-after-delete)", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
@@ -225,29 +190,6 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
       "threadListChanged",
       null,
     );
-  });
-
-  it("returns 400 for a malformed UUID without touching the DB", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatThreadByIdContract);
-    const response = await accept(
-      client.delete({
-        params: { id: "not-a-uuid" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-    expect(response.body.error.message).toContain("id");
-
-    // Seeded thread untouched (path validation short-circuits before DB).
-    await expect(getThreadRowExists(fixture.threadId)).resolves.toBeTruthy();
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
   it("cancels in-flight runs linked to the deleted thread", async () => {
