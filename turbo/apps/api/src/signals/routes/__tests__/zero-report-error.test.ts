@@ -563,7 +563,7 @@ describe("POST /api/zero/report-error", () => {
                 },
               },
             ],
-            featureFlagEntries: [{ name: "apiBackend", enabled: true }],
+            featureFlagEntries: [{ name: "lab", enabled: true }],
             firewalls: [],
             volumes: [],
           },
@@ -594,7 +594,7 @@ describe("POST /api/zero/report-error", () => {
           unknownPolicy: "allow",
         },
       },
-      featureFlags: { apiBackend: true },
+      featureFlags: { lab: true },
     });
     expect(activityContext).not.toHaveProperty("environmentEntries");
     expect(activityContext).not.toHaveProperty("networkPolicyEntries");

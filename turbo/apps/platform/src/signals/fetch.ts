@@ -1,32 +1,26 @@
 import { computed } from "ccstate";
-import { apiBackendEnabled$ } from "./external/feature-switch.ts";
 import { clerk$ } from "./auth.ts";
 import { fetchFreshToken, handleUnauthorizedRedirect } from "./auth-retry.ts";
-import {
-  resolveApiBase,
-  resolveApiBaseForNavigation,
-  resolveApiBaseForTarget,
-} from "./api-base.ts";
-import { resolveApiTarget } from "./api-target-policy.ts";
+import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
 
 /**
- * API base URL for opening external navigation (e.g. connector OAuth popup).
+ * Web base URL for opening external navigation (e.g. connector OAuth popup).
  * - On localhost: use VITE_API_URL so the popup hits the configured API (e.g. :3000).
  * - On a non-localhost host (e.g. app.vm7.ai): derive from current origin
  *   (e.g. www.vm7.ai) so we never open a localhost URL when the user is remote.
  */
-export const apiBaseForNavigation$ = computed(async (get) => {
-  return resolveApiBaseForNavigation(await get(apiBackendEnabled$));
+export const webBaseForNavigation$ = computed(() => {
+  return resolveApiBaseForNavigation("www");
 });
 
 /**
  * Resolves the API base URL.
- * If VITE_API_URL is http://localhost:3000, derives the URL from the current browser origin
- * by replacing "platform" or "app" with "www" in the hostname.
+ * If VITE_API_URL is http://localhost:3000, derives the URL from the current
+ * browser origin by replacing "platform" or "app" with "api" in the hostname.
  * Otherwise, uses VITE_API_URL directly.
  */
-export const apiBase$ = computed(async (get) => {
-  return resolveApiBase(await get(apiBackendEnabled$));
+export const apiBase$ = computed(() => {
+  return resolveApiBase();
 });
 
 function mergeHeadersWithAutoIds(
@@ -102,25 +96,10 @@ function rewriteRequestUrl(
   );
 }
 
-function apiBaseForRelativePath(
-  path: string,
-  method: string | undefined,
-  useApiBackend: boolean,
-): string {
-  const url = new URL(path, resolveApiBase(false));
-  return resolveApiBaseForTarget(
-    resolveApiTarget(
-      { method: method ?? "GET", pathname: url.pathname },
-      useApiBackend,
-    ),
-  );
-}
-
 export const fetch$ = computed((get) => {
   return async (url: string | URL | Request, options?: RequestInit) => {
     const clerk = await get(clerk$);
     const initialToken = (await clerk.session?.getToken()) ?? null;
-    const useApiBackend = await get(apiBackendEnabled$);
 
     const performFetch = async (token: string | null): Promise<Response> => {
       // Clone Request inputs so the body stream is available for retry.
@@ -158,34 +137,21 @@ export const fetch$ = computed((get) => {
       }
 
       if (typeof requestInput === "string" && !requestInput.includes("://")) {
-        const requestMethod = finalInit.method;
         const path = requestInput.startsWith("/")
           ? requestInput
           : `/${requestInput}`;
-        const apiBase = apiBaseForRelativePath(
-          path,
-          requestMethod,
-          useApiBackend,
-        );
+        const apiBase = resolveApiBase();
         const baseUrl = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
         finalUrl = `${baseUrl}${path}`;
       } else if (requestInput instanceof URL && !requestInput.host) {
-        const apiBase = apiBaseForRelativePath(
-          requestInput.pathname,
-          finalInit.method,
-          useApiBackend,
-        );
+        const apiBase = resolveApiBase();
         finalUrl = new URL(
           requestInput.pathname + requestInput.search + requestInput.hash,
           apiBase,
         );
       } else if (requestInput instanceof Request) {
         const requestMethod = finalInit.method ?? requestInput.method;
-        const apiBase = apiBaseForRelativePath(
-          new URL(requestInput.url).pathname,
-          requestMethod,
-          useApiBackend,
-        );
+        const apiBase = resolveApiBase();
         const rewritten = rewriteRequestUrl(
           requestInput,
           apiBase,

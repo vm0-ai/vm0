@@ -14,7 +14,7 @@ const ZERO_DESKTOP_RELEASE_PATH =
 
 export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   ZERO_DESKTOP_RELEASE_PATH,
-  resolveApiBaseForNavigation(true),
+  resolveApiBaseForNavigation("api"),
 ).toString();
 
 interface OnlineComputerUseHost extends Pick<

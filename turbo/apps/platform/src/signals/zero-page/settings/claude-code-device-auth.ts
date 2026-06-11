@@ -155,7 +155,9 @@ async function startClaudeCodeDeviceAuth(args: {
   readonly scope: ClaudeCodeDeviceAuthScope;
   readonly signal: AbortSignal;
 }) {
-  const client = args.createClient(zeroClaudeCodeDeviceAuthContract);
+  const client = args.createClient(zeroClaudeCodeDeviceAuthContract, {
+    apiBase: "www",
+  });
   const result = await accept(
     client.start({
       body: { scope: args.scope },
@@ -173,7 +175,9 @@ async function completeClaudeCodeDeviceAuth(args: {
   readonly authorizationCode: string;
   readonly signal: AbortSignal;
 }) {
-  const client = args.createClient(zeroClaudeCodeDeviceAuthContract);
+  const client = args.createClient(zeroClaudeCodeDeviceAuthContract, {
+    apiBase: "www",
+  });
   const result = await accept(
     client.complete({
       body: {
@@ -193,7 +197,9 @@ async function cancelClaudeCodeDeviceAuth(args: {
   readonly sessionToken: string;
   readonly signal: AbortSignal;
 }) {
-  const client = args.createClient(zeroClaudeCodeDeviceAuthContract);
+  const client = args.createClient(zeroClaudeCodeDeviceAuthContract, {
+    apiBase: "www",
+  });
   const result = await accept(
     client.cancel({
       body: { sessionToken: args.sessionToken },

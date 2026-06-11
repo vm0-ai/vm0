@@ -595,7 +595,7 @@ describe("GET /api/zero/runs/:id/context", () => {
           },
         },
         featureFlags: {
-          apiBackend: true,
+          lab: true,
           dummy: null,
         },
       },
@@ -624,7 +624,7 @@ describe("GET /api/zero/runs/:id/context", () => {
       },
     });
     expect(response.body.featureFlags).toStrictEqual({
-      apiBackend: true,
+      lab: true,
     });
   });
 

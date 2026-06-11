@@ -11,9 +11,7 @@ import type {
   InitClientReturn,
 } from "@ts-rest/core";
 import { clerk$ } from "./auth.ts";
-import { apiBackendEnabled$ } from "./external/feature-switch.ts";
 import { resolveApiBase, resolveApiBaseForTarget } from "./api-base.ts";
-import { resolveApiTarget } from "./api-target-policy.ts";
 import { createAuthedTsRestClient } from "./api-client-base.ts";
 
 /**
@@ -31,7 +29,7 @@ export interface ZeroClientOptions {
 }
 
 function rebaseApiPath(path: string, apiBase: string): string {
-  const url = new URL(path, resolveApiBase(false));
+  const url = new URL(path, resolveApiBase());
   const base = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
   return `${base}${url.pathname}${url.search}${url.hash}`;
 }
@@ -56,23 +54,18 @@ function rebaseApiPath(path: string, apiBase: string): string {
 export const zeroClient$ = computed((get) => {
   return <T extends AppRouter>(contract: T, options?: ZeroClientOptions) => {
     return createAuthedTsRestClient(contract, {
-      baseUrl: resolveApiBase(false),
+      baseUrl: resolveApiBase(),
       getClerk: () => {
         return get(clerk$);
       },
-      resolvePath: async (path, { method }) => {
+      resolvePath: (path) => {
         if (options?.apiBase === "api") {
-          return rebaseApiPath(path, resolveApiBase(true));
+          return rebaseApiPath(path, resolveApiBaseForTarget("api"));
         }
         if (options?.apiBase === "www") {
-          return rebaseApiPath(path, resolveApiBase(false));
+          return rebaseApiPath(path, resolveApiBaseForTarget("www"));
         }
-        const url = new URL(path, resolveApiBase(false));
-        const target = resolveApiTarget(
-          { method, pathname: url.pathname },
-          await get(apiBackendEnabled$),
-        );
-        return rebaseApiPath(path, resolveApiBaseForTarget(target));
+        return rebaseApiPath(path, resolveApiBase());
       },
     });
   };
