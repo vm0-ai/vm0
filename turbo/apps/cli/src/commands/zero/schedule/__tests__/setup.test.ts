@@ -105,6 +105,9 @@ describe("zero schedule setup command", () => {
       expect(logCalls).toContain("Schedule");
       expect(logCalls).toContain("created");
       expect(logCalls).toContain("my-agent");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should create loop schedule with interval flag", async () => {

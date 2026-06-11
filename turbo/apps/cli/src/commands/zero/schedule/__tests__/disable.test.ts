@@ -89,6 +89,9 @@ describe("zero schedule disable command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Schedule");
       expect(logCalls).toContain("disabled");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should disable a schedule when agent identifier is a UUID", async () => {

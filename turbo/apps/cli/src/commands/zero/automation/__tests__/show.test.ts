@@ -1,5 +1,5 @@
 /**
- * Tests for `zero automation list` (v2 unified automations).
+ * Tests for `zero automation show` (v2 unified automations).
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
-import { listCommand } from "../list";
+import { showCommand } from "../show";
 import chalk from "chalk";
 
 const AUTOMATION_ID = "11111111-1111-4111-8111-111111111111";
@@ -21,7 +21,7 @@ const mockAutomation = {
   displayName: "my-agent",
   userId: "user-001",
   name: "alerts",
-  description: null,
+  description: "Daily alert digest",
   instruction: "Summarize alerts",
   appendSystemPrompt: null,
   enabled: true,
@@ -33,8 +33,8 @@ const mockAutomation = {
       id: "22222222-2222-4222-8222-222222222222",
       automationId: AUTOMATION_ID,
       enabled: true,
-      kind: "cron",
-      cronExpression: "0 9 * * *",
+      kind: "loop",
+      intervalSeconds: 900,
       timezone: "UTC",
       nextRunAt: "2026-06-12T09:00:00Z",
       lastRunAt: null,
@@ -45,7 +45,7 @@ const mockAutomation = {
     {
       id: "33333333-3333-4333-8333-333333333333",
       automationId: AUTOMATION_ID,
-      enabled: true,
+      enabled: false,
       kind: "webhook",
       webhookToken: "whk_deadbeef",
       webhookUrl: "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
@@ -55,7 +55,7 @@ const mockAutomation = {
   ],
 };
 
-describe("zero automation list command", () => {
+describe("zero automation show command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -76,53 +76,70 @@ describe("zero automation list command", () => {
     mockConsoleError.mockClear();
   });
 
-  it("should display automations with their trigger kinds", async () => {
+  it("should display automation fields and the triggers table", async () => {
     server.use(
-      http.get("http://localhost:3000/api/v2/automations", () => {
-        return HttpResponse.json({ automations: [mockAutomation] });
-      }),
+      http.get(
+        "http://localhost:3000/api/v2/automations/:ref",
+        ({ params }) => {
+          expect(params.ref).toBe("alerts");
+          return HttpResponse.json(mockAutomation);
+        },
+      ),
     );
 
-    await listCommand.parseAsync(["node", "cli"]);
+    await showCommand.parseAsync(["node", "cli", "alerts"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("alerts");
     expect(logCalls).toContain(AUTOMATION_ID);
-    expect(logCalls).toContain("my-agent");
-    expect(logCalls).toContain("enabled");
-    expect(logCalls).toContain("cron, webhook");
+    expect(logCalls).toContain("Daily alert digest");
+    expect(logCalls).toContain("Summarize alerts");
+    // Triggers table: kind, id, status, config
+    expect(logCalls).toContain("loop");
+    expect(logCalls).toContain("22222222-2222-4222-8222-222222222222");
+    expect(logCalls).toContain("every 15m");
+    expect(logCalls).toContain("webhook");
+    expect(logCalls).toContain(
+      "http://localhost:3000/api/automations/webhooks/whk_deadbeef",
+    );
+    expect(logCalls).toContain("disabled");
   });
 
-  it("should display empty state message when no automations", async () => {
+  it("should hint at adding a trigger when the automation has none", async () => {
     server.use(
-      http.get("http://localhost:3000/api/v2/automations", () => {
-        return HttpResponse.json({ automations: [] });
+      http.get("http://localhost:3000/api/v2/automations/:ref", () => {
+        return HttpResponse.json({ ...mockAutomation, triggers: [] });
       }),
     );
 
-    await listCommand.parseAsync(["node", "cli"]);
+    await showCommand.parseAsync(["node", "cli", "alerts"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("No automations found");
-    expect(logCalls).toContain("zero automation create");
+    expect(logCalls).toContain("No triggers");
+    expect(logCalls).toContain("zero automation trigger add");
   });
 
-  it("should handle authentication error", async () => {
+  it("should surface the ambiguous-name API error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/v2/automations", () => {
+      http.get("http://localhost:3000/api/v2/automations/:ref", () => {
         return HttpResponse.json(
-          { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-          { status: 401 },
+          {
+            error: {
+              message: "Ambiguous name, use the id",
+              code: "BAD_REQUEST",
+            },
+          },
+          { status: 400 },
         );
       }),
     );
 
     await expect(async () => {
-      await listCommand.parseAsync(["node", "cli"]);
+      await showCommand.parseAsync(["node", "cli", "alerts"]);
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Not authenticated"),
+      expect.stringContaining("Ambiguous name, use the id"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

@@ -71,6 +71,9 @@ describe("zero schedule list command", () => {
       expect(logCalls).toContain("default");
       expect(logCalls).toContain("0 9 * * *");
       expect(logCalls).toContain("enabled");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should display empty state message when no schedules", async () => {

@@ -8,7 +8,9 @@ import { disableCommand } from "./disable";
 
 export const zeroScheduleCommand = new Command()
   .name("schedule")
-  .description("Create or manage recurring scheduled tasks")
+  .description(
+    "(deprecated: use `zero automation`) Create or manage recurring scheduled tasks",
+  )
   .addCommand(setupCommand)
   .addCommand(listCommand)
   .addCommand(statusCommand)
