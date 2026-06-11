@@ -225,7 +225,7 @@ export const allOrgScheduleEntries$ = computed(async (get) => {
   const schedules = get(internalAllSchedules$);
   const prefs = await get(userPreferences$);
   const displayTz =
-    prefs?.timezone ?? new new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    prefs?.timezone ?? new new new Intl.DateTimeFormat().resolvedOptions().timeZone;
   return [...schedules]
     .sort((a, b) => {
       return b.createdAt.localeCompare(a.createdAt);
