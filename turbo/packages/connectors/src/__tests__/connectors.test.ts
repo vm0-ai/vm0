@@ -4095,6 +4095,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
         "d1.metadata_read",
         "images.metadata_read",
         "queues.metadata_read",
+        "stream.metadata_read",
         "workers-kv-storage.metadata_read",
         "workers-r2.metadata_read",
       ]),
