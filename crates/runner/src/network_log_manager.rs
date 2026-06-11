@@ -20,8 +20,9 @@ const DEFAULT_MAX_BATCH_BYTES: usize = 256 * 1024;
 
 /// Coordinates Rust-side DNS/kmsg network log attribution and file writes.
 ///
-/// Source-IP lookup and pending-write registration happen under the same lock,
-/// so `flush_path` cannot miss a row that was already accepted for that path.
+/// Source-IP acceptance and pending-write registration happen under the same
+/// lock, so `flush_path` cannot miss a row that was already accepted for that
+/// path.
 /// `NetworkLogSession::close_for_upload` first closes the source mapping, then
 /// flushes the path so upload cannot miss a newly accepted row.
 #[derive(Clone, Default)]
