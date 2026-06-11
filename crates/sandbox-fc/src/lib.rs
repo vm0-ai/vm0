@@ -10,8 +10,8 @@
 //!
 //! - [`FirecrackerRuntime`], which manages shared host resources and creates
 //!   sandbox factories for configured rootfs, kernel, and profile settings.
-//! - [`FirecrackerSandbox`], the running microVM implementation of the
-//!   `sandbox::Sandbox` trait.
+//! - [`FirecrackerSandbox`], the Firecracker-backed implementation of
+//!   `sandbox::Sandbox` for a sandbox lifecycle.
 //! - [`FirecrackerControl`], which exposes control-plane operations for a
 //!   running sandbox.
 //! - [`FirecrackerSnapshotProvider`], which creates snapshots compatible with
