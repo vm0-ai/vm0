@@ -54,6 +54,10 @@ import {
   zeroLogsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
+import {
+  storagesListContract,
+  storagesDownloadContract,
+} from "@vm0/api-contracts/contracts/storages";
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
@@ -312,6 +316,12 @@ export function createBddApi(context: TestContext) {
     /** ts-rest client for `/api/logs` (run-log list). Seeded run logs need a
      * funded run (GAP-RUN-CREDITS); the auth/validation/empty cases are
      * reachable directly. */
+    /** ts-rest clients for `/api/storages/{list,download}`. Listing/downloading
+     * a real storage needs an artifact/volume created by a run or connect flow
+     * (GAP-RUN-CREDITS / GAP-CONNECTOR-CONNECT); the auth, empty-list and
+     * not-found cases are reachable directly. */
+    storagesList: setupApp({ context })(storagesListContract),
+    storagesDownload: setupApp({ context })(storagesDownloadContract),
     logsList: setupApp({ context })(logsListContract),
     /** ts-rest client for `/api/zero/logs/:id` (single run-log detail). The 200
      * detail needs a funded run (GAP-RUN-CREDITS); the auth, capability and

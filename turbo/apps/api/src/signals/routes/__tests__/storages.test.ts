@@ -269,21 +269,6 @@ async function seedRunScopedFixture(): Promise<
 }
 
 describe("GET /api/storages/list", () => {
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await listClient().list({
-      query: { type: "artifact" },
-      headers: {},
-    });
-
-    expect(response.status).toBe(401);
-    if (response.status !== 401) {
-      return;
-    }
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
   it("returns 400 for an invalid type query", async () => {
     const response = await listClient().list({
       query: { type: "invalid" } as never,
@@ -296,23 +281,6 @@ describe("GET /api/storages/list", () => {
     }
     expect(response.body.error.code).toBe("BAD_REQUEST");
     expect(response.body.error.message).toContain("type");
-  });
-
-  it("returns an empty array when no storages exist", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const response = await listClient().list({
-      query: { type: "artifact" },
-      headers: authHeaders(),
-    });
-
-    expect(response.status).toBe(200);
-    if (response.status !== 200) {
-      return;
-    }
-    expect(response.body).toStrictEqual([]);
   });
 
   it("lists artifacts for the authenticated user ordered by update time", async () => {
@@ -549,21 +517,6 @@ describe("GET /api/storages/list", () => {
 });
 
 describe("GET /api/storages/download", () => {
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await downloadClient().download({
-      query: { name: "missing", type: "artifact" },
-      headers: {},
-    });
-
-    expect(response.status).toBe(401);
-    if (response.status !== 401) {
-      return;
-    }
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
   it("returns 400 when required query parameters are missing or invalid", async () => {
     const missingName = await downloadClient().download({
       query: { type: "artifact" } as never,
@@ -594,24 +547,6 @@ describe("GET /api/storages/download", () => {
       return;
     }
     expect(invalidType.body.error.message).toContain("type");
-  });
-
-  it("returns 404 when storage does not exist", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const response = await downloadClient().download({
-      query: { name: storageName("missing"), type: "artifact" },
-      headers: authHeaders(),
-    });
-
-    expect(response.status).toBe(404);
-    if (response.status !== 404) {
-      return;
-    }
-    expect(response.body.error.message).toContain("not found");
-    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("returns 404 when a sandbox token run is missing", async () => {

@@ -1402,3 +1402,18 @@ First USAGE-family reduce.
 - Reduced `zero-agents-update.test.ts` (32 -> 20), dropping the now-orphaned
   `currentSecond` helper and `signSandboxJwtForTests` import.
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 65 — STORAGE LIST + DOWNLOAD REJECTIONS (CHAIN-STORAGES-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `storagesList` (`/api/storages/list`) and
+  `storagesDownload` (`/api/storages/download`) clients.
+- Added `zero-storages-rejections.bdd.test.ts`: the list rejects unauthenticated
+  callers (401) and returns an empty array for a fresh org; the download rejects
+  unauthenticated callers (401) and 404s a storage that does not exist.
+- Listing/downloading a real artifact or volume needs storage created by a run or
+  connect flow (GAP-RUN-CREDITS / GAP-CONNECTOR-CONNECT), the sandbox-token
+  run-scoping variants need a seeded run, and the invalid-type / missing-param
+  400s require deliberately ill-typed queries (`as never`) that stay in the kept
+  legacy.
+- Reduced `storages.test.ts` (25 -> 21).
+- Coverage verified (source-only): no regressions vs `main`.
