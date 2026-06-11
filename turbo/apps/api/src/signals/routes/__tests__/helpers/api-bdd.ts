@@ -49,6 +49,7 @@ import {
   zeroBillingInvoicesContract,
   zeroBillingPortalContract,
   zeroBillingRedeemCodeContract,
+  zeroBillingRedeemContract,
   zeroBillingRestoreContract,
   zeroBillingStatusContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
@@ -405,6 +406,10 @@ export function createBddApi(context: TestContext) {
      * the auth, capability and fresh-org free-tier cases are reachable. */
     billingStatus: setupApp({ context })(zeroBillingStatusContract),
     billingRedeemCode: setupApp({ context })(zeroBillingRedeemCodeContract),
+    /** ts-rest client for `/api/zero/billing/redeem/:campaign` (one-time campaign
+     * redeem). A real redeem needs seeded campaign env config + a Stripe session;
+     * the auth and no-org cases are reachable directly. */
+    billingRedeem: setupApp({ context })(zeroBillingRedeemContract),
     /** ts-rest client for `/api/zero/billing/portal` (open the Stripe portal).
      * The funded success path needs a seeded Stripe customer with no API
      * surface; only the auth/validation/config rejections are reachable. */

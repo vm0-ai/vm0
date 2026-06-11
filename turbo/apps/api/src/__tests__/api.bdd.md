@@ -1578,3 +1578,15 @@ changed: false }`, no Ably publish).
   stay in the kept legacy.
 - Reduced `zero-chat-threads-artifacts.test.ts` (9 -> 8).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 77 — BILLING CAMPAIGN REDEEM REJECTIONS (CHAIN-BILLING-REDEEM-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `billingRedeem` client
+  (`/api/zero/billing/redeem/:campaign`, distinct from the redeem-_code_ client).
+- Added `zero-billing-redeem-rejections.bdd.test.ts`: the campaign redeem rejects
+  unauthenticated and org-less callers (401).
+- A real redeem (campaign-misconfigured / admin-required / Stripe session create /
+  resume / already-redeemed) needs seeded campaign env config plus a Stripe
+  customer + session (GAP-STRIPE-CUSTOMER) and stays in the kept legacy.
+- Reduced `zero-billing-redeem.test.ts` (20 -> 18).
+- Coverage verified (source-only): no regressions vs `main`.

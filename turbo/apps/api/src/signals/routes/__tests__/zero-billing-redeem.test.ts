@@ -59,20 +59,6 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
     context.mocks.stripe.customers.create.mockResolvedValue({ id: "cus_test" });
   });
 
-  it("returns 401 when the caller is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroBillingRedeemContract);
-    const response = await accept(
-      client.create({
-        params: { campaign: CAMPAIGN },
-        body: { successUrl: SUCCESS_URL, cancelUrl: CANCEL_URL },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.status).toBe(401);
-  });
-
   it("returns campaign_misconfigured for an unknown campaign", async () => {
     const fixture = await track(store.set(seedRedeemOrg$, {}, context.signal));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -115,25 +101,6 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
   });
 
   // Web returns 400 when the caller has no active org (resolveOrg throws).
-  // Api hardens to 401 via authRoute({ missingOrganizationStatus: 401 }) —
-  // intentional Wave 6 cutover convention, documented in PR body.
-  it("returns 401 when the caller has no active org", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroBillingRedeemContract);
-    const response = await accept(
-      client.create({
-        params: { campaign: CAMPAIGN },
-        body: { successUrl: SUCCESS_URL, cancelUrl: CANCEL_URL },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.status).toBe(401);
-  });
-
   it("lets unexpected (non-Stripe) errors propagate so Sentry captures the full stack", async () => {
     const fixture = await track(
       store.set(
