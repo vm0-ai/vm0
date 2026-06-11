@@ -8,14 +8,14 @@
 //! hello failures move the sink to `Failed`; operation cleanup moves it to
 //! `Closed`.
 //!
-//! The connection state starts in `Waiting`, moves through `Handshaking` while
-//! the accepted process-control stream sends its hello, and reaches `Connected`
-//! once forwarding can use the stream. `Failed` preserves a sink error for
-//! later requests, and `Closed` represents operation cleanup. Requests wait in
-//! `Waiting` or `Handshaking` until the sink connects, fails, closes, or their
-//! deadline expires. Connected requests serialize over the process-control
-//! stream. Failed sinks return `SinkError`; closed or inactive sinks return
-//! `Inactive`.
+//! The lifecycle starts in `Waiting`. A successful connection path moves through
+//! `Handshaking` while the accepted process-control stream sends its hello, and
+//! reaches `Connected` once forwarding can use the stream. `Failed` preserves a
+//! sink error for later requests, and `Closed` represents operation cleanup.
+//! Requests wait in `Waiting` or `Handshaking` until the sink connects, fails,
+//! closes, or their deadline expires. Connected requests serialize over the
+//! process-control stream. Failed sinks return `SinkError`; closed or inactive
+//! sinks return `Inactive`.
 //!
 //! `inner` and `ready` own connection-state changes and wake waiting forwarders.
 //! `active` is the operation-lifetime gate, so close/drop can stop queued or
@@ -44,7 +44,7 @@ use super::{
 pub(super) struct ControlSinkState {
     /// Connection lifecycle state paired with `ready` for waiter wakeups.
     pub(super) inner: Mutex<ControlSinkInner>,
-    /// Notifies forwarders waiting for connection, failure, or close.
+    /// Notifies waiters after lifecycle state changes.
     pub(super) ready: Condvar,
     /// Operation-lifetime gate; once false, requests resolve as inactive.
     pub(super) active: AtomicBool,
