@@ -9,9 +9,46 @@ use super::support::{
 
 use super::super::signals::{SignalController, SignalHandlerTask, handle_resume_signal};
 use crate::idle_pool::ParkingState;
+use crate::provider::{ClaimedJob, CompletionAuth, JobCandidate};
+use crate::types::{HeartbeatState, HeldSessionState, SandboxReuseResult};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+struct ShutdownRecordingProvider {
+    shutdowns: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl crate::provider::JobProvider for ShutdownRecordingProvider {
+    async fn discover(&self) -> Option<JobCandidate> {
+        panic!("publish failure cleanup test does not discover jobs")
+    }
+
+    async fn claim(&self, _candidate: JobCandidate) -> Option<ClaimedJob> {
+        panic!("publish failure cleanup test does not claim jobs")
+    }
+
+    async fn complete(
+        &self,
+        _run_id: RunId,
+        _exit_code: i32,
+        _error: Option<&str>,
+        _sandbox_id: Option<sandbox::SandboxId>,
+        _reuse_result: Option<SandboxReuseResult>,
+        _completion_auth: CompletionAuth,
+    ) {
+        panic!("publish failure cleanup test does not complete jobs")
+    }
+
+    async fn heartbeat(&self, _state: &HeartbeatState) {}
+
+    async fn set_held_session_states(&self, _states: Vec<HeldSessionState>) {}
+
+    async fn shutdown(&self) {
+        self.shutdowns.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 struct ShutdownRecordingRuntime {
     shutdowns: Arc<AtomicUsize>,
@@ -67,15 +104,19 @@ fn write_usage_pending_state(
 }
 
 #[tokio::test]
-async fn live_registry_publish_failure_shuts_down_runtime() {
+async fn live_registry_publish_failure_shuts_down_startup_resources() {
     let dir = tempfile::tempdir().unwrap();
     let home = crate::paths::HomePaths::with_root(dir.path().join("vm0-runner"));
     std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
     std::fs::write(home.live_runners_dir(), b"not a directory").unwrap();
 
-    let shutdowns = Arc::new(AtomicUsize::new(0));
+    let provider_shutdowns = Arc::new(AtomicUsize::new(0));
+    let provider = ShutdownRecordingProvider {
+        shutdowns: Arc::clone(&provider_shutdowns),
+    };
+    let runtime_shutdowns = Arc::new(AtomicUsize::new(0));
     let mut runtime = ShutdownRecordingRuntime {
-        shutdowns: Arc::clone(&shutdowns),
+        shutdowns: Arc::clone(&runtime_shutdowns),
     };
     let metadata = crate::live_runner_registry::LiveRunnerRegistryMetadata {
         config_path: dir.path().join("runner.yaml"),
@@ -84,15 +125,17 @@ async fn live_registry_publish_failure_shuts_down_runtime() {
         runner_group: "vm0/test".into(),
     };
 
-    let error = publish_live_runner_or_shutdown_runtime(&home, metadata, &mut runtime)
-        .await
-        .unwrap_err();
+    let error =
+        publish_live_runner_or_shutdown_startup_resources(&home, metadata, &provider, &mut runtime)
+            .await
+            .unwrap_err();
 
     assert!(
         error.to_string().contains("ensure live runner registry"),
         "unexpected error: {error}"
     );
-    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    assert_eq!(provider_shutdowns.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime_shutdowns.load(Ordering::SeqCst), 1);
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {

@@ -164,14 +164,16 @@ pub struct StartArgs {
     local: bool,
 }
 
-async fn publish_live_runner_or_shutdown_runtime(
+async fn publish_live_runner_or_shutdown_startup_resources(
     home: &HomePaths,
     metadata: crate::live_runner_registry::LiveRunnerRegistryMetadata,
+    provider: &dyn JobProvider,
     runtime: &mut dyn SandboxRuntime,
 ) -> RunnerResult<crate::live_runner_registry::LiveRunnerRegistryHandle> {
     match crate::live_runner_registry::publish(home, metadata).await {
         Ok(handle) => Ok(handle),
         Err(e) => {
+            provider.shutdown().await;
             runtime.shutdown().await;
             Err(e)
         }
@@ -513,9 +515,13 @@ pub async fn run_start(
         runner_group: group_name.clone(),
     };
 
-    let live_runner_handle =
-        publish_live_runner_or_shutdown_runtime(&home, live_runner_metadata, runtime.as_mut())
-            .await?;
+    let live_runner_handle = publish_live_runner_or_shutdown_startup_resources(
+        &home,
+        live_runner_metadata,
+        provider.as_ref(),
+        runtime.as_mut(),
+    )
+    .await?;
 
     let config = RunConfig {
         runner: RunnerInfo {
