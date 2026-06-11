@@ -26,6 +26,16 @@ pub(crate) struct LiveRunnerInstanceHandle {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct LiveRunnerInstance {
+    pub pid: u32,
+    pub config_path: PathBuf,
+    pub base_dir: PathBuf,
+    pub runner_name: String,
+    pub runner_group: String,
+    pub started_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct ProcessIdentity {
     boot_id: String,
     pid: u32,
@@ -87,6 +97,52 @@ pub(crate) async fn publish(
     crate::state_file::write_private_atomic(&path, &content).await?;
 
     Ok(LiveRunnerInstanceHandle { path, identity })
+}
+
+pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
+    let dir = home.live_runner_instances_dir();
+    let mut entries = match tokio::fs::read_dir(&dir).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => {
+            tracing::debug!(path = %dir.display(), error = %e, "cannot scan live runner instances");
+            return Vec::new();
+        }
+    };
+
+    let mut instances = Vec::new();
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(e) => {
+                tracing::debug!(path = %dir.display(), error = %e, "cannot read live runner instance entry");
+                break;
+            }
+        };
+        if stable_record_identity_from_file_name(&entry.file_name()).is_none() {
+            continue;
+        }
+        let Some(record) = read_valid_record(&entry.path()).await else {
+            continue;
+        };
+        instances.push(LiveRunnerInstance {
+            pid: record.pid,
+            config_path: record.config_path,
+            base_dir: record.base_dir,
+            runner_name: record.runner_name,
+            runner_group: record.runner_group,
+            started_at: record.started_at,
+        });
+    }
+
+    instances.sort_by(|left, right| {
+        left.runner_name
+            .cmp(&right.runner_name)
+            .then_with(|| left.pid.cmp(&right.pid))
+            .then_with(|| left.config_path.cmp(&right.config_path))
+    });
+    instances
 }
 
 impl LiveRunnerInstanceHandle {
@@ -383,6 +439,81 @@ mod tests {
         assert_eq!(record.boot_id, handle.identity.boot_id);
         assert_eq!(record.pid, handle.identity.pid);
         assert_eq!(record.starttime, handle.identity.starttime);
+    }
+
+    #[tokio::test]
+    async fn list_returns_empty_when_registry_dir_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+
+        let instances = list(&home).await;
+
+        assert!(instances.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_returns_valid_live_instance_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+
+        let instances = list(&home).await;
+
+        assert_eq!(instances.len(), 1);
+        let instance = &instances[0];
+        assert_eq!(instance.pid, handle.identity.pid);
+        assert_eq!(instance.config_path, dir.path().join("runner.yaml"));
+        assert_eq!(instance.base_dir, dir.path().join("base"));
+        assert_eq!(instance.runner_name, "test-runner");
+        assert_eq!(instance.runner_group, "vm0/test");
+        assert!(!instance.started_at.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_ignores_invalid_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        crate::host_file::ensure_dir(
+            &home.live_runner_instances_dir(),
+            crate::host_file::DirMode::Private,
+            "live runner instances",
+        )
+        .unwrap();
+        let stale_record = LiveRunnerInstanceRecord {
+            boot_id: current_boot_id().await.unwrap(),
+            pid: u32::MAX,
+            starttime: 1,
+            euid: current_euid(),
+            config_path: dir.path().join("stale-runner.yaml"),
+            base_dir: dir.path().join("stale-base"),
+            runner_name: "stale-runner".into(),
+            runner_group: "vm0/test".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+        };
+        write_record(
+            &home.live_runner_instance_record_path(stale_record.pid, stale_record.starttime),
+            &stale_record,
+        )
+        .await;
+        crate::state_file::write_private_atomic(&home.live_runner_instance_record_path(1, 1), b"{")
+            .await
+            .unwrap();
+        crate::state_file::write_private_atomic(
+            &home.live_runner_instance_record_path(2, 2),
+            &vec![b'a'; (LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES + 1) as usize],
+        )
+        .await
+        .unwrap();
+        crate::state_file::write_private_atomic(
+            &home.live_runner_instances_dir().join("not-a-record.json"),
+            b"{}",
+        )
+        .await
+        .unwrap();
+
+        let instances = list(&home).await;
+
+        assert!(instances.is_empty());
     }
 
     #[tokio::test]

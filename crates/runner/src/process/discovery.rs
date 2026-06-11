@@ -145,11 +145,10 @@ pub async fn discover_all() -> DiscoveredProcesses {
     let mut dnsmasqs = Vec::new();
 
     for (pid, argv) in &procs {
-        if let Some((config_path, subcommand)) = parse_runner_cmdline(argv) {
+        if let Some((config_path, _)) = parse_runner_cmdline(argv) {
             runners.push(RunnerProcessInfo {
                 pid: *pid,
                 config_path,
-                subcommand,
             });
         }
         if is_firecracker_cmdline(argv) {

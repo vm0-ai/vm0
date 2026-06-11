@@ -195,6 +195,12 @@ pub async fn run_start(
         .map_err(|e| RunnerError::Internal(format!("register signal handlers: {e}")))?;
 
     let mut runner_config = config::load(&args.config).await?;
+    let registry_config_path = tokio::fs::canonicalize(&args.config).await.map_err(|e| {
+        RunnerError::Config(format!(
+            "canonicalize config path {} for live runner registry: {e}",
+            args.config.display()
+        ))
+    })?;
 
     // CLI / env overrides — take server out so we can mutate independently
     let mut server = runner_config.server.take().unwrap_or(config::ServerConfig {
@@ -509,7 +515,7 @@ pub async fn run_start(
     });
 
     let live_runner_instance_metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
-        config_path: args.config.clone(),
+        config_path: registry_config_path,
         base_dir: base_dir_canonical.clone(),
         runner_name: name.clone(),
         runner_group: group_name.clone(),

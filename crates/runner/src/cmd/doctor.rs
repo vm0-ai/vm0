@@ -8,6 +8,8 @@ use std::time::Duration;
 
 use crate::config::RunnerConfig;
 use crate::error::RunnerResult;
+use crate::live_runner_instances::LiveRunnerInstance;
+use crate::paths::HomePaths;
 use crate::process;
 use clap::Args;
 use serde::Deserialize;
@@ -347,23 +349,14 @@ struct StoppedInfo {
 pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     // Phase 1: Discover running processes (single /proc scan)
     let discovered = process::discover_all().await;
+    let home = HomePaths::new()?;
 
     // Phase 2: Discover installed services
     let installed_services = find_installed_services().await;
 
     // Phase 3: Build runner reports
-    let mut reports = Vec::new();
-    for runner in &discovered.runners {
-        let report = build_runner_report(
-            runner,
-            &discovered.firecrackers,
-            &discovered.mitmdumps,
-            &discovered.dnsmasqs,
-            &installed_services,
-        )
-        .await;
-        reports.push(report);
-    }
+    let live_runners = crate::live_runner_instances::list(&home).await;
+    let reports = build_runner_reports(&live_runners, &discovered, &installed_services).await;
 
     // Phase 4: Find stopped services (installed but no matching running process)
     // Skip when filtering by name — other runners' stopped services are irrelevant
@@ -457,12 +450,32 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     }
 }
 
+async fn build_runner_reports(
+    live_runners: &[LiveRunnerInstance],
+    discovered: &process::DiscoveredProcesses,
+    installed: &[InstalledService],
+) -> Vec<RunnerReport> {
+    let mut reports = Vec::new();
+    for runner in live_runners {
+        let report = build_runner_report(
+            runner,
+            &discovered.firecrackers,
+            &discovered.mitmdumps,
+            &discovered.dnsmasqs,
+            installed,
+        )
+        .await;
+        reports.push(report);
+    }
+    reports
+}
+
 // ---------------------------------------------------------------------------
 // Report building
 // ---------------------------------------------------------------------------
 
 async fn build_runner_report(
-    runner: &process::RunnerProcessInfo,
+    runner: &LiveRunnerInstance,
     fc_procs: &[process::FirecrackerProcessInfo],
     mitm_procs: &[process::MitmproxyProcessInfo],
     dns_procs: &[process::DnsmasqProcessInfo],
@@ -472,17 +485,13 @@ async fn build_runner_report(
 
     // Load config (best-effort)
     let config = load_config_lenient(&runner.config_path).await;
-    let name = config.as_ref().map(|c| c.name.clone());
+    let name = Some(runner.runner_name.clone());
 
     // Detect service type
     let service_type = detect_service_type(runner.pid, installed).await;
 
     // Read status.json
-    let status = if let Some(cfg) = &config {
-        read_status(&cfg.base_dir).await
-    } else {
-        None
-    };
+    let status = read_status(&runner.base_dir).await;
 
     // API connectivity check (only when server is configured)
     let api_ok = match &config {
@@ -500,7 +509,7 @@ async fn build_runner_report(
     }
 
     // Base dir for job correlation
-    let base_dir = config.as_ref().map(|c| &c.base_dir);
+    let base_dir = &runner.base_dir;
 
     // Proxy check (match by port from status.json).
     //   running  + proxy missing  → NoMitmproxy warning
@@ -512,8 +521,10 @@ async fn build_runner_report(
         let pid = mitm_procs.iter().find(|m| m.port == port).map(|m| m.pid);
         match (st.mode.as_str(), pid) {
             ("running", None) => {
-                let bd = base_dir.map(|p| p.to_path_buf()).unwrap_or_default();
-                warnings.push(Warning::NoMitmproxy { port, base_dir: bd });
+                warnings.push(Warning::NoMitmproxy {
+                    port,
+                    base_dir: base_dir.clone(),
+                });
             }
             ("stopped", Some(mitm_pid)) => {
                 warnings.push(Warning::StaleMitmproxy {
@@ -534,8 +545,10 @@ async fn build_runner_report(
     {
         let pid = dns_procs.iter().find(|d| d.port == port).map(|d| d.pid);
         if st.mode == "running" && pid.is_none() {
-            let bd = base_dir.map(|p| p.to_path_buf()).unwrap_or_default();
-            warnings.push(Warning::NoDnsmasq { port, base_dir: bd });
+            warnings.push(Warning::NoDnsmasq {
+                port,
+                base_dir: base_dir.clone(),
+            });
         }
         pid
     } else {
@@ -543,8 +556,8 @@ async fn build_runner_report(
     };
 
     // Job correlation
-    let jobs = if let (Some(st), Some(bd)) = (&status, base_dir) {
-        let (job_reports, job_warnings) = correlate_jobs(st, bd, fc_procs);
+    let jobs = if let Some(st) = &status {
+        let (job_reports, job_warnings) = correlate_jobs(st, base_dir, fc_procs);
         warnings.extend(job_warnings);
         job_reports
     } else {
@@ -553,10 +566,10 @@ async fn build_runner_report(
 
     RunnerReport {
         name,
-        base_dir: config.as_ref().map(|c| c.base_dir.clone()),
+        base_dir: Some(runner.base_dir.clone()),
         pid: runner.pid,
         config_path: runner.config_path.clone(),
-        subcommand: runner.subcommand.clone(),
+        subcommand: "start".into(),
         service_type,
         status,
         api_ok,
@@ -1215,6 +1228,7 @@ fn format_uptime(started_at: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use httpmock::prelude::*;
 
     #[test]
     fn format_uptime_minutes() {
@@ -1762,6 +1776,7 @@ mod tests {
     struct DoctorReportFixture {
         _dir: tempfile::TempDir,
         config_path: PathBuf,
+        base_dir: PathBuf,
     }
 
     fn doctor_report_fixture(
@@ -1808,6 +1823,22 @@ mod tests {
         DoctorReportFixture {
             _dir: dir,
             config_path,
+            base_dir,
+        }
+    }
+
+    fn live_runner_instance(
+        pid: u32,
+        config_path: PathBuf,
+        base_dir: PathBuf,
+    ) -> LiveRunnerInstance {
+        LiveRunnerInstance {
+            pid,
+            config_path,
+            base_dir,
+            runner_name: "test-runner".into(),
+            runner_group: "vm0/test".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
         }
     }
 
@@ -1819,11 +1850,11 @@ mod tests {
         dns_procs: Vec<process::DnsmasqProcessInfo>,
     ) -> RunnerReport {
         let fixture = doctor_report_fixture(mode, proxy_port, dns_port);
-        let runner = process::RunnerProcessInfo {
-            pid: std::process::id(),
-            config_path: fixture.config_path.clone(),
-            subcommand: "start".into(),
-        };
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
         let report = build_runner_report(&runner, &[], &mitm_procs, &dns_procs, &[]).await;
         assert!(report.base_dir.is_some(), "test config should load");
         assert!(report.status.is_some(), "test status should load");
@@ -1842,6 +1873,15 @@ mod tests {
         process::DnsmasqProcessInfo { pid, port }
     }
 
+    fn empty_discovered() -> process::DiscoveredProcesses {
+        process::DiscoveredProcesses {
+            runners: vec![],
+            firecrackers: vec![],
+            mitmdumps: vec![],
+            dnsmasqs: vec![],
+        }
+    }
+
     fn has_proxy_warning(report: &RunnerReport) -> bool {
         report.warnings.iter().any(|w| {
             matches!(
@@ -1856,6 +1896,92 @@ mod tests {
             .warnings
             .iter()
             .any(|w| matches!(w, Warning::NoDnsmasq { .. }))
+    }
+
+    #[tokio::test]
+    async fn report_uses_registry_identity_when_config_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().join("runner");
+        std::fs::create_dir_all(&base_dir).unwrap();
+        std::fs::write(
+            base_dir.join("status.json"),
+            r#"{
+                "mode": "running",
+                "max_concurrent": 4,
+                "active_runs": [],
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z"
+            }"#,
+        )
+        .unwrap();
+        let runner = live_runner_instance(
+            std::process::id(),
+            dir.path().join("missing-runner.yaml"),
+            base_dir.clone(),
+        );
+
+        let report = build_runner_report(&runner, &[], &[], &[], &[]).await;
+
+        assert_eq!(report.name.as_deref(), Some("test-runner"));
+        assert_eq!(report.base_dir.as_deref(), Some(base_dir.as_path()));
+        assert_eq!(report.config_path, dir.path().join("missing-runner.yaml"));
+        assert_eq!(report.pid, std::process::id());
+        assert_eq!(report.subcommand, "start");
+        assert!(report.status.is_some());
+        assert_eq!(report.api_ok, None);
+    }
+
+    #[tokio::test]
+    async fn build_runner_reports_ignores_discovered_runner_candidates() {
+        let server = MockServer::start_async().await;
+        let api = server
+            .mock_async(|when, then| {
+                when.method("HEAD").path("/api");
+                then.status(200);
+            })
+            .await;
+        let fixture = doctor_report_fixture("running", None, None);
+        let config = serde_json::json!({
+            "name": "spoofed-runner",
+            "group": "vm0/test",
+            "base_dir": fixture.base_dir.display().to_string(),
+            "ca_dir": fixture._dir.path().join("ca").display().to_string(),
+            "firecracker": {
+                "binary": fixture._dir.path().join("firecracker").display().to_string(),
+                "kernel": fixture._dir.path().join("vmlinux").display().to_string(),
+            },
+            "profiles": {
+                "vm0/default": {
+                    "rootfs_hash": "rootfs",
+                    "snapshot_hash": "snapshot",
+                    "vcpu": 1,
+                    "memory_mb": 512,
+                    "rootfs_disk_mb": 512,
+                    "workspace_disk_mb": 1024,
+                },
+            },
+            "server": {
+                "url": server.url("/api"),
+                "token": "spoofed-token",
+            },
+        });
+        std::fs::write(
+            &fixture.config_path,
+            serde_yaml_ng::to_string(&config).unwrap(),
+        )
+        .unwrap();
+        let discovered = process::DiscoveredProcesses {
+            runners: vec![process::RunnerProcessInfo {
+                pid: std::process::id(),
+                config_path: fixture.config_path,
+            }],
+            ..empty_discovered()
+        };
+
+        let reports = build_runner_reports(&[], &discovered, &[]).await;
+
+        assert!(reports.is_empty());
+        api.assert_calls_async(0).await;
     }
 
     #[tokio::test]

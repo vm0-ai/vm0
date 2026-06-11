@@ -31,7 +31,6 @@ pub struct FirecrackerProcessIdentity {
 pub struct RunnerProcessInfo {
     pub pid: u32,
     pub config_path: PathBuf,
-    pub subcommand: String,
 }
 
 /// Info extracted from a firecracker process cmdline.
