@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.188.4](https://github.com/vm0-ai/vm0/compare/cli-v9.188.3...cli-v9.188.4) (2026-06-11)
+
+
+### Bug Fixes
+
+* **cli:** add --file option to zero video transcribe ([#17213](https://github.com/vm0-ai/vm0/issues/17213)) ([381c4ed](https://github.com/vm0-ai/vm0/commit/381c4edb8dcbe7a317a4ad729f9b050c821beb2c))
+* download hosted site clones from r2 ([#17240](https://github.com/vm0-ai/vm0/issues/17240)) ([d0da982](https://github.com/vm0-ai/vm0/commit/d0da9827fc74145974e4bb48e7fde90169ef3b57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.82.0
+    * @vm0/connectors bumped to 1.66.0
+    * @vm0/core bumped to 8.328.0
+
 ## [9.188.3](https://github.com/vm0-ai/vm0/compare/cli-v9.188.2...cli-v9.188.3) (2026-06-11)
 
 

@@ -125,6 +125,18 @@ function mockUploadedKeys(keys: readonly string[]) {
   return puts;
 }
 
+function mockSignedUrlFromKey() {
+  context.mocks.s3.getSignedUrl.mockImplementation(
+    (_client: unknown, command: unknown) => {
+      const input =
+        typeof command === "object" && command !== null && "input" in command
+          ? (command.input as { Key?: string })
+          : {};
+      return Promise.resolve(`https://r2.example.com/${input.Key}?sig=test`);
+    },
+  );
+}
+
 describe("POST /api/zero/host/deployments/prepare", () => {
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context })(zeroHostContract);
@@ -610,6 +622,7 @@ describe("GET /api/zero/host/sites/:publicSlug/files", () => {
     );
 
     context.mocks.s3.getSignedUrl.mockClear();
+    mockSignedUrlFromKey();
 
     const response = await accept(
       client.files({
@@ -647,7 +660,23 @@ describe("GET /api/zero/host/sites/:publicSlug/files", () => {
         contentType: "text/html; charset=utf-8",
       },
     ]);
-    expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
+    expect(
+      response.body.files.map((file) => {
+        return file.downloadUrl;
+      }),
+    ).toStrictEqual([
+      `https://r2.example.com/${prefix}/assets/index-a1b2c3d4.js?sig=test`,
+      `https://r2.example.com/${prefix}/index.html?sig=test`,
+    ]);
+    expect(context.mocks.s3.getSignedUrl).toHaveBeenCalledTimes(2);
+    expect(context.mocks.s3.getSignedUrl.mock.calls[0]?.[1]).toHaveProperty(
+      "input.Bucket",
+      "test-hosted-sites",
+    );
+    expect(context.mocks.s3.getSignedUrl.mock.calls[0]?.[1]).toHaveProperty(
+      "input.Key",
+      `${prefix}/assets/index-a1b2c3d4.js`,
+    );
   });
 
   it("returns 404 for a hosted site owned by another org", async () => {
