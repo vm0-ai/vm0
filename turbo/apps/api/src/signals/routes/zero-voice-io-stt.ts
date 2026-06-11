@@ -27,8 +27,6 @@ const L = logger("ZeroVoiceIoStt");
 
 const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const verbose = true;
-
   const quota = await get(audioInputQuota(auth.orgId, auth.userId));
   signal.throwIfAborted();
   if (!quota.allowed) {
