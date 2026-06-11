@@ -40,6 +40,7 @@ export interface VideoStylePreset {
   readonly dimensions: VideoStyleDimensions;
   readonly scene: string;
   readonly sampleVideoUrl: string;
+  readonly sampleVideoThumbnailUrl: string;
 }
 
 export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -190,6 +191,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "grand-hotel-lobby",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6126d21a-1a19-4b2a-914a-0eec6335bf1f/video-6126d21a.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/82f84e4b-f5db-45b6-9089-598ec3077f56/thumbnail-symmetrical-pastel-quirky.jpg",
   },
   {
     id: "imax-epic-cinematic",
@@ -208,6 +211,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "mountain-horizon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df99de74-8eea-420c-86d1-c104ba5ba6b6/video-df99de74.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2c0eb943-f65a-4225-beaa-78246f7c4a1b/thumbnail-imax-epic-cinematic.jpg",
   },
   {
     id: "slowburn-moody-romance",
@@ -226,6 +231,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "rain-on-window",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/feda268d-7b6c-4c5d-b3c8-89ab1dcc29cd/video-feda268d.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/acda23ea-0eb2-421a-a3bd-e2d23958d163/thumbnail-slowburn-moody-romance.jpg",
   },
   {
     id: "indie-naturalistic",
@@ -244,6 +251,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "forest-clearing",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e4fbe51f-45c9-4689-8681-1e102af0a55e/video-e4fbe51f.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ec348839-82a8-490a-ab78-cf3616ae8348/thumbnail-indie-naturalistic.jpg",
   },
   {
     id: "film-noir",
@@ -262,6 +271,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "rain-on-window",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dc649267-41d8-4fbc-b253-29e407791ac6/video-dc649267.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c35f0520-a02b-4573-a9d8-b096ad8e245c/thumbnail-film-noir.jpg",
   },
   {
     id: "tech-minimalist-reveal",
@@ -280,6 +291,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "phone-product-showcase",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/95946706-2280-4938-9ec1-f824816f5105/video-95946706.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c3219368-a46b-43ce-9e98-5b5826fcaa8d/thumbnail-tech-minimalist-reveal.jpg",
   },
   {
     id: "luxury-watch-product",
@@ -298,6 +311,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "luxury-watch-dial",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e20abbb-a630-4523-857f-8350eba2ea4f/video-9e20abbb.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/016fd6d1-05d9-4709-a7d8-0799409fa1d9/thumbnail-luxury-watch-product.jpg",
   },
   {
     id: "athletic-motivation",
@@ -316,6 +331,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "extreme-sports",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/104ad36a-4d0c-472b-8416-d04cc2f06e75/video-104ad36a.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5a95669a-b86c-4817-9d82-250da7509b54/thumbnail-athletic-motivation.jpg",
   },
   {
     id: "nature-documentary",
@@ -334,6 +351,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "mountain-horizon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75e08761-7cdf-42ea-b8f3-eadb31586de6/video-75e08761.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1dce66c7-a82e-4cc5-8da5-8e08d573d762/thumbnail-nature-documentary.jpg",
   },
   {
     id: "shortform-viral",
@@ -352,6 +371,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "summer-beach-crew",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4bac1319-dba7-47a0-bc1b-4d1e932f71fd/video-4bac1319.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/40ab801f-16bc-4e29-8370-6b10cd394e30/thumbnail-shortform-viral.jpg",
   },
   {
     id: "hand-drawn-fantasy-anime",
@@ -370,6 +391,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "forest-spirit-path",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da7c7c2d-3383-4796-8e83-b0e112127387/video-da7c7c2d.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ad08022e-5b28-4e80-a67f-cbe5d27cbc03/thumbnail-hand-drawn-fantasy-anime.jpg",
   },
   {
     id: "chinese-ink-art",
@@ -388,6 +411,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "mountain-horizon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8314b0ae-6051-4daa-b789-51bec466ba66/video-8314b0ae.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/35a45e0a-095f-476c-9586-840b3e591947/thumbnail-chinese-ink-art.jpg",
   },
   {
     id: "pop-art",
@@ -406,6 +431,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "abstract-color-burst",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92c22511-a22e-4c9c-9489-b452eabaa16b/video-92c22511.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2b537d1a-694c-4d66-82f4-462eca749a28/thumbnail-pop-art.jpg",
   },
   {
     id: "japanese-wabi-sabi",
@@ -424,6 +451,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "tokyo-alley-morning",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72b754cf-f76d-4fa9-9015-ab5082b49608/video-72b754cf.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a7a69fe3-9e6c-48fd-af55-62c8a57a0371/thumbnail-japanese-wabi-sabi.jpg",
   },
   {
     id: "european-romance",
@@ -442,6 +471,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "castle-garden-dusk",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8ea3c41f-8e80-4c70-aae6-a492b9eb264e/video-8ea3c41f.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/048d44c7-cffc-48cf-8abc-5fdbc105185a/thumbnail-european-romance.jpg",
   },
   {
     id: "gourmet-documentary",
@@ -460,6 +491,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "food-plating",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f0dd8d7-bfc3-4443-9b95-b58faf0d4f64/video-3f0dd8d7.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30ab1733-bec0-4ddb-9e15-8f707377af7b/thumbnail-gourmet-documentary.jpg",
   },
   {
     id: "fashion-editorial",
@@ -478,6 +511,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "model-editorial",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8bf8b826-2517-435b-8882-7f071c683e46/video-8bf8b826.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/31026908-c354-4cb5-a51b-8ac8e12ac910/thumbnail-fashion-editorial.jpg",
   },
   {
     id: "summer-indie",
@@ -496,6 +531,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "summer-beach-crew",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d44e690-d838-49c6-89f8-946bcffee10b/video-3d44e690.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f677a74b-d30f-4be7-88fd-93d0ddcc4137/thumbnail-summer-indie.jpg",
   },
   {
     id: "super8-home-film",
@@ -514,6 +551,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "family-backyard-70s",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/29ddb4de-8aef-42a7-aac4-ee013c9272a5/video-29ddb4de.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c0b8e4fb-2f28-4c94-8247-dcb6e703c4e1/thumbnail-super8-home-film.jpg",
   },
   {
     id: "cottagecore",
@@ -532,6 +571,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "cottage-garden-morning",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c28fd30a-d735-4c67-97d4-0567fd375a8d/video-c28fd30a.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a1287b78-3f9a-4ae6-97af-47b818dda0be/thumbnail-cottagecore.jpg",
   },
   {
     id: "wellness-yoga",
@@ -550,6 +591,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "yoga-sunrise-studio",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b629a3f5-c644-4d96-81f5-834fe1a31da1/video-b629a3f5.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b96d56bc-e38e-4639-b0b9-c9854e9f6c59/thumbnail-wellness-yoga.jpg",
   },
   {
     id: "diy-maker",
@@ -568,6 +611,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "workshop-maker-build",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/76c1cf86-cb76-4a9b-817f-15597bcc8481/video-76c1cf86.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e6e7934-9dc3-4f1b-afdd-3f3bd6f04c28/thumbnail-diy-maker.jpg",
   },
   {
     id: "extreme-sports",
@@ -586,6 +631,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "extreme-sports",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/637ca413-fd3e-4b6e-9b8c-42f2a6c63816/video-637ca413.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/782af5b1-87bf-454a-8c8f-1bbd5a688853/thumbnail-extreme-sports.jpg",
   },
   {
     id: "music-video",
@@ -604,6 +651,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "concert-stage",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f7d288e2-9d81-43b7-ae1b-1702a11686a8/video-f7d288e2.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a32883b-d99c-4010-ac7b-fb1ea12e355a/thumbnail-music-video.jpg",
   },
   {
     id: "surrealist-dream",
@@ -622,6 +671,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "impossible-room",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b7b0d289-9e05-4f93-9795-d5d19263435c/video-b7b0d289.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1733e889-84dc-4eec-a0eb-195e2ac4d1c6/thumbnail-surrealist-dream.jpg",
   },
   {
     id: "ai-digital-art",
@@ -640,6 +691,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "neural-network-viz",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/629cab0a-fead-4c9c-ac9b-d5ef6df0782f/video-629cab0a.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/40437b39-5e15-4af2-92b3-5b20f07e90bf/thumbnail-ai-digital-art.jpg",
   },
   {
     id: "space-documentary",
@@ -658,6 +711,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "astronaut-spacewalk",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/273d9673-9ed2-426b-8516-0102fbdd8622/video-273d9673.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5dd538d2-627c-480c-879a-dff34a9869a9/thumbnail-space-documentary.jpg",
   },
   {
     id: "street-documentary",
@@ -676,6 +731,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "nyc-street-corner",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/54c271a6-d2da-4134-a812-679fd0fc8810/video-54c271a6.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e1d22797-4586-4cf0-ac18-9e4fd46cf37d/thumbnail-street-documentary.jpg",
   },
   {
     id: "synthwave-retro",
@@ -694,6 +751,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "neon-highway-night",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c227b1aa-7876-4fe3-8869-4d2b996d418f/video-c227b1aa.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b87c4589-f735-44ab-bbbf-adba9cf253e4/thumbnail-synthwave-retro.jpg",
   },
   {
     id: "magical-girl",
@@ -712,6 +771,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "magical-girl-transform",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f0b7f984-4d85-432f-bf41-a53d89e262bd/video-f0b7f984.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2187de1b-b0ae-4e60-8539-dc9db380eecb/thumbnail-magical-girl.jpg",
   },
   {
     id: "shonen-battle",
@@ -730,6 +791,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "hero-power-awakening",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/d07d39ed-d2fe-4bee-a148-501d96ead5a2/video-d07d39ed.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b4c37fb8-2f3e-4516-91fd-32d0d022e686/thumbnail-shonen-battle.jpg",
   },
   {
     id: "cyberpunk-anime",
@@ -748,6 +811,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "cyberpunk-hacker-alley",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e1cfe984-3bfc-4ba1-acb3-9b40b7b76771/video-e1cfe984.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b870f6c1-95a8-4ab6-aa0d-a125cb57dd3e/thumbnail-cyberpunk-anime.jpg",
   },
   {
     id: "slice-of-life-anime",
@@ -766,6 +831,8 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "school-summer-afternoon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a477b387-f156-4826-9112-3258fcaec339/video-a477b387.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ce926a5b-f5c6-4b5c-956c-799225987fbb/thumbnail-slice-of-life-anime.jpg",
   },
   {
     id: "wuxia-anime",
@@ -784,5 +851,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "wuxia-sword-flight",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/939b77ca-c2f2-4379-abfa-1bb2a904288b/video-939b77ca.mp4",
+    sampleVideoThumbnailUrl:
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/972338da-9c16-4fe3-b4ab-2e97ca58ad89/thumbnail-wuxia-anime.jpg",
   },
 ];

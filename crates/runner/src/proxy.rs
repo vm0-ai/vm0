@@ -55,7 +55,7 @@ use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
-use crate::types::{Firewall, NetworkPolicy, SecretConnectorMetadata};
+use crate::types::{FirewallEntry, NetworkPolicy, SecretConnectorMetadata};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,7 +73,7 @@ struct VmEntry {
     registered_at: i64,
     network_log_path: String,
     proxy_log_path: String,
-    firewalls: Option<Vec<Firewall>>,
+    firewalls: Option<Vec<FirewallEntry>>,
     network_policies: Option<HashMap<String, NetworkPolicy>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
@@ -94,7 +94,7 @@ pub struct VmRegistration<'a> {
     pub sandbox_token: &'a str,
     pub network_log_path: &'a std::path::Path,
     pub proxy_log_path: &'a std::path::Path,
-    pub firewalls: Option<&'a [Firewall]>,
+    pub firewalls: Option<&'a [FirewallEntry]>,
     pub network_policies: Option<&'a HashMap<String, NetworkPolicy>>,
     pub encrypted_secrets: Option<&'a str>,
     pub secret_connector_map: Option<&'a HashMap<String, String>>,
@@ -1330,19 +1330,7 @@ impl ProxyRegistryHandle {
 
         let mut registry = read_registry(&self.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
-        let firewalls = registration.firewalls.map(|s| {
-            let mut s = s.to_vec();
-            let mut idx = 0usize;
-            for entry in &mut s {
-                for api in &mut entry.apis {
-                    if api.id.is_empty() {
-                        api.id = format!("{}:{}", registration.run_id, idx);
-                    }
-                    idx += 1;
-                }
-            }
-            s
-        });
+        let firewalls = registration.firewalls.map(|s| s.to_vec());
         registry.vms.insert(
             source_ip.to_string(),
             VmEntry {
@@ -1410,7 +1398,9 @@ fn send_usage_flush_signal(child: &tokio::process::Child) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{FirewallApi, FirewallAuth, FirewallPermission};
+    use crate::types::{
+        Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission, TaggedFirewallEntry,
+    };
     use std::os::unix::fs::PermissionsExt;
 
     fn write_fake_listening_mitmdump(path: &Path) {
@@ -1584,6 +1574,8 @@ PY
             "body_decoding.py",
             "body_limits.py",
             "flow_metadata_keys.py",
+            "generated/__init__.py",
+            "generated/builtin_firewalls.py",
             "matching.py",
             "registry.py",
             "response_streaming.py",
@@ -2031,29 +2023,31 @@ PY
             lock_path,
         };
 
-        let firewall_entries = vec![Firewall {
-            name: "gmail".to_string(),
-            apis: vec![FirewallApi {
-                id: String::new(),
-                base: "https://gmail.googleapis.com/gmail/v1/users/me".to_string(),
-                auth: FirewallAuth {
-                    headers: std::collections::HashMap::from([(
-                        "Authorization".to_string(),
-                        "Bearer ${{ secrets.GMAIL_TOKEN }}".to_string(),
-                    )]),
-                    base: None,
-                    query: None,
-                },
-                permissions: Some(vec![FirewallPermission {
-                    name: "mail-read".to_string(),
-                    description: None,
-                    rules: vec![
-                        "GET /messages".to_string(),
-                        "GET /messages/{id}".to_string(),
-                    ],
-                }]),
-            }],
-        }];
+        let firewall_entries = vec![FirewallEntry::Tagged(TaggedFirewallEntry::Inline {
+            firewall: Firewall {
+                name: "gmail".to_string(),
+                apis: vec![FirewallApi {
+                    id: String::new(),
+                    base: "https://gmail.googleapis.com/gmail/v1/users/me".to_string(),
+                    auth: FirewallAuth {
+                        headers: std::collections::HashMap::from([(
+                            "Authorization".to_string(),
+                            "Bearer ${{ secrets.GMAIL_TOKEN }}".to_string(),
+                        )]),
+                        base: None,
+                        query: None,
+                    },
+                    permissions: Some(vec![FirewallPermission {
+                        name: "mail-read".to_string(),
+                        description: None,
+                        rules: vec![
+                            "GET /messages".to_string(),
+                            "GET /messages/{id}".to_string(),
+                        ],
+                    }]),
+                }],
+            },
+        })];
 
         let registration = VmRegistration {
             run_id: "run-fw",
@@ -2081,29 +2075,31 @@ PY
         let vm = loaded.vms.get("10.200.0.5").unwrap();
         let stored = vm.firewalls.as_ref().unwrap();
         assert_eq!(stored.len(), 1);
-        assert_eq!(stored[0].apis.len(), 1);
+        let FirewallEntry::Tagged(TaggedFirewallEntry::Inline { firewall }) = &stored[0] else {
+            panic!("expected inline firewall entry");
+        };
+        assert_eq!(firewall.apis.len(), 1);
         assert_eq!(
-            stored[0].apis[0].base,
+            firewall.apis[0].base,
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
-
-        // Verify id was assigned by register_vm: "{run_id}:{global_index}".
-        assert_eq!(stored[0].apis[0].id, "run-fw:0");
+        assert_eq!(firewall.apis[0].id, "");
 
         // Verify JSON shape matches what the Python addon expects.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let vm_json = &value["vms"]["10.200.0.5"];
         let fw = &vm_json["firewalls"][0];
-        assert_eq!(fw["name"], "gmail");
+        assert_eq!(fw["kind"], "inline");
+        assert_eq!(fw["firewall"]["name"], "gmail");
         assert_eq!(
-            fw["apis"][0]["base"],
+            fw["firewall"]["apis"][0]["base"],
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
-        assert_eq!(fw["apis"][0]["id"], "run-fw:0");
+        assert_eq!(fw["firewall"]["apis"][0]["id"], "");
 
         // Verify permissions are preserved in JSON for the Python addon.
-        let perms = &fw["apis"][0]["permissions"];
+        let perms = &fw["firewall"]["apis"][0]["permissions"];
         assert_eq!(perms[0]["name"], "mail-read");
         assert_eq!(perms[0]["rules"][0], "GET /messages");
         assert_eq!(perms[0]["rules"][1], "GET /messages/{id}");
@@ -2253,19 +2249,21 @@ PY
             lock_path,
         };
 
-        let firewall_entries = vec![Firewall {
-            name: "discord-webhook".to_string(),
-            apis: vec![FirewallApi {
-                id: String::new(),
-                base: "https://firewall-placeholder.vm3.ai/discord-webhook/hook".to_string(),
-                auth: FirewallAuth {
-                    headers: std::collections::HashMap::new(),
-                    base: Some("${{ secrets.DISCORD_WEBHOOK_URL }}".to_string()),
-                    query: None,
-                },
-                permissions: None,
-            }],
-        }];
+        let firewall_entries = vec![FirewallEntry::Tagged(TaggedFirewallEntry::Inline {
+            firewall: Firewall {
+                name: "discord-webhook".to_string(),
+                apis: vec![FirewallApi {
+                    id: String::new(),
+                    base: "https://firewall-placeholder.vm3.ai/discord-webhook/hook".to_string(),
+                    auth: FirewallAuth {
+                        headers: std::collections::HashMap::new(),
+                        base: Some("${{ secrets.DISCORD_WEBHOOK_URL }}".to_string()),
+                        query: None,
+                    },
+                    permissions: None,
+                }],
+            },
+        })];
 
         let registration = VmRegistration {
             run_id: "run-webhook",
@@ -2291,7 +2289,7 @@ PY
         // Verify auth.base is preserved in the registry JSON.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let api = &value["vms"]["10.200.0.7"]["firewalls"][0]["apis"][0];
+        let api = &value["vms"]["10.200.0.7"]["firewalls"][0]["firewall"]["apis"][0];
         assert_eq!(api["auth"]["base"], "${{ secrets.DISCORD_WEBHOOK_URL }}");
         // headers should be empty object
         assert_eq!(api["auth"]["headers"], serde_json::json!({}));
@@ -2313,26 +2311,28 @@ PY
             lock_path,
         };
 
-        let firewall_entries = vec![Firewall {
-            name: "serpapi".to_string(),
-            apis: vec![FirewallApi {
-                id: String::new(),
-                base: "https://serpapi.com".to_string(),
-                auth: FirewallAuth {
-                    headers: std::collections::HashMap::new(),
-                    base: None,
-                    query: Some(
-                        [(
-                            "api_key".to_string(),
-                            "${{ secrets.SERPAPI_TOKEN }}".to_string(),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                },
-                permissions: None,
-            }],
-        }];
+        let firewall_entries = vec![FirewallEntry::Tagged(TaggedFirewallEntry::Inline {
+            firewall: Firewall {
+                name: "serpapi".to_string(),
+                apis: vec![FirewallApi {
+                    id: String::new(),
+                    base: "https://serpapi.com".to_string(),
+                    auth: FirewallAuth {
+                        headers: std::collections::HashMap::new(),
+                        base: None,
+                        query: Some(
+                            [(
+                                "api_key".to_string(),
+                                "${{ secrets.SERPAPI_TOKEN }}".to_string(),
+                            )]
+                            .into_iter()
+                            .collect(),
+                        ),
+                    },
+                    permissions: None,
+                }],
+            },
+        })];
 
         let registration = VmRegistration {
             run_id: "run-query-auth",
@@ -2358,7 +2358,7 @@ PY
         // Verify auth.query is preserved in the registry JSON.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let api = &value["vms"]["10.200.0.8"]["firewalls"][0]["apis"][0];
+        let api = &value["vms"]["10.200.0.8"]["firewalls"][0]["firewall"]["apis"][0];
         assert_eq!(
             api["auth"]["query"],
             serde_json::json!({"api_key": "${{ secrets.SERPAPI_TOKEN }}"})

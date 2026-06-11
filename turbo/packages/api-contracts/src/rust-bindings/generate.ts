@@ -9,6 +9,7 @@ import {
   rustStringConstantRootDoc,
   rustStringConstantBindings,
 } from "./constants";
+import { renderPythonBuiltinFirewallCatalog } from "./builtin-firewall-catalog";
 import { type RustRouteBinding, rustRouteBindings } from "./routes";
 import { type RustTypeBinding, rustTypeBindings } from "./types";
 
@@ -33,6 +34,12 @@ const generatedConstantsPath = fileURLToPath(
 const generatedModPath = fileURLToPath(
   new URL(
     "../../../../../crates/api-contracts/src/generated/mod.rs",
+    import.meta.url,
+  ),
+);
+const generatedBuiltinFirewallCatalogPath = fileURLToPath(
+  new URL(
+    "../../../../../crates/runner/mitm-addon/src/generated/builtin_firewalls.py",
     import.meta.url,
   ),
 );
@@ -358,6 +365,13 @@ export async function generateRustConstantsFile(
   );
 }
 
+export async function generatePythonBuiltinFirewallCatalogFile(
+  outputPath = generatedBuiltinFirewallCatalogPath,
+): Promise<void> {
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, renderPythonBuiltinFirewallCatalog());
+}
+
 export function renderGeneratedMod(): string {
   return ["pub mod constants;", "pub mod routes;", "pub mod types;", ""].join(
     "\n",
@@ -375,6 +389,7 @@ export async function generateRustBindings(): Promise<void> {
   await generateRustRoutesFile();
   await generateRustTypesFile();
   await generateRustConstantsFile();
+  await generatePythonBuiltinFirewallCatalogFile();
   await generateRustGeneratedModFile();
 }
 

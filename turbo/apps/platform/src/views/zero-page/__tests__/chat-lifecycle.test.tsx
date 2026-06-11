@@ -12,6 +12,11 @@ import {
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_STYLE_PRESETS,
+} from "@vm0/core";
+import {
   zeroBillingCheckoutContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingStatusContract,
@@ -1822,6 +1827,10 @@ describe("chat lifecycle", () => {
 
   it("shows template labels on historical user messages", async () => {
     const threadId = "template-message-history";
+    const presentationTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const videoTemplate = VIDEO_STYLE_PRESETS[0]!;
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Template labels",
@@ -1834,8 +1843,8 @@ describe("chat lifecycle", () => {
           generationTemplate: {
             type: "presentation",
             selection: {
-              designSystemId: "retired-design-system",
-              templateId: "template:html-ppt-quarterly-business-review",
+              designSystemId: presentationTemplate.designSystemId,
+              templateId: presentationTemplate.templateId,
             },
           },
           createdAt: "2026-06-09T10:00:00Z",
@@ -1847,9 +1856,22 @@ describe("chat lifecycle", () => {
           runId: "run-template-video",
           generationTemplate: {
             type: "video",
-            selection: { stylePresetId: "template:phone-demo" },
+            selection: { stylePresetId: videoTemplate.id },
           },
           createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-template-illustration",
+          role: "user",
+          content: "Create an illustrated launch card",
+          runId: "run-template-illustration",
+          generationTemplate: {
+            type: "illustration",
+            selection: {
+              illustrationStyleId: illustrationTemplate.illustrationStyleId,
+            },
+          },
+          createdAt: "2026-06-09T10:02:00Z",
         },
       ],
     });
@@ -1865,11 +1887,76 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Message template Quarterly business review"),
+        screen.getByLabelText(`Message template ${presentationTemplate.title}`),
       ).toHaveTextContent("Slides");
       expect(
-        screen.getByLabelText("Message template Phone demo"),
+        screen.getByLabelText(`Message template ${videoTemplate.nameEn}`),
       ).toHaveTextContent("Video");
+      expect(
+        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
+      ).toHaveTextContent("Illustration");
+    });
+  });
+
+  it("hides historical template labels behind picker feature switches", async () => {
+    const threadId = "template-message-history-gated";
+    const presentationTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Template labels gated",
+      chatMessages: [
+        {
+          id: "msg-template-presentation-gated",
+          role: "user",
+          content: "Create the business review deck",
+          runId: "run-template-presentation-gated",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: presentationTemplate.designSystemId,
+              templateId: presentationTemplate.templateId,
+            },
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-template-illustration-gated",
+          role: "user",
+          content: "Create an illustrated launch card",
+          runId: "run-template-illustration-gated",
+          generationTemplate: {
+            type: "illustration",
+            selection: {
+              illustrationStyleId: illustrationTemplate.illustrationStyleId,
+            },
+          },
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Create the business review deck")).toBeVisible();
+      expect(
+        screen.queryByLabelText(
+          `Message template ${presentationTemplate.title}`,
+        ),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText(
+          `Message template ${illustrationTemplate.title}`,
+        ),
+      ).not.toBeInTheDocument();
     });
   });
 

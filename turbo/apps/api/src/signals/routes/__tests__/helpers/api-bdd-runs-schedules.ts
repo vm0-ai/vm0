@@ -1273,6 +1273,21 @@ export function createRunsSchedulesApi(context: TestContext) {
       );
     },
 
+    async requestDeleteScheduleAs(
+      authorization: string | undefined,
+      schedule: Pick<ScheduleResponse, "agentId" | "name">,
+      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroSchedulesByNameContract).delete({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { name: schedule.name },
+          query: { agentId: schedule.agentId },
+        }),
+        statuses,
+      );
+    },
+
     async executeSchedulesCron(validAuth: boolean) {
       return await accept(
         setupApp({ context })(cronExecuteSchedulesContract).execute({

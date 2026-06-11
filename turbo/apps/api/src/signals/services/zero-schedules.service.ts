@@ -95,7 +95,7 @@ function scheduleResponse(
     prompt: automation.instruction,
     description: automation.description,
     appendSystemPrompt: automation.appendSystemPrompt,
-    enabled: automation.enabled,
+    enabled: automation.enabled && trigger.enabled,
     nextRunAt: trigger.nextRunAt?.toISOString() ?? null,
     lastRunAt: trigger.lastRunAt?.toISOString() ?? null,
     retryStartedAt: null,

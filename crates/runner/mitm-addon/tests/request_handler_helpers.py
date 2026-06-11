@@ -33,7 +33,12 @@ def _single_firewall_vm(
         "sandboxToken": sandbox_marker,
         "networkLogPath": str(tmp_path / "net.jsonl"),
         "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-        "firewalls": [{"name": firewall_name, "apis": [api_entry]}],
+        "firewalls": [
+            {
+                "kind": "inline",
+                "firewall": {"name": firewall_name, "apis": [api_entry]},
+            }
+        ],
     }
     if network_policy is not None:
         vm_info["networkPolicies"] = {firewall_name: network_policy}

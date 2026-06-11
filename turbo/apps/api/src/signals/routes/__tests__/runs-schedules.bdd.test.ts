@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { describe, expect, it } from "vitest";
 
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
@@ -152,6 +154,25 @@ function hasQueueMarker(
       message.runId === runId &&
       message.content === QUEUE_MARKER_MESSAGE
     );
+  });
+}
+
+function zeroToken(
+  actor: ApiTestUser,
+  capabilities: readonly ZeroCapability[],
+) {
+  if (!actor.orgId) {
+    throw new Error("Zero tokens require an org-scoped actor");
+  }
+  const timestamp = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: actor.userId,
+    orgId: actor.orgId,
+    runId: randomUUID(),
+    capabilities: [...capabilities],
+    iat: timestamp,
+    exp: timestamp + 60,
   });
 }
 
@@ -697,6 +718,138 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     await api.deleteSchedule(actor, updated.schedule);
   });
 
+  it("links schedules to chat threads and keeps mutation boundaries visible", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const actor = bdd.user();
+    const outsider = bdd.user();
+    const { agentId } = await createAgentWithModelProvider(actor);
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+
+    const linkedThread = await chat.createThread(actor, {
+      agentId,
+      title: "Linked schedule thread",
+    });
+    const otherThread = await chat.createThread(actor, {
+      agentId,
+      title: "Ignored schedule thread",
+    });
+    const outsiderAgent = await bdd.createAgent(outsider, {
+      displayName: "Outsider schedule agent",
+      description: "Owns an unrelated chat thread.",
+      visibility: "private",
+    });
+    const outsiderThread = await chat.createThread(outsider, {
+      agentId: outsiderAgent.agentId,
+      title: "Outsider thread",
+    });
+
+    const crossUserThread = await api.requestDeployScheduleUnchecked(
+      actor,
+      {
+        name: uniqueScheduleName("bdd-cross-thread"),
+        agentId,
+        cronExpression: "0 9 * * *",
+        prompt: "Should not link a foreign thread.",
+        description: "Cross-user thread rejection",
+        timezone: "UTC",
+        chatThreadId: outsiderThread.id,
+      },
+      [400],
+    );
+    expectApiError(crossUserThread.body);
+    expect(crossUserThread.body.error.code).toBe("BAD_REQUEST");
+
+    context.mocks.ably.publish.mockClear();
+    const linked = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-linked-thread"),
+      agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "Run the linked thread report.",
+      description: "Linked thread schedule",
+      timezone: "UTC",
+      enabled: false,
+      chatThreadId: linkedThread.id,
+    });
+    expect(linked.schedule.chatThreadId).toBe(linkedThread.id);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadSchedulesChanged:${linkedThread.id}`,
+      null,
+    );
+
+    const redeployed = await api.deploySchedule(actor, {
+      name: linked.schedule.name,
+      agentId,
+      cronExpression: "0 10 * * *",
+      prompt: "Run the updated linked thread report.",
+      description: "Updated linked thread schedule",
+      timezone: "UTC",
+      enabled: false,
+      chatThreadId: otherThread.id,
+    });
+    expect(redeployed.created).toBeFalsy();
+    expect(redeployed.schedule.chatThreadId).toBe(linkedThread.id);
+
+    const autoThreadSchedule = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-auto-thread"),
+      agentId,
+      cronExpression: "0 11 * * *",
+      prompt: "Run the auto-thread report.",
+      description: "Auto-created schedule thread",
+      timezone: "UTC",
+      enabled: false,
+    });
+    const autoThread = await chat.readThread(
+      actor,
+      autoThreadSchedule.schedule.chatThreadId,
+    );
+    expect(autoThread.title).toBe("Auto-created schedule thread");
+
+    const pastOnce = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-past-once"),
+      agentId,
+      atTime: new Date(now() - 86_400_000).toISOString(),
+      prompt: "Past one-time schedule",
+      description: "Past one-time schedule",
+      timezone: "UTC",
+      enabled: false,
+    });
+    const enablePast = await api.requestEnableSchedule(
+      actor,
+      pastOnce.schedule,
+      [400],
+    );
+    expectApiError(enablePast.body);
+    expect(enablePast.body.error.code).toBe("SCHEDULE_PAST");
+
+    const readOnlyToken = zeroToken(actor, ["schedule:read"]);
+    const forbiddenDelete = await api.requestDeleteScheduleAs(
+      `Bearer ${readOnlyToken}`,
+      autoThreadSchedule.schedule,
+      [403],
+    );
+    expectApiError(forbiddenDelete.body);
+    expect(forbiddenDelete.body.error.code).toBe("FORBIDDEN");
+
+    const invalidDelete = await api.requestDeleteSchedule(
+      actor,
+      { ...linked.schedule, agentId: "not-a-uuid" },
+      [400],
+    );
+    expectApiError(invalidDelete.body);
+    expect(invalidDelete.body.error.code).toBe("BAD_REQUEST");
+
+    context.mocks.ably.publish.mockClear();
+    await api.deleteSchedule(actor, linked.schedule);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadSchedulesChanged:${linkedThread.id}`,
+      null,
+    );
+    await api.deleteSchedule(actor, autoThreadSchedule.schedule);
+    await api.deleteSchedule(actor, pastOnce.schedule);
+  });
+
   it("lets cron execution process a due loop schedule and exposes the transition through list", async () => {
     const bdd = createBddApi(context);
     const api = createRunsSchedulesApi(context);
@@ -1126,15 +1279,14 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
   });
 });
 
-const LOOP_CALLBACK_PATH = "/api/internal/callbacks/schedule/loop";
-const CRON_CALLBACK_PATH = "/api/internal/callbacks/schedule/cron";
+const LOOP_CALLBACK_PATH = "/api/internal/callbacks/trigger/loop";
+const CRON_CALLBACK_PATH = "/api/internal/callbacks/trigger/cron";
 const CHAT_CALLBACK_PATH = "/api/internal/callbacks/chat";
 
 /**
  * Quiet capture handlers for every callback URL a schedule-fired run can
- * carry (reschedule + chat, plus the events-first trigger mirrors), so
- * terminal dispatch never hits an unhandled MSW route. Returns the captures
- * the chains assert on.
+ * carry (trigger reschedule + chat), so terminal dispatch never hits an
+ * unhandled MSW route. Returns the captures the chains assert on.
  */
 function captureScheduleCallbackDeliveries(
   webhooks: ReturnType<typeof createWebhookCallbackApi>,
@@ -1142,12 +1294,6 @@ function captureScheduleCallbackDeliveries(
   const loop = webhooks.captureInternalCallbackDeliveries(LOOP_CALLBACK_PATH);
   const cron = webhooks.captureInternalCallbackDeliveries(CRON_CALLBACK_PATH);
   const chat = webhooks.captureInternalCallbackDeliveries(CHAT_CALLBACK_PATH);
-  webhooks.captureInternalCallbackDeliveries(
-    "/api/internal/callbacks/trigger/loop",
-  );
-  webhooks.captureInternalCallbackDeliveries(
-    "/api/internal/callbacks/trigger/cron",
-  );
   return { loop, cron, chat };
 }
 

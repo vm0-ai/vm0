@@ -20,6 +20,7 @@ import {
   getVm0Vendor,
   hasAuthMethods,
   isSupportedRunModel,
+  MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   type ModelProviderEnvBindings,
@@ -45,9 +46,12 @@ import {
   expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
   resolveFirewallBaseUrlVars,
+  type ExecutionFirewallEntry,
+  type ExecutionFirewalls,
+  type ExecutionFirewallLegacyEntry,
   type ExpandedFirewallConfig,
+  type Firewall,
   type FirewallPolicies,
-  type Firewalls,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -293,7 +297,7 @@ interface ResolvedModelProviderEnvironment {
 }
 
 interface PermissionManifest {
-  readonly firewalls: Firewalls;
+  readonly firewalls: ExecutionFirewalls;
   readonly networkPolicies: NetworkPolicies;
   readonly environmentFirewalls: readonly ExpandedFirewallConfig[];
 }
@@ -2088,26 +2092,69 @@ function collectPermissionNames(
   return [...names];
 }
 
+const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+
+function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
+  return {
+    name: firewall.name,
+    apis: firewall.apis.map((api) => {
+      return {
+        base: api.base,
+        auth: api.auth,
+        permissions: api.permissions ?? [],
+      };
+    }),
+  };
+}
+
+function builtinFirewallEntry(
+  firewall: ExpandedFirewallConfig,
+  vars: Record<string, string> | undefined,
+): ExecutionFirewallEntry {
+  const names = new Set<string>();
+  for (const api of firewall.apis) {
+    for (const match of api.base.matchAll(BASE_URL_VAR_PATTERN)) {
+      names.add(match[1]!);
+    }
+  }
+  if (names.size === 0) {
+    return { kind: "builtin", name: firewall.name };
+  }
+
+  const baseUrlVars: Record<string, string> = {};
+  for (const name of names) {
+    const value = vars?.[name];
+    if (!value) {
+      throw new Error(
+        `Firewall "${firewall.name}" base URL requires variable "${name}" but it was not provided`,
+      );
+    }
+    baseUrlVars[name] = value;
+  }
+  resolveFirewallBaseUrlVars([runtimeFirewall(firewall)], vars);
+  return { kind: "builtin", name: firewall.name, baseUrlVars };
+}
+
+function inlineFirewallEntry(
+  firewall: ExpandedFirewallConfig,
+): ExecutionFirewallEntry {
+  return { kind: "inline", firewall: runtimeFirewall(firewall) };
+}
+
 function applyConnectorPolicies(
   connectorFirewalls: readonly ExpandedFirewallConfig[],
   policies: FirewallPolicies | undefined,
+  entryForFirewall: (
+    firewall: ExpandedFirewallConfig,
+  ) => ExecutionFirewallEntry,
 ): Omit<PermissionManifest, "environmentFirewalls"> {
-  const firewalls: Firewalls = [];
+  const firewalls: ExecutionFirewalls = [];
   const networkPolicies: NetworkPolicies = {};
 
   for (const firewall of connectorFirewalls) {
     const policy = policies?.[firewall.name];
     const permissionNames = collectPermissionNames(firewall.apis);
-    firewalls.push({
-      name: firewall.name,
-      apis: firewall.apis.map((api) => {
-        return {
-          base: api.base,
-          auth: api.auth,
-          permissions: api.permissions ?? [],
-        };
-      }),
-    });
+    firewalls.push(entryForFirewall(firewall));
 
     if (!policy) {
       networkPolicies[firewall.name] = {
@@ -2145,6 +2192,7 @@ function applyConnectorPolicies(
 
 function modelProviderPermissionManifest(
   modelProvider: ResolvedModelProviderEnvironment | null,
+  vars: Record<string, string> | undefined,
 ): PermissionManifest | undefined {
   if (!modelProvider) {
     return undefined;
@@ -2161,7 +2209,7 @@ function modelProviderPermissionManifest(
   const denySet = new Set(firewall.defaultPolicies?.deny ?? []);
   const askSet = new Set(firewall.defaultPolicies?.ask ?? []);
   return {
-    firewalls: [firewall],
+    firewalls: [builtinFirewallEntry(firewall, vars)],
     environmentFirewalls: [firewall],
     networkPolicies: {
       [firewall.name]: {
@@ -2187,6 +2235,7 @@ function buildPermissionManifest(args: {
   const connectorTypes =
     args.connectorTypes ??
     Object.keys(args.permissionPolicies ?? {}).filter(isFirewallConnectorType);
+  const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
   const connectorFirewalls = connectorTypes
     .filter(isFirewallConnectorType)
     .map((type) => {
@@ -2195,19 +2244,27 @@ function buildPermissionManifest(args: {
   const connectorManifest = applyConnectorPolicies(
     connectorFirewalls,
     args.permissionPolicies,
+    (firewall) => {
+      return builtinFirewallEntry(firewall, connectorBaseUrlVars);
+    },
+  );
+  const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
+    (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
+    args.vars,
   );
   const customConnectorManifest = applyConnectorPolicies(
-    args.customConnectorFirewalls ?? [],
+    resolvedCustomConnectorFirewalls,
     args.permissionPolicies,
+    inlineFirewallEntry,
   );
-  const providerManifest = modelProviderPermissionManifest(args.modelProvider);
+  const providerManifest = modelProviderPermissionManifest(
+    args.modelProvider,
+    args.vars,
+  );
   const firewalls = [
-    ...resolveFirewallBaseUrlVars(providerManifest?.firewalls ?? [], args.vars),
-    ...resolveFirewallBaseUrlVars(
-      connectorManifest.firewalls,
-      mergeRecords(args.vars, args.connectorVars),
-    ),
-    ...resolveFirewallBaseUrlVars(customConnectorManifest.firewalls, args.vars),
+    ...(providerManifest?.firewalls ?? []),
+    ...connectorManifest.firewalls,
+    ...customConnectorManifest.firewalls,
   ];
 
   if (firewalls.length === 0) {
@@ -3055,13 +3112,59 @@ function sanitizeEnvironment(
   return sanitized;
 }
 
+function builtinFirewallByName(
+  name: string,
+): ExpandedFirewallConfig | undefined {
+  if (isFirewallConnectorType(name)) {
+    return getConnectorFirewall(name);
+  }
+  return Object.values(MODEL_PROVIDER_FIREWALL_CONFIGS).find((firewall) => {
+    return firewall.name === name;
+  });
+}
+
+function fullFirewallsForEntry(
+  entry: ExecutionFirewallEntry,
+): readonly Firewall[] {
+  if (isExecutionFirewallLegacyEntry(entry)) {
+    return [entry];
+  }
+  if (entry.kind === "inline") {
+    return [entry.firewall];
+  }
+  const firewall = builtinFirewallByName(entry.name);
+  if (!firewall) {
+    return [];
+  }
+  return resolveFirewallBaseUrlVars(
+    [runtimeFirewall(firewall)],
+    entry.baseUrlVars,
+  );
+}
+
+function isExecutionFirewallLegacyEntry(
+  entry: ExecutionFirewallEntry,
+): entry is ExecutionFirewallLegacyEntry {
+  return entry.kind === undefined;
+}
+
+function executionFirewallEntryName(entry: ExecutionFirewallEntry): string {
+  if (isExecutionFirewallLegacyEntry(entry)) {
+    return entry.name;
+  }
+  return entry.kind === "builtin" ? entry.name : entry.firewall.name;
+}
+
 function sanitizeFirewalls(
-  firewalls: Firewalls | null | undefined,
+  firewalls: ExecutionFirewalls | null | undefined,
 ): RunContextResponse["firewalls"] {
   if (!firewalls) {
     return [];
   }
-  return firewalls.map((firewall) => {
+  const fullFirewalls = firewalls.flatMap((entry) => {
+    return [...fullFirewallsForEntry(entry)];
+  });
+  return fullFirewalls.map((firewall) => {
     return {
       name: firewall.name,
       apis: firewall.apis.map((api) => {
@@ -3174,19 +3277,20 @@ function billableFirewallsForPermissions(args: {
 }): string[] {
   const billableConnectorSet = new Set<string>(BILLABLE_CONNECTORS);
   const firewalls = args.permissions?.firewalls ?? [];
+  const firewallNames = firewalls.map((firewall) => {
+    return executionFirewallEntryName(firewall);
+  });
   const modelFirewalls =
     args.modelProvider?.type === "vm0"
-      ? firewalls.filter((firewall) => {
-          return firewall.name.startsWith("model-provider:");
+      ? firewallNames.filter((name) => {
+          return name.startsWith("model-provider:");
         })
       : [];
-  const connectorFirewalls = firewalls.filter((firewall) => {
-    return billableConnectorSet.has(firewall.name);
+  const connectorFirewalls = firewallNames.filter((name) => {
+    return billableConnectorSet.has(name);
   });
 
-  return [...modelFirewalls, ...connectorFirewalls].map((firewall) => {
-    return firewall.name;
-  });
+  return [...modelFirewalls, ...connectorFirewalls];
 }
 
 function modelUsageProviderForContext(

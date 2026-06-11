@@ -7,7 +7,7 @@ through the X firewall and buffers them for aggregate platform upload.
 import json
 import re
 import urllib.parse
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from typing import Literal, NamedTuple, TypedDict
 
 from mitmproxy import http
@@ -15,6 +15,7 @@ from mitmproxy import http
 import billing_body
 import body_decoding
 import flow_metadata_keys as metadata_keys
+import matching
 from auth import get_api_url
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
@@ -113,6 +114,86 @@ _X_JSON_RESULT_COUNT_FIELDS = {
 class _IncludeBillingCategory(NamedTuple):
     category: str
     kind: Literal["known", "synthetic", "overflow"]
+
+
+class _RequestFallbackHintPolicy(NamedTuple):
+    id_query_key: str | None
+    id_count_max: int | None
+    max_results_min: int | None
+    max_results_max: int | None
+
+
+_REQUEST_IDS_100_HINT_POLICY = _RequestFallbackHintPolicy("ids", 100, None, None)
+_REQUEST_USERNAMES_100_HINT_POLICY = _RequestFallbackHintPolicy("usernames", 100, None, None)
+_REQUEST_PAGE_1_TO_100_HINT_POLICY = _RequestFallbackHintPolicy(None, None, 1, 100)
+_REQUEST_PAGE_5_TO_100_HINT_POLICY = _RequestFallbackHintPolicy(None, None, 5, 100)
+_REQUEST_PAGE_10_TO_100_HINT_POLICY = _RequestFallbackHintPolicy(None, None, 10, 100)
+_REQUEST_PAGE_1_TO_1000_HINT_POLICY = _RequestFallbackHintPolicy(None, None, 1, 1000)
+
+
+_REQUEST_FALLBACK_HINT_POLICY_SPECS: tuple[tuple[str, _RequestFallbackHintPolicy], ...] = (
+    # X query hints are trusted only for documented count-source parameters on
+    # billable generated-firewall GET paths. App-only paths stay omitted because
+    # ``classify_bucket`` skips them before fallback parsing.
+    ("/2/spaces", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/tweets", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/tweets/analytics", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/users", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/users/by", _REQUEST_USERNAMES_100_HINT_POLICY),
+    ("/2/users/public_keys", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/chat/conversations", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/communities/search", _REQUEST_PAGE_10_TO_100_HINT_POLICY),
+    ("/2/dm_conversations/with/{participant_id}/dm_events", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/dm_conversations/{id}/dm_events", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/dm_events", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/lists/{id}/followers", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/lists/{id}/members", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/lists/{id}/tweets", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/news/search", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/notes/search/notes_written", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/notes/search/posts_eligible_for_notes", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/spaces/search", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/spaces/{id}/buyers", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/spaces/{id}/tweets", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/tweets/search/recent", _REQUEST_PAGE_10_TO_100_HINT_POLICY),
+    ("/2/tweets/{id}/liking_users", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/tweets/{id}/quote_tweets", _REQUEST_PAGE_10_TO_100_HINT_POLICY),
+    ("/2/tweets/{id}/retweeted_by", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/tweets/{id}/retweets", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/reposts_of_me", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/search", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/affiliates", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/blocking", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/bookmarks", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/bookmarks/folders", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/followed_lists", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/followers", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/following", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/liked_tweets", _REQUEST_PAGE_5_TO_100_HINT_POLICY),
+    ("/2/users/{id}/list_memberships", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/mentions", _REQUEST_PAGE_5_TO_100_HINT_POLICY),
+    ("/2/users/{id}/muting", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/owned_lists", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/timelines/reverse_chronological", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/tweets", _REQUEST_PAGE_5_TO_100_HINT_POLICY),
+)
+
+
+def _compile_request_fallback_hint_policies(
+    specs: tuple[tuple[str, _RequestFallbackHintPolicy], ...],
+) -> tuple[tuple[matching.CompiledPathPattern, _RequestFallbackHintPolicy], ...]:
+    compiled_policies: list[tuple[matching.CompiledPathPattern, _RequestFallbackHintPolicy]] = []
+    for path_pattern, policy in specs:
+        compiled_pattern = matching.compile_path_pattern(path_pattern)
+        if compiled_pattern is None:
+            raise ValueError(f"invalid X fallback hint path pattern: {path_pattern}")
+        compiled_policies.append((compiled_pattern, policy))
+    return tuple(compiled_policies)
+
+
+_REQUEST_FALLBACK_HINT_POLICIES = _compile_request_fallback_hint_policies(
+    _REQUEST_FALLBACK_HINT_POLICY_SPECS
+)
 
 
 def _as_non_bool_int(value: object) -> int | None:
@@ -396,8 +477,14 @@ def create_response_parser(
     return ConnectorResponseParser(feed=extractor.feed, finish=finish_json_state)
 
 
-def _count_non_empty_comma_segments(values: Iterable[str]) -> int | None:
-    count = sum(1 for value in values for segment in value.split(",") if segment.strip())
+def _count_bounded_non_empty_comma_segments(value: str, max_count: int) -> int | None:
+    count = 0
+    for segment in value.split(","):
+        if not segment.strip():
+            continue
+        count += 1
+        if count > max_count:
+            return None
     return count or None
 
 
@@ -436,6 +523,27 @@ def _decode_request_query_hint_key(raw_key: str) -> str | None:
     return None
 
 
+def _request_fallback_hint_policy_for_path(path: str) -> _RequestFallbackHintPolicy | None:
+    for pattern, policy in _REQUEST_FALLBACK_HINT_POLICIES:
+        if matching.match_compiled_path(path, pattern) is not None:
+            return policy
+    return None
+
+
+def _parse_bounded_positive_decimal(value: str, min_value: int, max_value: int) -> int | None:
+    if not value or any(char < "0" or char > "9" for char in value):
+        return None
+    if value.startswith("0"):
+        return None
+    if len(value) > len(str(max_value)):
+        return None
+
+    parsed = int(value)
+    if min_value <= parsed <= max_value:
+        return parsed
+    return None
+
+
 def _slice_exceeds_query_hint_byte_limit(value: str, start: int, end: int, max_bytes: int) -> bool:
     if end - start > max_bytes:
         return True
@@ -443,7 +551,13 @@ def _slice_exceeds_query_hint_byte_limit(value: str, start: int, end: int, max_b
     size = 0
     for index in range(start, end):
         char = value[index]
-        size += 1 if ord(char) < _ASCII_CODEPOINT_LIMIT else len(char.encode("utf-8"))
+        if ord(char) < _ASCII_CODEPOINT_LIMIT:
+            size += 1
+        else:
+            try:
+                size += len(char.encode("utf-8"))
+            except UnicodeEncodeError:
+                return True
         if size > max_bytes:
             return True
     return False
@@ -472,18 +586,22 @@ def _get_bounded_original_request_query(original_url: str) -> str | None:
 
 
 def _parse_request_query_fallback_hints(original_url: str) -> dict:
-    """Extract request-side count hints for unparseable non-count GET responses.
+    """Extract endpoint-scoped count hints for unparseable non-count GETs.
 
     This intentionally does not call ``parse_qs``.  Successful X responses
     normally bill from the parsed response body, so query hints are only a
     fallback for lost response visibility.  ``report_usage`` merges these
-    fields only when a non-count GET response was not parsed.  The scanner
-    therefore looks only for the small key set that can affect fallback billing,
-    preserves ``parse_qs``' blank-value and ``+`` behavior for those keys, and
-    caps work on hostile query strings instead of materializing every parameter.
+    fields only when a non-count GET response was not parsed.  Even then, the
+    scanner trusts a query hint only when the current endpoint documents that
+    hint as count visibility, and caps work on hostile query strings instead of
+    materializing every parameter.
 
     Returns ``request_ids_count`` and ``max_results``.
     """
+    policy = _request_fallback_hint_policy_for_path(urllib.parse.urlparse(original_url).path)
+    if policy is None:
+        return _empty_request_query_fallback_hints()
+
     query = _get_bounded_original_request_query(original_url)
     if query is None:
         return _empty_request_query_fallback_hints()
@@ -502,22 +620,45 @@ def _parse_request_query_fallback_hints(original_url: str) -> dict:
             if separator and raw_value:
                 hint_key = _decode_request_query_hint_key(raw_key)
                 if hint_key is not None:
-                    if _exceeds_query_hint_byte_limit(
-                        raw_value, _REQUEST_QUERY_HINT_VALUE_MAX_BYTES
+                    id_count_max = policy.id_count_max if hint_key == policy.id_query_key else None
+                    max_results_min = (
+                        policy.max_results_min
+                        if hint_key == _REQUEST_MAX_RESULTS_QUERY_KEY and not max_results_seen
+                        else None
+                    )
+                    max_results_max = (
+                        policy.max_results_max
+                        if hint_key == _REQUEST_MAX_RESULTS_QUERY_KEY and not max_results_seen
+                        else None
+                    )
+                    if id_count_max is not None or (
+                        max_results_min is not None and max_results_max is not None
                     ):
-                        return _empty_request_query_fallback_hints()
+                        if _exceeds_query_hint_byte_limit(
+                            raw_value, _REQUEST_QUERY_HINT_VALUE_MAX_BYTES
+                        ):
+                            return _empty_request_query_fallback_hints()
 
-                    decoded_value = urllib.parse.unquote_plus(raw_value)
-                    if hint_key in _REQUEST_ID_LIKE_QUERY_KEYS:
-                        value_count = _count_non_empty_comma_segments((decoded_value,))
-                        if value_count is not None:
+                        decoded_value = urllib.parse.unquote_plus(raw_value)
+                        if id_count_max is not None:
+                            remaining = id_count_max - ids_count
+                            if remaining < 1:
+                                ids_count = 0
+                                break
+                            value_count = _count_bounded_non_empty_comma_segments(
+                                decoded_value, remaining
+                            )
+                            if value_count is None:
+                                ids_count = 0
+                                break
                             ids_count += value_count
-                    elif hint_key == _REQUEST_MAX_RESULTS_QUERY_KEY and not max_results_seen:
-                        max_results_seen = True
-                        try:
-                            max_results = int(decoded_value)
-                        except ValueError:
-                            max_results = None
+                        elif max_results_min is not None and max_results_max is not None:
+                            max_results_seen = True
+                            max_results = _parse_bounded_positive_decimal(
+                                decoded_value,
+                                max_results_min,
+                                max_results_max,
+                            )
 
         if end == len(query):
             break
@@ -635,9 +776,9 @@ def _compute_billable_counts(
       trust the actual response.  Soft errors (HTTP 200 + ``errors`` array,
       no ``data``) and zero-result searches yield primary 0, which is skipped
       from the returned dict so no empty ``usage_event`` row is created.
-    - **Body NOT parsed**: fall back to request-side hints
-      ``max(request_ids_count, max_results, 1)``.  When the URL also carries
-      no hints we emit no ``usage_event`` row; :func:`report_usage`
+    - **Body NOT parsed**: fall back to endpoint-scoped request-side hints
+      ``max(request_ids_count, max_results, 1)``.  When the URL carries no
+      trusted hints we emit no ``usage_event`` row; :func:`report_usage`
       detects that state and writes an error log so ops can audit.
     - **Includes**: each ``includes.<key>`` is normalized to a billing
       bucket via :func:`classify_includes_bucket`, a bounded safe synthetic
@@ -830,9 +971,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     # Loud-but-zero billing path: GET with an unparseable response body and
     # no reliable count source.  We deliberately emit nothing rather than
     # blind-guess a quantity — the error log carries enough context for ops
-    # to audit and, if needed, back-charge manually.  Use ``is None`` so a
-    # legitimate ``?max_results=0`` (no-op query) is distinguished from the
-    # absent-field case.
+    # to audit and, if needed, back-charge manually.
     missing_count_visibility = bool(req_meta.get("is_count_endpoint")) or (
         req_meta.get("request_ids_count") is None and req_meta.get("max_results") is None
     )

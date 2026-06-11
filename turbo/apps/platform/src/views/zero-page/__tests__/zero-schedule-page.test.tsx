@@ -188,7 +188,9 @@ async function openAutomationsList(): Promise<void> {
   });
 
   await waitFor(() => {
-    expect(screen.getByText("Automations")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Automations" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Week view")).toBeInTheDocument();
   });
   click(tabByText("List"));
@@ -480,7 +482,9 @@ describe("zero schedule page", () => {
 
     await openAutomationsList();
 
-    expect(screen.getByText("Automations")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Automations" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
 
     click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);

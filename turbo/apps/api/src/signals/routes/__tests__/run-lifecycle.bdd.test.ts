@@ -5,7 +5,11 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type ExecutionFirewallEntry,
+  type FirewallApi,
+} from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -71,6 +75,33 @@ function connectorPlaceholder(
     throw new Error(`Missing connector placeholder for ${secretName}`);
   }
   return placeholder;
+}
+
+function firewallEntryName(entry: ExecutionFirewallEntry): string {
+  if (entry.kind === undefined) {
+    return entry.name;
+  }
+  return entry.kind === "builtin" ? entry.name : entry.firewall.name;
+}
+
+function findFirewallEntry(
+  entries: readonly ExecutionFirewallEntry[] | undefined,
+  name: string,
+): ExecutionFirewallEntry | undefined {
+  return entries?.find((entry) => {
+    return firewallEntryName(entry) === name;
+  });
+}
+
+function inlineFirewallApis(
+  entries: readonly ExecutionFirewallEntry[] | undefined,
+  name: string,
+): readonly FirewallApi[] {
+  const entry = findFirewallEntry(entries, name);
+  if (!entry || entry.kind === "builtin") {
+    throw new Error(`Expected inline firewall entry: ${name}`);
+  }
+  return entry.kind === "inline" ? entry.firewall.apis : entry.apis;
 }
 
 function base64UrlEncode(input: string): string {
@@ -659,7 +690,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
     expect(
       claim.firewalls?.map((firewall) => {
-        return firewall.name;
+        return firewallEntryName(firewall);
       }),
     ).toContain("model-provider:codex-oauth-token");
     expect(claim.billableFirewalls).toStrictEqual([]);
@@ -867,12 +898,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretConnectorMap).not.toHaveProperty("X_REFRESH_TOKEN");
     expect(claim.secretConnectorMetadataMap ?? null).toBeNull();
 
-    const xFirewall = claim.firewalls?.find((firewall) => {
-      return firewall.name === "x";
-    });
-    expect(xFirewall?.apis[0]?.auth?.headers?.Authorization).toBe(
-      `Bearer \${{ secrets.X_TOKEN }}`,
-    );
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("x");
     expect(claim.billableFirewalls).toContain("x");
     expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
 
@@ -1012,7 +1042,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     expect(
       claim.firewalls?.map((firewall) => {
-        return firewall.name;
+        return firewallEntryName(firewall);
       }),
     ).toContain("google-ads");
 
@@ -1046,7 +1076,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.environment).not.toHaveProperty("AXIOM_TOKEN");
     expect(
       claim.firewalls?.some((firewall) => {
-        return firewall.name === "axiom";
+        return firewallEntryName(firewall) === "axiom";
       }),
     ).toBeFalsy();
 
@@ -1131,13 +1161,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const claim = await api.claimRunnerJob(run.runId);
 
     const secretKey = `CUSTOM_${custom.id.replaceAll("-", "").toUpperCase()}`;
-    const customFirewall = claim.firewalls?.find((firewall) => {
-      return firewall.name === slug;
-    });
-    expect(customFirewall?.apis[0]?.base).toBe(
+    const customApis = inlineFirewallApis(claim.firewalls, slug);
+    expect(customApis[0]?.base).toBe(
       "https://{hostWildcard1}.internal.example.com/api/",
     );
-    expect(customFirewall?.apis[0]?.auth?.headers?.Authorization).toBe(
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
     expect(claim.networkPolicies?.[slug]?.unknownPolicy).toBe("allow");
@@ -1207,20 +1235,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    const customFirewall = claim.firewalls?.find((firewall) => {
-      return firewall.name === slug;
-    });
-    const zendeskFirewall = claim.firewalls?.find((firewall) => {
-      return firewall.name === "zendesk";
-    });
-    expect(customFirewall?.apis[0]?.base).toBe(
-      "https://internal.example.com/api/",
-    );
-    // The zendesk base resolves from the connector-owned variable, not the
-    // user variable of the same name.
-    expect(zendeskFirewall?.apis[0]?.base).toBe(
-      "https://connector-subdomain.zendesk.com",
-    );
+    const customApis = inlineFirewallApis(claim.firewalls, slug);
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("zendesk");
+    expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await clearAllDetached();
