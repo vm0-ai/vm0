@@ -101,6 +101,8 @@ pub(crate) async fn publish(
 }
 
 pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
+    remove_stale_records(home).await;
+
     let dir = home.live_runner_instances_dir();
     let mut entries = match tokio::fs::read_dir(&dir).await {
         Ok(entries) => entries,
@@ -721,6 +723,42 @@ mod tests {
 
         let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
 
+        assert!(!stale_path.exists());
+        assert!(!stale_tmp_path.exists());
+    }
+
+    #[tokio::test]
+    async fn list_removes_stale_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        crate::host_file::ensure_dir(
+            &home.live_runner_instances_dir(),
+            crate::host_file::DirMode::Private,
+            "live runner instances",
+        )
+        .unwrap();
+        let stale_record = LiveRunnerInstanceRecord {
+            boot_id: current_boot_id().await.unwrap(),
+            pid: u32::MAX,
+            starttime: 1,
+            euid: current_euid(),
+            config_path: dir.path().join("stale-runner.yaml"),
+            base_dir: dir.path().join("stale-base"),
+            runner_name: "stale-runner".into(),
+            runner_group: "vm0/test".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+        };
+        let stale_path =
+            home.live_runner_instance_record_path(stale_record.pid, stale_record.starttime);
+        write_record(&stale_path, &stale_record).await;
+        let stale_tmp_path = home
+            .live_runner_instances_dir()
+            .join(".4294967295-1.json.test.tmp");
+        tokio::fs::write(&stale_tmp_path, b"partial").await.unwrap();
+
+        let instances = list(&home).await;
+
+        assert!(instances.is_empty());
         assert!(!stale_path.exists());
         assert!(!stale_tmp_path.exists());
     }
