@@ -287,7 +287,7 @@ Each round, every route family must be mapped to one of:
 | SCHEDULE-01   | 🟡     | Schedule CRUD chain planned.                               |
 | RUNNER-01     | 🟡     | Heavy DB seeds; service-level exceptions planned.          |
 | MEDIA-01      | 🟡     | Heavy external mock; chain planned.                        |
-| ORG-01        | 🟡     | Clerk mock heavy; chain planned.                           |
+| ORG-01        | 🟡     | Clerk mock heavy; onboarding setup chain landed.           |
 | AUTOMATION-01 | 🟡     | Cron-driven; chain planned.                                |
 | CRON-01       | 🟡     | Webhook chain planned.                                     |
 | INTERNAL-01   | 🟡     | Webhook chain planned.                                     |
@@ -2278,3 +2278,51 @@ covered route files.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api
 check-types`, `pnpm -F api exec vitest run` all clean.
+
+### Round 45 — ORG-01 zero-onboarding-setup BDD + legacy cleanup
+
+Migrates `zero-onboarding-setup.test.ts` (14 legacy
+`it()`s, 733 lines) into 4 BDD `it()`s: (a) auth + capability
+chain (401 unauth → 401 no-org → 403 non-admin), (b) default
+agent create chain (200 admin creates + agent in
+`zeroAgentsMainContract.list` + status reflects it + 200
+idempotent same `agentId` + displayName preserved), (c)
+connectors chain (200 selectedConnectors + user-connectors
+endpoint verifies + 403 disabled connector + 200 idempotent
+connectors authorized + 200 paid org skips
+onboardingPaymentPending), (d) Clerk org update chain (200
+updates name + slug + 200 non-Latin skips slug + 200 slug
+conflict retries with suffix + 200 all-slugs-conflict falls
+back to name-only + 200 non-slug error does not fail setup).
+
+The BDD form uses `zeroAgentsMainContract.list` to verify
+the created agent and `userConnectorsContract.get` to
+verify the user connectors (replacing the legacy direct DB
+reads of `zero_agents`, `user_connectors`, and
+`agent_composes`). The `orgMetadata.tier` upgrade for the
+"paid org skips payment-pending" sub-step is a tolerated
+direct-DB write (no public endpoint flips tier). The Clerk
+`updateOrganization` mock is `mockReset` once at the start
+of the chain and each sub-step asserts a slice of the
+accumulated call list via `startCallCount` markers (the
+mock cannot be cleanly reset between sub-steps because the
+shared mock state is the only way to verify the retry /
+all-slugs-conflict fallback paths).
+
+Notable: the legacy "auth-boundary" tests used `mocks.clerk.session`
+to swap the Clerk mock for each sub-step. The BDD form
+keeps the same `mocks.clerk.session` swap in chain (a)
+because the chain is the auth-boundary chain itself. The
+chain (b) reuse the same admin session for both sub-steps
+(idempotent setup), so the mock only needs to be set once.
+
+Net test count: 14 legacy `it()`s → 4 BDD `it()`s (71%
+reduction). No per-file coverage regression for the
+covered route file.
+
+Deletes the now-redundant `zero-onboarding-setup.test.ts`.
+
+Quality gates: `pnpm -F api lint` (pre-existing warnings
+in unrelated test files), `pnpm -F api check-types`,
+`pnpm -F api exec vitest run` (253 files / 2618 tests) all
+clean.
