@@ -88,7 +88,7 @@ const cronSyncSkillsResponseSchema = z.object({
   total: z.number(),
 });
 
-const cronExecuteSchedulesResponseSchema = z.object({
+const cronExecuteAutomationsResponseSchema = z.object({
   success: z.literal(true),
   executed: z.number(),
   skipped: z.number(),
@@ -214,16 +214,16 @@ export const cronSyncSkillsContract = c.router({
   },
 });
 
-export const cronExecuteSchedulesContract = c.router({
+export const cronExecuteAutomationsContract = c.router({
   execute: {
     method: "GET",
-    path: "/api/cron/execute-schedules",
+    path: "/api/cron/execute-automations",
     headers: authHeadersSchema,
     responses: {
-      200: cronExecuteSchedulesResponseSchema,
+      200: cronExecuteAutomationsResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "Execute due schedules",
+    summary: "Execute due automation triggers",
   },
 });
 
@@ -266,7 +266,8 @@ export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
-export type CronExecuteSchedulesContract = typeof cronExecuteSchedulesContract;
+export type CronExecuteAutomationsContract =
+  typeof cronExecuteAutomationsContract;
 
 // Export schemas for reuse
 export {
@@ -279,7 +280,7 @@ export {
   cronComputerUseScreenshotCleanupResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
-  cronExecuteSchedulesResponseSchema,
+  cronExecuteAutomationsResponseSchema,
   cronAggregateInsightsResponseSchema,
   cronSummarizeMemoryResponseSchema,
 };

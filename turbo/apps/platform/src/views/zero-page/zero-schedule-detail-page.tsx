@@ -130,7 +130,7 @@ function ScheduleBreadcrumbLink({ chatThreadId }: { chatThreadId?: string }) {
 
   return (
     <Link
-      pathname="/schedules"
+      pathname="/automations"
       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
     >
       <IconCalendar size={14} stroke={1.5} className="shrink-0" />
@@ -193,7 +193,7 @@ function ScheduleNotFound() {
           This schedule doesn&apos;t exist or was removed.
         </p>
         <Link
-          pathname="/schedules"
+          pathname="/automations"
           className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
         >
           Back to scheduled tasks
@@ -996,7 +996,7 @@ function ScheduleActionsContainer({
     detach(
       (async () => {
         await deleteSchedule({ name, agentId: entry.agentId }, pageSignal);
-        navigate("/schedules");
+        navigate("/automations");
       })(),
       Reason.DomCallback,
     );

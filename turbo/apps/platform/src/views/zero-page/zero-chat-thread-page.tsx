@@ -996,7 +996,7 @@ export function ScheduleMenuButton({
             <DropdownMenuItem
               key={schedule.id}
               onClick={() => {
-                navigate("/schedules/:scheduleId", {
+                navigate("/automations/:scheduleId", {
                   pathParams: { scheduleId: schedule.id },
                 });
               }}
@@ -5040,7 +5040,7 @@ function ScheduleUserMessage({
         <div className="flex w-full flex-col items-end">
           {scheduleId ? (
             <Link
-              pathname="/schedules/:scheduleId"
+              pathname="/automations/:scheduleId"
               options={{ pathParams: { scheduleId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
               aria-label={`Open schedule ${scheduleLabel}`}

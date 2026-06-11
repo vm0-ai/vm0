@@ -86,7 +86,7 @@ export function UsageInsightSchedulesTable({
             return (
               <li key={row.scheduleId}>
                 <Link
-                  pathname="/schedules/:scheduleId"
+                  pathname="/automations/:scheduleId"
                   options={{ pathParams: { scheduleId: row.scheduleId } }}
                   className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
                     hoveredId === row.scheduleId ? "bg-foreground/5" : ""

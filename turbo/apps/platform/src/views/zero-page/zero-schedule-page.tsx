@@ -573,7 +573,7 @@ export function ZeroSchedulePage() {
   ] as const;
 
   const openScheduleDetail = (entry: CombinedEntry) => {
-    navigate("/schedules/:scheduleId", {
+    navigate("/automations/:scheduleId", {
       pathParams: { scheduleId: entry.id },
     });
   };

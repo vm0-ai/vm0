@@ -162,7 +162,7 @@ function mockScheduleListEdgeStory(): void {
 }
 
 async function openSchedulePage(): Promise<void> {
-  detachedSetupPage({ context, path: "/schedules" });
+  detachedSetupPage({ context, path: "/automations" });
 
   await waitFor(() => {
     expect(
@@ -183,6 +183,8 @@ async function openScheduleList(): Promise<void> {
 }
 
 async function openAutomationsList(): Promise<void> {
+  // The legacy /schedules path redirects to /automations (#17307); entering
+  // through it keeps the redirect covered.
   detachedSetupPage({ context, path: "/schedules" });
 
   await waitFor(() => {
@@ -402,7 +404,7 @@ describe("zero schedule page", () => {
       });
     });
 
-    detachedSetupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/automations" });
 
     await waitFor(() => {
       expect(

@@ -90,7 +90,7 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
   {
     id: "schedules",
     activeKeys: ["schedules", "scheduleDetail"],
-    pathname: "/schedules",
+    pathname: "/automations",
     label: "Automations",
     icon: IconCalendar as NavIcon,
   },

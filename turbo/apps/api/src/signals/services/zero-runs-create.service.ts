@@ -769,9 +769,9 @@ export const createZeroRun$ = command(
         chatThreadId: args.chatThreadId,
         extraEnvironment: {
           ZERO_AGENT_ID: agent.id,
-          // Chat-mode scheduled (and web) runs carry their thread id so the
-          // in-sandbox CLI can default a newly created schedule's binding to it:
-          // zero schedule setup ... (reads $ZERO_CHAT_THREAD_ID when --thread is omitted).
+          // Chat-mode automation (and web) runs carry their thread id so the
+          // in-sandbox CLI can bind a newly created automation to it (the
+          // create flow reads $ZERO_CHAT_THREAD_ID when no thread is given).
           ...(args.chatThreadId
             ? { ZERO_CHAT_THREAD_ID: args.chatThreadId }
             : {}),

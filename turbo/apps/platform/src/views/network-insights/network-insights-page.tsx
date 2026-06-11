@@ -1062,7 +1062,7 @@ function DaySchedulesCard({
             return (
               <li key={row.scheduleId}>
                 <Link
-                  pathname="/schedules/:scheduleId"
+                  pathname="/automations/:scheduleId"
                   options={{ pathParams: { scheduleId: row.scheduleId } }}
                   className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
                 >

@@ -5,7 +5,7 @@ import {
   automationsV2MainContract,
   automationTriggersV2Contract,
 } from "@vm0/api-contracts/contracts/automations-v2";
-import { cronExecuteSchedulesContract } from "@vm0/api-contracts/contracts/cron";
+import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -63,7 +63,7 @@ function triggerApi() {
 }
 
 function cronApi() {
-  return setupApp({ context })(cronExecuteSchedulesContract);
+  return setupApp({ context })(cronExecuteAutomationsContract);
 }
 
 const trackSchedules = createFixtureTracker<SchedulesFixture>((fixture) => {

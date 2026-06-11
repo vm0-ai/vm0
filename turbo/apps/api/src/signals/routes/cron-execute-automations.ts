@@ -1,4 +1,4 @@
-import { cronExecuteSchedulesContract } from "@vm0/api-contracts/contracts/cron";
+import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route";
@@ -7,7 +7,7 @@ import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 // The cron tick polls the events-first automation_triggers table; runs carry
 // automation_id/trigger_id provenance (#16847).
-const executeSchedulesRoute$ = command(
+const executeAutomationsRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
@@ -27,9 +27,18 @@ const executeSchedulesRoute$ = command(
   },
 );
 
-export const cronExecuteSchedulesRoutes: readonly RouteEntry[] = [
+export const cronExecuteAutomationsRoutes: readonly RouteEntry[] = [
   {
-    route: cronExecuteSchedulesContract.execute,
-    handler: executeSchedulesRoute$,
+    route: cronExecuteAutomationsContract.execute,
+    handler: executeAutomationsRoute$,
+  },
+  // The Vercel cron config flips to /api/cron/execute-automations with this
+  // release; the old path stays mounted for the deploy overlap, then goes.
+  {
+    route: {
+      ...cronExecuteAutomationsContract.execute,
+      path: "/api/cron/execute-schedules",
+    },
+    handler: executeAutomationsRoute$,
   },
 ];
