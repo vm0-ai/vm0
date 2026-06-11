@@ -882,7 +882,9 @@ function queryRunContext(
       runId: normalizedSnapshot.runId ?? run.id,
       prompt: normalizedSnapshot.prompt ?? run.prompt,
       appendSystemPrompt:
-        normalizedSnapshot.appendSystemPrompt ?? run.appendSystemPrompt ?? null,
+        normalizedSnapshot.appendSystemPrompt !== undefined
+          ? normalizedSnapshot.appendSystemPrompt
+          : (run.appendSystemPrompt ?? null),
     };
   });
 }
