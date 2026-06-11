@@ -25,15 +25,23 @@ pub(crate) struct LiveRunnerInstanceHandle {
     identity: ProcessIdentity,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct ProcessIdentity {
+    boot_id: String,
     pid: u32,
     starttime: u64,
     euid: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FileProcessIdentity {
+    pid: u32,
+    starttime: u64,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct LiveRunnerInstanceRecord {
+    boot_id: String,
     pid: u32,
     starttime: u64,
     euid: u32,
@@ -51,6 +59,7 @@ pub(crate) async fn publish(
     let identity = current_process_identity().await?;
     let path = home.live_runner_instance_record_path(identity.pid, identity.starttime);
     let record = LiveRunnerInstanceRecord {
+        boot_id: identity.boot_id.clone(),
         pid: identity.pid,
         starttime: identity.starttime,
         euid: identity.euid,
@@ -85,7 +94,8 @@ impl LiveRunnerInstanceHandle {
         let Some(record) = read_valid_record(&self.path).await else {
             return Ok(false);
         };
-        if record.pid != self.identity.pid
+        if record.boot_id != self.identity.boot_id
+            || record.pid != self.identity.pid
             || record.starttime != self.identity.starttime
             || record.euid != self.identity.euid
         {
@@ -162,7 +172,7 @@ async fn remove_stale_records(home: &HomePaths) {
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        if !process_identity_is_live(identity).await {
+        if !file_process_identity_is_live(identity).await {
             remove_stale_file(&path, "stale live runner instance tmp file").await;
         }
     }
@@ -180,21 +190,20 @@ async fn remove_stale_file(path: &Path, reason: &'static str) {
     }
 }
 
-fn stable_record_identity_from_file_name(name: &OsStr) -> Option<ProcessIdentity> {
+fn stable_record_identity_from_file_name(name: &OsStr) -> Option<FileProcessIdentity> {
     stable_record_identity_from_str(name.to_str()?)
 }
 
-fn stable_record_identity_from_str(name: &str) -> Option<ProcessIdentity> {
+fn stable_record_identity_from_str(name: &str) -> Option<FileProcessIdentity> {
     let stem = name.strip_suffix(".json")?;
     let (pid, starttime) = stem.split_once('-')?;
-    Some(ProcessIdentity {
+    Some(FileProcessIdentity {
         pid: pid.parse().ok()?,
         starttime: starttime.parse().ok()?,
-        euid: current_euid(),
     })
 }
 
-fn atomic_tmp_record_identity_from_file_name(name: &OsStr) -> Option<ProcessIdentity> {
+fn atomic_tmp_record_identity_from_file_name(name: &OsStr) -> Option<FileProcessIdentity> {
     let name = name.to_str()?;
     let tmp_body = name.strip_prefix('.')?.strip_suffix(".tmp")?;
     let (stable_name, _tmp_id) = tmp_body.rsplit_once('.')?;
@@ -203,6 +212,7 @@ fn atomic_tmp_record_identity_from_file_name(name: &OsStr) -> Option<ProcessIden
 
 async fn record_is_live(record: &LiveRunnerInstanceRecord) -> bool {
     process_identity_is_live(ProcessIdentity {
+        boot_id: record.boot_id.clone(),
         pid: record.pid,
         starttime: record.starttime,
         euid: record.euid,
@@ -210,7 +220,30 @@ async fn record_is_live(record: &LiveRunnerInstanceRecord) -> bool {
     .await
 }
 
+async fn file_process_identity_is_live(identity: FileProcessIdentity) -> bool {
+    let Ok(boot_id) = current_boot_id().await else {
+        return false;
+    };
+    let identity = ProcessIdentity {
+        boot_id: boot_id.clone(),
+        pid: identity.pid,
+        starttime: identity.starttime,
+        euid: current_euid(),
+    };
+    process_identity_is_live_for_boot(&identity, &boot_id).await
+}
+
 async fn process_identity_is_live(identity: ProcessIdentity) -> bool {
+    let Ok(boot_id) = current_boot_id().await else {
+        return false;
+    };
+    process_identity_is_live_for_boot(&identity, &boot_id).await
+}
+
+async fn process_identity_is_live_for_boot(identity: &ProcessIdentity, boot_id: &str) -> bool {
+    if identity.boot_id != boot_id {
+        return false;
+    }
     if identity.euid != current_euid() {
         return false;
     }
@@ -243,10 +276,22 @@ async fn current_process_identity() -> RunnerResult<ProcessIdentity> {
         )));
     }
     Ok(ProcessIdentity {
+        boot_id: current_boot_id().await?,
         pid,
         starttime: stat.starttime,
         euid: current_euid(),
     })
+}
+
+async fn current_boot_id() -> RunnerResult<String> {
+    let content = tokio::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .await
+        .map_err(|e| RunnerError::Internal(format!("read boot id: {e}")))?;
+    let boot_id = content.trim();
+    if boot_id.is_empty() || !boot_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        return Err(RunnerError::Internal("read boot id: invalid format".into()));
+    }
+    Ok(boot_id.to_owned())
 }
 
 async fn read_process_euid(pid: u32) -> Option<u32> {
@@ -335,6 +380,7 @@ mod tests {
 
         let record = read_valid_record(&handle.path).await.unwrap();
 
+        assert_eq!(record.boot_id, handle.identity.boot_id);
         assert_eq!(record.pid, handle.identity.pid);
         assert_eq!(record.starttime, handle.identity.starttime);
     }
@@ -350,6 +396,7 @@ mod tests {
         )
         .unwrap();
         let record = LiveRunnerInstanceRecord {
+            boot_id: current_boot_id().await.unwrap(),
             pid: u32::MAX,
             starttime: 1,
             euid: current_euid(),
@@ -374,6 +421,20 @@ mod tests {
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
         let mut record = read_valid_record(&handle.path).await.unwrap();
         record.starttime += 1;
+        write_record(&handle.path, &record).await;
+
+        let result = read_valid_record(&handle.path).await;
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_valid_record_ignores_boot_id_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let mut record = read_valid_record(&handle.path).await.unwrap();
+        record.boot_id = "00000000-0000-0000-0000-000000000000".into();
         write_record(&handle.path, &record).await;
 
         let result = read_valid_record(&handle.path).await;
@@ -435,6 +496,7 @@ mod tests {
         )
         .unwrap();
         let stale_record = LiveRunnerInstanceRecord {
+            boot_id: current_boot_id().await.unwrap(),
             pid: u32::MAX,
             starttime: 1,
             euid: current_euid(),
@@ -487,6 +549,7 @@ mod tests {
         .unwrap();
         let child_stat = process::read_process_stat(child_pid).await.unwrap();
         let live_record = LiveRunnerInstanceRecord {
+            boot_id: current_boot_id().await.unwrap(),
             pid: child_pid,
             starttime: child_stat.starttime,
             euid: current_euid(),
