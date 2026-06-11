@@ -59,6 +59,34 @@ const ZERO_LOGS_BY_ID_PATH_RE = new RegExp(
 const TEST_TELEGRAM_MOCK_REWRITE_SOURCE =
   "/api/test/telegram-mock/:botToken/:method";
 const TEST_TELEGRAM_MOCK_PATH_RE = /^\/api\/test\/telegram-mock\/[^/]+\/[^/]+$/;
+// The automation resource API on its clean paths (#17307); the /api/v2/*
+// entries below stay as transition aliases for clients built before the move.
+const AUTOMATIONS_BY_REF_REWRITE_SOURCE = "/api/automations/:ref";
+const AUTOMATIONS_BY_REF_PATH_RE = /^\/api\/automations\/[^/]+$/;
+const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:ref/enable";
+const AUTOMATIONS_ENABLE_PATH_RE = /^\/api\/automations\/[^/]+\/enable$/;
+const AUTOMATIONS_DISABLE_REWRITE_SOURCE = "/api/automations/:ref/disable";
+const AUTOMATIONS_DISABLE_PATH_RE = /^\/api\/automations\/[^/]+\/disable$/;
+const AUTOMATIONS_RUN_REWRITE_SOURCE = "/api/automations/:ref/run";
+const AUTOMATIONS_RUN_PATH_RE = /^\/api\/automations\/[^/]+\/run$/;
+const AUTOMATIONS_TRIGGERS_REWRITE_SOURCE = "/api/automations/:ref/triggers";
+const AUTOMATIONS_TRIGGERS_PATH_RE = /^\/api\/automations\/[^/]+\/triggers$/;
+const AUTOMATION_TRIGGERS_BY_ID_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})`;
+const AUTOMATION_TRIGGERS_BY_ID_PATH_RE = new RegExp(
+  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
+const AUTOMATION_TRIGGERS_ENABLE_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/enable`;
+const AUTOMATION_TRIGGERS_ENABLE_PATH_RE = new RegExp(
+  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/enable$`,
+);
+const AUTOMATION_TRIGGERS_DISABLE_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/disable`;
+const AUTOMATION_TRIGGERS_DISABLE_PATH_RE = new RegExp(
+  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
+);
+const AUTOMATION_TRIGGERS_ROTATE_SECRET_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/rotate-secret`;
+const AUTOMATION_TRIGGERS_ROTATE_SECRET_PATH_RE = new RegExp(
+  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/rotate-secret$`,
+);
 const AUTOMATIONS_V2_BY_REF_REWRITE_SOURCE = "/api/v2/automations/:ref";
 const AUTOMATIONS_V2_BY_REF_PATH_RE = /^\/api\/v2\/automations\/[^/]+$/;
 const AUTOMATIONS_V2_ENABLE_REWRITE_SOURCE = "/api/v2/automations/:ref/enable";
@@ -1180,6 +1208,52 @@ export const API_BACKEND_REWRITES = [
     AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE,
     "/api/automations/webhooks/:token",
     AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE,
+  ],
+  ["/api/automations", "/api/automations"],
+  [
+    AUTOMATIONS_ENABLE_REWRITE_SOURCE,
+    "/api/automations/:ref/enable",
+    AUTOMATIONS_ENABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_DISABLE_REWRITE_SOURCE,
+    "/api/automations/:ref/disable",
+    AUTOMATIONS_DISABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_RUN_REWRITE_SOURCE,
+    "/api/automations/:ref/run",
+    AUTOMATIONS_RUN_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_TRIGGERS_REWRITE_SOURCE,
+    "/api/automations/:ref/triggers",
+    AUTOMATIONS_TRIGGERS_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_BY_REF_REWRITE_SOURCE,
+    "/api/automations/:ref",
+    AUTOMATIONS_BY_REF_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_ENABLE_REWRITE_SOURCE,
+    "/api/automation-triggers/:id/enable",
+    AUTOMATION_TRIGGERS_ENABLE_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_DISABLE_REWRITE_SOURCE,
+    "/api/automation-triggers/:id/disable",
+    AUTOMATION_TRIGGERS_DISABLE_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_ROTATE_SECRET_REWRITE_SOURCE,
+    "/api/automation-triggers/:id/rotate-secret",
+    AUTOMATION_TRIGGERS_ROTATE_SECRET_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_BY_ID_REWRITE_SOURCE,
+    "/api/automation-triggers/:id",
+    AUTOMATION_TRIGGERS_BY_ID_PATH_RE,
   ],
   ["/api/v2/automations", "/api/v2/automations"],
   [

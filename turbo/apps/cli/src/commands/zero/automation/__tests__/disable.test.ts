@@ -55,7 +55,7 @@ describe("zero automation disable command", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/v2/automations/:ref/disable",
+        "http://localhost:3000/api/automations/:ref/disable",
         ({ params }) => {
           disabledRef = params.ref as string;
           return HttpResponse.json(mockAutomation);
@@ -72,7 +72,7 @@ describe("zero automation disable command", () => {
 
   it("should surface API errors", async () => {
     server.use(
-      http.post("http://localhost:3000/api/v2/automations/:ref/disable", () => {
+      http.post("http://localhost:3000/api/automations/:ref/disable", () => {
         return HttpResponse.json(
           { error: { message: "Automation not found", code: "NOT_FOUND" } },
           { status: 404 },

@@ -5,11 +5,12 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
- * The unified Automation resource API (#16847 slice 2): one automation =
- * identity + intent (agent, instruction, one linked chat thread, enabled),
- * carrying N triggers (cron / once / loop / webhook) that only decide WHEN it
- * fires. Replaces the split schedule/webhook surfaces, which remain as
- * deprecated aliases.
+ * The unified Automation resource API: one automation = identity + intent
+ * (agent, instruction, one linked chat thread, enabled), carrying N triggers
+ * (cron / once / loop / webhook) that only decide WHEN it fires. It replaced
+ * the split schedule/webhook surfaces (deleted in #17307) and now lives on
+ * the clean /api/automations* paths; the server keeps the historical
+ * /api/v2/* paths mounted as aliases for clients built before the move.
  *
  * `:ref` resolves an automation by id (UUID) or by name; a name shared across
  * agents within the org/user scope is ambiguous and rejected with 400 — use
@@ -157,7 +158,7 @@ const triggerIdParamsSchema = z.object({
 export const automationsV2MainContract = c.router({
   create: {
     method: "POST",
-    path: "/api/v2/automations",
+    path: "/api/automations",
     headers: authHeadersSchema,
     body: createAutomationRequestSchema,
     responses: {
@@ -171,7 +172,7 @@ export const automationsV2MainContract = c.router({
   },
   list: {
     method: "GET",
-    path: "/api/v2/automations",
+    path: "/api/automations",
     headers: authHeadersSchema,
     responses: {
       200: automationListResponseSchemaV2,
@@ -186,7 +187,7 @@ export const automationsV2MainContract = c.router({
 export const automationsV2ByRefContract = c.router({
   show: {
     method: "GET",
-    path: "/api/v2/automations/:ref",
+    path: "/api/automations/:ref",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     responses: {
@@ -200,7 +201,7 @@ export const automationsV2ByRefContract = c.router({
   },
   update: {
     method: "PATCH",
-    path: "/api/v2/automations/:ref",
+    path: "/api/automations/:ref",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     body: updateAutomationRequestSchema,
@@ -215,7 +216,7 @@ export const automationsV2ByRefContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/v2/automations/:ref",
+    path: "/api/automations/:ref",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     responses: {
@@ -229,7 +230,7 @@ export const automationsV2ByRefContract = c.router({
   },
   enable: {
     method: "POST",
-    path: "/api/v2/automations/:ref/enable",
+    path: "/api/automations/:ref/enable",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     body: z.object({}).optional(),
@@ -244,7 +245,7 @@ export const automationsV2ByRefContract = c.router({
   },
   disable: {
     method: "POST",
-    path: "/api/v2/automations/:ref/disable",
+    path: "/api/automations/:ref/disable",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     body: z.object({}).optional(),
@@ -259,7 +260,7 @@ export const automationsV2ByRefContract = c.router({
   },
   run: {
     method: "POST",
-    path: "/api/v2/automations/:ref/run",
+    path: "/api/automations/:ref/run",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     body: z.object({}).optional(),
@@ -278,7 +279,7 @@ export const automationsV2ByRefContract = c.router({
   },
   addTrigger: {
     method: "POST",
-    path: "/api/v2/automations/:ref/triggers",
+    path: "/api/automations/:ref/triggers",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     body: createTriggerRequestSchema,
@@ -293,7 +294,7 @@ export const automationsV2ByRefContract = c.router({
   },
   listTriggers: {
     method: "GET",
-    path: "/api/v2/automations/:ref/triggers",
+    path: "/api/automations/:ref/triggers",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     responses: {
@@ -312,7 +313,7 @@ export const automationsV2ByRefContract = c.router({
 export const automationTriggersV2Contract = c.router({
   show: {
     method: "GET",
-    path: "/api/v2/automation-triggers/:id",
+    path: "/api/automation-triggers/:id",
     headers: authHeadersSchema,
     pathParams: triggerIdParamsSchema,
     responses: {
@@ -325,7 +326,7 @@ export const automationTriggersV2Contract = c.router({
   },
   remove: {
     method: "DELETE",
-    path: "/api/v2/automation-triggers/:id",
+    path: "/api/automation-triggers/:id",
     headers: authHeadersSchema,
     pathParams: triggerIdParamsSchema,
     responses: {
@@ -338,7 +339,7 @@ export const automationTriggersV2Contract = c.router({
   },
   enable: {
     method: "POST",
-    path: "/api/v2/automation-triggers/:id/enable",
+    path: "/api/automation-triggers/:id/enable",
     headers: authHeadersSchema,
     pathParams: triggerIdParamsSchema,
     body: z.object({}).optional(),
@@ -353,7 +354,7 @@ export const automationTriggersV2Contract = c.router({
   },
   disable: {
     method: "POST",
-    path: "/api/v2/automation-triggers/:id/disable",
+    path: "/api/automation-triggers/:id/disable",
     headers: authHeadersSchema,
     pathParams: triggerIdParamsSchema,
     body: z.object({}).optional(),
@@ -367,7 +368,7 @@ export const automationTriggersV2Contract = c.router({
   },
   rotateSecret: {
     method: "POST",
-    path: "/api/v2/automation-triggers/:id/rotate-secret",
+    path: "/api/automation-triggers/:id/rotate-secret",
     headers: authHeadersSchema,
     pathParams: triggerIdParamsSchema,
     body: z.object({}).optional(),

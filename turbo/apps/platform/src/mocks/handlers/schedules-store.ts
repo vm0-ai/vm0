@@ -1,7 +1,7 @@
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 
 // Shared in-memory store backing the v2 automations mock handlers
-// (`/api/v2/automations`).
+// (`/api/automations`).
 let mockSchedules: ScheduleResponse[] = [];
 
 export function getMockSchedules(): ScheduleResponse[] {

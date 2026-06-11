@@ -137,14 +137,14 @@ function replaceRow(updated: ScheduleResponse): void {
 }
 
 export const apiAutomationsV2Handlers = [
-  // GET /api/v2/automations
+  // GET /api/automations
   mockApi(automationsV2MainContract.list, ({ respond }) =>
     respond(200, {
       automations: getMockSchedules().map(toMockAutomationResponse),
     }),
   ),
 
-  // POST /api/v2/automations
+  // POST /api/automations
   mockApi(automationsV2MainContract.create, ({ body, respond }) => {
     if (!body.trigger) {
       throw new Error("Schedule mocks expect the first-trigger sugar");
@@ -173,7 +173,7 @@ export const apiAutomationsV2Handlers = [
     return respond(201, { automation: toMockAutomationResponse(row) });
   }),
 
-  // PATCH /api/v2/automations/:ref
+  // PATCH /api/automations/:ref
   mockApi(automationsV2ByRefContract.update, ({ params, body, respond }) => {
     const row = findByRef(params.ref);
     if (!row) {
@@ -192,7 +192,7 @@ export const apiAutomationsV2Handlers = [
     return respond(200, toMockAutomationResponse(updated));
   }),
 
-  // DELETE /api/v2/automations/:ref
+  // DELETE /api/automations/:ref
   mockApi(automationsV2ByRefContract.delete, ({ params, respond }) => {
     const row = findByRef(params.ref);
     if (!row) {
@@ -204,7 +204,7 @@ export const apiAutomationsV2Handlers = [
     return respond(204);
   }),
 
-  // POST /api/v2/automations/:ref/enable
+  // POST /api/automations/:ref/enable
   mockApi(automationsV2ByRefContract.enable, ({ params, respond }) => {
     const row = findByRef(params.ref);
     if (!row) {
@@ -217,7 +217,7 @@ export const apiAutomationsV2Handlers = [
     return respond(200, toMockAutomationResponse(updated));
   }),
 
-  // POST /api/v2/automations/:ref/disable
+  // POST /api/automations/:ref/disable
   mockApi(automationsV2ByRefContract.disable, ({ params, respond }) => {
     const row = findByRef(params.ref);
     if (!row) {
@@ -230,12 +230,12 @@ export const apiAutomationsV2Handlers = [
     return respond(200, toMockAutomationResponse(updated));
   }),
 
-  // POST /api/v2/automations/:ref/run
+  // POST /api/automations/:ref/run
   mockApi(automationsV2ByRefContract.run, ({ respond }) =>
     respond(201, { runId: crypto.randomUUID() }),
   ),
 
-  // POST /api/v2/automations/:ref/triggers
+  // POST /api/automations/:ref/triggers
   mockApi(
     automationsV2ByRefContract.addTrigger,
     ({ params, body, respond }) => {
@@ -260,7 +260,7 @@ export const apiAutomationsV2Handlers = [
     },
   ),
 
-  // DELETE /api/v2/automation-triggers/:id
+  // DELETE /api/automation-triggers/:id
   mockApi(automationTriggersV2Contract.remove, ({ params, respond }) => {
     const automationId = automationIdForTrigger(params.id);
     if (!automationId) {
@@ -277,7 +277,7 @@ export const apiAutomationsV2Handlers = [
     return respond(204);
   }),
 
-  // POST /api/v2/automation-triggers/:id/enable
+  // POST /api/automation-triggers/:id/enable
   mockApi(automationTriggersV2Contract.enable, ({ params, respond }) => {
     const automationId = automationIdForTrigger(params.id);
     const row = automationId
