@@ -231,8 +231,8 @@ export const zeroUsageRuns$ = command(
   },
 );
 
-export type UsageClerkClient = ReturnType<typeof clerk$.read>;
-export type UsageWriteDb = ReturnType<typeof writeDb$.write>;
+type UsageClerkClient = ReturnType<typeof clerk$.read>;
+type UsageWriteDb = ReturnType<typeof writeDb$.write>;
 
 function primaryEmail(user: User): string {
   const primary = user.emailAddresses.find((email) => {
