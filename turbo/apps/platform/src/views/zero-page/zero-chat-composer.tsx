@@ -992,8 +992,10 @@ function TemplatePreviewPage({
 
 function IllustrationTemplatePreview({
   item,
+  onPreview,
 }: {
   item: IllustrationTemplateItem;
+  onPreview: (item: IllustrationTemplateItem) => void;
 }) {
   return (
     <div className="relative aspect-[4/3] overflow-hidden bg-muted">
@@ -1004,8 +1006,163 @@ function IllustrationTemplatePreview({
         className="h-full w-full object-cover"
         loading="lazy"
       />
+      <button
+        type="button"
+        aria-label={`View template ${item.title}`}
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(0,0,0,.3)] text-white opacity-0 shadow-sm transition-colors hover:bg-[rgba(0,0,0,.45)] hover:text-white group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={(event) => {
+          event.stopPropagation();
+          onPreview(item);
+        }}
+      >
+        <IconEye size={16} stroke={1.8} />
+      </button>
     </div>
   );
+}
+
+function IllustrationPreviewPage({
+  item,
+  selectedImageIndex,
+  onImageChange,
+  onBack,
+  onSelect,
+}: {
+  item: IllustrationTemplateItem;
+  selectedImageIndex: number;
+  onImageChange: (index: number) => void;
+  onBack: () => void;
+  onSelect: (item: IllustrationTemplateItem) => void;
+}) {
+  const images =
+    item.previewImages.length > 0 ? item.previewImages : [item.previewImage];
+  const safeImageIndex = Math.max(
+    0,
+    Math.min(selectedImageIndex, images.length - 1),
+  );
+  const selectedImage = images[safeImageIndex] ?? item.previewImage;
+
+  return (
+    <>
+      <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+        <DialogTitle className="flex min-w-0 items-center gap-2 text-base">
+          <button
+            type="button"
+            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onBack}
+          >
+            Templates
+          </button>
+          <span className="shrink-0 text-muted-foreground">/</span>
+          <span className="shrink-0 text-muted-foreground">Illustration</span>
+          <span className="shrink-0 text-muted-foreground">/</span>
+          <span className="min-w-0 truncate">{item.title}</span>
+        </DialogTitle>
+      </DialogHeader>
+      <div className="grid h-[min(72vh,680px)] min-h-0 gap-4 overflow-hidden bg-muted/20 p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="flex min-h-0 flex-col rounded-lg border border-border bg-background p-3">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
+            <img
+              key={selectedImage}
+              src={selectedImage}
+              title={`${item.title} preview variant ${safeImageIndex + 1}`}
+              alt=""
+              className="h-full w-full object-contain"
+              loading="lazy"
+            />
+          </div>
+          <div className="mt-3 flex shrink-0 max-w-full items-center gap-2 overflow-x-auto pb-1">
+            {images.map((image, index) => {
+              const selected = index === safeImageIndex;
+              return (
+                <button
+                  key={image}
+                  type="button"
+                  aria-label={`Show variant ${index + 1}`}
+                  aria-pressed={selected}
+                  className={cn(
+                    "relative h-14 w-20 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selected ? "border-orange-500" : "border-border",
+                  )}
+                  onClick={() => {
+                    onImageChange(index);
+                  }}
+                >
+                  <img
+                    src={image}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg border border-border bg-background p-4">
+            <h3 className="text-lg font-semibold text-foreground">
+              {item.title}
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {formatIllustrationTemplateKind(item)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-background p-4">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              Variants
+            </h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
+                {images.length} reference images
+              </span>
+              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
+                Illustration style
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label={`Select template ${item.title}`}
+            className="h-10 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              onSelect(item);
+            }}
+          >
+            Use this template
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function resolveTemplatePickerCategory({
+  category,
+  hasPptTab,
+  hasIllustrationTab,
+  hasVideoTab,
+}: {
+  category: string;
+  hasPptTab: boolean;
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+}): string {
+  const categories: string[] = [];
+  if (hasPptTab) {
+    categories.push("slides");
+  }
+  if (hasIllustrationTab) {
+    categories.push("illustration");
+  }
+  if (hasVideoTab) {
+    categories.push("video");
+  }
+  const defaultCategory = categories[0] ?? "slides";
+  if (category === "video" && !hasVideoTab) {
+    return defaultCategory;
+  }
+  return categories.includes(category) ? category : defaultCategory;
 }
 
 function TemplatePickerTabs({
@@ -1124,6 +1281,15 @@ function TemplatePickerDialog({
     PRESENTATION_TEMPLATE_ITEMS.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
+  const illustrationPreviewItem =
+    ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+      return item.slug === previewSlug;
+    }) ?? null;
+  const isPreviewing = Boolean(previewItem ?? illustrationPreviewItem);
+  const dialogContentClassName = cn(
+    "p-0 gap-0 overflow-hidden",
+    isPreviewing ? "max-w-6xl" : "max-w-4xl",
+  );
   const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
   });
@@ -1163,23 +1329,24 @@ function TemplatePickerDialog({
     setPreviewSlug(item.slug);
   };
 
-  const defaultCategory = "slides";
-  const effectiveCategory =
-    category === "video" && !hasVideoTab ? defaultCategory : category;
-  const selectedCategory = [
-    ...(hasPptTab ? ["slides"] : []),
-    ...(hasIllustrationTab ? ["illustration"] : []),
-    ...(hasVideoTab ? ["video"] : []),
-  ].includes(effectiveCategory)
-    ? effectiveCategory
-    : defaultCategory;
+  const handleIllustrationPreview = (item: IllustrationTemplateItem) => {
+    setSelectedSlideIndex(0);
+    setPreviewSlug(item.slug);
+  };
+
+  const selectedCategory = resolveTemplatePickerCategory({
+    category,
+    hasPptTab,
+    hasIllustrationTab,
+    hasVideoTab,
+  });
 
   return (
     <Dialog
       open
       onOpenChange={(open) => {
         if (!open) {
-          if (previewItem) {
+          if (isPreviewing) {
             setPreviewSlug(null);
             return;
           }
@@ -1188,10 +1355,7 @@ function TemplatePickerDialog({
       }}
     >
       <DialogContent
-        className={cn(
-          "p-0 gap-0 overflow-hidden",
-          previewItem ? "max-w-6xl" : "max-w-4xl",
-        )}
+        className={dialogContentClassName}
         aria-describedby={undefined}
       >
         {previewItem ? (
@@ -1203,6 +1367,16 @@ function TemplatePickerDialog({
               setPreviewSlug(null);
             }}
             onSelect={handleSelectPresentation}
+          />
+        ) : illustrationPreviewItem ? (
+          <IllustrationPreviewPage
+            item={illustrationPreviewItem}
+            selectedImageIndex={selectedSlideIndex}
+            onImageChange={setSelectedSlideIndex}
+            onBack={() => {
+              setPreviewSlug(null);
+            }}
+            onSelect={handleSelectIllustration}
           />
         ) : (
           <>
@@ -1327,7 +1501,10 @@ function TemplatePickerDialog({
                               : "border-border",
                           )}
                         >
-                          <IllustrationTemplatePreview item={item} />
+                          <IllustrationTemplatePreview
+                            item={item}
+                            onPreview={handleIllustrationPreview}
+                          />
                           <div className="flex items-start justify-between gap-3 px-3.5 py-3">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-foreground">

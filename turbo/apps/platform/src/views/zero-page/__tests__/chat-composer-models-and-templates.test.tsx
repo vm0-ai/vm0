@@ -1155,6 +1155,29 @@ describe("chat composer templates", () => {
       );
     });
 
+    click(screen.getByLabelText(`View template ${illustrationTemplate.title}`));
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${illustrationTemplate.title} preview variant 1`),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Show variant 2"));
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${illustrationTemplate.title} preview variant 2`),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Show variant 1"));
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${illustrationTemplate.title} preview variant 1`),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText("Templates"));
+    await waitFor(() => {
+      expect(screen.getByText("VM0 illustration styles")).toBeInTheDocument();
+    });
+
     await fill(screen.getByLabelText("Search templates"), "no matching style");
     await waitFor(() => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
