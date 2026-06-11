@@ -4,7 +4,8 @@
 //! thread, forwarding workers, and operation cleanup. `accept.rs` drives the
 //! process-control accept and hello handshake, while `forward.rs` waits for the
 //! sink, serializes access to the connected stream, and marks the sink failed on
-//! terminal connected-stream errors.
+//! terminal connected-stream errors. Accept or hello failures move the sink to
+//! `Failed`; operation cleanup moves it to `Closed`.
 //!
 //! The connection state starts in `Waiting`, moves through `Handshaking` while
 //! the accepted process-control stream sends its hello, and reaches `Connected`
@@ -20,7 +21,8 @@
 //! in-flight forwarding even when a connected stream guard is busy. The
 //! connected stream has a separate `locked` gate so waiters can observe timeouts
 //! and shutdown notifications before taking the stream mutex. `pending` limits
-//! outstanding forwarding work and is released by `PendingControlSlot`. The
+//! outstanding forwarding work; a full set rejects new requests as `QueueFull`
+//! without reserving a slot. `PendingControlSlot` releases accepted work. The
 //! shutdown stream clones let close/fail interrupt handshakes or connected I/O
 //! without waiting for the active stream guard.
 
@@ -45,7 +47,7 @@ pub(super) struct ControlSinkState {
     pub(super) ready: Condvar,
     /// Operation-lifetime gate; once false, requests resolve as inactive.
     pub(super) active: AtomicBool,
-    /// Backpressure counter for outstanding forwarding work, released by slots.
+    /// Backpressure counter for outstanding forwarding work; full means queue-full.
     pub(super) pending: AtomicUsize,
 }
 
