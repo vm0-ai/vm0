@@ -66,11 +66,17 @@ import {
   zeroOrgLeaveContract,
 } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
+import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
+import {
+  zeroTeamContract,
+  type TeamComposeItem,
+} from "@vm0/api-contracts/contracts/zero-team";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroSecretsByNameContract,
   zeroSecretsContract,
@@ -96,6 +102,7 @@ import type {
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 
+import { createApp } from "../../../../app-factory";
 import { mockEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 import {
@@ -178,6 +185,130 @@ interface OnboardingSetupBody {
   readonly selectedConnectors?: ConnectorType[];
   readonly timezone?: string;
   readonly role?: string;
+}
+
+interface BearerActor {
+  readonly bearerToken: string;
+}
+
+type LogoUploadActor = ApiTestUser | BearerActor;
+
+type ClerkLogoOperation = "get" | "upload" | "delete";
+type ClerkLogoErrorName =
+  | "NotFoundError"
+  | "BadRequestError"
+  | "ForbiddenError";
+
+interface ClerkLogoState {
+  readonly imageUrl: string;
+  readonly hasImage: boolean;
+}
+
+interface MembershipRequestHandlerOptions {
+  readonly requests?: readonly BddMembershipRequest[];
+  readonly listStatus?: 200 | 404;
+  readonly acceptStatus?: 200 | 404;
+  readonly rejectStatus?: 200 | 404;
+}
+
+interface MembershipRequestCallCounters {
+  readonly listCalls: () => number;
+  readonly acceptCalls: () => number;
+  readonly rejectCalls: () => number;
+}
+
+interface RawJsonResponse {
+  readonly status: number;
+  readonly body: unknown;
+}
+
+function isBearerActor(actor: LogoUploadActor): actor is BearerActor {
+  return "bearerToken" in actor;
+}
+
+function installClerkMembershipRequestHandlers(
+  orgId: string,
+  options: MembershipRequestHandlerOptions,
+): MembershipRequestCallCounters {
+  mockEnv("CLERK_SECRET_KEY", "clerk-test-secret");
+  const requests = options.requests ?? [];
+  const listStatus = options.listStatus ?? 200;
+  const acceptStatus = options.acceptStatus ?? 200;
+  const rejectStatus = options.rejectStatus ?? 200;
+  let listCalls = 0;
+  let acceptCalls = 0;
+  let rejectCalls = 0;
+
+  server.use(
+    http.get(
+      "https://api.clerk.com/v1/organizations/:orgId/membership_requests",
+      ({ params }) => {
+        if (params.orgId !== orgId) {
+          return HttpResponse.json({ data: [] });
+        }
+        listCalls += 1;
+        if (listStatus !== 200) {
+          return HttpResponse.json(
+            { error: "Membership requests unavailable" },
+            { status: listStatus },
+          );
+        }
+        return HttpResponse.json({
+          data: requests.map((request) => {
+            return {
+              id: request.id,
+              public_user_data: { user_id: request.actor.userId },
+              created_at: requestDate(request),
+            };
+          }),
+        });
+      },
+    ),
+    http.post(
+      "https://api.clerk.com/v1/organizations/:orgId/membership_requests/:requestId/accept",
+      ({ params }) => {
+        if (params.orgId !== orgId) {
+          return HttpResponse.json({ ok: true });
+        }
+        acceptCalls += 1;
+        if (acceptStatus !== 200) {
+          return HttpResponse.json(
+            { error: "Membership request not found" },
+            { status: acceptStatus },
+          );
+        }
+        return HttpResponse.json({ ok: true });
+      },
+    ),
+    http.post(
+      "https://api.clerk.com/v1/organizations/:orgId/membership_requests/:requestId/reject",
+      ({ params }) => {
+        if (params.orgId !== orgId) {
+          return HttpResponse.json({ ok: true });
+        }
+        rejectCalls += 1;
+        if (rejectStatus !== 200) {
+          return HttpResponse.json(
+            { error: "Membership request not found" },
+            { status: rejectStatus },
+          );
+        }
+        return HttpResponse.json({ ok: true });
+      },
+    ),
+  );
+
+  return {
+    listCalls: () => {
+      return listCalls;
+    },
+    acceptCalls: () => {
+      return acceptCalls;
+    },
+    rejectCalls: () => {
+      return rejectCalls;
+    },
+  };
 }
 
 function roleFromClerk(role: ClerkOrgRole | undefined): ApiOrgRole {
@@ -319,43 +450,44 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     );
   }
 
-  function mockClerkMembershipRequests(
-    orgId: string,
-    requests: readonly BddMembershipRequest[],
-  ): void {
-    mockEnv("CLERK_SECRET_KEY", "clerk-test-secret");
-    server.use(
-      http.get(
-        "https://api.clerk.com/v1/organizations/:orgId/membership_requests",
-        ({ params }) => {
-          if (params.orgId !== orgId) {
-            return HttpResponse.json({ data: [] });
-          }
+  function clerkLogoMock(operation: ClerkLogoOperation) {
+    if (operation === "get") {
+      return context.mocks.clerk.organizations.getOrganization;
+    }
+    if (operation === "upload") {
+      return context.mocks.clerk.organizations.updateOrganizationLogo;
+    }
+    return context.mocks.clerk.organizations.deleteOrganizationLogo;
+  }
 
-          return HttpResponse.json({
-            data: requests.map((request) => {
-              return {
-                id: request.id,
-                public_user_data: { user_id: request.actor.userId },
-                created_at: requestDate(request),
-              };
-            }),
-          });
-        },
-      ),
-      http.post(
-        "https://api.clerk.com/v1/organizations/:orgId/membership_requests/:requestId/accept",
-        () => {
-          return HttpResponse.json({ ok: true });
-        },
-      ),
-      http.post(
-        "https://api.clerk.com/v1/organizations/:orgId/membership_requests/:requestId/reject",
-        () => {
-          return HttpResponse.json({ ok: true });
-        },
-      ),
-    );
+  async function rawJsonRequest(
+    actor: ApiTestUser | null,
+    path: string,
+    method: "POST" | "PATCH" | "PUT" | "DELETE",
+    body: Record<string, unknown>,
+    statuses: readonly number[],
+  ): Promise<RawJsonResponse> {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    const auth = authenticate(actor);
+    if (auth.authorization) {
+      headers.authorization = auth.authorization;
+    }
+    const response = await createApp({ signal: context.signal }).request(path, {
+      method,
+      headers,
+      body: JSON.stringify(body),
+    });
+    const responseBody: unknown = await response.json();
+    if (!statuses.includes(response.status)) {
+      throw new Error(
+        `Expected raw ${method} ${path} status to be one of ${statuses.join(
+          ", ",
+        )}, received ${response.status}. Body: ${JSON.stringify(responseBody)}`,
+      );
+    }
+    return { status: response.status, body: responseBody };
   }
 
   return {
@@ -393,7 +525,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       ];
 
       mockClerkUsers(orgActors);
-      mockClerkMembershipRequests(actor.orgId, membershipRequests);
+      installClerkMembershipRequestHandlers(actor.orgId, {
+        requests: membershipRequests,
+      });
 
       context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
         id: actor.orgId,
@@ -453,6 +587,92 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       context.mocks.clerk.organizations.deleteOrganization.mockResolvedValue(
         {},
       );
+    },
+
+    mockClerkMembershipRequestHandlers(
+      orgId: string,
+      options: MembershipRequestHandlerOptions = {},
+    ): MembershipRequestCallCounters {
+      return installClerkMembershipRequestHandlers(orgId, options);
+    },
+
+    mockClerkOrgLogo(operation: ClerkLogoOperation, state: ClerkLogoState) {
+      clerkLogoMock(operation).mockResolvedValue({
+        imageUrl: state.imageUrl,
+        hasImage: state.hasImage,
+      });
+    },
+
+    mockClerkLogoError(
+      operation: ClerkLogoOperation,
+      name: ClerkLogoErrorName,
+    ): void {
+      const error = new Error(`Clerk organization logo ${operation} failed`);
+      error.name = name;
+      clerkLogoMock(operation).mockRejectedValue(error);
+    },
+
+    async requestReadOrgLogo(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgLogoContract);
+      return await accept(
+        client.get({ headers: authenticate(actor) }),
+        statuses,
+      );
+    },
+
+    async requestDeleteOrgLogo(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgLogoContract);
+      return await accept(
+        client.delete({ headers: authenticate(actor) }),
+        statuses,
+      );
+    },
+
+    // Contract clients cannot send multipart bodies, so the logo upload goes
+    // through the raw Hono app (requestRawSlackIngress precedent).
+    async requestUploadOrgLogo(
+      actor: LogoUploadActor | null,
+      form: FormData,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ): Promise<RawJsonResponse> {
+      const headers: Record<string, string> = {};
+      if (actor && isBearerActor(actor)) {
+        headers.authorization = `Bearer ${actor.bearerToken}`;
+      } else {
+        const auth = authenticate(actor);
+        if (auth.authorization) {
+          headers.authorization = auth.authorization;
+        }
+      }
+      const response = await createApp({ signal: context.signal }).request(
+        "/api/zero/org/logo",
+        { method: "POST", headers, body: form },
+      );
+      const body: unknown = await response.json();
+      if (!(statuses as readonly number[]).includes(response.status)) {
+        throw new Error(
+          `Expected POST /api/zero/org/logo status to be one of ${statuses.join(
+            ", ",
+          )}, received ${response.status}. Body: ${JSON.stringify(body)}`,
+        );
+      }
+      return { status: response.status, body };
+    },
+
+    async requestRawJson(
+      actor: ApiTestUser | null,
+      path: string,
+      method: "POST" | "PATCH" | "PUT" | "DELETE",
+      body: Record<string, unknown>,
+      statuses: readonly number[],
+    ): Promise<RawJsonResponse> {
+      return await rawJsonRequest(actor, path, method, body, statuses);
     },
 
     async readMe(actor: ApiTestUser): Promise<{
@@ -558,6 +778,21 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
           body,
         }),
         [200, 403, 409, 422],
+      );
+    },
+
+    async requestSetupOnboarding<S extends 200 | 401 | 403 | 409 | 422>(
+      actor: ApiTestUser | null,
+      body: OnboardingSetupBody,
+      statuses: readonly S[],
+    ) {
+      const client = setupApp({ context })(onboardingSetupContract);
+      return await accept(
+        client.setup({
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
       );
     },
 
@@ -716,6 +951,39 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestReadOrgWithBearer(
+      token: string,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgContract);
+      return await accept(
+        client.get({ headers: bearerHeaders(token) }),
+        statuses,
+      );
+    },
+
+    async requestUpdateOrgWithBearer(
+      token: string,
+      body: UpdateOrgRequest,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgContract);
+      return await accept(
+        client.update({ headers: bearerHeaders(token), body }),
+        statuses,
+      );
+    },
+
+    async requestListMembersWithBearer<
+      S extends 200 | 400 | 401 | 403 | 404 | 500,
+    >(token: string, statuses: readonly S[]) {
+      const client = setupApp({ context })(zeroOrgMembersContract);
+      return await accept(
+        client.members({ headers: bearerHeaders(token) }),
+        statuses,
+      );
+    },
+
     async inviteMember(
       actor: ApiTestUser,
       body: InviteOrgMemberRequest,
@@ -755,6 +1023,21 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestRevokeInvitation(
+      actor: ApiTestUser | null,
+      invitationId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgInviteContract);
+      return await accept(
+        client.revoke({
+          headers: authenticate(actor),
+          body: { invitationId },
+        }),
+        statuses,
+      );
+    },
+
     async updateMemberRole(
       actor: ApiTestUser,
       body: UpdateOrgMemberRoleRequest,
@@ -791,6 +1074,18 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestRemoveMember(
+      actor: ApiTestUser | null,
+      body: RemoveOrgMemberRequest,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgMembersContract);
+      return await accept(
+        client.removeMember({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
     async acceptMembershipRequest(
       actor: ApiTestUser,
       body: MembershipRequestAction,
@@ -813,6 +1108,30 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async requestAcceptMembershipRequest(
+      actor: ApiTestUser | null,
+      body: MembershipRequestAction,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgMembershipRequestsContract);
+      return await accept(
+        client.accept({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
+    async requestRejectMembershipRequest(
+      actor: ApiTestUser | null,
+      body: MembershipRequestAction,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgMembershipRequestsContract);
+      return await accept(
+        client.reject({ headers: authenticate(actor), body }),
+        statuses,
+      );
     },
 
     async leaveOrg(actor: ApiTestUser): Promise<OrgMessageResponse> {
@@ -845,6 +1164,53 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async requestDeleteOrg(
+      actor: ApiTestUser | null,
+      slug: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({ context })(zeroOrgDeleteContract);
+      return await accept(
+        client.delete({ headers: authenticate(actor), body: { slug } }),
+        statuses,
+      );
+    },
+
+    async listTeam(actor: ApiTestUser): Promise<readonly TeamComposeItem[]> {
+      const client = setupApp({ context })(zeroTeamContract);
+      const response = await accept(
+        client.list({ headers: authenticate(actor) }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestListTeam(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403)[],
+    ) {
+      const client = setupApp({ context })(zeroTeamContract);
+      return await accept(
+        client.list({ headers: authenticate(actor) }),
+        statuses,
+      );
+    },
+
+    async readEnabledConnectorTypes(
+      actor: ApiTestUser,
+      agentId: string,
+    ): Promise<readonly string[]> {
+      const client = setupApp({ context })(zeroUserConnectorsContract);
+      const response = await accept(
+        client.get({
+          headers: authenticate(actor),
+          params: { id: agentId },
+        }),
+        [200],
+      );
+      return response.body.enabledTypes;
     },
 
     async createAgent(
