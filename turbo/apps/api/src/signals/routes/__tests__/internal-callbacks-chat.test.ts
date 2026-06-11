@@ -65,7 +65,9 @@ function vm0Template(expression: string): string {
   return `$${expression}`;
 }
 
-async function seedChatCallbackFixture(): Promise<ChatCallbackFixture> {
+async function seedChatCallbackFixture(
+  options: { readonly title?: string | null } = {},
+): Promise<ChatCallbackFixture> {
   const userId = `user_${randomUUID()}`;
   const orgId = `org_${randomUUID()}`;
   const agentId = randomUUID();
@@ -116,7 +118,7 @@ async function seedChatCallbackFixture(): Promise<ChatCallbackFixture> {
     id: threadId,
     userId,
     agentComposeId: agentId,
-    title: "Test thread",
+    title: options.title !== undefined ? options.title : "Test thread",
   });
   await db.insert(agentSessions).values({
     id: sessionId,
@@ -950,7 +952,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     const messages = await listMessages(fixture.threadId);
     expect(
       messages.find((message) => {
-        return message.role === "assistant";
+        return message.role === "assistant" && message.content !== null;
       }),
     ).toMatchObject({
       sequenceNumber: 1,
@@ -1757,7 +1759,7 @@ describe("POST /api/internal/callbacks/chat", () => {
   });
 
   it("generates a chat thread title from the completed callback exchange", async () => {
-    const fixture = await track(seedChatCallbackFixture());
+    const fixture = await track(seedChatCallbackFixture({ title: null }));
     completedOutputEvents([
       {
         eventType: "result",
@@ -1799,8 +1801,47 @@ describe("POST /api/internal/callbacks/chat", () => {
     await clearAllDetached();
   });
 
-  it("feeds prior rounds into the callback title prompt without duplicating the current run", async () => {
+  it("does not regenerate an existing chat thread title on completed callbacks", async () => {
     const fixture = await track(seedChatCallbackFixture());
+    completedOutputEvents([
+      {
+        eventType: "result",
+        sequenceNumber: 1,
+        eventData: { result: "Use --inspect for debugging." },
+      },
+    ]);
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    let titleRequestCount = 0;
+    mockOpenRouter((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titleRequestCount += 1;
+        return "Replacement Title";
+      }
+      return "Generated summary";
+    });
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const [thread] = await store
+      .set(writeDb$)
+      .select({ title: chatThreads.title })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId))
+      .limit(1);
+    expect(titleRequestCount).toBe(0);
+    expect(thread?.title).toBe("Test thread");
+    await clearAllDetached();
+  });
+
+  it("feeds prior rounds into the callback title prompt without duplicating the current run", async () => {
+    const fixture = await track(seedChatCallbackFixture({ title: null }));
     const prior = await seedAdditionalRun(fixture, {
       prompt: "How do I parse JSON?",
       status: "completed",
@@ -1842,7 +1883,7 @@ describe("POST /api/internal/callbacks/chat", () => {
   });
 
   it("does not fail completed callbacks when title generation returns an upstream error", async () => {
-    const fixture = await track(seedChatCallbackFixture());
+    const fixture = await track(seedChatCallbackFixture({ title: null }));
     completedOutputEvents([
       {
         eventType: "result",
@@ -1871,7 +1912,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       .from(chatThreads)
       .where(eq(chatThreads.id, fixture.threadId))
       .limit(1);
-    expect(thread?.title).toBe("Test thread");
+    expect(thread?.title).toBeNull();
     await clearAllDetached();
   });
 

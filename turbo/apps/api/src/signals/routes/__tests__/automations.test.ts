@@ -9,7 +9,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
@@ -232,20 +232,25 @@ describe("Automations API parity with the legacy schedule surface", () => {
 
     // The new surface reports the SAME cleaned field set as the legacy deploy
     // — comparing the persisted rows (minus identity columns) proves parity.
+    // Both surfaces write the events-first tables (phase 3 of #16847).
     const db = store.set(writeDb$);
     const rows = await db
       .select({
-        name: zeroAgentSchedules.name,
-        triggerType: zeroAgentSchedules.triggerType,
-        cronExpression: zeroAgentSchedules.cronExpression,
-        intervalSeconds: zeroAgentSchedules.intervalSeconds,
-        timezone: zeroAgentSchedules.timezone,
-        prompt: zeroAgentSchedules.prompt,
-        appendSystemPrompt: zeroAgentSchedules.appendSystemPrompt,
-        enabled: zeroAgentSchedules.enabled,
+        name: automations.name,
+        triggerType: automationTriggers.kind,
+        cronExpression: automationTriggers.cronExpression,
+        intervalSeconds: automationTriggers.intervalSeconds,
+        timezone: automationTriggers.timezone,
+        prompt: automations.instruction,
+        appendSystemPrompt: automations.appendSystemPrompt,
+        enabled: automations.enabled,
       })
-      .from(zeroAgentSchedules)
-      .where(eq(zeroAgentSchedules.agentId, fixture.composeId));
+      .from(automations)
+      .innerJoin(
+        automationTriggers,
+        eq(automationTriggers.automationId, automations.id),
+      )
+      .where(eq(automations.agentId, fixture.composeId));
     const legacyRow = rows.find((row) => {
       return row.name === "legacy-create";
     });
@@ -341,8 +346,8 @@ describe("Automations API parity with the legacy schedule surface", () => {
       );
       const expectedReschedulePath =
         triggerCase.label === "loop"
-          ? "/api/internal/callbacks/schedule/loop"
-          : "/api/internal/callbacks/schedule/cron";
+          ? "/api/internal/callbacks/trigger/loop"
+          : "/api/internal/callbacks/trigger/cron";
       expect(newArtifacts.callbackPaths).toContain(expectedReschedulePath);
     },
   );
@@ -464,11 +469,15 @@ describe("Automations API behaviors", () => {
     const db = store.set(writeDb$);
     const [row] = await db
       .select({
-        prompt: zeroAgentSchedules.prompt,
-        cronExpression: zeroAgentSchedules.cronExpression,
+        prompt: automations.instruction,
+        cronExpression: automationTriggers.cronExpression,
       })
-      .from(zeroAgentSchedules)
-      .where(eq(zeroAgentSchedules.id, mutation.automation.id));
+      .from(automations)
+      .innerJoin(
+        automationTriggers,
+        eq(automationTriggers.automationId, automations.id),
+      )
+      .where(eq(automations.id, mutation.automation.id));
     expect(row?.prompt).toBe("Updated prompt");
     expect(row?.cronExpression).toBe("0 18 * * *");
   });
@@ -522,9 +531,9 @@ describe("Automations API behaviors", () => {
 
     const db = store.set(writeDb$);
     const rows = await db
-      .select({ id: zeroAgentSchedules.id })
-      .from(zeroAgentSchedules)
-      .where(eq(zeroAgentSchedules.agentId, fixture.composeId));
+      .select({ id: automations.id })
+      .from(automations)
+      .where(eq(automations.agentId, fixture.composeId));
     expect(rows).toHaveLength(0);
   });
 

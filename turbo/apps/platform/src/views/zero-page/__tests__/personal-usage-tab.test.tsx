@@ -20,6 +20,8 @@ function usageRows(): UsageRecordRow[] {
       title: "Quarterly planning chat",
       credits: 980,
       tokens: 2200,
+      breakdown: [],
+      member: null,
       lastActivityAt: "2026-03-21T10:00:00Z",
     },
     {
@@ -29,6 +31,8 @@ function usageRows(): UsageRecordRow[] {
       title: "Slack customer follow-up",
       credits: 2400,
       tokens: 5100,
+      breakdown: [],
+      member: null,
       lastActivityAt: "2026-03-20T10:00:00Z",
     },
     ...Array.from({ length: 18 }, (_, index) => {
@@ -40,6 +44,8 @@ function usageRows(): UsageRecordRow[] {
         title: `Scheduled digest ${index + 1}`,
         credits: 100 + index,
         tokens: 1000 + index,
+        breakdown: [],
+        member: null,
         lastActivityAt: `2026-03-${day}T10:00:00Z`,
       } satisfies UsageRecordRow;
     }),
@@ -50,6 +56,8 @@ function usageRows(): UsageRecordRow[] {
       title: "Extended CLI audit",
       credits: 3100,
       tokens: 7300,
+      breakdown: [],
+      member: null,
       lastActivityAt: "2026-02-28T10:00:00Z",
     },
   ];
@@ -104,6 +112,10 @@ function mockPersonalUsageStory(): void {
     const offset = (query.page - 1) * query.pageSize;
 
     return respond(200, {
+      period: {
+        start: "2026-03-01T00:00:00.000Z",
+        end: "2026-04-01T00:00:00.000Z",
+      },
       rows: filteredRows.slice(offset, offset + query.pageSize),
       pagination: {
         page: query.page,

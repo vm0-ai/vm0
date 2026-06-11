@@ -32,10 +32,6 @@
       "import": "./src/firewall-expander.ts",
       "types": "./src/firewall-expander.ts"
     },
-    "./firewall-loader": {
-      "import": "./src/firewall-loader.ts",
-      "types": "./src/firewall-loader.ts"
-    },
     "./firewall-rule-matcher": {
       "import": "./src/firewall-rule-matcher.ts",
       "types": "./src/firewall-rule-matcher.ts"
@@ -51,10 +47,6 @@
     "./firewalls/*": {
       "import": "./src/firewalls/*.ts",
       "types": "./src/firewalls/*.ts"
-    },
-    "./github-url": {
-      "import": "./src/github-url.ts",
-      "types": "./src/github-url.ts"
     },
     "./auth-providers": {
       "import": "./src/auth-providers/connector-auth.ts",
@@ -100,7 +92,6 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "yaml": "^2.8.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

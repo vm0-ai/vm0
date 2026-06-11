@@ -72,6 +72,7 @@ function sign(body: string, secret: string = WEBHOOK_SECRET): string {
 
 async function seedAutomation(args?: {
   readonly enabled?: boolean;
+  readonly triggerEnabled?: boolean;
 }): Promise<AutomationFixture> {
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   context.mocks.s3.send.mockResolvedValue({});
@@ -128,6 +129,7 @@ async function seedAutomation(args?: {
       kind: "webhook",
       webhookToken: token,
       encryptedSecret: encryptSecretForTests(WEBHOOK_SECRET),
+      enabled: args?.triggerEnabled ?? true,
     })
     .returning({ id: automationTriggers.id });
   if (!trigger) {
@@ -277,6 +279,19 @@ describe("POST /api/automations/webhooks/:token", () => {
 
   it("returns 404 for a disabled automation", async () => {
     const fixture = await seedAutomation({ enabled: false });
+    const body = JSON.stringify({ event: "ping" });
+
+    const response = await postWebhook(fixture.token, body, {
+      [SIGNATURE_HEADER]: sign(body),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 for a disabled trigger on an enabled automation", async () => {
+    // B3 on #16847: a run fires only when automation.enabled AND
+    // trigger.enabled — the per-trigger switch must gate the inbound hook.
+    const fixture = await seedAutomation({ triggerEnabled: false });
     const body = JSON.stringify({ event: "ping" });
 
     const response = await postWebhook(fixture.token, body, {

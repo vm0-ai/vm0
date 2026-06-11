@@ -253,7 +253,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -351,6 +351,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.CreditUsageRecords]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show ranged personal and team credit usage records in settings, and enable scoped/ranged /api/zero/usage/record queries.",
+    enabled: false,
   },
   [FeatureSwitchKey.ZeroAutomations]: {
     maintainer: "lancy@vm0.ai",

@@ -1384,6 +1384,107 @@ describe("POST /api/zero/chat/messages", () => {
     expect(thread?.title).toBe("Migration Plan");
   });
 
+  it("does not regenerate a chat thread title once one exists", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const threadId = randomUUID();
+    await writeDb.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.agentId,
+      title: "Existing Title",
+    });
+    mockOptionalEnv("OPENROUTER_API_KEY", "title-api-key");
+    let titleRequestCount = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            readonly messages?: readonly { readonly content?: string }[];
+          };
+          if (
+            body.messages?.[0]?.content?.includes(
+              "Generate a short, descriptive title",
+            )
+          ) {
+            titleRequestCount += 1;
+          }
+          return HttpResponse.json({
+            choices: [{ message: { content: "Replacement Title" } }],
+          });
+        },
+      ),
+    );
+
+    await send({
+      agentId: fixture.agentId,
+      prompt: "rename this thread automatically",
+      threadId,
+    });
+    await clearAllDetached();
+
+    const [thread] = await writeDb
+      .select({ title: chatThreads.title })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, threadId))
+      .limit(1);
+    expect(titleRequestCount).toBe(0);
+    expect(thread?.title).toBe("Existing Title");
+  });
+
+  it("does not auto-name a manually renamed chat thread", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const threadId = randomUUID();
+    const renamedAt = new Date("2026-01-01T00:00:00.000Z");
+    await writeDb.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.agentId,
+      title: "Manual Name",
+      renamedAt,
+    });
+    mockOptionalEnv("OPENROUTER_API_KEY", "title-api-key");
+    let titleRequestCount = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            readonly messages?: readonly { readonly content?: string }[];
+          };
+          if (
+            body.messages?.[0]?.content?.includes(
+              "Generate a short, descriptive title",
+            )
+          ) {
+            titleRequestCount += 1;
+          }
+          return HttpResponse.json({
+            choices: [{ message: { content: "Replacement Title" } }],
+          });
+        },
+      ),
+    );
+
+    await send({
+      agentId: fixture.agentId,
+      prompt: "rename this thread automatically",
+      threadId,
+    });
+    await clearAllDetached();
+
+    const [thread] = await writeDb
+      .select({ title: chatThreads.title, renamedAt: chatThreads.renamedAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, threadId))
+      .limit(1);
+    expect(titleRequestCount).toBe(0);
+    expect(thread?.title).toBe("Manual Name");
+    expect(thread?.renamedAt?.toISOString()).toBe(renamedAt.toISOString());
+  });
+
   it("queues an unassociated user message when the thread has an active run", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });

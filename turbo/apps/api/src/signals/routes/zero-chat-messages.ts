@@ -2240,51 +2240,6 @@ function scheduleAssociatedUserMessage(params: {
 }
 
 /**
- * Post a scheduled run's prompt as a user chat message into its linked thread
- * and publish the realtime signals so the client surfaces the run. Mirrors the
- * web user-message path but (a) preserves the thread draft (the post is not
- * user-initiated typing, per the chat-mode schedule design) and (b) is awaited
- * rather than fire-and-forget, so cron/run-now sees the message persisted.
- */
-export async function postScheduleUserMessage(params: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly runId: string;
-  readonly prompt: string;
-  readonly appendQueueMarker: boolean;
-  readonly scheduleId: string;
-  readonly scheduleTitle: string;
-  readonly scheduleSnapshot: ChatMessageScheduleSnapshot;
-}): Promise<void> {
-  await appendAssociatedUserMessage({
-    db: params.db,
-    threadId: params.threadId,
-    userId: params.userId,
-    prompt: params.prompt,
-    runId: params.runId,
-    attachFiles: undefined,
-    clientMessageId: undefined,
-    revokesMessageId: undefined,
-    generationTemplate: undefined,
-    appendQueueMarker: params.appendQueueMarker,
-    clearDraft: false,
-    scheduleId: params.scheduleId,
-    scheduleTitle: params.scheduleTitle,
-    scheduleSnapshot: params.scheduleSnapshot,
-  });
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadMessageCreated:${params.threadId}`,
-  );
-  await publishUserSignal(
-    [params.userId],
-    `chatThreadRunCreated:${params.threadId}`,
-  );
-  await publishThreadListChanged(params.userId);
-}
-
-/**
  * Post an automation run's prompt as a user chat message into its linked
  * thread and publish the realtime signals so the client surfaces the run.
  * Generalizes `postScheduleUserMessage` for the events-first automation path:

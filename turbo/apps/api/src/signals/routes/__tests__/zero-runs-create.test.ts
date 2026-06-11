@@ -3031,6 +3031,42 @@ describe("POST /api/zero/runs", () => {
     expect(volumes[customIndex]?.system).toBeUndefined();
   });
 
+  it("does not let custom skills override seed skill volumes", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      customSkills: ["computer-use"],
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "use computer use", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ additionalVolumes: agentRuns.additionalVolumes })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId));
+    const volumes = run?.additionalVolumes ?? [];
+    const computerUseVolumes = volumes.filter((volume) => {
+      return volume.mountPath === "/home/user/.claude/skills/computer-use";
+    });
+
+    expect(computerUseVolumes).toHaveLength(1);
+    expect(computerUseVolumes[0]).toMatchObject({
+      system: true,
+    });
+    expect(
+      volumes.some((volume) => {
+        return volume.name === "custom-skill@computer-use";
+      }),
+    ).toBeFalsy();
+  });
+
   it("mounts skills using the model provider framework, not the compose framework", async () => {
     const fx = await fixture();
     await trackModelProviders(Promise.resolve({ orgId: fx.orgId }));

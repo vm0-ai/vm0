@@ -1197,10 +1197,16 @@ export {
 } from "./zero-usage-insight";
 export {
   zeroUsageRecordContract,
+  usageRecordKindSchema,
+  usageRecordRangeSchema,
+  usageRecordScopeSchema,
   usageRecordSourceSchema,
   type ZeroUsageRecordContract,
+  type UsageRecordKind,
+  type UsageRecordRange,
   type UsageRecordResponse,
   type UsageRecordRow,
+  type UsageRecordScope,
   type UsageRecordSource,
 } from "./zero-usage-record";
 export {
