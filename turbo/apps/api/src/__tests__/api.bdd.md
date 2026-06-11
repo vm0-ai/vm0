@@ -1510,3 +1510,16 @@ changed: false }`, no Ably publish).
   other-user 404 needs a seeded foreign thread; those stay in the kept legacy.
 - Reduced `zero-chat-threads-mark-read.test.ts` (7 -> 4).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 72 — AGENT RUN CANCEL REJECTIONS (CHAIN-AGENT-RUNS-CANCEL-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `runsCancel` client
+  (`/api/agent/runs/:id/cancel`).
+- Added `agent-runs-cancel-rejections.bdd.test.ts`: cancel rejects unauthenticated
+  callers (401) and 404s an unknown run.
+- Cancelling a real run (running / queued / already-cancelled / not-cancellable,
+  queue drain, callbacks) needs a funded in-flight run (GAP-RUN-CREDITS), and the
+  other-org / sandbox-source 404 variants need seeded runs; those stay in the kept
+  legacy.
+- Reduced `agent-runs-cancel.test.ts` (11 -> 9).
+- Coverage verified (source-only): no regressions vs `main`.

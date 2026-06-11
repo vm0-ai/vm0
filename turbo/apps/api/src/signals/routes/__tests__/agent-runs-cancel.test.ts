@@ -97,32 +97,6 @@ async function createRun(args: {
 }
 
 describe("POST /api/agent/runs/:id/cancel", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await accept(
-      cancelClient().cancel({
-        params: { id: randomUUID() },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 404 when the run does not exist", async () => {
-    await fixture();
-
-    const response = await accept(
-      cancelClient().cancel({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
   it("cancels a running run and publishes side effects", async () => {
     const fx = await fixture();
     const runId = await createRun({

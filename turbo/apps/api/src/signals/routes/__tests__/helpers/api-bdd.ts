@@ -65,6 +65,7 @@ import {
   runsMainContract,
   runsByIdContract,
   runsQueueContract,
+  runsCancelContract,
 } from "@vm0/api-contracts/contracts/runs";
 import {
   storagesListContract,
@@ -354,6 +355,10 @@ export function createBddApi(context: TestContext) {
     runsList: setupApp({ context })(runsMainContract),
     runsById: setupApp({ context })(runsByIdContract),
     runsQueue: setupApp({ context })(runsQueueContract),
+    /** ts-rest client for `/api/agent/runs/:id/cancel`. Cancelling a real run
+     * needs a funded in-flight run (GAP-RUN-CREDITS); the auth and not-found
+     * cases are reachable directly. */
+    runsCancel: setupApp({ context })(runsCancelContract),
     logsList: setupApp({ context })(logsListContract),
     /** ts-rest client for `/api/zero/logs/:id` (single run-log detail). The 200
      * detail needs a funded run (GAP-RUN-CREDITS); the auth, capability and
