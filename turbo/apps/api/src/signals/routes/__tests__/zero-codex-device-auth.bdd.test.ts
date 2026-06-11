@@ -23,12 +23,23 @@ import { isKmsSecretForTests } from "./helpers/encrypt-secret";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy `zero-codex-device-auth.test.ts`.
+// The 5 legacy `it()`s collapse into 2 BDD `it()`s:
+// (1) reject member + start chain (403 member
+// org-scope start before contacting OpenAI auth → 200
+// start returns browser confirmation details + persists
+// an awaiting_user_approval session + encrypts the
+// provider state),
+// (2) cancel + complete chain (200 cancel pending
+// session → 200 complete org-scope imports ChatGPT
+// secrets → 200 complete personal-scope for non-admin).
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
 
-function client() {
+function apiClient() {
   return setupApp({ context })(zeroCodexDeviceAuthContract);
 }
 
@@ -222,7 +233,11 @@ async function chatgptSecret(args: {
   return secret ? await decryptStoredSecretValue(secret.encryptedValue) : null;
 }
 
-describe("Codex device auth routes", () => {
+function sessionHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+describe("BDD Codex device auth — reject member + start chain", () => {
   const fixtures: { readonly userId: string; readonly orgId: string }[] = [];
 
   afterEach(async () => {
@@ -244,41 +259,53 @@ describe("Codex device auth routes", () => {
     return { userId, orgId };
   }
 
-  it("rejects member org-scope starts before contacting OpenAI auth", async () => {
-    const { userId, orgId } = setupUser("org:member");
-    const calls = mockCodexDeviceAuthHttp();
+  it("gwt-wt-wt: 403 member org-scope start before contacting OpenAI auth → 200 start returns browser confirmation details + persists an awaiting_user_approval session + encrypts the provider state", async () => {
+    // Given: a member session + the OpenAI device-auth
+    // endpoints mocked.
 
-    const response = await accept(
-      client().start({
-        headers: { authorization: "Bearer clerk-session" },
+    // When + Then: 403 — the org-scope start is
+    // rejected before any OpenAI HTTP call is made +
+    // no auth session row is created.
+    const memberFixture = setupUser("org:member");
+    const memberCalls = mockCodexDeviceAuthHttp();
+    const memberResponse = await accept(
+      apiClient().start({
+        headers: sessionHeaders(),
         body: { scope: "org" },
       }),
       [403],
     );
+    expect(memberResponse.body.error.code).toBe("FORBIDDEN");
+    await expect(
+      codexDeviceAuthSessions(memberFixture.userId, memberFixture.orgId),
+    ).resolves.toStrictEqual([]);
+    expect(memberCalls.userCode).toHaveLength(0);
 
-    expect(response.body.error.code).toBe("FORBIDDEN");
-    await expect(codexDeviceAuthSessions(userId, orgId)).resolves.toStrictEqual(
-      [],
-    );
-    expect(calls.userCode).toHaveLength(0);
-  });
+    // Given: an admin session + KMS client +
+    // SECRETS_KMS_KEY_ID + the OpenAI device-auth
+    // endpoints mocked.
 
-  it("starts Codex device auth and returns browser confirmation details", async () => {
-    const { userId, orgId } = setupUser();
+    // When + Then: 200 — start returns the browser
+    // URL, verification code, interval, and scope +
+    // the usercode endpoint is called with the
+    // expected client_id + an
+    // awaiting_user_approval session is persisted +
+    // the provider state is encrypted.
+    const startFixture = setupUser();
     const kms = fakeKmsClient();
     setSecretKmsClientForTests(kms.client);
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
-    const calls = mockCodexDeviceAuthHttp();
+    const startCalls = mockCodexDeviceAuthHttp();
 
-    const response = await accept(
-      client().start({
-        headers: { authorization: "Bearer clerk-session" },
+    const startResponse = await accept(
+      apiClient().start({
+        headers: sessionHeaders(),
         body: { scope: "org" },
       }),
       [200],
     );
 
-    expect(response.body).toMatchObject({
+    expect(startResponse.body).toMatchObject({
       type: "codex",
       status: "pending",
       scope: "org",
@@ -286,11 +313,14 @@ describe("Codex device auth routes", () => {
       verificationCode: "ABCD-EFGH",
       interval: 5,
     });
-    expect(calls.userCode).toStrictEqual([
+    expect(startCalls.userCode).toStrictEqual([
       { client_id: "app_EMoamEEZ73f0CkXaXp7hrann" },
     ]);
 
-    const sessions = await codexDeviceAuthSessions(userId, orgId);
+    const sessions = await codexDeviceAuthSessions(
+      startFixture.userId,
+      startFixture.orgId,
+    );
     expect(sessions).toHaveLength(1);
     expect(sessions[0]).toMatchObject({
       connectorType: "codex-oauth-token",
@@ -307,58 +337,96 @@ describe("Codex device auth routes", () => {
     ).toBeTruthy();
     expect(kms.calls).toHaveLength(1);
   });
+});
 
-  it("cancels pending device auth", async () => {
-    const { userId, orgId } = setupUser();
+describe("BDD Codex device auth — cancel + complete chain", () => {
+  const fixtures: { readonly userId: string; readonly orgId: string }[] = [];
+
+  afterEach(async () => {
+    clearMockedEnv();
+    resetSecretKmsClientForTests();
+    while (fixtures.length > 0) {
+      const fixture = fixtures.pop();
+      if (fixture) {
+        await cleanupUser(fixture.userId, fixture.orgId);
+      }
+    }
+  });
+
+  function setupUser(role: "org:admin" | "org:member" = "org:admin") {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    fixtures.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId, role);
+    return { userId, orgId };
+  }
+
+  it("gwt-wt-wt: 200 cancel pending session → 200 complete org-scope imports ChatGPT secrets → 200 complete personal-scope for non-admin", async () => {
+    // Given: an admin session + the OpenAI
+    // device-auth endpoints mocked.
+
+    // When + Then: cancel marks the session
+    // cancelled with a non-null cancelledAt + clears
+    // the approval URL + verification code +
+    // errorMessage.
+    const cancelFixture = setupUser();
     mockCodexDeviceAuthHttp();
 
-    const start = await accept(
-      client().start({
-        headers: { authorization: "Bearer clerk-session" },
+    const cancelStart = await accept(
+      apiClient().start({
+        headers: sessionHeaders(),
         body: { scope: "org" },
       }),
       [200],
     );
-    const cancel = await accept(
-      client().cancel({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { sessionToken: start.body.sessionToken },
+    const cancelResponse = await accept(
+      apiClient().cancel({
+        headers: sessionHeaders(),
+        body: { sessionToken: cancelStart.body.sessionToken },
       }),
       [200],
     );
+    expect(cancelResponse.body).toStrictEqual({ status: "cancelled" });
 
-    expect(cancel.body).toStrictEqual({ status: "cancelled" });
-
-    const sessions = await codexDeviceAuthSessions(userId, orgId);
-    expect(sessions[0]).toMatchObject({
+    const cancelSessions = await codexDeviceAuthSessions(
+      cancelFixture.userId,
+      cancelFixture.orgId,
+    );
+    expect(cancelSessions[0]).toMatchObject({
       status: "cancelled",
       approvalUrl: null,
       verificationCode: null,
       errorMessage: "Codex device auth session was cancelled",
     });
-    expect(sessions[0]?.cancelledAt).toBeInstanceOf(Date);
-  });
+    expect(cancelSessions[0]?.cancelledAt).toBeInstanceOf(Date);
 
-  it("completes org-scope device auth and imports ChatGPT secrets", async () => {
-    const { userId, orgId } = setupUser();
-    const calls = mockCodexDeviceAuthHttp({ tokenScope: "org" });
+    // Given: an admin session + the OpenAI
+    // device-auth endpoints mocked with org-scope
+    // tokens.
 
-    const start = await accept(
-      client().start({
-        headers: { authorization: "Bearer clerk-session" },
+    // When + Then: complete returns
+    // status=complete + created=true with the org
+    // workspace name + the org-scope refresh token
+    // is imported as a ChatGPT secret for the org
+    // sentinel user + the session moves to imported.
+    const orgFixture = setupUser();
+    const orgCalls = mockCodexDeviceAuthHttp({ tokenScope: "org" });
+
+    const orgStart = await accept(
+      apiClient().start({
+        headers: sessionHeaders(),
         body: { scope: "org" },
       }),
       [200],
     );
-    const complete = await accept(
-      client().complete({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { sessionToken: start.body.sessionToken },
+    const orgComplete = await accept(
+      apiClient().complete({
+        headers: sessionHeaders(),
+        body: { sessionToken: orgStart.body.sessionToken },
       }),
       [200],
     );
-
-    expect(complete.body).toMatchObject({
+    expect(orgComplete.body).toMatchObject({
       status: "complete",
       created: true,
       provider: {
@@ -368,52 +436,60 @@ describe("Codex device auth routes", () => {
         planType: "plus",
       },
     });
-    expectDeviceTokenBody(calls);
-    expectOAuthTokenBody(calls);
+    expectDeviceTokenBody(orgCalls);
+    expectOAuthTokenBody(orgCalls);
     await expect(
       chatgptSecret({
-        orgId,
+        orgId: orgFixture.orgId,
         userId: ORG_SENTINEL_USER_ID,
         name: "CHATGPT_REFRESH_TOKEN",
       }),
     ).resolves.toBe("rt_org_synthetic_high_entropy");
 
-    const sessions = await codexDeviceAuthSessions(userId, orgId);
-    expect(sessions[0]?.status).toBe("imported");
-  });
+    const orgSessions = await codexDeviceAuthSessions(
+      orgFixture.userId,
+      orgFixture.orgId,
+    );
+    expect(orgSessions[0]?.status).toBe("imported");
 
-  it("completes personal-scope device auth for non-admin members", async () => {
-    const { userId, orgId } = setupUser("org:member");
-    const calls = mockCodexDeviceAuthHttp({ tokenScope: "personal" });
+    // Given: a non-admin session + the OpenAI
+    // device-auth endpoints mocked with
+    // personal-scope tokens.
 
-    const start = await accept(
-      client().start({
-        headers: { authorization: "Bearer clerk-session" },
+    // When + Then: complete returns
+    // status=complete with the personal workspace
+    // name + the personal-scope refresh token is
+    // imported for the calling member user.
+    const personalFixture = setupUser("org:member");
+    const personalCalls = mockCodexDeviceAuthHttp({ tokenScope: "personal" });
+
+    const personalStart = await accept(
+      apiClient().start({
+        headers: sessionHeaders(),
         body: { scope: "personal" },
       }),
       [200],
     );
-    const complete = await accept(
-      client().complete({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { sessionToken: start.body.sessionToken },
+    const personalComplete = await accept(
+      apiClient().complete({
+        headers: sessionHeaders(),
+        body: { sessionToken: personalStart.body.sessionToken },
       }),
       [200],
     );
-
-    expect(complete.body).toMatchObject({
+    expect(personalComplete.body).toMatchObject({
       status: "complete",
       provider: {
         type: "codex-oauth-token",
         workspaceName: "Personal Acme",
       },
     });
-    expectDeviceTokenBody(calls);
-    expectOAuthTokenBody(calls);
+    expectDeviceTokenBody(personalCalls);
+    expectOAuthTokenBody(personalCalls);
     await expect(
       chatgptSecret({
-        orgId,
-        userId,
+        orgId: personalFixture.orgId,
+        userId: personalFixture.userId,
         name: "CHATGPT_REFRESH_TOKEN",
       }),
     ).resolves.toBe("rt_personal_synthetic_high_entropy");
