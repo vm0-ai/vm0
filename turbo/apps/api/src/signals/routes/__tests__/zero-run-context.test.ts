@@ -384,6 +384,70 @@ describe("GET /api/zero/runs/:id/context", () => {
     expect(response.body.featureFlags).toStrictEqual({ entryFlag: false });
   });
 
+  it("does not fall back to legacy maps when entries are present but invalid", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: compose.composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        ...makeEntriesSnapshot(runId),
+        environment: { LEGACY_ENV: "legacy" },
+        environmentEntries: [{ name: null, value: "invalid" }],
+        networkPolicies: {
+          legacy: {
+            allow: ["legacy-read"],
+            deny: [],
+            ask: [],
+            unknownPolicy: "allow",
+          },
+        },
+        networkPolicyEntries: [
+          {
+            name: "invalid",
+            policy: {
+              allow: ["entry-read"],
+              deny: [],
+              ask: [],
+              unknownPolicy: null,
+            },
+          },
+        ],
+        featureFlags: { legacyFlag: true },
+        featureFlagEntries: [{ name: "invalid", enabled: null }],
+      },
+    ]);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunContextContract);
+
+    const response = await accept(
+      client.getContext({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.environment).toStrictEqual({});
+    expect(response.body.networkPolicies).toBeNull();
+    expect(response.body.featureFlags).toBeNull();
+  });
+
   it("falls back to legacy map fields and omits sparse null values", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
