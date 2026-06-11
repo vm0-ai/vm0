@@ -13,7 +13,7 @@ import { db, uniqueId } from "../test-db";
 
 const migrationSql = readFileSync(
   new URL(
-    "../../migrations/0450_merge_chat_followups_marker.sql",
+    "../../migrations/0451_merge_chat_followups_marker.sql",
     import.meta.url,
   ),
   "utf8",
@@ -37,7 +37,7 @@ async function runInRollbackTransaction(
   }
 }
 
-describe("migration 0450 merge chat followups marker", () => {
+describe("migration 0451 merge chat followups marker", () => {
   it("backfills legacy error placeholders without mutating queue revoke controls", async () => {
     await runInRollbackTransaction(async (tx) => {
       const orgId = uniqueId("org");

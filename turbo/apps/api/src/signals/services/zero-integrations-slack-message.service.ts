@@ -5,7 +5,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { automations } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
@@ -37,12 +37,9 @@ async function resolveScheduleLabel(
   runId: string,
 ): Promise<string | undefined> {
   const [row] = await db
-    .select({ description: zeroAgentSchedules.description })
+    .select({ description: automations.description })
     .from(zeroRuns)
-    .innerJoin(
-      zeroAgentSchedules,
-      eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
-    )
+    .innerJoin(automations, eq(zeroRuns.automationId, automations.id))
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   return row?.description ?? undefined;

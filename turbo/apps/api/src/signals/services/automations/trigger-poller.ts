@@ -50,7 +50,6 @@ interface DueTrigger {
     readonly description: string | null;
     readonly instruction: string;
     readonly appendSystemPrompt: string | null;
-    readonly sourceScheduleId: string | null;
   };
 }
 
@@ -320,9 +319,8 @@ const runTriggerNow$ = command(
       return { kind: "run_error", response: result };
     }
 
-    // The schedule chip: snapshot keeps the label rendering after edits or
-    // deletes; scheduleId links a mirrored automation's source schedule for
-    // navigation (null for natively-created automations).
+    // The schedule chip: the snapshot keeps the label rendering after edits
+    // or deletes.
     await postAutomationUserMessage({
       db,
       threadId: automation.chatThreadId,
@@ -330,10 +328,9 @@ const runTriggerNow$ = command(
       runId: result.body.runId,
       prompt: runInput.prompt,
       appendQueueMarker: result.body.status === "queued",
-      scheduleId: automation.sourceScheduleId ?? undefined,
       scheduleTitle: automation.name,
       scheduleSnapshot: {
-        id: automation.sourceScheduleId ?? automation.id,
+        id: automation.id,
         title: automation.name,
         description: automation.description,
       },
@@ -393,7 +390,6 @@ export const executeDueTriggers$ = command(
         description: automations.description,
         instruction: automations.instruction,
         appendSystemPrompt: automations.appendSystemPrompt,
-        sourceScheduleId: automations.sourceScheduleId,
         automationEnabled: automations.enabled,
       })
       .from(automationTriggers)
@@ -439,7 +435,6 @@ export const executeDueTriggers$ = command(
           description: row.description,
           instruction: row.instruction,
           appendSystemPrompt: row.appendSystemPrompt,
-          sourceScheduleId: row.sourceScheduleId,
         },
       };
 

@@ -7,7 +7,7 @@ import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-thread
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { automations } from "@vm0/db/schema/automation";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
@@ -44,9 +44,9 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
   async function getScheduleRowExists(scheduleId: string): Promise<boolean> {
     const writeDb = store.set(writeDb$);
     const [row] = await writeDb
-      .select({ id: zeroAgentSchedules.id })
-      .from(zeroAgentSchedules)
-      .where(eq(zeroAgentSchedules.id, scheduleId));
+      .select({ id: automations.id })
+      .from(automations)
+      .where(eq(automations.id, scheduleId));
     return Boolean(row);
   }
 
@@ -130,19 +130,17 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     );
     const writeDb = store.set(writeDb$);
     const [schedule] = await writeDb
-      .insert(zeroAgentSchedules)
+      .insert(automations)
       .values({
         agentId: fixture.composeId,
         userId: fixture.userId,
         orgId: fixture.orgId,
         name: "linked",
-        triggerType: "cron",
-        cronExpression: "0 9 * * *",
-        prompt: "Daily update",
-        timezone: "UTC",
+        instruction: "Daily update",
+        interpreterKind: "default",
         chatThreadId: fixture.threadId,
       })
-      .returning({ id: zeroAgentSchedules.id });
+      .returning({ id: automations.id });
     if (!schedule) {
       throw new Error("Expected linked schedule fixture");
     }

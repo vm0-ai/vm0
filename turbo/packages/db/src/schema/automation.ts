@@ -71,12 +71,6 @@ export const automations = pgTable(
 
     enabled: boolean("enabled").default(true).notNull(),
 
-    // Migration provenance: when an automation is created by migrating a
-    // `zero_agent_schedules` row, this links back to that origin row. Used by
-    // the U5 dual-write + backfill for idempotency (one automation per source
-    // schedule). Null for natively-created automations.
-    sourceScheduleId: uuid("source_schedule_id"),
-
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -92,8 +86,6 @@ export const automations = pgTable(
         table.orgId,
         table.userId,
       ),
-      // One automation per migrated source schedule (backfill idempotency).
-      uniqueIndex("idx_automations_source_schedule").on(table.sourceScheduleId),
     ];
   },
 );

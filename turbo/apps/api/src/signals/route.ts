@@ -43,7 +43,6 @@ import { internalCallbacksAgentRoutes } from "./routes/internal-callbacks-agent"
 import { internalCallbacksAgentPhoneRoutes } from "./routes/internal-callbacks-agentphone";
 import { internalCallbacksChatRoutes } from "./routes/internal-callbacks-chat";
 import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks-github-issues";
-import { internalCallbacksScheduleRoutes } from "./routes/internal-callbacks-schedule";
 import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
 import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
 import { internalCallbacksTriggerRoutes } from "./routes/internal-callbacks-trigger";
@@ -218,7 +217,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalCallbacksAgentPhoneRoutes,
   ...internalCallbacksChatRoutes,
   ...internalCallbacksGithubIssuesRoutes,
-  ...internalCallbacksScheduleRoutes,
   ...internalCallbacksSlackOrgRoutes,
   ...internalCallbacksTelegramRoutes,
   ...internalCallbacksTriggerRoutes,

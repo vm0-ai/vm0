@@ -15,7 +15,7 @@ const c = initContract();
 
 /**
  * Automation response schema — shared by all automation endpoints. Mirrors the
- * cleaned schedule projection of a `zero_agent_schedules` row.
+ * cleaned schedule projection of an automation + its time trigger.
  */
 export const automationResponseSchema = z.object({
   id: z.string().uuid(),
