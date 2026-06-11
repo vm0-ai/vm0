@@ -542,7 +542,19 @@ describe("POST /api/zero/report-error", () => {
           {
             runId: fixture.runId,
             sessionId: "session-123",
-            environment: { NODE_ENV: "production" },
+            environmentEntries: [{ name: "NODE_ENV", value: "production" }],
+            networkPolicyEntries: [
+              {
+                name: "github",
+                policy: {
+                  allow: ["repo-read"],
+                  deny: [],
+                  ask: [],
+                  unknownPolicy: "allow",
+                },
+              },
+            ],
+            featureFlagEntries: [{ name: "apiBackend", enabled: true }],
             firewalls: [],
             volumes: [],
           },
@@ -556,11 +568,27 @@ describe("POST /api/zero/report-error", () => {
       [200],
     );
 
-    expect(activityLogJson(uploadedZip()).context).toMatchObject({
+    const activityContext = activityLogJson(uploadedZip()).context as Record<
+      string,
+      unknown
+    >;
+    expect(activityContext).toMatchObject({
       runId: fixture.runId,
       sessionId: "session-123",
       environment: { NODE_ENV: "production" },
+      networkPolicies: {
+        github: {
+          allow: ["repo-read"],
+          deny: [],
+          ask: [],
+          unknownPolicy: "allow",
+        },
+      },
+      featureFlags: { apiBackend: true },
     });
+    expect(activityContext).not.toHaveProperty("environmentEntries");
+    expect(activityContext).not.toHaveProperty("networkPolicyEntries");
+    expect(activityContext).not.toHaveProperty("featureFlagEntries");
   });
 
   it("collects prompts from all runs in a multi-run session", async () => {

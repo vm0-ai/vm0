@@ -28,7 +28,59 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function makeSnapshot(runId: string): Record<string, unknown> {
+function makeEntriesSnapshot(runId: string): Record<string, unknown> {
+  return {
+    runId,
+    prompt: "test prompt",
+    appendSystemPrompt: null,
+    sessionId: null,
+    environmentEntries: [
+      { name: "NODE_ENV", value: "production" },
+      { name: "API_KEY", value: "***" },
+    ],
+    firewalls: [
+      {
+        name: "test-fw",
+        apis: [
+          {
+            base: "https://api.example.com",
+            permissions: [{ name: "read", rules: ["GET /users/*"] }],
+          },
+        ],
+      },
+    ],
+    volumes: [
+      {
+        name: "data",
+        mountPath: "/data",
+        vasStorageName: "vol-1",
+        vasVersionId: "ver-1",
+      },
+    ],
+    artifact: {
+      mountPath: "/artifacts",
+      vasStorageName: "art-1",
+      vasVersionId: "art-ver-1",
+    },
+    networkPolicyEntries: [
+      {
+        name: "github",
+        policy: {
+          allow: ["repo-read"],
+          deny: [],
+          ask: [],
+          unknownPolicy: "allow",
+        },
+      },
+    ],
+    featureFlagEntries: [
+      { name: "computerUse", enabled: true },
+      { name: "dummy", enabled: false },
+    ],
+  };
+}
+
+function makeLegacySnapshot(runId: string): Record<string, unknown> {
   return {
     runId,
     prompt: "test prompt",
@@ -223,7 +275,7 @@ describe("GET /api/zero/runs/:id/context", () => {
       },
       context.signal,
     );
-    context.mocks.axiom.query.mockResolvedValue([makeSnapshot(runId)]);
+    context.mocks.axiom.query.mockResolvedValue([makeEntriesSnapshot(runId)]);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroRunContextContract);
@@ -247,14 +299,21 @@ describe("GET /api/zero/runs/:id/context", () => {
     expect(response.body.firewalls[0]?.name).toBe("test-fw");
     expect(response.body.volumes).toHaveLength(1);
     expect(response.body.artifact).toBeDefined();
-    expect(response.body.networkPolicies).toBeNull();
+    expect(response.body.networkPolicies).toStrictEqual({
+      github: {
+        allow: ["repo-read"],
+        deny: [],
+        ask: [],
+        unknownPolicy: "allow",
+      },
+    });
     expect(response.body.featureFlags).toStrictEqual({
       computerUse: true,
       dummy: false,
     });
   });
 
-  it("omits sparse null Axiom fields before response validation", async () => {
+  it("prefers entries over legacy map fields", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -275,7 +334,81 @@ describe("GET /api/zero/runs/:id/context", () => {
     );
     context.mocks.axiom.query.mockResolvedValue([
       {
-        ...makeSnapshot(runId),
+        ...makeEntriesSnapshot(runId),
+        environment: { LEGACY_ENV: "legacy" },
+        environmentEntries: [{ name: "ENTRY_ENV", value: "entry" }],
+        networkPolicies: {
+          legacy: {
+            allow: ["legacy-read"],
+            deny: [],
+            ask: [],
+            unknownPolicy: "allow",
+          },
+        },
+        networkPolicyEntries: [
+          {
+            name: "entry",
+            policy: {
+              allow: ["entry-read"],
+              deny: [],
+              ask: [],
+              unknownPolicy: "deny",
+            },
+          },
+        ],
+        featureFlags: { legacyFlag: true },
+        featureFlagEntries: [{ name: "entryFlag", enabled: false }],
+      },
+    ]);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunContextContract);
+
+    const response = await accept(
+      client.getContext({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.environment).toStrictEqual({ ENTRY_ENV: "entry" });
+    expect(response.body.networkPolicies).toStrictEqual({
+      entry: {
+        allow: ["entry-read"],
+        deny: [],
+        ask: [],
+        unknownPolicy: "deny",
+      },
+    });
+    expect(response.body.featureFlags).toStrictEqual({ entryFlag: false });
+  });
+
+  it("falls back to legacy map fields and omits sparse null values", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: compose.composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        ...makeLegacySnapshot(runId),
+        environmentEntries: null,
+        networkPolicyEntries: null,
+        featureFlagEntries: null,
         environment: {
           OPENAI_API_KEY: null,
           ZERO_TOKEN: "***",
