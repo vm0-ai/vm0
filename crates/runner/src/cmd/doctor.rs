@@ -158,7 +158,7 @@ impl Warning {
     /// Process-related checks use the pre-scanned `fresh` data (a single
     /// `/proc` scan shared across all warnings). Other checks do their own
     /// minimal I/O (status.json read, HTTP HEAD, flock).
-    async fn persists(&self, fresh: &process::DiscoveredProcesses) -> bool {
+    async fn persists(&self, fresh: &process::DiscoveredProcesses, runner_pids: &[u32]) -> bool {
         match self {
             Self::ApiUnreachable {
                 server_url,
@@ -245,8 +245,9 @@ impl Warning {
                 pid_exists(*pid)
             }
             Self::OrphanFirecracker { pid, .. } | Self::OrphanMitmdump { pid, .. } => {
-                // Resolved if process has exited.
-                pid_exists(*pid)
+                // Resolved if the process exited or a runner registry entry
+                // appeared after the initial scan and now owns the process.
+                pid_exists(*pid) && process::is_orphan(*pid, runner_pids).await
             }
             Self::OrphanNamespace { pool_idx, .. } => {
                 let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
@@ -424,9 +425,24 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
 
         recheck_per_runner_warnings(&home, &fresh, &mut reports).await;
 
+        let rechecks_orphan_process = global_warnings.iter().any(|warning| {
+            matches!(
+                warning,
+                Warning::OrphanFirecracker { .. } | Warning::OrphanMitmdump { .. }
+            )
+        });
+        let fresh_runner_pids: Vec<u32> = if rechecks_orphan_process {
+            crate::live_runner_instances::list(&home)
+                .await
+                .into_iter()
+                .map(|runner| runner.pid)
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut rechecked_global = Vec::new();
         for warning in global_warnings.drain(..) {
-            if warning.persists(&fresh).await {
+            if warning.persists(&fresh, &fresh_runner_pids).await {
                 rechecked_global.push(warning);
             }
         }
@@ -459,7 +475,7 @@ async fn recheck_per_runner_warnings(
 
         let mut rechecked = Vec::new();
         for warning in report.warnings.drain(..) {
-            if warning.persists(fresh).await {
+            if warning.persists(fresh, &[]).await {
                 rechecked.push(warning);
             }
         }
@@ -1508,7 +1524,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         assert!(
-            !warning.persists(&empty_fresh()).await,
+            !warning.persists(&empty_fresh(), &[]).await,
             "warning about R1 must clear after R1 leaves active_runs even though S1 is reused"
         );
     }
@@ -1536,7 +1552,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         // R1 is still active and there's no FC in fresh. Warning persists.
-        assert!(warning.persists(&empty_fresh()).await);
+        assert!(warning.persists(&empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -1568,7 +1584,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         assert!(
-            !warning.persists(&empty_fresh()).await,
+            !warning.persists(&empty_fresh(), &[]).await,
             "warning must clear once the sandbox is tracked as idle"
         );
     }
@@ -1596,7 +1612,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(&empty_fresh()).await);
+        assert!(!warning.persists(&empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -1620,7 +1636,7 @@ mod tests {
             sandbox_id: "S-ghost".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(&empty_fresh()).await);
+        assert!(warning.persists(&empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -1633,7 +1649,38 @@ mod tests {
             sandbox_id: "S-anything".into(),
             base_dir,
         };
-        assert!(!warning.persists(&empty_fresh()).await);
+        assert!(!warning.persists(&empty_fresh(), &[]).await);
+    }
+
+    #[tokio::test]
+    async fn orphan_mitmdump_clears_when_parent_runner_pid_appears() {
+        struct ChildGuard(std::process::Child);
+
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+
+        let child = ChildGuard(
+            std::process::Command::new("sleep")
+                .arg("30")
+                .spawn()
+                .unwrap(),
+        );
+        let warning = Warning::OrphanMitmdump {
+            pid: child.0.id(),
+            port: 32821,
+            ppid: Some(std::process::id()),
+        };
+
+        assert!(warning.persists(&empty_fresh(), &[]).await);
+        assert!(
+            !warning
+                .persists(&empty_fresh(), &[std::process::id()])
+                .await
+        );
     }
 
     #[test]
