@@ -154,7 +154,7 @@ jobs:
           while IFS= read -r changed_file; do
             case "$changed_file" in
               crates/api-contracts/* | \
-              crates/runner/mitm-addon/src/generated/builtin_firewalls.py | \
+              crates/runner/mitm-addon/src/generated/* | \
               turbo/packages/api-contracts/package.json | \
               turbo/packages/api-contracts/tsconfig.json | \
               turbo/packages/api-contracts/src/contracts/* | \
@@ -347,7 +347,7 @@ jobs:
         working-directory: turbo
         run: |
           pnpm -F @vm0/api-contracts generate:rust
-          git diff --exit-code -- ../crates/api-contracts/src/generated ../crates/runner/mitm-addon/src/generated/builtin_firewalls.py
+          git diff --exit-code -- ../crates/api-contracts/src/generated ../crates/runner/mitm-addon/src/generated
 
   mitm-addon-test:
     runs-on: ubuntu-latest
