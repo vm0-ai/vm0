@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.11.0...desktop-v0.11.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* show computer use offline status ([#17318](https://github.com/vm0-ai/vm0/issues/17318)) ([6eb0940](https://github.com/vm0-ai/vm0/commit/6eb094046ff5ca0615791c00008e876c89192d14))
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.10.1...desktop-v0.11.0) (2026-06-11)
 
 
