@@ -327,6 +327,17 @@ describe("Automations v2 API", () => {
     );
     expect(viaAdd.body.error.message).toContain("not enabled");
 
+    // Rotation is gated before trigger resolution, so any id is rejected.
+    const viaRotate = await accept(
+      triggerApi().rotateSecret({
+        params: { id: "00000000-0000-0000-0000-000000000000" },
+        headers: SESSION_HEADERS,
+        body: {},
+      }),
+      [400],
+    );
+    expect(viaRotate.body.error.message).toContain("not enabled");
+
     // Time triggers stay fully available.
     const cron = await accept(
       refApi().addTrigger({
