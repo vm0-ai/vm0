@@ -50,7 +50,7 @@ import {
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import { saveRunSummary$ } from "../services/run-summary.service";
 import {
-  formatChatRunErrorMessage,
+  formatRunErrorForRunOwner$,
   insertAssistantEventMessages$,
   resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,
@@ -1607,12 +1607,14 @@ const handleChatCallback$ = command(({ get, set }, signal: AbortSignal) => {
             chatThread,
             errorMessage,
             getFormattedError: () => {
-              return get(
-                formatChatRunErrorMessage({
+              return set(
+                formatRunErrorForRunOwner$,
+                {
                   chatThreadId: chatThread.chatThreadId,
                   runId,
                   errorMessage,
-                }),
+                },
+                signal,
               );
             },
           });

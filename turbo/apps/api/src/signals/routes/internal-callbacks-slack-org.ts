@@ -43,7 +43,7 @@ import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
-import { formatRunErrorLikeWebMessage } from "../services/zero-chat-thread.service";
+import { formatRunErrorForRunOwner$ } from "../services/zero-chat-thread.service";
 import { waitUntil } from "../context/wait-until";
 import { tapError } from "../utils";
 
@@ -616,7 +616,7 @@ const handleSlackOrgCallback$ = command(
         return get(userFeatureSwitchOverrides(orgId, userId));
       },
       formatRunError: (params) => {
-        return get(formatRunErrorLikeWebMessage(params));
+        return set(formatRunErrorForRunOwner$, params, signal);
       },
       saveRunSummary: (runId, prompt, resultText) => {
         return set(
