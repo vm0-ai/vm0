@@ -28,7 +28,7 @@ import {
   sttDailyRateKey,
   TTS_CONTENT_TYPE,
   TTS_MAX_TEXT_LENGTH,
-  VOICE_IO_STT_MODEL,
+  VOICE_IO_STT_VERBOSE_MODEL,
   VOICE_IO_TTS_MODEL,
   type SpeechPricing,
 } from "../../services/zero-voice-io-post.service";
@@ -756,8 +756,8 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(observedAuthorization).toBe("Bearer test-openai-key");
     expect(observedFileName).toBe("speech.wav");
     expect(observedFileType).toBe("audio/wav");
-    expect(observedModel).toBe(VOICE_IO_STT_MODEL);
-    expect(observedResponseFormat).toBe("json");
+    expect(observedModel).toBe(VOICE_IO_STT_VERBOSE_MODEL);
+    expect(observedResponseFormat).toBe("verbose_json");
 
     const rows = await store
       .set(writeDb$)
@@ -893,7 +893,6 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(observedModel).toBe("whisper-1");
     expect(observedResponseFormat).toBe("verbose_json");
   });
-
 
   it("authorizes a sandbox token carrying file:write on /stt", async () => {
     const fixture = await track(seedVoiceFixture({}));
