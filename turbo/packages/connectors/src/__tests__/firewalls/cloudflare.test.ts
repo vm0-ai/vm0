@@ -175,16 +175,24 @@ describe("cloudflare firewall", () => {
     expect(cloudflareGenerationStats.permissionCount).toBe(permissionCount);
   });
 
-  it("groups Cloudflare permissions by official product area", () => {
-    expect(cloudflareCategories["dns-firewall.read"]).toBe("DNS Firewall");
-    expect(cloudflareCategories["account-waf.write"]).toBe("Account WAF");
-    expect(cloudflareCategories["zone-waf.read"]).toBe("Zone WAF");
-    expect(cloudflareCategories["magic-firewall.write"]).toBe("Magic Firewall");
-    expect(cloudflareCategories["d1.read"]).toBe("D1");
-    expect(cloudflareCategoryOrder).toContain("DNS Firewall");
-    expect(cloudflareCategoryOrder).toContain("Account WAF");
-    expect(cloudflareCategoryOrder).toContain("Zone WAF");
-    expect(cloudflareCategoryOrder).toContain("Magic Firewall");
+  it("groups Cloudflare permissions by official OAuth scope UI category", () => {
+    expect(cloudflareCategories["dns-firewall.read"]).toBe("DNS & Zones");
+    expect(cloudflareCategories["account-waf.write"]).toBe("App Security");
+    expect(cloudflareCategories["zone-waf.read"]).toBe("App Security");
+    expect(cloudflareCategories["magic-firewall.write"]).toBe(
+      "Network Services",
+    );
+    expect(cloudflareCategories["d1.read"]).toBe("Developer Platform");
+    expect(cloudflareCategories["api-tokens.read"]).toBe("Account & Billing");
+    expect(cloudflareCategories["sso-connector.read"]).toBe(
+      "Cloudflare One / Zero Trust",
+    );
+    expect(cloudflareCategoryOrder).toContain("DNS & Zones");
+    expect(cloudflareCategoryOrder).toContain("App Security");
+    expect(cloudflareCategoryOrder).toContain("Network Services");
+    expect(cloudflareCategoryOrder).toContain("Developer Platform");
+    expect(cloudflareCategoryOrder).toContain("Account & Billing");
+    expect(cloudflareCategoryOrder).toContain("Cloudflare One / Zero Trust");
   });
 
   it("defaults Cloudflare readonly permissions to allow", () => {

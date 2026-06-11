@@ -1,8 +1,10 @@
 /**
- * Generate Cloudflare firewall config from Cloudflare's official OpenAPI spec.
+ * Generate Cloudflare firewall config from Cloudflare's official OpenAPI spec
+ * and OAuth scopes list.
  *
  * Data source:
  * - https://github.com/cloudflare/api-schemas
+ * - https://api.cloudflare.com/client/v4/oauth/scopes
  *
  * Cloudflare publishes operation-level `x-api-token-group` metadata in the
  * OpenAPI schema. The groups are the official API token permission groups.
@@ -11,8 +13,9 @@
  * filters read operations down to read groups and mutating operations down to
  * non-read groups.
  *
- * Cloudflare's /oauth/scopes and /user/tokens/permission_groups endpoints are
- * not used here because they require authentication when fetched directly.
+ * Cloudflare's /oauth/scopes endpoint publishes the official OAuth scope
+ * category used for grouping permissions in the UI. It requires authentication,
+ * so update-specs must cache it before this generator runs.
  *
  * Token format (gitleaks: cloudflare-api-key): [A-Za-z0-9_-]{40}
  */
@@ -30,7 +33,10 @@ import {
   writeOutput,
 } from "./codegen";
 import type { OpenApiSpec, PermissionGroup } from "./codegen";
-import { CLOUDFLARE_OPENAPI_URL } from "./cloudflare-sources";
+import {
+  CLOUDFLARE_OAUTH_SCOPES_URL,
+  CLOUDFLARE_OPENAPI_URL,
+} from "./cloudflare-sources";
 
 // Format: [A-Za-z0-9_-]{40} (gitleaks: cloudflare-api-key)
 const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
@@ -59,8 +65,12 @@ type PermissionAction =
 interface NormalizedPermission {
   name: string;
   action: PermissionAction;
-  category: string;
   description: string;
+}
+
+interface OAuthCategoryData {
+  categoriesByPermission: Map<string, string>;
+  displayOrder: string[];
 }
 
 interface BuildStats {
@@ -78,6 +88,7 @@ interface BuildStats {
 interface BuildResult {
   permissions: PermissionGroup[];
   categories: Record<string, string>;
+  categoryOrder: string[];
   defaultAllowed: string[];
   stats: BuildStats;
 }
@@ -188,6 +199,8 @@ const GROUP_NAME_OVERRIDES = new Map<string, string>([
   ["Email Routing Rules Write", "email-routing-rule.write"],
   ["Health Checks Read", "healthcheck.read"],
   ["Health Checks Write", "healthcheck.write"],
+  ["Hyperdrive Read", "query-cache.read"],
+  ["Hyperdrive Write", "query-cache.write"],
   ["IP Prefixes: BGP On Demand Read", "ip-prefix-bgp-on-demand.read"],
   ["IP Prefixes: BGP On Demand Write", "ip-prefix-bgp-on-demand.write"],
   ["IP Prefixes: Read", "ip-prefix.read"],
@@ -204,6 +217,9 @@ const GROUP_NAME_OVERRIDES = new Map<string, string>([
   ],
   ["Magic Firewall Packet Captures - Read PCAPs API", "pcaps-api.read"],
   ["Magic Firewall Packet Captures - Write PCAPs API", "pcaps-api.write"],
+  ["Magic Network Monitoring Admin", "fbm.admin"],
+  ["Magic Network Monitoring Config Read", "fbm.read"],
+  ["Magic Network Monitoring Config Write", "fbm.write"],
   ["Managed headers Read", "managed-headers.read"],
   ["Managed headers Write", "managed-headers.write"],
   ["Page Shield", "page.shield"],
@@ -238,15 +254,35 @@ const GROUP_NAME_OVERRIDES = new Map<string, string>([
   ["Zone Zone Read", "zone.read"],
 ]);
 
-const GROUP_CATEGORY_OVERRIDES = new Map<string, string>([
-  [
-    "Magic Firewall Packet Captures - Read PCAPs API",
-    "Magic Firewall Packet Captures",
-  ],
-  [
-    "Magic Firewall Packet Captures - Write PCAPs API",
-    "Magic Firewall Packet Captures",
-  ],
+const CLOUDFLARE_CATEGORY_LABELS = new Map<string, string>([
+  ["account_and_billing", "Account & Billing"],
+  ["ai_and_machine_learning", "AI & Machine Learning"],
+  ["analytics_and_logs", "Analytics & Logs"],
+  ["app_security", "App Security"],
+  ["cache_and_performance", "Cache & Performance"],
+  ["cloudflare_one", "Cloudflare One / Zero Trust"],
+  ["cloudflare_one_and_zero_trust", "Cloudflare One / Zero Trust"],
+  ["cloudflare_one_zero_trust", "Cloudflare One / Zero Trust"],
+  ["developer_platform", "Developer Platform"],
+  ["dns_and_zones", "DNS & Zones"],
+  ["email_and_messaging", "Email & Messaging"],
+  ["media", "Media"],
+  ["network_services", "Network Services"],
+  ["other", "Other"],
+  ["rules_and_configuration", "Rules & Configuration"],
+]);
+
+const API_TOKEN_ONLY_CATEGORY_OVERRIDES = new Map<string, string>([
+  ["account-api-tokens.read", "Account & Billing"],
+  ["account-api-tokens.write", "Account & Billing"],
+  ["api-tokens.read", "Account & Billing"],
+  ["api-tokens.write", "Account & Billing"],
+  ["billing.read", "Account & Billing"],
+  ["billing.write", "Account & Billing"],
+  ["oauth-client.read", "Account & Billing"],
+  ["oauth-client.write", "Account & Billing"],
+  ["sso-connector.read", "Cloudflare One / Zero Trust"],
+  ["sso-connector.write", "Cloudflare One / Zero Trust"],
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -258,6 +294,61 @@ function stringArray(value: unknown): string[] {
   return value.filter((entry) => {
     return typeof entry === "string";
   });
+}
+
+function categoryLabel(categoryId: string): string {
+  const override = CLOUDFLARE_CATEGORY_LABELS.get(categoryId);
+  if (override) return override;
+
+  return categoryId
+    .split("_")
+    .filter((part) => {
+      return part !== "";
+    })
+    .map((part) => {
+      if (part === "and") return "&";
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
+}
+
+function parseOAuthCategoryData(response: unknown): OAuthCategoryData {
+  if (!isRecord(response)) {
+    throw new Error("Cloudflare OAuth scopes response must be an object");
+  }
+
+  if (response.success !== true) {
+    throw new Error("Cloudflare OAuth scopes response was not successful");
+  }
+
+  if (!Array.isArray(response.result)) {
+    throw new Error("Cloudflare OAuth scopes response result must be an array");
+  }
+
+  const categoriesByPermission = new Map<string, string>();
+  const displayOrder: string[] = [];
+  const seenCategories = new Set<string>();
+
+  for (const rawScope of response.result) {
+    if (!isRecord(rawScope)) continue;
+    if (typeof rawScope.id !== "string") continue;
+    if (typeof rawScope.category !== "string") continue;
+
+    const category = categoryLabel(rawScope.category);
+    categoriesByPermission.set(rawScope.id, category);
+    if (!seenCategories.has(category)) {
+      seenCategories.add(category);
+      displayOrder.push(category);
+    }
+  }
+
+  if (categoriesByPermission.size === 0) {
+    throw new Error(
+      "Cloudflare OAuth scopes response had no categorized scopes",
+    );
+  }
+
+  return { categoriesByPermission, displayOrder };
 }
 
 function hasCfPermissionsRequired(operation: Record<string, unknown>): boolean {
@@ -316,29 +407,14 @@ function permissionAction(permissionName: string): PermissionAction | null {
   return null;
 }
 
-function categoryFromGroupName(groupName: string): string {
-  const override = GROUP_CATEGORY_OVERRIDES.get(groupName);
-  if (override) return override;
-
-  const split = splitGroupAction(groupName);
-  const stem = split?.stem ?? groupName;
-  return stem
-    .replace(/\s*-\s*/g, " - ")
-    .replace(/\s+/g, " ")
-    .replace(/:$/, "")
-    .trim();
-}
-
 function normalizeGroupName(groupName: string): NormalizedPermission | null {
   const overriddenName = GROUP_NAME_OVERRIDES.get(groupName);
   if (overriddenName) {
     const action = permissionAction(overriddenName);
     if (!action) return null;
-    const category = categoryFromGroupName(groupName);
     return {
       name: overriddenName,
       action,
-      category,
       description: `Cloudflare API token group: ${groupName}`,
     };
   }
@@ -352,7 +428,6 @@ function normalizeGroupName(groupName: string): NormalizedPermission | null {
   return {
     name: `${slug}.${split.action}`,
     action: split.action,
-    category: split.stem.trim(),
     description: `Cloudflare API token group: ${groupName}`,
   };
 }
@@ -425,7 +500,10 @@ function getPermissionGroup(
   return created;
 }
 
-function buildGroups(spec: OpenApiSpec): BuildResult {
+function buildGroups(
+  spec: OpenApiSpec,
+  oauthCategoryData: OAuthCategoryData,
+): BuildResult {
   if (!spec.paths) {
     throw new Error("OpenAPI spec has no 'paths'");
   }
@@ -531,12 +609,36 @@ function buildGroups(spec: OpenApiSpec): BuildResult {
     });
 
   const categories: Record<string, string> = {};
+  const missingCategoryPermissions: string[] = [];
   for (const permission of permissions) {
-    const metadata = permissionGroups.get(permission.name)?.metadata;
-    if (metadata) {
-      categories[permission.name] = metadata.category;
+    const category =
+      oauthCategoryData.categoriesByPermission.get(permission.name) ??
+      API_TOKEN_ONLY_CATEGORY_OVERRIDES.get(permission.name);
+    if (!category) {
+      missingCategoryPermissions.push(permission.name);
+      continue;
     }
+    categories[permission.name] = category;
   }
+
+  if (missingCategoryPermissions.length > 0) {
+    throw new Error(
+      "Cloudflare OAuth scopes are missing categories for generated permissions:\n" +
+        missingCategoryPermissions
+          .sort((a, b) => {
+            return a.localeCompare(b);
+          })
+          .map((name) => {
+            return `  - ${name}`;
+          })
+          .join("\n"),
+    );
+  }
+
+  const usedCategories = new Set(Object.values(categories));
+  const categoryOrder = oauthCategoryData.displayOrder.filter((category) => {
+    return usedCategories.has(category);
+  });
 
   const defaultAllowed = permissions
     .filter((permission) => {
@@ -550,13 +652,7 @@ function buildGroups(spec: OpenApiSpec): BuildResult {
 
   stats.permissionCount = permissions.length;
 
-  return { permissions, categories, defaultAllowed, stats };
-}
-
-function categoryOrder(categories: Record<string, string>): string[] {
-  return [...new Set(Object.values(categories))].sort((a, b) => {
-    return a.localeCompare(b);
-  });
+  return { permissions, categories, categoryOrder, defaultAllowed, stats };
 }
 
 function renderStats(stats: BuildStats): string[] {
@@ -578,8 +674,9 @@ function renderStats(stats: BuildStats): string[] {
 
 function generateTypeScript(result: BuildResult): string {
   const lines: string[] = [
-    "// Auto-generated from Cloudflare's official OpenAPI spec.",
+    "// Auto-generated from Cloudflare's official OpenAPI spec and OAuth scopes.",
     `// Source: ${CLOUDFLARE_OPENAPI_URL}`,
+    `// Source: ${CLOUDFLARE_OAUTH_SCOPES_URL}`,
     "// Update sources: cd turbo && pnpm -F @vm0/firewalls-generator update-specs:cloudflare",
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:cloudflare",
     "//",
@@ -616,7 +713,7 @@ function generateTypeScript(result: BuildResult): string {
   lines.push(
     ...renderCategories("cloudflareCategories", "cloudflareFirewall", {
       categories: result.categories,
-      displayOrder: categoryOrder(result.categories),
+      displayOrder: result.categoryOrder,
     }),
   );
   lines.push(
@@ -639,7 +736,13 @@ export async function generate(): Promise<void> {
   const spec = (await res.json()) as OpenApiSpec;
   console.error(`  Spec version: ${spec.info?.version ?? "unknown"}`);
 
-  const result = buildGroups(spec);
+  const oauthScopesRes = await fetchSpec(
+    CLOUDFLARE_OAUTH_SCOPES_URL,
+    "Cloudflare OAuth scopes",
+  );
+  const oauthCategoryData = parseOAuthCategoryData(await oauthScopesRes.json());
+
+  const result = buildGroups(spec, oauthCategoryData);
   const ts = generateTypeScript(result);
 
   logStats(result.permissions);
