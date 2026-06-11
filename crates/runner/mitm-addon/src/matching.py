@@ -1763,6 +1763,7 @@ def match_compiled_firewall_request(
     upper_method = method.upper()
 
     decision = _FirewallDecisionState()
+    unsafe_path: bool | None = True if url_has_backslash else None
 
     for fw_entry in compiled_firewalls.firewalls:
         policy = compiled_network_policies.policies.get(fw_entry.name)
@@ -1774,7 +1775,10 @@ def match_compiled_firewall_request(
 
             rel_path, base_params = base_result
 
-            if url_has_backslash or has_unsafe_path(url_parts.path):
+            if unsafe_path is None:
+                unsafe_path = has_unsafe_path(url_parts.path)
+
+            if unsafe_path:
                 return FirewallBlock(
                     api_entry.base.raw,
                     fw_entry.name,
