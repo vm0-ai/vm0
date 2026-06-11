@@ -47,6 +47,7 @@ _RESPONSES_EVENT_NON_TERMINAL: _ResponsesEventTypeClassification = "non_terminal
 _RESPONSES_EVENT_UNKNOWN: _ResponsesEventTypeClassification = "unknown"
 _JSON_CONTROL_CHAR_MAX = 0x20
 _JSON_PREFILTER_MAX_DEPTH = 256
+_JSON_PREFILTER_MAX_STRING_BYTES = 1024
 _JSON_HEX_BYTES = frozenset(b"0123456789abcdefABCDEF")
 
 _OPENAI_RESPONSES_USAGE_CATEGORIES = (
@@ -76,23 +77,38 @@ def _skip_json_whitespace(body: bytes, i: int) -> int:
     return i
 
 
-def _scan_json_string_end(body: bytes, i: int) -> int | None:
+def _scan_json_string_end(
+    body: bytes,
+    i: int,
+    *,
+    max_string_bytes: int | None = None,
+) -> int | None:
     if i >= len(body) or body[i] != ord('"'):
         return None
     i += 1
+    raw_bytes = 0
     while i < len(body):
         b = body[i]
         if b == ord('"'):
             return i + 1
+        raw_bytes += 1
+        if max_string_bytes is not None and raw_bytes > max_string_bytes:
+            return None
         if b == ord("\\"):
             i += 1
             if i >= len(body):
                 return None
             escape = body[i]
+            raw_bytes += 1
+            if max_string_bytes is not None and raw_bytes > max_string_bytes:
+                return None
             if escape == ord("u"):
                 if i + 4 >= len(body):
                     return None
                 if any(hex_byte not in _JSON_HEX_BYTES for hex_byte in body[i + 1 : i + 5]):
+                    return None
+                raw_bytes += 4
+                if max_string_bytes is not None and raw_bytes > max_string_bytes:
                     return None
                 i += 5
                 continue
@@ -107,7 +123,11 @@ def _scan_json_string_end(body: bytes, i: int) -> int | None:
 
 
 def _read_json_string(body: bytes, i: int) -> tuple[str, int] | None:
-    end = _scan_json_string_end(body, i)
+    end = _scan_json_string_end(
+        body,
+        i,
+        max_string_bytes=_JSON_PREFILTER_MAX_STRING_BYTES,
+    )
     if end is None:
         return None
     try:

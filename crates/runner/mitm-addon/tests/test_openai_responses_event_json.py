@@ -272,6 +272,34 @@ def test_non_string_type_falls_back_to_full_extractor(monkeypatch):
     }
 
 
+def test_oversized_type_falls_back_to_full_extractor(monkeypatch):
+    class FakeExtractor:
+        def __init__(self, **_kwargs):
+            pass
+
+        def feed(self, _body):
+            pass
+
+        def finish(self):
+            return JsonExtractionResult(
+                complete=True,
+                values={
+                    ("type",): "response.completed",
+                    ("usage", "input_tokens"): 5,
+                    ("usage", "output_tokens"): 1,
+                },
+            )
+
+    monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", FakeExtractor)
+
+    assert extract_openai_responses_usage_from_event_json(
+        json.dumps({"type": "x" * 2048}).encode()
+    ) == {
+        "tokens.input": 5,
+        "tokens.output": 1,
+    }
+
+
 def test_returns_none_for_malformed_json():
     assert extract_openai_responses_usage_from_event_json(b'{"type":"response.completed"') is None
 
