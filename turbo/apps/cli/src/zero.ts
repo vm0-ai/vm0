@@ -50,10 +50,11 @@ const COMMAND_CAPABILITY_MAP: Record<
   agent: "agent:read",
   skill: "agent:read",
   connector: "connector:read",
+  // "schedule" is deliberately absent: the rename stub stays out of
+  // token-scoped (agent) help but remains invokable and visible to humans.
   // Tokens minted before #17307 carry "schedule:read"; newer ones carry
-  // "automation:read". Accept both so the commands stay visible regardless
+  // "automation:read". Accept both so the command stays visible regardless
   // of which side (API or CLI) deploys first.
-  schedule: ["schedule:read", "automation:read"],
   automation: ["schedule:read", "automation:read"],
   doctor: null,
   credit: "billing:write",
@@ -146,7 +147,7 @@ export function buildZeroHelpText(
     "  Send AgentPhone?       zero phone message --help",
     "  Upload AgentPhone?     zero phone upload-file --help",
     "  Download AgentPhone?   zero phone download-file --help",
-    "  Set up a schedule?     zero schedule setup --help",
+    "  Automate a task?       zero automation create --help",
     "  List models?          zero model ls",
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",

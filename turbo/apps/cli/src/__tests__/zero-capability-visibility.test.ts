@@ -144,7 +144,6 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
-      "schedule",
       "whoami",
       "generate",
       "web",
@@ -155,6 +154,7 @@ describe("registerZeroCommands", () => {
       "credit",
       "logs",
       "preference",
+      "schedule",
       "secret",
       "github",
       "slack",
@@ -654,7 +654,6 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
-      "schedule",
       "whoami",
       "generate",
       "web",
@@ -662,7 +661,10 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("agent");
   });
 
-  it("should keep schedule visible with a new-style automation:read token", () => {
+  it("hides the schedule rename stub from token-scoped help", () => {
+    // The stub stays out of agent-facing help regardless of capabilities; it
+    // remains registered (and invokable) so `zero schedule ...` prints the
+    // rename notice instead of an unknown-command error.
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["automation:read"],
@@ -671,8 +673,12 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toContain("schedule");
-    expect(hiddenCommandNames(prog)).toContain("agent");
+    expect(hiddenCommandNames(prog)).toContain("schedule");
+    expect(
+      prog.commands.some((cmd) => {
+        return cmd.name() === "schedule";
+      }),
+    ).toBe(true);
   });
 
   it("should show connector when connector:read capability is present", () => {
