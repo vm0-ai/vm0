@@ -121,13 +121,13 @@ describe("resolveFirewallSelections", () => {
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.apis.length).toBeGreaterThan(1);
-    expect(
-      expanded[0]!.apis.every((api) => {
-        return api.permissions?.every((p) => {
-          return p.name === "gmail";
-        });
-      }),
-    ).toBe(true);
+    for (const api of expanded[0]!.apis) {
+      expect(
+        api.permissions?.map((p) => {
+          return p.name;
+        }),
+      ).toEqual(["gmail"]);
+    }
   });
 
   it("collectAndValidatePermissions accepts mixed empty and non-empty apis", () => {
