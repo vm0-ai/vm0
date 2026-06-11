@@ -16,6 +16,7 @@ const baseHostState: ComputerUseHostRuntimeState = {
   lastHeartbeatAt: null,
   lastCommandAt: null,
   lastError: null,
+  recovery: null,
   errorLog: [],
   recentAuditEvents: [],
   localCommandLog: [],
@@ -220,6 +221,26 @@ describe("desktop tray menu", () => {
     );
 
     const computerUseMenu = submenu(findItem(menu, "Computer Use: Online"));
+    const stopItem = findItem(computerUseMenu, "Stop Computer Use");
+
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(stopItem.enabled).toBe(true);
+    click(stopItem);
+    expect(stopComputerUse).toHaveBeenCalledOnce();
+  });
+
+  it("keeps stop enabled while Computer Use is recovering", () => {
+    const stopComputerUse = vi.fn();
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "recovering" }),
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions({ stopComputerUse }),
+    );
+
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Recovering"));
     const stopItem = findItem(computerUseMenu, "Stop Computer Use");
 
     expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);

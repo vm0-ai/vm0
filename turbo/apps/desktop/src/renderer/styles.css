@@ -701,7 +701,8 @@ button {
   background: #eef2f6;
 }
 
-.status-connecting {
+.status-connecting,
+.status-recovering {
   color: #175cd3;
   background: #eff8ff;
 }

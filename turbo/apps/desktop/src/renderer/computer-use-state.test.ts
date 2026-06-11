@@ -24,6 +24,7 @@ function computerUseState(
       lastHeartbeatAt: null,
       lastCommandAt: null,
       lastError: null,
+      recovery: null,
       errorLog: [],
       recentAuditEvents: [],
       localCommandLog: [],
@@ -117,6 +118,14 @@ describe("shouldAutoStartComputerUse", () => {
       shouldAutoStartComputerUse(
         computerUseState({
           host: { ...computerUseState().host, status: "connecting" },
+        }),
+        signedInAuth,
+      ),
+    ).toBe(false);
+    expect(
+      shouldAutoStartComputerUse(
+        computerUseState({
+          host: { ...computerUseState().host, status: "recovering" },
         }),
         signedInAuth,
       ),
