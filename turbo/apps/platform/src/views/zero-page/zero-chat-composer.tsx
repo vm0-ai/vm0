@@ -1061,12 +1061,12 @@ function TemplatePreview({
     );
     if (nextIndex !== hoverSlideIndex) {
       const nextImage = slideImages[nextIndex] ?? item.previewImage;
+      event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
       if (nextIndex === 0) {
         setHover({ slug: item.slug, index: nextIndex });
         return;
       }
 
-      event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
       if (presentationPreviewImageDecoded(nextImage)) {
         setHover({ slug: item.slug, index: nextIndex });
         return;
@@ -1100,7 +1100,8 @@ function TemplatePreview({
         );
       }}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => {
+      onMouseLeave={(event) => {
+        delete event.currentTarget.dataset.targetSlideIndex;
         setHover(null);
       }}
     >
