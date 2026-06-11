@@ -84,50 +84,15 @@ Notes:
         }
 
         const tmpAudio = join(tmpdir(), `zero-audio-${Date.now()}.wav`);
+        let tmpVideo: string | undefined;
 
-        if (options.file) {
-          // Use local file directly — no download needed
-          const videoPath = options.file;
-          try {
-            execFileSync(
-              "ffmpeg",
-              [
-                "-i",
-                videoPath,
-                "-vn",
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-c:a",
-                "pcm_s16le",
-                "-map_metadata",
-                "-1",
-                tmpAudio,
-                "-y",
-                "-loglevel",
-                "error",
-              ],
-              { stdio: ["ignore", "ignore", "pipe"] },
-            );
+        try {
+          let videoPath: string;
 
-            const result = await transcribeAudio(tmpAudio, {
-              verbose: options.timestamps !== false,
-            });
-
-            process.stdout.write(
-              formatTranscript(result.text, result.segments) + "\n",
-            );
-          } finally {
-            try {
-              unlinkSync(tmpAudio);
-            } catch {
-              // best-effort cleanup
-            }
-          }
-        } else {
-          const tmpVideo = join(tmpdir(), `zero-video-${Date.now()}.mp4`);
-          try {
+          if (options.file) {
+            videoPath = options.file;
+          } else {
+            tmpVideo = join(tmpdir(), `zero-video-${Date.now()}.mp4`);
             if (options.url) {
               execFileSync("curl", ["-sS", "-L", "-o", tmpVideo, options.url], {
                 stdio: ["ignore", "ignore", "pipe"],
@@ -135,43 +100,45 @@ Notes:
             } else {
               await downloadWebFile(options.fileId as string, tmpVideo);
             }
+            videoPath = tmpVideo;
+          }
 
-            execFileSync(
-              "ffmpeg",
-              [
-                "-i",
-                tmpVideo,
-                "-vn",
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-c:a",
-                "pcm_s16le",
-                "-map_metadata",
-                "-1",
-                tmpAudio,
-                "-y",
-                "-loglevel",
-                "error",
-              ],
-              { stdio: ["ignore", "ignore", "pipe"] },
-            );
+          execFileSync(
+            "ffmpeg",
+            [
+              "-i",
+              videoPath,
+              "-vn",
+              "-ar",
+              "16000",
+              "-ac",
+              "1",
+              "-c:a",
+              "pcm_s16le",
+              "-map_metadata",
+              "-1",
+              tmpAudio,
+              "-y",
+              "-loglevel",
+              "error",
+            ],
+            { stdio: ["ignore", "ignore", "pipe"] },
+          );
 
-            const result = await transcribeAudio(tmpAudio, {
-              verbose: options.timestamps !== false,
-            });
+          const result = await transcribeAudio(tmpAudio, {
+            verbose: options.timestamps !== false,
+          });
 
-            process.stdout.write(
-              formatTranscript(result.text, result.segments) + "\n",
-            );
-          } finally {
-            for (const path of [tmpVideo, tmpAudio]) {
-              try {
-                unlinkSync(path);
-              } catch {
-                // best-effort cleanup
-              }
+          process.stdout.write(
+            formatTranscript(result.text, result.segments) + "\n",
+          );
+        } finally {
+          for (const path of [tmpAudio, tmpVideo]) {
+            if (!path) continue;
+            try {
+              unlinkSync(path);
+            } catch {
+              // best-effort cleanup
             }
           }
         }
