@@ -19,6 +19,7 @@ import {
   hashContent,
   writeSpecFile,
 } from "./codegen";
+import { CLOUDFLARE_OPENAPI_URL } from "./cloudflare-sources";
 import {
   STRIPE_OPENAPI_URL,
   STRIPE_PERMISSIONS_URL,
@@ -247,6 +248,10 @@ const UPDATERS: Updater[] = [
   staticUpdater("clerk", [
     "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2025-11-10.yml",
   ]),
+  // Cloudflare's /oauth/scopes and /user/tokens/permission_groups endpoints
+  // require authentication when fetched directly, so this updater intentionally
+  // caches only the public OpenAPI schema.
+  staticUpdater("cloudflare", [CLOUDFLARE_OPENAPI_URL]),
   staticUpdater("axiom", [
     "https://axiom.co/docs/restapi/versions/v2.json",
     "https://axiom.co/docs/restapi/versions/v1.json",
