@@ -19,6 +19,7 @@ import { zeroHostCommand } from "../index";
 const FILES_URL = "http://localhost:3000/api/zero/host/sites/:publicSlug/files";
 const HOSTED_SITE_URL =
   "https://demo-site-a1b2c3d4-release-01.sites.example.com";
+const R2_DOWNLOAD_URL = "https://r2.example.com/demo-site";
 
 function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -38,6 +39,7 @@ describe("zero host clone command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
     vi.stubEnv("VM0_TOKEN", "test-token");
     tempDir = join(tmpdir(), `zero-host-clone-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
@@ -73,6 +75,7 @@ describe("zero host clone command", () => {
               size: index.byteLength,
               sha256: sha256(index),
               contentType: "text/html; charset=utf-8",
+              downloadUrl: `${R2_DOWNLOAD_URL}/index.html?sig=test`,
             },
             {
               path: "/assets/app.js",
@@ -80,14 +83,15 @@ describe("zero host clone command", () => {
               sha256: sha256(script),
               contentType: "application/javascript; charset=utf-8",
               immutable: true,
+              downloadUrl: `${R2_DOWNLOAD_URL}/assets/app.js?sig=test`,
             },
           ],
         });
       }),
-      http.get(`${HOSTED_SITE_URL}/index.html`, () => {
+      http.get(`${R2_DOWNLOAD_URL}/index.html`, () => {
         return new HttpResponse(index);
       }),
-      http.get(`${HOSTED_SITE_URL}/assets/app.js`, () => {
+      http.get(`${R2_DOWNLOAD_URL}/assets/app.js`, () => {
         return new HttpResponse(script);
       }),
     );
@@ -135,11 +139,12 @@ describe("zero host clone command", () => {
               size: index.byteLength,
               sha256: sha256(index),
               contentType: "text/html; charset=utf-8",
+              downloadUrl: `${R2_DOWNLOAD_URL}/index.html?sig=test`,
             },
           ],
         });
       }),
-      http.get(`${HOSTED_SITE_URL}/index.html`, () => {
+      http.get(`${R2_DOWNLOAD_URL}/index.html`, () => {
         return new HttpResponse(index);
       }),
     );

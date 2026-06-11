@@ -34,7 +34,7 @@ Examples:
 Notes:
   - Authenticates via ZERO_TOKEN (requires host:read capability)
   - Only hosted sites owned by the active org can be cloned
-  - Downloads files from the public hosted site URL and verifies size/hash
+  - Downloads files directly from R2 and verifies size/hash
   - The destination directory must be empty or not exist`,
   )
   .action(
