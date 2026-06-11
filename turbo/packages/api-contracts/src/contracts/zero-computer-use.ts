@@ -47,7 +47,7 @@ export const computerUseCommandErrorCodeSchema = z.enum([
   "timeout",
 ]);
 
-const hostNameSchema = z.string().trim().min(1).max(128);
+const hostNameSchema = z.string().trim().min(1).max(253);
 const hostVersionSchema = z.string().trim().min(1).max(64);
 const hostOsVersionSchema = z.string().trim().min(1).max(128);
 const hostIdPathParamsSchema = z.object({
@@ -319,6 +319,7 @@ export function isExpiredScreenshotPointer(
 
 export const computerUseHostSchema = z.object({
   id: z.string(),
+  hostName: z.string().optional(),
   displayName: z.string(),
   appVersion: z.string(),
   osVersion: z.string(),

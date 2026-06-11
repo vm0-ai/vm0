@@ -1,6 +1,8 @@
+import os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ComputerUseHostRuntime,
+  readSystemHostName,
   type ComputerUseHostFetch,
 } from "./computer-use-host";
 import type {
@@ -55,7 +57,7 @@ function createRuntime(
     });
   const runtime = new ComputerUseHostRuntime({
     platformUrl: new URL("https://app.vm0.ai"),
-    displayName: "Zero Desktop",
+    hostName: "lancy-macbook-pro.local",
     appVersion: "1.2.3",
     sessionFetch,
     hostFetch,
@@ -73,10 +75,24 @@ function createRuntime(
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 describe("ComputerUseHostRuntime", () => {
+  it("reads the system hostname with an app-name fallback", () => {
+    const hostname = vi
+      .spyOn(os, "hostname")
+      .mockReturnValue(" lancy-macbook-pro.local ");
+
+    expect(readSystemHostName("Zero Computer Use")).toBe(
+      "lancy-macbook-pro.local",
+    );
+
+    hostname.mockReturnValue(" ");
+    expect(readSystemHostName("Zero Computer Use")).toBe("Zero Computer Use");
+  });
+
   it("does not register a host until manually started", async () => {
     vi.useFakeTimers();
     const { runtime, sessionFetch, hostFetch } = createRuntime();
@@ -105,7 +121,7 @@ describe("ComputerUseHostRuntime", () => {
     expect(url).toBe("https://api.vm0.ai/api/zero/computer-use/hosts/start");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      hostName: "Zero Desktop",
+      hostName: "lancy-macbook-pro.local",
       appVersion: "1.2.3",
       permissions: {
         accessibility: true,
