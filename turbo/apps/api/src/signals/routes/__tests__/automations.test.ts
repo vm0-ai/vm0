@@ -8,10 +8,8 @@ import { scheduleListResponseSchema } from "@vm0/api-contracts/contracts/zero-sc
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -93,24 +91,6 @@ async function seedFixture(
   );
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
-}
-
-async function enableAutomations(fixture: SchedulesFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ZeroAutomations]: true },
-  });
-}
-
-async function disableAutomations(fixture: SchedulesFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ZeroAutomations]: false },
-  });
 }
 
 function expectErrorCode(response: TestApiResponse): string {
@@ -206,7 +186,6 @@ const TRIGGER_CASES: readonly TriggerCase[] = [
 describe("Automations API parity with the legacy schedule surface", () => {
   it("create + list produce equivalent automation/schedule rows", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
 
     const oldResponse = await requestJson(
       "/api/zero/schedules",
@@ -322,7 +301,6 @@ describe("Automations API parity with the legacy schedule surface", () => {
           },
         ],
       });
-      await enableAutomations(fixture);
 
       const oldScheduleId = fixture.scheduleIds[0];
       const newScheduleId = fixture.scheduleIds[1];
@@ -362,93 +340,6 @@ describe("Automations API parity with the legacy schedule surface", () => {
   );
 });
 
-describe("Automations API feature-switch gating", () => {
-  it("returns 404 on every automation endpoint when the switch is off", async () => {
-    const fixture = await seedFixture({
-      schedules: [
-        {
-          name: "gated",
-          prompt: "Run me",
-          cronExpression: "0 9 * * *",
-          enabled: true,
-        },
-      ],
-    });
-    const scheduleId = fixture.scheduleIds[0];
-    if (!scheduleId) {
-      throw new Error("Expected seeded schedule");
-    }
-    // The switch is globally on (#17307); an explicit false override keeps the
-    // gating path covered until the switch is deleted.
-    await disableAutomations(fixture);
-
-    const create = await requestJson(
-      "/api/automations",
-      jsonInit("POST", {
-        name: "blocked",
-        agentId: fixture.composeId,
-        cronExpression: "0 9 * * *",
-        prompt: "Should not be created",
-      }),
-    );
-    expect(create.status).toBe(404);
-    expect(expectErrorCode(create)).toBe("NOT_FOUND");
-
-    const list = await requestJson("/api/automations", {
-      method: "GET",
-      headers: SESSION_HEADERS,
-    });
-    expect(list.status).toBe(404);
-
-    const update = await requestJson(
-      "/api/automations/gated",
-      jsonInit("PUT", {
-        agentId: fixture.composeId,
-        cronExpression: "0 10 * * *",
-        prompt: "Should not update",
-      }),
-    );
-    expect(update.status).toBe(404);
-
-    const enable = await requestJson(
-      "/api/automations/gated/enable",
-      jsonInit("POST", { agentId: fixture.composeId }),
-    );
-    expect(enable.status).toBe(404);
-
-    const disable = await requestJson(
-      "/api/automations/gated/disable",
-      jsonInit("POST", { agentId: fixture.composeId }),
-    );
-    expect(disable.status).toBe(404);
-
-    const run = await requestJson(
-      "/api/automations/run",
-      jsonInit("POST", { automationId: scheduleId }),
-    );
-    expect(run.status).toBe(404);
-
-    const del = await requestJson(
-      `/api/automations/gated?agentId=${fixture.composeId}`,
-      { method: "DELETE", headers: SESSION_HEADERS },
-    );
-    expect(del.status).toBe(404);
-
-    // The legacy surface is unaffected while the switch is off.
-    const legacyList = await requestJson("/api/zero/schedules", {
-      method: "GET",
-      headers: SESSION_HEADERS,
-    });
-    expect(legacyList.status).toBe(200);
-    const parsed = scheduleListResponseSchema.parse(legacyList.body);
-    expect(
-      parsed.schedules.some((schedule) => {
-        return schedule.name === "gated";
-      }),
-    ).toBeTruthy();
-  });
-});
-
 describe("Automations API behaviors", () => {
   it("updates an existing automation by name via PUT", async () => {
     const fixture = await seedFixture({
@@ -461,7 +352,6 @@ describe("Automations API behaviors", () => {
         },
       ],
     });
-    await enableAutomations(fixture);
 
     const response = await requestJson(
       "/api/automations/editable",
@@ -505,7 +395,6 @@ describe("Automations API behaviors", () => {
         },
       ],
     });
-    await enableAutomations(fixture);
 
     const enabled = await requestJson(
       "/api/automations/toggle/enable",
@@ -533,7 +422,6 @@ describe("Automations API behaviors", () => {
         },
       ],
     });
-    await enableAutomations(fixture);
 
     const delStatus = await requestStatus(
       `/api/automations/removable?agentId=${fixture.composeId}`,

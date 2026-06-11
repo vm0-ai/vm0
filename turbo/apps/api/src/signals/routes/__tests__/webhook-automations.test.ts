@@ -107,7 +107,7 @@ async function seedFixture(): Promise<SchedulesFixture> {
   return fixture;
 }
 
-async function enableAutomations(
+async function enableWebhookTriggers(
   fixture: SchedulesFixture,
   options?: { readonly webhookTriggers?: boolean },
 ): Promise<void> {
@@ -116,19 +116,9 @@ async function enableAutomations(
     orgId: fixture.orgId,
     userId: fixture.userId,
     switches: {
-      [FeatureSwitchKey.ZeroAutomations]: true,
       [FeatureSwitchKey.AutomationWebhookTriggers]:
         options?.webhookTriggers ?? true,
     },
-  });
-}
-
-async function disableAutomations(fixture: SchedulesFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ZeroAutomations]: false },
   });
 }
 
@@ -139,7 +129,7 @@ function expectErrorCode(response: TestApiResponse): string {
 describe("Webhook automations management API", () => {
   it("creates a webhook automation, returns the url + secret once, and persists rows", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
+    await enableWebhookTriggers(fixture);
 
     const response = await requestJson(
       "/api/automations/webhooks",
@@ -222,7 +212,7 @@ describe("Webhook automations management API", () => {
 
   it("links an existing owned chat thread when chatThreadId is supplied", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
+    await enableWebhookTriggers(fixture);
 
     const db = store.set(writeDb$);
     const [thread] = await db
@@ -250,7 +240,7 @@ describe("Webhook automations management API", () => {
 
   it("rejects a chat thread that is not owned by the caller", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
+    await enableWebhookTriggers(fixture);
 
     const db = store.set(writeDb$);
     const [thread] = await db
@@ -279,7 +269,7 @@ describe("Webhook automations management API", () => {
 
   it("returns 404 when the target agent is not visible", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
+    await enableWebhookTriggers(fixture);
 
     const response = await requestJson(
       "/api/automations/webhooks",
@@ -295,7 +285,7 @@ describe("Webhook automations management API", () => {
 
   it("lists webhook automations without the secret", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
+    await enableWebhookTriggers(fixture);
 
     const created = webhookAutomationCreateResponseSchema.parse(
       (
@@ -327,7 +317,7 @@ describe("Webhook automations management API", () => {
 
   it("deletes a webhook automation and cascades the trigger", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
+    await enableWebhookTriggers(fixture);
 
     const created = webhookAutomationCreateResponseSchema.parse(
       (
@@ -363,7 +353,7 @@ describe("Webhook automations management API", () => {
 
   it("returns 404 deleting an automation owned by another scope", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
+    await enableWebhookTriggers(fixture);
 
     const delStatus = await requestStatus(
       "/api/automations/webhooks/00000000-0000-0000-0000-000000000000",
@@ -374,7 +364,7 @@ describe("Webhook automations management API", () => {
 
   it("accepts the minted token at the inbound webhook route end-to-end", async () => {
     const fixture = await seedFixture();
-    await enableAutomations(fixture);
+    await enableWebhookTriggers(fixture);
 
     const created = webhookAutomationCreateResponseSchema.parse(
       (
@@ -436,41 +426,11 @@ describe("Webhook automations management API", () => {
 });
 
 describe("Webhook automations management feature gating", () => {
-  it("returns 404 on every endpoint when the switch is off", async () => {
-    const fixture = await seedFixture();
-    // The switch is globally on (#17307); an explicit false override keeps the
-    // gating path covered until the switch is deleted.
-    await disableAutomations(fixture);
-
-    const create = await requestJson(
-      "/api/automations/webhooks",
-      jsonInit("POST", {
-        name: "blocked",
-        instruction: "Should not be created.",
-        agentId: fixture.composeId,
-      }),
-    );
-    expect(create.status).toBe(404);
-    expect(expectErrorCode(create)).toBe("NOT_FOUND");
-
-    const list = await requestJson("/api/automations/webhooks", {
-      method: "GET",
-      headers: SESSION_HEADERS,
-    });
-    expect(list.status).toBe(404);
-
-    const del = await requestStatus(
-      "/api/automations/webhooks/00000000-0000-0000-0000-000000000000",
-      { method: "DELETE", headers: SESSION_HEADERS },
-    );
-    expect(del).toBe(404);
-  });
-
   it("returns 404 creating when only the webhook trigger switch is off", async () => {
     // Creating a webhook automation mints a webhook trigger, so it is gated
-    // by AutomationWebhookTriggers even with ZeroAutomations on (#17307).
+    // by AutomationWebhookTriggers (#17307).
     const fixture = await seedFixture();
-    await enableAutomations(fixture, { webhookTriggers: false });
+    await enableWebhookTriggers(fixture, { webhookTriggers: false });
 
     const create = await requestJson(
       "/api/automations/webhooks",

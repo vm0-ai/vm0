@@ -358,12 +358,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show ranged personal credit usage records and team member usage aggregates in settings, and enable scoped/ranged /api/zero/usage/record queries.",
     enabled: true,
   },
-  [FeatureSwitchKey.ZeroAutomations]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Expose the Automations API surface (/api/automations) over the shared automation service. Fully on since #17307 (the schedule surface is being retired); the switch is removed once the dual-mode consumers are gone.",
-    enabled: true,
-  },
   [FeatureSwitchKey.AutomationWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",
     description:

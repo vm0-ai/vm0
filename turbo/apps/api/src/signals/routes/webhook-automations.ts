@@ -15,7 +15,6 @@ import {
   listWebhookAutomations$,
   type WebhookAutomationView,
 } from "../services/webhook-automations.service";
-import { automationsEnabled$ } from "./automations";
 import { webhookTriggersEnabled$ } from "./automations-v2";
 import type { RouteEntry } from "../route";
 
@@ -24,9 +23,6 @@ function toResponse(view: WebhookAutomationView): WebhookAutomationResponse {
 }
 
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
   // Creating a webhook automation mints a webhook trigger — gated like the
   // resource API's webhook trigger creation (#17307).
   if (!(await get(webhookTriggersEnabled$))) {
@@ -69,10 +65,6 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const automations = await set(
     listWebhookAutomations$,
@@ -87,10 +79,6 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(webhookAutomationsByIdContract.delete));
 

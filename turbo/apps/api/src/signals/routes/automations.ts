@@ -52,27 +52,7 @@ function toAutomationMutation(response: {
   };
 }
 
-// The Automations API is gated behind the zeroAutomations switch. When off, the
-// surface is not reachable: handlers report not-found so the new paths are
-// indistinguishable from unmounted routes. Shared by every automation surface
-// (this one, the webhook-automation management routes, and the v2 resource).
-export const automationsEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ZeroAutomations, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
-
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(bodyResultOf(automationsMainContract.create));
   signal.throwIfAborted();
@@ -115,10 +95,6 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsByNameContract.update));
   const bodyResult = await get(bodyResultOf(automationsByNameContract.update));
@@ -163,10 +139,6 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const listInner$ = command(async ({ get }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const result = await get(
     zeroScheduleList({ orgId: auth.orgId, userId: auth.userId }),
@@ -176,10 +148,6 @@ const listInner$ = command(async ({ get }, signal: AbortSignal) => {
 });
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsByNameContract.delete));
   const query = get(queryOf(automationsByNameContract.delete));
@@ -203,10 +171,6 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const disableInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsEnableContract.disable));
   const bodyResult = await get(bodyResultOf(automationsEnableContract.disable));
@@ -237,10 +201,6 @@ const disableInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const enableInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsEnableContract.enable));
   const bodyResult = await get(bodyResultOf(automationsEnableContract.enable));
@@ -282,10 +242,6 @@ const enableInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const runNowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound("Resource not found");
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(bodyResultOf(automationRunContract.run));
   signal.throwIfAborted();

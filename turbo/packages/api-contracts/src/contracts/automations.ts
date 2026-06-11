@@ -9,8 +9,7 @@ const c = initContract();
  * automation service that also backs the legacy `/api/zero/schedules` routes.
  * The field set is the post-cleanup schedule set (no secrets / vars /
  * volumeVersions); the two surfaces drive the same service and therefore the
- * same agent run + chat-thread rendering. Gated behind the `zeroAutomations`
- * feature switch — when off, these endpoints are not mounted (404).
+ * same agent run + chat-thread rendering.
  */
 
 /**

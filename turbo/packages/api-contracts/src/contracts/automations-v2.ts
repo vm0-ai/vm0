@@ -9,7 +9,7 @@ const c = initContract();
  * identity + intent (agent, instruction, one linked chat thread, enabled),
  * carrying N triggers (cron / once / loop / webhook) that only decide WHEN it
  * fires. Replaces the split schedule/webhook surfaces, which remain as
- * deprecated aliases. Gated behind the `zeroAutomations` feature switch.
+ * deprecated aliases.
  *
  * `:ref` resolves an automation by id (UUID) or by name; a name shared across
  * agents within the org/user scope is ambiguous and rejected with 400 — use
