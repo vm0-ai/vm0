@@ -1407,9 +1407,29 @@ function IllustrationTemplatePreview({
         src={item.previewImage}
         alt=""
         title={`${item.title} illustration preview`}
-        className="h-full w-full object-cover"
+        className="h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
         loading="lazy"
+        decoding="async"
+        onLoad={(event) => {
+          const image = event.currentTarget;
+          detach(
+            markIllustrationPreviewImageLoaded(item.previewImage, image),
+            Reason.DomCallback,
+          );
+        }}
+        onError={(event) => {
+          event.currentTarget.parentElement
+            ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
+            ?.removeAttribute("hidden");
+        }}
       />
+      <div
+        data-illustration-preview-error=""
+        hidden
+        className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
+      >
+        <IconTemplate size={28} stroke={1.5} />
+      </div>
       <button
         type="button"
         aria-label={`View template ${item.title}`}
@@ -1421,6 +1441,94 @@ function IllustrationTemplatePreview({
       >
         <IconEye size={16} stroke={1.8} />
       </button>
+    </div>
+  );
+}
+
+interface IllustrationPreviewImageCache {
+  readonly decoded: Set<string>;
+}
+
+function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
+  const cacheKey = "vm0IllustrationPreviewImageDecodeCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | IllustrationPreviewImageCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: IllustrationPreviewImageCache = {
+    decoded: new Set<string>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+async function markIllustrationPreviewImageLoaded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  if (image.decode !== undefined) {
+    await tapError(image.decode(), () => {});
+  }
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  image.dataset.loaded = "true";
+  image.parentElement
+    ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
+    ?.setAttribute("hidden", "");
+}
+
+function IllustrationTemplateCard({
+  item,
+  selected,
+  onSelect,
+  onPreview,
+}: {
+  item: IllustrationTemplateItem;
+  selected: boolean;
+  onSelect: (item: IllustrationTemplateItem) => void;
+  onPreview: (item: IllustrationTemplateItem) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <IllustrationTemplatePreview item={item} onPreview={onPreview} />
+      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.title}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {formatIllustrationTemplateKind(item)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            aria-label={`Select template ${item.title}`}
+            aria-pressed={selected}
+            onClick={() => {
+              onSelect(item);
+            }}
+            className={cn(
+              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            Use
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1653,6 +1761,99 @@ function TemplatePickerTabs({
         )}
       </TabsList>
     </Tabs>
+  );
+}
+
+const ILLUSTRATION_GRID_COLS = 3;
+const ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR =
+  "[data-illustration-template-grid-scroll]";
+
+function IllustrationTemplateGrid({
+  items,
+  value,
+  onSelect,
+  onPreview,
+}: {
+  items: IllustrationTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: IllustrationTemplateItem) => void;
+  onPreview: (item: IllustrationTemplateItem) => void;
+}) {
+  const rows: IllustrationTemplateItem[][] = [];
+  for (let i = 0; i < items.length; i += ILLUSTRATION_GRID_COLS) {
+    rows.push(items.slice(i, i + ILLUSTRATION_GRID_COLS));
+  }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => {
+      return globalThis.document.querySelector<HTMLDivElement>(
+        ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR,
+      );
+    },
+    estimateSize: () => {
+      return 250;
+    },
+    overscan: 2,
+  });
+
+  if (isHappyDomTestEnvironment()) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => {
+          return (
+            <IllustrationTemplateCard
+              key={item.illustrationStyleId}
+              item={item}
+              selected={isSelectedIllustrationTemplate(item, value)}
+              onSelect={onSelect}
+              onPreview={onPreview}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        height: `${virtualizer.getTotalSize()}px`,
+        width: "100%",
+        position: "relative",
+      }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => {
+        const rowItems = rows[virtualRow.index]!;
+        return (
+          <div
+            key={virtualRow.key}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {rowItems.map((item) => {
+              return (
+                <IllustrationTemplateCard
+                  key={item.illustrationStyleId}
+                  item={item}
+                  selected={isSelectedIllustrationTemplate(item, value)}
+                  onSelect={onSelect}
+                  onPreview={onPreview}
+                />
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1935,64 +2136,21 @@ function TemplatePickerDialog({
               </div>
             )}
             {selectedCategory === "illustration" && (
-              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+              <div
+                data-illustration-template-grid-scroll=""
+                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+              >
                 <TemplateSectionHeader
                   label="VM0 illustration styles"
                   count={filteredIllustrationItems.length}
                 />
                 {filteredIllustrationItems.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredIllustrationItems.map((item) => {
-                      const selected = isSelectedIllustrationTemplate(
-                        item,
-                        value,
-                      );
-                      return (
-                        <div
-                          key={item.illustrationStyleId}
-                          className={cn(
-                            "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-                            selected
-                              ? "border-primary ring-1 ring-primary"
-                              : "border-border",
-                          )}
-                        >
-                          <IllustrationTemplatePreview
-                            item={item}
-                            onPreview={handleIllustrationPreview}
-                          />
-                          <div className="flex items-start justify-between gap-3 px-3.5 py-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {item.title}
-                              </p>
-                              <p className="mt-1 truncate text-xs text-muted-foreground">
-                                {formatIllustrationTemplateKind(item)}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 items-center">
-                              <button
-                                type="button"
-                                aria-label={`Select template ${item.title}`}
-                                aria-pressed={selected}
-                                onClick={() => {
-                                  handleSelectIllustration(item);
-                                }}
-                                className={cn(
-                                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                  selected
-                                    ? "border-primary/40 bg-primary/10 text-primary"
-                                    : "border-border bg-background text-foreground hover:bg-muted",
-                                )}
-                              >
-                                Use
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <IllustrationTemplateGrid
+                    items={filteredIllustrationItems}
+                    value={value}
+                    onSelect={handleSelectIllustration}
+                    onPreview={handleIllustrationPreview}
+                  />
                 ) : (
                   <TemplateEmptyPanel
                     title="No matches"
