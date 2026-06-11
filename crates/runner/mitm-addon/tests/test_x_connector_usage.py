@@ -716,7 +716,7 @@ class TestXConnectorUsage:
             body=json.dumps({"data": [{"id": "u1"}]}).encode(),
             permission="tweet.read",
             rule="GET /2/tweets/{id}/retweeted_by",
-            request_body=gzip.compress(b'{"unused": true}'),
+            request_body=b"not gzip request content",
             request_encoding="gzip",
         )
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
