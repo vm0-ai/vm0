@@ -25,16 +25,19 @@ def write_firewall_registry(path, *, rule="/items"):
                 "runId": "run-abc-123",
                 "firewalls": [
                     {
-                        "name": "example",
-                        "apis": [
-                            {
-                                "base": "https://api.example.com",
-                                "auth": {"headers": {"Authorization": "Bearer token"}},
-                                "permissions": [
-                                    {"name": "read", "rules": [f"GET {rule}"]},
-                                ],
-                            }
-                        ],
+                        "kind": "inline",
+                        "firewall": {
+                            "name": "example",
+                            "apis": [
+                                {
+                                    "base": "https://api.example.com",
+                                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                                    "permissions": [
+                                        {"name": "read", "rules": [f"GET {rule}"]},
+                                    ],
+                                }
+                            ],
+                        },
                     }
                 ],
                 "networkPolicies": {

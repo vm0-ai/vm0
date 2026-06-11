@@ -776,6 +776,12 @@ export function getConnectorFirewall(
   return EXPANDED_CONNECTOR_FIREWALLS[type];
 }
 
+export function getAllConnectorFirewalls(): Readonly<
+  typeof EXPANDED_CONNECTOR_FIREWALLS
+> {
+  return EXPANDED_CONNECTOR_FIREWALLS;
+}
+
 /**
  * Per-connector default-allowed permission lists.
  *

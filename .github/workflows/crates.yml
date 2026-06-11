@@ -345,7 +345,7 @@ jobs:
         working-directory: turbo
         run: |
           pnpm -F @vm0/api-contracts generate:rust
-          git diff --exit-code -- ../crates/api-contracts/src/generated
+          git diff --exit-code -- ../crates/api-contracts/src/generated ../crates/runner/mitm-addon/src/generated_builtin_firewalls.py
 
   mitm-addon-test:
     runs-on: ubuntu-latest
