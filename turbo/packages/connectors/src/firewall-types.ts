@@ -8,9 +8,6 @@ import { parseSegment, splitPathSegments } from "./segment-parser";
  *
  * All firewall zod schemas are defined here as the single source of truth.
  * Other modules (composes.ts, runners.ts) import from here.
- *
- * Firewall configs are hosted in GitHub: vm0-ai/vm0-firewalls
- * See resolveFirewallSelections() in firewall-expander.ts for resolution logic.
  */
 
 /**
@@ -88,9 +85,7 @@ export const firewallsSchema = z.array(firewallSchema);
  */
 export const UNKNOWN_PERMISSION_GRANT = "__unknown__";
 
-/**
- * Zod schema for validating firewall config (GitHub-hosted YAML).
- */
+/** Zod schema for validating firewall config definitions. */
 export const firewallConfigSchema = z.object({
   name: z.string().min(1, "Firewall name is required"),
   description: z.string().optional(),

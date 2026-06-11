@@ -7,12 +7,15 @@ const DESKTOP_AUTH_TOKEN_PATH = "/desktop-auth/token";
 const DESKTOP_AUTH_CALLBACK_SCHEME_PARAM = "callbackScheme";
 const DESKTOP_AUTH_FORCE_ORG_SELECTION_PARAM = "force";
 const DESKTOP_AUTH_CODE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
+const DESKTOP_AUTH_HANDOFF_ID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const DESKTOP_AUTH_COMPLETION_PATH_PATTERN = /^\/(?:en|de|ja|es)\/?$/;
 const DESKTOP_AUTH_START_RETRY_MS = 30_000;
 const ELECTRON_ERR_ABORTED = -3;
 
-interface DesktopAuthCallback {
+export interface DesktopAuthCallback {
   readonly code: string;
+  readonly handoffId: string | null;
 }
 
 interface DesktopAuthStartGate {
@@ -53,17 +56,19 @@ export function parseDesktopAuthCallback(
   }
 
   const code = url.searchParams.get("code");
+  const handoffId = url.searchParams.get("handoffId");
   if (
     url.protocol !== `${authScheme}:` ||
     url.hostname !== DESKTOP_AUTH_HOST ||
     url.pathname !== DESKTOP_AUTH_CALLBACK_PATH ||
     !code ||
-    !DESKTOP_AUTH_CODE_PATTERN.test(code)
+    !DESKTOP_AUTH_CODE_PATTERN.test(code) ||
+    (handoffId !== null && !DESKTOP_AUTH_HANDOFF_ID_PATTERN.test(handoffId))
   ) {
     return null;
   }
 
-  return { code };
+  return { code, handoffId };
 }
 
 export function parseDesktopAuthCallbackArgv(
@@ -80,9 +85,16 @@ export function parseDesktopAuthCallbackArgv(
   return null;
 }
 
-export function buildDesktopAuthConsumeUrl(webUrl: URL, code: string): string {
+export function buildDesktopAuthConsumeUrl(
+  webUrl: URL,
+  code: string,
+  handoffId: string | null = null,
+): string {
   const consumeUrl = new URL(DESKTOP_AUTH_CONSUME_PATH, webUrl);
   consumeUrl.searchParams.set("code", code);
+  if (handoffId) {
+    consumeUrl.searchParams.set("handoffId", handoffId);
+  }
   return consumeUrl.toString();
 }
 

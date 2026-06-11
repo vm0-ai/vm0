@@ -2,17 +2,19 @@ import { env } from "../../lib/env";
 
 const WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 
-function isVm0WebHost(hostname: string): boolean {
+type Vm0HostRole = "api" | "www";
+
+function isVm0Host(hostname: string, role: Vm0HostRole): boolean {
   return (
-    hostname === "www.vm0.ai" ||
-    hostname === "www.vm6.ai" ||
-    hostname.endsWith("-www.vm6.ai") ||
-    hostname === "www.vm7.ai" ||
-    hostname.endsWith("-www.vm7.ai")
+    hostname === `${role}.vm0.ai` ||
+    hostname === `${role}.vm6.ai` ||
+    hostname.endsWith(`-${role}.vm6.ai`) ||
+    hostname === `${role}.vm7.ai` ||
+    hostname.endsWith(`-${role}.vm7.ai`)
   );
 }
 
-function isTrustedWebOrigin(origin: string): boolean {
+function isTrustedOrigin(origin: string, role: Vm0HostRole): boolean {
   if (!URL.canParse(origin)) {
     return false;
   }
@@ -26,32 +28,74 @@ function isTrustedWebOrigin(origin: string): boolean {
     return url.protocol === "http:" || url.protocol === "https:";
   }
 
-  return url.protocol === "https:" && isVm0WebHost(url.hostname);
+  return url.protocol === "https:" && isVm0Host(url.hostname, role);
 }
 
-function canonicalWebOriginForApiHost(url: URL): string | null {
-  const webHostname = url.hostname.replace(/(^|-)api\./u, "$1www.");
-  if (webHostname === url.hostname) {
+function isTrustedWebOrigin(origin: string): boolean {
+  return isTrustedOrigin(origin, "www");
+}
+
+function isTrustedApiOrigin(origin: string): boolean {
+  return isTrustedOrigin(origin, "api");
+}
+
+function canonicalSiblingOriginForHost(
+  url: URL,
+  fromRole: Vm0HostRole,
+  toRole: Vm0HostRole,
+): string | null {
+  const leadingRole = `${fromRole}.`;
+  const delimitedRole = `-${fromRole}.`;
+  let hostname: string | null = null;
+  if (url.hostname.startsWith(leadingRole)) {
+    hostname = `${toRole}.${url.hostname.slice(leadingRole.length)}`;
+  } else {
+    const roleIndex = url.hostname.indexOf(delimitedRole);
+    if (roleIndex !== -1) {
+      const prefix = url.hostname.slice(0, roleIndex);
+      const suffix = url.hostname.slice(roleIndex + delimitedRole.length);
+      hostname = `${prefix}-${toRole}.${suffix}`;
+    }
+  }
+
+  if (!hostname) {
     return null;
   }
 
-  const webUrl = new URL(url.toString());
-  webUrl.hostname = webHostname;
-  webUrl.protocol = "https:";
-  webUrl.username = "";
-  webUrl.password = "";
-  webUrl.pathname = "/";
-  webUrl.search = "";
-  webUrl.hash = "";
+  const siblingUrl = new URL(url.toString());
+  siblingUrl.hostname = hostname;
+  siblingUrl.protocol = "https:";
+  siblingUrl.username = "";
+  siblingUrl.password = "";
+  siblingUrl.pathname = "/";
+  siblingUrl.search = "";
+  siblingUrl.hash = "";
 
-  if (!isTrustedWebOrigin(webUrl.origin)) {
+  const isTrusted =
+    toRole === "api"
+      ? isTrustedApiOrigin(siblingUrl.origin)
+      : isTrustedWebOrigin(siblingUrl.origin);
+  if (!isTrusted) {
     return null;
   }
-  return webUrl.origin;
+  return siblingUrl.origin;
 }
 
 export function getOAuthWebOrigin(_request: Request): string {
   return new URL(env("VM0_WEB_URL")).origin;
+}
+
+export function getOAuthApiOrigin(_request: Request): string {
+  const canonicalApiOrigin = canonicalSiblingOriginForHost(
+    new URL(env("VM0_WEB_URL")),
+    "www",
+    "api",
+  );
+  if (canonicalApiOrigin) {
+    return canonicalApiOrigin;
+  }
+
+  return new URL(env("VM0_API_URL")).origin;
 }
 
 export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
@@ -61,7 +105,11 @@ export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
   }
 
   const requestUrl = new URL(request.url);
-  const canonicalOrigin = canonicalWebOriginForApiHost(requestUrl);
+  const canonicalOrigin = canonicalSiblingOriginForHost(
+    requestUrl,
+    "api",
+    "www",
+  );
   if (!canonicalOrigin) {
     return null;
   }

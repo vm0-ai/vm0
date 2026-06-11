@@ -107,23 +107,28 @@ mod tests {
     fn build_ws_url_basic() {
         let url = build_ws_url("realtime.ably.io", "my-token", None);
         let url = url.unwrap();
+        let parsed = url::Url::parse(&url).unwrap();
         assert!(url.starts_with("wss://realtime.ably.io/"));
-        assert!(url.contains("access_token=my-token"));
-        assert!(url.contains("format=msgpack"));
-        assert!(url.contains("v=5"));
-        assert!(url.contains("heartbeats=true"));
-        assert!(url.contains("echo=false"));
-        let expected_agent = format!("agent=ably-subscriber-rs%2F{}", env!("CARGO_PKG_VERSION"));
-        assert!(url.contains(&expected_agent));
-        assert!(!url.contains("resume="));
+        assert_query_values(&parsed, "access_token", &["my-token"]);
+        assert_query_values(&parsed, "format", &["msgpack"]);
+        assert_query_values(&parsed, "v", &[PROTOCOL_VERSION]);
+        assert_query_values(
+            &parsed,
+            "agent",
+            &[&format!("ably-subscriber-rs/{}", env!("CARGO_PKG_VERSION"))],
+        );
+        assert_query_values(&parsed, "heartbeats", &["true"]);
+        assert_query_values(&parsed, "echo", &["false"]);
+        assert_query_values(&parsed, "resume", &[]);
     }
 
     #[test]
     fn build_ws_url_with_resume() {
         let url = build_ws_url("realtime.ably.io", "my-token", Some("conn-key!abc"));
         let url = url.unwrap();
-        assert!(url.contains("resume=conn-key"));
-        assert!(!url.contains("connection_serial"));
+        let parsed = url::Url::parse(&url).unwrap();
+        assert_query_values(&parsed, "resume", &["conn-key!abc"]);
+        assert_query_values(&parsed, "connection_serial", &[]);
     }
 
     #[test]
@@ -261,6 +266,14 @@ mod tests {
         assert_eq!(parsed.scheme(), scheme);
         assert_eq!(parsed.host(), Some(expected_host));
         assert_eq!(parsed.port(), expected_port);
+    }
+
+    fn assert_query_values(url: &url::Url, key: &str, expected: &[&str]) {
+        let values = url
+            .query_pairs()
+            .filter_map(|(query_key, value)| (query_key == key).then(|| value.into_owned()))
+            .collect::<Vec<_>>();
+        assert_eq!(values, expected);
     }
 
     #[test]

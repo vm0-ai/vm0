@@ -138,8 +138,48 @@ describe("zero video transcribe command", () => {
     });
   });
 
+  describe("with --file", () => {
+    it("does not call curl when --file is provided", async () => {
+      const { execFileSync } = await import("child_process");
+      server.use(
+        http.post(STT_URL, () => {
+          return HttpResponse.json({ text: "Local file transcript." });
+        }),
+      );
+
+      await transcribeCommand.parseAsync(["--file", "/tmp/some-video.mp4"], {
+        from: "user",
+      });
+
+      const execCalls = vi.mocked(execFileSync).mock.calls;
+      const curlCalls = execCalls.filter((c) => {
+        return c[0] === "curl";
+      });
+      expect(curlCalls).toHaveLength(0);
+    });
+
+    it("transcribes the local file and outputs the result", async () => {
+      server.use(
+        http.post(STT_URL, () => {
+          return HttpResponse.json({
+            text: "Local file transcript.",
+            segments: [{ start: 0, end: 2, text: " Local file transcript." }],
+          });
+        }),
+      );
+
+      await transcribeCommand.parseAsync(["--file", "/tmp/some-video.mp4"], {
+        from: "user",
+      });
+
+      const output = readStdout();
+      expect(output).toContain("## Transcript");
+      expect(output).toContain("Local file transcript.");
+    });
+  });
+
   describe("missing arguments", () => {
-    it("exits with error when neither --url nor --file-id provided", async () => {
+    it("exits with error when neither --url nor --file-id nor --file provided", async () => {
       const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
         throw new Error("process.exit called");
       }) as never);

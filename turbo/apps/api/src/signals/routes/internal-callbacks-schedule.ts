@@ -94,6 +94,12 @@ function createScheduleCallbackHandler(
       shouldDisable,
     });
 
+    // Phase 3 of #16847: the schedules surface lives on the events-first
+    // tables. This route only serves runs dispatched before the cutover whose
+    // callbacks still carry schedule ids — it advances the orphaned
+    // zero_agent_schedules row for bookkeeping and deliberately does NOT touch
+    // the live automation tables (the old row is stale; syncing it would
+    // clobber live trigger state). Dropped entirely with the old table.
     await writeDb
       .update(zeroAgentSchedules)
       .set({

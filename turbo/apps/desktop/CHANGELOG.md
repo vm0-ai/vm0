@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.10.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.10.0...desktop-v0.10.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* use system hostname for computer use hosts ([#17193](https://github.com/vm0-ai/vm0/issues/17193)) ([c17abcc](https://github.com/vm0-ai/vm0/commit/c17abcc586e83e26d7b4476ca36ca4550c2a261c))
+
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.9.0...desktop-v0.10.0) (2026-06-11)
+
+
+### Features
+
+* add desktop runtime error details ([#17156](https://github.com/vm0-ai/vm0/issues/17156)) ([8f1a863](https://github.com/vm0-ai/vm0/commit/8f1a863dd083e5300baea20d7cc8065895603f56))
+
+
+### Bug Fixes
+
+* move desktop workspace menu below main window ([#17135](https://github.com/vm0-ai/vm0/issues/17135)) ([ca28c33](https://github.com/vm0-ai/vm0/commit/ca28c33d67c54d50e2c7e707e884e0e8a39edd39))
+
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.8.0...desktop-v0.9.0) (2026-06-10)
+
+
+### Features
+
+* show desktop auth success after completion ([#17092](https://github.com/vm0-ai/vm0/issues/17092)) ([dae5585](https://github.com/vm0-ai/vm0/commit/dae5585e94d6fa49535529b1c38c79d0914fb207))
+
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.7.0...desktop-v0.8.0) (2026-06-10)
+
+
+### Features
+
+* remove desktop setup guidance panels ([#17062](https://github.com/vm0-ai/vm0/issues/17062)) ([80ca467](https://github.com/vm0-ai/vm0/commit/80ca46711fd178da7393b2ffbf5833513a69dae8))
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.6.0...desktop-v0.7.0) (2026-06-10)
 
 

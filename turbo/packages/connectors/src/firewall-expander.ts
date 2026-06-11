@@ -7,10 +7,20 @@ import {
 } from "./firewall-types";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
-import { fetchFirewallConfig, type FetchFn } from "./firewall-loader";
+import { getConnectorFirewall, isFirewallConnectorType } from "./firewalls";
 
 export interface FirewallSelection {
   permissions: string[] | "all";
+}
+
+function resolveBuiltinFirewallConfig(name: string): FirewallConfig {
+  const trimmed = name.trim();
+  if (trimmed.includes("/") || !isFirewallConnectorType(trimmed)) {
+    throw new Error(
+      `Unsupported firewall "${name}": only built-in connector firewalls are supported`,
+    );
+  }
+  return getConnectorFirewall(trimmed);
 }
 
 const VALID_RULE_METHODS = new Set([
@@ -182,23 +192,18 @@ export function collectAndValidatePermissions(
  * and drops entries with no remaining APIs.
  *
  * @param selections - Map of firewall names to permission selections
- * @param fetchFn - Optional fetch function for HTTP requests (injectable for tests)
  */
 export async function resolveFirewallSelections(
   selections: Record<string, FirewallSelection>,
-  fetchFn?: FetchFn,
 ): Promise<ExpandedFirewallConfig[]> {
   const expanded: ExpandedFirewallConfig[] = [];
 
-  // Resolve all firewall configs in parallel
   const entries = Object.entries(selections);
   if (entries.length === 0) return expanded;
 
-  const resolvedConfigs = await Promise.all(
-    entries.map(([name]) => {
-      return fetchFirewallConfig(name, fetchFn);
-    }),
-  );
+  const resolvedConfigs = entries.map(([name]) => {
+    return resolveBuiltinFirewallConfig(name);
+  });
 
   for (let i = 0; i < entries.length; i++) {
     const [, selection] = entries[i]!;

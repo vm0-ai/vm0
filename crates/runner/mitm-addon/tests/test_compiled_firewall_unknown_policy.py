@@ -147,6 +147,49 @@ def test_compiled_blocks_unsafe_path_consumed_by_parameterized_base():
     assert compiled.path == "/admin"
 
 
+def test_compiled_reuses_safe_path_scan_for_multiple_base_matches(monkeypatch):
+    first_api_entry = {
+        "base": "https://api.example.com",
+        "auth": {"headers": {"Authorization": "Bearer first"}},
+        "permissions": [{"name": "read", "rules": ["GET /items/{id}"]}],
+    }
+    second_api_entry = {
+        "base": "https://api.example.com",
+        "auth": {"headers": {"Authorization": "Bearer second"}},
+        "permissions": [{"name": "write", "rules": ["POST /items/{id}"]}],
+    }
+    third_api_entry = {
+        "base": "https://api.example.com",
+        "auth": {"headers": {"Authorization": "Bearer third"}},
+        "permissions": [],
+    }
+    fws = wrap_firewalls(
+        [first_api_entry, second_api_entry, third_api_entry],
+        name="example",
+    )
+    policies = {"example": {"allow": ["read", "write"], "deny": [], "unknownPolicy": "allow"}}
+    calls: list[str] = []
+    original_has_unsafe_path = matching.has_unsafe_path
+
+    def counting_has_unsafe_path(path: str) -> bool:
+        calls.append(path)
+        return original_has_unsafe_path(path)
+
+    monkeypatch.setattr(matching, "has_unsafe_path", counting_has_unsafe_path)
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/items/123",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.api_entry is first_api_entry
+    assert result.permission == "read"
+    assert calls == ["/items/123"]
+
+
 def test_compiled_matches_unknown_policy_when_permissions_are_omitted():
     fws = wrap_firewalls(
         [

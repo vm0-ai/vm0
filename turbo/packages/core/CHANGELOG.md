@@ -1,5 +1,84 @@
 # Changelog
 
+## [8.327.0](https://github.com/vm0-ai/vm0/compare/core-v8.326.0...core-v8.327.0) (2026-06-11)
+
+
+### Features
+
+* add Google Analytics connector ([#17153](https://github.com/vm0-ai/vm0/issues/17153)) ([96dee76](https://github.com/vm0-ai/vm0/commit/96dee766588b2721bbbc5c39095dba424bd36aac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.1
+    * @vm0/connectors bumped to 1.65.0
+
+## [8.326.0](https://github.com/vm0-ai/vm0/compare/core-v8.325.0...core-v8.326.0) (2026-06-11)
+
+
+### Features
+
+* add Cloudflare OAuth connector ([#17123](https://github.com/vm0-ai/vm0/issues/17123)) ([84bb1e0](https://github.com/vm0-ai/vm0/commit/84bb1e0f1d899ba051e490228ccac7aefd6656aa))
+* add Google Cloud connector ([#16302](https://github.com/vm0-ai/vm0/issues/16302)) ([edc2046](https://github.com/vm0-ai/vm0/commit/edc2046a5f599fcfc33d45d7fc68a54bf8835c09))
+* add TikTok Ads connector ([#17148](https://github.com/vm0-ai/vm0/issues/17148)) ([5e0824b](https://github.com/vm0-ai/vm0/commit/5e0824bb254f1bbef2672792bc5e56560d7717c7))
+* enable chat recommended followups ([#17189](https://github.com/vm0-ai/vm0/issues/17189)) ([d4a2e30](https://github.com/vm0-ai/vm0/commit/d4a2e30180776d97760db935e8cefe398b8822c4))
+* enable connector permission reset by default ([#17140](https://github.com/vm0-ai/vm0/issues/17140)) ([036ed23](https://github.com/vm0-ai/vm0/commit/036ed23787cf999cc9c002c0764b9382d3b99993))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.0
+    * @vm0/connectors bumped to 1.64.0
+
+## [8.325.0](https://github.com/vm0-ai/vm0/compare/core-v8.324.0...core-v8.325.0) (2026-06-10)
+
+
+### Features
+
+* enable meta ads and search console connectors ([#17127](https://github.com/vm0-ai/vm0/issues/17127)) ([57c0f50](https://github.com/vm0-ai/vm0/commit/57c0f50909376123c35d4df87ea497e80e149329))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.80.1
+    * @vm0/connectors bumped to 1.63.0
+
+## [8.324.0](https://github.com/vm0-ai/vm0/compare/core-v8.323.0...core-v8.324.0) (2026-06-10)
+
+
+### Features
+
+* add video style template picker to chat composer ([#17027](https://github.com/vm0-ai/vm0/issues/17027)) ([c8a51ba](https://github.com/vm0-ai/vm0/commit/c8a51baa53b4505b6f33dee2db78b1cad9e9e413))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.80.0
+    * @vm0/connectors bumped to 1.62.0
+
+## [8.323.0](https://github.com/vm0-ai/vm0/compare/core-v8.322.0...core-v8.323.0) (2026-06-10)
+
+
+### Features
+
+* add google search console connector ([#17020](https://github.com/vm0-ai/vm0/issues/17020)) ([9cb2db5](https://github.com/vm0-ai/vm0/commit/9cb2db5f763ad3a2aed9cf25963472c38b05875e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.79.0
+    * @vm0/connectors bumped to 1.61.0
+
 ## [8.322.0](https://github.com/vm0-ai/vm0/compare/core-v8.321.1...core-v8.322.0) (2026-06-10)
 
 

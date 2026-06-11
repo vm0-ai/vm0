@@ -372,6 +372,139 @@ class TestReportModelProviderUsage:
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 10
 
+    def test_source_dedupe_aggregates_model_provider_usage_sources(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.id = "flow-uuid-xyz-123"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage_sources"] = {
+            "resp_ws_1": {
+                "model": "gpt-5.5",
+                "message_id": "resp_ws_1",
+                "tokens.input": 10,
+            },
+            "resp_ws_2": {
+                "model": "gpt-5.5",
+                "message_id": "resp_ws_2",
+                "tokens.input": 3,
+            },
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-websocket")
+            usage.report_model_provider_usage(flow, "run-websocket")
+            usage.report_model_provider_usage_observation(flow, "run-websocket")
+            usage.report_model_provider_usage_observation(flow, "run-websocket")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        requests_by_path = {request.path: request for request in webhook.requests}
+        assert set(requests_by_path) == {
+            "/api/webhooks/agent/usage-event",
+            "/api/webhooks/agent/model-usage-observation",
+        }
+        usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
+        observation_body = requests_by_path[
+            "/api/webhooks/agent/model-usage-observation"
+        ].json_body()
+        assert [
+            {key: value for key, value in event.items() if key != "idempotencyKey"}
+            for event in usage_body["events"]
+        ] == [
+            {
+                "kind": "model",
+                "provider": "gpt-5.5",
+                "category": "tokens.input",
+                "quantity": 13,
+            }
+        ]
+        assert [
+            {key: value for key, value in event.items() if key != "idempotencyKey"}
+            for event in observation_body["events"]
+        ] == [
+            {
+                "model": "gpt-5.5",
+                "category": "tokens.input",
+                "quantity": 13,
+            }
+        ]
+        uuid.UUID(usage_body["events"][0]["idempotencyKey"])
+        uuid.UUID(observation_body["events"][0]["idempotencyKey"])
+
+    def test_source_dedupe_separates_model_provider_usage_sources_by_model(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.id = "flow-uuid-xyz-123"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage_sources"] = {
+            "resp_ws_1": {
+                "model": "gpt-5.5",
+                "message_id": "resp_ws_1",
+                "tokens.input": 10,
+            },
+            "resp_ws_2": {
+                "model": "gpt-5.4",
+                "message_id": "resp_ws_2",
+                "tokens.input": 3,
+            },
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-websocket")
+            usage.report_model_provider_usage_observation(flow, "run-websocket")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        requests_by_path = {request.path: request for request in webhook.requests}
+        usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
+        observation_body = requests_by_path[
+            "/api/webhooks/agent/model-usage-observation"
+        ].json_body()
+        assert {
+            (event["provider"], event["category"]): event["quantity"]
+            for event in usage_body["events"]
+        } == {
+            ("gpt-5.5", "tokens.input"): 10,
+            ("gpt-5.4", "tokens.input"): 3,
+        }
+        assert {
+            (event["model"], event["category"]): event["quantity"]
+            for event in observation_body["events"]
+        } == {
+            ("gpt-5.5", "tokens.input"): 10,
+            ("gpt-5.4", "tokens.input"): 3,
+        }
+
+    def test_source_dedupe_skips_malformed_model_provider_usage_sources(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.id = "flow-uuid-xyz-123"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage_sources"] = {
+            "resp_invalid": "invalid",
+            "": {"model": "gpt-5.5", "tokens.input": 10},
+            42: {"model": "gpt-5.4", "tokens.input": 3},
+        }
+
+        with usage_webhook_api() as webhook:
+            accepted = usage.report_model_provider_usage(flow, "run-websocket")
+            observed = usage.report_model_provider_usage_observation(flow, "run-websocket")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        assert accepted is False
+        assert observed is False
+        assert webhook.request_count == 0
+
     def test_source_dedupe_separates_flows_when_message_id_missing(
         self, real_flow, fresh_usage_executor, usage_webhook_api
     ):

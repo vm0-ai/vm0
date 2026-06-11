@@ -200,15 +200,12 @@ pub(super) fn format_command_output_excerpt(
         return None;
     }
 
-    let omitted_prefix = bytes.len() > GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES;
-    let excerpt_start = if omitted_prefix {
-        bytes.len() - GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES
-    } else {
-        0
-    };
-    let excerpt_bytes = bytes.get(excerpt_start..)?;
-    let excerpt = String::from_utf8_lossy(excerpt_bytes);
-    let excerpt = redact_url_query_strings(excerpt.trim());
+    // Redact before excerpting so a suffix cannot start inside a URL query and expose it.
+    let output = String::from_utf8_lossy(bytes);
+    let output = sanitize_command_output_for_diagnostic(output.trim());
+    let output = output.trim();
+    let (excerpt, omitted_prefix) = diagnostic_output_excerpt(output);
+    let excerpt = excerpt.trim();
     if excerpt.is_empty() {
         return None;
     }
@@ -226,22 +223,67 @@ pub(super) fn format_command_output_excerpt(
     Some(format!("{label} ({}): {excerpt}", qualifiers.join(", ")))
 }
 
-pub(super) fn redact_url_query_strings(input: &str) -> String {
-    input
-        .split_whitespace()
-        .map(redact_url_query_token)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub(super) fn redact_url_query_token(token: &str) -> String {
-    for scheme in ["https://", "http://"] {
-        if let Some((prefix, candidate)) = token.split_once(scheme)
-            && let Some((base_url, _)) = candidate.split_once('?')
-        {
-            return format!("{prefix}{scheme}{base_url}?<redacted>");
-        }
+fn diagnostic_output_excerpt(input: &str) -> (&str, bool) {
+    if input.len() <= GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES {
+        return (input, false);
     }
 
-    token.to_owned()
+    let mut start = input.len() - GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES;
+    while !input.is_char_boundary(start) {
+        start += 1;
+    }
+    (&input[start..], true)
+}
+
+fn sanitize_command_output_for_diagnostic(input: &str) -> String {
+    redact_url_query_strings(input)
+}
+
+fn redact_url_query_strings(input: &str) -> String {
+    let mut redacted = String::with_capacity(input.len());
+    let mut cursor = 0;
+
+    while cursor < input.len() {
+        let Some(scheme) = url_scheme_at(input, cursor) else {
+            let Some(ch) = input[cursor..].chars().next() else {
+                break;
+            };
+            redacted.push(ch);
+            cursor += ch.len_utf8();
+            continue;
+        };
+
+        let url_start = cursor;
+        let url_body_start = url_start + scheme.len();
+        let url_end = find_url_token_end(input, url_body_start);
+        let Some(query_offset) = input[url_body_start..url_end].find('?') else {
+            redacted.push_str(&input[url_start..url_end]);
+            cursor = url_end;
+            continue;
+        };
+
+        let query_start = url_body_start + query_offset;
+        let query_value_start = query_start + '?'.len_utf8();
+        redacted.push_str(&input[url_start..query_value_start]);
+        redacted.push_str("<redacted>");
+        cursor = url_end;
+    }
+
+    redacted.push_str(&input[cursor..]);
+    redacted
+}
+
+fn url_scheme_at(input: &str, index: usize) -> Option<&'static str> {
+    ["https://", "http://"].into_iter().find(|scheme| {
+        input[index..]
+            .get(..scheme.len())
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(scheme))
+    })
+}
+
+fn find_url_token_end(input: &str, start: usize) -> usize {
+    input[start..]
+        .char_indices()
+        .find_map(|(index, ch)| ch.is_whitespace().then_some(start + index))
+        .unwrap_or(input.len())
 }

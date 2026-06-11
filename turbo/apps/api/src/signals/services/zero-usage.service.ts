@@ -231,8 +231,8 @@ export const zeroUsageRuns$ = command(
   },
 );
 
-type ClerkClient = ReturnType<typeof clerk$.read>;
-type WriteDb = ReturnType<typeof writeDb$.write>;
+type UsageClerkClient = ReturnType<typeof clerk$.read>;
+type UsageWriteDb = ReturnType<typeof writeDb$.write>;
 
 function primaryEmail(user: User): string {
   const primary = user.emailAddresses.find((email) => {
@@ -241,9 +241,9 @@ function primaryEmail(user: User): string {
   return primary?.emailAddress ?? "unknown";
 }
 
-async function resolveEmails(
-  client: ClerkClient,
-  db: WriteDb,
+export async function resolveEmails(
+  client: UsageClerkClient,
+  db: UsageWriteDb,
   userIds: readonly string[],
   signal: AbortSignal,
 ): Promise<Map<string, string>> {

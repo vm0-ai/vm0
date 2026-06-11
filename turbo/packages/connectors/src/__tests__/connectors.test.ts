@@ -36,7 +36,9 @@ import {
   connectorAuthMethodRefHasAccessKind,
   connectorAuthMethodRefHasGrantKind,
   connectorAuthMethodRefHasRevokeKind,
+  connectorAuthCodeCallbacksUseOnlyApiOrigin,
   getAvailableConnectorAuthMethodIds,
+  getConnectorAuthMethodAuthCodeCallbackOrigin,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
@@ -191,6 +193,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   asana: "https://app.asana.com/-/oauth_authorize",
   canva: "https://www.canva.com/api/oauth/authorize",
   close: "https://app.close.com/oauth2/authorize/",
+  cloudflare: "https://dash.cloudflare.com/oauth2/auth",
   deel: "https://app.deel.com/oauth2/authorize",
   docusign: "https://account-d.docusign.com/oauth/auth",
   dropbox: "https://www.dropbox.com/oauth2/authorize",
@@ -199,7 +202,9 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   github: "https://github.com/login/oauth/authorize",
   gmail: "https://accounts.google.com/o/oauth2/v2/auth",
   "google-ads": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-analytics": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-calendar": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-cloud": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-docs": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-drive": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-meet": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -212,6 +217,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   mailchimp: "https://login.mailchimp.com/oauth2/authorize",
   mercury: "https://oauth2.mercury.com/oauth2/auth",
   "meta-ads": "https://www.facebook.com/v22.0/dialog/oauth",
+  "tiktok-ads": "https://business-api.tiktok.com/portal/auth",
   monday: "https://auth.monday.com/oauth2/authorize",
   neon: "https://oauth2.neon.tech/oauth2/auth",
   notion: "https://api.notion.com/v1/oauth/authorize",
@@ -2486,6 +2492,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
+  it("exposes TikTok Ads OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("tiktok-ads", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("tiktok-ads", {
+        [FeatureSwitchKey.TikTokAdsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
   it("exposes Google Search Console OAuth only when its switch is enabled", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-search-console", {}),
@@ -2493,6 +2510,39 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-search-console", {
         [FeatureSwitchKey.GoogleSearchConsoleConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
+  it("exposes Cloudflare OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+      "api-token",
+    ]);
+    expect(
+      getAvailableConnectorAuthMethodIds("cloudflare", {
+        [FeatureSwitchKey.CloudflareConnector]: true,
+      }),
+    ).toStrictEqual(["oauth", "api-token"]);
+  });
+
+  it("exposes Google Maps API-token auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("google-maps", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("google-maps", {
+        [FeatureSwitchKey.GoogleMapsConnector]: true,
+      }),
+    ).toStrictEqual(["api-token"]);
+  });
+
+  it("exposes Google Analytics OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("google-analytics", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("google-analytics", {
+        [FeatureSwitchKey.GoogleAnalyticsConnector]: true,
       }),
     ).toStrictEqual(["oauth"]);
   });
@@ -2519,6 +2569,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     expect(getAvailableConnectorAuthMethodIds("lark", {})).toStrictEqual([
       "api-token",
     ]);
+  });
+
+  it("exposes Google Cloud OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("google-cloud", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("google-cloud", {
+        [FeatureSwitchKey.GoogleCloudConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
   });
 
   it("exposes Doubao API-token auth without a feature switch", () => {
@@ -2761,6 +2822,44 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     });
   });
 
+  it("returns refresh metadata for TikTok Ads", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("tiktok-ads", "oauth"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        refreshToken: {
+          valueRef: "$secrets.TIKTOK_ADS_REFRESH_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      outputs: {
+        accessToken: {
+          valueRef: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_ACCESS_TOKEN",
+          },
+        },
+        refreshToken: {
+          valueRef: "$secrets.TIKTOK_ADS_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      refreshableSecrets: ["TIKTOK_ADS_ACCESS_TOKEN"],
+      envBindings: {
+        TIKTOK_ADS_TOKEN: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
+    });
+  });
+
   it("supports multi-input and multi-output refresh metadata", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("test-oauth", "api"),
@@ -2989,6 +3088,13 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       "META_ADS_REFRESH_TOKEN",
     ]);
   });
+
+  it("keeps TikTok Ads runtime token connector-owned", () => {
+    expect(getConnectorOwnedSecretNames("tiktok-ads", "oauth")).toStrictEqual([
+      "TIKTOK_ADS_ACCESS_TOKEN",
+      "TIKTOK_ADS_REFRESH_TOKEN",
+    ]);
+  });
 });
 
 describe("getConnectorAuthMethodRuntimeMetadata", () => {
@@ -3149,6 +3255,28 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
           source: {
             kind: "connector-secret",
             name: "META_ADS_ACCESS_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
+  it("returns TikTok Ads runtime token binding metadata", () => {
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("tiktok-ads", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["TIKTOK_ADS_ACCESS_TOKEN", "TIKTOK_ADS_REFRESH_TOKEN"],
+        variables: [],
+      },
+      runtimeBindings: [
+        {
+          envName: "TIKTOK_ADS_TOKEN",
+          valueRef: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_ACCESS_TOKEN",
           },
         },
       ],
@@ -3437,6 +3565,21 @@ describe("getConnectorEnvBindingEntries", () => {
         authMethod: "api-token",
         envName: "AHREFS_TOKEN",
         valueRef: "$secrets.AHREFS_TOKEN",
+      },
+    ]);
+  });
+
+  it("preserves Cloudflare runtime env compatibility across auth methods", () => {
+    expect(getConnectorEnvBindingEntries("cloudflare")).toEqual([
+      {
+        authMethod: "oauth",
+        envName: "CLOUDFLARE_TOKEN",
+        valueRef: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+      },
+      {
+        authMethod: "api-token",
+        envName: "CLOUDFLARE_TOKEN",
+        valueRef: "$secrets.CLOUDFLARE_TOKEN",
       },
     ]);
   });
@@ -3826,6 +3969,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toEqual(
       expect.arrayContaining([
         "gmail",
+        "google-analytics",
         "google-calendar",
         "google-docs",
         "google-drive",
@@ -3888,6 +4032,41 @@ describe("getConnectorAuthMethodGrantScopes - google-meet scopes", () => {
   });
 });
 
+describe("getConnectorAuthMethodGrantScopes - google-cloud scopes", () => {
+  it("uses gcloud auth login default scopes for google cloud oauth", () => {
+    const scopes = getConnectorAuthMethodGrantScopes("google-cloud", "oauth");
+
+    expect(scopes).toStrictEqual([
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/appengine.admin",
+      "https://www.googleapis.com/auth/sqlservice.login",
+      "https://www.googleapis.com/auth/compute",
+    ]);
+  });
+});
+
+describe("getConnectorAuthMethodGrantScopes - google-analytics scopes", () => {
+  it("uses Analytics Data readonly and Analytics Admin edit scopes", () => {
+    const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+      "google-analytics",
+      "oauth",
+    );
+    const scopes = getConnectorAuthMethodGrantScopes(
+      "google-analytics",
+      "oauth",
+    );
+
+    expect(scopes).toStrictEqual(grant?.scopes);
+    expect(scopes).toContain(
+      "https://www.googleapis.com/auth/analytics.readonly",
+    );
+    expect(scopes).toContain("https://www.googleapis.com/auth/analytics.edit");
+    expect(scopes).toContain("https://www.googleapis.com/auth/userinfo.email");
+  });
+});
+
 describe("connector OAuth lifecycle grant helpers", () => {
   it("returns auth-code grant config for GitHub", () => {
     const method = getConnectorAuthMethod("github", "oauth");
@@ -3909,6 +4088,89 @@ describe("connector OAuth lifecycle grant helpers", () => {
         clientType: "confidential",
         clientIdEnv: "GH_OAUTH_CLIENT_ID",
         clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
+      },
+    });
+  });
+
+  it("defaults auth-code callbacks to web origin unless configured", () => {
+    expect(
+      getConnectorAuthMethodAuthCodeCallbackOrigin("github", "oauth"),
+    ).toBe("web");
+    expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("github")).toBe(false);
+    expect(
+      getConnectorAuthMethodAuthCodeCallbackOrigin("cloudflare", "oauth"),
+    ).toBe("api");
+    expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("cloudflare")).toBe(true);
+  });
+
+  it("declares Cloudflare OAuth as a refreshable API-origin auth-code grant", () => {
+    const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+      "cloudflare",
+      "oauth",
+    );
+    expect(grant).toMatchObject({
+      kind: "auth-code",
+      callbackOrigin: "api",
+      outputs: {
+        accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+        refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+      },
+    });
+    expect(grant.scopes).toHaveLength(353);
+    expect(new Set(grant.scopes).size).toBe(grant.scopes.length);
+    expect(grant.scopes).toEqual(
+      expect.arrayContaining([
+        "user-details.read",
+        "memberships.read",
+        "zone.read",
+        "dns.write",
+        "workers-scripts.write",
+        "workers-kv-storage.write",
+        "page.write",
+        "d1.write",
+        "ai.write",
+        "queues.write",
+        "workers-r2.write",
+        "offline_access",
+      ]),
+    );
+    expect(grant.scopes).not.toEqual(
+      expect.arrayContaining([
+        "d1.metadata_read",
+        "images.metadata_read",
+        "queues.metadata_read",
+        "stream.metadata_read",
+        "workers-kv-storage.metadata_read",
+        "workers-r2.metadata_read",
+      ]),
+    );
+    expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
+      featureFlag: FeatureSwitchKey.CloudflareConnector,
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        clientIdEnv: "CLOUDFLARE_OAUTH_CLIENT_ID",
+        clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+      },
+      access: {
+        kind: "refresh-token",
+        inputs: {
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
+        outputs: {
+          accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
+        refreshableSecrets: ["CLOUDFLARE_ACCESS_TOKEN"],
+        envBindings: {
+          CLOUDFLARE_TOKEN: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+        },
+      },
+      revoke: {
+        kind: "token-revoke",
+        inputs: {
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
       },
     });
   });

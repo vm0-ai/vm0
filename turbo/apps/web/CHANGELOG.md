@@ -1,5 +1,81 @@
 # Changelog
 
+## [12.421.3](https://github.com/vm0-ai/vm0/compare/web-v12.421.2...web-v12.421.3) (2026-06-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.1
+    * @vm0/core bumped to 8.327.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.65.0
+
+## [12.421.2](https://github.com/vm0-ai/vm0/compare/web-v12.421.1...web-v12.421.2) (2026-06-11)
+
+
+### Bug Fixes
+
+* route desktop connect link to release page ([#17190](https://github.com/vm0-ai/vm0/issues/17190)) ([cfa3531](https://github.com/vm0-ai/vm0/commit/cfa3531ce706ac773080c28868f7dcb6a2739bb3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.0
+    * @vm0/core bumped to 8.326.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.64.0
+
+## [12.421.1](https://github.com/vm0-ai/vm0/compare/web-v12.421.0...web-v12.421.1) (2026-06-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.80.1
+    * @vm0/core bumped to 8.325.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.63.0
+
+## [12.421.0](https://github.com/vm0-ai/vm0/compare/web-v12.420.2...web-v12.421.0) (2026-06-10)
+
+
+### Features
+
+* add hosted site content access ([#17021](https://github.com/vm0-ai/vm0/issues/17021)) ([05d6cc1](https://github.com/vm0-ai/vm0/commit/05d6cc19428d593167196ff6cef767fe2aca72d2))
+* show desktop auth success after completion ([#17092](https://github.com/vm0-ai/vm0/issues/17092)) ([dae5585](https://github.com/vm0-ai/vm0/commit/dae5585e94d6fa49535529b1c38c79d0914fb207))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.80.0
+    * @vm0/core bumped to 8.324.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.62.0
+
+## [12.420.2](https://github.com/vm0-ai/vm0/compare/web-v12.420.1...web-v12.420.2) (2026-06-10)
+
+
+### Bug Fixes
+
+* escape json-ld script payloads ([#17015](https://github.com/vm0-ai/vm0/issues/17015)) ([27cf3ea](https://github.com/vm0-ai/vm0/commit/27cf3ea2416ea863adf98d0fb6c55250ca5124e7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.79.0
+    * @vm0/core bumped to 8.323.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.61.0
+
 ## [12.420.1](https://github.com/vm0-ai/vm0/compare/web-v12.420.0...web-v12.420.1) (2026-06-10)
 
 

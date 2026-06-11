@@ -3289,79 +3289,79 @@
       },
       "cold-outreach-pipeline": {
         "title": "Cold-E-Mail-Outreach vom ICP bis zum Posteingang",
-        "description": "Zero sucht passende Leads in Apollo, reichert E-Mails an, scrapt Firmenwebsites, generiert personalisierte Einleitungen und lädt alles in Instantly hoch.",
+        "description": "Zero sucht in Apollo nach Leads, die zu Ihrem ICP passen, bewertet jeden anhand Ihrer Signale, pflegt die Pipeline in einer Notion-Datenbank und entwirft eine personalisierte Multi-Touch-Sequenz in Gmail.",
         "timeSaved": "~45 Min. gespart",
-        "scenario": "Es ist Montagmorgen. Sie brauchen 30 qualifizierte Leads für die Kampagne dieser Woche. Das bedeutet eine Stunde in Apollo mit Filteranpassungen, CSV-Exporten, Firmenwebsites abgleichen, um Eröffnungszeilen zu schreiben, die nicht nach Vorlage klingen, und dann alles in Instantly hochladen. Bis die erste E-Mail rausgeht, ist der halbe Vormittag weg. Mit Zero beschreiben Sie Ihr ICP in normalem Deutsch und erhalten in Minuten eine vollständig personalisierte, kampagnenbereite Leadliste.",
+        "scenario": "Es ist Montagmorgen. Sie brauchen 30 qualifizierte Leads für die Kampagne dieser Woche. Das bedeutet eine Stunde in Apollo mit Filteranpassungen, CSV-Exporte, Firmenwebsites lesen, damit die erste Zeile nicht nach Vorlage klingt, dann alles in eine Tabelle eintragen und jede E-Mail von Hand schreiben. Bis der erste Entwurf steht, ist der halbe Vormittag weg. Mit Zero beschreiben Sie Ihr ICP in normalem Deutsch und bekommen eine bewertete Lead-Liste in Notion plus personalisierte Entwürfe in Gmail.",
         "promptVariants": [
           {
             "label": "Detailliert",
-            "prompt": "@Zero finde 25 Leads für dieses ICP: Assistenten der Geschäftsleitung in US-Anwaltskanzleien mit 1–10 Mitarbeitern. Verifiziere E-Mails über Apollo, analysiere jede Firmenwebsite für Kontext, generiere eine personalisierte Eröffnungszeile pro Lead und lade sie in Instantly-Kampagne abc-123-def hoch. Absender: Ethan, Founder @ vm0."
+            "prompt": "@Zero baue eine Cold-Outreach-Pipeline auf und führe sie aus. Suche in Apollo nach Gründern und Engineering-Leads bei Dev-Tool-Startups von Seed bis Series A, bewerte jeden Lead mit 0-18 Punkten über unsere 6 ICP-Signale und qualifiziere alles über 10. Trage qualifizierte Leads in unsere Notion-Pipeline-Datenbank ein und entwirf pro Lead eine Gmail-Sequenz mit 3 Touches: E1 heute, E2 an Tag 4-5, E3 als Abschluss an Tag 8-9. Stoppe die Sequenz, sobald jemand antwortet."
           },
           {
             "label": "Schnell",
-            "prompt": "@Zero finde 20 US-basierte Startup-CTOs, personalisiere und lade in Instantly-Kampagne abc-123-def hoch."
+            "prompt": "@Zero finde 20 ICP-passende Leads in Apollo, trage sie in die Notion-Pipeline ein und entwirf für jeden eine personalisierte erste E-Mail in Gmail."
           },
           {
             "label": "Geplant",
-            "prompt": "@Zero jeden Montag um 9 Uhr, finde 25 neue Leads passend zu unserem ICP (DevOps-Ingenieure bei Series-A-Startups), personalisiere und lade in Instantly-Kampagne abc-123-def hoch."
+            "prompt": "@Zero fülle jeden Montag um 9 Uhr die Notion-Pipeline mit 25 neu qualifizierten Leads auf und entwirf alle Follow-ups, die diese Woche fällig sind."
           }
         ],
         "slackPreview": [
           {
             "name": "Ethan",
-            "text": "@Zero finde 25 Assistenten der Geschäftsleitung in kleinen US-Anwaltskanzleien. Über Apollo anreichern, mit Firmenkontext personalisieren, in Instantly-Kampagne abc-123-def hochladen."
+            "text": "@Zero starte die Outreach-Pipeline: 25 Gründer bei Seed-Stage-Dev-Tool-Startups, gegen unser ICP bewerten, qualifizierte Leads nach Notion, Entwürfe in Gmail."
           },
           {
             "name": "Zero",
-            "text": "Erledigt. Pipeline abgeschlossen für Lauf 20260422-091530:\n\n• Apollo-Suche: 38 Kandidaten gefunden\n• E-Mail-Anreicherung: 27 verifizierte E-Mails\n• Website-Personalisierung: 25/27 analysiert\n• Instantly-Upload: 25 Leads eingeschrieben, 2 übersprungen (Duplikate)\n\nBeispiel-Eröffnungszeile:\n„Kalender und Akten für eine Boutique-Litigationskanzlei zu verwalten, klingt nach ernsthafter Koordinationskompetenz.“\n\nIn Google Drive gecacht — mit Lauf-ID 20260422-091530 wiederverwendbar."
+            "text": "Pipeline-Lauf abgeschlossen:\n\n• Apollo-Suche: 38 Kandidaten gefunden\n• E-Mail-Anreicherung: 27 verifizierte Adressen\n• Bewertung: 14 Leads mit 10+ von 18, in die Notion-Pipeline eingetragen\n• Gmail: 14 personalisierte Erstkontakt-Entwürfe bereit zur Durchsicht\n• Follow-ups: E2 für Tag 4-5 geplant, E3 für Tag 8-9\n\nNichts wird ohne Ihre Freigabe gesendet. Antworterkennung ist aktiv, eine Antwort stoppt die jeweilige Sequenz."
           }
         ],
         "steps": [
           {
-            "title": "Zero durchsucht Apollo nach ICP-passenden Interessenten",
-            "description": "Zero übersetzt Ihr natürlichsprachliches ICP in Apollo-Suchfilter — Jobtitel, Unternehmensgröße, Standort und nur verifizierte E-Mails — und paginiert durch die Ergebnisse, um genügend Kandidaten zu sammeln. E-Mails werden über Apollos Bulk-Match-API in kleinen Batches angereichert."
+            "title": "Zero durchsucht Apollo und bewertet jeden Lead",
+            "description": "Zero übersetzt Ihr ICP in Apollo-Suchfilter, reichert E-Mails über die Bulk-Match-API an und bewertet jeden Lead mit 0 bis 18 Punkten über sechs Signale wie Rolle, Unternehmensphase und Produkt-Fit. Nur Leads über Ihrer Qualifikationsschwelle kommen weiter."
           },
           {
-            "title": "Firmenwebsites für Personalisierungskontext analysiert",
-            "description": "Für jede einzigartige Firmendomain analysiert Zero die Website, um zu verstehen, was das Unternehmen macht, wie es sich positioniert und was es aktuell beschäftigt. Dieser Kontext fließt in die Personalisierungs-Engine ein, sodass jede Eröffnungszeile etwas Reales über das Unternehmen des Interessenten referenziert."
+            "title": "Qualifizierte Leads landen in einer Notion-Pipeline",
+            "description": "Jeder qualifizierte Lead bekommt eine Zeile in Ihrer Notion-Datenbank mit Unternehmen, Phase, Website und Sequenz-Status. Die Datenbank ist die gemeinsame Quelle der Wahrheit, das ganze Team sieht, wer gerade im Spiel ist und welcher Touch zuletzt rausging."
           },
           {
-            "title": "KI-personalisierte Leads in Instantly hochgeladen",
-            "description": "Claude generiert einen einzigartigen, natürlich klingenden Eröffnungssatz für jeden Lead — keine Vorlagen, kein Produktpitch im Opener. Die vollständige Leadliste (Name, E-Mail, Unternehmen, Personalisierungszeile) wird in Ihre Instantly-Kampagne hochgeladen, versandfertig."
+            "title": "Personalisierte Entwürfe warten in Gmail",
+            "description": "Zero liest die Website und aktuelle Aktivitäten jedes Unternehmens und schreibt eine Eröffnungszeile, die sich auf etwas Echtes bezieht. Der Erstkontakt landet als Gmail-Entwurf zur Durchsicht, Follow-ups folgen an Tag 4-5, eine Abschlussnotiz an Tag 8-9. Eine Antwort stoppt die Sequenz."
           }
         ],
         "nextActions": [
           {
-            "title": "Personalisierungsqualität prüfen",
-            "description": "Eröffnungszeilen stichprobenartig vor Kampagnenstart überprüfen",
-            "examplePrompt": "@Zero zeige mir die Personalisierungszeilen für Lauf 20260422-091530. Markiere alle, die generisch klingen oder unser Produkt erwähnen."
+            "title": "Entwürfe vor dem Versand prüfen",
+            "description": "Eröffnungszeilen stichprobenartig prüfen, solange sie noch Entwürfe sind",
+            "examplePrompt": "@Zero zeig mir die heutigen Erstkontakt-Entwürfe. Markiere jede Eröffnung, die nach Vorlage klingt oder zu früh das Produkt pitcht."
           },
           {
-            "title": "Neues Segment erschließen",
-            "description": "Ein anderes ICP ansprechen, ohne die Pipeline neu aufzubauen",
-            "examplePrompt": "@Zero gleiche Pipeline, aber ziele auf HR-Manager bei SaaS-Unternehmen mit 50–200 Mitarbeitern in UK. In Instantly-Kampagne xyz-456-ghi hochladen."
+            "title": "Auf ein neues Segment ausweiten",
+            "description": "Dieselbe Pipeline auf ein anderes ICP richten",
+            "examplePrompt": "@Zero gleiche Pipeline, aber Ziel sind HR-Manager bei SaaS-Unternehmen mit 50-200 Mitarbeitenden in Großbritannien. Trage sie in die Notion-Pipeline ein."
           },
           {
-            "title": "Wöchentliche Leadgenerierung planen",
-            "description": "Wiederkehrende Leadsuche in festem Rhythmus automatisieren",
-            "examplePrompt": "@Zero jeden Montag um 9 Uhr, finde 25 neue Leads passend zu unserem ICP und lade in Instantly-Kampagne abc-123-def hoch."
+            "title": "Zur Routine machen",
+            "description": "Die Pipeline gefüllt halten, ohne daran zu denken",
+            "examplePrompt": "@Zero fülle jeden Montag um 9 Uhr die Notion-Pipeline mit 25 neu qualifizierten Leads auf und entwirf die fälligen Follow-ups."
           }
         ],
         "integrations": [
           {
-            "description": "Apollo bietet Interessentensuche und verifizierte E-Mail-Anreicherung. Zero nutzt die People-Search- und Bulk-Match-APIs, um Leads passend zu Ihren ICP-Kriterien zu finden."
+            "description": "Apollo liefert Interessentensuche und verifizierte E-Mail-Anreicherung. Zero nutzt die People-Search- und Bulk-Match-APIs, um Leads passend zu Ihren ICP-Kriterien zu finden."
           },
           {
-            "description": "Instantly empfängt die angereicherte, personalisierte Leadliste. Zero lädt direkt in Ihre angegebene Kampagne hoch, sodass Leads für automatisierte E-Mail-Sequenzen bereit sind."
+            "description": "Notion beherbergt die Pipeline-Datenbank. Zero legt pro qualifiziertem Lead eine Zeile mit Score, Phase und Sequenz-Status an und aktualisiert sie mit jedem Touch."
           },
           {
-            "description": "Optional — Pipeline-Läufe anfordern und Abschlussberichte direkt in Slack erhalten."
+            "description": "In Gmail landen die Entwürfe und kommen die Antworten an. Zero schreibt jede E-Mail als Entwurf in Ihrem eigenen Konto, Sie prüfen vor dem Versand und die Threads bleiben in Ihrem Posteingang."
           }
         ],
         "tips": [
-          "Seien Sie spezifisch mit Ihrem ICP. Geben Sie Jobtitel, Unternehmensgrößenbereich und Zielgeografie an — vage Beschreibungen erzeugen unscharfe Ergebnisse.",
-          "Starten Sie mit 20 Leads, um die Personalisierungsqualität zu validieren, bevor Sie auf 50 pro Lauf skalieren.",
-          "Speichern Sie Ihre Lauf-ID. Zero cached Apollo- und Anreicherungsdaten in Google Drive, sodass Sie ohne erneute API-Kosten re-personalisieren oder erneut hochladen können."
+          "Geben Sie Zero Kontextdokumente: Positionierung, ICP-Definition und Preise. Je mehr es über Ihre Zielkunden weiß, desto schärfer werden Bewertung und Eröffnungszeilen.",
+          "Setzen Sie eine klare Qualifikationsschwelle, etwa 10 von 18, und lassen Sie alles darunter in Apollo. Eine kleinere, schärfere Pipeline schlägt eine lange, verrauschte Liste.",
+          "Halten Sie die Sequenz kurz und respektvoll: ein Erstkontakt, ein Follow-up, eine Abschlussnotiz. Antwortet ein Interessent, stoppt Zero die Sequenz und übergibt den Thread an Sie."
         ]
       },
       "podcast-deep-research": {

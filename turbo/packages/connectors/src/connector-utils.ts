@@ -19,6 +19,7 @@ import {
   type RefreshTokenAccessConnectorType,
   type ConnectorAccessConfig,
   type ConnectorAccessKind,
+  type ConnectorAuthCodeCallbackOrigin,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorAuthClientConfig,
   type ConnectorDeviceAuthGrantConfig,
@@ -60,6 +61,8 @@ const CONNECTOR_AUTH_METHOD_PRIORITY = {
 } as const satisfies Record<ConnectorAuthMethodId, number>;
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VARIABLE_REF_PREFIX = "$vars.";
+const DEFAULT_AUTH_CODE_CALLBACK_ORIGIN: ConnectorAuthCodeCallbackOrigin =
+  "web";
 
 function connectorAuthMethodPriority(
   authMethod: ConnectorAuthMethodId,
@@ -839,6 +842,38 @@ export function getConnectorAuthMethodAuthCodeGrantConfig(
 ): ConnectorAuthCodeGrantConfig | undefined {
   const grant = getConnectorAuthMethod(type, authMethod)?.grant;
   return grant?.kind === "auth-code" ? grant : undefined;
+}
+
+export function getConnectorAuthMethodAuthCodeCallbackOrigin<
+  Type extends AuthCodeGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorAuthCodeGrantAuthMethodId<Type>,
+): ConnectorAuthCodeCallbackOrigin;
+export function getConnectorAuthMethodAuthCodeCallbackOrigin(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthCodeCallbackOrigin | undefined;
+export function getConnectorAuthMethodAuthCodeCallbackOrigin(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthCodeCallbackOrigin | undefined {
+  const grant = getConnectorAuthMethodAuthCodeGrantConfig(type, authMethod);
+  if (!grant) {
+    return undefined;
+  }
+  return grant.callbackOrigin ?? DEFAULT_AUTH_CODE_CALLBACK_ORIGIN;
+}
+
+export function connectorAuthCodeCallbacksUseOnlyApiOrigin(
+  type: AuthCodeGrantConnectorType,
+): boolean {
+  const authMethods = getConnectorAuthMethodIdsForGrantKind(type, "auth-code");
+  return authMethods.every((authMethod) => {
+    return (
+      getConnectorAuthMethodAuthCodeCallbackOrigin(type, authMethod) === "api"
+    );
+  });
 }
 
 export function getConnectorAuthMethodExternalCodeGrantConfig<

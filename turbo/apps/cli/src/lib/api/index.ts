@@ -247,4 +247,8 @@ export {
 } from "./domains/web";
 
 // Domain modules - Zero Host
-export { prepareHostedSite, completeHostedSite } from "./domains/zero-host";
+export {
+  prepareHostedSite,
+  completeHostedSite,
+  getHostedSiteFiles,
+} from "./domains/zero-host";

@@ -46,6 +46,21 @@ describe("connector/providers/meta-ads", () => {
       expect(url).toContain("response_type=code");
       expect(url).toContain("scope=");
       expect(url).toContain("facebook.com/v22.0/dialog/oauth");
+      const scopes = new Set(
+        new URL(url).searchParams.get("scope")?.split(",") ?? [],
+      );
+      expect(scopes).toStrictEqual(
+        new Set([
+          "ads_management",
+          "ads_read",
+          "business_management",
+          "pages_manage_ads",
+          "pages_read_engagement",
+          "pages_show_list",
+          "public_profile",
+        ]),
+      );
+      expect(scopes.has("email")).toBe(false);
     });
   });
 

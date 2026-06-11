@@ -9,6 +9,18 @@ const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
   /^\/api\/zero\/me\/model-providers\/[^/]+$/;
 const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
 const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
+const DESKTOP_AUTH_HANDOFF_BY_ID_REWRITE_SOURCE = `/api/desktop-auth/handoff/:handoffId(${UUID_PATH_SEGMENT_PATTERN})`;
+const DESKTOP_AUTH_HANDOFF_BY_ID_PATH_RE = new RegExp(
+  `^/api/desktop-auth/handoff/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
+const DESKTOP_AUTH_HANDOFF_COMPLETE_REWRITE_SOURCE = `/api/desktop-auth/handoff/:handoffId(${UUID_PATH_SEGMENT_PATTERN})/complete`;
+const DESKTOP_AUTH_HANDOFF_COMPLETE_PATH_RE = new RegExp(
+  `^/api/desktop-auth/handoff/${UUID_PATH_SEGMENT_PATTERN}/complete$`,
+);
+const ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE =
+  "/api/zero/desktop/updates/:channel/:platform/:arch/release";
+const ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE =
+  /^\/api\/zero\/desktop\/updates\/[^/]+\/[^/]+\/[^/]+\/release$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 const ZERO_RUNS_REWRITE_SOURCE = "/api/zero/runs";
@@ -37,6 +49,9 @@ const ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SE
 const ZERO_RUNS_AGENT_EVENTS_PATH_RE = new RegExp(
   `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/agent$`,
 );
+const ZERO_HOST_SITE_FILES_REWRITE_SOURCE =
+  "/api/zero/host/sites/:publicSlug/files";
+const ZERO_HOST_SITE_FILES_PATH_RE = /^\/api\/zero\/host\/sites\/[^/]+\/files$/;
 const ZERO_LOGS_BY_ID_REWRITE_SOURCE = `/api/zero/logs/:id(${UUID_PATH_SEGMENT_PATTERN})`;
 const ZERO_LOGS_BY_ID_PATH_RE = new RegExp(
   `^/api/zero/logs/${UUID_PATH_SEGMENT_PATTERN}$`,
@@ -408,10 +423,25 @@ export const API_BACKEND_REWRITES = [
   [AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE, "/api/agent/composes/versions"],
   ["/api/auth/me", "/api/auth/me"],
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
+  [
+    DESKTOP_AUTH_HANDOFF_COMPLETE_REWRITE_SOURCE,
+    "/api/desktop-auth/handoff/:handoffId/complete",
+    DESKTOP_AUTH_HANDOFF_COMPLETE_PATH_RE,
+  ],
+  [
+    DESKTOP_AUTH_HANDOFF_BY_ID_REWRITE_SOURCE,
+    "/api/desktop-auth/handoff/:handoffId",
+    DESKTOP_AUTH_HANDOFF_BY_ID_PATH_RE,
+  ],
   ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
   [
     "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
     "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
+  ],
+  [
+    ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE,
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+    ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE,
   ],
   [
     AGENT_RUN_CANCEL_REWRITE_SOURCE,
@@ -805,6 +835,11 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/zero/host/presentation-html/speaker-notes",
     "/api/zero/host/presentation-html/speaker-notes",
+  ],
+  [
+    ZERO_HOST_SITE_FILES_REWRITE_SOURCE,
+    "/api/zero/host/sites/:publicSlug/files",
+    ZERO_HOST_SITE_FILES_PATH_RE,
   ],
   [ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE, "/api/zero/me/model-providers"],
   [

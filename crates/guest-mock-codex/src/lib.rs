@@ -18,7 +18,7 @@ mod session;
 
 pub use events::build_events;
 pub use fixtures::{lookup_fixture, run_fixture};
-pub use prompt::join_prompt;
+pub use prompt::{join_prompt, join_prompt_cow};
 pub use session::{
     append_session_file, build_session_path, codex_home, emit_events, find_session_file,
     read_session_file, session_artifacts, session_files, write_session_file,

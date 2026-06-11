@@ -1,6 +1,6 @@
 [package]
 name = "vsock-host"
-version = "0.17.25"
+version = "0.17.26"
 edition.workspace = true
 description = "Vsock host client for Firecracker VM communication"
 
@@ -13,6 +13,7 @@ vsock-proto.workspace = true
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
+tracing-test-support.workspace = true
 
 [lints]
 workspace = true

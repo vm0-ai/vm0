@@ -6,7 +6,7 @@ import {
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -198,21 +198,36 @@ async function updateChatThreadTitle(
   userId: string,
   title: string,
 ): Promise<void> {
+  const updated = await db
+    .update(chatThreads)
+    .set({ title })
+    .where(
+      and(
+        eq(chatThreads.id, threadId),
+        isNull(chatThreads.title),
+        isNull(chatThreads.renamedAt),
+      ),
+    )
+    .returning({ id: chatThreads.id });
+
+  if (updated.length === 0) {
+    return;
+  }
+
+  await publishThreadListChanged(userId);
+}
+
+async function shouldGenerateChatThreadTitle(
+  db: SelectDb,
+  threadId: string,
+): Promise<boolean> {
   const [thread] = await db
-    .select({ renamedAt: chatThreads.renamedAt })
+    .select({ title: chatThreads.title, renamedAt: chatThreads.renamedAt })
     .from(chatThreads)
     .where(eq(chatThreads.id, threadId))
     .limit(1);
 
-  if (thread?.renamedAt) {
-    return;
-  }
-
-  await db
-    .update(chatThreads)
-    .set({ title })
-    .where(eq(chatThreads.id, threadId));
-  await publishThreadListChanged(userId);
+  return Boolean(thread && thread.title === null && thread.renamedAt === null);
 }
 
 export async function generateAndPersistChatThreadTitle(args: {
@@ -224,6 +239,10 @@ export async function generateAndPersistChatThreadTitle(args: {
 }): Promise<void> {
   const result = await settle(
     (async () => {
+      if (!(await shouldGenerateChatThreadTitle(args.db, args.threadId))) {
+        return;
+      }
+
       const priorRounds = args.includePriorRounds
         ? await getLatestTitleContextMessages(args.db, args.threadId)
         : [];
@@ -254,6 +273,10 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
 }): Promise<void> {
   const result = await settle(
     (async () => {
+      if (!(await shouldGenerateChatThreadTitle(args.db, args.threadId))) {
+        return;
+      }
+
       const priorRounds = await getLatestTitleContextMessages(
         args.db,
         args.threadId,

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import {
   chatMessagesContract,
   type GenerationTemplateRequest,
@@ -28,6 +28,9 @@ const mockApi = createMockApi(context);
 const THREAD_ID = "thread-template-picker";
 const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
 const nextTemplate = PRESENTATION_TEMPLATE_ITEMS[1]!;
+const videoStyle = VIDEO_STYLE_PRESETS.find((item) => {
+  return item.id === "tech-minimalist-reveal";
+})!;
 
 beforeEach(() => {
   const values = new Map<string, string>();
@@ -131,6 +134,35 @@ async function openPickerAndSelectTemplate(
   ).toBeInTheDocument();
 }
 
+async function openPickerAndSelectVideoStyle(
+  user: ReturnType<typeof userEvent.setup>,
+  item = videoStyle,
+) {
+  const templateButton = await waitFor(() => {
+    return screen.getByLabelText("Template");
+  });
+  click(templateButton);
+
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  await user.click(screen.getByLabelText(`Select video style ${item.nameEn}`));
+
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  await waitFor(() => {
+    expect(screen.getByLabelText("Template")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+  expect(
+    screen.getByLabelText(`Remove video style ${item.nameEn}`),
+  ).toBeInTheDocument();
+}
+
 function expectPresentationTemplate(
   style: GenerationTemplateRequest | undefined,
 ) {
@@ -139,6 +171,15 @@ function expectPresentationTemplate(
     selection: {
       designSystemId: template.designSystemId,
       templateId: template.templateId,
+    },
+  });
+}
+
+function expectVideoTemplate(style: GenerationTemplateRequest | undefined) {
+  expect(style).toStrictEqual({
+    type: "video",
+    selection: {
+      stylePresetId: videoStyle.id,
     },
   });
 }
@@ -262,6 +303,85 @@ describe("zero chat template picker", () => {
     expect(screen.getByText("Try a different search.")).toBeInTheDocument();
     expect(screen.queryByText("My templates")).toBeNull();
     expect(screen.queryByText("Nothing saved yet")).toBeNull();
+  });
+
+  it("filters video styles by group", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.VideoTemplatePicker]: true },
+    });
+
+    click(await screen.findByLabelText("Template"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    expect(tabWithText("Video")).toBeDefined();
+    expect(screen.getByText("Brand & Commercial")).toBeInTheDocument();
+    expect(screen.getByText("Cinematic")).toBeInTheDocument();
+    expect(screen.getByText("Energy & Music")).toBeInTheDocument();
+    expect(screen.getByText("Art & Creative")).toBeInTheDocument();
+    expect(screen.getByText("Anime")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Art & Creative"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Chinese Ink Painting")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Tech Minimalist Reveal")).toBeNull();
+  });
+
+  it("selects, clears, and sends a video style", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+    const sendCapture = captureSendGenerationTemplate();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.VideoTemplatePicker]: true },
+    });
+
+    await openPickerAndSelectVideoStyle(user);
+    await user.click(
+      screen.getByLabelText(`Remove video style ${videoStyle.nameEn}`),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText(`Remove video style ${videoStyle.nameEn}`),
+      ).toBeNull();
+    });
+    expect(screen.getByLabelText("Template")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await openPickerAndSelectVideoStyle(user);
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Create a cinematic product video");
+
+    await waitFor(() => {
+      expectVideoTemplate(sendCapture.generationTemplate());
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Message template ${videoStyle.nameEn}`),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
   });
 
   it("opens a PPT preview page from the template eye button", async () => {

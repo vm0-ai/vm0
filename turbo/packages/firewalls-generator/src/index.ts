@@ -23,6 +23,7 @@ import { generate as generateAttio } from "./attio";
 import { generate as generateAtlassian } from "./atlassian";
 import { generate as generateAtlascloud } from "./atlascloud";
 import { generate as generateAviationstack } from "./aviationstack";
+import { generate as generateAws } from "./aws";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBase44 } from "./base44";
 import { generate as generateBentoml } from "./bentoml";
@@ -93,6 +94,7 @@ import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGemini } from "./gemini";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
+import { generate as generateGoogleCloud } from "./google-cloud";
 import { generate as generateGranola } from "./granola";
 import { generate as generateGreenhouse } from "./greenhouse";
 import { generate as generateGroq } from "./groq";
@@ -130,6 +132,7 @@ import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateManus } from "./manus";
 import { generate as generateMapbox } from "./mapbox";
+import { generate as generateMassive } from "./massive";
 import { generate as generateMathpix } from "./mathpix";
 import { generate as generateMem0 } from "./mem0";
 import { generate as generateMercury } from "./mercury";
@@ -192,6 +195,7 @@ import { generate as generateRunway } from "./runway";
 import { generate as generateScrapeninja } from "./scrapeninja";
 import { generate as generateSalesforce } from "./salesforce";
 import { generate as generateSegment } from "./segment";
+import { generate as generateSemrush } from "./semrush";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
 import { generate as generateShopify } from "./shopify";
@@ -215,6 +219,7 @@ import { generate as generateSupermemory } from "./supermemory";
 import { generate as generateTavily } from "./tavily";
 import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTicketmaster } from "./ticketmaster";
+import { generate as generateTikTokAds } from "./tiktok-ads";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTogether } from "./together";
@@ -239,6 +244,7 @@ import { generate as generateZeptomail } from "./zeptomail";
 import { generate as generateWandb } from "./wandb";
 import { generate as generateZoom } from "./zoom";
 import { generate as generateGoogleAds } from "./google-ads";
+import { generate as generateGoogleAnalytics } from "./google-analytics";
 import { generate as generateGoogleMaps } from "./google-maps";
 import { generate as generateAltium365 } from "./altium-365";
 import { generate as generateBrowserstack } from "./browserstack";
@@ -269,6 +275,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   attio: generateAttio,
   atlassian: generateAtlassian,
   atlascloud: generateAtlascloud,
+  aws: generateAws,
   axiom: generateAxiom,
   base44: generateBase44,
   bentoml: generateBentoml,
@@ -337,6 +344,8 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
   gitlab: generateGitlab,
   "google-ads": generateGoogleAds,
+  "google-analytics": generateGoogleAnalytics,
+  "google-cloud": generateGoogleCloud,
   granola: generateGranola,
   greenhouse: generateGreenhouse,
   groq: generateGroq,
@@ -372,6 +381,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   make: generateMake,
   mailsac: generateMailsac,
   manus: generateManus,
+  massive: generateMassive,
   mem0: generateMem0,
   mercury: generateMercury,
   meshy: generateMeshy,
@@ -429,6 +439,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   salesforce: generateSalesforce,
   scrapeninja: generateScrapeninja,
   segment: generateSegment,
+  semrush: generateSemrush,
   sentry: generateSentry,
   serpapi: generateSerpapi,
   shopify: generateShopify,
@@ -452,6 +463,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tavily: generateTavily,
   "test-oauth": generateTestOauth,
   ticketmaster: generateTicketmaster,
+  "tiktok-ads": generateTikTokAds,
   tldv: generateTldv,
   todoist: generateTodoist,
   together: generateTogether,

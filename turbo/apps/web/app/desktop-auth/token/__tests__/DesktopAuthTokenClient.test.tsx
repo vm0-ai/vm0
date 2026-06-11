@@ -49,6 +49,7 @@ const clerkState = vi.hoisted(() => {
         vi.fn<(args: { readonly organization: string }) => Promise<void>>(),
       userMemberships: { data: [] },
     } as OrganizationListState,
+    searchParams: new URLSearchParams(),
   };
 });
 
@@ -62,6 +63,16 @@ vi.mock("@clerk/nextjs", () => {
     },
   };
 });
+
+vi.mock("next/navigation", () => {
+  return {
+    useSearchParams: () => {
+      return clerkState.searchParams;
+    },
+  };
+});
+
+const fetchMock = vi.fn<typeof fetch>();
 
 function installDesktopAuthBridge() {
   const completeSignIn =
@@ -101,6 +112,12 @@ describe("DesktopAuthTokenClient", () => {
       userMemberships: { data: [] },
     };
     Reflect.deleteProperty(window, "vm0DesktopAuth");
+    clerkState.searchParams = new URLSearchParams();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ status: "completed" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState(null, "", "/desktop-auth/token");
   });
 
@@ -125,6 +142,42 @@ describe("DesktopAuthTokenClient", () => {
         token: "fresh-desktop-token",
       });
     });
+    expect(replace).toHaveBeenCalledWith("/");
+  });
+
+  it("marks the handoff complete after sending the token to the desktop bridge", async () => {
+    const handoffId = "550e8400-e29b-41d4-a716-446655440000";
+    clerkState.searchParams = new URLSearchParams({ handoffId });
+    const completeSignIn = installDesktopAuthBridge();
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {
+        return undefined;
+      });
+
+    render(<DesktopAuthTokenClient />);
+
+    await waitFor(() => {
+      expect(completeSignIn).toHaveBeenCalledWith({
+        token: "fresh-desktop-token",
+      });
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/desktop-auth/handoff/${handoffId}/complete`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer fresh-desktop-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        },
+      );
+    });
+    expect(completeSignIn.mock.invocationCallOrder[0]).toBeLessThan(
+      fetchMock.mock.invocationCallOrder[0] ?? Infinity,
+    );
     expect(replace).toHaveBeenCalledWith("/");
   });
 
@@ -205,6 +258,39 @@ describe("DesktopAuthTokenClient", () => {
 
     await waitFor(() => {
       expect(replace).toHaveBeenCalledWith("/desktop-auth/select-org");
+    });
+    expect(completeSignIn).not.toHaveBeenCalled();
+  });
+
+  it("preserves handoff id when redirecting to workspace selection", async () => {
+    const handoffId = "550e8400-e29b-41d4-a716-446655440000";
+    clerkState.searchParams = new URLSearchParams({ handoffId });
+    const completeSignIn = installDesktopAuthBridge();
+    clerkState.auth = {
+      ...clerkState.auth,
+      orgId: null,
+    };
+    clerkState.organizationList = {
+      ...clerkState.organizationList,
+      userMemberships: {
+        data: [
+          membership("org_1", "First Workspace"),
+          membership("org_2", "Second Workspace"),
+        ],
+      },
+    };
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {
+        return undefined;
+      });
+
+    render(<DesktopAuthTokenClient />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith(
+        `/desktop-auth/select-org?handoffId=${handoffId}`,
+      );
     });
     expect(completeSignIn).not.toHaveBeenCalled();
   });

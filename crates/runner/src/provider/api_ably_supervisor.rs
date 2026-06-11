@@ -542,41 +542,55 @@ async fn handle_ably_message(
         return;
     }
 
-    if let Some(notif) = parse_job_notification(msg) {
-        if notif
-            .target_runner_id
-            .as_deref()
-            .is_some_and(|target| target != runner_id)
+    let action = {
+        let Some(notif) = parse_job_notification(msg) else {
+            return;
+        };
+
+        if let Some(target) = notif.target_runner_id
+            && target != runner_id
         {
             info!(
                 run_id = %notif.run_id,
-                target = notif.target_runner_id.as_deref().unwrap_or(""),
+                target = %target,
                 "ably: job targeted to another runner, deferring poll"
             );
+            JobNotificationAction::Defer
+        } else {
+            let targeted = notif
+                .target_runner_id
+                .is_some_and(|target| target == runner_id);
+            info!(
+                run_id = %notif.run_id,
+                profile = notif.profile.unwrap_or(""),
+                targeted,
+                "ably: job notification, waking poll"
+            );
+            JobNotificationAction::WakeNow
+        }
+    };
+
+    match action {
+        JobNotificationAction::Defer => {
             poll_wakeups
                 .request_deferred_poll_after(TARGETED_RUNNER_DEFER)
                 .await;
-            return;
         }
-
-        let targeted = notif
-            .target_runner_id
-            .as_deref()
-            .is_some_and(|target| target == runner_id);
-        info!(
-            run_id = %notif.run_id,
-            profile = notif.profile.as_deref().unwrap_or(""),
-            targeted,
-            "ably: job notification, waking poll"
-        );
-        poll_wakeups.request_immediate_poll().await;
+        JobNotificationAction::WakeNow => {
+            poll_wakeups.request_immediate_poll().await;
+        }
     }
 }
 
-struct JobNotification {
+enum JobNotificationAction {
+    Defer,
+    WakeNow,
+}
+
+struct JobNotification<'a> {
     run_id: RunId,
-    profile: Option<String>,
-    target_runner_id: Option<String>,
+    profile: Option<&'a str>,
+    target_runner_id: Option<&'a str>,
 }
 
 fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
@@ -593,7 +607,7 @@ fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
     }
 }
 
-fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification> {
+fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
     if msg.name.as_deref() != Some("job") {
         return None;
     }
@@ -611,16 +625,8 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
             return None;
         }
     };
-    let profile = msg
-        .data
-        .get("profile")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let target_runner_id = msg
-        .data
-        .get("targetRunnerId")
-        .and_then(|v| v.as_str())
-        .map(String::from);
+    let profile = msg.data.get("profile").and_then(|v| v.as_str());
+    let target_runner_id = msg.data.get("targetRunnerId").and_then(|v| v.as_str());
     Some(JobNotification {
         run_id,
         profile,
@@ -1422,10 +1428,10 @@ mod tests {
         );
         let notif = parse_job_notification(&msg).unwrap();
         assert_eq!(
-            notif.target_runner_id.as_deref(),
+            notif.target_runner_id,
             Some("00000000-0000-0000-0000-000000000099")
         );
-        assert_eq!(notif.profile.as_deref(), Some("vm0/default"));
+        assert_eq!(notif.profile, Some("vm0/default"));
     }
 
     #[test]

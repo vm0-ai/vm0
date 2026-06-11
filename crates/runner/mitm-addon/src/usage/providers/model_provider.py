@@ -1,8 +1,9 @@
 """Model-provider usage reporting entry point.
 
 Buffers token counts already normalized by an addon-side provider extractor
-(stored in ``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]``) for aggregate upload to
-the platform usage webhook endpoints.
+(stored in ``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]`` or
+``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES]``) for aggregate
+upload to the platform usage webhook endpoints.
 
 Model-provider usage reporting is separate from platform billing. New run
 contexts set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the
@@ -14,6 +15,7 @@ field existed can still report usage.
 """
 
 import uuid
+from collections.abc import Iterator
 from typing import TypeGuard
 
 from mitmproxy import http
@@ -53,7 +55,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     - ``firewall_name`` starts with ``model-provider:``.
     - ``run_id`` is non-empty.
     - ``firewall_billable`` is truthy.
-    - ``model_provider_usage`` is a non-empty dict.
+    - At least one model-provider usage source is available.
     - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
       quantity.
     - ``vm_sandbox_token`` and ``get_api_url()`` are both non-empty.
@@ -70,11 +72,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
         return False
     if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
         return False
-    usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
-    if not usage or not isinstance(usage, dict):
-        return False
-    provider = _reported_model(flow, usage)
-    events = _build_usage_events(run_id, flow.id, provider, usage, USAGE_EVENT_NAMESPACE_MODEL)
+    events = _build_model_provider_usage_events(flow, run_id, USAGE_EVENT_NAMESPACE_MODEL)
     if not events:
         return False
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
@@ -105,17 +103,7 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
         return False
     if not is_model_provider_usage_observable(flow):
         return False
-    usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
-    if not usage or not isinstance(usage, dict):
-        return False
-    model = _reported_model(flow, usage)
-    events = _build_usage_events(
-        run_id,
-        flow.id,
-        model,
-        usage,
-        USAGE_OBSERVATION_NAMESPACE_MODEL,
-    )
+    events = _build_model_provider_usage_events(flow, run_id, USAGE_OBSERVATION_NAMESPACE_MODEL)
     if not events:
         return False
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
@@ -138,6 +126,32 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
         proxy_log_path,
     )
     return True
+
+
+def _build_model_provider_usage_events(
+    flow: http.HTTPFlow, run_id: str, namespace: uuid.UUID
+) -> list[UsageEvent]:
+    events: list[UsageEvent] = []
+    for source_id, usage in _iter_model_provider_usage_sources(flow):
+        provider = _reported_model(flow, usage)
+        events.extend(_build_usage_events(run_id, source_id, provider, usage, namespace))
+    return events
+
+
+def _iter_model_provider_usage_sources(flow: http.HTTPFlow) -> Iterator[tuple[str, dict]]:
+    usage_sources = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_SOURCES)
+    if isinstance(usage_sources, dict):
+        valid_sources = (
+            (message_id, source_usage)
+            for message_id, source_usage in usage_sources.items()
+            if isinstance(message_id, str) and message_id and isinstance(source_usage, dict)
+        )
+        for message_id, source_usage in sorted(valid_sources):
+            yield f"{flow.id}:{message_id}", source_usage
+
+    usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
+    if usage and isinstance(usage, dict):
+        yield flow.id, usage
 
 
 def _build_usage_events(

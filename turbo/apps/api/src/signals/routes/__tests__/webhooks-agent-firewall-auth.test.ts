@@ -48,6 +48,7 @@ const context = testContext();
 const store = createStore();
 const ORG_SENTINEL_USER_ID = "__org__";
 const AWS_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";
+const CLOUDFLARE_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
 const FRESH_AWS_CREDENTIAL_ID = ["fresh", "aws", "credential", "id"].join("-");
 const STALE_AWS_CREDENTIAL_ID = ["stale", "aws", "credential", "id"].join("-");
 const STALE_ENCRYPTED_AWS_CREDENTIAL_ID = [
@@ -455,6 +456,54 @@ async function seedExpiredNotionConnector(
   await seedNotionConnector(fixture, {
     accessToken: "stale-notion-token",
     refreshToken: "notion-refresh-token",
+    tokenExpiresAt: new Date(now() - 60_000),
+  });
+}
+
+async function seedCloudflareConnector(
+  fixture: FirewallFixture,
+  args: {
+    readonly accessToken: string;
+    readonly refreshToken: string;
+    readonly tokenExpiresAt: Date | null;
+    readonly needsReconnect?: boolean;
+  },
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "cloudflare",
+    authMethod: "oauth",
+    externalId: "cloudflare-user",
+    externalUsername: "cloudflare-user",
+    externalEmail: "cloudflare@example.com",
+    oauthScopes: JSON.stringify([]),
+    tokenExpiresAt: args.tokenExpiresAt,
+    needsReconnect: args.needsReconnect ?? false,
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "CLOUDFLARE_ACCESS_TOKEN",
+    value: args.accessToken,
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "CLOUDFLARE_REFRESH_TOKEN",
+    value: args.refreshToken,
+    type: "connector",
+  });
+}
+
+async function seedExpiredCloudflareConnector(
+  fixture: FirewallFixture,
+): Promise<void> {
+  await seedCloudflareConnector(fixture, {
+    accessToken: "stale-cloudflare-token",
+    refreshToken: "cloudflare-refresh-token",
     tokenExpiresAt: new Date(now() - 60_000),
   });
 }
@@ -1123,6 +1172,13 @@ function notionConnectorState(fixture: FirewallFixture): Promise<{
   return connectorState(fixture, "notion");
 }
 
+function cloudflareConnectorState(fixture: FirewallFixture): Promise<{
+  readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
+}> {
+  return connectorState(fixture, "cloudflare");
+}
+
 async function codexProviderState(
   fixture: FirewallFixture,
   sourceUserId = ORG_SENTINEL_USER_ID,
@@ -1158,6 +1214,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
   let restoreFirewallAuthRefreshTimeout: (() => void) | undefined;
 
   beforeEach(() => {
+    mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_ID", "cloudflare-client");
+    mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_SECRET", "cloudflare-secret");
     mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-client");
     mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-secret");
   });
@@ -2079,6 +2137,76 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(connector.tokenExpiresAt?.getTime()).toBeGreaterThan(now());
   });
 
+  it("refreshes expired Cloudflare OAuth tokens for firewall auth", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredCloudflareConnector(fixture);
+    let tokenRequestAuthorization: string | null = null;
+    let tokenRequestBody: URLSearchParams | undefined;
+    server.use(
+      http.post(CLOUDFLARE_TOKEN_URL, async ({ request }) => {
+        tokenRequestAuthorization = request.headers.get("authorization");
+        tokenRequestBody = new URLSearchParams(await request.text());
+        return HttpResponse.json({
+          access_token: "fresh-cloudflare-token",
+          refresh_token: "new-cloudflare-refresh-token",
+          expires_in: 7200,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CLOUDFLARE_TOKEN: "stale-cloudflare-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CLOUDFLARE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CLOUDFLARE_TOKEN: "cloudflare",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(tokenRequestAuthorization).toBe(
+      `Basic ${Buffer.from("cloudflare-client:cloudflare-secret").toString("base64")}`,
+    );
+    expect(tokenRequestBody?.get("client_secret")).toBeNull();
+    expect(tokenRequestBody?.get("grant_type")).toBe("refresh_token");
+    expect(tokenRequestBody?.get("refresh_token")).toBe(
+      "cloudflare-refresh-token",
+    );
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-cloudflare-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["cloudflare"]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["CLOUDFLARE_TOKEN"]);
+    expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "CLOUDFLARE_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("fresh-cloudflare-token");
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "CLOUDFLARE_REFRESH_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("new-cloudflare-refresh-token");
+    await expect(cloudflareConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+    });
+  });
+
   it("refreshes AWS credentials while preserving non-refreshable runtime region bindings", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredAwsConnector(fixture);
@@ -2187,6 +2315,68 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "connector",
       }),
     ).resolves.toBeNull();
+  });
+
+  it("refreshes AWS credentials for SigV4 firewall auth templates", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredAwsConnector(fixture);
+    server.use(
+      http.post(AWS_TOKEN_URL, () => {
+        return HttpResponse.json({
+          accessToken: {
+            accessKeyId: FRESH_AWS_CREDENTIAL_ID,
+            secretAccessKey: "fresh-aws-secret-access-key",
+            sessionToken: "fresh-aws-session-token",
+          },
+          expiresIn: 900,
+          refreshToken: "rotated-aws-refresh-token",
+          tokenType: "aws_sigv4",
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            AWS_ACCESS_KEY_ID: STALE_ENCRYPTED_AWS_CREDENTIAL_ID,
+            AWS_SECRET_ACCESS_KEY: "stale-encrypted-aws-secret-access-key",
+            AWS_SESSION_TOKEN: "stale-encrypted-aws-session-token",
+          }),
+          authHeaders: {},
+          authAwsSigv4: {
+            accessKeyId: secretTemplate("AWS_ACCESS_KEY_ID"),
+            secretAccessKey: secretTemplate("AWS_SECRET_ACCESS_KEY"),
+            sessionToken: secretTemplate("AWS_SESSION_TOKEN"),
+          },
+          secretConnectorMap: {
+            AWS_ACCESS_KEY_ID: "aws",
+            AWS_SECRET_ACCESS_KEY: "aws",
+            AWS_SESSION_TOKEN: "aws",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.awsSigv4).toStrictEqual({
+      accessKeyId: FRESH_AWS_CREDENTIAL_ID,
+      secretAccessKey: "fresh-aws-secret-access-key",
+      sessionToken: "fresh-aws-session-token",
+    });
+    expect(response.body.headers).toStrictEqual({});
+    expect(response.body.refreshedConnectors).toStrictEqual(["aws"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
+    expect(response.body.resolvedSecrets).toStrictEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
   });
 
   it("serializes concurrent connector OAuth refreshes for rotated refresh tokens", async () => {
@@ -4147,6 +4337,46 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("classifies Cloudflare invalid_grant refresh failures as reconnect required", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredCloudflareConnector(fixture);
+    server.use(
+      http.post(CLOUDFLARE_TOKEN_URL, () => {
+        return HttpResponse.json(
+          { error: "invalid_grant", error_description: "revoked" },
+          { status: 400 },
+        );
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CLOUDFLARE_TOKEN: "stale-cloudflare-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CLOUDFLARE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CLOUDFLARE_TOKEN: "cloudflare",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["cloudflare"],
+      failureReason: "reconnect_required",
+    });
+    await expect(cloudflareConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: true,
+    });
+  });
+
   it("refreshes reconnect-required connector tokens even when expiry is still valid", async () => {
     const fixture = await track(seedFixture());
     await seedNotionConnector(fixture, {
@@ -4297,6 +4527,48 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       failureReason: "upstream_provider",
     });
     await expect(notionConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+    });
+  });
+
+  it("classifies Cloudflare upstream refresh failures without marking reconnect", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredCloudflareConnector(fixture);
+    server.use(
+      http.post(CLOUDFLARE_TOKEN_URL, () => {
+        return HttpResponse.json(
+          { error: "temporarily_unavailable" },
+          { status: 502 },
+        );
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CLOUDFLARE_TOKEN: "stale-cloudflare-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CLOUDFLARE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CLOUDFLARE_TOKEN: "cloudflare",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["cloudflare"],
+      message:
+        "Access token refresh failed for: cloudflare. The upstream provider may be temporarily unavailable.",
+      failureReason: "upstream_provider",
+    });
+    await expect(cloudflareConnectorState(fixture)).resolves.toMatchObject({
       needsReconnect: false,
     });
   });

@@ -21,6 +21,7 @@ import {
 } from "./computer-use-electron";
 import {
   ComputerUseHostRuntime,
+  readSystemHostName,
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
 import {
@@ -69,6 +70,7 @@ import {
   isDesktopAuthStartNavigation,
   parseDesktopAuthCallback,
   parseDesktopAuthCallbackArgv,
+  type DesktopAuthCallback,
 } from "./desktop-auth";
 import {
   hideDockForHiddenMainWindow,
@@ -169,7 +171,7 @@ async function runAuthWindow(request: {
 }
 
 let authSession: DesktopAuthSession | null = null;
-let pendingDesktopAuthCode: string | null = null;
+let pendingDesktopAuthCallback: DesktopAuthCallback | null = null;
 
 function getAuthSession(): DesktopAuthSession {
   if (authSession) {
@@ -185,27 +187,28 @@ function getAuthSession(): DesktopAuthSession {
     cookieUrls: [config.webUrl, config.platformUrl],
     cookieSource: session.fromPartition(config.sessionPartition),
     tokenUrl: desktopAuthTokenUrl,
-    consumeUrl: (code) => buildDesktopAuthConsumeUrl(config.webUrl, code),
+    consumeUrl: (code, handoffId) =>
+      buildDesktopAuthConsumeUrl(config.webUrl, code, handoffId),
     selectOrgUrl: desktopAuthSelectOrgUrl,
     runAuthWindow,
     onChange: notifyAuthChanged,
     onAuthCompleted: maybeStartComputerUseAfterAuth,
   });
 
-  if (pendingDesktopAuthCode) {
-    authSession.queuePendingCode(pendingDesktopAuthCode);
-    pendingDesktopAuthCode = null;
+  if (pendingDesktopAuthCallback) {
+    authSession.queuePendingCallback(pendingDesktopAuthCallback);
+    pendingDesktopAuthCallback = null;
   }
 
   return authSession;
 }
 
-function queuePendingDesktopAuthCode(code: string): void {
+function queuePendingDesktopAuthCallback(callback: DesktopAuthCallback): void {
   if (authSession) {
-    authSession.queuePendingCode(code);
+    authSession.queuePendingCallback(callback);
     return;
   }
-  pendingDesktopAuthCode = code;
+  pendingDesktopAuthCallback = callback;
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -339,7 +342,7 @@ async function startComputerUseRuntime(
   if (!computerUseRuntime) {
     computerUseRuntime = new ComputerUseHostRuntime({
       platformUrl: config.platformUrl,
-      displayName: config.identity.displayName,
+      hostName: readSystemHostName(config.identity.displayName),
       appVersion: app.getVersion(),
       sessionFetch: createDesktopComputerUseSessionFetch({
         platformUrl: config.platformUrl,
@@ -626,11 +629,13 @@ function openDesktopAuthCallback(rawUrl: string): boolean {
   desktopAuthStartGate.suppressRetry();
 
   if (!authSession) {
-    queuePendingDesktopAuthCode(callback.code);
+    queuePendingDesktopAuthCallback(callback);
     return true;
   }
 
-  void authSession.consumeCode(callback.code).catch(logDesktopAuthError);
+  void authSession
+    .consumeCode(callback.code, callback.handoffId)
+    .catch(logDesktopAuthError);
   return true;
 }
 
@@ -894,11 +899,13 @@ function handleDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
 
   desktopAuthStartGate.suppressRetry();
   if (!authSession) {
-    queuePendingDesktopAuthCode(callback.code);
+    queuePendingDesktopAuthCallback(callback);
     return true;
   }
 
-  void authSession.consumeCode(callback.code).catch(logDesktopAuthError);
+  void authSession
+    .consumeCode(callback.code, callback.handoffId)
+    .catch(logDesktopAuthError);
   return true;
 }
 
@@ -912,7 +919,7 @@ function queueDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
   }
 
   desktopAuthStartGate.suppressRetry();
-  queuePendingDesktopAuthCode(callback.code);
+  queuePendingDesktopAuthCallback(callback);
   return true;
 }
 
@@ -990,6 +997,7 @@ if (!hasSingleInstanceLock) {
     installDesktopAutoUpdates({
       config,
       apiBaseUrl: desktopApiBaseUrl,
+      getComputerUseHostState: () => getComputerUseBridgeState().host,
       prepareForQuitAndInstall,
     });
     installKeepAwake();
@@ -1000,10 +1008,10 @@ if (!hasSingleInstanceLock) {
     installTray();
     queueDesktopAuthCallbackArgv(process.argv);
 
-    const pendingCode = desktopAuthSession.takePendingCode();
-    if (pendingCode) {
+    const pendingCallback = desktopAuthSession.takePendingCallback();
+    if (pendingCallback) {
       void desktopAuthSession
-        .consumeCode(pendingCode)
+        .consumeCode(pendingCallback.code, pendingCallback.handoffId)
         .catch(logDesktopAuthError);
     }
 

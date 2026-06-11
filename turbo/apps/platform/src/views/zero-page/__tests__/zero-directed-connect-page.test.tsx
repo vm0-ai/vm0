@@ -305,10 +305,16 @@ describe("directed connect page", () => {
   });
 
   it("opens manual grant dialog for a connector without oauth", async () => {
-    // Find a connector type that only has api-token auth
+    // Find a connector type that only has api-token auth and is visible with
+    // default feature switches.
     const apiTokenOnlyType = CONNECTOR_TYPE_KEYS.find((type) => {
       const methods = CONNECTOR_TYPES[type].authMethods;
-      return "api-token" in methods && !("oauth" in methods);
+      if (!("api-token" in methods) || "oauth" in methods) {
+        return false;
+      }
+
+      const apiTokenMethod = methods["api-token"];
+      return !("featureFlag" in apiTokenMethod);
     });
 
     // Skip if no api-token-only connector exists

@@ -75,6 +75,7 @@ const appendQueuedMessage$ = command(
       hasTextContent,
       modelSelection,
       generationTemplate,
+      computerUseHostId,
     }: AppendQueuedMessageArgs,
     signal: AbortSignal,
   ) => {
@@ -89,6 +90,7 @@ const appendQueuedMessage$ = command(
           clientMessageId,
           modelSelection,
           generationTemplate,
+          computerUseHostId,
           attachFiles: attachments ?? undefined,
         },
         fetchOptions: { signal },
@@ -316,6 +318,7 @@ export function createRemoteChatThreadDataSource(
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
+      computerUseHostId: body.computerUseHostId ?? null,
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
     };

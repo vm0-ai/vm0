@@ -25,7 +25,15 @@ export const metaAds = {
         },
         grant: {
           kind: "auth-code",
-          scopes: ["ads_management", "ads_read", "business_management"],
+          scopes: [
+            "ads_management",
+            "ads_read",
+            "business_management",
+            "pages_manage_ads",
+            "pages_read_engagement",
+            "pages_show_list",
+            "public_profile",
+          ],
           outputs: {
             accessToken: "$secrets.META_ADS_ACCESS_TOKEN",
             refreshToken: "$secrets.META_ADS_REFRESH_TOKEN",

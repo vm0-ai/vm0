@@ -16,6 +16,7 @@ const baseHostState: ComputerUseHostRuntimeState = {
   lastHeartbeatAt: null,
   lastCommandAt: null,
   lastError: null,
+  errorLog: [],
   recentAuditEvents: [],
   localCommandLog: [],
 };
@@ -138,6 +139,14 @@ describe("desktop tray menu", () => {
       trayActions(),
     );
 
+    expect(menu.map((item) => item.label).filter((label) => label)).toEqual([
+      "Show Main Window",
+      "Workspace: Max & Zoe",
+      "Computer Use: Online",
+      "Keep Mac Awake",
+      "No Recent Commands",
+      "Quit",
+    ]);
     expect(findItem(menu, "Show Main Window")).toBeDefined();
     expect(findItem(menu, "Keep Mac Awake")).toStrictEqual({
       label: "Keep Mac Awake",

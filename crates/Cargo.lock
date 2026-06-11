@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "0.7.18"
+version = "0.7.20"
 dependencies = [
  "base64",
  "futures-util",
@@ -1263,7 +1263,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.34.24"
+version = "0.34.27"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.21"
+version = "0.20.22"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1325,7 +1325,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.66"
+version = "0.16.67"
 dependencies = [
  "libc",
  "nix",
@@ -1344,7 +1344,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chrono",
  "clap",
@@ -2570,7 +2570,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.110.2"
+version = "0.111.1"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2614,6 +2614,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "tracing-test-support",
  "url",
  "uuid",
  "which",
@@ -2787,7 +2788,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.18"
+version = "0.37.19"
 dependencies = [
  "async-trait",
  "base64",
@@ -3532,6 +3533,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-test-support"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3684,7 +3693,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.18.26"
+version = "0.18.27"
 dependencies = [
  "libc",
  "process-control-ipc",
@@ -3693,12 +3702,13 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "nix",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "tracing-test-support",
  "uuid",
  "vsock-proto",
 ]
@@ -3709,7 +3719,7 @@ version = "0.18.12"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.80"
+version = "0.9.82"
 dependencies = [
  "guest-write-file",
  "libc",

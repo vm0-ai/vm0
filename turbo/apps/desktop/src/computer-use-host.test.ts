@@ -1,6 +1,8 @@
+import os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ComputerUseHostRuntime,
+  readSystemHostName,
   type ComputerUseHostFetch,
 } from "./computer-use-host";
 import type {
@@ -55,7 +57,7 @@ function createRuntime(
     });
   const runtime = new ComputerUseHostRuntime({
     platformUrl: new URL("https://app.vm0.ai"),
-    displayName: "Zero Desktop",
+    hostName: "lancy-macbook-pro.local",
     appVersion: "1.2.3",
     sessionFetch,
     hostFetch,
@@ -73,10 +75,24 @@ function createRuntime(
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 describe("ComputerUseHostRuntime", () => {
+  it("reads the system hostname with an app-name fallback", () => {
+    const hostname = vi
+      .spyOn(os, "hostname")
+      .mockReturnValue(" lancy-macbook-pro.local ");
+
+    expect(readSystemHostName("Zero Computer Use")).toBe(
+      "lancy-macbook-pro.local",
+    );
+
+    hostname.mockReturnValue(" ");
+    expect(readSystemHostName("Zero Computer Use")).toBe("Zero Computer Use");
+  });
+
   it("does not register a host until manually started", async () => {
     vi.useFakeTimers();
     const { runtime, sessionFetch, hostFetch } = createRuntime();
@@ -105,7 +121,7 @@ describe("ComputerUseHostRuntime", () => {
     expect(url).toBe("https://api.vm0.ai/api/zero/computer-use/hosts/start");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      hostName: "Zero Desktop",
+      hostName: "lancy-macbook-pro.local",
       appVersion: "1.2.3",
       permissions: {
         accessibility: true,
@@ -155,6 +171,85 @@ describe("ComputerUseHostRuntime", () => {
     );
 
     await runtime.stop();
+  });
+
+  it("clears a command polling error when the next idle claim succeeds", async () => {
+    vi.useFakeTimers();
+    const heartbeat = deferred<Response>();
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return heartbeat.promise;
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? new Response("{}", { status: 500 })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/stop")) {
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "error",
+      lastError: "Computer Use command claim failed: 500",
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("keeps heartbeat deactivation when a late idle command poll resolves", async () => {
+    vi.useFakeTimers();
+    const heartbeat = deferred<Response>();
+    const commandPoll = deferred<Response>();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return heartbeat.promise;
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return commandPoll.promise;
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    heartbeat.resolve(new Response("{}", { status: 401 }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+    });
+
+    commandPoll.resolve(jsonResponse({ status: "idle" }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+    });
   });
 
   it("records local native command payloads and results", async () => {
@@ -402,6 +497,15 @@ describe("ComputerUseHostRuntime", () => {
       hostId: null,
       lastError:
         "Computer Use is already active in another Zero Desktop session.",
+      errorLog: [
+        {
+          source: "heartbeat",
+          hostId: null,
+          message:
+            "Computer Use is already active in another Zero Desktop session.",
+          status: "error",
+        },
+      ],
     });
   });
 
@@ -468,6 +572,15 @@ describe("ComputerUseHostRuntime", () => {
       hostId: null,
       lastError:
         "Computer Use is already active in another Zero Desktop session.",
+      errorLog: [
+        {
+          source: "start",
+          hostId: null,
+          message:
+            "Computer Use is already active in another Zero Desktop session.",
+          status: "error",
+        },
+      ],
     });
   });
 });

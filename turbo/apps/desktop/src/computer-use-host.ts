@@ -9,6 +9,8 @@ import type {
   ComputerUseLocalCommandLogEntry,
   ComputerUsePermissionState,
   ComputerUseRuntimeAuditEvent,
+  ComputerUseRuntimeErrorLogEntry,
+  ComputerUseRuntimeErrorSource,
 } from "./computer-use-types";
 import {
   COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
@@ -19,6 +21,7 @@ const ONLINE_POLL_MS = 2_000;
 const COMMAND_COMPLETION_RETRY_DELAY_MS = 2_000;
 const COMMAND_COMPLETION_MAX_ATTEMPTS = 3;
 const AUTH_ME_PATH = "/api/auth/me";
+const ERROR_LOG_LIMIT = 20;
 
 export type ComputerUseHostFetch = (
   input: string,
@@ -29,7 +32,7 @@ type MaybePromise<T> = T | Promise<T>;
 
 interface ComputerUseHostRuntimeOptions {
   readonly platformUrl: URL;
-  readonly displayName: string;
+  readonly hostName: string;
   readonly appVersion: string;
   readonly sessionFetch: ComputerUseHostFetch;
   readonly hostFetch: ComputerUseHostFetch;
@@ -65,6 +68,21 @@ type ComputerUseHostNextResponse =
   | ComputerUseHostNextIdleResponse
   | ComputerUseHostNextCommandResponse;
 
+type RuntimeErrorStateUpdate = Partial<
+  Pick<
+    ComputerUseHostRuntimeState,
+    | "hostId"
+    | "lastHeartbeatAt"
+    | "lastCommandAt"
+    | "recentAuditEvents"
+    | "localCommandLog"
+  >
+>;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function commandFailureFromError(
   error: unknown,
 ): ComputerUseCommandExecutionResult {
@@ -72,7 +90,7 @@ function commandFailureFromError(
     status: "failed",
     error: {
       code: "accessibility_unavailable",
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
     },
   };
 }
@@ -88,12 +106,12 @@ export function resolveComputerUseApiBaseUrl(platformUrl: URL): string {
 }
 
 export function buildComputerUseRuntimeBody(args: {
-  readonly displayName: string;
+  readonly hostName: string;
   readonly appVersion: string;
   readonly permissions: ComputerUsePermissionState;
 }): Record<string, unknown> {
   return {
-    hostName: args.displayName,
+    hostName: args.hostName,
     appVersion: args.appVersion,
     osVersion: `${os.type()} ${os.release()}`,
     supportedCapabilities: [...SUPPORTED_COMPUTER_USE_CAPABILITIES],
@@ -101,9 +119,14 @@ export function buildComputerUseRuntimeBody(args: {
   };
 }
 
+export function readSystemHostName(fallback: string): string {
+  const hostName = os.hostname().trim().replace(/\s+/g, " ");
+  return hostName || fallback;
+}
+
 export class ComputerUseHostRuntime {
   private readonly apiBaseUrl: string;
-  private readonly displayName: string;
+  private readonly hostName: string;
   private readonly appVersion: string;
   private readonly sessionFetch: ComputerUseHostFetch;
   private readonly hostFetchRequest: ComputerUseHostFetch;
@@ -117,19 +140,21 @@ export class ComputerUseHostRuntime {
   private commandTimer: NodeJS.Timeout | null = null;
   private commandExecutionRunning = false;
   private hostToken: string | null = null;
+  private nextErrorLogId = 0;
   private state: ComputerUseHostRuntimeState = {
     status: "idle",
     hostId: null,
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
+    errorLog: [],
     recentAuditEvents: [],
     localCommandLog: [],
   };
 
   constructor(options: ComputerUseHostRuntimeOptions) {
     this.apiBaseUrl = resolveComputerUseApiBaseUrl(options.platformUrl);
-    this.displayName = options.displayName;
+    this.hostName = options.hostName;
     this.appVersion = options.appVersion;
     this.sessionFetch = options.sessionFetch;
     this.hostFetchRequest = options.hostFetch;
@@ -154,10 +179,7 @@ export class ComputerUseHostRuntime {
       this.scheduleHeartbeat(nextDelay);
       this.scheduleCommandPoll(nextDelay);
     } catch (error) {
-      this.setState({
-        status: "error",
-        lastError: error instanceof Error ? error.message : String(error),
-      });
+      this.setRuntimeErrorState("start", error);
       this.running = false;
     }
   }
@@ -179,10 +201,7 @@ export class ComputerUseHostRuntime {
     try {
       await this.stopHost(hostToken);
     } catch (error) {
-      this.setState({
-        status: "error",
-        lastError: error instanceof Error ? error.message : String(error),
-      });
+      this.setRuntimeErrorState("stop", error);
     }
   }
 
@@ -192,7 +211,7 @@ export class ComputerUseHostRuntime {
 
   private async runtimeBody(): Promise<Record<string, unknown>> {
     return buildComputerUseRuntimeBody({
-      displayName: this.displayName,
+      hostName: this.hostName,
       appVersion: this.appVersion,
       permissions: await this.getPermissions(),
     });
@@ -201,6 +220,31 @@ export class ComputerUseHostRuntime {
   private setState(update: Partial<ComputerUseHostRuntimeState>): void {
     this.state = { ...this.state, ...update };
     this.onChange();
+  }
+
+  private setRuntimeErrorState(
+    source: ComputerUseRuntimeErrorSource,
+    error: unknown,
+    update: RuntimeErrorStateUpdate = {},
+  ): void {
+    const message = errorMessage(error);
+    const occurredAt = new Date().toISOString();
+    const hostId =
+      "hostId" in update ? (update.hostId ?? null) : this.state.hostId;
+    const entry: ComputerUseRuntimeErrorLogEntry = {
+      id: `${occurredAt}-${this.nextErrorLogId++}`,
+      source,
+      message,
+      occurredAt,
+      hostId,
+      status: "error",
+    };
+    this.setState({
+      ...update,
+      status: "error",
+      lastError: message,
+      errorLog: [entry, ...this.state.errorLog].slice(0, ERROR_LOG_LIMIT),
+    });
   }
 
   private startLocalCommandLogEntry(
@@ -300,10 +344,7 @@ export class ComputerUseHostRuntime {
       }
       this.scheduleHeartbeat(ONLINE_POLL_MS);
     } catch (error) {
-      this.setState({
-        status: "error",
-        lastError: error instanceof Error ? error.message : String(error),
-      });
+      this.setRuntimeErrorState("heartbeat", error);
       this.running = false;
       this.clearCommandTimer();
     }
@@ -318,10 +359,7 @@ export class ComputerUseHostRuntime {
       await this.claimAndExecuteCommand();
     } catch (error) {
       if (this.running) {
-        this.setState({
-          status: "error",
-          lastError: error instanceof Error ? error.message : String(error),
-        });
+        this.setRuntimeErrorState("command_poll", error);
       }
     } finally {
       this.commandExecutionRunning = false;
@@ -363,12 +401,11 @@ export class ComputerUseHostRuntime {
       return null;
     }
     if (response.status === 409) {
-      this.setState({
-        status: "error",
-        hostId: null,
-        lastError:
-          "Computer Use is already active in another Zero Desktop session.",
-      });
+      this.setRuntimeErrorState(
+        "start",
+        "Computer Use is already active in another Zero Desktop session.",
+        { hostId: null },
+      );
       return null;
     }
     if (!response.ok) {
@@ -412,12 +449,11 @@ export class ComputerUseHostRuntime {
     }
     if (response.status === 409) {
       this.hostToken = null;
-      this.setState({
-        status: "error",
-        hostId: null,
-        lastError:
-          "Computer Use is already active in another Zero Desktop session.",
-      });
+      this.setRuntimeErrorState(
+        "heartbeat",
+        "Computer Use is already active in another Zero Desktop session.",
+        { hostId: null },
+      );
       return false;
     }
     if (!response.ok) {
@@ -476,6 +512,13 @@ export class ComputerUseHostRuntime {
     }
     const body = (await next.json()) as ComputerUseHostNextResponse;
     if (body.status === "idle") {
+      if (!this.running || !this.hostToken) {
+        return;
+      }
+      this.setState({
+        status: "online",
+        lastError: null,
+      });
       return;
     }
 

@@ -1476,6 +1476,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/host/presentation-html/redeploy"),
     ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/host/sites/demo-site-a1b2c3d4-release-01/files",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/host/sites/demo-site-a1b2c3d4-release-01/files/extra",
+      ),
+    ).toBe(false);
   });
 
   it("matches the email unsubscribe rewrite path exactly", () => {
@@ -2285,6 +2295,24 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/compose/550e8400-e29b-41d4-a716-446655440000/metadata",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the zero desktop update release rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64/release",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64/release/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64",
       ),
     ).toBe(false);
   });

@@ -266,12 +266,10 @@ async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
 async fn send_event_extracts_claude_session_id() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
+    let _session_files = SessionCheckpointFilesGuard::new();
 
-    // Clean up session files from any prior run
     let sid_file = guest_agent::paths::session_id_file();
     let hist_file = guest_agent::paths::session_history_path_file();
-    let _ = std::fs::remove_file(sid_file);
-    let _ = std::fs::remove_file(hist_file);
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/events");
@@ -307,8 +305,6 @@ async fn send_event_extracts_claude_session_id() {
     );
 
     mock.delete_async().await;
-    let _ = std::fs::remove_file(sid_file);
-    let _ = std::fs::remove_file(hist_file);
 }
 
 #[tokio::test]
@@ -357,10 +353,9 @@ async fn send_event_rejects_unsafe_claude_session_id() {
 async fn send_event_skips_session_id_for_non_init() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
+    let _session_files = SessionCheckpointFilesGuard::new();
 
-    // Ensure no leftover session file
     let sid_file = guest_agent::paths::session_id_file();
-    let _ = std::fs::remove_file(sid_file);
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/events");

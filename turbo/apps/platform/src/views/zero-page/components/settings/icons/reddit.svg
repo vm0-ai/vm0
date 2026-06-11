@@ -1,1 +1,210 @@
-<svg viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg"><circle cx="400" cy="400" fill="#ff4500" r="400"/><path d="M666.8 400c.08 5.48-.6 10.95-2.04 16.24s-3.62 10.36-6.48 15.04c-2.85 4.68-6.35 8.94-10.39 12.65s-8.58 6.83-13.49 9.27c.11 1.46.2 2.93.25 4.4a107.268 107.268 0 0 1 0 8.8c-.05 1.47-.14 2.94-.25 4.4 0 89.6-104.4 162.4-233.2 162.4S168 560.4 168 470.8c-.11-1.46-.2-2.93-.25-4.4a107.268 107.268 0 0 1 0-8.8c.05-1.47.14-2.94.25-4.4a58.438 58.438 0 0 1-31.85-37.28 58.41 58.41 0 0 1 7.8-48.42 58.354 58.354 0 0 1 41.93-25.4 58.4 58.4 0 0 1 46.52 15.5 286.795 286.795 0 0 1 35.89-20.71c12.45-6.02 25.32-11.14 38.51-15.3s26.67-7.35 40.32-9.56 27.45-3.42 41.28-3.63L418 169.6c.33-1.61.98-3.13 1.91-4.49.92-1.35 2.11-2.51 3.48-3.4 1.38-.89 2.92-1.5 4.54-1.8 1.61-.29 3.27-.26 4.87.09l98 19.6c9.89-16.99 30.65-24.27 48.98-17.19s28.81 26.43 24.71 45.65c-4.09 19.22-21.55 32.62-41.17 31.61-19.63-1.01-35.62-16.13-37.72-35.67L440 186l-26 124.8c13.66.29 27.29 1.57 40.77 3.82a284.358 284.358 0 0 1 77.8 24.86A284.412 284.412 0 0 1 568 360a58.345 58.345 0 0 1 29.4-15.21 58.361 58.361 0 0 1 32.95 3.21 58.384 58.384 0 0 1 25.91 20.61A58.384 58.384 0 0 1 666.8 400zm-396.96 55.31c2.02 4.85 4.96 9.26 8.68 12.97 3.71 3.72 8.12 6.66 12.97 8.68A40.049 40.049 0 0 0 306.8 480c16.18 0 30.76-9.75 36.96-24.69 6.19-14.95 2.76-32.15-8.68-43.59s-28.64-14.87-43.59-8.68c-14.94 6.2-24.69 20.78-24.69 36.96 0 5.25 1.03 10.45 3.04 15.31zm229.1 96.02c2.05-2 3.22-4.73 3.26-7.59.04-2.87-1.07-5.63-3.07-7.68s-4.73-3.22-7.59-3.26c-2.87-.04-5.63 1.07-7.94 2.8a131.06 131.06 0 0 1-19.04 11.35 131.53 131.53 0 0 1-20.68 7.99c-7.1 2.07-14.37 3.54-21.72 4.39-7.36.85-14.77 1.07-22.16.67-7.38.33-14.78.03-22.11-.89a129.01 129.01 0 0 1-21.64-4.6c-7.08-2.14-13.95-4.88-20.56-8.18s-12.93-7.16-18.89-11.53c-2.07-1.7-4.7-2.57-7.38-2.44s-5.21 1.26-7.11 3.15c-1.89 1.9-3.02 4.43-3.15 7.11s.74 5.31 2.44 7.38c7.03 5.3 14.5 9.98 22.33 14s16 7.35 24.4 9.97 17.01 4.51 25.74 5.66c8.73 1.14 17.54 1.53 26.33 1.17 8.79.36 17.6-.03 26.33-1.17A153.961 153.961 0 0 0 476.87 564c7.83-4.02 15.3-8.7 22.33-14zm-7.34-68.13c5.42.06 10.8-.99 15.81-3.07 5.01-2.09 9.54-5.17 13.32-9.06s6.72-8.51 8.66-13.58A39.882 39.882 0 0 0 532 441.6c0-16.18-9.75-30.76-24.69-36.96-14.95-6.19-32.15-2.76-43.59 8.68s-14.87 28.64-8.68 43.59c6.2 14.94 20.78 24.69 36.96 24.69z" fill="#fff"/></svg>
+<svg viewBox="0 0 216 216" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient
+      id="reddit-white-left"
+      cx="64.38"
+      fx="64.38"
+      fy="142.47"
+      r="127.45"
+      gradientTransform="translate(0 19.13) scale(1 .87)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FEFFFF" />
+      <stop offset=".4" stop-color="#FEFFFF" />
+      <stop offset=".51" stop-color="#F9FCFC" />
+      <stop offset=".62" stop-color="#EDF3F5" />
+      <stop offset=".7" stop-color="#DEE9EC" />
+      <stop offset=".72" stop-color="#D8E4E8" />
+      <stop offset=".76" stop-color="#CCD8DF" />
+      <stop offset=".8" stop-color="#C8D5DD" />
+      <stop offset=".83" stop-color="#CCD6DE" />
+      <stop offset=".85" stop-color="#D8DBE2" />
+      <stop offset=".88" stop-color="#EDE3E9" />
+      <stop offset=".9" stop-color="#FFEBEF" />
+    </radialGradient>
+    <radialGradient
+      id="reddit-white-right"
+      cx="370.49"
+      cy="151.59"
+      fx="370.49"
+      fy="142.47"
+      r="127.45"
+      gradientTransform="translate(0 19.13) scale(1 .87)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FEFFFF" />
+      <stop offset=".4" stop-color="#FEFFFF" />
+      <stop offset=".51" stop-color="#F9FCFC" />
+      <stop offset=".62" stop-color="#EDF3F5" />
+      <stop offset=".7" stop-color="#DEE9EC" />
+      <stop offset=".72" stop-color="#D8E4E8" />
+      <stop offset=".76" stop-color="#CCD8DF" />
+      <stop offset=".8" stop-color="#C8D5DD" />
+      <stop offset=".83" stop-color="#CCD6DE" />
+      <stop offset=".85" stop-color="#D8DBE2" />
+      <stop offset=".88" stop-color="#EDE3E9" />
+      <stop offset=".9" stop-color="#FFEBEF" />
+    </radialGradient>
+    <radialGradient
+      id="reddit-face"
+      cx="220.14"
+      cy="135.08"
+      fx="220.14"
+      fy="135.08"
+      r="384.44"
+      gradientTransform="translate(0 40.35) scale(1 .7)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FEFFFF" />
+      <stop offset=".4" stop-color="#FEFFFF" />
+      <stop offset=".51" stop-color="#F9FCFC" />
+      <stop offset=".62" stop-color="#EDF3F5" />
+      <stop offset=".7" stop-color="#DEE9EC" />
+      <stop offset=".72" stop-color="#D8E4E8" />
+      <stop offset=".76" stop-color="#CCD8DF" />
+      <stop offset=".8" stop-color="#C8D5DD" />
+      <stop offset=".83" stop-color="#CCD6DE" />
+      <stop offset=".85" stop-color="#D8DBE2" />
+      <stop offset=".88" stop-color="#EDE3E9" />
+      <stop offset=".9" stop-color="#FFEBEF" />
+    </radialGradient>
+    <radialGradient
+      id="reddit-eye-left"
+      cx="134.7"
+      cy="240.48"
+      fx="134.7"
+      fy="240.48"
+      r="32.12"
+      gradientTransform="translate(0 -110.04) scale(1 1.46)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FF6600" />
+      <stop offset=".5" stop-color="#FF4500" />
+      <stop offset=".7" stop-color="#FC4301" />
+      <stop offset=".82" stop-color="#F43F07" />
+      <stop offset=".92" stop-color="#E53812" />
+      <stop offset="1" stop-color="#D4301F" />
+    </radialGradient>
+    <radialGradient
+      id="reddit-eye-right"
+      cx="6191.5"
+      cy="240.48"
+      fx="6191.5"
+      fy="240.48"
+      r="32.12"
+      gradientTransform="translate(6489.32 -110.04) rotate(-180) scale(1 -1.46)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FF6600" />
+      <stop offset=".5" stop-color="#FF4500" />
+      <stop offset=".7" stop-color="#FC4301" />
+      <stop offset=".82" stop-color="#F43F07" />
+      <stop offset=".92" stop-color="#E53812" />
+      <stop offset="1" stop-color="#D4301F" />
+    </radialGradient>
+    <radialGradient
+      id="reddit-mouth"
+      cx="215.93"
+      cy="338.52"
+      fx="215.93"
+      fy="338.52"
+      r="113.26"
+      gradientTransform="translate(0 116.39) scale(1 .66)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#172E35" />
+      <stop offset=".29" stop-color="#0E1C21" />
+      <stop offset=".73" stop-color="#030708" />
+      <stop offset="1" stop-color="#000000" />
+    </radialGradient>
+    <radialGradient
+      id="reddit-antenna-dot"
+      cx="315.81"
+      cy="3.47"
+      fx="315.81"
+      fy="3.47"
+      r="99.42"
+      gradientTransform="translate(0 .06) scale(1 .98)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FEFFFF" />
+      <stop offset=".4" stop-color="#FEFFFF" />
+      <stop offset=".51" stop-color="#F9FCFC" />
+      <stop offset=".62" stop-color="#EDF3F5" />
+      <stop offset=".7" stop-color="#DEE9EC" />
+      <stop offset=".72" stop-color="#D8E4E8" />
+      <stop offset=".76" stop-color="#CCD8DF" />
+      <stop offset=".8" stop-color="#C8D5DD" />
+      <stop offset=".83" stop-color="#CCD6DE" />
+      <stop offset=".85" stop-color="#D8DBE2" />
+      <stop offset=".88" stop-color="#EDE3E9" />
+      <stop offset=".9" stop-color="#FFEBEF" />
+    </radialGradient>
+    <radialGradient
+      id="reddit-antenna"
+      cx="274.38"
+      cy="103.82"
+      fx="274.38"
+      fy="103.82"
+      r="81.49"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset=".48" stop-color="#7A9299" />
+      <stop offset=".67" stop-color="#172E35" />
+      <stop offset=".75" stop-color="#000000" />
+      <stop offset=".82" stop-color="#172E35" />
+    </radialGradient>
+  </defs>
+  <path
+    d="m108,0h0C48.35,0,0,48.35,0,108h0c0,29.82,12.09,56.82,31.63,76.37l-20.57,20.57c-4.08,4.08-1.19,11.06,4.58,11.06h92.36s0,0,0,0c59.65,0,108-48.35,108-108h0C216,48.35,167.65,0,108,0Z"
+    fill="#FF4500"
+  />
+  <g transform="translate(21.56 31.55) scale(.4)">
+    <circle fill="url(#reddit-white-right)" cx="369.16" cy="188.55" r="63.05" />
+    <circle fill="url(#reddit-white-left)" cx="63.05" cy="188.55" r="63.05" />
+    <ellipse fill="url(#reddit-face)" cx="216.26" cy="242.72" rx="180" ry="135" />
+    <path
+      fill="#842123"
+      d="m163.04,229.59c-1.05,22.87-16.23,31.17-33.91,31.17s-31.15-11.71-30.09-34.58c1.05-22.87,16.23-38.01,33.91-38.01s31.15,18.54,30.09,41.42Z"
+    />
+    <path
+      fill="#842123"
+      d="m333.48,226.18c1.05,22.87-12.42,34.58-30.09,34.58s-32.85-8.3-33.91-31.17c-1.05-22.87,12.42-41.42,30.09-41.42s32.85,15.13,33.91,38.01Z"
+    />
+    <path
+      fill="url(#reddit-eye-left)"
+      d="m163.05,231.59c-.99,21.41-15.19,29.17-31.73,29.17s-29.15-11.63-28.16-33.03c.99-21.41,15.19-35.41,31.73-35.41s29.15,17.86,28.16,39.27Z"
+    />
+    <path
+      fill="url(#reddit-eye-right)"
+      d="m269.47,231.59c.99,21.41,15.19,29.17,31.73,29.17,16.54,0,29.15-11.63,28.16-33.03-.99-21.41-15.19-35.41-31.73-35.41s-29.15,17.86-28.16,39.27Z"
+    />
+    <ellipse fill="#FFC49C" cx="145.19" cy="212.04" rx="7" ry="7.64" />
+    <ellipse fill="#FFC49C" cx="311.64" cy="212.04" rx="7" ry="7.64" />
+    <path
+      fill="#BBCFDA"
+      d="m216.26,276.02c-22.32,0-43.71,1.08-63.49,3.04-3.38.34-5.52,3.78-4.21,6.86,11.08,25.97,37.22,44.21,67.7,44.21s56.62-18.24,67.7-44.21c1.31-3.08-.83-6.52-4.21-6.86-19.78-1.97-41.17-3.04-63.49-3.04Z"
+    />
+    <path
+      fill="#FFFFFF"
+      d="m216.26,280.98c-22.25,0-43.57,1.09-63.29,3.09-3.37.34-5.51,3.84-4.2,6.97,11.05,26.38,37.1,44.91,67.49,44.91s56.44-18.53,67.49-44.91c1.31-3.12-.83-6.62-4.2-6.97-19.72-2-41.04-3.09-63.29-3.09Z"
+    />
+    <path
+      fill="url(#reddit-mouth)"
+      d="m216.26,278.4c-21.9,0-42.89,1.08-62.3,3.04-3.32.34-5.42,3.78-4.13,6.86,10.87,25.97,36.52,44.21,66.44,44.21s55.56-18.24,66.44-44.21c1.29-3.08-.81-6.52-4.13-6.86-19.41-1.97-40.4-3.04-62.31-3.04Z"
+    />
+    <circle fill="url(#reddit-antenna-dot)" cx="314.84" cy="44.68" r="44.68" />
+    <path
+      fill="url(#reddit-antenna)"
+      d="m215.62,113.41c-5.35,0-9.69-2.24-9.69-5.69,0-40.03,32.56-72.59,72.59-72.59,5.35,0,9.69,4.34,9.69,9.69s-4.34,9.69-9.69,9.69c-29.34,0-53.22,23.87-53.22,53.22,0,3.45-4.34,5.69-9.69,5.69Z"
+    />
+    <path
+      fill="#FF6101"
+      d="m151.29,242.18c0,8.28-8.81,12-19.69,12s-19.69-3.72-19.69-12,8.81-15,19.69-15,19.69,6.72,19.69,15Z"
+    />
+    <path
+      fill="#FF6101"
+      d="m320.6,242.18c0,8.28-8.81,12-19.69,12s-19.69-3.72-19.69-12,8.81-15,19.69-15,19.69,6.72,19.69,15Z"
+    />
+  </g>
+</svg>

@@ -33,6 +33,13 @@
   --color-credit-pay-as-you-go: #97918a;
   --color-credit-plan-pro: #edc43e;
   --color-credit-plan-team: #6b8de3;
+
+  /* Usage record kind breakdown segment colors */
+  --color-usage-kind-model: #6b8de3;
+  --color-usage-kind-image: #e88033;
+  --color-usage-kind-video: #3eb7b8;
+  --color-usage-kind-connector: #97918a;
+  --color-usage-kind-other: #edc43e;
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline

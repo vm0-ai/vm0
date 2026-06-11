@@ -9,6 +9,7 @@ export const desktopAuthHandoffCodes = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(),
     consumedAt: timestamp("consumed_at"),
+    completedAt: timestamp("completed_at"),
   },
   (table) => {
     return [

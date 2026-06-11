@@ -1454,26 +1454,29 @@ mod tests {
     #[tokio::test]
     async fn expired_cooldown_with_failed_recheck_drops_claim_and_scans() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let mut pool = test_pool(0, Duration::from_millis(1), dir.path(), never_free);
+        let mut pool = test_pool(0, Duration::from_secs(60), dir.path(), never_free);
         pool.in_flight.insert(3);
-        let handle = DevicePoolHandle::from_pool(pool);
 
-        handle.release_clean(lease(3, dir.path())).await;
-        let acquire_task = tokio::spawn({
-            let handle = handle.clone();
-            async move { handle.acquire().await }
-        });
+        pool.release_claim(claim(3, dir.path()));
+        let (respond_to, response) = oneshot::channel();
+        pool.waiting_acquires.push_back(respond_to);
+        pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
+        assert_eq!(pool.waiting_acquires.len(), 1);
+        assert_eq!(pool.deferred_acquire_errors.len(), 1);
 
-        let result = tokio::time::timeout(Duration::from_secs(1), acquire_task)
-            .await
-            .expect("acquire timed out")
-            .expect("acquire task panicked");
+        pool.cooldown
+            .front_mut()
+            .expect("released claim should be cooling down")
+            .released_at = Instant::now() - Duration::from_secs(61);
+        pool.process_expired_cooldown();
+        pool.ensure_waiting_progress();
+
+        let result = response.await.expect("waiter should receive scan failure");
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
         assert!(
             device_lock::try_acquire_device_claim_in(3, dir.path())
                 .expect("lock probe")
                 .is_some()
         );
-        handle.cleanup().await;
     }
 }

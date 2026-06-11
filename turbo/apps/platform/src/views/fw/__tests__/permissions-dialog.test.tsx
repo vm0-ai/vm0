@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import {
   zeroAgentsByIdContract,
@@ -240,21 +239,9 @@ async function selectAllowDuration(
 }
 
 describe("permissions dialog - flat list connector (Notion)", () => {
-  it("hides connector reset when the reset feature switch is disabled", async () => {
-    mockAPIs({ connectorType: "notion" });
-    detachedSetupPage({ context, path: "/agents/my-agent" });
-    await openPermissionsDrawer("Notion");
-
-    expect(queryButtonByText("Restore")).toBeUndefined();
-  });
-
   it("disables connector reset when there is no persisted or draft state to reset", async () => {
     mockAPIs({ connectorType: "notion" });
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
     expect(getButtonByText("Restore")).toBeDisabled();
@@ -278,11 +265,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
         return respond(200, createMockUserPermissionGrantResponse(body));
       }),
     );
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
     const row = getPermissionRow("insert_comments");
@@ -326,11 +309,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
         return respond(200, createMockUserPermissionGrantResponse(body));
       }),
     );
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
     const row = getPermissionRow("insert_comments");
@@ -366,11 +345,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       connectorType: "notion",
       userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
     });
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
     click(getButtonByText("Restore"));
@@ -400,11 +375,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
         }),
       ],
     });
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
     await waitFor(() => {
       expect(screen.getByText("< 1 hour")).toBeInTheDocument();
@@ -433,11 +404,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
         return respond(200, createMockUserPermissionGrantResponse(body));
       }),
     );
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
     click(getButtonByText("Restore"));
@@ -459,11 +426,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       connectorType: "notion",
       userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
     });
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
     click(getButtonByText("Restore"));
@@ -802,11 +765,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       connectorType: "slack",
       userPermissionGrants: [mockGrant("slack", "admin", "allow")],
     });
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Slack");
 
     click(screen.getByText(/Admin \(\d+\)/i));

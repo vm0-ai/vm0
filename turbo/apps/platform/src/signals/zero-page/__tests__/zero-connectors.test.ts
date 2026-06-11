@@ -248,6 +248,72 @@ describe("connectors — auth method feature flags", () => {
     expect(zapier?.availableAuthMethods).toContain("api-token");
   });
 
+  it("hides Google Maps when GoogleMapsConnector feature switch is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.GoogleMapsConnector]: false },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const googleMaps = connectorTypes.find((c) => {
+      return c.type === "google-maps";
+    });
+
+    expect(googleMaps).toBeUndefined();
+  });
+
+  it("shows Google Maps when GoogleMapsConnector feature switch is enabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.GoogleMapsConnector]: true },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const googleMaps = connectorTypes.find((c) => {
+      return c.type === "google-maps";
+    });
+
+    expect(googleMaps).toBeDefined();
+    expect(googleMaps?.availableAuthMethods).toContain("api-token");
+  });
+
+  it("hides Google Analytics when GoogleAnalyticsConnector feature switch is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.GoogleAnalyticsConnector]: false },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const googleAnalytics = connectorTypes.find((c) => {
+      return c.type === "google-analytics";
+    });
+
+    expect(googleAnalytics).toBeUndefined();
+  });
+
+  it("shows Google Analytics when GoogleAnalyticsConnector feature switch is enabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.GoogleAnalyticsConnector]: true },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const googleAnalytics = connectorTypes.find((c) => {
+      return c.type === "google-analytics";
+    });
+
+    expect(googleAnalytics).toBeDefined();
+    expect(googleAnalytics?.availableAuthMethods).toContain("oauth");
+  });
+
   it("shows mercury because its api-token method is ungated", async () => {
     detachedSetupPage({
       context,
