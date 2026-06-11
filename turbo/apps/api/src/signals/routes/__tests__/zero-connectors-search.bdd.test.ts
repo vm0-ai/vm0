@@ -249,6 +249,17 @@ describe("/api/zero/connectors/search BDD", () => {
       findConnector(disabledTestOAuth.body.connectors, "test-oauth-device"),
     ).toBeUndefined();
 
+    const disabledGoogleCloud = await accept(
+      client.search({
+        query: { keyword: "gcp" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(
+      findConnector(disabledGoogleCloud.body.connectors, "google-cloud"),
+    ).toBeUndefined();
+
     const base44 = await accept(
       client.search({
         query: { keyword: "base44" },
@@ -302,6 +313,7 @@ describe("/api/zero/connectors/search BDD", () => {
     }
 
     await enableFeatureSwitches(member, {
+      [FeatureSwitchKey.GoogleCloudConnector]: true,
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
 
@@ -316,6 +328,18 @@ describe("/api/zero/connectors/search BDD", () => {
       findConnector(enabledTestOAuth.body.connectors, "test-oauth-device")
         ?.authMethods,
     ).toStrictEqual(["oauth", "api"]);
+
+    const enabledGoogleCloud = await accept(
+      client.search({
+        query: { keyword: "gcp" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(
+      findConnector(enabledGoogleCloud.body.connectors, "google-cloud")
+        ?.authMethods,
+    ).toStrictEqual(["oauth"]);
   });
 
   it("accepts zero tokens carrying the connector:read capability", async () => {

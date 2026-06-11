@@ -104,7 +104,9 @@ async function seedSlackState(args: {
   readonly seedConnection?: boolean;
   readonly seedDefaultAgent?: boolean;
   readonly seedSlackRun?: boolean;
+  readonly seedScheduledSlackRun?: boolean;
   readonly seedNonSlackRun?: boolean;
+  readonly selectedModel?: string;
 }): Promise<TestSlackStatePostResponse> {
   mockEnv("ENV", "development");
   mockTestUserMembership(args.userId, args.orgId);
@@ -119,7 +121,9 @@ async function seedSlackState(args: {
         seed_connection: args.seedConnection,
         seed_default_agent: args.seedDefaultAgent,
         seed_slack_run: args.seedSlackRun,
+        seed_scheduled_slack_run: args.seedScheduledSlackRun,
         seed_non_slack_run: args.seedNonSlackRun,
+        selected_model: args.selectedModel,
       },
     }),
     [200],
@@ -268,6 +272,7 @@ describe("/api/test/slack-state BDD", () => {
       connection_id: null,
       default_agent_id: null,
       slack_run_id: null,
+      scheduled_slack_run_id: null,
       non_slack_run_id: null,
     });
     expect(bareState.installation).toMatchObject({
@@ -293,7 +298,9 @@ describe("/api/test/slack-state BDD", () => {
       seedConnection: true,
       seedDefaultAgent: true,
       seedSlackRun: true,
+      seedScheduledSlackRun: true,
       seedNonSlackRun: true,
+      selectedModel: "claude-sonnet-4-6",
     });
 
     expect(seeded).toMatchObject({
@@ -303,6 +310,7 @@ describe("/api/test/slack-state BDD", () => {
       vm0_user_id: userId,
       default_agent_id: expect.any(String),
       slack_run_id: expect.any(String),
+      scheduled_slack_run_id: expect.any(String),
       non_slack_run_id: expect.any(String),
     });
     expect(seeded.connection_id).toStrictEqual(expect.any(String));
@@ -367,6 +375,9 @@ describe("/api/test/slack-state BDD", () => {
     const slackRun = seeded.slack_run_id
       ? findRun(state, seeded.slack_run_id)
       : undefined;
+    const scheduledSlackRun = seeded.scheduled_slack_run_id
+      ? findRun(state, seeded.scheduled_slack_run_id)
+      : undefined;
     const nonSlackRun = seeded.non_slack_run_id
       ? findRun(state, seeded.non_slack_run_id)
       : undefined;
@@ -376,6 +387,13 @@ describe("/api/test/slack-state BDD", () => {
       userId,
       error: "diagnostic error",
       promptPreview: "hello from slack diagnostics",
+    });
+    expect(scheduledSlackRun).toMatchObject({
+      status: "completed",
+      triggerSource: "schedule",
+      userId,
+      error: null,
+      promptPreview: "hello from scheduled slack diagnostics",
     });
     expect(nonSlackRun).toMatchObject({
       status: "completed",
@@ -449,6 +467,11 @@ describe("/api/test/slack-state BDD", () => {
     expect(reseeded.default_agent_id).toBe(seeded.default_agent_id);
     expect(
       seeded.slack_run_id ? findRun(afterReseed, seeded.slack_run_id) : null,
+    ).toBeUndefined();
+    expect(
+      seeded.scheduled_slack_run_id
+        ? findRun(afterReseed, seeded.scheduled_slack_run_id)
+        : null,
     ).toBeUndefined();
     expect(
       seeded.non_slack_run_id

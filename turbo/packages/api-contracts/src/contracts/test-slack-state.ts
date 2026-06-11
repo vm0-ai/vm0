@@ -27,7 +27,9 @@ export const testSlackStatePostBodySchema = z.object({
   seed_connection: z.boolean().optional(),
   seed_default_agent: z.boolean().optional(),
   seed_slack_run: z.boolean().optional(),
+  seed_scheduled_slack_run: z.boolean().optional(),
   seed_non_slack_run: z.boolean().optional(),
+  selected_model: z.string().optional(),
 });
 
 export const testSlackStatePostResponseSchema = z.object({
@@ -38,6 +40,7 @@ export const testSlackStatePostResponseSchema = z.object({
   connection_id: z.string().nullable(),
   default_agent_id: z.string().nullable(),
   slack_run_id: z.string().nullable(),
+  scheduled_slack_run_id: z.string().nullable(),
   non_slack_run_id: z.string().nullable(),
 });
 

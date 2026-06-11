@@ -11,12 +11,14 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
@@ -36,6 +38,8 @@ import {
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_WORKSPACE_NAME = "E2E Test Workspace";
 const DEFAULT_AGENT_NAME = "e2e-slack-agent";
+const DEFAULT_SCHEDULE_NAME = "daily-standup";
+const DEFAULT_SCHEDULE_DESCRIPTION = "Daily standup summary";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
 const SLACK_BOT_SCOPES = "chat:write,im:write,users:read";
@@ -224,9 +228,12 @@ async function seedDiagnosticRun(
     readonly orgId: string;
     readonly userId: string;
     readonly composeId: string;
-    readonly triggerSource: "slack" | "manual";
+    readonly versionId: string;
+    readonly triggerSource: "slack" | "schedule" | "manual";
     readonly prompt: string;
     readonly error?: string | null;
+    readonly scheduleId?: string;
+    readonly selectedModel?: string;
     readonly createdAt: Date;
   },
 ): Promise<string> {
@@ -242,6 +249,7 @@ async function seedDiagnosticRun(
     id: runId,
     userId: input.userId,
     orgId: input.orgId,
+    agentComposeVersionId: input.versionId,
     sessionId,
     status: "completed",
     prompt: input.prompt,
@@ -251,6 +259,8 @@ async function seedDiagnosticRun(
   await db.insert(zeroRuns).values({
     id: runId,
     triggerSource: input.triggerSource,
+    scheduleId: input.scheduleId,
+    selectedModel: input.selectedModel,
   });
   return runId;
 }
@@ -259,6 +269,7 @@ function shouldSeedDefaultAgent(body: TestSlackStatePostBody): boolean {
   return (
     body.seed_default_agent === true ||
     body.seed_slack_run === true ||
+    body.seed_scheduled_slack_run === true ||
     body.seed_non_slack_run === true
   );
 }
@@ -288,14 +299,21 @@ async function seedRequestedRuns(
     readonly body: TestSlackStatePostBody;
     readonly orgId: string;
     readonly userId: string;
-    readonly defaultAgent: { readonly composeId: string } | undefined;
+    readonly defaultAgent:
+      | { readonly composeId: string; readonly versionId: string }
+      | undefined;
   },
 ): Promise<{
   readonly slackRunId: string | undefined;
+  readonly scheduledSlackRunId: string | undefined;
   readonly nonSlackRunId: string | undefined;
 }> {
   if (!args.defaultAgent) {
-    return { slackRunId: undefined, nonSlackRunId: undefined };
+    return {
+      slackRunId: undefined,
+      scheduledSlackRunId: undefined,
+      nonSlackRunId: undefined,
+    };
   }
 
   const slackRunId = args.body.seed_slack_run
@@ -303,10 +321,29 @@ async function seedRequestedRuns(
         orgId: args.orgId,
         userId: args.userId,
         composeId: args.defaultAgent.composeId,
+        versionId: args.defaultAgent.versionId,
         triggerSource: "slack",
         prompt: "hello from slack diagnostics",
         error: "diagnostic error",
         createdAt: new Date("2030-01-01T00:00:01.000Z"),
+      })
+    : undefined;
+
+  const scheduledSlackRunId = args.body.seed_scheduled_slack_run
+    ? await seedDiagnosticRun(db, {
+        orgId: args.orgId,
+        userId: args.userId,
+        composeId: args.defaultAgent.composeId,
+        versionId: args.defaultAgent.versionId,
+        triggerSource: "schedule",
+        prompt: "hello from scheduled slack diagnostics",
+        scheduleId: await seedDiagnosticSchedule(db, {
+          orgId: args.orgId,
+          userId: args.userId,
+          composeId: args.defaultAgent.composeId,
+        }),
+        selectedModel: args.body.selected_model,
+        createdAt: new Date("2030-01-01T00:00:02.000Z"),
       })
     : undefined;
 
@@ -315,13 +352,54 @@ async function seedRequestedRuns(
         orgId: args.orgId,
         userId: args.userId,
         composeId: args.defaultAgent.composeId,
+        versionId: args.defaultAgent.versionId,
         triggerSource: "manual",
         prompt: "hello from manual diagnostics",
         createdAt: new Date("2030-01-01T00:00:00.000Z"),
       })
     : undefined;
 
-  return { slackRunId, nonSlackRunId };
+  return { slackRunId, scheduledSlackRunId, nonSlackRunId };
+}
+
+async function seedDiagnosticSchedule(
+  db: Db,
+  input: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly composeId: string;
+  },
+): Promise<string> {
+  const [thread] = await db
+    .insert(chatThreads)
+    .values({
+      userId: input.userId,
+      agentComposeId: input.composeId,
+      title: DEFAULT_SCHEDULE_NAME,
+    })
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error("Failed to seed Slack diagnostic schedule chat thread");
+  }
+
+  const [schedule] = await db
+    .insert(zeroAgentSchedules)
+    .values({
+      agentId: input.composeId,
+      userId: input.userId,
+      orgId: input.orgId,
+      name: DEFAULT_SCHEDULE_NAME,
+      cronExpression: "0 9 * * *",
+      prompt: "Summarize the daily standup",
+      description: DEFAULT_SCHEDULE_DESCRIPTION,
+      chatThreadId: thread.id,
+    })
+    .returning({ id: zeroAgentSchedules.id });
+  if (!schedule) {
+    throw new Error("Failed to seed Slack diagnostic schedule");
+  }
+
+  return schedule.id;
 }
 
 async function getOrInsertCompose(
@@ -755,12 +833,13 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
   signal.throwIfAborted();
 
-  const { slackRunId, nonSlackRunId } = await seedRequestedRuns(db, {
-    body,
-    orgId,
-    userId,
-    defaultAgent,
-  });
+  const { slackRunId, scheduledSlackRunId, nonSlackRunId } =
+    await seedRequestedRuns(db, {
+      body,
+      orgId,
+      userId,
+      defaultAgent,
+    });
   signal.throwIfAborted();
 
   return {
@@ -773,6 +852,7 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
       connection_id: connectionId ?? null,
       default_agent_id: defaultAgent?.composeId ?? null,
       slack_run_id: slackRunId ?? null,
+      scheduled_slack_run_id: scheduledSlackRunId ?? null,
       non_slack_run_id: nonSlackRunId ?? null,
     },
   };
@@ -819,7 +899,7 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
       .where(
         and(
           eq(agentRuns.orgId, existing.orgId),
-          eq(zeroRuns.triggerSource, "slack"),
+          inArray(zeroRuns.triggerSource, ["slack", "schedule"]),
         ),
       );
     signal.throwIfAborted();
