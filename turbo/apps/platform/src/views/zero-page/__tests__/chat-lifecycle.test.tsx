@@ -2198,10 +2198,10 @@ describe("chat lifecycle", () => {
       "What should change about this?",
     );
     expect(comments).toHaveLength(2);
-    // The newest fragment sits on top with an empty note; the first note
-    // persists in the row below it.
-    expect(comments[0]).toHaveValue("");
-    expect(comments[1]).toHaveValue("Assign each risk to an owner.");
+    // The first note persists on top; the newest fragment sits below it with
+    // an empty note, taking the composer position nearest Send.
+    expect(comments[0]).toHaveValue("Assign each risk to an owner.");
+    expect(comments[1]).toHaveValue("");
     expect(
       screen.getByText(
         "Select more text and click Provide feedback to add another comment",
@@ -2209,7 +2209,7 @@ describe("chat lifecycle", () => {
     ).toBeInTheDocument();
 
     // Removing the empty draft row leaves the noted fragment intact.
-    await user.click(screen.getAllByLabelText("Remove feedback")[0]);
+    await user.click(screen.getAllByLabelText("Remove feedback")[1]);
 
     await waitFor(() => {
       expect(
@@ -2283,14 +2283,14 @@ describe("chat lifecycle", () => {
     window.getSelection()?.removeAllRanges();
 
     await fill(
-      screen.getAllByPlaceholderText("What should change about this?")[0],
+      screen.getAllByPlaceholderText("What should change about this?")[1],
       "Mention launch dates before the risk summary.",
     );
 
-    // Edit the first fragment's note in place — the oldest sits at the bottom.
+    // Edit the first fragment's note in place — the oldest sits on top.
     const editingComment = screen.getAllByPlaceholderText(
       "What should change about this?",
-    )[1];
+    )[0];
     expect(editingComment).toHaveValue("Assign each risk to an owner.");
     await fill(editingComment, "Assign named owners to each launch risk.");
 

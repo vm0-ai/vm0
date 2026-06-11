@@ -256,10 +256,10 @@ export function ChatFeedbackTray({
     }
   };
 
-  // Newest fragment sits on top and takes focus; the order then runs in one
-  // consistent direction down to the oldest, nearest the Send button.
+  // Oldest fragment sits on top; the stack runs down to the newest, which
+  // takes the composer position nearest the Send button and holds focus.
   const newestId = items[items.length - 1]?.id;
-  const ordered = [...items].reverse();
+  const ordered = items;
 
   return (
     <div className="shrink-0 px-4 pb-0 pt-2 sm:px-6">
