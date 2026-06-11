@@ -12,11 +12,14 @@ from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
 
 
-def _builtin_auth_header_names() -> list[str]:
+def _templated_builtin_auth_header_names() -> list[str]:
     names: set[str] = set()
     for firewall in BUILTIN_FIREWALLS.values():
         for api in firewall.get("apis", []):
-            names.update(api.get("auth", {}).get("headers", {}).keys())
+            auth_headers = api.get("auth", {}).get("headers", {})
+            for name, value in auth_headers.items():
+                if isinstance(name, str) and isinstance(value, str) and "${{" in value:
+                    names.add(name)
     return sorted(names, key=str.lower)
 
 
@@ -110,11 +113,11 @@ class TestAuthBaseUrlRewriteForwarding:
         assert ("AUTHORIZATION", "Bearer upper-agent") in request_headers
         assert flow.request.headers["Cookie"] == "session=agent"
 
-    async def test_forward_request_strips_builtin_auth_headers_without_resolved_headers(
+    async def test_forward_request_strips_templated_builtin_auth_headers_without_resolved_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
-        """Client-provided builtin auth headers must not cross auth.base rewrites."""
-        auth_header_names = _builtin_auth_header_names()
+        """Client-provided templated builtin auth headers must not cross auth.base rewrites."""
+        auth_header_names = _templated_builtin_auth_header_names()
         assert auth_header_names
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
@@ -138,6 +141,34 @@ class TestAuthBaseUrlRewriteForwarding:
         forwarded_names = {name.lower() for name, _value in req_headers}
         assert {name.lower() for name in auth_header_names}.isdisjoint(forwarded_names)
         assert ("X-Keep", "client") in req_headers
+
+    async def test_forward_request_preserves_client_static_metadata_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Client-provided non-secret metadata headers should still reach auth.base targets."""
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Reap-Version", "2025-02-14"),
+                ("X-Api-Version", "2025-11-01"),
+                ("X-Snowflake-Authorization-Token-Type", "PROGRAMMATIC_ACCESS_TOKEN"),
+            ),
+        )
+        token_meta["headers"] = {}
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        assert ("Reap-Version", "2025-02-14") in req_headers
+        assert ("X-Api-Version", "2025-11-01") in req_headers
+        assert ("X-Snowflake-Authorization-Token-Type", "PROGRAMMATIC_ACCESS_TOKEN") in req_headers
 
     async def test_forward_request_preserves_duplicate_headers_and_auth_override(
         self, headers, real_flow, mitm_ctx, tmp_path
