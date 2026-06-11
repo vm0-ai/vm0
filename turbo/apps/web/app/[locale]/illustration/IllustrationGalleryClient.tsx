@@ -180,7 +180,7 @@ function ComparisonSection() {
     <section className="illu-section illu-compare">
       <div className="container">
         <div className="illu-section-head">
-          <p className="illu-eyebrow">Why it's different</p>
+          <p className="illu-eyebrow">Why it&apos;s different</p>
           <h2 className="illu-section-title">
             How this compares to a raw image generator
           </h2>
@@ -222,7 +222,7 @@ function AudienceSection() {
     <section className="illu-section illu-audience">
       <div className="container">
         <div className="illu-section-head">
-          <p className="illu-eyebrow">Who it's for</p>
+          <p className="illu-eyebrow">Who it&apos;s for</p>
           <h2 className="illu-section-title">
             For anyone who needs a consistent look
           </h2>
