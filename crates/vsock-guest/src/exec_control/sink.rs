@@ -21,10 +21,10 @@
 //! in-flight forwarding even when a connected stream guard is busy. The
 //! connected stream has a separate `locked` gate so waiters can observe timeouts
 //! and shutdown notifications before taking the stream mutex. `pending` limits
-//! outstanding forwarding work; a full set rejects new requests as `QueueFull`
-//! without reserving a slot. `PendingControlSlot` releases accepted work. The
-//! shutdown stream clones let close/fail interrupt handshakes or connected I/O
-//! without waiting for the active stream guard.
+//! outstanding forwarding work; when it is full, new requests release their
+//! transient count and return `QueueFull`. `PendingControlSlot` releases
+//! accepted work. The shutdown stream clones let close/fail interrupt handshakes
+//! or connected I/O without waiting for the active stream guard.
 
 use std::io;
 use std::os::unix::net::UnixStream;
