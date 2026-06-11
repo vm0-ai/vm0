@@ -47,7 +47,10 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_matching_base_url_parameterized.py` | Parameterized firewall base URL matching |
 | `test_matching_mixed_segments.py` | Mixed parameter-segment matcher regressions |
 | `test_matching_anthropic_firewall_scope.py` | Anthropic firewall scope matching regressions |
-| `test_firewall_matching.py` | Raw firewall request matching and network policy behavior |
+| `test_firewall_request_matching.py` | Raw firewall request matching through the compiled matcher |
+| `test_firewall_request_base_matching.py` | Request-layer firewall base URL matching through raw firewall config |
+| `test_firewall_request_rel_path.py` | Request-layer `rel_path` propagation through raw firewall config |
+| `test_firewall_network_policy_decisions.py` | Request-layer network policy decision behavior |
 | `test_compiled_firewall_base_path_matching.py` | Compiled firewall base path, rule path, segment boundary, and path syntax matching |
 | `test_compiled_firewall_host_base_matching.py` | Compiled firewall host-parameterized base matching |
 | `test_compiled_firewall_authority_normalization.py` | Compiled firewall runtime URL, authority, and port normalization |
