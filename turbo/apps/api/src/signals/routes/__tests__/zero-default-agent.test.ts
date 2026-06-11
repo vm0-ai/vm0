@@ -45,60 +45,6 @@ describe("PUT /api/zero/default-agent", () => {
     return store.set(deleteOrgMetadata$, fixture.orgId, context.signal);
   });
 
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(orgDefaultAgentContract);
-    const response = await accept(
-      client.setDefaultAgent({
-        query: {},
-        body: { agentId: null },
-        headers: {},
-      }),
-      [401],
-    );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
-  });
-
-  it("returns 401 when authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(orgDefaultAgentContract);
-    const response = await accept(
-      client.setDefaultAgent({
-        query: {},
-        body: { agentId: null },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
-  });
-
-  it("returns 403 for non-admin members (explicit admin-gate)", async () => {
-    const fixture = uniqueOrgUser("zda-member");
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const client = setupApp({ context })(orgDefaultAgentContract);
-    const response = await accept(
-      client.setDefaultAgent({
-        query: {},
-        body: { agentId: composeId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only org admins can set the default agent",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("allows admin to set default agent", async () => {
     const fixture = uniqueOrgUser("zda-admin");
     await trackOrg(Promise.resolve(fixture));
@@ -202,27 +148,6 @@ describe("PUT /api/zero/default-agent", () => {
       context.signal,
     );
     expect(stored).toBe(composeId);
-  });
-
-  it("returns 404 when agent does not exist", async () => {
-    const fixture = uniqueOrgUser("zda-missing");
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(orgDefaultAgentContract);
-    const response = await accept(
-      client.setDefaultAgent({
-        query: {},
-        body: { agentId: "00000000-0000-0000-0000-000000000000" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-    expect(response.body).toMatchObject({
-      error: {
-        message: "Agent not found in this org",
-        code: "NOT_FOUND",
-      },
-    });
   });
 
   it("returns 404 when agent belongs to a different org (cross-org isolation)", async () => {

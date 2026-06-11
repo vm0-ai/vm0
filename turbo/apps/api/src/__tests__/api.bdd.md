@@ -1693,3 +1693,16 @@ changed: false }`, no Ably publish).
   the kept legacy.
 - Reduced `zero-insights.test.ts` (19 -> 13).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 85 — ORG DEFAULT AGENT REJECTIONS (CHAIN-DEFAULT-AGENT-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `orgDefaultAgent` client
+  (`/api/zero/default-agent`, set).
+- Added `zero-default-agent-rejections.bdd.test.ts`: set rejects unauthenticated
+  / org-less callers (401), a non-admin member (403 "Only org admins can set the
+  default agent", checked before lookup) and 404s an unknown agent ("Agent not
+  found in this org").
+- Setting a real default agent (clear, cross-org-isolation 404, current-default
+  GET) needs a seeded compose and stays in the kept legacy.
+- Reduced `zero-default-agent.test.ts` (14 -> 10).
+- Coverage verified (source-only): no regressions vs `main`.
