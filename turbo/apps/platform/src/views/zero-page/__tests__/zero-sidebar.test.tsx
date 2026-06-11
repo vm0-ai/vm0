@@ -387,7 +387,6 @@ describe("zero sidebar", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadRename]: true },
       path: `/chats/${EXISTING_THREAD_ID}?sidebar=detached-thread`,
     });
 
@@ -442,7 +441,6 @@ describe("zero sidebar", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadRename]: true },
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
 

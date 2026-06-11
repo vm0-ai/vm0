@@ -14,7 +14,6 @@ import {
   IconPinnedOff,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -48,7 +47,6 @@ import {
   unpinChatThread$,
   renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   SIDEBAR_PARAM,
   currentLeftThread$,
@@ -239,13 +237,11 @@ function ChatThreadMenu({
   threadId,
   isPinned,
   isHighlighted,
-  renameEnabled,
   hasOtherIndicator,
 }: {
   threadId: string;
   isPinned: boolean;
   isHighlighted: boolean;
-  renameEnabled: boolean;
   hasOtherIndicator: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -317,12 +313,10 @@ function ChatThreadMenu({
               </>
             )}
           </DropdownMenuItem>
-          {renameEnabled && (
-            <DropdownMenuItem onSelect={openRenameDialog}>
-              <IconPencil size={16} stroke={2} className="mr-2" />
-              Rename chat
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onSelect={openRenameDialog}>
+            <IconPencil size={16} stroke={2} className="mr-2" />
+            Rename chat
+          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
               setPendingDeleteThreadId(threadId);
@@ -342,13 +336,11 @@ function ChatThreadSideDecorator({
   threadId,
   isPinned,
   isHighlighted,
-  renameEnabled,
   indicatorState,
 }: {
   threadId: string;
   isPinned: boolean;
   isHighlighted: boolean;
-  renameEnabled: boolean;
   indicatorState: IndicatorState | null;
 }) {
   if (indicatorState === "draft") {
@@ -367,7 +359,6 @@ function ChatThreadSideDecorator({
         threadId={threadId}
         isPinned={isPinned}
         isHighlighted={isHighlighted}
-        renameEnabled={renameEnabled}
         hasOtherIndicator={hasOtherIndicator}
       />
       {indicatorState !== null ? (
@@ -415,8 +406,6 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const loadRightThread = useSet(loadRightThread$);
   const unloadRightThread = useSet(unloadRightThread$);
   const pageSignal = useGet(pageSignal$);
-  const features = useLastResolved(featureSwitch$);
-  const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -445,7 +434,6 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     onChatPage,
     pageSignal,
     paneIndicator,
-    renameEnabled,
     setSidebarExpanded,
     unloadRightThread,
     indicatorState,
@@ -510,7 +498,6 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
         threadId={session.id}
         isPinned={state.isPinned}
         isHighlighted={state.isHighlighted}
-        renameEnabled={state.renameEnabled}
         indicatorState={state.indicatorState}
       />
     </div>
