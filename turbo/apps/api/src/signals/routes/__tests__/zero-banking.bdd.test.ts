@@ -15,10 +15,10 @@ import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
-import { beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
+import { clearMockedEnv, mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
@@ -35,6 +35,19 @@ import {
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+
+// BDD migration of the legacy `zero-banking.test.ts`.
+// The 8 legacy `it()`s collapse into 3 BDD `it()`s:
+// (1) authorization chain (403 feature switch disabled +
+// 403 wrong capability + 403 scheduled runs not allowed +
+// 403 revoked connection — all before any provider call),
+// (2) accounts + balances chain (200 lists only enabled
+// accounts + writes accounts.read audit + 403 denies
+// disabled account balances + 200 reads balances with
+// sanitized fields + writes balances.read audit),
+// (3) transactions chain (200 reads transactions with
+// sanitized fields + writes transactions.read audit +
+// query params map to fromDate/toDate/limit).
 
 const context = testContext();
 const store = createStore();
@@ -250,29 +263,30 @@ async function bankingAuditEvents(fixture: BankingFixture) {
     );
 }
 
-function finicityAuthHandler() {
-  return http.post(FINICITY_AUTH_URL, async ({ request }) => {
-    const body = await request.json();
-    expect(request.headers.get("Finicity-App-Key")).toBe("test-app-key");
-    expect(body).toStrictEqual({
-      partnerId: "test-partner",
-      partnerSecret: "test-secret",
-    });
-    return HttpResponse.json({ token: "test-app-token" });
-  });
+const track = createFixtureTracker(deleteBankingFixture);
+
+function client() {
+  return setupApp({ context })(zeroBankingContract);
 }
 
-describe("POST /api/zero/banking/*", () => {
-  const track = createFixtureTracker(deleteBankingFixture);
-
+describe("BDD POST /api/zero/banking/* — authorization chain", () => {
   beforeEach(() => {
     mockEnv("FINICITY_APP_KEY", "test-app-key");
     mockEnv("FINICITY_APP_SECRET", "test-secret");
     mockEnv("FINICITY_PARTNER_ID", "test-partner");
   });
 
-  it("rejects banking requests when the banking feature switch is disabled", async () => {
-    const fixture = await track(
+  afterEach(() => {
+    clearMockedEnv();
+  });
+
+  it("gwt-wt-wt: 403 feature switch disabled → 403 wrong capability → 403 scheduled runs not allowed → 403 revoked connection", async () => {
+    // Given: a fixture with the banking feature switch
+    // disabled.
+
+    // When + Then: 403 — Zero Banking is not enabled
+    // + no Finicity auth call is made.
+    const disabledFixture = await track(
       seedBankingFixture({ featureSwitchEnabled: false }),
     );
     let authRequestCount = 0;
@@ -282,38 +296,154 @@ describe("POST /api/zero/banking/*", () => {
         return HttpResponse.json({ token: "test-app-token" });
       }),
     );
-
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+    const disabledResponse = await accept(
+      client().accounts({
+        headers: { authorization: `Bearer ${zeroToken(disabledFixture)}` },
         body: {},
       }),
       [403],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(disabledResponse.body).toStrictEqual({
       error: {
         message: "Zero Banking is not enabled",
         code: "FORBIDDEN",
       },
     });
     expect(authRequestCount).toBe(0);
+
+    // Given: a fixture + a zero token without
+    // banking:read.
+
+    // When + Then: 403 — Missing required capability +
+    // no Finicity auth call.
+    const wrongCapFixture = await track(seedBankingFixture());
+    server.use(
+      http.post(FINICITY_AUTH_URL, () => {
+        authRequestCount += 1;
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
+    );
+    const wrongCapResponse = await accept(
+      client().accounts({
+        headers: {
+          authorization: `Bearer ${zeroToken(wrongCapFixture, ["file:read"])}`,
+        },
+        body: {},
+      }),
+      [403],
+    );
+    expect(wrongCapResponse.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: banking:read",
+        code: "FORBIDDEN",
+      },
+    });
+    expect(authRequestCount).toBe(0);
+
+    // Given: a fixture with a schedule-triggered run +
+    // a grant that disallows scheduled runs.
+
+    // When + Then: 403 — Banking is not enabled for
+    // scheduled runs + a denied audit event with
+    // SCHEDULE_NOT_ALLOWED is written.
+    const scheduleFixture = await track(
+      seedBankingFixture({ triggerSource: "schedule" }),
+    );
+    server.use(
+      http.post(FINICITY_AUTH_URL, () => {
+        authRequestCount += 1;
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
+    );
+    const scheduleResponse = await accept(
+      client().accounts({
+        headers: { authorization: `Bearer ${zeroToken(scheduleFixture)}` },
+        body: {},
+      }),
+      [403],
+    );
+    expect(scheduleResponse.body.error.message).toBe(
+      "Banking is not enabled for scheduled runs",
+    );
+    expect(authRequestCount).toBe(0);
+    await expect(bankingAuditEvents(scheduleFixture)).resolves.toMatchObject([
+      {
+        action: "accounts.read",
+        status: "denied",
+        failureCode: "SCHEDULE_NOT_ALLOWED",
+      },
+    ]);
+
+    // Given: a fixture with a revoked connection.
+
+    // When + Then: 403 — Banking is not enabled for
+    // this agent + a denied audit event with
+    // NO_ACTIVE_GRANT is written.
+    const revokedFixture = await track(
+      seedBankingFixture({ connectionStatus: "revoked" }),
+    );
+    server.use(
+      http.post(FINICITY_AUTH_URL, () => {
+        authRequestCount += 1;
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
+    );
+    const revokedResponse = await accept(
+      client().accounts({
+        headers: { authorization: `Bearer ${zeroToken(revokedFixture)}` },
+        body: {},
+      }),
+      [403],
+    );
+    expect(revokedResponse.body.error.message).toBe(
+      "Banking is not enabled for this agent",
+    );
+    expect(authRequestCount).toBe(0);
+    await expect(bankingAuditEvents(revokedFixture)).resolves.toMatchObject([
+      {
+        action: "accounts.read",
+        status: "denied",
+        failureCode: "NO_ACTIVE_GRANT",
+      },
+    ]);
+  });
+});
+
+describe("BDD POST /api/zero/banking/* — accounts + balances chain", () => {
+  beforeEach(() => {
+    mockEnv("FINICITY_APP_KEY", "test-app-key");
+    mockEnv("FINICITY_APP_SECRET", "test-secret");
+    mockEnv("FINICITY_PARTNER_ID", "test-partner");
   });
 
-  it("lists only accounts enabled for the current agent", async () => {
-    const fixture = await track(seedBankingFixture());
+  afterEach(() => {
+    clearMockedEnv();
+  });
+
+  it("gwt-wt-wt: 200 lists only enabled accounts → 403 denies disabled account balances → 200 reads balances with sanitized fields", async () => {
+    // Given: a fixture with a Finicity accounts
+    // endpoint returning both enabled + disabled
+    // accounts.
+
+    // When + Then: 200 — the response contains only
+    // the enabled account + an accounts.read allowed
+    // audit event is written + the Finicity app
+    // key/token headers are forwarded.
+    const accountsFixture = await track(seedBankingFixture());
     let accountsRequestHeaders: Headers | undefined;
     server.use(
-      finicityAuthHandler(),
+      http.post(FINICITY_AUTH_URL, async ({ request }) => {
+        expect(request.headers.get("Finicity-App-Key")).toBe("test-app-key");
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
       http.get(
-        `${FINICITY_BASE_URL}/aggregation/v1/customers/${fixture.providerCustomerId}/accounts`,
+        `${FINICITY_BASE_URL}/aggregation/v1/customers/${accountsFixture.providerCustomerId}/accounts`,
         ({ request }) => {
           accountsRequestHeaders = request.headers;
           return HttpResponse.json({
             accounts: [
               {
-                id: fixture.enabledAccountId,
+                id: accountsFixture.enabledAccountId,
                 name: "Provider Checking",
                 type: "checking",
                 realAccountNumberLast4: "6789",
@@ -321,7 +451,7 @@ describe("POST /api/zero/banking/*", () => {
                 currency: "USD",
               },
               {
-                id: fixture.disabledAccountId,
+                id: accountsFixture.disabledAccountId,
                 name: "Disabled Savings",
                 type: "savings",
                 realAccountNumberLast4: "4321",
@@ -333,28 +463,25 @@ describe("POST /api/zero/banking/*", () => {
         },
       ),
     );
-
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+    const accountsResponse = await accept(
+      client().accounts({
+        headers: { authorization: `Bearer ${zeroToken(accountsFixture)}` },
         body: {},
       }),
       [200],
     );
-
     expect(accountsRequestHeaders?.get("Finicity-App-Key")).toBe(
       "test-app-key",
     );
     expect(accountsRequestHeaders?.get("Finicity-App-Token")).toBe(
       "test-app-token",
     );
-    expect(response.body).toStrictEqual({
+    expect(accountsResponse.body).toStrictEqual({
       operation: "accounts",
       provider: "finicity",
       accounts: [
         {
-          id: fixture.enabledAccountId,
+          id: accountsFixture.enabledAccountId,
           name: "Provider Checking",
           institutionName: "Example Bank",
           type: "checking",
@@ -364,7 +491,7 @@ describe("POST /api/zero/banking/*", () => {
         },
       ],
     });
-    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
+    await expect(bankingAuditEvents(accountsFixture)).resolves.toMatchObject([
       {
         action: "accounts.read",
         status: "allowed",
@@ -372,54 +499,64 @@ describe("POST /api/zero/banking/*", () => {
         providerAccountId: null,
       },
     ]);
-  });
 
-  it("denies balances for accounts not enabled for the agent", async () => {
-    const fixture = await track(seedBankingFixture());
+    // Given: a fixture with no Finicity accounts
+    // endpoint (returns []).
+
+    // When + Then: 403 — BANKING_ACCESS_DENIED for the
+    // disabled account + no accounts endpoint is hit +
+    // a denied audit event with ACCOUNT_NOT_ALLOWED is
+    // written.
+    const deniedFixture = await track(seedBankingFixture());
     let accountsRequestCount = 0;
     server.use(
-      finicityAuthHandler(),
+      http.post(FINICITY_AUTH_URL, async () => {
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
       http.get(
-        `${FINICITY_BASE_URL}/aggregation/v1/customers/${fixture.providerCustomerId}/accounts`,
+        `${FINICITY_BASE_URL}/aggregation/v1/customers/${deniedFixture.providerCustomerId}/accounts`,
         () => {
           accountsRequestCount += 1;
           return HttpResponse.json({ accounts: [] });
         },
       ),
     );
-
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.balances({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
-        body: { accountId: fixture.disabledAccountId },
+    const deniedResponse = await accept(
+      client().balances({
+        headers: { authorization: `Bearer ${zeroToken(deniedFixture)}` },
+        body: { accountId: deniedFixture.disabledAccountId },
       }),
       [403],
     );
-
-    expect(response.body.error.code).toBe("BANKING_ACCESS_DENIED");
+    expect(deniedResponse.body.error.code).toBe("BANKING_ACCESS_DENIED");
     expect(accountsRequestCount).toBe(0);
-    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
+    await expect(bankingAuditEvents(deniedFixture)).resolves.toMatchObject([
       {
         action: "balances.read",
         status: "denied",
         failureCode: "ACCOUNT_NOT_ALLOWED",
-        providerAccountId: fixture.disabledAccountId,
+        providerAccountId: deniedFixture.disabledAccountId,
       },
     ]);
-  });
 
-  it("reads balances through Finicity with only sanitized fields returned", async () => {
-    const fixture = await track(seedBankingFixture());
+    // Given: a fixture + a Finicity accounts endpoint
+    // returning one account with extra rawProviderField.
+
+    // When + Then: 200 — the balance response contains
+    // only sanitized fields + a balances.read allowed
+    // audit event is written.
+    const balancesFixture = await track(seedBankingFixture());
     server.use(
-      finicityAuthHandler(),
+      http.post(FINICITY_AUTH_URL, async () => {
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
       http.get(
-        `${FINICITY_BASE_URL}/aggregation/v1/customers/${fixture.providerCustomerId}/accounts`,
+        `${FINICITY_BASE_URL}/aggregation/v1/customers/${balancesFixture.providerCustomerId}/accounts`,
         () => {
           return HttpResponse.json({
             accounts: [
               {
-                id: fixture.enabledAccountId,
+                id: balancesFixture.enabledAccountId,
                 name: "Provider Checking",
                 type: "checking",
                 balance: 1234.56,
@@ -433,21 +570,18 @@ describe("POST /api/zero/banking/*", () => {
         },
       ),
     );
-
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.balances({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
-        body: { accountId: fixture.enabledAccountId },
+    const balancesResponse = await accept(
+      client().balances({
+        headers: { authorization: `Bearer ${zeroToken(balancesFixture)}` },
+        body: { accountId: balancesFixture.enabledAccountId },
       }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(balancesResponse.body).toStrictEqual({
       operation: "balances",
       provider: "finicity",
       balance: {
-        accountId: fixture.enabledAccountId,
+        accountId: balancesFixture.enabledAccountId,
         name: "Provider Checking",
         type: "checking",
         balance: 1234.56,
@@ -456,119 +590,43 @@ describe("POST /api/zero/banking/*", () => {
         balanceDate: 1_767_225_600,
       },
     });
-    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
+    await expect(bankingAuditEvents(balancesFixture)).resolves.toMatchObject([
       {
         action: "balances.read",
         status: "allowed",
         failureCode: null,
-        providerAccountId: fixture.enabledAccountId,
+        providerAccountId: balancesFixture.enabledAccountId,
       },
     ]);
   });
+});
 
-  it("rejects zero tokens without banking capability before provider access", async () => {
-    const fixture = await track(seedBankingFixture());
-    let authRequestCount = 0;
-    server.use(
-      http.post(FINICITY_AUTH_URL, () => {
-        authRequestCount += 1;
-        return HttpResponse.json({ token: "test-app-token" });
-      }),
-    );
-
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.accounts({
-        headers: {
-          authorization: `Bearer ${zeroToken(fixture, ["file:read"])}`,
-        },
-        body: {},
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Missing required capability: banking:read",
-        code: "FORBIDDEN",
-      },
-    });
-    expect(authRequestCount).toBe(0);
+describe("BDD POST /api/zero/banking/transactions — transactions chain", () => {
+  beforeEach(() => {
+    mockEnv("FINICITY_APP_KEY", "test-app-key");
+    mockEnv("FINICITY_APP_SECRET", "test-secret");
+    mockEnv("FINICITY_PARTNER_ID", "test-partner");
   });
 
-  it("denies scheduled runs unless the banking grant allows them", async () => {
-    const fixture = await track(
-      seedBankingFixture({ triggerSource: "schedule" }),
-    );
-    let authRequestCount = 0;
-    server.use(
-      http.post(FINICITY_AUTH_URL, () => {
-        authRequestCount += 1;
-        return HttpResponse.json({ token: "test-app-token" });
-      }),
-    );
-
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
-        body: {},
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Banking is not enabled for scheduled runs",
-    );
-    expect(authRequestCount).toBe(0);
-    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
-      {
-        action: "accounts.read",
-        status: "denied",
-        failureCode: "SCHEDULE_NOT_ALLOWED",
-      },
-    ]);
+  afterEach(() => {
+    clearMockedEnv();
   });
 
-  it("denies revoked banking connections before provider access", async () => {
-    const fixture = await track(
-      seedBankingFixture({ connectionStatus: "revoked" }),
-    );
-    let authRequestCount = 0;
-    server.use(
-      http.post(FINICITY_AUTH_URL, () => {
-        authRequestCount += 1;
-        return HttpResponse.json({ token: "test-app-token" });
-      }),
-    );
+  it("gwt-wt-wt: 200 reads transactions with sanitized fields + query params map to fromDate/toDate/limit", async () => {
+    // Given: a fixture + a Finicity transactions
+    // endpoint returning one transaction with extra
+    // rawProviderField.
 
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
-        body: {},
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Banking is not enabled for this agent",
-    );
-    expect(authRequestCount).toBe(0);
-    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
-      {
-        action: "accounts.read",
-        status: "denied",
-        failureCode: "NO_ACTIVE_GRANT",
-      },
-    ]);
-  });
-
-  it("reads transactions through Finicity with only sanitized fields returned", async () => {
+    // When + Then: 200 — the response contains only
+    // sanitized fields + the fromDate/toDate/limit
+    // query params are mapped to UTC timestamps + a
+    // transactions.read allowed audit event is written.
     const fixture = await track(seedBankingFixture());
     let requestedUrl: URL | undefined;
     server.use(
-      finicityAuthHandler(),
+      http.post(FINICITY_AUTH_URL, async () => {
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
       http.get(
         `${FINICITY_BASE_URL}/aggregation/v3/customers/${fixture.providerCustomerId}/accounts/${fixture.enabledAccountId}/transactions`,
         ({ request }) => {
@@ -592,10 +650,8 @@ describe("POST /api/zero/banking/*", () => {
         },
       ),
     );
-
-    const client = setupApp({ context })(zeroBankingContract);
     const response = await accept(
-      client.transactions({
+      client().transactions({
         headers: { authorization: `Bearer ${zeroToken(fixture)}` },
         body: {
           accountId: fixture.enabledAccountId,
@@ -606,7 +662,6 @@ describe("POST /api/zero/banking/*", () => {
       }),
       [200],
     );
-
     expect(requestedUrl?.searchParams.get("fromDate")).toBe(
       String(Math.floor(Date.UTC(2026, 0, 1) / 1000)),
     );
