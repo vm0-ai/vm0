@@ -7,7 +7,8 @@ JSON fallback.
 from collections.abc import Callable
 from typing import TypeGuard
 
-import body_utils
+import body_decoding
+from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
@@ -206,8 +207,8 @@ def extract_anthropic_messages_usage_from_json(body: bytes, headers) -> dict | N
     fields are found.
     """
     if headers:
-        body = body_utils.decompress_body(
-            body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+        body = body_decoding.decompress_body(
+            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
     usage, _error = _extract_anthropic_messages_usage_from_decoded_json_body(body)
     return usage
@@ -223,8 +224,8 @@ def extract_anthropic_messages_usage_with_error_from_json(
     selected usage or metadata fields are found.
     """
     if headers:
-        body, decompress_error = body_utils.decompress_json_usage_body(
-            body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+        body, decompress_error = body_decoding.decompress_json_usage_body(
+            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
         if decompress_error:
             return None, decompress_error

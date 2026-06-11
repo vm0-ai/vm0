@@ -1536,7 +1536,10 @@ PY
         for expected in [
             "mitm_addon.py",
             "auth.py",
-            "body_utils.py",
+            "billing_body.py",
+            "body_capture.py",
+            "body_decoding.py",
+            "body_limits.py",
             "flow_metadata_keys.py",
             "matching.py",
             "registry.py",

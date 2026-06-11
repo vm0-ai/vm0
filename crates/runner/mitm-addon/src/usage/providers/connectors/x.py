@@ -12,9 +12,11 @@ from typing import Literal, NamedTuple, TypedDict
 
 from mitmproxy import http
 
-import body_utils
+import billing_body
+import body_decoding
 import flow_metadata_keys as metadata_keys
 from auth import get_api_url
+from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
@@ -83,13 +85,13 @@ def _strip_request_target_query(request_target: str) -> str:
     return path_or_url
 
 
-# Single NDJSON line cap — matches ``LARGE_RESPONSE_DECOMPRESS_LIMIT`` in
-# ``body_utils.py``.  A real X tweet line (``data`` + ``includes`` +
+# Single NDJSON line cap matches ``LARGE_RESPONSE_DECOMPRESS_LIMIT``. A real X
+# tweet line (``data`` + ``includes`` +
 # ``matching_rules`` with full expansion) should never approach this size;
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
-_MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
-_REQUEST_BODY_REFINEMENT_LIMIT = body_utils.STREAM_BUFFER_LIMIT
+_MAX_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT
+_REQUEST_BODY_REFINEMENT_LIMIT = STREAM_BUFFER_LIMIT
 _REQUEST_QUERY_HINT_MAX_BYTES = 64 * 1024
 _REQUEST_QUERY_HINT_KEY_MAX_CHARS = 128
 _REQUEST_QUERY_HINT_VALUE_MAX_BYTES = 16 * 1024
@@ -591,8 +593,8 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         return result
     if not flow.response:
         return result
-    body = body_utils.decompress_body(
-        bytes(buf), flow.response.headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+    body = body_decoding.decompress_body(
+        bytes(buf), flow.response.headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
     )
     fields = _parse_x_json_response_fields_from_body(body)
     if fields is None:
@@ -775,7 +777,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     if endpoint_bucket is None:
         return
     if bucket_needs_body_refinement(endpoint_bucket, flow.request.method, request_path):
-        request_body = body_utils.decode_request_body_for_billing(
+        request_body = billing_body.decode_request_body_for_billing(
             flow.request.raw_content,
             flow.request.headers,
             max_raw=_REQUEST_BODY_REFINEMENT_LIMIT,
