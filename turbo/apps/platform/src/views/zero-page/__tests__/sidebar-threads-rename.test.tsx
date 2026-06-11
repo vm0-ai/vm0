@@ -137,7 +137,7 @@ describe("sidebar chat thread rename", () => {
     expect(within(menu).getByText("Pin chat")).toBeInTheDocument();
   });
 
-  it("flag OFF: kebab menu omits Rename chat", async () => {
+  it("override OFF: kebab menu omits Rename chat", async () => {
     setupMocks([
       makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z"),
       makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
@@ -146,6 +146,9 @@ describe("sidebar chat thread rename", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-1",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatThreadRename]: false,
+      },
     });
 
     await waitFor(() => {
