@@ -118,6 +118,16 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
     let mut runtime = ShutdownRecordingRuntime {
         shutdowns: Arc::clone(&runtime_shutdowns),
     };
+    let (mut mitm, _mitm_crash_rx) = crate::proxy::MitmProxy::noop();
+    let prefetch_cancel = CancellationToken::new();
+    let task_cancel = prefetch_cancel.clone();
+    let (cancelled_tx, cancelled_rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn(async move {
+        task_cancel.cancelled().await;
+        let _ = cancelled_tx.send(());
+    });
+    let mut memory_prefetch =
+        crate::prefetch::MemoryPrefetchTasks::from_test_handle(prefetch_cancel, handle);
     let metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
         config_path: dir.path().join("runner.yaml"),
         base_dir: dir.path().join("base"),
@@ -125,14 +135,23 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
         runner_group: "vm0/test".into(),
     };
 
-    let error = publish_live_runner_instance_or_shutdown_startup_resources(
+    let error = match publish_live_runner_instance_or_shutdown_startup_resources(
         &home,
         metadata,
-        &provider,
-        &mut runtime,
+        LiveRunnerPublishResources {
+            provider: &provider,
+            runtime: &mut runtime,
+            mitm: &mut mitm,
+            kmsg_handle: crate::kmsg_log::KmsgHandle::noop(),
+            dns_handle: crate::dns::DnsProxy::noop(),
+            memory_prefetch: &mut memory_prefetch,
+        },
     )
     .await
-    .unwrap_err();
+    {
+        Ok(_) => panic!("live runner instance publish should fail"),
+        Err(error) => error,
+    };
 
     assert!(
         error.to_string().contains("ensure live runner instances"),
@@ -140,6 +159,11 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
     );
     assert_eq!(provider_shutdowns.load(Ordering::SeqCst), 1);
     assert_eq!(runtime_shutdowns.load(Ordering::SeqCst), 1);
+    tokio::time::timeout(Duration::from_secs(5), cancelled_rx)
+        .await
+        .expect("prefetch task should observe cleanup cancellation")
+        .expect("prefetch task should report cancellation");
+    assert_eq!(memory_prefetch.task_count(), 0);
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {
