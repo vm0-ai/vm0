@@ -104,6 +104,11 @@ function pythonMultilineStringLiteral(value: string): string {
   );
 }
 
+function indentPythonExpression(value: string): string {
+  const [firstLine, ...remainingLines] = value.split("\n");
+  return [`    ${firstLine ?? ""}`, ...remainingLines].join("\n");
+}
+
 export function renderPythonBuiltinFirewallCatalog(): string {
   const catalog = buildBuiltinFirewallCatalog();
   const firewallsJson = stableJson(catalog.firewalls);
@@ -124,10 +129,10 @@ export function renderPythonBuiltinFirewallCatalog(): string {
     "",
     `BUILTIN_FIREWALL_CATALOG_VERSION = ${catalogVersion}`,
     "BUILTIN_FIREWALL_CATALOG_METADATA = json.loads(",
-    pythonMultilineStringLiteral(metadataJson),
+    indentPythonExpression(pythonMultilineStringLiteral(metadataJson)),
     ")",
     "BUILTIN_FIREWALLS = json.loads(",
-    pythonMultilineStringLiteral(firewallsJson),
+    indentPythonExpression(pythonMultilineStringLiteral(firewallsJson)),
     ")",
     "",
   ].join("\n");
