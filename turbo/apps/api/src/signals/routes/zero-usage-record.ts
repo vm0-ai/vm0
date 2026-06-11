@@ -13,12 +13,12 @@ import { zeroUsageRecord$ } from "../services/zero-usage-record.service";
 import type { RouteEntry } from "../route";
 import { isValidTimeZone } from "../utils";
 
-function forbidden() {
+function teamUsageRecordsUnavailable() {
   return {
     status: 403 as const,
     body: {
       error: {
-        message: "Only org admins can view team usage",
+        message: "Team usage records are aggregated by member",
         code: "FORBIDDEN",
       },
     },
@@ -57,6 +57,10 @@ const getUsageRecordInner$ = command(
       return badRequestMessage(`Invalid timezone: ${query.tz}`);
     }
 
+    if (query.scope === "team") {
+      return teamUsageRecordsUnavailable();
+    }
+
     const overrides = await get(
       userFeatureSwitchOverrides(auth.orgId, auth.userId),
     );
@@ -71,10 +75,6 @@ const getUsageRecordInner$ = command(
     );
     if (usesScopedUsageRecordQuery(rawQuery) && !creditUsageRecordsEnabled) {
       return creditUsageRecordsDisabled();
-    }
-
-    if (query.scope === "team" && auth.orgRole !== "admin") {
-      return forbidden();
     }
 
     const body = await set(
