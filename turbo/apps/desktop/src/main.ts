@@ -997,6 +997,7 @@ if (!hasSingleInstanceLock) {
     installDesktopAutoUpdates({
       config,
       apiBaseUrl: desktopApiBaseUrl,
+      getComputerUseHostState: () => getComputerUseBridgeState().host,
       prepareForQuitAndInstall,
     });
     installKeepAwake();
