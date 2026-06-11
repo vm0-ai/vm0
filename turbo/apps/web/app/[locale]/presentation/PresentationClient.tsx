@@ -72,21 +72,6 @@ function SectionHead({
   );
 }
 
-const BRAND_CHIPS = [
-  "SpaceX",
-  "Apple",
-  "Tesla",
-  "Stripe",
-  "Nvidia",
-  "Linear",
-  "Notion",
-  "Vercel",
-  "Shopify",
-  "Anthropic",
-  "Airbnb",
-  "+ 50 more",
-];
-
 const FEATURES = [
   {
     icon: "🎯",
@@ -118,86 +103,6 @@ const STEPS = [
   {
     title: "Refine & export",
     body: "Edit any slide, regenerate sections by prompt, then download as PPTX, PDF, or HTML and present.",
-  },
-];
-
-const USE_CASES = [
-  {
-    icon: "🚀",
-    title: "Startup pitch decks",
-    body: "Fundable narrative, market sizing, and traction slides — investor-ready in minutes.",
-  },
-  {
-    icon: "📣",
-    title: "Product launches",
-    body: "Keynote-grade reveals with feature walkthroughs and go-to-market plans.",
-  },
-  {
-    icon: "📈",
-    title: "Investor & board updates",
-    body: "Recurring metrics, KPI charts, and milestone recaps in a consistent house style.",
-  },
-  {
-    icon: "🎓",
-    title: "Course & training modules",
-    body: "Lesson decks with clear structure, diagrams, and recap slides for any topic.",
-  },
-  {
-    icon: "🧠",
-    title: "Tech talks & sharing",
-    body: "Architecture diagrams, code walkthroughs, and benchmark comparisons that read clearly.",
-  },
-  {
-    icon: "🗓️",
-    title: "Weekly team reports",
-    body: "Shipped / metrics / next-up summaries generated on a schedule, automatically.",
-  },
-];
-
-const COMPARISON_ROWS = [
-  ["Beautifully crafted design systems", "60+ built-in", "Basic templates"],
-  ["Real charts & infographics", "Yes", "Often placeholder boxes"],
-  ["Full deck from one prompt", "Yes", "Slide-by-slide"],
-  ["Editable + PPTX / PDF / HTML export", "All three", "Usually PPTX only"],
-  ["Scheduled, recurring decks", "Yes", "No"],
-];
-
-const WHY_SECTIONS = [
-  {
-    eyebrow: "01 — Speed",
-    title: "Minutes, not afternoons",
-    body: "Stop rebuilding the same slide master, hunting for icons, and nudging text boxes. Describe the deck in one line and VM0 writes the narrative, builds every slide, and lays it out — while you'd still be opening the template.",
-    points: [
-      "One-sentence brief in, full deck out",
-      "Regenerate any section with a follow-up prompt",
-      "No slide master, no manual formatting",
-    ],
-    stat: "~3 min",
-    statLabel: "from prompt to a presentation-ready deck",
-  },
-  {
-    eyebrow: "02 — Design",
-    title: "Beautifully designed, every single slide",
-    body: "Every slide is crafted, not just filled in — considered layout, type scale, color, and spacing, so the whole deck looks like a senior designer made it. Choose from 60+ world-class design systems, or bring your own look.",
-    points: [
-      "60+ beautifully crafted design systems",
-      "Bring your own colors, fonts, and logo",
-      "Consistent type, color, and spacing throughout",
-    ],
-    stat: "60+",
-    statLabel: "beautifully crafted design systems",
-  },
-  {
-    eyebrow: "03 — Ownership",
-    title: "Edit it, own it, export it anywhere",
-    body: "The generated deck is yours. Tweak any slide in the live editor, then export to the format your audience needs — no watermark, no lock-in. And set it to regenerate on a schedule for recurring reports.",
-    points: [
-      "Live slide editor — change anything",
-      "No watermark, no vendor lock-in",
-      "Recurring decks on a schedule",
-    ],
-    stat: "3 formats",
-    statLabel: "PPTX · PDF · HTML",
   },
 ];
 
@@ -301,94 +206,6 @@ function HeroDeck() {
         })}
       </div>
     </div>
-  );
-}
-
-function BrandStrip() {
-  return (
-    <section className="px-5 py-8 sm:px-6">
-      <div className={`${CONTAINER} flex flex-col items-center gap-5`}>
-        <p className="text-center text-[11px] font-semibold uppercase tracking-[1.5px] text-[hsl(var(--muted-foreground))]">
-          Beautifully designed with 60+ world-class design systems
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3.5">
-          {BRAND_CHIPS.map((name) => {
-            return (
-              <span
-                key={name}
-                className="text-[16px] font-medium text-[hsl(var(--gray-400))]"
-              >
-                {name}
-              </span>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function WhySection({
-  section,
-  index,
-}: {
-  section: (typeof WHY_SECTIONS)[number];
-  index: number;
-}) {
-  const flip = index % 2 === 1;
-
-  return (
-    <div className="grid items-center gap-8 md:grid-cols-2 md:gap-12">
-      <div className={flip ? "md:order-2" : ""}>
-        <span className={EYEBROW}>{section.eyebrow}</span>
-        <h3 className="landing-heading mt-3 text-[24px] font-medium leading-[1.2] tracking-[-0.5px] text-[hsl(var(--foreground))] sm:text-[28px]">
-          {section.title}
-        </h3>
-        <p className={`mt-4 ${BODY}`}>{section.body}</p>
-        <ul className="mt-5 flex flex-col gap-2.5">
-          {section.points.map((point) => {
-            return (
-              <li
-                key={point}
-                className="flex gap-2.5 text-base text-[hsl(var(--muted-foreground))]"
-              >
-                <span className="font-semibold text-[#ed4e01]">✓</span>
-                {point}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-      <div
-        className={`flex min-h-[220px] flex-col justify-center p-8 sm:p-10 ${CARD}`}
-      >
-        <div className="landing-heading text-[48px] font-medium leading-none tracking-[-1.5px] text-[#ed4e01]">
-          {section.stat}
-        </div>
-        <p className="mt-3 text-base text-[hsl(var(--muted-foreground))]">
-          {section.statLabel}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function WhyDeck() {
-  return (
-    <section id="why" className={SECTION}>
-      <div className={`${CONTAINER} flex flex-col gap-12 sm:gap-16`}>
-        <SectionHead
-          eyebrow="Why VM0 deck"
-          title="Why teams choose VM0 over a deck template"
-          lead="A template hands you empty boxes to fill in. VM0 hands you a finished, beautifully designed deck — done for you."
-        />
-        {WHY_SECTIONS.map((section, index) => {
-          return (
-            <WhySection key={section.eyebrow} section={section} index={index} />
-          );
-        })}
-      </div>
-    </section>
   );
 }
 
@@ -579,87 +396,6 @@ function Showcase({
   );
 }
 
-function UseCases() {
-  return (
-    <section id="usecases" className={SECTION}>
-      <div className={CONTAINER}>
-        <SectionHead
-          eyebrow="Use cases"
-          title="One maker, every kind of deck"
-        />
-        <div className="mt-12 grid gap-6 sm:mt-16 md:grid-cols-3">
-          {USE_CASES.map((useCase) => {
-            return (
-              <div key={useCase.title} className={`p-8 ${CARD}`}>
-                <div className="text-[26px]">{useCase.icon}</div>
-                <h3 className="mt-4 text-lg font-medium leading-6 text-[hsl(var(--foreground))]">
-                  {useCase.title}
-                </h3>
-                <p className="mt-2 text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                  {useCase.body}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Comparison() {
-  return (
-    <section className={SECTION}>
-      <div className={CONTAINER}>
-        <SectionHead
-          eyebrow="Compare"
-          title="Built for decks you actually present"
-        />
-        <div className={`mx-auto mt-12 max-w-[820px] overflow-hidden ${CARD}`}>
-          <table className="w-full border-collapse text-base">
-            <thead>
-              <tr className="text-[13px] uppercase tracking-[0.5px] text-[hsl(var(--muted-foreground))]">
-                <th className="border-b border-[hsl(var(--gray-200))] px-6 py-4 text-left font-semibold">
-                  Capability
-                </th>
-                <th className="border-b border-[hsl(var(--gray-200))] px-6 py-4 text-left font-semibold text-[#ed4e01]">
-                  VM0
-                </th>
-                <th className="border-b border-[hsl(var(--gray-200))] px-6 py-4 text-left font-semibold">
-                  Generic AI slide tools
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARISON_ROWS.map((row, index) => {
-                const last = index === COMPARISON_ROWS.length - 1;
-                const cell = last
-                  ? "px-6 py-4 text-left"
-                  : "border-b border-[hsl(var(--gray-200))] px-6 py-4 text-left";
-                return (
-                  <tr key={row[0]}>
-                    <td className={`${cell} text-[hsl(var(--foreground))]`}>
-                      {row[0]}
-                    </td>
-                    <td className={`${cell} font-medium text-[#ed4e01]`}>
-                      {row[1]}
-                    </td>
-                    <td
-                      className={`${cell} text-[hsl(var(--muted-foreground))]`}
-                    >
-                      {row[2]}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function Faq() {
   return (
     <section id="faq" className={SECTION}>
@@ -744,13 +480,9 @@ export function PresentationClient() {
       <BackgroundOverlays />
       <main className="relative z-10">
         <Hero startHref={startHref} />
-        <BrandStrip />
-        <WhyDeck />
+        <Showcase appUrl={appUrl} landingSearch={landingSearch} />
         <Features />
         <HowItWorks />
-        <Showcase appUrl={appUrl} landingSearch={landingSearch} />
-        <UseCases />
-        <Comparison />
         <Faq />
         <FinalCta startHref={startHref} />
       </main>
