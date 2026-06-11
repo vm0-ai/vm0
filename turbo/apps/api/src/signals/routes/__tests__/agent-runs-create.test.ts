@@ -11,6 +11,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { ExecutionFirewallEntry } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
   agentComposes,
@@ -65,6 +66,26 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
+
+function firewallEntryName(entry: ExecutionFirewallEntry): string {
+  if (entry.kind === undefined) {
+    return entry.name;
+  }
+  return entry.kind === "builtin" ? entry.name : entry.firewall.name;
+}
+
+function getBuiltinFirewallEntry(
+  entries: readonly ExecutionFirewallEntry[] | undefined,
+  name: string,
+): Extract<ExecutionFirewallEntry, { kind: "builtin" }> {
+  const entry = entries?.find((candidate) => {
+    return firewallEntryName(candidate) === name;
+  });
+  if (!entry || entry.kind !== "builtin") {
+    throw new Error(`Missing builtin firewall entry: ${name}`);
+  }
+  return entry;
+}
 
 function modelProviderSecretPlaceholder(
   type: ModelProviderType,
@@ -848,10 +869,7 @@ describe("POST /api/agent/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly { readonly base: string }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.ZENDESK_API_TOKEN).toBe(
       "zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
@@ -879,10 +897,11 @@ describe("POST /api/agent/runs", () => {
     expect(Object.values(decryptedSecrets ?? {})).not.toContain(
       "$vars.ZENDESK_SUBDOMAIN",
     );
-    const zendesk = executionContext.firewalls.find((firewall) => {
-      return firewall.name === "zendesk";
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "zendesk"),
+    ).toMatchObject({
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "acme" },
     });
-    expect(zendesk?.apis[0]?.base).toBe("https://acme.zendesk.com");
   });
 
   it("omits expired non-refreshable connectors from run context", async () => {
@@ -948,7 +967,7 @@ describe("POST /api/agent/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly { readonly name: string }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.STRIPE_TOKEN).toBeUndefined();
     expect(executionContext.environment.NOTION_TOKEN).toBeDefined();
@@ -967,12 +986,12 @@ describe("POST /api/agent/runs", () => {
     expect(decryptedSecrets).not.toHaveProperty("STRIPE_TOKEN");
     expect(
       executionContext.firewalls.some((firewall) => {
-        return firewall.name === "stripe";
+        return firewallEntryName(firewall) === "stripe";
       }),
     ).toBeFalsy();
     expect(
       executionContext.firewalls.some((firewall) => {
-        return firewall.name === "notion";
+        return firewallEntryName(firewall) === "notion";
       }),
     ).toBeTruthy();
   });
@@ -1014,7 +1033,7 @@ describe("POST /api/agent/runs", () => {
       .where(eq(runnerJobQueue.runId, response.body.runId));
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
-      readonly firewalls?: readonly { readonly name: string }[];
+      readonly firewalls?: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.ZENDESK_API_TOKEN).toBe(
       "run-zendesk-token",
@@ -1025,7 +1044,7 @@ describe("POST /api/agent/runs", () => {
     );
     expect(
       executionContext.firewalls?.some((firewall) => {
-        return firewall.name === "zendesk";
+        return firewallEntryName(firewall) === "zendesk";
       }),
     ).toBeFalsy();
   });
@@ -1105,10 +1124,7 @@ describe("POST /api/agent/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly { readonly base: string }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.ZENDESK_API_TOKEN).toBe(
       "zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
@@ -1127,12 +1143,11 @@ describe("POST /api/agent/runs", () => {
     ).toMatchObject({
       ZENDESK_API_TOKEN: "connector-zendesk-token",
     });
-    const zendesk = executionContext.firewalls.find((firewall) => {
-      return firewall.name === "zendesk";
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "zendesk"),
+    ).toMatchObject({
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "connector-subdomain" },
     });
-    expect(zendesk?.apis[0]?.base).toBe(
-      "https://connector-subdomain.zendesk.com",
-    );
   });
 
   it("returns 500 when stored connector-owned state is incomplete", async () => {
@@ -1314,7 +1329,7 @@ describe("POST /api/agent/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
-      readonly firewalls: readonly { readonly name: string }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.WEREAD_TOKEN).toBe(
       "wrk-CoffeeSafeLocalCoffeeSafeLocalCoffee",
@@ -1326,7 +1341,7 @@ describe("POST /api/agent/runs", () => {
     });
     expect(
       executionContext.firewalls.some((firewall) => {
-        return firewall.name === "weread";
+        return firewallEntryName(firewall) === "weread";
       }),
     ).toBeTruthy();
   });
@@ -1440,10 +1455,7 @@ describe("POST /api/agent/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly { readonly base: string }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.TEST_OAUTH_TENANT_ID).toBe(
       "tenant-from-token-output",
@@ -1456,12 +1468,11 @@ describe("POST /api/agent/runs", () => {
     ).toMatchObject({
       TEST_OAUTH_TOKEN: "test-oauth-api-token",
     });
-    const firewall = executionContext.firewalls.find((entry) => {
-      return entry.name === "test-oauth";
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "test-oauth"),
+    ).toMatchObject({
+      baseUrlVars: { TEST_OAUTH_TENANT_ID: "tenant-from-token-output" },
     });
-    expect(firewall?.apis[0]?.base).toBe(
-      "https://tenant-from-token-output.{pr}.vm6.ai/api/test/oauth-provider",
-    );
   });
 
   it("maps non-refreshable runtime secret aliases for refresh-token connectors", async () => {
@@ -1527,20 +1538,7 @@ describe("POST /api/agent/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly base: string;
-          readonly auth: {
-            readonly awsSigv4?: {
-              readonly accessKeyId: string;
-              readonly secretAccessKey: string;
-              readonly sessionToken?: string;
-            };
-          };
-          readonly permissions: readonly unknown[];
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
       readonly networkPolicies: Record<
         string,
         {
@@ -1551,49 +1549,11 @@ describe("POST /api/agent/runs", () => {
         }
       >;
     };
-    expect(executionContext.firewalls).toContainEqual({
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "aws"),
+    ).toMatchObject({
+      kind: "builtin",
       name: "aws",
-      apis: [
-        {
-          base: "https://{awsHost+}.amazonaws.com",
-          auth: {
-            awsSigv4: {
-              accessKeyId: vm0Template("{{ secrets.AWS_ACCESS_KEY_ID }}"),
-              secretAccessKey: vm0Template(
-                "{{ secrets.AWS_SECRET_ACCESS_KEY }}",
-              ),
-              sessionToken: vm0Template("{{ secrets.AWS_SESSION_TOKEN }}"),
-            },
-          },
-          permissions: [],
-        },
-        {
-          base: "https://{awsHost+}.amazonaws.com.cn",
-          auth: {
-            awsSigv4: {
-              accessKeyId: vm0Template("{{ secrets.AWS_ACCESS_KEY_ID }}"),
-              secretAccessKey: vm0Template(
-                "{{ secrets.AWS_SECRET_ACCESS_KEY }}",
-              ),
-              sessionToken: vm0Template("{{ secrets.AWS_SESSION_TOKEN }}"),
-            },
-          },
-          permissions: [],
-        },
-        {
-          base: "https://{awsHost+}.api.aws",
-          auth: {
-            awsSigv4: {
-              accessKeyId: vm0Template("{{ secrets.AWS_ACCESS_KEY_ID }}"),
-              secretAccessKey: vm0Template(
-                "{{ secrets.AWS_SECRET_ACCESS_KEY }}",
-              ),
-              sessionToken: vm0Template("{{ secrets.AWS_SESSION_TOKEN }}"),
-            },
-          },
-          permissions: [],
-        },
-      ],
     });
     expect(executionContext.networkPolicies.aws).toStrictEqual({
       allow: [],

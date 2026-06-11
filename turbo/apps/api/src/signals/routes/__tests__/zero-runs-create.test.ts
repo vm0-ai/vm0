@@ -7,7 +7,10 @@ import {
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type ExecutionFirewallEntry,
+} from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
   agentComposes,
@@ -78,6 +81,39 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
 const SLACK_CONNECTOR = "slack";
+
+function firewallEntryName(entry: ExecutionFirewallEntry): string {
+  if (entry.kind === undefined) {
+    return entry.name;
+  }
+  return entry.kind === "builtin" ? entry.name : entry.firewall.name;
+}
+
+function getBuiltinFirewallEntry(
+  entries: readonly ExecutionFirewallEntry[] | undefined,
+  name: string,
+): Extract<ExecutionFirewallEntry, { kind: "builtin" }> {
+  const entry = entries?.find((candidate) => {
+    return firewallEntryName(candidate) === name;
+  });
+  if (!entry || entry.kind !== "builtin") {
+    throw new Error(`Missing builtin firewall entry: ${name}`);
+  }
+  return entry;
+}
+
+function getInlineFirewallEntry(
+  entries: readonly ExecutionFirewallEntry[] | undefined,
+  name: string,
+): Extract<ExecutionFirewallEntry, { kind: "inline" }> {
+  const entry = entries?.find((candidate) => {
+    return firewallEntryName(candidate) === name;
+  });
+  if (!entry || entry.kind !== "inline") {
+    throw new Error(`Missing inline firewall entry: ${name}`);
+  }
+  return entry;
+}
 const SLACK_READ_PERMISSION = "channels:read";
 const SLACK_WRITE_PERMISSION = "chat:write";
 
@@ -1203,7 +1239,7 @@ describe("POST /api/zero/runs", () => {
           readonly metadataKey?: string;
         }
       > | null;
-      readonly firewalls: readonly { readonly name: string }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
       readonly billableFirewalls: readonly string[];
       readonly modelUsageProvider: string | undefined;
     };
@@ -1239,7 +1275,7 @@ describe("POST /api/zero/runs", () => {
     });
     expect(
       executionContext.firewalls.map((firewall) => {
-        return firewall.name;
+        return firewallEntryName(firewall);
       }),
     ).toContain("model-provider:codex-oauth-token");
     expect(executionContext.billableFirewalls).toStrictEqual([]);
@@ -1496,7 +1532,7 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
-      readonly firewalls?: readonly { readonly name: string }[];
+      readonly firewalls?: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.AXIOM_TOKEN).toBe("xaat-user-secret");
     expect(
@@ -1506,7 +1542,7 @@ describe("POST /api/zero/runs", () => {
     });
     expect(
       executionContext.firewalls?.some((firewall) => {
-        return firewall.name === "axiom";
+        return firewallEntryName(firewall) === "axiom";
       }),
     ).toBeFalsy();
   });
@@ -1546,14 +1582,14 @@ describe("POST /api/zero/runs", () => {
       .where(eq(runnerJobQueue.runId, response.body.runId));
     const executionContext = job?.executionContext as {
       readonly encryptedSecrets: string | null;
-      readonly firewalls?: readonly { readonly name: string }[];
+      readonly firewalls?: readonly ExecutionFirewallEntry[];
     };
     expect(
       decryptSecretsMapForTests(executionContext.encryptedSecrets)?.AXIOM_TOKEN,
     ).toBeUndefined();
     expect(
       executionContext.firewalls?.some((firewall) => {
-        return firewall.name === "axiom";
+        return firewallEntryName(firewall) === "axiom";
       }),
     ).toBeFalsy();
   });
@@ -1805,7 +1841,7 @@ describe("POST /api/zero/runs", () => {
           readonly sourceType: string;
         }
       > | null;
-      readonly firewalls: readonly { readonly name: string }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
       readonly billableFirewalls: readonly string[];
     };
     const decrypted = decryptSecretsMapForTests(
@@ -1822,7 +1858,7 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
     expect(
       executionContext.firewalls.map((firewall) => {
-        return firewall.name;
+        return firewallEntryName(firewall);
       }),
     ).toContain("x");
     expect(executionContext.billableFirewalls).toContain("x");
@@ -1877,13 +1913,7 @@ describe("POST /api/zero/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly base: string;
-          readonly auth?: { readonly headers?: Record<string, string> };
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     const decrypted = decryptSecretsMapForTests(
       executionContext.encryptedSecrets,
@@ -1905,13 +1935,9 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMap).toStrictEqual({
       CLOUDFLARE_TOKEN: "cloudflare",
     });
-    const firewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "cloudflare";
-    });
-    expect(firewall?.apis[0]?.base).toBe("https://api.cloudflare.com/client");
-    expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
-      ["Bearer $", "{{ secrets.CLOUDFLARE_TOKEN }}"].join(""),
-    );
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "cloudflare"),
+    ).toMatchObject({ kind: "builtin", name: "cloudflare" });
   });
 
   it("maps static connector env aliases", async () => {
@@ -2087,13 +2113,7 @@ describe("POST /api/zero/runs", () => {
           readonly sourceType: string;
         }
       > | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly base: string;
-          readonly auth?: { readonly headers?: Record<string, string> };
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.BASE44_TOKEN).toBe(
       "base44_placeholder_token",
@@ -2112,13 +2132,12 @@ describe("POST /api/zero/runs", () => {
       BASE44_TOKEN: "base44",
     });
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
-    const firewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "base44";
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "base44"),
+    ).toMatchObject({
+      kind: "builtin",
+      name: "base44",
     });
-    expect(firewall?.apis[0]?.base).toBe("https://app.base44.com/mcp");
-    expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
-      ["Bearer $", "{{ secrets.BASE44_TOKEN }}"].join(""),
-    );
   });
 
   it("maps cached Lark access token to the logical runtime firewall secret", async () => {
@@ -2177,13 +2196,7 @@ describe("POST /api/zero/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly base: string;
-          readonly auth?: { readonly headers?: Record<string, string> };
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
 
     expect(executionContext.environment.LARK_TOKEN).toBe(
@@ -2206,13 +2219,12 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMap).toStrictEqual({
       LARK_TOKEN: "lark",
     });
-    const firewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "lark";
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "lark"),
+    ).toMatchObject({
+      kind: "builtin",
+      name: "lark",
     });
-    expect(firewall?.apis[0]?.base).toBe("https://open.larksuite.com");
-    expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
-      ["Bearer $", "{{ secrets.LARK_TOKEN }}"].join(""),
-    );
   });
 
   it("keeps Lark refresh ownership when no cached access token exists", async () => {
@@ -2350,13 +2362,7 @@ describe("POST /api/zero/runs", () => {
           readonly sourceType: string;
         }
       > | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly base: string;
-          readonly auth?: { readonly headers?: Record<string, string> };
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
 
     const slockFirewall = getConnectorFirewall("slock");
@@ -2381,13 +2387,11 @@ describe("POST /api/zero/runs", () => {
       SLOCK_TOKEN: "slock",
     });
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
-    const firewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "slock";
-    });
-    expect(firewall?.apis[0]?.base).toBe("https://api.slock.ai");
-    expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
-      Authorization: ["Bearer $", "{{ secrets.SLOCK_TOKEN }}"].join(""),
-      "X-Server-Id": ["$", "{{ secrets.SLOCK_SERVER_ID }}"].join(""),
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "slock"),
+    ).toMatchObject({
+      kind: "builtin",
+      name: "slock",
     });
   });
 
@@ -2432,7 +2436,7 @@ describe("POST /api/zero/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly { readonly name: string }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(
       decryptSecretsMapForTests(executionContext.encryptedSecrets),
@@ -2448,7 +2452,7 @@ describe("POST /api/zero/runs", () => {
     });
     expect(
       executionContext.firewalls.map((firewall) => {
-        return firewall.name;
+        return firewallEntryName(firewall);
       }),
     ).toContain("google-ads");
   });
@@ -2500,14 +2504,7 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly auth?: {
-            readonly headers?: Record<string, string>;
-          };
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(
       decryptSecretsMapForTests(executionContext.encryptedSecrets),
@@ -2517,11 +2514,11 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMap).toStrictEqual({
       META_ADS_TOKEN: "meta-ads",
     });
-    const firewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "meta-ads";
-    });
-    expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
-      Authorization: ["Bearer $", "{{ secrets.META_ADS_TOKEN }}"].join(""),
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "meta-ads"),
+    ).toMatchObject({
+      kind: "builtin",
+      name: "meta-ads",
     });
   });
 
@@ -2573,14 +2570,7 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly auth?: {
-            readonly headers?: Record<string, string>;
-          };
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(
       decryptSecretsMapForTests(executionContext.encryptedSecrets),
@@ -2590,11 +2580,11 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMap).toStrictEqual({
       TIKTOK_ADS_TOKEN: "tiktok-ads",
     });
-    const firewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "tiktok-ads";
-    });
-    expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
-      "Access-Token": ["$", "{{ secrets.TIKTOK_ADS_TOKEN }}"].join(""),
+    expect(
+      getBuiltinFirewallEntry(executionContext.firewalls, "tiktok-ads"),
+    ).toMatchObject({
+      kind: "builtin",
+      name: "tiktok-ads",
     });
   });
 
@@ -2638,16 +2628,7 @@ describe("POST /api/zero/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly base: string;
-          readonly auth?: {
-            readonly headers?: Record<string, string>;
-          };
-          readonly permissions?: readonly unknown[];
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
     expect(executionContext.environment.GOOGLE_CLOUD_TOKEN).toBe(
       connectorSecretPlaceholder("google-cloud", "GOOGLE_CLOUD_TOKEN"),
@@ -2661,41 +2642,9 @@ describe("POST /api/zero/runs", () => {
       GOOGLE_CLOUD_TOKEN: "google-cloud",
     });
 
-    const firewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "google-cloud";
-    });
     expect(
-      firewall?.apis.map((api) => {
-        return api.base;
-      }),
-    ).toStrictEqual([
-      "https://cloudresourcemanager.googleapis.com",
-      "https://serviceusage.googleapis.com",
-      "https://iam.googleapis.com",
-      "https://compute.googleapis.com",
-      "https://appengine.googleapis.com",
-      "https://sqladmin.googleapis.com",
-      "https://bigquery.googleapis.com",
-      "https://storage.googleapis.com",
-      "https://run.googleapis.com",
-      "https://cloudbuild.googleapis.com",
-      "https://artifactregistry.googleapis.com",
-      "https://container.googleapis.com",
-      "https://cloudfunctions.googleapis.com",
-      "https://secretmanager.googleapis.com",
-      "https://logging.googleapis.com",
-      "https://monitoring.googleapis.com",
-      "https://cloudbilling.googleapis.com",
-      "https://pubsub.googleapis.com",
-      "https://firestore.googleapis.com",
-      "https://spanner.googleapis.com",
-    ]);
-    for (const api of firewall?.apis ?? []) {
-      expect(api.auth?.headers?.Authorization).toBe(
-        ["Bearer $", "{{ secrets.GOOGLE_CLOUD_TOKEN }}"].join(""),
-      );
-      expect(api.permissions).toStrictEqual([]);
-    }
+      getBuiltinFirewallEntry(executionContext.firewalls, "google-cloud"),
+    ).toMatchObject({ kind: "builtin", name: "google-cloud" });
   });
 
   it("injects authorized custom connector firewalls and secrets", async () => {
@@ -2741,25 +2690,20 @@ describe("POST /api/zero/runs", () => {
       .where(eq(runnerJobQueue.runId, response.body.runId));
     const executionContext = job?.executionContext as {
       readonly encryptedSecrets: string | null;
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly {
-          readonly base: string;
-          readonly auth?: { readonly headers?: Record<string, string> };
-        }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
       readonly networkPolicies: Record<
         string,
         { readonly unknownPolicy: string }
       >;
     };
-    const firewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "internal-api";
-    });
-    expect(firewall?.apis[0]?.base).toBe(
+    const firewall = getInlineFirewallEntry(
+      executionContext.firewalls,
+      "internal-api",
+    );
+    expect(firewall.firewall.apis[0]?.base).toBe(
       "https://{hostWildcard1}.internal.example.com/api/",
     );
-    expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
+    expect(firewall.firewall.apis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
     expect(
@@ -2862,24 +2806,23 @@ describe("POST /api/zero/runs", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, response.body.runId));
     const executionContext = job?.executionContext as {
-      readonly firewalls: readonly {
-        readonly name: string;
-        readonly apis: readonly { readonly base: string }[];
-      }[];
+      readonly firewalls: readonly ExecutionFirewallEntry[];
     };
-    const customFirewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "internal-api";
-    });
-    const zendeskFirewall = executionContext.firewalls.find((candidate) => {
-      return candidate.name === "zendesk";
-    });
+    const customFirewall = getInlineFirewallEntry(
+      executionContext.firewalls,
+      "internal-api",
+    );
+    const zendeskFirewall = getBuiltinFirewallEntry(
+      executionContext.firewalls,
+      "zendesk",
+    );
 
-    expect(customFirewall?.apis[0]?.base).toBe(
+    expect(customFirewall.firewall.apis[0]?.base).toBe(
       "https://user-subdomain.internal.example.com/api/",
     );
-    expect(zendeskFirewall?.apis[0]?.base).toBe(
-      "https://connector-subdomain.zendesk.com",
-    );
+    expect(zendeskFirewall.baseUrlVars).toStrictEqual({
+      ZENDESK_SUBDOMAIN: "connector-subdomain",
+    });
   });
 
   it("rejects omitted modelProvider when the org default provider is VM0", async () => {

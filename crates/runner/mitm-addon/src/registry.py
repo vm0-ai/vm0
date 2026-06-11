@@ -1,7 +1,9 @@
 """Proxy registry loading and VM lookup cache."""
 
+import copy
 import json
 import os
+import re
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,6 +12,7 @@ from mitmproxy import ctx
 
 import matching
 from auth import evict_all_cache_keys, evict_stale_cache_keys
+from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
 VmContext = tuple[
     dict,
@@ -19,10 +22,15 @@ VmContext = tuple[
 _RegistryCacheKey = tuple[str, int, int, int, int]
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
+_BASE_URL_VAR_PATTERN = re.compile(r"\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
 
 class _RegistryFormatError(ValueError):
     """Registry JSON decoded successfully but does not have the expected shape."""
+
+
+class _FirewallEntryResolutionError(ValueError):
+    """Execution firewall entries could not be expanded into runtime configs."""
 
 
 @dataclass(frozen=True)
@@ -121,6 +129,138 @@ def _compile_registry(
     return compiled_firewall_registry, compiled_policy_registry
 
 
+def _string_record(value: object, field_name: str) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise _FirewallEntryResolutionError(f"{field_name} must be an object")
+
+    result: dict[str, str] = {}
+    for key, nested in value.items():
+        if not isinstance(key, str) or not isinstance(nested, str):
+            raise _FirewallEntryResolutionError(f"{field_name} must contain string values")
+        result[key] = nested
+    return result
+
+
+def _base_url_vars_for_entry(entry: dict) -> dict[str, str]:
+    if "baseUrlVars" in entry:
+        return _string_record(entry["baseUrlVars"], "baseUrlVars")
+    return {}
+
+
+def _resolve_base_url_template(
+    *,
+    firewall_name: str,
+    base: str,
+    vars_map: dict[str, str],
+) -> str:
+    def replace_var(match: re.Match[str]) -> str:
+        name = match.group(1)
+        value = vars_map.get(name)
+        if not value:
+            raise _FirewallEntryResolutionError(
+                f'builtin firewall "{firewall_name}" base URL requires variable "{name}"'
+            )
+        return value
+
+    resolved = _BASE_URL_VAR_PATTERN.sub(replace_var, base)
+    if not matching.firewall_base_config_is_valid(resolved):
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+        )
+    return resolved
+
+
+def _resolve_builtin_firewall_entry(entry: dict) -> dict:
+    raw_name = entry.get("name")
+    if not isinstance(raw_name, str) or raw_name == "":
+        raise _FirewallEntryResolutionError(
+            "builtin firewall entry name must be a non-empty string"
+        )
+
+    catalog_firewall = BUILTIN_FIREWALLS.get(raw_name)
+    if catalog_firewall is None:
+        raise _FirewallEntryResolutionError(f'unknown builtin firewall "{raw_name}"')
+
+    firewall = copy.deepcopy(catalog_firewall)
+    raw_apis = firewall.get("apis")
+    if not isinstance(raw_apis, list):
+        raise _FirewallEntryResolutionError(f'builtin firewall "{raw_name}" apis must be a list')
+
+    vars_map = _base_url_vars_for_entry(entry)
+    for api in raw_apis:
+        if not isinstance(api, dict):
+            raise _FirewallEntryResolutionError(
+                f'builtin firewall "{raw_name}" api entries must be objects'
+            )
+        raw_base = api.get("base")
+        if not isinstance(raw_base, str):
+            raise _FirewallEntryResolutionError(
+                f'builtin firewall "{raw_name}" api base must be a string'
+            )
+        api["base"] = _resolve_base_url_template(
+            firewall_name=raw_name,
+            base=raw_base,
+            vars_map=vars_map,
+        )
+
+    return firewall
+
+
+def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:
+    index = 0
+    for firewall in firewalls:
+        raw_apis = firewall.get("apis")
+        if not isinstance(raw_apis, list):
+            continue
+        for api in raw_apis:
+            if not isinstance(api, dict):
+                continue
+            raw_id = api.get("id")
+            if not isinstance(raw_id, str) or raw_id == "":
+                api["id"] = f"{run_id}:{index}"
+            index += 1
+
+
+def _is_legacy_firewall_entry(entry: dict) -> bool:
+    if "kind" in entry:
+        return False
+    return isinstance(entry.get("name"), str) and isinstance(entry.get("apis"), list)
+
+
+def _resolve_firewall_entries(vm: dict) -> list[dict] | None:
+    raw_firewalls = vm.get("firewalls")
+    if raw_firewalls is None:
+        return None
+    if not isinstance(raw_firewalls, list):
+        raise _FirewallEntryResolutionError("firewalls must be a list")
+
+    resolved: list[dict] = []
+    for entry in raw_firewalls:
+        if not isinstance(entry, dict):
+            raise _FirewallEntryResolutionError("firewall entries must be objects")
+
+        kind = entry.get("kind")
+        if kind == "builtin":
+            resolved.append(_resolve_builtin_firewall_entry(entry))
+            continue
+        if kind == "inline":
+            firewall = entry.get("firewall")
+            if not isinstance(firewall, dict):
+                raise _FirewallEntryResolutionError(
+                    "inline firewall entry firewall must be an object"
+                )
+            resolved.append(copy.deepcopy(firewall))
+            continue
+        if _is_legacy_firewall_entry(entry):
+            resolved.append(copy.deepcopy(entry))
+            continue
+
+        raise _FirewallEntryResolutionError("firewall entries must use a supported kind")
+
+    _assign_firewall_api_ids(resolved, vm["runId"])
+    return resolved
+
+
 def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidVmEntry]]:
     new_registry: dict = {}
     invalid_vms: dict[str, InvalidVmEntry] = {}
@@ -169,6 +309,16 @@ def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidV
                 "proxy registry VM entry firewalls must be a list",
             )
             continue
+
+        try:
+            resolved_firewalls = _resolve_firewall_entries(vm)
+        except _FirewallEntryResolutionError as e:
+            invalid_vms[client_ip] = InvalidVmEntry("invalid_firewalls", str(e))
+            continue
+
+        vm = dict(vm)
+        if resolved_firewalls is not None:
+            vm["firewalls"] = resolved_firewalls
 
         new_registry[client_ip] = vm
 

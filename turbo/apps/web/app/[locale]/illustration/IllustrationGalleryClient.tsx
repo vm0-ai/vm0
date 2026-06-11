@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Footer } from "../../components/Footer";
-import { ILLUSTRATION_STYLES, type IllustrationStyle } from "./data";
-
-const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
+import {
+  ILLUSTRATION_ASSET_BASE,
+  ILLUSTRATION_STYLES,
+  type IllustrationStyle,
+} from "@vm0/core";
 
 interface LightboxState {
   style: IllustrationStyle;
@@ -115,8 +117,8 @@ interface CardProps {
 
 function IllustrationCard({ style, onOpen }: CardProps) {
   const coverSrc = style.cover
-    ? `${ASSET_BASE}/${style.cover}`
-    : `${ASSET_BASE}/images/${style.image}`;
+    ? `${ILLUSTRATION_ASSET_BASE}/${style.cover}`
+    : `${ILLUSTRATION_ASSET_BASE}/images/${style.image}`;
 
   return (
     <article className="illu-tile">
@@ -162,7 +164,7 @@ function IllustrationCard({ style, onOpen }: CardProps) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`${ASSET_BASE}/refs/${style.slug}/${ref}`}
+                src={`${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${ref}`}
                 loading="lazy"
                 alt=""
               />
@@ -188,7 +190,7 @@ function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
 
   const { style, activeRef } = state;
   const refCount = style.refs.length;
-  const activeSrc = `${ASSET_BASE}/refs/${style.slug}/${activeRef}`;
+  const activeSrc = `${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${activeRef}`;
 
   if (!mounted) {
     return null;
@@ -238,7 +240,7 @@ function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`${ASSET_BASE}/refs/${style.slug}/${ref}`}
+                src={`${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${ref}`}
                 loading="lazy"
                 alt=""
               />

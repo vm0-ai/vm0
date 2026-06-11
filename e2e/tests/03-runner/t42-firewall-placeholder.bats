@@ -43,9 +43,14 @@ setup() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-firewall-${UNIQUE_ID}"
     export ARTIFACT_NAME="e2e-firewall-artifact-${UNIQUE_ID}"
+    export AGENT_ID=""
+    export THREAD_ID=""
 }
 
 teardown() {
+    [ -n "$THREAD_ID" ] && zero_curl "/api/zero/chat-threads/$THREAD_ID" -X DELETE >/dev/null 2>&1 || true
+    [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" -y >/dev/null 2>&1 || true
+
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
@@ -99,6 +104,14 @@ setup_test_connector() {
     fi
 }
 
+authorize_slack_for_agent() {
+    local agent_id="$1"
+    zero_curl "/api/zero/agents/${agent_id}/user-connectors" \
+        -X PUT \
+        -d '{"enabledTypes":["slack"]}' \
+        >/dev/null
+}
+
 @test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     # No firewalls needed — connector auto-add provides firewalls.
@@ -130,6 +143,39 @@ EOF
 
     assert_output --partial "GITHUB_TOKEN=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"
     assert_output --partial "SLACK_TOKEN=xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf"
+}
+
+@test "firewall: slack default write permission deny in zero run" {
+    local create_out
+    create_out=$($ZERO_CLI agent create --display-name "${AGENT_NAME}-slack-deny")
+    AGENT_ID=$(echo "$create_out" | grep -oP 'Agent ID:\s+\K[a-f0-9-]{36}')
+    [ -n "$AGENT_ID" ] || {
+        echo "# Failed to extract Agent ID from: $create_out" >&2
+        return 1
+    }
+
+    run authorize_slack_for_agent "$AGENT_ID"
+    echo "$output"
+    assert_success
+
+    zero_chat_run_with_model_selection \
+        "$AGENT_ID" \
+        "BODY_FILE=\$(mktemp) && SLACK_STATUS=\$(curl -sS -o \"\$BODY_FILE\" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H \"Authorization: Bearer \$SLACK_TOKEN\" -H 'Content-Type: application/json' --data '{\"channel\":\"C0000000000\",\"text\":\"e2e\"}') && echo \"SLACK_WRITE_STATUS=\$SLACK_STATUS\" && echo \"SLACK_WRITE_BODY=\$(cat \"\$BODY_FILE\")\"" \
+        "$(zero_model_first_selection_provider_id)" \
+        "claude-sonnet-4-6" \
+        false \
+        false
+    THREAD_ID="$LAST_THREAD_ID"
+
+    wait_for_zero_run_completed "$LAST_RUN_ID"
+    WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$LAST_RUN_ID" -- \
+        "SLACK_WRITE_STATUS=403" \
+        '"error": "permission_denied"' \
+        '"permissions": ["chat:write"]'
+
+    assert_output --partial "SLACK_WRITE_STATUS=403"
+    assert_output --partial '"error": "permission_denied"'
+    assert_output --partial '"permissions": ["chat:write"]'
 }
 
 @test "firewall: connector auto-adds firewall without firewalls" {
