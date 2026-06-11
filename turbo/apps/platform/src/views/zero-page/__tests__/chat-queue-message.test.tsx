@@ -266,7 +266,6 @@ describe("chat queued user messages", () => {
           content: "Waiting in queue...",
           runId: "run-queued",
           runEventId: "queue:queued",
-          status: "queued",
           createdAt: "2026-03-10T00:00:02Z",
         },
       ],
