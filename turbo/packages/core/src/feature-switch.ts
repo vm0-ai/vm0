@@ -365,6 +365,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AutomationWebhookTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow webhook triggers on automations: creating them (API + CLI sugar), the inbound dispatch endpoint, and secret rotation. Webhook triggers are a NEW capability on top of the schedule-parity automation surface; while off, automations are feature-equivalent to legacy schedules (time triggers only).",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

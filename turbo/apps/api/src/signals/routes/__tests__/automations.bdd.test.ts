@@ -178,6 +178,27 @@ describe("AUTOMATIONS-02: automations feature-switch gating", () => {
     expectApiError(webhookCreate.body);
     expect(webhookCreate.body.error.code).toBe("NOT_FOUND");
 
+    // Given only the base automations switch is on
+    const triggerGatedActor = bdd.user();
+    await api.enableAutomations(triggerGatedActor, {
+      webhookTriggers: false,
+    });
+
+    // When/Then creating a webhook automation still reports not-found because
+    // creation mints a webhook trigger, which has its own feature switch.
+    const webhookTriggerCreate =
+      await api.requestCreateWebhookAutomationUnchecked(
+        triggerGatedActor,
+        {
+          name: "gated-webhook-trigger",
+          instruction: "Should not be created.",
+          agentId: randomUUID(),
+        },
+        [404],
+      );
+    expectApiError(webhookTriggerCreate.body);
+    expect(webhookTriggerCreate.body.error.code).toBe("NOT_FOUND");
+
     // When/Then deleting a webhook automation reports not-found
     const webhookDelete = await api.requestDeleteWebhookAutomation(
       actor,
@@ -465,6 +486,13 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
       .update(automationTriggers)
       .set({ enabled: true })
       .where(eq(automationTriggers.automationId, created.automation.id));
+
+    await api.enableAutomations(actor, { webhookTriggers: false });
+    const triggerGatePost = await api.postAutomationWebhook(token, body, {
+      signature: signAutomationWebhook(created.secret, body),
+    });
+    expect(triggerGatePost.status).toBe(404);
+    await api.enableAutomations(actor);
 
     // When a correctly signed payload hits the inbound route
     const fired = await api.postAutomationWebhook(token, body, {

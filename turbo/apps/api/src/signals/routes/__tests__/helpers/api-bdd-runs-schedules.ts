@@ -486,11 +486,20 @@ export function createRunsSchedulesApi(context: TestContext) {
       return response.body;
     },
 
-    async enableAutomations(actor: ApiTestUser): Promise<void> {
+    async enableAutomations(
+      actor: ApiTestUser,
+      options: { readonly webhookTriggers?: boolean } = {},
+    ): Promise<void> {
       await accept(
         setupApp({ context })(zeroFeatureSwitchesContract).update({
           headers: authenticate(context, actor),
-          body: { switches: { [FeatureSwitchKey.ZeroAutomations]: true } },
+          body: {
+            switches: {
+              [FeatureSwitchKey.ZeroAutomations]: true,
+              [FeatureSwitchKey.AutomationWebhookTriggers]:
+                options.webhookTriggers ?? true,
+            },
+          },
         }),
         [200],
       );
