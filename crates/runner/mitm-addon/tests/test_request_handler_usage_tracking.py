@@ -296,6 +296,17 @@ def _auth_url_rewrite_flow(real_flow):
     )
 
 
+def _auth_url_rewrite_token_meta() -> dict[str, object]:
+    return {
+        "headers": {},
+        "base": "https://real.example.com/webhook",
+        "resolved_secrets": ["WEBHOOK_URL"],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
+
+
 async def test_billable_flow_is_tracked_before_responseheaders(
     tmp_path,
     usage_pending_path,
@@ -702,14 +713,7 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
     """Inline auth.base responses still pair request-time tracking with response()."""
     reg_path = _write_billable_auth_url_rewrite_registry(tmp_path)
     flow = _auth_url_rewrite_flow(real_flow)
-    token_meta = {
-        "headers": {},
-        "base": "https://real.example.com/webhook",
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-    }
+    token_meta = _auth_url_rewrite_token_meta()
     probe = _ForwardProbe(
         response=(200, b'{"delivered":true}', {"Content-Type": "application/json"})
     )
@@ -776,14 +780,7 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
     """Failed inline auth.base forwarding is a local response and drains immediately."""
     reg_path = _write_billable_auth_url_rewrite_registry(tmp_path)
     flow = _auth_url_rewrite_flow(real_flow)
-    token_meta = {
-        "headers": {},
-        "base": "https://real.example.com/webhook",
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-    }
+    token_meta = _auth_url_rewrite_token_meta()
     probe = _ForwardProbe(error=RuntimeError("upstream unavailable"))
 
     with (
@@ -837,44 +834,9 @@ async def test_billable_auth_url_rewrite_forward_cancellation_releases_tracking(
     tmp_path, usage_pending_path, real_flow, mitm_ctx
 ):
     """Cancelled inline auth.base forwarding drains request-time tracking."""
-    reg_path = _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-rewrite-1",
-            sandbox_marker="tok-rewrite",
-            firewall_name="webhook",
-            api_entry={
-                "base": "https://placeholder.example.com",
-                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
-                "permissions": [{"name": "send", "rules": ["POST /"]}],
-            },
-            network_policy={
-                "allow": ["send"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=["webhook"],
-        ),
-    )
-
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="placeholder.example.com",
-        path="/",
-        method="POST",
-        request_body=b'{"ok":true}',
-    )
-    token_meta = {
-        "headers": {},
-        "base": "https://real.example.com/webhook",
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-    }
+    reg_path = _write_billable_auth_url_rewrite_registry(tmp_path)
+    flow = _auth_url_rewrite_flow(real_flow)
+    token_meta = _auth_url_rewrite_token_meta()
     probe = _ForwardProbe(error=asyncio.CancelledError())
 
     with (
