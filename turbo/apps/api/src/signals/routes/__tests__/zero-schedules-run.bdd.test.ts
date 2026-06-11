@@ -33,6 +33,21 @@ import {
 import { seedOrgModelProvider$ } from "./helpers/zero-model-providers";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
+// BDD migration of the legacy `zero-schedules-run.test.ts`.
+// The 9 legacy `it()`s collapse into 3 BDD `it()`s: (1)
+// happy path chain (401 unauthenticated → 201 executes
+// schedule and returns runId with 201 + writes
+// lastRunId + persists appendSystemPrompt + writes
+// triggerSource=schedule + registers the cron callback →
+// 201 chat mode: posts a user message + adds the chat
+// callback → 201 resolves user grants for the schedule
+// owner), (2) model + conflict chain (201 resolves the
+// runtime model from the model-first default route → 404
+// for a non-existent schedule → 409 when the previous run
+// is still active), (3) validation chain (400 invalid body
+// when scheduleId is missing → 400 invalid scheduleId
+// format).
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -174,16 +189,27 @@ function expectErrorCode(response: { readonly body: unknown }): string {
   return apiErrorSchema.parse(response.body).error.code;
 }
 
-describe("POST /api/zero/schedules/run", () => {
-  it("executes a schedule and returns runId with 201", async () => {
+describe("BDD POST /api/zero/schedules/run — happy path chain", () => {
+  it("gwt-wt-wt: 401 unauthenticated → 201 executes schedule and returns runId with 201 + writes lastRunId + persists appendSystemPrompt + writes triggerSource=schedule + registers the cron callback → 201 chat mode: posts a user message + adds the chat callback → 201 resolves user grants for the schedule owner", async () => {
+    // Given: no auth header.
+
+    // When + Then: 401 — unauthenticated request.
+    const unauth = await rawPostRun({ scheduleId: randomUUID() }, {});
+    expect(unauth.status).toBe(401);
+    expect(expectErrorCode(unauth)).toBe("UNAUTHORIZED");
+
+    // Given: a fixture.
     const fixture = await seedFixture();
     const scheduleId = fixture.scheduleIds[0];
     if (!scheduleId) {
       throw new Error("Expected schedule fixture");
     }
 
+    // When + Then: 201 — schedule executes + lastRunId is
+    // updated + run carries schedule context + zeroRun is
+    // tagged as schedule + the cron callback is
+    // registered.
     const response = await rawPostRun({ scheduleId });
-
     expect(response.status).toBe(201);
     const body = runResponseSchema.parse(response.body);
 
@@ -234,47 +260,45 @@ describe("POST /api/zero/schedules/run", () => {
     });
     expect(cronCallback).toBeDefined();
     expect(cronCallback?.payload).toMatchObject({ scheduleId });
-  });
 
-  it("runs in chat mode: posts a user message + adds the chat callback", async () => {
-    const fixture = await seedFixture();
-    const scheduleId = fixture.scheduleIds[0];
-    if (!scheduleId) {
+    // Given: a fresh fixture linked to a chat thread.
+    const chatFixture = await seedFixture();
+    const chatScheduleId = chatFixture.scheduleIds[0];
+    if (!chatScheduleId) {
       throw new Error("Expected schedule fixture");
     }
-    const db = store.set(writeDb$);
+    const chatDb = store.set(writeDb$);
     const threadId = randomUUID();
-    await db.insert(chatThreads).values({
+    await chatDb.insert(chatThreads).values({
       id: threadId,
-      userId: fixture.userId,
-      agentComposeId: fixture.composeId,
+      userId: chatFixture.userId,
+      agentComposeId: chatFixture.composeId,
       title: "linked thread",
     });
-    await db
+    await chatDb
       .update(zeroAgentSchedules)
       .set({ chatThreadId: threadId })
-      .where(eq(zeroAgentSchedules.id, scheduleId));
+      .where(eq(zeroAgentSchedules.id, chatScheduleId));
 
-    const response = await rawPostRun({ scheduleId });
-    expect(response.status).toBe(201);
-    const body = runResponseSchema.parse(response.body);
+    // When + Then: 201 — chat-mode run posts a user
+    // message + adds both cron + chat callbacks.
+    const chatResponse = await rawPostRun({ scheduleId: chatScheduleId });
+    expect(chatResponse.status).toBe(201);
+    const chatBody = runResponseSchema.parse(chatResponse.body);
 
-    // The run is bound to the thread but still identified as a scheduled run.
-    const [zeroRun] = await db
+    const [chatZeroRun] = await chatDb
       .select({
         triggerSource: zeroRuns.triggerSource,
         chatThreadId: zeroRuns.chatThreadId,
       })
       .from(zeroRuns)
-      .where(eq(zeroRuns.id, body.runId));
-    expect(zeroRun).toStrictEqual({
+      .where(eq(zeroRuns.id, chatBody.runId));
+    expect(chatZeroRun).toStrictEqual({
       triggerSource: "schedule",
       chatThreadId: threadId,
     });
 
-    // The prompt was posted as a user chat message bound to the run, tagged
-    // with the originating schedule's id and schedule snapshot.
-    const messages = await db
+    const messages = await chatDb
       .select({
         content: chatMessages.content,
         role: chatMessages.role,
@@ -283,27 +307,26 @@ describe("POST /api/zero/schedules/run", () => {
         scheduleSnapshot: chatMessages.scheduleSnapshot,
       })
       .from(chatMessages)
-      .where(eq(chatMessages.runId, body.runId));
+      .where(eq(chatMessages.runId, chatBody.runId));
     expect(
       messages.some((message) => {
         return (
           message.role === "user" &&
           message.content === "Manual run test" &&
-          message.scheduleId === scheduleId &&
+          message.scheduleId === chatScheduleId &&
           message.scheduleTitle === "run-test" &&
-          message.scheduleSnapshot?.id === scheduleId &&
+          message.scheduleSnapshot?.id === chatScheduleId &&
           message.scheduleSnapshot.title === "run-test" &&
           message.scheduleSnapshot.description === "Run test description"
         );
       }),
     ).toBeTruthy();
 
-    // Both the reschedule callback and the chat callback are registered.
-    const callbacks = await db
+    const chatCallbacks = await chatDb
       .select({ url: agentRunCallbacks.url })
       .from(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, body.runId));
-    const urls = callbacks.map((callback) => {
+      .where(eq(agentRunCallbacks.runId, chatBody.runId));
+    const urls = chatCallbacks.map((callback) => {
       return callback.url;
     });
     expect(
@@ -316,33 +339,36 @@ describe("POST /api/zero/schedules/run", () => {
         return url.endsWith("/callbacks/chat");
       }),
     ).toBeTruthy();
-  });
 
-  it("resolves user grants for the schedule owner", async () => {
-    const fixture = await seedFixture();
-    const scheduleId = fixture.scheduleIds[0];
-    if (!scheduleId) {
+    // Given: a fresh fixture + slack grants for the
+    // schedule owner + a different user session.
+    const grantFixture = await seedFixture();
+    const grantScheduleId = grantFixture.scheduleIds[0];
+    if (!grantScheduleId) {
       throw new Error("Expected schedule fixture");
     }
-    await seedSlackGrantForScheduleOwner(fixture);
-    mocks.clerk.session(`trigger-${fixture.userId}`, fixture.orgId);
+    await seedSlackGrantForScheduleOwner(grantFixture);
+    mocks.clerk.session(`trigger-${grantFixture.userId}`, grantFixture.orgId);
 
-    const response = await rawPostRun({ scheduleId });
-
-    expect(response.status).toBe(201);
-    const body = runResponseSchema.parse(response.body);
-    const policy = await networkPolicyForRun(body.runId, SLACK_CONNECTOR);
+    // When + Then: 201 — the slack connector network
+    // policy allows the granted `chat:write` permission.
+    const grantResponse = await rawPostRun({ scheduleId: grantScheduleId });
+    expect(grantResponse.status).toBe(201);
+    const grantBody = runResponseSchema.parse(grantResponse.body);
+    const policy = await networkPolicyForRun(grantBody.runId, SLACK_CONNECTOR);
     expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
     expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
   });
+});
 
-  it("resolves the runtime model from the model-first default route", async () => {
+describe("BDD POST /api/zero/schedules/run — model + conflict chain", () => {
+  it("gwt-wt-wt: 201 resolves the runtime model from the model-first default route → 404 for a non-existent schedule → 409 when the previous run is still active", async () => {
+    // Given: a fixture + an org-level model policy.
     const fixture = await seedFixture();
     const scheduleId = fixture.scheduleIds[0];
     if (!scheduleId) {
       throw new Error("Expected schedule fixture");
     }
-
     const provider = await store.set(
       seedOrgModelProvider$,
       {
@@ -364,8 +390,9 @@ describe("POST /api/zero/schedules/run", () => {
       updatedByUserId: fixture.userId,
     });
 
+    // When + Then: 201 — the run resolves the model
+    // provider from the org default policy.
     const response = await rawPostRun({ scheduleId });
-
     expect(response.status).toBe(201);
     const body = runResponseSchema.parse(response.body);
     const [zeroRun] = await db
@@ -383,62 +410,62 @@ describe("POST /api/zero/schedules/run", () => {
       modelProviderCredentialScope: "org",
       selectedModel: "claude-opus-4-7",
     });
-  });
 
-  it("returns 404 for a non-existent schedule", async () => {
+    // Given: a fresh fixture + a non-existent schedule id.
+
+    // When + Then: 404 — NOT_FOUND.
     await seedFixture();
-
-    const response = await rawPostRun({
+    const notFoundResponse = await rawPostRun({
       scheduleId: "00000000-0000-0000-0000-000000000000",
     });
+    expect(notFoundResponse.status).toBe(404);
+    expect(expectErrorCode(notFoundResponse)).toBe("NOT_FOUND");
 
-    expect(response.status).toBe(404);
-    expect(expectErrorCode(response)).toBe("NOT_FOUND");
-  });
+    // Given: a fresh fixture.
 
-  it("returns 409 when the previous run is still active", async () => {
-    const fixture = await seedFixture();
-    const scheduleId = fixture.scheduleIds[0];
-    if (!scheduleId) {
+    // When + Then: 201 first run + 409 second run for the
+    // same schedule (previous run still active).
+    const conflictFixture = await seedFixture();
+    const conflictScheduleId = conflictFixture.scheduleIds[0];
+    if (!conflictScheduleId) {
       throw new Error("Expected schedule fixture");
     }
-
-    const firstResponse = await rawPostRun({ scheduleId });
+    const firstResponse = await rawPostRun({
+      scheduleId: conflictScheduleId,
+    });
     expect(firstResponse.status).toBe(201);
     expect(runResponseSchema.parse(firstResponse.body).runId).toBeDefined();
-
-    const secondResponse = await rawPostRun({ scheduleId });
-
+    const secondResponse = await rawPostRun({
+      scheduleId: conflictScheduleId,
+    });
     expect(secondResponse.status).toBe(409);
     expect(expectErrorCode(secondResponse)).toBe("CONFLICT");
   });
+});
 
-  it("returns 400 for invalid body when scheduleId is missing", async () => {
+describe("BDD POST /api/zero/schedules/run — validation chain", () => {
+  it("gwt-wt-wt: 400 invalid body when scheduleId is missing → 400 invalid scheduleId format", async () => {
+    // Given: a fresh fixture.
+
+    // When + Then: 400 — empty body.
     await seedFixture();
-
-    const response = await rawPostRun({});
-
-    expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({
+    const emptyResponse = await rawPostRun({});
+    expect(emptyResponse.status).toBe(400);
+    expect(emptyResponse.body).toMatchObject({
       error: { code: "BAD_REQUEST" },
     });
-  });
 
-  it("returns 400 for invalid scheduleId format", async () => {
+    // Given: a fresh fixture + an invalid scheduleId
+    // format.
+
+    // When + Then: 400 — invalid uuid format.
     await seedFixture();
-
-    const response = await rawPostRun({ scheduleId: "not-a-uuid" });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({
+    const invalidFormatResponse = await rawPostRun({
+      scheduleId: "not-a-uuid",
+    });
+    expect(invalidFormatResponse.status).toBe(400);
+    expect(invalidFormatResponse.body).toMatchObject({
       error: { code: "BAD_REQUEST" },
     });
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await rawPostRun({ scheduleId: randomUUID() }, {});
-
-    expect(response.status).toBe(401);
-    expect(expectErrorCode(response)).toBe("UNAUTHORIZED");
   });
 });
