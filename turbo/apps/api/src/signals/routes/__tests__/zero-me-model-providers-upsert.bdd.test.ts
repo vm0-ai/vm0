@@ -19,6 +19,21 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy
+// `zero-me-model-providers-upsert.test.ts`. The 14 legacy
+// `it()`s collapse into 4 BDD `it()`s: (1) auth chain
+// (401 unauthenticated → 401 authenticated session has no
+// organization), (2) single-secret provider chain (201
+// creates a `claude-code-oauth-token` with the expected
+// response shape + encrypted secret → 200 updates an
+// existing provider → 400 missing secret → 404 rejects
+// `anthropic-api-key` + `vm0` (with/without secret) +
+// `openai-api-key`), (3) codex auth_json happy path
+// (201 persists 4 derived CHATGPT_* secrets + omits the
+// raw blob), (4) codex auth_json validation chain (400
+// malformed JSON → 400 missing refresh_token → 400 free
+// plan rejected → 400 missing CODEX_AUTH_JSON blob).
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -84,56 +99,60 @@ function makeAuthJson(overrides?: { planType?: string }): string {
   });
 }
 
-describe("POST /api/zero/me/model-providers (upsert)", () => {
-  const track = createFixtureTracker<UserModelProviderFixture>((fixture) => {
-    return store.set(deleteUserModelProviders$, fixture, context.signal);
-  });
+describe("BDD POST /api/zero/me/model-providers (upsert) — auth chain", () => {
+  it("gwt-wt-wt: 401 unauthenticated → 401 authenticated session has no organization", async () => {
+    // Given: no auth header.
 
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
-      client.upsert({
+    // When + Then: 401.
+    const noAuth = await accept(
+      setupApp({ context })(zeroPersonalModelProvidersMainContract).upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
         headers: {},
       }),
       [401],
     );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
-  });
+    expect(noAuth.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
 
-  it("returns 401 when authenticated session has no organization", async () => {
+    // Given: a Clerk session with no organization.
+
+    // When + Then: 401.
     mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
-      client.upsert({
+    const noOrg = await accept(
+      setupApp({ context })(zeroPersonalModelProvidersMainContract).upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [401],
     );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+    expect(noOrg.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+  });
+});
+
+describe("BDD POST /api/zero/me/model-providers (upsert) — single-secret chain", () => {
+  const track = createFixtureTracker<UserModelProviderFixture>((fixture) => {
+    return store.set(deleteUserModelProviders$, fixture, context.signal);
   });
 
-  it("creates a single-secret personal provider", async () => {
-    const fixture = uniqueOrgUser("zmmp-single-create");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
+  it("gwt-wt-wt: 201 creates a claude-code-oauth-token with encrypted secret → 200 updates an existing provider → 400 missing secret → 404 rejects anthropic-api-key, vm0 (with/without secret), openai-api-key", async () => {
+    // Given: a fresh fixture.
+    const createFixture = uniqueOrgUser("zmmp-single-create");
+    await track(Promise.resolve(createFixture));
+    mocks.clerk.session(createFixture.userId, createFixture.orgId);
     const client = setupApp({ context })(
       zeroPersonalModelProvidersMainContract,
     );
-    const response = await accept(
+
+    // When + Then: 201 — a single-secret provider is
+    // created with the expected shape + the secret is
+    // stored encrypted.
+    const created = await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [201],
     );
-    expect(response.body).toMatchObject({
+    expect(created.body).toMatchObject({
       provider: {
         type: "claude-code-oauth-token",
         framework: "claude-code",
@@ -141,135 +160,124 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       },
       created: true,
     });
-
-    // DB read-after-write proves encrypt path.
     const writeDb = store.set(writeDb$);
     const [row] = await writeDb
       .select({ encryptedValue: secrets.encryptedValue })
       .from(secrets)
       .where(
         and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.userId, fixture.userId),
+          eq(secrets.orgId, createFixture.orgId),
+          eq(secrets.userId, createFixture.userId),
           eq(secrets.name, "CLAUDE_CODE_OAUTH_TOKEN"),
         ),
       );
     await expect(decryptStoredSecretValue(row!.encryptedValue)).resolves.toBe(
       "sk-ant-test",
     );
-  });
 
-  it("updates an existing personal provider with 200", async () => {
-    const fixture = uniqueOrgUser("zmmp-single-update");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    await accept(
-      client.upsert({
-        body: { type: "claude-code-oauth-token", secret: "first" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [201],
-    );
-    const response = await accept(
+    // Given: the same fixture.
+    // When + Then: 200 — the second upsert updates
+    // (created: false).
+    const updateResponse = await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token", secret: "second" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
-    expect(response.body).toMatchObject({ created: false });
-  });
+    expect(updateResponse.body).toMatchObject({ created: false });
 
-  it("returns 400 when single-secret provider is missing the secret", async () => {
-    const fixture = uniqueOrgUser("zmmp-missing-secret");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
+    // Given: a fresh fixture + a body with no `secret`.
+    const missingSecretFixture = uniqueOrgUser("zmmp-missing-secret");
+    await track(Promise.resolve(missingSecretFixture));
+    mocks.clerk.session(
+      missingSecretFixture.userId,
+      missingSecretFixture.orgId,
     );
-    const response = await accept(
+
+    // When + Then: 400 — missing `secret` for a
+    // single-secret provider.
+    const missingSecretResponse = await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
     );
-    expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
-  });
+    expect(missingSecretResponse.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
 
-  it("returns 404 for anthropic-api-key", async () => {
-    const fixture = uniqueOrgUser("zmmp-anthropic-rejected");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fresh fixture + an unsupported provider
+    // type `anthropic-api-key`.
+    const anthropicFixture = uniqueOrgUser("zmmp-anthropic-rejected");
+    await track(Promise.resolve(anthropicFixture));
+    mocks.clerk.session(anthropicFixture.userId, anthropicFixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
+    // When + Then: 404 — anthropic-api-key is not a
+    // registered personal provider.
+    const anthropicResponse = await accept(
       client.upsert({
         body: { type: "anthropic-api-key", secret: "sk-ant-test" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],
     );
-    expect(response.body).toMatchObject({
+    expect(anthropicResponse.body).toMatchObject({
       error: {
         code: "NOT_FOUND",
         message: 'Provider "anthropic-api-key" not found',
       },
     });
-  });
 
-  it("returns 404 when posting vm0 with a secret", async () => {
-    const fixture = uniqueOrgUser("zmmp-vm0-with-secret");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
+    // Given: a fresh fixture + `vm0` with a secret.
+    const vm0WithSecretFixture = uniqueOrgUser("zmmp-vm0-with-secret");
+    await track(Promise.resolve(vm0WithSecretFixture));
+    mocks.clerk.session(
+      vm0WithSecretFixture.userId,
+      vm0WithSecretFixture.orgId,
     );
-    const response = await accept(
+
+    // When + Then: 404 — `vm0` is not a registered
+    // personal provider.
+    const vm0WithSecretResponse = await accept(
       client.upsert({
         body: { type: "vm0", secret: "any-value" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],
     );
-    expect(response.body).toMatchObject({ error: { code: "NOT_FOUND" } });
-  });
+    expect(vm0WithSecretResponse.body).toMatchObject({
+      error: { code: "NOT_FOUND" },
+    });
 
-  it("returns 404 when posting vm0 with no secret", async () => {
-    const fixture = uniqueOrgUser("zmmp-vm0-no-secret");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fresh fixture + `vm0` without a secret.
+    const vm0NoSecretFixture = uniqueOrgUser("zmmp-vm0-no-secret");
+    await track(Promise.resolve(vm0NoSecretFixture));
+    mocks.clerk.session(vm0NoSecretFixture.userId, vm0NoSecretFixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
+    // When + Then: 404 — `vm0` is not a registered
+    // personal provider, even with no secret.
+    const vm0NoSecretResponse = await accept(
       client.upsert({
         body: { type: "vm0" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],
     );
-    expect(response.body).toMatchObject({ error: { code: "NOT_FOUND" } });
-  });
+    expect(vm0NoSecretResponse.body).toMatchObject({
+      error: { code: "NOT_FOUND" },
+    });
 
-  it("returns 404 for openai-api-key", async () => {
-    const fixture = uniqueOrgUser("zmmp-openai-rejected");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fresh fixture + an unsupported provider
+    // type `openai-api-key`.
+    const openaiFixture = uniqueOrgUser("zmmp-openai-rejected");
+    await track(Promise.resolve(openaiFixture));
+    mocks.clerk.session(openaiFixture.userId, openaiFixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
+    // When + Then: 404 — openai-api-key is not a
+    // registered personal provider.
+    const openaiResponse = await accept(
       client.upsert({
         body: {
           type: "openai-api-key",
@@ -280,22 +288,31 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       }),
       [404],
     );
-    expect(response.body).toMatchObject({
+    expect(openaiResponse.body).toMatchObject({
       error: {
         code: "NOT_FOUND",
         message: 'Provider "openai-api-key" not found',
       },
     });
   });
+});
 
-  it("paste valid auth.json persists derived secrets + metadata", async () => {
+describe("BDD POST /api/zero/me/model-providers (upsert) — codex auth_json happy path", () => {
+  const track = createFixtureTracker<UserModelProviderFixture>((fixture) => {
+    return store.set(deleteUserModelProviders$, fixture, context.signal);
+  });
+
+  it("gwt-wt-wt: 201 pastes valid auth.json and persists 4 derived CHATGPT_* secrets without leaking the raw blob", async () => {
+    // Given: a fresh fixture.
     const fixture = uniqueOrgUser("zmmp-codex-happy");
     await track(Promise.resolve(fixture));
     mocks.clerk.session(fixture.userId, fixture.orgId);
-
     const client = setupApp({ context })(
       zeroPersonalModelProvidersMainContract,
     );
+
+    // When + Then: 201 — the response carries the
+    // workspace + plan metadata.
     const response = await accept(
       client.upsert({
         body: {
@@ -317,7 +334,8 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       },
     });
 
-    // DB read-after-write: 4 derived CHATGPT_* secrets persisted.
+    // Then: 4 derived CHATGPT_* secrets are persisted +
+    // the raw CODEX_AUTH_JSON blob is NOT persisted.
     const writeDb = store.set(writeDb$);
     const rows = await writeDb
       .select({ name: secrets.name })
@@ -337,19 +355,27 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     expect(names).toContain("CHATGPT_REFRESH_TOKEN");
     expect(names).toContain("CHATGPT_ACCOUNT_ID");
     expect(names).toContain("CHATGPT_ID_TOKEN");
-    // The raw CODEX_AUTH_JSON blob is NEVER persisted.
     expect(names).not.toContain("CODEX_AUTH_JSON");
   });
+});
 
-  it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID on malformed JSON", async () => {
-    const fixture = uniqueOrgUser("zmmp-codex-malformed");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+describe("BDD POST /api/zero/me/model-providers (upsert) — codex auth_json validation chain", () => {
+  const track = createFixtureTracker<UserModelProviderFixture>((fixture) => {
+    return store.set(deleteUserModelProviders$, fixture, context.signal);
+  });
 
+  it("gwt-wt-wt: 400 malformed JSON → 400 missing refresh_token → 400 free plan rejected → 400 missing CODEX_AUTH_JSON blob", async () => {
+    // Given: a fresh fixture + a malformed JSON blob.
+    const malformedFixture = uniqueOrgUser("zmmp-codex-malformed");
+    await track(Promise.resolve(malformedFixture));
+    mocks.clerk.session(malformedFixture.userId, malformedFixture.orgId);
     const client = setupApp({ context })(
       zeroPersonalModelProvidersMainContract,
     );
-    const response = await accept(
+
+    // When + Then: 400 — malformed JSON returns
+    // CODEX_AUTH_JSON_SHAPE_INVALID.
+    const malformedResponse = await accept(
       client.upsert({
         body: {
           type: "codex-oauth-token",
@@ -360,16 +386,15 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       }),
       [400],
     );
-    expect(response.body).toMatchObject({
+    expect(malformedResponse.body).toMatchObject({
       error: { code: "CODEX_AUTH_JSON_SHAPE_INVALID" },
     });
-  });
 
-  it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID when tokens.refresh_token missing", async () => {
-    const fixture = uniqueOrgUser("zmmp-codex-missing-rt");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
+    // Given: a fresh fixture + a JSON blob missing
+    // `tokens.refresh_token`.
+    const missingRtFixture = uniqueOrgUser("zmmp-codex-missing-rt");
+    await track(Promise.resolve(missingRtFixture));
+    mocks.clerk.session(missingRtFixture.userId, missingRtFixture.orgId);
     const incomplete = JSON.stringify({
       tokens: {
         access_token: makeJwt({ exp: now() }),
@@ -379,10 +404,9 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       },
     });
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
+    // When + Then: 400 — missing refresh_token returns
+    // CODEX_AUTH_JSON_SHAPE_INVALID.
+    const missingRtResponse = await accept(
       client.upsert({
         body: {
           type: "codex-oauth-token",
@@ -393,20 +417,18 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       }),
       [400],
     );
-    expect(response.body).toMatchObject({
+    expect(missingRtResponse.body).toMatchObject({
       error: { code: "CODEX_AUTH_JSON_SHAPE_INVALID" },
     });
-  });
 
-  it("returns 400 CODEX_FREE_PLAN_REJECTED for free-plan accounts", async () => {
-    const fixture = uniqueOrgUser("zmmp-codex-free");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fresh fixture + a free-plan auth.json.
+    const freeFixture = uniqueOrgUser("zmmp-codex-free");
+    await track(Promise.resolve(freeFixture));
+    mocks.clerk.session(freeFixture.userId, freeFixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
+    // When + Then: 400 — free-plan accounts are rejected
+    // with CODEX_FREE_PLAN_REJECTED.
+    const freeResponse = await accept(
       client.upsert({
         body: {
           type: "codex-oauth-token",
@@ -417,20 +439,19 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       }),
       [400],
     );
-    expect(response.body).toMatchObject({
+    expect(freeResponse.body).toMatchObject({
       error: { code: "CODEX_FREE_PLAN_REJECTED" },
     });
-  });
 
-  it("returns 400 BAD_REQUEST when CODEX_AUTH_JSON is missing from secrets", async () => {
-    const fixture = uniqueOrgUser("zmmp-codex-no-blob");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fresh fixture + a body without
+    // CODEX_AUTH_JSON.
+    const noBlobFixture = uniqueOrgUser("zmmp-codex-no-blob");
+    await track(Promise.resolve(noBlobFixture));
+    mocks.clerk.session(noBlobFixture.userId, noBlobFixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
-    const response = await accept(
+    // When + Then: 400 — missing CODEX_AUTH_JSON blob
+    // returns BAD_REQUEST.
+    const noBlobResponse = await accept(
       client.upsert({
         body: {
           type: "codex-oauth-token",
@@ -441,7 +462,7 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       }),
       [400],
     );
-    expect(response.body).toMatchObject({
+    expect(noBlobResponse.body).toMatchObject({
       error: { code: "BAD_REQUEST" },
     });
   });
