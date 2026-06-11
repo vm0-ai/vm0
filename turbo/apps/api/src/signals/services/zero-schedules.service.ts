@@ -51,23 +51,21 @@ type TimeTriggerKind = (typeof TIME_TRIGGER_KINDS)[number];
 /**
  * A schedule as stored on the events-first tables: the automation (identity +
  * intent) joined with its single time trigger (recurrence config + runtime
- * state). The schedules API is a projection of this pair — phase 3 of #16847
- * cut its reads and writes over from the dropped-in-place zero_agent_schedules
- * surface.
+ * state). The schedules API is a projection of this pair (phase 3 of #16847;
+ * the legacy zero_agent_schedules table is dropped).
  */
 interface ScheduleView {
   readonly automation: typeof automations.$inferSelect;
   readonly trigger: typeof automationTriggers.$inferSelect;
 }
 
-// The schedule chip on the run's chat bubble: for a migrated automation the
-// snapshot keeps the original schedule id so existing message rows and
-// navigation stay coherent; natively-created automations use their own id.
+// The schedule chip on the run's chat bubble: the snapshot keeps the label
+// rendering after the automation is renamed, edited, or deleted.
 function chatMessageScheduleSnapshot(
   automation: typeof automations.$inferSelect,
 ): ChatMessageScheduleSnapshot {
   return {
-    id: automation.sourceScheduleId ?? automation.id,
+    id: automation.id,
     title: automation.name,
     description: automation.description ?? null,
   };
@@ -1046,7 +1044,6 @@ export async function persistManualRunSideEffects(args: {
     runId: args.runId,
     prompt: args.prompt,
     appendQueueMarker: args.queued,
-    scheduleId: automation.sourceScheduleId ?? undefined,
     scheduleTitle: automation.name,
     scheduleSnapshot: chatMessageScheduleSnapshot(automation),
   });

@@ -33,7 +33,7 @@ import {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { automations } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
@@ -885,8 +885,8 @@ function chatThreadListProjection(lastMessage: LastMessageSubquery) {
     )`,
     scheduleCount: sql<number>`(
       SELECT COUNT(*)::int
-      FROM ${zeroAgentSchedules}
-      WHERE ${zeroAgentSchedules.chatThreadId} = ${chatThreads.id}
+      FROM ${automations}
+      WHERE ${automations.chatThreadId} = ${chatThreads.id}
     )`,
   } as const;
 }
@@ -1488,11 +1488,11 @@ export const deleteChatThread$ = command(
       return { deleted: false, cancelledRuns: [] };
     }
 
-    // Stop related schedules first so none of them can spawn a fresh run while
-    // we are cancelling the in-flight ones.
+    // Stop related automations first so none of them can spawn a fresh run
+    // while we are cancelling the in-flight ones (their triggers cascade).
     await writeDb
-      .delete(zeroAgentSchedules)
-      .where(eq(zeroAgentSchedules.chatThreadId, ownedThread.id));
+      .delete(automations)
+      .where(eq(automations.chatThreadId, ownedThread.id));
     signal.throwIfAborted();
 
     // Cancel related active runs. Terminal runs (completed/failed/cancelled)

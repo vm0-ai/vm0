@@ -9,7 +9,6 @@ import {
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
-import { zeroAgentSchedules } from "./zero-agent-schedule";
 import { chatThreads } from "./chat-thread";
 import { automations, automationTriggers } from "./automation";
 
@@ -30,16 +29,11 @@ export const zeroRuns = pgTable(
         { onDelete: "cascade" },
       ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
-    // References zero_agent_schedules.id if this run was triggered by a schedule
-    scheduleId: uuid("schedule_id").references(
-      (): AnyPgColumn => {
-        return zeroAgentSchedules.id;
-      },
-      { onDelete: "set null" },
-    ),
+    // Historical column: pre-cutover schedule fires recorded the (now dropped)
+    // zero_agent_schedules id here. New runs carry automation provenance below;
+    // the drop migration backfilled automation_id for these legacy rows.
+    scheduleId: uuid("schedule_id"),
     // Run provenance: the automation and the trigger that fired this run.
-    // Set for runs created by an automation (e.g. an inbound webhook); null for
-    // legacy schedule fires until schedules become automations (post-cutover).
     automationId: uuid("automation_id").references(
       (): AnyPgColumn => {
         return automations.id;

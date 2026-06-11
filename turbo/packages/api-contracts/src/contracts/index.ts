@@ -1411,14 +1411,6 @@ export {
   type InternalCallbacksGithubIssuesContract,
 } from "./internal-callbacks-github-issues";
 export {
-  internalCallbacksScheduleContract,
-  scheduleCronCallbackPayloadSchema,
-  scheduleLoopCallbackPayloadSchema,
-  type InternalCallbacksScheduleContract,
-  type ScheduleCronCallbackPayload,
-  type ScheduleLoopCallbackPayload,
-} from "./internal-callbacks-schedule";
-export {
   automationsV2MainContract,
   automationsV2ByRefContract,
   automationTriggersV2Contract,

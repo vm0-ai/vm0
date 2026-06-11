@@ -5,11 +5,8 @@ import type { RouteEntry } from "../route";
 import { executeDueTriggers$ } from "../services/automations/trigger-poller";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
-// The cutover (#16847 phase 2): the cron tick polls the events-first
-// automation_triggers table (executeDueTriggers$) instead of
-// zero_agent_schedules (executeDueSchedules$). The schedule CRUD surface
-// still dual-writes to the trigger tables, so every schedule keeps firing;
-// run provenance now lands on automation_id/trigger_id.
+// The cron tick polls the events-first automation_triggers table; runs carry
+// automation_id/trigger_id provenance (#16847).
 const executeSchedulesRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!get(hasValidCronSecret$)) {
