@@ -242,11 +242,9 @@ function isInterruptMessageBody(body: { interruptsRunId?: string }): body is {
 function appendSeedChatMessages(args: {
   pagedMessages: (MockPagedMessage & { id: string })[];
   chatMessages: MockPagedMessage[];
-  terminalStatuses: Set<string>;
 }) {
   const defaultedRunIds = new Set<string>();
   const terminalRunIds = new Set<string>();
-  const activeRunIds = new Set<string>();
   for (let i = 0; i < args.chatMessages.length; i++) {
     const seed = args.chatMessages[i]!;
     const runId = "runId" in seed ? seed.runId : MOCK_RUN_ID;
@@ -255,8 +253,6 @@ function appendSeedChatMessages(args: {
       runId,
       defaultedRunIds,
       terminalRunIds,
-      activeRunIds,
-      terminalStatuses: args.terminalStatuses,
     });
     args.pagedMessages.push({
       ...seed,
@@ -268,7 +264,6 @@ function appendSeedChatMessages(args: {
     pagedMessages: args.pagedMessages,
     defaultedRunIds,
     terminalRunIds,
-    activeRunIds,
   });
 }
 
@@ -277,8 +272,6 @@ function collectSeedRunState(args: {
   runId: string | undefined;
   defaultedRunIds: Set<string>;
   terminalRunIds: Set<string>;
-  activeRunIds: Set<string>;
-  terminalStatuses: Set<string>;
 }) {
   if (!("runId" in args.seed) && args.runId !== undefined) {
     args.defaultedRunIds.add(args.runId);
@@ -290,24 +283,15 @@ function collectSeedRunState(args: {
   ) {
     args.terminalRunIds.add(args.seed.runId);
   }
-  if (
-    args.seed.role === "assistant" &&
-    args.seed.runId !== undefined &&
-    args.seed.status !== undefined &&
-    !args.terminalStatuses.has(args.seed.status)
-  ) {
-    args.activeRunIds.add(args.seed.runId);
-  }
 }
 
 function appendDefaultCompletionMarkers(args: {
   pagedMessages: (MockPagedMessage & { id: string })[];
   defaultedRunIds: Set<string>;
   terminalRunIds: Set<string>;
-  activeRunIds: Set<string>;
 }) {
   for (const runId of args.defaultedRunIds) {
-    if (args.terminalRunIds.has(runId) || args.activeRunIds.has(runId)) {
+    if (args.terminalRunIds.has(runId)) {
       continue;
     }
     args.pagedMessages.push({
@@ -326,6 +310,7 @@ export function mockChatLifecycle(options?: {
   historyMessages?: MockPagedMessage[];
   chatMessages?: MockPagedMessage[];
   threadTitle?: string | null;
+  activeRunIds?: string[];
   onQueuedMessageAppend?: (body: {
     content?: string;
     attachments?: PersistedAttachment[];
@@ -355,6 +340,7 @@ export function mockChatLifecycle(options?: {
   let threadId = options?.threadId ?? "thread-test-1";
   const historyMessages = options?.historyMessages ?? [];
   const chatMessages = options?.chatMessages ?? [];
+  const optionActiveRunIds = options?.activeRunIds ?? [];
 
   let runStatus: RunStatus = "running";
   let runError: string | null = null;
@@ -436,13 +422,7 @@ export function mockChatLifecycle(options?: {
   const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
 
   const hasActiveRun = () => {
-    const hasSeedActiveRun = chatMessages.some((m) => {
-      const status = m.role === "assistant" ? m.status : undefined;
-      return (
-        m.runId !== undefined && status !== undefined && !terminal.has(status)
-      );
-    });
-    return hasSeedActiveRun || (runAssociated && !terminal.has(runStatus));
+    return runAssociated && !terminal.has(runStatus);
   };
 
   const appendQueuedUserMessage = async (body: {
@@ -512,6 +492,7 @@ export function mockChatLifecycle(options?: {
     mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
       const sinceId = query.sinceId;
       const beforeId = query.beforeId;
+      const limit = query.limit ?? 50;
 
       const assistantId = `msg-assistant-run-v${assistantVersion}`;
 
@@ -537,7 +518,6 @@ export function mockChatLifecycle(options?: {
       appendSeedChatMessages({
         pagedMessages,
         chatMessages,
-        terminalStatuses: terminal,
       });
 
       for (const message of queuedMessages) {
@@ -562,7 +542,6 @@ export function mockChatLifecycle(options?: {
           content: resultContent || null,
           runId: MOCK_RUN_ID,
           error: runError ?? undefined,
-          status: runStatus,
           runLifecycleEvent:
             runStatus === "failed" || runStatus === "cancelled"
               ? runStatus
@@ -589,7 +568,7 @@ export function mockChatLifecycle(options?: {
           return respond(200, { messages: [], hasHistoryBefore: false });
         }
         const olderMessages = pagedMessages.slice(
-          Math.max(0, beforeIndex - 50),
+          Math.max(0, beforeIndex - limit),
           beforeIndex,
         );
         return respond(200, {
@@ -616,28 +595,20 @@ export function mockChatLifecycle(options?: {
       }
 
       lastDeliveredVersion = assistantVersion;
+      const latestMessages = pagedMessages.slice(historyMessages.length);
       return respond(200, {
-        messages: pagedMessages.slice(historyMessages.length),
-        hasHistoryBefore: historyMessages.length > 0,
+        messages: latestMessages.slice(
+          Math.max(0, latestMessages.length - limit),
+        ),
+        hasHistoryBefore:
+          historyMessages.length > 0 || latestMessages.length > limit,
       });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
-      const seedActiveRunIds = chatMessages
-        .filter((m) => {
-          const status = m.role === "assistant" ? m.status : undefined;
-          return (
-            m.runId !== undefined &&
-            status !== undefined &&
-            !terminal.has(status)
-          );
-        })
-        .map((m) => {
-          return m.runId!;
-        });
       const lifecycleActiveRunIds =
         runAssociated && !terminal.has(runStatus) ? [MOCK_RUN_ID] : [];
-      const activeRunIds = [...seedActiveRunIds, ...lifecycleActiveRunIds];
+      const activeRunIds = [...optionActiveRunIds, ...lifecycleActiveRunIds];
       return respond(200, {
         id: threadId,
         title: threadTitle,

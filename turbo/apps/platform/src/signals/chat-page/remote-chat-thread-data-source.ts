@@ -157,7 +157,7 @@ const listMessagesAfter$ = command(
       threadId,
       sinceId,
       count: result.body.messages.length,
-      runStatuses: result.body.messages.flatMap((m) => {
+      runMessages: result.body.messages.flatMap((m) => {
         if (m.role !== "assistant" || !m.runId) {
           return [];
         }
@@ -165,7 +165,6 @@ const listMessagesAfter$ = command(
           {
             id: m.id,
             runId: m.runId,
-            status: m.status,
           },
         ];
       }),

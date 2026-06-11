@@ -725,7 +725,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     await clearAllDetached();
   });
 
-  it("persists recommended follow-ups as an immutable assistant message when enabled", async () => {
+  it("persists recommended follow-ups on the completed lifecycle marker when enabled", async () => {
     const fixture = await track(seedChatCallbackFixture());
     await enableRecommendedFollowups(fixture);
     completedAssistantOutput("final answer");
@@ -780,12 +780,9 @@ describe("POST /api/internal/callbacks/chat", () => {
         (message.recommendedFollowups?.length ?? 0) > 0
       );
     });
-    expect(marker?.recommendedFollowups).toBeNull();
-    expect(recommender?.content).toBeNull();
-    expect(recommender?.createdAt.getTime()).toBeGreaterThan(
-      marker?.createdAt.getTime() ?? 0,
-    );
-    expect(recommender?.recommendedFollowups).toStrictEqual([
+    expect(recommender).toBeUndefined();
+    expect(marker?.content).toBeNull();
+    expect(marker?.recommendedFollowups).toStrictEqual([
       {
         prompt: "Turn this into a checklist",
         kind: "talk",

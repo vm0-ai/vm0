@@ -59,7 +59,6 @@ describe("chat session switch", () => {
               role: "assistant",
               content: null,
               runId: "run-active",
-              status: "running",
               createdAt: "2026-03-10T00:00:01Z",
             },
           ],

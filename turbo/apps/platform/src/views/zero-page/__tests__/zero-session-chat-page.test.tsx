@@ -116,7 +116,6 @@ describe("recommended follow-ups", () => {
         role: "assistant",
         content: "Here is a launch outline with milestones and owners.",
         runId: MOCK_RUN_ID,
-        status: "completed",
         createdAt: "2026-03-10T00:00:01Z",
       },
       {
@@ -124,16 +123,7 @@ describe("recommended follow-ups", () => {
         role: "assistant",
         content: null,
         runId: MOCK_RUN_ID,
-        status: "completed",
         runLifecycleEvent: "completed",
-        createdAt: "2026-03-10T00:00:02Z",
-      },
-      {
-        id: "msg-4",
-        role: "assistant",
-        content: null,
-        runId: MOCK_RUN_ID,
-        status: "completed",
         recommendedFollowups: [
           {
             prompt: "Turn this into a week-by-week checklist",
@@ -145,7 +135,7 @@ describe("recommended follow-ups", () => {
             generationType: "website",
           },
         ],
-        createdAt: "2026-03-10T00:00:03Z",
+        createdAt: "2026-03-10T00:00:02Z",
       },
     ]);
 
@@ -187,7 +177,7 @@ describe("recommended follow-ups", () => {
     await waitFor(() => {
       expect(sendBody).toMatchObject({
         prompt: "Turn this into a week-by-week checklist",
-        revokesMessageId: "msg-4",
+        revokesMessageId: "msg-3",
       });
     });
     expect(screen.getByRole("textbox")).toHaveValue("");
@@ -200,7 +190,6 @@ describe("recommended follow-ups", () => {
         role: "assistant",
         content: "Assistant complete",
         runId: MOCK_RUN_ID,
-        status: "completed",
         createdAt: "2026-03-10T00:00:00Z",
       },
       {
@@ -208,18 +197,9 @@ describe("recommended follow-ups", () => {
         role: "assistant",
         content: null,
         runId: MOCK_RUN_ID,
-        status: "completed",
         runLifecycleEvent: "completed",
-        createdAt: "2026-03-10T00:00:01Z",
-      },
-      {
-        id: "msg-3",
-        role: "assistant",
-        content: null,
-        runId: MOCK_RUN_ID,
-        status: "completed",
         recommendedFollowups: [{ prompt: "Draft a follow-up", kind: "talk" }],
-        createdAt: "2026-03-10T00:00:02Z",
+        createdAt: "2026-03-10T00:00:01Z",
       },
     ]);
 
@@ -250,7 +230,7 @@ describe("provider incompatibility error", () => {
         role: "assistant",
         content: null,
         runId: "run-incompatible",
-        status: "failed",
+        runLifecycleEvent: "failed",
         error:
           "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic.",
         createdAt: "2026-03-10T00:00:00Z",
@@ -278,7 +258,7 @@ describe("provider incompatibility error", () => {
         role: "assistant",
         content: null,
         runId: "run-signature",
-        status: "failed",
+        runLifecycleEvent: "failed",
         error: "Invalid signature in thinking block",
         createdAt: "2026-03-10T00:00:00Z",
       },

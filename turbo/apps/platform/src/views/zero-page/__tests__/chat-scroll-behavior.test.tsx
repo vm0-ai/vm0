@@ -599,7 +599,6 @@ describe("zero chat thread page - opening a thread with a queued message", () =>
           role: "assistant",
           content: "Working on it",
           runId: "run-active",
-          status: "running",
           createdAt: "2026-03-10T00:00:01Z",
         },
         {

@@ -35,7 +35,7 @@ describe("cancelled message ordering after page refresh", () => {
               role: "assistant",
               content: null,
               runId: "run-cancelled",
-              status: "cancelled",
+              runLifecycleEvent: "cancelled",
               createdAt: "2026-03-10T00:00:00Z",
             },
             {

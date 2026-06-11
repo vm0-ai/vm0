@@ -125,8 +125,7 @@ function completedRunIdsFromMessages(
     if (
       message.role === "assistant" &&
       message.runId !== undefined &&
-      (message.runLifecycleEvent === "completed" ||
-        message.status === "completed")
+      message.runLifecycleEvent === "completed"
     ) {
       ids.add(message.runId);
     }
@@ -158,7 +157,6 @@ function createInterruptedAssistantMessage(
     runId,
     interruptsRunId: runId,
     error: "Run cancelled",
-    status: "cancelled",
     runLifecycleEvent: "cancelled",
     blocks: enrichBlocksWithTextPreviews(blocks),
     isQueued: false,
@@ -1509,16 +1507,7 @@ function createRunTracking({
   const allFinished$ = computed(async (get) => {
     const messages = await get(allMessages$);
     const state = deriveRunIndicatorState(messages);
-    if (state !== null) {
-      return false;
-    }
-    const thread = await get(threadData$);
-    const terminatedRunIds = terminatedRunIdsFromMessages(messages);
-    return (
-      thread?.activeRunIds.every((runId) => {
-        return terminatedRunIds.has(runId);
-      }) ?? true
-    );
+    return state === null;
   });
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({

@@ -254,8 +254,6 @@ describe("zero chat thread page display - scheduled run inline display", () => {
           id: "msg-scheduled-assistant",
           role: "assistant",
           content: "I checked the latest numbers and prepared the report.",
-          runId: "run-scheduled-report",
-          status: "completed",
           createdAt: "2026-03-10T00:00:10Z",
         },
       ],
@@ -308,8 +306,6 @@ describe("zero chat thread page display - permission action card", () => {
         {
           role: "assistant",
           content: `https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=${encodeURIComponent(permission)}&action=${action}${expiresInQuery}`,
-          runId: "run-user-grant-permission-action",
-          status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -2748,8 +2744,6 @@ describe("zero chat thread page display - GitHub PR tracking", () => {
           role: "assistant",
           content:
             "Created https://github.com/vm0-ai/vm0/pull/15070 and waiting on CI.",
-          runId: "run-github-pr-tracking",
-          status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -2969,8 +2963,6 @@ describe("zero chat thread page display - GitHub PR tracking", () => {
           role: "assistant",
           content:
             "Created https://github.com/vm0-ai/vm0/pull/15070 and waiting on CI.",
-          runId: "run-github-pr-tracking-no-labels",
-          status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -3062,7 +3054,6 @@ describe("zero chat thread page display - message status indicators", () => {
           role: "assistant",
           content: null,
           runId: "run-1",
-          status: "running",
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
