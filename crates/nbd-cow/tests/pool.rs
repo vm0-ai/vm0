@@ -5,6 +5,7 @@
 #[path = "support/nbd_fixture.rs"]
 mod nbd_fixture;
 
+use nbd_cow::error::NbdCowError;
 use nbd_fixture::{NbdTestFixture, default_device_pool};
 
 /// After cleanup(), acquire must return NoFreeDevice immediately.
@@ -18,7 +19,10 @@ async fn pool_cleanup_rejects_acquire() {
     let result = pool
         .create_cow_device(fixture.base(), &cow, fixture.size())
         .await;
-    assert!(result.is_err(), "acquire after cleanup should fail");
+    assert!(
+        matches!(result, Err(NbdCowError::NoFreeDevice)),
+        "acquire after cleanup should fail with NoFreeDevice"
+    );
 }
 
 /// Calling cleanup() twice should be a no-op (not panic or corrupt state).
@@ -34,7 +38,7 @@ async fn pool_cleanup_is_idempotent() {
         .create_cow_device(fixture.base(), &cow, fixture.size())
         .await;
     assert!(
-        result.is_err(),
-        "create should still fail after repeated cleanup"
+        matches!(result, Err(NbdCowError::NoFreeDevice)),
+        "create should still fail with NoFreeDevice after repeated cleanup"
     );
 }
