@@ -58,6 +58,7 @@ export enum FeatureSwitchKey {
   VideoTemplatePicker = "videoTemplatePicker",
   MemoryViewer = "memoryViewer",
   MemoryDevRefresh = "memoryDevRefresh",
+  ChatCompletedWorkFolding = "chatCompletedWorkFolding",
   ChatRecommendedFollowups = "chatRecommendedFollowups",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",
