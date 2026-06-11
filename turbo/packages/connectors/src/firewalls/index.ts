@@ -131,6 +131,7 @@ import { geminiFirewall } from "./gemini.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { googleAdsFirewall } from "./google-ads.generated";
+import { googleAnalyticsFirewall } from "./google-analytics.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
 import { googleCloudFirewall } from "./google-cloud.generated";
 import { googleMapsFirewall } from "./google-maps.generated";
@@ -403,6 +404,7 @@ const CONNECTOR_FIREWALLS = {
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,
   "google-ads": googleAdsFirewall,
+  "google-analytics": googleAnalyticsFirewall,
   "google-calendar": googleCalendarFirewall,
   "google-cloud": googleCloudFirewall,
   "google-docs": googleDocsFirewall,

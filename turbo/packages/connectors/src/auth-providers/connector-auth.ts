@@ -71,6 +71,7 @@ import { githubProvider } from "./connectors/github/provider";
 import { gmailProvider } from "./connectors/gmail/provider";
 import { hubspotProvider } from "./connectors/hubspot/provider";
 import { googleAdsProvider } from "./connectors/google-ads/provider";
+import { googleAnalyticsProvider } from "./connectors/google-analytics/provider";
 import { googleCalendarProvider } from "./connectors/google-calendar/provider";
 import { googleCloudProvider } from "./connectors/google-cloud/provider";
 import { googleDocsProvider } from "./connectors/google-docs/provider";
@@ -454,6 +455,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   github: { oauth: authCodeTokenRevokeProviderEntry(githubProvider) },
   gmail: { oauth: authCodeRefreshProviderEntry(gmailProvider) },
   "google-ads": { oauth: authCodeRefreshProviderEntry(googleAdsProvider) },
+  "google-analytics": {
+    oauth: authCodeRefreshProviderEntry(googleAnalyticsProvider),
+  },
   "google-calendar": {
     oauth: authCodeRefreshProviderEntry(googleCalendarProvider),
   },

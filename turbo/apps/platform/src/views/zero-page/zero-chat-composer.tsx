@@ -286,6 +286,7 @@ export interface QueuedComposerItem {
 
 interface ComposerComputerUseHost {
   id: string;
+  hostName: string;
   displayName: string;
 }
 
@@ -1771,7 +1772,7 @@ function ComputerUsePopoverButton({
                       <IconDeviceDesktop size={16} stroke={1.5} />
                     </span>
                     <span className="text-sm flex-1 truncate text-foreground">
-                      {host.displayName}
+                      {host.hostName}
                     </span>
                     <LoadingSwitch
                       checked={checked}
@@ -1779,7 +1780,7 @@ function ComputerUsePopoverButton({
                         computerUse.onChange(nextChecked ? host.id : null);
                       }}
                       loading={false}
-                      ariaLabel={`${checked ? "Disable" : "Enable"} ${host.displayName}`}
+                      ariaLabel={`${checked ? "Disable" : "Enable"} ${host.hostName}`}
                       size="sm"
                     />
                   </div>

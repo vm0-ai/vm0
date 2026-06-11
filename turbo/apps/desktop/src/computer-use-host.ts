@@ -32,7 +32,7 @@ type MaybePromise<T> = T | Promise<T>;
 
 interface ComputerUseHostRuntimeOptions {
   readonly platformUrl: URL;
-  readonly displayName: string;
+  readonly hostName: string;
   readonly appVersion: string;
   readonly sessionFetch: ComputerUseHostFetch;
   readonly hostFetch: ComputerUseHostFetch;
@@ -106,12 +106,12 @@ export function resolveComputerUseApiBaseUrl(platformUrl: URL): string {
 }
 
 export function buildComputerUseRuntimeBody(args: {
-  readonly displayName: string;
+  readonly hostName: string;
   readonly appVersion: string;
   readonly permissions: ComputerUsePermissionState;
 }): Record<string, unknown> {
   return {
-    hostName: args.displayName,
+    hostName: args.hostName,
     appVersion: args.appVersion,
     osVersion: `${os.type()} ${os.release()}`,
     supportedCapabilities: [...SUPPORTED_COMPUTER_USE_CAPABILITIES],
@@ -119,9 +119,14 @@ export function buildComputerUseRuntimeBody(args: {
   };
 }
 
+export function readSystemHostName(fallback: string): string {
+  const hostName = os.hostname().trim().replace(/\s+/g, " ");
+  return hostName || fallback;
+}
+
 export class ComputerUseHostRuntime {
   private readonly apiBaseUrl: string;
-  private readonly displayName: string;
+  private readonly hostName: string;
   private readonly appVersion: string;
   private readonly sessionFetch: ComputerUseHostFetch;
   private readonly hostFetchRequest: ComputerUseHostFetch;
@@ -149,7 +154,7 @@ export class ComputerUseHostRuntime {
 
   constructor(options: ComputerUseHostRuntimeOptions) {
     this.apiBaseUrl = resolveComputerUseApiBaseUrl(options.platformUrl);
-    this.displayName = options.displayName;
+    this.hostName = options.hostName;
     this.appVersion = options.appVersion;
     this.sessionFetch = options.sessionFetch;
     this.hostFetchRequest = options.hostFetch;
@@ -206,7 +211,7 @@ export class ComputerUseHostRuntime {
 
   private async runtimeBody(): Promise<Record<string, unknown>> {
     return buildComputerUseRuntimeBody({
-      displayName: this.displayName,
+      hostName: this.hostName,
       appVersion: this.appVersion,
       permissions: await this.getPermissions(),
     });

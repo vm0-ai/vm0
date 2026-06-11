@@ -17,10 +17,12 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   resolveApiBaseForNavigation(true),
 ).toString();
 
-type OnlineComputerUseHost = Pick<
+interface OnlineComputerUseHost extends Pick<
   ComputerUseHost,
   "id" | "displayName" | "lastSeenAt"
->;
+> {
+  readonly hostName: string;
+}
 
 export function selectedOnlineComputerUseHostId(
   hosts: readonly { readonly id: string }[],
@@ -58,6 +60,7 @@ export const onlineComputerUseHosts$ = computed(
       .map((host) => {
         return {
           id: host.id,
+          hostName: host.hostName ?? host.displayName,
           displayName: host.displayName,
           lastSeenAt: host.lastSeenAt,
         };

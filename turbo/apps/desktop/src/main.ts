@@ -21,6 +21,7 @@ import {
 } from "./computer-use-electron";
 import {
   ComputerUseHostRuntime,
+  readSystemHostName,
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
 import {
@@ -341,7 +342,7 @@ async function startComputerUseRuntime(
   if (!computerUseRuntime) {
     computerUseRuntime = new ComputerUseHostRuntime({
       platformUrl: config.platformUrl,
-      displayName: config.identity.displayName,
+      hostName: readSystemHostName(config.identity.displayName),
       appVersion: app.getVersion(),
       sessionFetch: createDesktopComputerUseSessionFetch({
         platformUrl: config.platformUrl,

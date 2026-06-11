@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.20](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.19...ably-subscriber-v0.7.20) (2026-06-11)
+
+
+### Bug Fixes
+
+* avoid expanding ably base64 payloads ([#17122](https://github.com/vm0-ai/vm0/issues/17122)) ([2d3de6b](https://github.com/vm0-ai/vm0/commit/2d3de6beadf1a30d37ca06c93c9bfb7c517236c9))
+
 ## [0.7.19](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.18...ably-subscriber-v0.7.19) (2026-06-10)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.326.0](https://github.com/vm0-ai/vm0/compare/core-v8.325.0...core-v8.326.0) (2026-06-11)
+
+
+### Features
+
+* add Cloudflare OAuth connector ([#17123](https://github.com/vm0-ai/vm0/issues/17123)) ([84bb1e0](https://github.com/vm0-ai/vm0/commit/84bb1e0f1d899ba051e490228ccac7aefd6656aa))
+* add Google Cloud connector ([#16302](https://github.com/vm0-ai/vm0/issues/16302)) ([edc2046](https://github.com/vm0-ai/vm0/commit/edc2046a5f599fcfc33d45d7fc68a54bf8835c09))
+* add TikTok Ads connector ([#17148](https://github.com/vm0-ai/vm0/issues/17148)) ([5e0824b](https://github.com/vm0-ai/vm0/commit/5e0824bb254f1bbef2672792bc5e56560d7717c7))
+* enable chat recommended followups ([#17189](https://github.com/vm0-ai/vm0/issues/17189)) ([d4a2e30](https://github.com/vm0-ai/vm0/commit/d4a2e30180776d97760db935e8cefe398b8822c4))
+* enable connector permission reset by default ([#17140](https://github.com/vm0-ai/vm0/issues/17140)) ([036ed23](https://github.com/vm0-ai/vm0/commit/036ed23787cf999cc9c002c0764b9382d3b99993))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.0
+    * @vm0/connectors bumped to 1.64.0
+
 ## [8.325.0](https://github.com/vm0-ai/vm0/compare/core-v8.324.0...core-v8.325.0) (2026-06-10)
 
 

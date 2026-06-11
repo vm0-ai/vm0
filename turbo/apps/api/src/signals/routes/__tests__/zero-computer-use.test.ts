@@ -241,7 +241,7 @@ describe("desktop computer-use runtime", () => {
     const started = await accept(
       client.start({
         body: {
-          hostName: "Zero Desktop",
+          hostName: "lancy-macbook-pro.local",
           appVersion: "0.1.0",
           osVersion: "macOS 15",
           supportedCapabilities: [...supportedCapabilities],
@@ -261,7 +261,8 @@ describe("desktop computer-use runtime", () => {
     expect(listed.body.hosts).toHaveLength(1);
     expect(listed.body.hosts[0]).toMatchObject({
       id: started.body.hostId,
-      displayName: "Zero Desktop",
+      hostName: "lancy-macbook-pro.local",
+      displayName: "lancy-macbook-pro.local",
       status: "online",
       permissions: { accessibility: true, screenRecording: false },
     });
