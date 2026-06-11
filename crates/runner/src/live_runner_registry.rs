@@ -32,15 +32,15 @@ struct ProcessIdentity {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub(crate) struct LiveRunnerRegistryRecord {
-    pub pid: u32,
-    pub starttime: u64,
-    pub euid: u32,
-    pub config_path: PathBuf,
-    pub base_dir: PathBuf,
-    pub runner_name: String,
-    pub runner_group: String,
-    pub started_at: String,
+struct LiveRunnerRegistryRecord {
+    pid: u32,
+    starttime: u64,
+    euid: u32,
+    config_path: PathBuf,
+    base_dir: PathBuf,
+    runner_name: String,
+    runner_group: String,
+    started_at: String,
 }
 
 pub(crate) async fn publish(
@@ -101,7 +101,7 @@ impl LiveRunnerRegistryHandle {
     }
 }
 
-pub(crate) async fn read_valid_record(path: &Path) -> Option<LiveRunnerRegistryRecord> {
+async fn read_valid_record(path: &Path) -> Option<LiveRunnerRegistryRecord> {
     let content = match crate::state_file::read_to_string(
         path,
         LIVE_RUNNER_RECORD_MAX_BYTES,
