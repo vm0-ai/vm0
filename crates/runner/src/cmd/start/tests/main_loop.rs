@@ -163,6 +163,7 @@ while True:
         base_dir: dir.path().join("base"),
         runner_name: "test-runner".into(),
         runner_group: "vm0/test".into(),
+        subcommand: "start".into(),
     };
 
     let error = match tokio::time::timeout(

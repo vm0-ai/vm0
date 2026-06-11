@@ -603,7 +603,7 @@ async fn build_runner_report(
         base_dir: Some(runner.base_dir.clone()),
         pid: runner.pid,
         config_path: runner.config_path.clone(),
-        subcommand: "start".into(),
+        subcommand: runner.subcommand.clone(),
         service_type,
         status,
         api_ok,
@@ -1914,6 +1914,7 @@ mod tests {
             base_dir,
             runner_name: "test-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         }
     }
@@ -2031,6 +2032,7 @@ mod tests {
                 base_dir: base_dir.clone(),
                 runner_name: "test-runner".into(),
                 runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
             },
         )
         .await
@@ -2095,6 +2097,21 @@ mod tests {
         assert_eq!(report.subcommand, "start");
         assert!(report.status.is_some());
         assert_eq!(report.api_ok, None);
+    }
+
+    #[tokio::test]
+    async fn report_uses_registry_subcommand() {
+        let fixture = doctor_report_fixture("running", None, None);
+        let mut runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        runner.subcommand = "benchmark".into();
+
+        let report = build_runner_report(&runner, &[], &[], &[], &[]).await;
+
+        assert_eq!(report.subcommand, "benchmark");
     }
 
     #[tokio::test]

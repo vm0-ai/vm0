@@ -538,6 +538,7 @@ pub async fn run_start(
         base_dir: base_dir_canonical.clone(),
         runner_name: name.clone(),
         runner_group: group_name.clone(),
+        subcommand: "start".into(),
     };
 
     let (live_runner_instance_handle, kmsg_handle, dns_handle) =

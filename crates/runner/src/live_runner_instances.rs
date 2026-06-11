@@ -17,6 +17,7 @@ pub(crate) struct LiveRunnerInstanceMetadata {
     pub base_dir: PathBuf,
     pub runner_name: String,
     pub runner_group: String,
+    pub subcommand: String,
 }
 
 #[derive(Debug)]
@@ -33,6 +34,7 @@ pub(crate) struct LiveRunnerInstance {
     pub base_dir: PathBuf,
     pub runner_name: String,
     pub runner_group: String,
+    pub subcommand: String,
     pub started_at: String,
 }
 
@@ -60,6 +62,8 @@ struct LiveRunnerInstanceRecord {
     base_dir: PathBuf,
     runner_name: String,
     runner_group: String,
+    #[serde(default = "default_subcommand")]
+    subcommand: String,
     started_at: String,
 }
 
@@ -78,6 +82,7 @@ pub(crate) async fn publish(
         base_dir: metadata.base_dir,
         runner_name: metadata.runner_name,
         runner_group: metadata.runner_group,
+        subcommand: metadata.subcommand,
         started_at: chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
     };
     let content = serde_json::to_vec_pretty(&record)
@@ -136,6 +141,7 @@ pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
             base_dir: record.base_dir,
             runner_name: record.runner_name,
             runner_group: record.runner_group,
+            subcommand: record.subcommand,
             started_at: record.started_at,
         });
     }
@@ -162,6 +168,7 @@ pub(crate) async fn is_current(home: &HomePaths, instance: &LiveRunnerInstance) 
         && record.base_dir == instance.base_dir
         && record.runner_name == instance.runner_name
         && record.runner_group == instance.runner_group
+        && record.subcommand == instance.subcommand
         && record.started_at == instance.started_at
 }
 
@@ -216,6 +223,10 @@ async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
     } else {
         None
     }
+}
+
+fn default_subcommand() -> String {
+    "start".into()
 }
 
 async fn remove_stale_records(home: &HomePaths) {
@@ -426,6 +437,7 @@ mod tests {
             base_dir: root.join("base"),
             runner_name: "test-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
         }
     }
 
@@ -510,7 +522,29 @@ mod tests {
         assert_eq!(instance.base_dir, dir.path().join("base"));
         assert_eq!(instance.runner_name, "test-runner");
         assert_eq!(instance.runner_group, "vm0/test");
+        assert_eq!(instance.subcommand, "start");
         assert!(!instance.started_at.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_defaults_legacy_records_to_start_subcommand() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let content = tokio::fs::read_to_string(&handle.path).await.unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        value.as_object_mut().unwrap().remove("subcommand").unwrap();
+        crate::state_file::write_private_atomic(
+            &handle.path,
+            &serde_json::to_vec_pretty(&value).unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let instances = list(&home).await;
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].subcommand, "start");
     }
 
     #[tokio::test]
@@ -532,6 +566,7 @@ mod tests {
             base_dir: dir.path().join("stale-base"),
             runner_name: "stale-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         write_record(
@@ -611,6 +646,7 @@ mod tests {
             base_dir: dir.path().join("base"),
             runner_name: "test-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         let path = home.live_runner_instance_record_path(record.pid, record.starttime);
@@ -711,6 +747,7 @@ mod tests {
             base_dir: dir.path().join("stale-base"),
             runner_name: "stale-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         let stale_path =
@@ -746,6 +783,7 @@ mod tests {
             base_dir: dir.path().join("stale-base"),
             runner_name: "stale-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         let stale_path =
@@ -816,6 +854,7 @@ mod tests {
             base_dir: dir.path().join("other-base"),
             runner_name: "other-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         let live_path =

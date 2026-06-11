@@ -75,8 +75,20 @@ pub async fn run_benchmark(
 
     // 1. Load config, force concurrency=1
     let mut runner_config = config::load(&args.config).await?;
+    let registry_config_path = tokio::fs::canonicalize(&args.config).await.map_err(|e| {
+        RunnerError::Config(format!(
+            "canonicalize config path {} for live runner registry: {e}",
+            args.config.display()
+        ))
+    })?;
     runner_config.sandbox.max_concurrent = 1;
     crate::private_fs::ensure_private_dir(&runner_config.base_dir).await?;
+    let base_dir_canonical = runner_config.base_dir.canonicalize().map_err(|e| {
+        RunnerError::Config(format!(
+            "canonicalize base_dir {} for live runner registry: {e}",
+            runner_config.base_dir.display()
+        ))
+    })?;
 
     let home = HomePaths::new()?;
 
@@ -118,6 +130,25 @@ pub async fn run_benchmark(
     let proxy_ms = t.elapsed().as_millis();
     info!(proxy_ms, port = mitm.port(), "proxy ready");
 
+    let live_runner_instance_handle = match crate::live_runner_instances::publish(
+        &home,
+        crate::live_runner_instances::LiveRunnerInstanceMetadata {
+            config_path: registry_config_path,
+            base_dir: base_dir_canonical,
+            runner_name: runner_config.name.clone(),
+            runner_group: runner_config.group.clone(),
+            subcommand: "benchmark".into(),
+        },
+    )
+    .await
+    {
+        Ok(handle) => handle,
+        Err(e) => {
+            stop_benchmark_proxy(&mut mitm, "live_runner_publish").await;
+            return Err(e);
+        }
+    };
+
     // 3. Factory init (with proxy port) via sandbox runtime
     let factory_config = runner_config.factory_config(profile_name, profile_config, &home);
 
@@ -133,18 +164,23 @@ pub async fn run_benchmark(
         Err(e) => {
             drop(resource_locks);
             stop_benchmark_proxy(&mut mitm, "runtime_create").await;
+            remove_benchmark_live_runner_instance(&live_runner_instance_handle, "runtime_create")
+                .await;
             return Err(e.into());
         }
     };
-    let mut factory =
-        match create_factory_or_shutdown_runtime(runtime.as_mut(), factory_config).await {
-            Ok(factory) => factory,
-            Err(e) => {
-                drop(resource_locks);
-                stop_benchmark_proxy(&mut mitm, "factory_create").await;
-                return Err(e.into());
-            }
-        };
+    let mut factory = match create_factory_or_shutdown_runtime(runtime.as_mut(), factory_config)
+        .await
+    {
+        Ok(factory) => factory,
+        Err(e) => {
+            drop(resource_locks);
+            stop_benchmark_proxy(&mut mitm, "factory_create").await;
+            remove_benchmark_live_runner_instance(&live_runner_instance_handle, "factory_create")
+                .await;
+            return Err(e.into());
+        }
+    };
     let factory_ms = t.elapsed().as_millis();
     info!(factory_ms, "factory ready");
 
@@ -169,6 +205,7 @@ pub async fn run_benchmark(
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, "proxy stop failed");
     }
+    remove_benchmark_live_runner_instance(&live_runner_instance_handle, "complete").await;
 
     // 5. Log timing summary (always, even on error)
     let Timing {
@@ -225,6 +262,15 @@ pub async fn run_benchmark(
 async fn stop_benchmark_proxy(mitm: &mut proxy::MitmProxy, phase: &'static str) {
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, phase, "proxy stop failed during benchmark cleanup");
+    }
+}
+
+async fn remove_benchmark_live_runner_instance(
+    handle: &crate::live_runner_instances::LiveRunnerInstanceHandle,
+    phase: &'static str,
+) {
+    if let Err(e) = handle.remove_if_current().await {
+        warn!(error = %e, phase, "failed to remove benchmark live runner instance record");
     }
 }
 
