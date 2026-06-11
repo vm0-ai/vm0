@@ -128,11 +128,10 @@ function runContextFirewallPermissionConfig(
       return null;
     }
     const config = getConnectorFirewall(firewall.name);
-    const [resolved] = resolveFirewallBaseUrlVars(
+    return resolveFirewallBaseUrlVars(
       [{ name: config.name, apis: config.apis }],
       firewall.baseUrlVars,
-    );
-    return resolved ?? { name: config.name, apis: [] };
+    )[0]!;
   }
   return {
     name: firewall.name,

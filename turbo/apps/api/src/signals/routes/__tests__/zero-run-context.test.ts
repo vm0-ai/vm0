@@ -356,6 +356,18 @@ describe("GET /api/zero/runs/:id/context", () => {
             ],
           },
           { name: "bad-fw", apis: null },
+          {
+            kind: "inline",
+            firewall: {
+              name: "leaky-fw",
+              apis: [
+                {
+                  base: "https://leaky.example.com",
+                  auth: { headers: { Authorization: "Bearer secret" } },
+                },
+              ],
+            },
+          },
         ],
         volumes: [
           {

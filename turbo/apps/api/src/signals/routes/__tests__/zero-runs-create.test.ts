@@ -2896,6 +2896,13 @@ describe("POST /api/zero/runs", () => {
     expect(zendeskFirewall.baseUrlVars).toStrictEqual({
       ZENDESK_SUBDOMAIN: "connector-subdomain",
     });
+
+    const snapshotFirewalls = runContextSnapshotFirewalls(response.body.runId);
+    expect(snapshotFirewalls).toContainEqual({
+      kind: "builtin",
+      name: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "connector-subdomain" },
+    });
   });
 
   it("rejects omitted modelProvider when the org default provider is VM0", async () => {
