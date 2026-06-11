@@ -45,7 +45,7 @@ pub(super) enum AttemptWorkspaceImage {
 }
 
 impl AttemptWorkspaceImage {
-    pub(super) fn new(path: PathBuf) -> Self {
+    fn new(path: PathBuf) -> Self {
         Self::NotCreated(path)
     }
 
@@ -80,7 +80,7 @@ impl AttemptWorkspaceImage {
         }
     }
 
-    pub(super) fn has_cleanup_work(&self) -> bool {
+    fn has_cleanup_work(&self) -> bool {
         matches!(self, Self::Owned(_))
     }
 
@@ -405,7 +405,7 @@ impl SnapshotCleanupFinalizer {
         }
     }
 
-    pub(super) async fn cleanup_publish_attempt(&mut self) -> bool {
+    async fn cleanup_publish_attempt(&mut self) -> bool {
         let has_publish_attempt = self
             .resources
             .publish_attempt
@@ -419,7 +419,7 @@ impl SnapshotCleanupFinalizer {
         self.resources.cleanup_publish_attempt().await
     }
 
-    pub(super) fn cleanup_workspace_image(&mut self) -> bool {
+    fn cleanup_workspace_image(&mut self) -> bool {
         if !self.resources.workspace_image.has_cleanup_work() {
             return true;
         }
@@ -430,7 +430,7 @@ impl SnapshotCleanupFinalizer {
         )
     }
 
-    pub(super) async fn cleanup_device_pool(&mut self) -> bool {
+    async fn cleanup_device_pool(&mut self) -> bool {
         if self.resources.device_pool.is_none() {
             return true;
         }
@@ -439,7 +439,7 @@ impl SnapshotCleanupFinalizer {
         self.resources.cleanup_device_pool().await
     }
 
-    pub(super) fn has_cleanup_work(&self) -> bool {
+    fn has_cleanup_work(&self) -> bool {
         self.resources.has_cleanup_work()
     }
 }
