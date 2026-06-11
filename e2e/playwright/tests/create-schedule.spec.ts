@@ -20,13 +20,14 @@ test("create a new schedule and verify it appears in the list", async ({
   ).toHaveAttribute("aria-hidden", "true", { timeout: 60_000 });
 
   // Click "Add automation" in the page header (the list empty-state may show
-  // a second "Add automation" button)
+  // a second button). The dialog title still says "Add schedule" until the
+  // string sweep lands.
   await page
     .getByRole("banner")
     .getByRole("button", { name: "Add automation" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Add automation" }),
+    page.getByRole("heading", { name: "Add schedule" }),
   ).toBeVisible({ timeout: 30_000 });
 
   // Fill prompt and submit
