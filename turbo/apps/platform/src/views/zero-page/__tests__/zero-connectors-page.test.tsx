@@ -580,6 +580,67 @@ describe("connectors page", () => {
     });
   });
 
+  it("expires an external-code connector grant before completion and leaves retry available", async () => {
+    mockConnectors([]);
+    context.mocks.browser.open(createMockAuthWindow());
+    context.mocks.api(
+      zeroConnectorExternalCodeSessionContract.create,
+      ({ params, respond }) => {
+        return respond(200, {
+          sessionId: "00000000-0000-4000-8000-000000000055",
+          sessionToken: "mock-expiring-external-code-token",
+          type: params.type,
+          status: "pending",
+          authorizationUrl: "https://oauth.test/aws/external-code",
+          expiresIn: 0,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Find connectors"),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors"), "aws");
+    click(await screen.findByLabelText("Connect AWS"));
+
+    const connectDialog = await screen.findByRole("dialog", { name: "AWS" });
+    click(buttonByText("Start AWS sign-in", connectDialog));
+    await waitFor(() => {
+      expect(
+        buttonByText("Open AWS sign-in", connectDialog),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Open AWS sign-in", connectDialog));
+    await fill(
+      within(connectDialog).getByTestId("connector-external-code-input"),
+      "EXPIRED-CODE",
+    );
+    click(
+      within(connectDialog).getByTestId("connector-external-code-complete"),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(connectDialog).getByText(
+          "Connection session expired. Start again to retry.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        buttonByText("Start AWS sign-in", connectDialog),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("starts a device-auth connector grant", async () => {
     mockConnectors([]);
 
@@ -800,6 +861,62 @@ describe("connectors page", () => {
       expect(
         within(deviceDialog).getByText(
           "Connection was denied. Start again to retry.",
+        ),
+      ).toBeInTheDocument();
+      expect(buttonByText("Try again", deviceDialog)).toBeInTheDocument();
+    });
+  });
+
+  it("expires a pending device-auth connector grant and leaves retry available", async () => {
+    mockConnectors([]);
+    context.mocks.browser.open(createMockAuthWindow());
+    context.mocks.api(
+      zeroConnectorOauthDeviceAuthSessionContract.create,
+      ({ params, respond }) => {
+        return respond(200, {
+          sessionId: "00000000-0000-4000-8000-000000000044",
+          sessionToken: "mock-expiring-device-token",
+          type: params.type,
+          status: "pending",
+          userCode: "EXPIRE-ME",
+          verificationUri: `https://oauth.test/${params.type}/device`,
+          verificationUriComplete: `https://oauth.test/${params.type}/device?user_code=EXPIRE-ME`,
+          expiresIn: 0.2,
+          interval: 0,
+        });
+      },
+    );
+    context.mocks.api(
+      zeroConnectorOauthDeviceAuthSessionContract.poll,
+      ({ respond }) => {
+        return respond(200, {
+          status: "pending",
+          interval: 0,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Base44")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Connect Base44"));
+
+    const deviceDialog = await screen.findByRole("dialog", { name: "Base44" });
+    click(buttonByText("Connect Base44", deviceDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("EXPIRE-ME");
+    });
+    click(screen.getByTestId("connector-oauth-device-open"));
+
+    await waitFor(() => {
+      expect(
+        within(deviceDialog).getByText(
+          "Connection session expired. Start again to retry.",
         ),
       ).toBeInTheDocument();
       expect(buttonByText("Try again", deviceDialog)).toBeInTheDocument();

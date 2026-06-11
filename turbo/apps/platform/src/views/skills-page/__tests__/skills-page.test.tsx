@@ -38,7 +38,8 @@ Use CRM context before outreach.
 `,
     files: [
       { path: "SKILL.md", size: 96 },
-      { path: "examples/prompt.md", size: 44 },
+      { path: "examples/prompt.md", size: 1536 },
+      { path: "examples/deep/reference.md", size: 2_097_152 },
       { path: "config/settings.json", size: 32 },
     ],
     fileContents: [
@@ -55,6 +56,10 @@ Use CRM context before outreach.
       {
         path: "examples/prompt.md",
         content: "# Prompt example\n\nAsk for market segment and urgency.\n",
+      },
+      {
+        path: "examples/deep/reference.md",
+        content: "# Deep reference\n\nCompare regional pipeline movement.\n",
       },
       {
         path: "config/settings.json",
@@ -75,6 +80,19 @@ Use CRM context before outreach.
       },
     ],
   },
+  {
+    name: "ops-playbook",
+    displayName: "Ops Playbook",
+    description: null,
+    content: "# Ops playbook\n\nPrepare release checks.\n",
+    files: [{ path: "SKILL.md", size: 2048 }],
+    fileContents: [
+      {
+        path: "SKILL.md",
+        content: "# Ops playbook\n\nPrepare release checks.\n",
+      },
+    ],
+  },
 ];
 
 const TEAM: readonly TeamComposeItem[] = [
@@ -83,7 +101,7 @@ const TEAM: readonly TeamComposeItem[] = [
     displayName: "Research Bot",
     description: "Finds account context",
     sound: null,
-    avatarUrl: null,
+    avatarUrl: "https://assets.example.test/research-bot.png",
     customSkills: ["sales-research"],
     headVersionId: "version_research",
     updatedAt: "2026-01-01T00:00:00Z",
@@ -156,6 +174,8 @@ describe("skills page", () => {
     expect(
       screen.getByLabelText("2 agents use this skill"),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("No agents")).toBeInTheDocument();
+    expect(screen.getAllByAltText("Research Bot").length).toBeGreaterThan(0);
 
     const searchInput = screen.getByLabelText("Search skills");
     await fill(searchInput, "support");
@@ -189,8 +209,18 @@ describe("skills page", () => {
     await waitFor(() => {
       expect(screen.getByText("Prompt example")).toBeInTheDocument();
     });
+    expect(screen.getByText("1.5 KiB")).toBeInTheDocument();
     expect(
       screen.getByText("Ask for market segment and urgency."),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Open examples/deep/reference.md"));
+    await waitFor(() => {
+      expect(screen.getByText("Deep reference")).toBeInTheDocument();
+    });
+    expect(screen.getByText("2.0 MiB")).toBeInTheDocument();
+    expect(
+      screen.getByText("Compare regional pipeline movement."),
     ).toBeInTheDocument();
 
     click(screen.getByLabelText("Open config/settings.json"));
@@ -198,6 +228,13 @@ describe("skills page", () => {
       expect(
         screen.getByText('{ "risk": "low", "tone": "direct" }'),
       ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Use CRM context before outreach."),
+      ).not.toBeInTheDocument();
     });
   });
 });

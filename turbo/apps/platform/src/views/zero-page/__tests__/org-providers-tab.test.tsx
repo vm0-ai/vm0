@@ -1,4 +1,5 @@
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
+import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type {
   ModelProviderResponse,
@@ -30,6 +31,23 @@ function staleCodexProvider(): ModelProviderResponse {
     selectedModel: null,
     workspaceName: "Acme ChatGPT",
     planType: "pro",
+    needsReconnect: true,
+    lastRefreshErrorCode: "refresh_token_expired",
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-20T00:00:00Z",
+  };
+}
+
+function staleClaudeCodeProvider(): ModelProviderResponse {
+  return {
+    id: "00000000-0000-4000-a000-000000000203",
+    type: "claude-code-oauth-token",
+    framework: "claude-code",
+    secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+    authMethod: null,
+    secretNames: null,
+    isDefault: false,
+    selectedModel: null,
     needsReconnect: true,
     lastRefreshErrorCode: "refresh_token_expired",
     createdAt: "2026-03-01T00:00:00Z",
@@ -462,6 +480,121 @@ describe("organization model providers settings", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(
         "Device code copied, but the approval page could not be opened. Try again.",
       );
+    });
+  });
+
+  it("reconnects a stale workspace Claude Code provider", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([staleClaudeCodeProvider()]);
+    context.mocks.browser.open(null);
+    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+      return respond(200, {
+        sessionToken: "mock-workspace-claude-code-session",
+        type: "claude-code",
+        status: "pending",
+        scope: "org",
+        browserUrl: "https://claude.ai/oauth/authorize",
+        expiresIn: 30,
+      });
+    });
+    context.mocks.api(
+      zeroClaudeCodeDeviceAuthContract.complete,
+      ({ body, respond }) => {
+        if (body.authorizationCode !== "workspace-claude-code") {
+          return respond(400, {
+            error: {
+              message: "Invalid workspace Claude Code authorization code",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          });
+        }
+        return respond(200, {
+          status: "complete",
+          provider: {
+            ...staleClaudeCodeProvider(),
+            needsReconnect: false,
+            lastRefreshErrorCode: null,
+          },
+          created: false,
+        });
+      },
+    );
+
+    await openProvidersTab();
+
+    const alert = await screen.findByRole("alert");
+    expect(
+      within(alert).getByText("Claude Code session needs reconnection"),
+    ).toBeInTheDocument();
+    expect(
+      within(alert).getByText(
+        "Your Claude Code session expired. Re-connect to continue.",
+      ),
+    ).toBeInTheDocument();
+    click(within(alert).getByText("Reconnect"));
+
+    const codeInput = await screen.findByTestId("claude-code-device-auth-code");
+    const reconnectDialog = codeInput.closest('[role="dialog"]');
+    if (!(reconnectDialog instanceof HTMLElement)) {
+      throw new Error("Claude Code reconnect dialog not found");
+    }
+    expect(
+      within(reconnectDialog).getByText("Re-connect Claude Code"),
+    ).toBeInTheDocument();
+
+    click(within(reconnectDialog).getByTestId("claude-code-device-auth-open"));
+    await waitFor(() => {
+      expect(within(reconnectDialog).getByRole("alert")).toHaveTextContent(
+        "The approval page could not be opened. Use the link manually and paste the code here.",
+      );
+    });
+
+    click(
+      within(reconnectDialog).getByTestId("claude-code-device-auth-submit"),
+    );
+    await waitFor(() => {
+      expect(within(reconnectDialog).getByRole("alert")).toHaveTextContent(
+        "Paste the Claude Code authorization code to continue.",
+      );
+    });
+
+    await fill(codeInput, "workspace-claude-code");
+    click(
+      within(reconnectDialog).getByTestId("claude-code-device-auth-submit"),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Re-connect Claude Code"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("completes a stale workspace Codex reconnect", async () => {
+    mockStaleProviderStory();
+    context.mocks.browser.open(context.mocks.browser.authWindow());
+    context.mocks.browser.clipboardWriteText();
+    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+      return respond(200, {
+        status: "complete",
+        provider: {
+          ...staleCodexProvider(),
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+        },
+        created: false,
+      });
+    });
+
+    await openProvidersTab();
+
+    const alert = await screen.findByRole("alert");
+    click(within(alert).getByText("Reconnect"));
+
+    await waitFor(() => {
+      expect(screen.getByText("ChatGPT connected")).toBeInTheDocument();
+      expect(screen.queryByText("Re-connect Codex")).not.toBeInTheDocument();
     });
   });
 

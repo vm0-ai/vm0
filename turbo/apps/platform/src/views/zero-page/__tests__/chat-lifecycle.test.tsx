@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
@@ -58,6 +58,83 @@ interface QueuedMessageCapture {
   hasTextContent?: boolean;
   attachments?: PersistedAttachment[];
   clientMessageId: string;
+}
+
+interface PushBrowserMock {
+  readonly register: ReturnType<typeof vi.fn>;
+}
+
+type TestPushManager = Pick<PushManager, "getSubscription" | "subscribe">;
+
+interface TestServiceWorkerRegistration {
+  readonly pushManager: TestPushManager;
+}
+
+interface TestServiceWorkerContainer {
+  readonly register: () => Promise<TestServiceWorkerRegistration>;
+}
+
+function mockPushBrowserSupport(): PushBrowserMock {
+  vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "AQIDBA");
+  vi.stubGlobal("PushManager", class TestPushManager {});
+  let notificationPermission: NotificationPermission = "default";
+  vi.stubGlobal("Notification", {
+    get permission() {
+      return notificationPermission;
+    },
+    requestPermission: vi.fn(() => {
+      notificationPermission = "granted";
+      return Promise.resolve(notificationPermission);
+    }),
+  });
+
+  const subscriptionKeys: Record<PushEncryptionKeyName, ArrayBuffer> = {
+    p256dh: new Uint8Array([1, 2, 3]).buffer,
+    auth: new Uint8Array([4, 5, 6]).buffer,
+  };
+  const subscription = {
+    endpoint: "https://push.example.test/subscriptions/chat-send",
+    getKey: (name: PushEncryptionKeyName) => {
+      return subscriptionKeys[name] ?? null;
+    },
+  } satisfies Pick<PushSubscription, "endpoint" | "getKey">;
+  const pushManager: TestPushManager = {
+    getSubscription: vi.fn(() => {
+      return Promise.resolve(null);
+    }),
+    subscribe: vi.fn(() => {
+      return Promise.resolve(subscription as PushSubscription);
+    }),
+  };
+  const registration = {
+    pushManager,
+  } satisfies TestServiceWorkerRegistration;
+  const register = vi.fn(() => {
+    return Promise.resolve(registration);
+  });
+  const descriptor = Object.getOwnPropertyDescriptor(
+    navigator,
+    "serviceWorker",
+  );
+  Object.defineProperty(navigator, "serviceWorker", {
+    configurable: true,
+    value: {
+      register,
+    } satisfies TestServiceWorkerContainer,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (descriptor) {
+        Object.defineProperty(navigator, "serviceWorker", descriptor);
+        return;
+      }
+      Reflect.deleteProperty(navigator, "serviceWorker");
+    },
+    { once: true },
+  );
+
+  return { register };
 }
 
 function activeRunTextarea(): Promise<HTMLTextAreaElement> {
@@ -531,6 +608,46 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("subscribes the browser for push notifications after a visible chat send", async () => {
+    const user = userEvent.setup({ delay: null });
+    const pushBrowser = mockPushBrowserSupport();
+    let capturedSubscription: unknown;
+    context.mocks.http.post(
+      "*/api/zero/push-subscriptions",
+      async ({ request }) => {
+        capturedSubscription = await request.json();
+        return new Response(null, { status: 204 });
+      },
+    );
+    mockChatLifecycle(context);
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    await waitFor(() => {
+      expect(pushBrowser.register).toHaveBeenCalledWith("/sw.js", {
+        updateViaCache: "none",
+      });
+    });
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Notify me when this run finishes");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Notify me when this run finishes"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(capturedSubscription).toStrictEqual({
+        endpoint: "https://push.example.test/subscriptions/chat-send",
+        keys: {
+          p256dh: "AQID",
+          auth: "BAUG",
+        },
+      });
+    });
+  });
+
   it("starts a new chat with a visual attachment", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.data.userModelPreference({
@@ -773,6 +890,70 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Paused mid-thought — pick it back up whenever."),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("stops a server-queued run and recalls queued follow-up messages", async () => {
+    const interrupts: string[] = [];
+    const recalls: string[] = [];
+    mockChatLifecycle(context, {
+      threadId: "thread-server-queued-run",
+      chatMessages: [
+        {
+          id: "msg-server-queued-user",
+          role: "user",
+          content: "Start the server queued run",
+          runId: "run-server-queued",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-server-queue-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-server-queued",
+          runEventId: "queue:queued",
+          status: "queued",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-server-queued-followup",
+          role: "user",
+          content: "Follow up when the queued run starts",
+          runId: undefined,
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      onInterruptMessageAppend: (body) => {
+        interrupts.push(body.interruptsRunId);
+      },
+      onRecallMessageAppend: (body) => {
+        recalls.push(body.revokesMessageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-server-queued-run",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Start the server queued run"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Follow up when the queued run starts"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("1 message waiting to send")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Stop"));
+
+    await waitFor(() => {
+      expect(interrupts).toContain("run-server-queued");
+      expect(recalls).toContain("msg-server-queued-followup");
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
   });
 
@@ -1039,6 +1220,52 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("copies an assistant response from chat history", async () => {
+    const clipboard = context.mocks.browser.clipboardWriteText();
+    const threadId = "assistant-copy-thread";
+    const assistantReply = "The launch summary is ready to share.";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Assistant copy",
+      chatMessages: [
+        {
+          id: "msg-assistant-copy-user",
+          role: "user",
+          content: "Summarize the launch update",
+          runId: "run-assistant-copy",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-copy-response",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-assistant-copy",
+          status: "completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText(assistantReply)).toBeInTheDocument();
+    });
+
+    const assistantGroup = screen
+      .getByText(assistantReply)
+      .closest('[data-role="assistant"]');
+    if (!(assistantGroup instanceof HTMLElement)) {
+      throw new Error("assistant message group not found");
+    }
+    click(within(assistantGroup).getByLabelText("Copy message"));
+
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([assistantReply]);
+    });
+  });
+
   it("shows linked schedules from the chat header", async () => {
     mockScheduleThread();
 
@@ -1298,6 +1525,47 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("No GitHub PRs found in this chat."),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("shows GitHub PR tracking load errors and toggles the dock from the header", async () => {
+    mockGithubPrTrackingThread();
+    context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
+      return respond(502, {
+        error: {
+          message: "GitHub status unavailable",
+          code: "GITHUB_STATUS_UNAVAILABLE",
+        },
+      });
+    });
+    detachedSetupPage({
+      context,
+      path: `/chats/${GITHUB_PR_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    await openGithubPrTracking();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to load GitHub PR status."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Open GitHub PR tracking")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    click(screen.getByLabelText("Open GitHub PR tracking"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("GitHub PR tracking"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Open GitHub PR tracking")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
     });
   });
 

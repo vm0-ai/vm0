@@ -276,6 +276,27 @@ function complexGroupedActivityEvents(): AgentEvent[] {
                 args: "dry-run",
               },
             },
+            {
+              type: "tool_use",
+              id: "tool-edit-deploy",
+              name: "Edit",
+              input: {
+                file_path: "src/release/deploy.ts",
+                old_string: "const deployToken = process.env.OLD_TOKEN;",
+                new_string: "const deployToken = process.env.DEPLOY_TOKEN;",
+              },
+            },
+            {
+              type: "tool_use",
+              id: "tool-api-call",
+              name: "ApiCall",
+              input: {
+                endpoint: "/v1/deployments",
+                retries: 2,
+                payload:
+                  "release-payload-with-a-long-trace-id-that-should-truncate",
+              },
+            },
           ],
         },
       },
@@ -325,6 +346,42 @@ function complexGroupedActivityEvents(): AgentEvent[] {
           content: [
             {
               type: "tool_result",
+              tool_use_id: "tool-edit-deploy",
+              content: "Patched deploy token lookup.",
+              is_error: false,
+            },
+          ],
+        },
+        tool_use_result: { durationMs: 88 },
+      },
+      createdAt: "2026-03-10T16:00:07Z",
+    },
+    {
+      sequenceNumber: 7,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-api-call",
+              content: "deployment accepted",
+              is_error: false,
+            },
+          ],
+        },
+        tool_use_result: { durationMs: 99 },
+      },
+      createdAt: "2026-03-10T16:00:08Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
               tool_use_id: "orphan-tool",
               content: "orphan cleanup result",
               is_error: false,
@@ -333,30 +390,30 @@ function complexGroupedActivityEvents(): AgentEvent[] {
         },
         tool_use_result: { durationMs: 77 },
       },
-      createdAt: "2026-03-10T16:00:07Z",
+      createdAt: "2026-03-10T16:00:09Z",
     },
     {
-      sequenceNumber: 7,
+      sequenceNumber: 9,
       eventType: "system",
       eventData: {
         subtype: "task_started",
         task_id: "release-task",
         description: "Run release validation",
       },
-      createdAt: "2026-03-10T16:00:08Z",
+      createdAt: "2026-03-10T16:00:10Z",
     },
     {
-      sequenceNumber: 8,
+      sequenceNumber: 10,
       eventType: "system",
       eventData: {
         subtype: "task_progress",
         task_id: "release-task",
         summary: "Still checking release validation",
       },
-      createdAt: "2026-03-10T16:00:09Z",
+      createdAt: "2026-03-10T16:00:11Z",
     },
     {
-      sequenceNumber: 9,
+      sequenceNumber: 11,
       eventType: "system",
       eventData: {
         subtype: "task_notification",
@@ -364,10 +421,10 @@ function complexGroupedActivityEvents(): AgentEvent[] {
         status: "failed",
         summary: "Release validation failed",
       },
-      createdAt: "2026-03-10T16:00:10Z",
+      createdAt: "2026-03-10T16:00:12Z",
     },
     {
-      sequenceNumber: 10,
+      sequenceNumber: 12,
       eventType: "result",
       eventData: {
         type: "result",
@@ -376,7 +433,7 @@ function complexGroupedActivityEvents(): AgentEvent[] {
         num_turns: 2,
         duration_ms: 4000,
       },
-      createdAt: "2026-03-10T16:00:11Z",
+      createdAt: "2026-03-10T16:00:13Z",
     },
   ];
 }
@@ -439,6 +496,37 @@ function mixedNetworkLogs(): NetworkLogEntry[] {
       firewall_permission: "postgres",
       firewall_error: "database blocked",
       error: "connect ECONNREFUSED",
+    },
+    {
+      timestamp: "2026-03-10T14:56:13.000Z",
+      type: "udp",
+      action: "ALLOW",
+      host: "resolver.internal",
+      port: 53,
+      firewall_name: "dns-egress",
+      firewall_permission: "dns",
+      firewall_rule_match: "udp/53",
+      firewall_base: "resolver.internal",
+      firewall_params: { region: "iad", profile: "primary" },
+      firewall_billable: false,
+      auth_refreshed_connectors: ["google-drive", "slack"],
+      auth_refreshed_secrets: ["DNS_TOKEN"],
+      auth_cache_hit: false,
+      auth_url_rewrite: true,
+    },
+    {
+      timestamp: "2026-03-10T14:56:14.000Z",
+      type: "icmp",
+      action: "ALLOW",
+      host: "edge.gateway",
+      latency_ms: 2100,
+    },
+    {
+      timestamp: "2026-03-10T14:56:15.000Z",
+      type: "unix",
+      action: "ALLOW",
+      host: "local.socket",
+      port: 0,
     },
   ];
 }
@@ -1035,6 +1123,17 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("release-auditor")).not.toHaveLength(0);
     expect(screen.getAllByText("dry-run")).not.toHaveLength(0);
     expect(screen.getAllByText("release-auditor failed")).not.toHaveLength(0);
+    expect(
+      screen.getByText("const deployToken = process.env.OLD_TOKEN;"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("const deployToken = process.env.DEPLOY_TOKEN;"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/endpoint: \/v1\/deployments/u),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/retries: 2/u)).toBeInTheDocument();
+    expect(screen.getByText("deployment accepted")).toBeInTheDocument();
     expect(screen.getByText("orphan cleanup result")).toBeInTheDocument();
     expect(screen.getByText("Run release validation")).toBeInTheDocument();
     expect(
@@ -1109,9 +1208,15 @@ describe("activity detail polling", () => {
     await waitFor(() => {
       expect(screen.getByText("api.service.test:0")).toBeInTheDocument();
       expect(screen.getByText("db.internal:5432")).toBeInTheDocument();
+      expect(screen.getByText("resolver.internal:53")).toBeInTheDocument();
+      expect(screen.getByText("edge.gateway:0")).toBeInTheDocument();
+      expect(screen.getByText("local.socket:0")).toBeInTheDocument();
     });
     expect(screen.getAllByText("DNS").length).toBeGreaterThan(0);
     expect(screen.getAllByText("TCP").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("UDP").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("ICMP").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("UNIX").length).toBeGreaterThan(0);
 
     click(screen.getByText("api.service.test:0"));
 
@@ -1130,6 +1235,31 @@ describe("activity detail polling", () => {
     });
     expect(screen.getByText("5432")).toBeInTheDocument();
     expect(screen.getAllByText("2.3s").length).toBeGreaterThan(0);
+
+    click(screen.getByText("resolver.internal:53"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Base URL")).toBeInTheDocument();
+      expect(screen.getAllByText("resolver.internal")).not.toHaveLength(0);
+      expect(screen.getByText("google-drive, slack")).toBeInTheDocument();
+      expect(screen.getByText("DNS_TOKEN")).toBeInTheDocument();
+      expect(screen.getByText("Cache Hit")).toBeInTheDocument();
+      expect(screen.getByText("URL Rewrite")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText('{"region":"iad","profile":"primary"}'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("No").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Yes").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+
+    click(screen.getByLabelText("Type filter"));
+    click(getMenuItemCheckboxByText("DNS"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("api.service.test:0")).not.toBeInTheDocument();
+      expect(screen.getByText("5 types")).toBeInTheDocument();
+    });
   });
 
   it("downloads a completed activity with debug context and network logs", async () => {

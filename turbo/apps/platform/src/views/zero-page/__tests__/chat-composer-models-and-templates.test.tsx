@@ -2,9 +2,10 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import type {
-  ConnectorAuthMethodId,
-  ConnectorType,
+import {
+  CONNECTOR_TYPE_KEYS,
+  type ConnectorAuthMethodId,
+  type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import {
@@ -45,6 +46,18 @@ const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
 const NOW = "2026-05-08T00:00:00.000Z";
+
+function connectorSearchFixtureTypes(): readonly ConnectorType[] {
+  const excludes = new Set<ConnectorType>([
+    "github",
+    "gmail",
+    "notion",
+    "slack",
+  ]);
+  return CONNECTOR_TYPE_KEYS.filter((type) => {
+    return !excludes.has(type);
+  }).slice(0, 21);
+}
 
 function tabByText(text: string): HTMLElement {
   const tab = queryAllByRoleFast("tab").find((candidate) => {
@@ -269,6 +282,16 @@ function mockConnectors(
       };
     }),
   );
+}
+
+function mockManyConnectedConnectors(): void {
+  mockConnectors([
+    { type: "github", externalUsername: "octocat" },
+    { type: "slack", externalUsername: "launch-team" },
+    ...connectorSearchFixtureTypes().map((type) => {
+      return { type };
+    }),
+  ]);
 }
 
 function mockAgentConnectorAuthorizations(initialTypes: string[]): void {
@@ -894,14 +917,53 @@ describe("chat composer models", () => {
     });
   });
 
+  it("hides an accepted visual attachment after switching to a text-only model", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    context.mocks.upload.success({
+      id: "visual-model-switch",
+      filename: "storyboard.png",
+      contentType: "image/png",
+      size: 128,
+      url: "https://example.com/storyboard.png",
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await expectComposerModel("Claude Sonnet 4.6");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["image"], "storyboard.png", { type: "image/png" }),
+    );
+
+    await expect(
+      screen.findByLabelText("Open image preview for storyboard.png"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText(/GLM-5\.1 cannot recognize images or videos/i)
+          .length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.queryByLabelText("Open image preview for storyboard.png"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("manages agent connector access from the composer", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
-    mockConnectors([
-      { type: "github", externalUsername: "octocat" },
-      { type: "slack", externalUsername: "launch-team" },
-    ]);
+    mockManyConnectedConnectors();
     mockAgentConnectorAuthorizations(["github"]);
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -909,22 +971,43 @@ describe("chat composer models", () => {
     click(await screen.findByLabelText("Connectors"));
 
     await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find connectors...")).toHaveValue("");
       expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
     });
 
+    await user.click(screen.getByLabelText("Remove GitHub"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
+      expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors..."), "slack");
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+    });
+
     await user.click(screen.getByLabelText("Add Slack"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
-      expect(screen.getByLabelText("Remove GitHub")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Remove GitHub"));
+    click(screen.getByLabelText("Connectors"));
 
     await waitFor(() => {
+      expect(screen.queryByPlaceholderText("Find connectors...")).toBeNull();
+    });
+
+    click(screen.getByLabelText("Connectors"));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find connectors...")).toHaveValue("");
       expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
     });

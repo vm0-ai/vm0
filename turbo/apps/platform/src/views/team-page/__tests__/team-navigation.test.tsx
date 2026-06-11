@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
@@ -9,7 +9,11 @@ import {
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroComposesMainContract } from "@vm0/api-contracts/contracts/zero-composes";
-import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import {
+  type UpsertUserPermissionGrantRequest,
+  type UserPermissionGrantResponse,
+  zeroUserPermissionGrantsContract,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
@@ -618,6 +622,118 @@ describe("team page navigation", () => {
     });
   });
 
+  it("saves permission duration changes from an agent page", async () => {
+    mockTeamAPIs();
+    const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
+    let grants: UserPermissionGrantResponse[] = [
+      {
+        agentId: researchAgentId,
+        connectorRef: "axiom",
+        permission: "annotations|create",
+        action: "allow",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      },
+    ];
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, grants);
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.upsert,
+      ({ body, respond }) => {
+        capturedUpserts.push(body);
+        const grant: UserPermissionGrantResponse = {
+          agentId: body.agentId,
+          connectorRef: body.connectorRef,
+          permission: body.permission,
+          action: body.action,
+          expiresAt:
+            body.action === "allow" && body.expiresIn !== "always"
+              ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+              : null,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:30:00.000Z",
+        };
+        grants = [
+          ...grants.filter((current) => {
+            return (
+              current.connectorRef !== grant.connectorRef ||
+              current.permission !== grant.permission
+            );
+          }),
+          grant,
+        ];
+        return respond(200, grant);
+      },
+    );
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Axiom permissions"));
+
+    const permissionsDialog = await screen.findByRole("dialog");
+    const createRow = await permissionRowByName(
+      permissionsDialog,
+      "annotations|create",
+    );
+    expect(within(createRow).getByText("< 1 hour")).toBeInTheDocument();
+
+    click(screen.getByLabelText("annotations|create allow options"));
+    click(menuItemByText("Allow always"));
+    await waitFor(() => {
+      expect(within(createRow).getByText("Always")).toBeInTheDocument();
+    });
+
+    const deleteRow = await permissionRowByName(
+      permissionsDialog,
+      "annotations|delete",
+    );
+    click(screen.getByLabelText("annotations|delete allow options"));
+    click(menuItemByText("Allow for 1h"));
+    await waitFor(() => {
+      expect(within(deleteRow).getByText("1h")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Deny", unknownEndpointsRow(permissionsDialog)));
+    click(buttonByText("Apply", permissionsDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(capturedUpserts).toStrictEqual(
+      expect.arrayContaining([
+        {
+          agentId: researchAgentId,
+          connectorRef: "axiom",
+          permission: "annotations|create",
+          action: "allow",
+          expiresIn: "always",
+        },
+        {
+          agentId: researchAgentId,
+          connectorRef: "axiom",
+          permission: "annotations|delete",
+          action: "allow",
+          expiresIn: "1h",
+        },
+        {
+          agentId: researchAgentId,
+          connectorRef: "axiom",
+          permission: "__unknown__",
+          action: "deny",
+        },
+      ]),
+    );
+  });
+
   it("updates grouped connector permission policies from an agent page", async () => {
     mockTeamAPIs();
     detachedSetupPage({
@@ -652,6 +768,24 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(within(miscGroup).getByText("7d")).toBeInTheDocument();
     });
+    click(buttonByText("Deny", miscGroup));
+    await waitFor(() => {
+      expect(within(miscGroup).queryByText("7d")).not.toBeInTheDocument();
+    });
+    click(buttonByText("Allow", miscGroup));
+    click(within(miscGroup).getByLabelText("Misc allow options"));
+    click(menuItemByText("Allow always"));
+
+    const permissionsScrollArea =
+      groupedDialog.querySelector(".overflow-y-auto");
+    if (!(permissionsScrollArea instanceof HTMLElement)) {
+      throw new Error("permissions scroll area not found");
+    }
+    Object.defineProperty(permissionsScrollArea, "scrollTop", {
+      configurable: true,
+      value: 24,
+    });
+    fireEvent.scroll(permissionsScrollArea);
 
     const channelsJoinRow = await permissionRowByName(
       groupedDialog,
@@ -662,6 +796,17 @@ describe("team page navigation", () => {
       expect(
         within(channelsJoinRow).queryByLabelText("Undo channels:join changes"),
       ).not.toBeInTheDocument();
+    });
+
+    const unknownRow = unknownEndpointsRow(groupedDialog);
+    click(within(unknownRow).getByLabelText("__unknown__ allow options"));
+    click(menuItemByText("Allow for 1h"));
+    await waitFor(() => {
+      expect(within(unknownRow).getByText("1h")).toBeInTheDocument();
+    });
+    click(within(unknownRow).getByLabelText("Undo __unknown__ changes"));
+    await waitFor(() => {
+      expect(within(unknownRow).queryByText("1h")).not.toBeInTheDocument();
     });
 
     click(buttonByText("Apply", groupedDialog));

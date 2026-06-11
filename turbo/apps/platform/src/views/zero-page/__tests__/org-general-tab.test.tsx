@@ -157,6 +157,7 @@ describe("organization general settings", () => {
   it("rejects workspace logos outside the supported dimensions", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.imageDimensions([
+      null,
       { width: 80, height: 80 },
       { width: 5000, height: 5000 },
     ]);
@@ -170,6 +171,16 @@ describe("organization general settings", () => {
     await openGeneralTab();
 
     const uploadInput = screen.getByLabelText("Upload logo");
+    await user.upload(
+      uploadInput,
+      new File(["not-image"], "unreadable.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Could not read image file")).toBeInTheDocument();
+      expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
+    });
+
     await user.upload(
       uploadInput,
       new File(["small"], "too-small.png", { type: "image/png" }),
@@ -188,6 +199,45 @@ describe("organization general settings", () => {
     await waitFor(() => {
       expect(screen.getByText(/Logo is too large/u)).toBeInTheDocument();
       expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps a pending workspace logo when upload fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.imageDimensions({ width: 512, height: 512 });
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Acme",
+      slug: "acme",
+      role: "admin",
+    });
+    context.mocks.http.post("*/api/zero/org/logo", () => {
+      return new Response(
+        JSON.stringify({
+          error: { message: "Logo storage is unavailable" },
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    await openGeneralTab();
+
+    await user.upload(
+      screen.getByLabelText("Upload logo"),
+      new File(["logo"], "workspace-logo.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Save changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Save changes"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Logo storage is unavailable"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Save changes")).toBeInTheDocument();
     });
   });
 

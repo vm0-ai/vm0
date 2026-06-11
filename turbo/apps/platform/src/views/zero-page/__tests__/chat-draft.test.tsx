@@ -178,6 +178,102 @@ describe("chat drafts", () => {
     });
   });
 
+  it("persists edited draft attachments and clears the server draft after sending", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-draft-sync";
+    const draftPatches: Record<string, unknown>[] = [];
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        id: threadId,
+        title: "Draft sync",
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        latestSessionId: null,
+        activeRunIds: [],
+        draftContent: "Review the saved launch brief",
+        draftAttachments: [
+          {
+            id: "draft-brief",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+          },
+        ],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+    context.mocks.upload.success({
+      id: "fresh-launch-note",
+      filename: "fresh.txt",
+      contentType: "text/plain",
+      size: 5,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/fresh.txt",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveValue("Review the saved launch brief");
+      expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["fresh"], "fresh.txt", { type: "text/plain" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove fresh.txt")).toBeInTheDocument();
+    });
+
+    await fill(textarea(), "Review the updated launch brief");
+
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "Review the updated launch brief",
+        draftAttachments: [
+          {
+            id: "draft-brief",
+            url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 64,
+          },
+          {
+            id: "fresh-launch-note",
+            url: "https://cdn.vm7.io/artifacts/test/drafts/fresh.txt",
+            filename: "fresh.txt",
+            contentType: "text/plain",
+            size: 5,
+          },
+        ],
+      });
+    });
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Review the updated launch brief"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
+        "",
+      );
+      expect(draftPatches).toContainEqual({
+        draftContent: null,
+        draftAttachments: null,
+      });
+    });
+  });
+
   it("keeps upload drafts scoped to their thread while navigating", async () => {
     const user = userEvent.setup({ delay: null });
     const uploadStarted = context.mocks.deferred<void>();

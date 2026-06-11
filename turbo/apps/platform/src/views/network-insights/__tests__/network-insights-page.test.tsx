@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   zeroInsightsContract,
@@ -16,6 +16,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import type { NetworkInsightsData } from "../../../signals/network-insights/network-insights-signals.ts";
 
 const context = testContext();
 const user = userEvent.setup();
@@ -64,7 +65,7 @@ function getTabByText(text: string): HTMLElement {
   return tab;
 }
 
-function insightsResponse(): InsightsResponse {
+function insightsResponse(): InsightsResponse & NetworkInsightsData {
   const date = localDateDaysAgo(1);
   const olderDate = localDateDaysAgo(20);
   return {
@@ -89,12 +90,14 @@ function insightsResponse(): InsightsResponse {
         creditBalance: 8800,
         teamUsage: [
           {
+            userId: "test-user-123",
             name: "Dana",
             credits: 1100,
             agentNames: ["Research Bot"],
             agentCredits: { "Research Bot": 1100 },
           },
           {
+            userId: "test-user-456",
             name: "Lee",
             credits: 470,
             agentNames: ["Ops Bot"],
@@ -249,6 +252,7 @@ function insightsResponse(): InsightsResponse {
         creditBalance: 8720,
         teamUsage: [
           {
+            userId: "test-user-789",
             name: "Mira",
             credits: 80,
             agentNames: ["Archive Bot"],
@@ -279,6 +283,20 @@ function insightsResponse(): InsightsResponse {
     totalCredits: 1650,
     totalRuns: 13,
     lastUpdated: `${date}T18:30:00Z`,
+  };
+}
+
+function oldInsightsResponse(): InsightsResponse & NetworkInsightsData {
+  const data = insightsResponse();
+  return {
+    ...data,
+    days: [
+      {
+        ...data.days[0]!,
+        date: localDateDaysAgo(40),
+      },
+    ],
+    lastUpdated: null,
   };
 }
 
@@ -370,6 +388,16 @@ describe("network insights page", () => {
     expect(screen.getByText("Competitor scan")).toBeInTheDocument();
     expect(screen.queryByText("Archive Bot")).not.toBeInTheDocument();
 
+    const researchAgent = screen.getByText("Research Bot");
+    fireEvent.mouseEnter(researchAgent);
+    await waitFor(() => {
+      expect(screen.getAllByText("by Research Bot").length).toBeGreaterThan(0);
+    });
+    fireEvent.mouseLeave(researchAgent);
+    await waitFor(() => {
+      expect(screen.queryAllByText("by Research Bot")).toHaveLength(0);
+    });
+
     click(screen.getByText("Last 7 Days"));
     click(screen.getByText("Last 28 Days"));
 
@@ -405,6 +433,22 @@ describe("network insights page", () => {
     });
     expect(screen.getByText("Competitor scan")).toBeInTheDocument();
     expect(screen.getByText("650")).toBeInTheDocument();
+  });
+
+  it("shows a no-activity message when the selected range excludes older data", async () => {
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, oldInsightsResponse());
+    });
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No activity in this time range."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Last 7 Days")).toBeInTheDocument();
+    expect(screen.queryByText("Research Bot")).not.toBeInTheDocument();
   });
 
   it("filters the daily insights view to a custom calendar day", async () => {

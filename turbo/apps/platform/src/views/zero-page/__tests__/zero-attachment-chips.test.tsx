@@ -173,6 +173,27 @@ describe("zero attachment chips", () => {
         document.querySelector(`img[src="${imageUrl}"]`),
       ).toBeInTheDocument();
     });
+
+    const image = document.querySelector<HTMLImageElement>(
+      `img[src="${imageUrl}"]`,
+    );
+    if (!image) {
+      throw new Error("Composer image preview not found");
+    }
+
+    fireEvent.load(image);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("composer-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+
+    fireEvent.error(image);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("composer-image-preview-loading"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("opens, zooms, and closes an uploaded image preview", async () => {
