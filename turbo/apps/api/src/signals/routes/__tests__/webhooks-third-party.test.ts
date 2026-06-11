@@ -51,7 +51,7 @@ import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
 } from "../../services/agent-run-queue-payload.service";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -1379,7 +1379,7 @@ describe("POST /api/webhooks/github", () => {
       event: "issues",
       payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1422,7 +1422,7 @@ describe("POST /api/webhooks/github", () => {
         issueBody: `Please inspect this attachment:\n\n![screenshot.png](${fileUrl})`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1479,7 +1479,7 @@ describe("POST /api/webhooks/github", () => {
       event: "issues",
       payload: buildGitHubIssuesPayload(fixture, { action: "opened", repo }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1554,7 +1554,7 @@ describe("POST /api/webhooks/github", () => {
       event: "issues",
       payload: buildGitHubIssuesPayload(fixture, { action: "opened", repo }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1594,7 +1594,7 @@ describe("POST /api/webhooks/github", () => {
         label: { id: 1, name: GITHUB_APP_SLUG },
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1663,7 +1663,7 @@ describe("POST /api/webhooks/github", () => {
         label: { id: 1, name: GITHUB_APP_SLUG },
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1705,7 +1705,7 @@ describe("POST /api/webhooks/github", () => {
         label: { id: 1, name: GITHUB_APP_SLUG },
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1737,7 +1737,7 @@ describe("POST /api/webhooks/github", () => {
         senderId: otherGithubUserId,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(createdByMeResponse.status).toBe(200);
     await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(0);
 
@@ -1754,7 +1754,7 @@ describe("POST /api/webhooks/github", () => {
         senderId: otherGithubUserId,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(anyoneResponse.status).toBe(200);
     await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(1);
@@ -1791,7 +1791,7 @@ describe("POST /api/webhooks/github", () => {
       });
       expect(response.status).toBe(200);
       expect(response.body).toBe("OK");
-      await clearAllDetached();
+      await flushWaitUntilForTest();
     }
 
     const runs = await selectGitHubRuns(fixture);
@@ -1818,7 +1818,7 @@ describe("POST /api/webhooks/github", () => {
         issueTitle: "Fallback title",
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1857,7 +1857,7 @@ describe("POST /api/webhooks/github", () => {
       event: "issue_comment",
       payload: buildGitHubIssueCommentPayload(fixture),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1904,7 +1904,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: "@Zero please handle this",
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1940,7 +1940,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: `@${GITHUB_APP_SLUG}[bot] please inspect\n\n<img width="480" height="480" alt="Image" src="${fileUrl}">`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1995,7 +1995,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: `@${GITHUB_APP_SLUG} continue this session`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -2041,7 +2041,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: `@${GITHUB_APP_SLUG}[bot] please help`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(capturedComments).toHaveLength(1);
@@ -2093,7 +2093,7 @@ describe("POST /api/webhooks/github", () => {
       });
       expect(response.status).toBe(200);
       expect(response.body).toBe("OK");
-      await clearAllDetached();
+      await flushWaitUntilForTest();
     }
 
     const runs = await selectGitHubRuns(fixture);
@@ -2113,7 +2113,7 @@ describe("POST /api/webhooks/github", () => {
         installationId: remoteGitHubId(),
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2135,7 +2135,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: `@${GITHUB_APP_SLUG}[bot] please help`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2183,7 +2183,7 @@ describe("POST /api/webhooks/github", () => {
         senderId: fixture.githubUserId,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2218,7 +2218,7 @@ describe("POST /api/webhooks/github", () => {
         targetId: remoteGitHubId(),
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2238,7 +2238,7 @@ describe("POST /api/webhooks/github", () => {
         targetId: remoteGitHubId(),
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2274,7 +2274,7 @@ describe("POST /api/webhooks/github", () => {
         targetId: remoteGitHubId(),
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -4861,7 +4861,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -4914,7 +4914,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -4952,7 +4952,7 @@ describe("POST /api/webhooks/clerk", () => {
       body: "{}",
     });
 
-    await expect(clearAllDetached()).resolves.toBeUndefined();
+    await expect(flushWaitUntilForTest()).resolves.toBeUndefined();
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
   });
@@ -4973,7 +4973,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -5043,7 +5043,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -5114,7 +5114,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -5149,7 +5149,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -5187,7 +5187,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");

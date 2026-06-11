@@ -36,7 +36,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -267,7 +267,7 @@ async function postSignedCallback(
   // The route now acknowledges immediately and runs terminal processing
   // (message persistence, LLM generation, push) in the background via
   // waitUntil. Drain that detached work so callers can assert on its effects.
-  await clearAllDetached();
+  await flushWaitUntilForTest();
   return response;
 }
 
@@ -673,7 +673,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       `chatThreadMessageCreated:${fixture.threadId}`,
       null,
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("advances last_message_at to run-end time on completed callbacks", async () => {
@@ -724,7 +724,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(afterThread.lastMessageAt.getTime()).toBeGreaterThan(
       stale.getTime(),
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("persists recommended follow-ups as an immutable assistant message when enabled", async () => {
@@ -802,7 +802,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       `chatThreadMessageCreated:${fixture.threadId}`,
       null,
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("uses the run's database thread mapping when the payload thread is stale", async () => {
@@ -831,7 +831,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       `chatThreadMessageCreated:${fixture.threadId}`,
       null,
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("inserts the latest result event when no assistant event exists", async () => {
@@ -867,7 +867,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       sequenceNumber: 1,
       content: "final fallback answer",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("inserts Codex agent_message item.completed events", async () => {
@@ -900,7 +900,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         );
       }),
     ).toBeTruthy();
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("ignores non-agent_message item.completed events", async () => {
@@ -929,7 +929,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         return message.role === "assistant" && message.content !== null;
       }),
     ).toHaveLength(0);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("uses eventData.sequenceNumber for result fallback events", async () => {
@@ -958,7 +958,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       sequenceNumber: 1,
       content: "sequence from eventData",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("uses result fallback when Axiom also has blank assistant text", async () => {
@@ -996,7 +996,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       sequenceNumber: 1,
       content: "RESULT=579",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("uses result fallback when existing streamed assistant output is blank", async () => {
@@ -1030,7 +1030,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         return message.content;
       }),
     ).toStrictEqual(["\n\t", "Recovered result"]);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("does not insert a result fallback when assistant output already exists", async () => {
@@ -1061,7 +1061,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     );
     expect(assistantMessages).toHaveLength(1);
     expect(assistantMessages[0]?.content).toBe("Already streamed.");
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("deduplicates assistant events across concurrent completed callbacks", async () => {
@@ -1105,7 +1105,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         return message.content;
       }),
     ).toStrictEqual(["First event", "Second event"]);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("does not insert assistant output when Axiom has no assistant or result events", async () => {
@@ -1126,7 +1126,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         return message.role === "assistant" && message.content !== null;
       }),
     ).toHaveLength(0);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("inserts assistant error messages on failed callbacks", async () => {
@@ -1421,7 +1421,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       `chatThreadMessageCreated:${fixture.threadId}`,
       null,
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("auto-sends the oldest queued user message after a terminal callback", async () => {
@@ -1575,7 +1575,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       modelProviderCredentialScope: "org",
       selectedModel,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("auto-sends a queued user message after failed callbacks too", async () => {
@@ -1608,7 +1608,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       `chatThreadRunCreated:${fixture.threadId}`,
       null,
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("continues the latest chat session when auto-sending queued messages", async () => {
@@ -1652,7 +1652,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       sessionId: continuedSessionId,
       continuedFromSessionId: continuedSessionId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("starts a new session with prior web context when auto-sending after a model switch", async () => {
@@ -1704,7 +1704,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(run?.appendSystemPrompt).toContain(
       "Assistant: previous opus answer",
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("preserves queued message attachments when auto-sending", async () => {
@@ -1729,7 +1729,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
     expect(claimed?.attachFiles).toStrictEqual(["file-1"]);
     expect(claimed?.runId).not.toBe(fixture.runId);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("does not auto-send when no queued user message exists", async () => {
@@ -1755,7 +1755,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       `chatThreadRunCreated:${fixture.threadId}`,
       null,
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("generates a chat thread title from the completed callback exchange", async () => {
@@ -1798,7 +1798,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(titlePrompt).toContain(
       "Most recent assistant reply:\nUse --inspect for debugging.",
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("does not regenerate an existing chat thread title on completed callbacks", async () => {
@@ -1837,7 +1837,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       .limit(1);
     expect(titleRequestCount).toBe(0);
     expect(thread?.title).toBe("Test thread");
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("feeds prior rounds into the callback title prompt without duplicating the current run", async () => {
@@ -1879,7 +1879,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     const priorSection =
       titlePrompt.split("Most recent user message:")[0] ?? "";
     expect(priorSection).not.toContain("test prompt");
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("does not fail completed callbacks when title generation returns an upstream error", async () => {
@@ -1913,7 +1913,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       .where(eq(chatThreads.id, fixture.threadId))
       .limit(1);
     expect(thread?.title).toBeNull();
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("sends a push notification on completed callbacks when subscriptions and VAPID are configured", async () => {
@@ -1947,7 +1947,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(payload.title).toBe("test prompt");
     expect(payload.body).toBe("Your task is complete");
     expect(payload.url).toBe(`/chats/${fixture.threadId}`);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("sends a push notification on failed callbacks", async () => {
@@ -1993,7 +1993,7 @@ describe("POST /api/internal/callbacks/chat", () => {
 
     expect(response.status).toBe(200);
     expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("deletes stale push subscriptions after gone responses", async () => {
@@ -2016,7 +2016,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     await expect(listPushSubscriptions(fixture.userId)).resolves.toStrictEqual(
       [],
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 
   it("rejects invalid callback signatures", async () => {

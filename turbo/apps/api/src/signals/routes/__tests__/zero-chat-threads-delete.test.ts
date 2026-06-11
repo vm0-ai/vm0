@@ -11,7 +11,7 @@ import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   deleteZeroChatThread$,
   seedZeroChatThread$,
@@ -283,7 +283,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     await expect(getThreadRowExists(fixture.threadId)).resolves.toBeFalsy();
 
     // Post-cancel side effects land on the detached path.
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `runChanged:${runId}`,
       { status: "cancelled" },
@@ -375,6 +375,6 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     await expect(getRunStatus(deletedThreadRun)).resolves.toBe("cancelled");
     await expect(getRunStatus(otherThreadRun)).resolves.toBe("running");
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
   });
 });

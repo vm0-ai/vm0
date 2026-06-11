@@ -5,6 +5,7 @@ import { z } from "zod";
 import { vi } from "vitest";
 import { createApp } from "../app-factory";
 import { mockEnv } from "../lib/env";
+import { flushWaitUntilForTest } from "../signals/context/wait-until";
 import { ROUTES } from "../signals/route";
 import { useUndiciMock } from "./setup";
 import { accept, setupApp, testContext } from "./test-helpers";
@@ -478,14 +479,8 @@ describe("createApp", () => {
       const response = await app.request("/health", { method: "GET" });
 
       expect(response.status).toBe(200);
-      // flushLogs is called via waitUntil after the response, so we need to
-      // wait a tick for the async work to be scheduled.
-      await vi.waitFor(
-        () => {
-          expect(mockFlushLogs).toHaveBeenCalledWith();
-        },
-        { timeout: 5000 },
-      );
+      await flushWaitUntilForTest();
+      expect(mockFlushLogs).toHaveBeenCalledWith();
     });
   });
 });

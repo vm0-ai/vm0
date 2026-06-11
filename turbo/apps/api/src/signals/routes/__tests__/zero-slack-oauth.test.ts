@@ -8,7 +8,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../external/time";
 import { writeDb$ } from "../../external/db";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   countSlackOrgConnections$,
   deleteSlackConnectOrg$,
@@ -831,7 +831,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       expect(response.status).toBe(307);
-      await clearAllDetached();
+      await flushWaitUntilForTest();
       expect(slackPostMessageContaining("summarize my inbox")).toBeTruthy();
     });
 
@@ -859,7 +859,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       expect(response.status).toBe(307);
-      await clearAllDetached();
+      await flushWaitUntilForTest();
       expect(
         slackPostMessageContaining("would you like me to run"),
       ).toBeFalsy();
@@ -900,7 +900,7 @@ describe("Slack OAuth API routes", () => {
       );
       expect(connection).toMatchObject({ vm0UserId: fixture.userId });
 
-      await clearAllDetached();
+      await flushWaitUntilForTest();
       expect(slackPostMessageContaining("summarize my inbox")).toBeTruthy();
     });
 
@@ -927,7 +927,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.headers.get("location")).toContain(
         `${APP_ORIGIN}/settings/slack?status=connected`,
       );
-      await clearAllDetached();
+      await flushWaitUntilForTest();
       expect(
         slackPostMessageContaining("would you like me to run"),
       ).toBeFalsy();

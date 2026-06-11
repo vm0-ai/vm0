@@ -27,7 +27,7 @@ import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
 } from "../../services/agent-run-queue-payload.service";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   deleteUsageInsightFixture$,
@@ -706,7 +706,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(callbackBody).toStrictEqual({
       callbackId,

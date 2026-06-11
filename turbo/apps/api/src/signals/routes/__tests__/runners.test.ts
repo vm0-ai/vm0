@@ -23,7 +23,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signPatJwtForTests, verifySandboxToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
@@ -820,7 +820,7 @@ describe("POST /api/runners/*", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, queued.runId));
     expect(remainingJobs).toHaveLength(0);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${queued.runId}`,
       { status: "running" },

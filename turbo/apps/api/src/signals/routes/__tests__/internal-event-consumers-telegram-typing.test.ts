@@ -10,7 +10,7 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
@@ -158,7 +158,7 @@ describe("POST /api/internal/event-consumers/telegram-typing", () => {
     expect(body).toStrictEqual({ scheduled: true });
 
     // Force the detached waitUntil work to settle before asserting on side effects.
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(tgCalls).toStrictEqual([{ chat_id: "chat-123", action: "typing" }]);
   });
@@ -218,7 +218,7 @@ describe("POST /api/internal/event-consumers/telegram-typing", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(tgCalls).toStrictEqual([]);
   });
 });

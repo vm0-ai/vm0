@@ -4,7 +4,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -273,7 +273,7 @@ describe("GET /api/zero/slack/connect", () => {
     );
     expect(response.status).toBe(307);
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
       expect.objectContaining({
         channel: "C_TEST",
@@ -306,7 +306,7 @@ describe("GET /api/zero/slack/connect", () => {
     );
     expect(response.status).toBe(307);
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channel: fixture.slackUserId }),
     );
@@ -330,7 +330,7 @@ describe("GET /api/zero/slack/connect", () => {
     );
     expect(response.status).toBe(307);
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.chat.postEphemeral).not.toHaveBeenCalled();
     expect(
       context.mocks.slack.chat.postMessage.mock.calls.length,
@@ -352,7 +352,7 @@ describe("GET /api/zero/slack/connect", () => {
     );
     expect(response.status).toBe(307);
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const promptCall = context.mocks.slack.chat.postMessage.mock.calls.find(
       ([message]) => {
         return (

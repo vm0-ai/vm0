@@ -16,7 +16,7 @@ import { users } from "@vm0/db/schema/user";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockNow } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -502,7 +502,7 @@ describe("POST /api/user/export", () => {
 
     expect(response.body.status).toBe("pending");
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const job = await getExportJob(response.body.jobId);
     expect(job).toMatchObject({
@@ -561,7 +561,7 @@ describe("POST /api/user/export", () => {
 
     const response = await postExport(authHeaders(), [202]);
     await track(Promise.resolve({ id: response.body.jobId }));
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const job = await getExportJob(response.body.jobId);
     expect(job).toMatchObject({
@@ -583,7 +583,7 @@ describe("POST /api/user/export", () => {
 
     const response = await postExport(authHeaders(), [202]);
     await track(Promise.resolve({ id: response.body.jobId }));
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const job = await getExportJob(response.body.jobId);
     expect(job?.status).toBe("completed");
