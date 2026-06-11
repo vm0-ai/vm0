@@ -8,28 +8,23 @@ import {
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import type { ChatMessageScheduleSnapshot } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
-import { now, nowDate } from "../external/time";
+import { nowDate } from "../external/time";
 import { isValidTimeZone, settle } from "../utils";
 import {
+  automationRowToTimeAutomation,
   DefaultInterpreter,
-  scheduleToAutomation,
-  type Automation,
 } from "./automations/default-interpreter";
-import {
-  deleteScheduleAutomationSafely,
-  syncScheduleToAutomationSafely,
-} from "./automations/schedule-dual-write";
 import { calculateNextRun, TimeTrigger } from "./automations/time-trigger";
 import {
   resolveModelFirstProviderAdmission,
@@ -38,7 +33,7 @@ import {
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import {
-  postScheduleUserMessage,
+  postAutomationUserMessage,
   resolveScheduleChatThreadModelPin,
 } from "../routes/zero-chat-messages";
 import { publishChatThreadSchedulesChangedSafely } from "../external/realtime";
@@ -47,49 +42,69 @@ const log = logger("api:zero:schedules");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
-const MAX_CONSECUTIVE_FAILURES = 3;
 
-type ScheduleSnapshotSource = Pick<
-  typeof zeroAgentSchedules.$inferSelect,
-  "id" | "name" | "description"
->;
+/** The time-trigger kinds the schedule surface manages (never webhook). */
+const TIME_TRIGGER_KINDS = ["cron", "once", "loop"] as const;
 
+type TimeTriggerKind = (typeof TIME_TRIGGER_KINDS)[number];
+
+/**
+ * A schedule as stored on the events-first tables: the automation (identity +
+ * intent) joined with its single time trigger (recurrence config + runtime
+ * state). The schedules API is a projection of this pair — phase 3 of #16847
+ * cut its reads and writes over from the dropped-in-place zero_agent_schedules
+ * surface.
+ */
+interface ScheduleView {
+  readonly automation: typeof automations.$inferSelect;
+  readonly trigger: typeof automationTriggers.$inferSelect;
+}
+
+// The schedule chip on the run's chat bubble: for a migrated automation the
+// snapshot keeps the original schedule id so existing message rows and
+// navigation stay coherent; natively-created automations use their own id.
 function chatMessageScheduleSnapshot(
-  schedule: ScheduleSnapshotSource,
+  automation: typeof automations.$inferSelect,
 ): ChatMessageScheduleSnapshot {
   return {
-    id: schedule.id,
-    title: schedule.name,
-    description: schedule.description ?? null,
+    id: automation.sourceScheduleId ?? automation.id,
+    title: automation.name,
+    description: automation.description ?? null,
   };
 }
 
+// The public ScheduleResponse projection of an automation + time trigger. The
+// id is the automation id (D2 on #16847: schedule ids became automation ids at
+// the phase-3 contract cutover; name addressing is unchanged). retryStartedAt
+// is vestigial — the column was dropped — and stays null until the contract
+// removes it.
 function scheduleResponse(
-  schedule: typeof zeroAgentSchedules.$inferSelect,
+  view: ScheduleView,
   displayName: string | null,
 ): ScheduleResponse {
+  const { automation, trigger } = view;
   return {
-    id: schedule.id,
-    agentId: schedule.agentId,
+    id: automation.id,
+    agentId: automation.agentId,
     displayName,
-    userId: schedule.userId,
-    name: schedule.name,
-    triggerType: schedule.triggerType as "cron" | "once" | "loop",
-    cronExpression: schedule.cronExpression,
-    atTime: schedule.atTime?.toISOString() ?? null,
-    intervalSeconds: schedule.intervalSeconds,
-    timezone: schedule.timezone,
-    prompt: schedule.prompt,
-    description: schedule.description,
-    appendSystemPrompt: schedule.appendSystemPrompt,
-    enabled: schedule.enabled,
-    nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
-    lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
-    retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
-    consecutiveFailures: schedule.consecutiveFailures,
-    chatThreadId: schedule.chatThreadId,
-    createdAt: schedule.createdAt.toISOString(),
-    updatedAt: schedule.updatedAt.toISOString(),
+    userId: automation.userId,
+    name: automation.name,
+    triggerType: trigger.kind as TimeTriggerKind,
+    cronExpression: trigger.cronExpression,
+    atTime: trigger.atTime?.toISOString() ?? null,
+    intervalSeconds: trigger.intervalSeconds,
+    timezone: trigger.timezone,
+    prompt: automation.instruction,
+    description: automation.description,
+    appendSystemPrompt: automation.appendSystemPrompt,
+    enabled: automation.enabled,
+    nextRunAt: trigger.nextRunAt?.toISOString() ?? null,
+    lastRunAt: trigger.lastRunAt?.toISOString() ?? null,
+    retryStartedAt: null,
+    consecutiveFailures: trigger.consecutiveFailures,
+    chatThreadId: automation.chatThreadId,
+    createdAt: automation.createdAt.toISOString(),
+    updatedAt: automation.updatedAt.toISOString(),
   };
 }
 
@@ -130,13 +145,6 @@ type RunScheduleNowResult =
       readonly kind: "run_error";
       readonly response: RunCreationErrorResponse;
     };
-
-type ExecuteScheduleFailure = Exclude<RunScheduleNowResult, { kind: "ok" }>;
-
-interface ExecuteDueSchedulesResult {
-  readonly executed: number;
-  readonly skipped: number;
-}
 
 interface ChatMessage {
   readonly role: "system" | "user" | "assistant";
@@ -282,10 +290,75 @@ function validateAtTimeNotPast(
   };
 }
 
+/**
+ * Load the schedule view for the (agent, name, org, user) key: the automation
+ * row plus its single time trigger. Returns null when no automation exists or
+ * when the name belongs to a non-time automation (e.g. webhook) — the
+ * schedules surface only manages time automations.
+ */
+async function findScheduleView(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly name: string;
+  },
+): Promise<ScheduleView | null> {
+  const [row] = await db
+    .select({ automation: automations, trigger: automationTriggers })
+    .from(automations)
+    .innerJoin(
+      automationTriggers,
+      eq(automationTriggers.automationId, automations.id),
+    )
+    .where(
+      and(
+        eq(automations.agentId, args.agentId),
+        eq(automations.name, args.name),
+        eq(automations.orgId, args.orgId),
+        eq(automations.userId, args.userId),
+        inArray(automationTriggers.kind, [...TIME_TRIGGER_KINDS]),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * True when the (agent, name, org, user) key is already taken by an automation
+ * with no time trigger (e.g. a webhook automation): deploying a schedule under
+ * that name would violate the automations unique index, so the deploy rejects
+ * it up front instead of 500ing.
+ */
+async function isNameTakenByNonTimeAutomation(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly name: string;
+  },
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: automations.id })
+    .from(automations)
+    .where(
+      and(
+        eq(automations.agentId, args.agentId),
+        eq(automations.name, args.name),
+        eq(automations.orgId, args.orgId),
+        eq(automations.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 type OwnershipResult =
   | {
       readonly ok: true;
-      readonly schedule: typeof zeroAgentSchedules.$inferSelect;
+      readonly view: ScheduleView;
       readonly displayName: string | null;
     }
   | { readonly ok: false };
@@ -310,23 +383,12 @@ async function verifyScheduleOwnership(
     return { ok: false };
   }
 
-  const [schedule] = await db
-    .select()
-    .from(zeroAgentSchedules)
-    .where(
-      and(
-        eq(zeroAgentSchedules.agentId, agentId),
-        eq(zeroAgentSchedules.name, name),
-        eq(zeroAgentSchedules.orgId, orgId),
-        eq(zeroAgentSchedules.userId, userId),
-      ),
-    )
-    .limit(1);
-  if (!schedule) {
+  const view = await findScheduleView(db, { userId, orgId, agentId, name });
+  if (!view) {
     return { ok: false };
   }
 
-  return { ok: true, schedule, displayName: agent.displayName ?? null };
+  return { ok: true, view, displayName: agent.displayName ?? null };
 }
 
 type DisableScheduleResult =
@@ -375,30 +437,6 @@ async function loadAgentForDeploy(
     .limit(1);
 
   return agent ?? null;
-}
-
-async function findExistingSchedule(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly agentId: string;
-    readonly name: string;
-  },
-): Promise<typeof zeroAgentSchedules.$inferSelect | null> {
-  const [existing] = await db
-    .select()
-    .from(zeroAgentSchedules)
-    .where(
-      and(
-        eq(zeroAgentSchedules.agentId, args.agentId),
-        eq(zeroAgentSchedules.name, args.name),
-        eq(zeroAgentSchedules.orgId, args.orgId),
-        eq(zeroAgentSchedules.userId, args.userId),
-      ),
-    )
-    .limit(1);
-  return existing ?? null;
 }
 
 /**
@@ -483,35 +521,43 @@ async function resolveScheduleChatThreadLink(args: {
 async function updateExistingSchedule(
   db: Db,
   args: {
-    readonly existingId: string;
+    readonly existing: ScheduleView;
     readonly request: DeployScheduleBody;
-    readonly triggerType: "cron" | "once" | "loop";
+    readonly triggerType: TimeTriggerKind;
     readonly nextRunAt: Date | null;
     readonly currentTime: Date;
   },
-): Promise<typeof zeroAgentSchedules.$inferSelect> {
-  const [updated] = await db
-    .update(zeroAgentSchedules)
-    .set({
-      triggerType: args.triggerType,
-      cronExpression: args.request.cronExpression ?? null,
-      atTime: args.request.atTime ? new Date(args.request.atTime) : null,
-      intervalSeconds: args.request.intervalSeconds ?? null,
-      timezone: args.request.timezone,
-      prompt: args.request.prompt,
-      description: args.request.description ?? null,
-      appendSystemPrompt: args.request.appendSystemPrompt ?? null,
-      nextRunAt: args.nextRunAt,
-      consecutiveFailures: 0,
-      updatedAt: args.currentTime,
-    })
-    .where(eq(zeroAgentSchedules.id, args.existingId))
-    .returning();
-
-  if (!updated) {
-    throw new Error(`Failed to update schedule ${args.request.name}`);
-  }
-  return updated;
+): Promise<ScheduleView> {
+  return await db.transaction(async (tx) => {
+    const [automation] = await tx
+      .update(automations)
+      .set({
+        instruction: args.request.prompt,
+        description: args.request.description ?? null,
+        appendSystemPrompt: args.request.appendSystemPrompt ?? null,
+        updatedAt: args.currentTime,
+      })
+      .where(eq(automations.id, args.existing.automation.id))
+      .returning();
+    const [trigger] = await tx
+      .update(automationTriggers)
+      .set({
+        kind: args.triggerType,
+        cronExpression: args.request.cronExpression ?? null,
+        atTime: args.request.atTime ? new Date(args.request.atTime) : null,
+        intervalSeconds: args.request.intervalSeconds ?? null,
+        timezone: args.request.timezone,
+        nextRunAt: args.nextRunAt,
+        consecutiveFailures: 0,
+        updatedAt: args.currentTime,
+      })
+      .where(eq(automationTriggers.id, args.existing.trigger.id))
+      .returning();
+    if (!automation || !trigger) {
+      throw new Error(`Failed to update schedule ${args.request.name}`);
+    }
+    return { automation, trigger };
+  });
 }
 
 async function insertNewSchedule(
@@ -520,7 +566,7 @@ async function insertNewSchedule(
     readonly userId: string;
     readonly orgId: string;
     readonly request: DeployScheduleBody;
-    readonly triggerType: "cron" | "once" | "loop";
+    readonly triggerType: TimeTriggerKind;
     readonly nextRunAt: Date | null;
     readonly currentTime: Date;
     // Resolved chat-thread link. Null only when createChatThread is true (the
@@ -529,7 +575,7 @@ async function insertNewSchedule(
     readonly chatThreadId: string | null;
     readonly createChatThread: boolean;
   },
-): Promise<typeof zeroAgentSchedules.$inferSelect> {
+): Promise<ScheduleView> {
   const created = await db.transaction(async (tx) => {
     let chatThreadId = args.chatThreadId;
     if (args.createChatThread) {
@@ -556,36 +602,49 @@ async function insertNewSchedule(
       throw new Error("insertNewSchedule: resolved chat thread id is null");
     }
 
-    const [schedule] = await tx
-      .insert(zeroAgentSchedules)
+    const enabled = args.request.enabled ?? false;
+    const [automation] = await tx
+      .insert(automations)
       .values({
-        agentId: args.request.agentId,
-        userId: args.userId,
         orgId: args.orgId,
+        userId: args.userId,
         name: args.request.name,
-        triggerType: args.triggerType,
-        cronExpression: args.request.cronExpression ?? null,
-        atTime: args.request.atTime ? new Date(args.request.atTime) : null,
-        intervalSeconds: args.request.intervalSeconds ?? null,
-        timezone: args.request.timezone,
-        prompt: args.request.prompt,
         description: args.request.description ?? null,
+        instruction: args.request.prompt,
         appendSystemPrompt: args.request.appendSystemPrompt ?? null,
+        agentId: args.request.agentId,
         chatThreadId,
-        enabled: args.request.enabled ?? false,
-        nextRunAt: args.nextRunAt,
-        consecutiveFailures: 0,
+        interpreterKind: "time",
+        enabled,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
       .returning();
-
-    return schedule;
+    if (!automation) {
+      throw new Error(`Failed to create schedule ${args.request.name}`);
+    }
+    const [trigger] = await tx
+      .insert(automationTriggers)
+      .values({
+        automationId: automation.id,
+        kind: args.triggerType,
+        cronExpression: args.request.cronExpression ?? null,
+        atTime: args.request.atTime ? new Date(args.request.atTime) : null,
+        intervalSeconds: args.request.intervalSeconds ?? null,
+        timezone: args.request.timezone,
+        nextRunAt: args.nextRunAt,
+        consecutiveFailures: 0,
+        enabled,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning();
+    if (!trigger) {
+      throw new Error(`Failed to create schedule ${args.request.name}`);
+    }
+    return { automation, trigger };
   });
 
-  if (!created) {
-    throw new Error(`Failed to create schedule ${args.request.name}`);
-  }
   return created;
 }
 
@@ -623,13 +682,28 @@ export const deploySchedule$ = command(
       return schedulePast;
     }
 
-    const existing = await findExistingSchedule(db, {
+    const existing = await findScheduleView(db, {
       userId: args.userId,
       orgId: args.orgId,
       agentId: args.body.agentId,
       name: args.body.name,
     });
     signal.throwIfAborted();
+    if (!existing) {
+      const nameTaken = await isNameTakenByNonTimeAutomation(db, {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentId: args.body.agentId,
+        name: args.body.name,
+      });
+      signal.throwIfAborted();
+      if (nameTaken) {
+        return {
+          kind: "bad_request",
+          message: `Name ${args.body.name} is already used by a non-schedule automation on this agent`,
+        };
+      }
+    }
 
     // Chat-mode linkage: a NEW schedule is linked to either an owned supplied
     // thread or a server-created web chat thread. The link is create-only /
@@ -649,7 +723,7 @@ export const deploySchedule$ = command(
 
     const effectiveBody =
       existing && args.body.enabled === undefined
-        ? { ...args.body, enabled: existing.enabled }
+        ? { ...args.body, enabled: existing.automation.enabled }
         : args.body;
     const bodyWithDescription =
       effectiveBody.description === undefined
@@ -667,9 +741,9 @@ export const deploySchedule$ = command(
       bodyWithDescription,
       currentTime,
     );
-    const schedule = existing
+    const view = existing
       ? await updateExistingSchedule(db, {
-          existingId: existing.id,
+          existing,
           request: bodyWithDescription,
           triggerType,
           nextRunAt,
@@ -687,17 +761,11 @@ export const deploySchedule$ = command(
         });
     signal.throwIfAborted();
 
-    // Dual-write the schedule into the events-first tables (data-sync only; no
-    // run is created). Keyed on automations.sourceScheduleId for idempotency.
-    // Best-effort: a mirror failure never fails the deploy.
-    await syncScheduleToAutomationSafely(db, schedule);
-    signal.throwIfAborted();
-
     // Notify the linked chat thread so its header schedule menu refreshes the
     // thread-scoped list in real time.
     await publishChatThreadSchedulesChangedSafely(
       args.userId,
-      schedule.chatThreadId,
+      view.automation.chatThreadId,
     );
     signal.throwIfAborted();
 
@@ -705,7 +773,7 @@ export const deploySchedule$ = command(
       kind: "ok",
       status: existing ? 200 : 201,
       response: {
-        schedule: scheduleResponse(schedule, agent.displayName),
+        schedule: scheduleResponse(view, agent.displayName),
         created: !existing,
       },
     };
@@ -731,28 +799,28 @@ export const disableSchedule$ = command(
       return { kind: "not_found" };
     }
 
-    const [updated] = await db
-      .update(zeroAgentSchedules)
-      .set({
-        enabled: false,
-        retryStartedAt: null,
-        updatedAt: nowDate(),
-      })
-      .where(eq(zeroAgentSchedules.id, ownership.schedule.id))
-      .returning();
+    const currentTime = nowDate();
+    const updated = await db.transaction(async (tx) => {
+      const [automation] = await tx
+        .update(automations)
+        .set({ enabled: false, updatedAt: currentTime })
+        .where(eq(automations.id, ownership.view.automation.id))
+        .returning();
+      const [trigger] = await tx
+        .update(automationTriggers)
+        .set({ enabled: false, updatedAt: currentTime })
+        .where(eq(automationTriggers.id, ownership.view.trigger.id))
+        .returning();
+      return automation && trigger ? { automation, trigger } : null;
+    });
     signal.throwIfAborted();
     if (!updated) {
       return { kind: "not_found" };
     }
 
-    // Mirror the disabled state into the events-first tables (data-sync only,
-    // best-effort).
-    await syncScheduleToAutomationSafely(db, updated);
-    signal.throwIfAborted();
-
     await publishChatThreadSchedulesChangedSafely(
       args.userId,
-      updated.chatThreadId,
+      updated.automation.chatThreadId,
     );
     signal.throwIfAborted();
 
@@ -782,21 +850,16 @@ export const deleteSchedule$ = command(
       return { kind: "not_found" };
     }
 
-    const chatThreadId = ownership.schedule.chatThreadId;
+    const chatThreadId = ownership.view.automation.chatThreadId;
+    // The trigger row is removed by the FK cascade.
     const [deleted] = await db
-      .delete(zeroAgentSchedules)
-      .where(eq(zeroAgentSchedules.id, ownership.schedule.id))
-      .returning({ id: zeroAgentSchedules.id });
+      .delete(automations)
+      .where(eq(automations.id, ownership.view.automation.id))
+      .returning({ id: automations.id });
     signal.throwIfAborted();
     if (!deleted) {
       return { kind: "not_found" };
     }
-
-    // Drop the events-first mirror of the schedule (its time trigger row is
-    // removed by the FK cascade). Idempotent — a no-op when no mirror exists;
-    // best-effort: a mirror failure never fails the delete.
-    await deleteScheduleAutomationSafely(db, ownership.schedule.id);
-    signal.throwIfAborted();
 
     // Notify the linked chat thread so its header schedule menu drops the
     // deleted entry in real time.
@@ -825,50 +888,55 @@ export const enableSchedule$ = command(
     if (!ownership.ok) {
       return { kind: "not_found" };
     }
-    const { schedule, displayName } = ownership;
+    const { view, displayName } = ownership;
+    const { trigger } = view;
 
-    const now = nowDate();
+    const currentTime = nowDate();
     let nextRunAt: Date | null = null;
-    if (schedule.triggerType === "loop") {
-      nextRunAt = now;
-    } else if (schedule.cronExpression) {
+    if (trigger.kind === "loop") {
+      nextRunAt = currentTime;
+    } else if (trigger.cronExpression) {
       nextRunAt = calculateNextRun(
-        schedule.cronExpression,
-        schedule.timezone,
-        now,
+        trigger.cronExpression,
+        trigger.timezone,
+        currentTime,
       );
-    } else if (schedule.atTime) {
-      if (schedule.atTime > now) {
-        nextRunAt = schedule.atTime;
+    } else if (trigger.atTime) {
+      if (trigger.atTime > currentTime) {
+        nextRunAt = trigger.atTime;
       } else {
         return { kind: "schedule_past" };
       }
     }
 
-    const [updated] = await db
-      .update(zeroAgentSchedules)
-      .set({
-        enabled: true,
-        nextRunAt,
-        retryStartedAt: null,
-        consecutiveFailures: 0,
-        updatedAt: now,
-      })
-      .where(eq(zeroAgentSchedules.id, schedule.id))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [automation] = await tx
+        .update(automations)
+        .set({ enabled: true, updatedAt: currentTime })
+        .where(eq(automations.id, view.automation.id))
+        .returning();
+      const [updatedTrigger] = await tx
+        .update(automationTriggers)
+        .set({
+          enabled: true,
+          nextRunAt,
+          consecutiveFailures: 0,
+          updatedAt: currentTime,
+        })
+        .where(eq(automationTriggers.id, trigger.id))
+        .returning();
+      return automation && updatedTrigger
+        ? { automation, trigger: updatedTrigger }
+        : null;
+    });
     signal.throwIfAborted();
     if (!updated) {
       return { kind: "not_found" };
     }
 
-    // Mirror the enabled state + recomputed nextRunAt into the events-first
-    // tables (data-sync only, best-effort; no run is created).
-    await syncScheduleToAutomationSafely(db, updated);
-    signal.throwIfAborted();
-
     await publishChatThreadSchedulesChangedSafely(
       args.userId,
-      updated.chatThreadId,
+      updated.automation.chatThreadId,
     );
     signal.throwIfAborted();
 
@@ -883,219 +951,33 @@ function isActivePreviousRunStatus(status: string): boolean {
   return status === "pending" || status === "running";
 }
 
-function isExecuteScheduleFailure(
-  error: unknown,
-): error is ExecuteScheduleFailure {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    (error.kind === "not_found" ||
-      error.kind === "conflict" ||
-      error.kind === "run_error")
-  );
-}
-
-function scheduleFailureMessage(error: unknown): string {
-  if (!isExecuteScheduleFailure(error)) {
-    return error instanceof Error ? error.message : String(error);
-  }
-  if (error.kind === "run_error") {
-    return `${error.response.status} ${error.response.body.error.code}: ${error.response.body.error.message}`;
-  }
-  return error.message;
-}
-
-function isInsufficientCreditsFailure(error: unknown): boolean {
-  return (
-    isExecuteScheduleFailure(error) &&
-    error.kind === "run_error" &&
-    error.response.body.error.code === "INSUFFICIENT_CREDITS"
-  );
-}
-
-async function recordSchedulePreRunFailure(
-  db: Db,
-  schedule: typeof zeroAgentSchedules.$inferSelect,
-  error: unknown,
-  signal: AbortSignal,
-): Promise<void> {
-  const isCreditError = isInsufficientCreditsFailure(error);
-  const failureMessage = scheduleFailureMessage(error);
-  const failureContext = {
-    scheduleId: schedule.id,
-    scheduleName: schedule.name,
-    orgId: schedule.orgId,
-    userId: schedule.userId,
-    error: failureMessage,
-    stack: error instanceof Error ? error.stack : undefined,
-  };
-  if (isCreditError) {
-    log.warn("Schedule skipped: insufficient credits", failureContext);
-  } else {
-    log.error("Schedule pre-run failed", failureContext);
-  }
-
-  const failureTime = nowDate();
-  const newFailureCount = schedule.consecutiveFailures + 1;
-  const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
-  const nextRunAt = new TimeTrigger().advanceAfterPreRunFailure({
-    schedule,
-    failureTime,
-    shouldDisable,
-  });
-
-  const [failed] = await db
-    .update(zeroAgentSchedules)
-    .set({
-      consecutiveFailures: newFailureCount,
-      ...(shouldDisable ? { enabled: false } : {}),
-      nextRunAt,
-      updatedAt: failureTime,
-    })
-    .where(eq(zeroAgentSchedules.id, schedule.id))
-    .returning();
-  signal.throwIfAborted();
-  if (failed) {
-    // Mirror the failure bookkeeping (counter, possible auto-disable, next
-    // run) onto the events-first tables.
-    await syncScheduleToAutomationSafely(db, failed);
-    signal.throwIfAborted();
-  }
-
-  if (shouldDisable) {
-    log.warn("Schedule auto-disabled after consecutive pre-run failures", {
-      scheduleId: schedule.id,
-      scheduleName: schedule.name,
-      orgId: schedule.orgId,
-      userId: schedule.userId,
-      consecutiveFailures: newFailureCount,
-      reason: isCreditError ? "insufficient_credits" : "pre_run_failure",
-    });
-  }
-}
-
-export const executeDueSchedules$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ExecuteDueSchedulesResult> => {
-    const db = set(writeDb$);
-    const currentTime = nowDate();
-    log.debug("Checking for due schedules", {
-      currentTime: currentTime.toISOString(),
-    });
-
-    const dueSchedules = await db
-      .select()
-      .from(zeroAgentSchedules)
-      .where(
-        and(
-          eq(zeroAgentSchedules.enabled, true),
-          lte(zeroAgentSchedules.nextRunAt, currentTime),
-        ),
-      )
-      .limit(10);
-    signal.throwIfAborted();
-
-    let executed = 0;
-    let skipped = 0;
-    const timeTrigger = new TimeTrigger();
-
-    for (const schedule of dueSchedules) {
-      if (schedule.lastRunId) {
-        const [lastRun] = await db
-          .select({ status: agentRuns.status })
-          .from(agentRuns)
-          .where(eq(agentRuns.id, schedule.lastRunId))
-          .limit(1);
-        signal.throwIfAborted();
-
-        if (lastRun && isActivePreviousRunStatus(lastRun.status)) {
-          log.debug("Skipping schedule: previous run still active", {
-            scheduleId: schedule.id,
-            scheduleName: schedule.name,
-          });
-          skipped++;
-          continue;
-        }
-      }
-
-      const claimed = await timeTrigger.evaluate({ db, schedule, currentTime });
-      signal.throwIfAborted();
-
-      if (claimed) {
-        // Mirror the claimed runtime state (next_run_at cleared, lastRunAt
-        // stamped, once disabled) so the events-first tables track every fire,
-        // not just CRUD-time snapshots.
-        await syncScheduleToAutomationSafely(db, claimed);
-        signal.throwIfAborted();
-      }
-
-      if (!claimed) {
-        log.debug("Skipping schedule: already claimed", {
-          scheduleId: schedule.id,
-          scheduleName: schedule.name,
-        });
-        skipped++;
-        continue;
-      }
-
-      const runResult = await settle(
-        set(
-          runScheduleNow$,
-          {
-            body: { scheduleId: schedule.id },
-            orgId: schedule.orgId,
-            apiStartTime: now(),
-          },
-          signal,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!runResult.ok) {
-        await recordSchedulePreRunFailure(
-          db,
-          schedule,
-          runResult.error,
-          signal,
-        );
-        skipped++;
-        continue;
-      }
-      const result = runResult.value;
-      if (result.kind !== "ok") {
-        await recordSchedulePreRunFailure(db, schedule, result, signal);
-        skipped++;
-        continue;
-      }
-      executed++;
-    }
-
-    log.debug("Executed due schedules", { executed, skipped });
-    return { executed, skipped };
-  },
-);
-
 type ScheduleRunModelContext =
   | {
       readonly ok: true;
       readonly modelPin: ModelFirstPin;
       readonly effectiveModelProvider: string | null | undefined;
     }
-  | { readonly ok: false; readonly failure: ExecuteScheduleFailure };
+  | {
+      readonly ok: false;
+      readonly failure: Exclude<RunScheduleNowResult, { kind: "ok" }>;
+    };
 
 // Resolve the model context for a scheduled run: the thread model pin (org
 // default if unpinned) and the admitted provider. No user is present to receive
 // a model-config / credits error, so failures surface as run_error (normalized
-// to 400) feeding consecutiveFailures / the manual run-now response.
+// to 400) feeding the manual run-now response.
 async function resolveScheduleRunModelContext(args: {
   readonly db: Db;
-  readonly schedule: typeof zeroAgentSchedules.$inferSelect;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<ScheduleRunModelContext> {
   const threadModelPin = await resolveScheduleChatThreadModelPin({
     db: args.db,
-    orgId: args.schedule.orgId,
-    userId: args.schedule.userId,
-    threadId: args.schedule.chatThreadId,
+    orgId: args.orgId,
+    userId: args.userId,
+    threadId: args.chatThreadId,
   });
   args.signal.throwIfAborted();
   if ("status" in threadModelPin) {
@@ -1110,8 +992,8 @@ async function resolveScheduleRunModelContext(args: {
 
   const providerAdmission = await resolveModelFirstProviderAdmission({
     db: args.db,
-    orgId: args.schedule.orgId,
-    userId: args.schedule.userId,
+    orgId: args.orgId,
+    userId: args.userId,
     modelPin: threadModelPin,
     requestedModelProvider: undefined,
   });
@@ -1130,10 +1012,54 @@ async function resolveScheduleRunModelContext(args: {
   };
 }
 
-// Render the scheduled run as a web-chat turn in the linked thread. Model comes
-// from the thread pin (org default if unpinned); the session is always fresh
-// (no sessionId); the chat callback owns the summary while the reschedule
-// callback advances next_run_at (D9).
+// After the run is created: render it as a web-chat turn (with the schedule
+// chip), persist the resolved model fields, and stamp the trigger's lastRunId
+// for the skip-if-active check.
+async function persistManualRunSideEffects(args: {
+  readonly db: Db;
+  readonly view: ScheduleView;
+  readonly runId: string;
+  readonly queued: boolean;
+  readonly prompt: string;
+  readonly modelPin: ModelFirstPin;
+  readonly effectiveModelProvider: string | null | undefined;
+}): Promise<void> {
+  const { automation, trigger } = args.view;
+  await postAutomationUserMessage({
+    db: args.db,
+    threadId: automation.chatThreadId,
+    userId: automation.userId,
+    runId: args.runId,
+    prompt: args.prompt,
+    appendQueueMarker: args.queued,
+    scheduleId: automation.sourceScheduleId ?? undefined,
+    scheduleTitle: automation.name,
+    scheduleSnapshot: chatMessageScheduleSnapshot(automation),
+  });
+
+  await args.db
+    .update(zeroRuns)
+    .set({
+      modelProvider: args.effectiveModelProvider,
+      modelProviderId: args.modelPin.modelProviderId,
+      modelProviderCredentialScope: args.modelPin.modelProviderCredentialScope,
+      selectedModel: args.modelPin.selectedModel,
+    })
+    .where(eq(zeroRuns.id, args.runId));
+
+  await args.db
+    .update(automationTriggers)
+    .set({ lastRunId: args.runId })
+    .where(eq(automationTriggers.id, trigger.id));
+}
+
+// Manually fire a schedule as a web-chat turn in its linked thread. The id is
+// the automation id (D2). Model comes from the thread pin (org default if
+// unpinned); the session is always fresh (no sessionId). The run carries the
+// trigger-keyed reschedule callback (advances next_run_at on completion when
+// the trigger was claimed; a manual fire did not claim, so the advance lands on
+// an already-set next_run_at — same semantics the schedule path always had) and
+// the chat callback that owns the summary.
 export const runScheduleNow$ = command(
   async (
     { set },
@@ -1145,34 +1071,37 @@ export const runScheduleNow$ = command(
     signal: AbortSignal,
   ): Promise<RunScheduleNowResult> => {
     const db = set(writeDb$);
-    const [schedule] = await db
-      .select()
-      .from(zeroAgentSchedules)
+    const [view] = await db
+      .select({ automation: automations, trigger: automationTriggers })
+      .from(automations)
+      .innerJoin(
+        automationTriggers,
+        eq(automationTriggers.automationId, automations.id),
+      )
       .where(
         and(
-          eq(zeroAgentSchedules.id, args.body.scheduleId),
-          eq(zeroAgentSchedules.orgId, args.orgId),
+          eq(automations.id, args.body.scheduleId),
+          eq(automations.orgId, args.orgId),
+          inArray(automationTriggers.kind, [...TIME_TRIGGER_KINDS]),
         ),
       )
       .limit(1);
     signal.throwIfAborted();
 
-    if (!schedule) {
+    if (!view) {
       return { kind: "not_found", message: "Schedule not found" };
     }
+    const { automation, trigger } = view;
 
-    if (schedule.lastRunId) {
+    if (trigger.lastRunId) {
       const [lastRun] = await db
         .select({ status: agentRuns.status })
         .from(agentRuns)
-        .where(eq(agentRuns.id, schedule.lastRunId))
+        .where(eq(agentRuns.id, trigger.lastRunId))
         .limit(1);
       signal.throwIfAborted();
 
-      if (
-        lastRun &&
-        (lastRun.status === "pending" || lastRun.status === "running")
-      ) {
+      if (lastRun && isActivePreviousRunStatus(lastRun.status)) {
         return {
           kind: "conflict",
           message: "Previous run is still active",
@@ -1182,7 +1111,9 @@ export const runScheduleNow$ = command(
 
     const modelContext = await resolveScheduleRunModelContext({
       db,
-      schedule,
+      orgId: automation.orgId,
+      userId: automation.userId,
+      chatThreadId: automation.chatThreadId,
       signal,
     });
     if (!modelContext.ok) {
@@ -1190,23 +1121,34 @@ export const runScheduleNow$ = command(
     }
     const { modelPin, effectiveModelProvider } = modelContext;
 
-    // The single default interpreter handles every Automation kind, keyed off a
-    // time trigger event here. The registry is deferred to the first fetching
+    // The single default interpreter handles every Automation kind, keyed off
+    // an automation-table time trigger event (provenance + trigger-keyed
+    // reschedule callback). The registry is deferred to the first fetching
     // interpreter (e.g. Gmail).
-    const automation: Automation = scheduleToAutomation(schedule);
-    const runInput = await new DefaultInterpreter().interpret(automation, {
-      kind: "time",
-      scheduleId: schedule.id,
-    });
+    const runInput = await new DefaultInterpreter().interpret(
+      automationRowToTimeAutomation({
+        id: automation.id,
+        agentId: automation.agentId,
+        orgId: automation.orgId,
+        userId: automation.userId,
+        chatThreadId: automation.chatThreadId,
+        instruction: automation.instruction,
+        appendSystemPrompt: automation.appendSystemPrompt,
+        triggerType: trigger.kind as TimeTriggerKind,
+        cronExpression: trigger.cronExpression,
+        timezone: trigger.timezone,
+      }),
+      { kind: "automation-time", triggerId: trigger.id },
+    );
     signal.throwIfAborted();
 
     const result = await set(
       createZeroRun$,
       {
         auth: {
-          orgId: schedule.orgId,
+          orgId: automation.orgId,
           orgRole: "member",
-          userId: schedule.userId,
+          userId: automation.userId,
           tokenType: "session",
         },
         body: {
@@ -1235,42 +1177,16 @@ export const runScheduleNow$ = command(
       return { kind: "run_error", response: result };
     }
 
-    await postScheduleUserMessage({
+    await persistManualRunSideEffects({
       db,
-      threadId: schedule.chatThreadId,
-      userId: schedule.userId,
+      view,
       runId: result.body.runId,
-      prompt: schedule.prompt,
-      appendQueueMarker: result.body.status === "queued",
-      scheduleId: schedule.id,
-      scheduleTitle: schedule.name,
-      scheduleSnapshot: chatMessageScheduleSnapshot(schedule),
+      queued: result.body.status === "queued",
+      prompt: runInput.prompt,
+      modelPin,
+      effectiveModelProvider,
     });
     signal.throwIfAborted();
-
-    await db
-      .update(zeroRuns)
-      .set({
-        modelProvider: effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
-      })
-      .where(eq(zeroRuns.id, result.body.runId));
-    signal.throwIfAborted();
-
-    const [stamped] = await db
-      .update(zeroAgentSchedules)
-      .set({ lastRunId: result.body.runId })
-      .where(eq(zeroAgentSchedules.id, schedule.id))
-      .returning();
-    signal.throwIfAborted();
-    if (stamped) {
-      // Mirror lastRunId so the events-first trigger's skip-if-active check
-      // sees the same in-flight run the live poller does.
-      await syncScheduleToAutomationSafely(db, stamped);
-      signal.throwIfAborted();
-    }
 
     return { kind: "ok", runId: result.body.runId };
   },
@@ -1282,17 +1198,22 @@ export function zeroScheduleList(args: {
 }): Computed<Promise<ScheduleListResponse>> {
   return computed(async (get): Promise<ScheduleListResponse> => {
     const db = get(db$);
-    const schedules = await db
-      .select()
-      .from(zeroAgentSchedules)
+    const views = await db
+      .select({ automation: automations, trigger: automationTriggers })
+      .from(automations)
+      .innerJoin(
+        automationTriggers,
+        eq(automationTriggers.automationId, automations.id),
+      )
       .where(
         and(
-          eq(zeroAgentSchedules.userId, args.userId),
-          eq(zeroAgentSchedules.orgId, args.orgId),
+          eq(automations.userId, args.userId),
+          eq(automations.orgId, args.orgId),
+          inArray(automationTriggers.kind, [...TIME_TRIGGER_KINDS]),
         ),
       );
 
-    if (schedules.length === 0) {
+    if (views.length === 0) {
       return { schedules: [] };
     }
 
@@ -1306,8 +1227,8 @@ export function zeroScheduleList(args: {
       .where(
         inArray(
           agentComposes.id,
-          schedules.map((schedule) => {
-            return schedule.agentId;
+          views.map((view) => {
+            return view.automation.agentId;
           }),
         ),
       );
@@ -1317,12 +1238,12 @@ export function zeroScheduleList(args: {
       }),
     );
 
-    const responses = schedules.flatMap((schedule) => {
-      if (!agentMap.has(schedule.agentId)) {
+    const responses = views.flatMap((view) => {
+      if (!agentMap.has(view.automation.agentId)) {
         return [];
       }
       return [
-        scheduleResponse(schedule, agentMap.get(schedule.agentId) ?? null),
+        scheduleResponse(view, agentMap.get(view.automation.agentId) ?? null),
       ];
     });
 
