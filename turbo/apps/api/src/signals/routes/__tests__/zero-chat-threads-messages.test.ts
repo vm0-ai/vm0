@@ -366,6 +366,54 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(response.body.messages[0]).not.toHaveProperty("status");
   });
 
+  it("does not expose agent run status on assistant paged messages", async () => {
+    const thread = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: thread.orgId,
+        userId: thread.userId,
+        composeId: thread.composeId,
+        status: "completed",
+      },
+      context.signal,
+    );
+    await store.set(
+      addRunToThread$,
+      { threadId: thread.threadId, runId, prompt: "test" },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatMessage$,
+      thread,
+      {
+        role: "assistant",
+        content: "Done",
+        runId,
+        createdAt: new Date("2026-01-01T00:00:01.000Z"),
+      },
+      context.signal,
+    );
+    mocks.clerk.session(thread.userId, thread.orgId);
+
+    const client = setupApp({ context })(chatThreadMessagesContract);
+    const response = await accept(
+      client.list({
+        params: { threadId: thread.threadId },
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const assistant = response.body.messages.find((message) => {
+      return message.role === "assistant";
+    });
+    expect(assistant).toMatchObject({ role: "assistant", content: "Done" });
+    expect(assistant).not.toHaveProperty("status");
+  });
+
   it("resolves attach files to permanent CDN URLs in paged messages", async () => {
     const fixture = await trackThread(
       store.set(seedZeroChatThread$, {}, context.signal),

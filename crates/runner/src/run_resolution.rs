@@ -14,8 +14,12 @@ async fn load_base_dir(config_path: &Path) -> Option<PathBuf> {
     struct ConfigShape {
         base_dir: PathBuf,
     }
-    let content = match tokio::fs::read_to_string(config_path).await {
-        Ok(c) => c,
+    let content = match crate::config::read_diagnostic_config_to_string(config_path).await {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            tracing::warn!(path = %config_path.display(), "skipping runner: config is missing");
+            return None;
+        }
         Err(e) => {
             tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot read config");
             return None;

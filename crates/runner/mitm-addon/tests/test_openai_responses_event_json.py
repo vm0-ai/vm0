@@ -2,10 +2,12 @@
 
 import json
 
+import usage.openai_responses as openai_responses
 from usage import (
     extract_openai_responses_usage_from_event_json,
     merge_openai_responses_usage_result,
 )
+from usage.json_selective import JsonExtractionResult
 
 
 def test_extracts_usage_from_wrapped_response_completed_event():
@@ -159,6 +161,143 @@ def test_returns_none_for_non_usage_event_type():
     ).encode()
 
     assert extract_openai_responses_usage_from_event_json(body) is None
+
+
+def test_non_terminal_event_skips_full_usage_extractor(monkeypatch):
+    def fail_extractor(**_kwargs):
+        raise AssertionError("full extractor should not run for non-terminal events")
+
+    monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", fail_extractor)
+    body = json.dumps(
+        {
+            "type": "response.output_text.delta",
+            "delta": "x" * 4096,
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) is None
+
+
+def test_non_terminal_prefilter_ignores_nested_types_and_payload_text(monkeypatch):
+    def fail_extractor(**_kwargs):
+        raise AssertionError("full extractor should not run for non-terminal events")
+
+    monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", fail_extractor)
+    body = json.dumps(
+        {
+            "metadata": {
+                "type": "response.completed",
+                "items": [True, None, {"type": "response.failed"}],
+            },
+            "index": 3,
+            "text": 'payload mentions "type":"response.completed"',
+            "type": "response.output_text.delta",
+            "delta": "ignored",
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) is None
+
+
+def test_duplicate_top_level_type_uses_first_type_boundary(monkeypatch):
+    def fail_extractor(**_kwargs):
+        raise AssertionError("duplicate type boundary should not scan beyond first type")
+
+    monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", fail_extractor)
+
+    assert (
+        extract_openai_responses_usage_from_event_json(
+            b'{"type":"response.output_text.delta",'
+            b'"type":"response.completed",'
+            b'"response":{"usage":{"input_tokens":1,"output_tokens":1}}}'
+        )
+        is None
+    )
+
+
+def test_terminal_event_type_after_skipped_fields_still_extracts_usage():
+    body = json.dumps(
+        {
+            "metadata": {
+                "type": "response.output_text.delta",
+                "items": [1, {"type": "response.failed"}],
+            },
+            "ready": True,
+            "note": None,
+            "type": "response.completed",
+            "response": {
+                "id": "resp_after_fields",
+                "model": "gpt-5.5",
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 5,
+                    "input_tokens_details": {"cached_tokens": 2},
+                },
+            },
+        }
+    ).encode()
+
+    assert extract_openai_responses_usage_from_event_json(body) == {
+        "message_id": "resp_after_fields",
+        "model": "gpt-5.5",
+        "tokens.input": 10,
+        "tokens.output": 5,
+        "tokens.cache_read": 2,
+    }
+
+
+def test_non_string_type_falls_back_to_full_extractor(monkeypatch):
+    class FakeExtractor:
+        def __init__(self, **_kwargs):
+            pass
+
+        def feed(self, _body):
+            pass
+
+        def finish(self):
+            return JsonExtractionResult(
+                complete=True,
+                values={
+                    ("type",): "response.completed",
+                    ("usage", "input_tokens"): 3,
+                    ("usage", "output_tokens"): 2,
+                },
+            )
+
+    monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", FakeExtractor)
+
+    assert extract_openai_responses_usage_from_event_json(b'{"type":123}') == {
+        "tokens.input": 3,
+        "tokens.output": 2,
+    }
+
+
+def test_oversized_type_falls_back_to_full_extractor(monkeypatch):
+    class FakeExtractor:
+        def __init__(self, **_kwargs):
+            pass
+
+        def feed(self, _body):
+            pass
+
+        def finish(self):
+            return JsonExtractionResult(
+                complete=True,
+                values={
+                    ("type",): "response.completed",
+                    ("usage", "input_tokens"): 5,
+                    ("usage", "output_tokens"): 1,
+                },
+            )
+
+    monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", FakeExtractor)
+
+    assert extract_openai_responses_usage_from_event_json(
+        json.dumps({"type": "x" * 2048}).encode()
+    ) == {
+        "tokens.input": 5,
+        "tokens.output": 1,
+    }
 
 
 def test_returns_none_for_malformed_json():

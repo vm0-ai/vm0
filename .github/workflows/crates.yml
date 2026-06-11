@@ -141,18 +141,20 @@ jobs:
           fi
 
           # The api-contracts Rust bindings are generated from selected
-          # TypeScript contract files, but the checked artifact lives under
-          # crates/api-contracts. Keep this output separate from any-changed so
-          # a TS-only contract edit runs the drift check without forcing every
-          # Rust crate job to run. Connector firewall sources are included
-          # because the bindings may materialize shared TS connector data into
-          # Rust-generated artifacts.
+          # TypeScript contract files, but the checked artifacts live under
+          # crates/api-contracts and the runner mitm-addon generated package.
+          # Keep this output separate from any-changed so a TS-only contract
+          # edit runs the drift check without forcing every Rust crate job to
+          # run. Connector firewall sources are included because the generator
+          # materializes shared TS connector data into Rust and Python
+          # generated artifacts.
           api_contracts_rust_bindings_changed=false
           changed_files="$(mktemp)"
           git diff --name-only "$BASE_REF" HEAD > "$changed_files"
           while IFS= read -r changed_file; do
             case "$changed_file" in
               crates/api-contracts/* | \
+              crates/runner/mitm-addon/src/generated/* | \
               turbo/packages/api-contracts/package.json | \
               turbo/packages/api-contracts/tsconfig.json | \
               turbo/packages/api-contracts/src/contracts/* | \
@@ -345,7 +347,7 @@ jobs:
         working-directory: turbo
         run: |
           pnpm -F @vm0/api-contracts generate:rust
-          git diff --exit-code -- ../crates/api-contracts/src/generated
+          git diff --exit-code -- ../crates/api-contracts/src/generated ../crates/runner/mitm-addon/src/generated
 
   mitm-addon-test:
     runs-on: ubuntu-latest

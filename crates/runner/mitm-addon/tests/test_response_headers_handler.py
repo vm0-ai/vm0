@@ -9,9 +9,9 @@ import pytest
 import zstandard
 from mitmproxy.test import tutils
 
-import body_utils
 import mitm_addon
 import response_streaming
+from body_limits import STREAM_BUFFER_LIMIT, STREAM_DECODE_CHUNK_LIMIT
 from tests.flow_helpers import header_map, response_stream
 
 
@@ -60,16 +60,16 @@ class TestResponseHeadersHandler:
 
         callback = response_stream(flow)
         # Fill buffer to just under limit
-        chunk = b"x" * body_utils.STREAM_BUFFER_LIMIT
+        chunk = b"x" * STREAM_BUFFER_LIMIT
         result = callback(chunk)
         assert result == chunk
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is False
 
         # Next chunk should trigger truncation
         result2 = callback(b"overflow")
         assert result2 == b"overflow"  # still forwarded to client
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_stream_callback_large_single_chunk(self, real_flow, headers):
@@ -82,10 +82,10 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = response_stream(flow)
-        big_chunk = b"A" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        big_chunk = b"A" * (STREAM_BUFFER_LIMIT + 1000)
         result = callback(big_chunk)
         assert result == big_chunk  # full chunk forwarded to client
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_stream_callback_partial_fill_then_overflow(self, real_flow, headers):
@@ -98,14 +98,14 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = response_stream(flow)
-        half = body_utils.STREAM_BUFFER_LIMIT // 2
+        half = STREAM_BUFFER_LIMIT // 2
         callback(b"A" * half)
         assert flow.metadata["stream_buffer_state"]["truncated"] is False
 
         # This chunk overflows — should capture up to the limit
-        callback(b"B" * body_utils.STREAM_BUFFER_LIMIT)
-        remaining = body_utils.STREAM_BUFFER_LIMIT - half
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        callback(b"B" * STREAM_BUFFER_LIMIT)
+        remaining = STREAM_BUFFER_LIMIT - half
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer"][:half] == bytearray(b"A" * half)
         assert flow.metadata["stream_buffer"][half:] == bytearray(b"B" * remaining)
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
@@ -193,7 +193,7 @@ class TestResponseHeadersHandler:
         # First parseable line, then ~200 KB of junk.  Parser sees the first
         # line; buffer truncates at STREAM_BUFFER_LIMIT.
         callback(b'{"data":{"id":"1"}}\n' + b"x" * (200 * 1024))
-        assert len(flow.metadata["stream_buffer"]) <= body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) <= STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert flow.metadata["x_ndjson_state"]["data_count"] == 1
         assert "connector_response_finish" in flow.metadata
@@ -214,7 +214,7 @@ class TestResponseHeadersHandler:
         callback(b'{"data":[{"id":"1","text":"')
         callback(b"x" * (200 * 1024))
         callback(b'"}],"includes":{"users":[{"id":"u1"}]}}')
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert "x_ndjson_state" not in flow.metadata
         response_streaming.finalize_connector_response_state(flow)
@@ -263,7 +263,7 @@ class TestResponseHeadersHandler:
         callback = response_stream(flow)
         error_body = b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}'
         callback(error_body)
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_x_stream_gzip_compressed_body(self, real_flow, headers):
@@ -331,7 +331,7 @@ class TestResponseHeadersHandler:
         """Zstd usage parsing should chunk decoded output without total truncation."""
         body = (
             b'{"id":"msg_zstd","model":"claude-sonnet-4-6","content":[{"text":"'
-            + b"A" * (body_utils.STREAM_DECODE_CHUNK_LIMIT * 3)
+            + b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3)
             + b'"}],"usage":{"input_tokens":10,"output_tokens":20}}'
         )
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -484,12 +484,12 @@ class TestResponseHeadersHandler:
 
         callback = response_stream(flow)
         callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
-        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+        callback(b"x" * (STREAM_BUFFER_LIMIT + 1000))
         callback(b'"}],"usage":{"input_tokens":50,"output_tokens":100}}')
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(buf) == STREAM_BUFFER_LIMIT
         assert state["truncated"]
         usage_result, error = flow.metadata["model_json_usage_finish"]()
         assert error is None
@@ -510,12 +510,12 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = response_stream(flow)
-        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        large_chunk = b"x" * (STREAM_BUFFER_LIMIT + 1000)
         callback(large_chunk)
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(buf) == STREAM_BUFFER_LIMIT
         assert state["truncated"]
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_provider_usage" not in flow.metadata
@@ -531,12 +531,12 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = response_stream(flow)
-        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        large_chunk = b"x" * (STREAM_BUFFER_LIMIT + 1000)
         callback(large_chunk)
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(buf) == STREAM_BUFFER_LIMIT
         assert state["truncated"]
 
     def test_billable_x_connector_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
@@ -553,12 +553,12 @@ class TestResponseHeadersHandler:
 
         callback = response_stream(flow)
         callback(b'{"data":[{"id":"1","text":"')
-        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+        callback(b"x" * (STREAM_BUFFER_LIMIT + 1000))
         callback(b'"}],"meta":{"result_count":1}}')
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(buf) == STREAM_BUFFER_LIMIT
         assert state["truncated"]
         response_streaming.finalize_connector_response_state(flow)
         json_state = flow.metadata["x_json_state"]
@@ -578,11 +578,11 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = response_stream(flow)
-        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+        callback(b"x" * (STREAM_BUFFER_LIMIT + 1000))
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(buf) == STREAM_BUFFER_LIMIT
         assert state["truncated"]
         assert "x_ndjson_state" not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
@@ -605,11 +605,11 @@ class TestResponseHeadersHandler:
 
         callback = response_stream(flow)
         callback(b'{"data":{"id":"1"}}\n')
-        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+        callback(b"x" * (STREAM_BUFFER_LIMIT + 1000))
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(buf) == STREAM_BUFFER_LIMIT
         assert state["truncated"]
         assert "x_ndjson_state" not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
@@ -626,12 +626,12 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = response_stream(flow)
-        large_chunk = b"g" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        large_chunk = b"g" * (STREAM_BUFFER_LIMIT + 1000)
         callback(large_chunk)
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(buf) == STREAM_BUFFER_LIMIT
         assert state["truncated"]
         # And no X-specific state gets attached to a non-x flow.
         assert "x_ndjson_state" not in flow.metadata

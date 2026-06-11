@@ -132,9 +132,6 @@ const hostStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
-  if (result.status === "active_host_exists") {
-    return conflict("A Desktop Computer Use host is already active");
-  }
   return {
     status: 200 as const,
     body: { hostId: result.hostId, hostToken: result.hostToken },
@@ -163,9 +160,6 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if (result.status === "invalid_token") {
     return invalidComputerUseToken;
-  }
-  if (result.status === "active_host_exists") {
-    return conflict("A Desktop Computer Use host is already active");
   }
   return {
     status: 200 as const,

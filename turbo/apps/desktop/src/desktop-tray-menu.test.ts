@@ -11,7 +11,7 @@ import {
 } from "./desktop-tray-menu";
 
 const baseHostState: ComputerUseHostRuntimeState = {
-  status: "idle",
+  status: "offline",
   hostId: null,
   lastHeartbeatAt: null,
   lastCommandAt: null,
@@ -189,18 +189,18 @@ describe("desktop tray menu", () => {
     expect(setKeepAwakeEnabled).toHaveBeenCalledWith(false);
   });
 
-  it("enables starting Computer Use when ready and signed in", () => {
+  it("enables starting Computer Use when offline and signed in", () => {
     const startComputerUse = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
-        computerUse: computerUseState({ status: "idle" }),
+        computerUse: computerUseState({ status: "offline" }),
         auth: signedInAuth,
         authError: null,
       },
       trayActions({ startComputerUse }),
     );
 
-    const computerUseMenu = submenu(findItem(menu, "Computer Use: Ready"));
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Offline"));
     const startItem = findItem(computerUseMenu, "Start Computer Use");
 
     expect(startItem.enabled).toBe(true);
@@ -253,7 +253,7 @@ describe("desktop tray menu", () => {
     const openSignIn = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
-        computerUse: computerUseState({ status: "idle" }),
+        computerUse: computerUseState({ status: "offline" }),
         auth: {
           status: "signed_out",
           user: null,
@@ -276,7 +276,7 @@ describe("desktop tray menu", () => {
   it("shows signing in and disables start while auth is signing in", () => {
     const menu = buildDesktopTrayMenuItems(
       {
-        computerUse: computerUseState({ status: "idle" }),
+        computerUse: computerUseState({ status: "offline" }),
         auth: signingInAuth,
         authError: null,
       },
@@ -293,10 +293,10 @@ describe("desktop tray menu", () => {
     expect(findItem(computerUseMenu, "Signing in...").enabled).toBe(false);
   });
 
-  it("keeps stale signed-in auth from showing ready while auth is loading", () => {
+  it("keeps stale signed-in auth from showing offline while auth is loading", () => {
     const menu = buildDesktopTrayMenuItems(
       {
-        computerUse: computerUseState({ status: "idle" }),
+        computerUse: computerUseState({ status: "offline" }),
         auth: signedInAuth,
         authLoading: true,
         authError: null,
@@ -322,7 +322,7 @@ describe("desktop tray menu", () => {
     const menu = buildDesktopTrayMenuItems(
       {
         computerUse: computerUseState(
-          { status: "idle" },
+          { status: "offline" },
           { accessibility: false, screenRecording: false },
         ),
         auth: signedInAuth,
@@ -355,7 +355,7 @@ describe("desktop tray menu", () => {
     const openScreenRecordingSettings = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
-        computerUse: computerUseState({ status: "idle" }),
+        computerUse: computerUseState({ status: "offline" }),
         auth: signedInAuth,
         authError: null,
       },
@@ -365,8 +365,8 @@ describe("desktop tray menu", () => {
       }),
     );
 
-    const computerUseMenu = submenu(findItem(menu, "Computer Use: Ready"));
-    expect(findItem(computerUseMenu, "Status: Ready").enabled).toBe(false);
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Offline"));
+    expect(findItem(computerUseMenu, "Status: Offline").enabled).toBe(false);
     expect(findItem(computerUseMenu, "Accessibility: Ready").enabled).toBe(
       false,
     );

@@ -4,6 +4,7 @@ import type {
   MemberUsage,
   UsageMembersResponse,
 } from "@vm0/api-contracts/contracts/zero-usage";
+import type { UsageRecordRange } from "@vm0/api-contracts/contracts/zero-usage-record";
 import type { UsageRunsResponse } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import {
   agentComposes,
@@ -29,9 +30,12 @@ import {
   mergedRunModel,
   mergedRunOutputTokens,
 } from "./zero-usage-reporting-ledger";
+import { fixedRangeToPeriod } from "./usage-period";
 
 interface UsageMembersArgs {
   readonly orgId: string;
+  readonly range: UsageRecordRange;
+  readonly tz: string;
 }
 
 export const zeroUsageMembers$ = command(
@@ -40,22 +44,33 @@ export const zeroUsageMembers$ = command(
     args: UsageMembersArgs,
     signal: AbortSignal,
   ): Promise<UsageMembersResponse> => {
-    const billingPeriod = await set(getOrgBillingPeriod$, args.orgId, signal);
+    const billingPeriod =
+      args.range === "billingPeriod"
+        ? await set(getOrgBillingPeriod$, args.orgId, signal)
+        : null;
     signal.throwIfAborted();
 
-    if (!billingPeriod) {
+    if (args.range === "billingPeriod" && !billingPeriod) {
       return { period: null, members: [] };
     }
 
+    const period =
+      args.range === "billingPeriod"
+        ? billingPeriod
+        : fixedRangeToPeriod(args.range, args.tz);
+    if (!period) {
+      throw new Error("member usage period was not resolved");
+    }
+
     const db = set(writeDb$);
-    const rows = await getMemberUsageTotals(db, args.orgId, billingPeriod);
+    const rows = await getMemberUsageTotals(db, args.orgId, period);
     signal.throwIfAborted();
 
     if (rows.length === 0) {
       return {
         period: {
-          start: billingPeriod.start.toISOString(),
-          end: billingPeriod.end.toISOString(),
+          start: period.start.toISOString(),
+          end: period.end.toISOString(),
         },
         members: [],
       };
@@ -84,8 +99,8 @@ export const zeroUsageMembers$ = command(
 
     return {
       period: {
-        start: billingPeriod.start.toISOString(),
-        end: billingPeriod.end.toISOString(),
+        start: period.start.toISOString(),
+        end: period.end.toISOString(),
       },
       members,
     };

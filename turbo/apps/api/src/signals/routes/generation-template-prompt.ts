@@ -1,4 +1,8 @@
-import { findDesignSystem, findTemplate } from "@vm0/core/resource-registry";
+import {
+  findDesignSystem,
+  findImageStyle,
+  findTemplate,
+} from "@vm0/core/resource-registry";
 import { VIDEO_STYLE_PRESETS, VIDEO_DIMENSION_DESCRIPTIONS } from "@vm0/core";
 
 interface PresentationGenerationTemplateInput {
@@ -16,9 +20,17 @@ interface VideoGenerationTemplateInput {
   };
 }
 
+interface IllustrationGenerationTemplateInput {
+  readonly type: "illustration";
+  readonly selection: {
+    readonly illustrationStyleId: string;
+  };
+}
+
 type GenerationTemplateInput =
   | PresentationGenerationTemplateInput
-  | VideoGenerationTemplateInput;
+  | VideoGenerationTemplateInput
+  | IllustrationGenerationTemplateInput;
 
 type GenerationTemplatePromptResult =
   | {
@@ -39,6 +51,9 @@ export function buildGenerationTemplatePrompt(
 
   if (generationTemplate.type === "video") {
     return buildVideoGenerationTemplatePrompt(generationTemplate);
+  }
+  if (generationTemplate.type === "illustration") {
+    return buildIllustrationGenerationTemplatePrompt(generationTemplate);
   }
 
   return buildPresentationGenerationTemplatePrompt(generationTemplate);
@@ -118,6 +133,34 @@ function buildVideoGenerationTemplatePrompt(
       "",
       "Generate a single video prompt (2–3 sentences) that applies the above style to the user's scene.",
       "End with: safe for all audiences, positive and uplifting, no violence, no explicit content",
+    ].join("\n"),
+  };
+}
+
+function buildIllustrationGenerationTemplatePrompt(
+  generationTemplate: IllustrationGenerationTemplateInput,
+): GenerationTemplatePromptResult {
+  const imageStyle = findImageStyle(
+    generationTemplate.selection.illustrationStyleId,
+  );
+  if (!imageStyle) {
+    return { status: "invalid", message: "Unknown generation image style" };
+  }
+
+  return {
+    status: "resolved",
+    prompt: [
+      "# Generation Template",
+      "Use the following registered resources for this run.",
+      `Type: ${generationTemplate.type}`,
+      "Tag: illustration",
+      `Image style ID: ${imageStyle.id}`,
+      `Image style name: ${imageStyle.name}`,
+      "",
+      "Instructions:",
+      "- Resolve the image style from the resource registry.",
+      "- Apply it as a generation constraint for the artifact.",
+      "- Keep the user's prompt as the source of the requested content.",
     ].join("\n"),
   };
 }

@@ -37,7 +37,7 @@ function hostState(
   overrides: Partial<ComputerUseHostRuntimeState>,
 ): ComputerUseHostRuntimeState {
   return {
-    status: "idle",
+    status: "offline",
     hostId: null,
     lastHeartbeatAt: null,
     lastCommandAt: null,

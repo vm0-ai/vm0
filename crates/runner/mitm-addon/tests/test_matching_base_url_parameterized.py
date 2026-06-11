@@ -26,6 +26,13 @@ class TestMatchBaseUrl:
         assert rel_path == "/api/v2/tickets"
         assert params == {"Subdomain": "acme"}
 
+    def test_parameterized_base_normalizes_runtime_host_before_params(self):
+        result = matching.match_base_url(
+            "https://Foo.Bar.example.com/api",
+            "https://{sub+}.example.com",
+        )
+        assert result == ("/api", {"sub": "foo.bar"})
+
     def test_parameterized_base_with_query_is_rejected(self):
         result = matching.match_base_url(
             "https://acme.zendesk.com/api/v2/tickets",

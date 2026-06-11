@@ -1124,7 +1124,9 @@ const pollConnectorOAuthDeviceAuth$ = command(
     }: PollConnectorOAuthDeviceAuthArgs,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const client = createClient(zeroConnectorOauthDeviceAuthSessionContract);
+    const client = createClient(zeroConnectorOauthDeviceAuthSessionContract, {
+      apiBase: "www",
+    });
     const isCurrentRequest = (state: ConnectorOAuthDeviceAuthState) => {
       return isCurrentConnectorOAuthDeviceAuthRequest(
         state,
@@ -1279,6 +1281,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
         const createClient = get(zeroClient$);
         const client = createClient(
           zeroConnectorOauthDeviceAuthSessionContract,
+          { apiBase: "www" },
         );
         const startOptionEntries = Object.entries(startOptions ?? {});
         const startSettled = await settle(
@@ -1531,7 +1534,9 @@ export const connectConnectorExternalCode$ = command(
         });
 
         const createClient = get(zeroClient$);
-        const client = createClient(zeroConnectorExternalCodeSessionContract);
+        const client = createClient(zeroConnectorExternalCodeSessionContract, {
+          apiBase: "www",
+        });
         const startSettled = await settle(
           accept(
             client.create({
@@ -1645,7 +1650,9 @@ const completeConnectorExternalCode$ = command(
 
     const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
     const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorExternalCodeSessionContract);
+    const client = createClient(zeroConnectorExternalCodeSessionContract, {
+      apiBase: "www",
+    });
     const completeSettled = await settle(
       accept(
         client.complete({

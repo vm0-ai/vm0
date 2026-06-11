@@ -7,7 +7,7 @@ import { accept } from "../../lib/accept.ts";
 import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { apiBaseForNavigation$ } from "../fetch.ts";
+import { webBaseForNavigation$ } from "../fetch.ts";
 import { searchParams$ } from "../route.ts";
 import { createDeferredPromise } from "../utils.ts";
 import {
@@ -100,11 +100,11 @@ export const connectTelegramAccount$ = command(
             linkStatus?.linked === false
               ? linkStatus.installation?.loginBotId
               : undefined;
-          const apiBase = await get(apiBaseForNavigation$);
+          const webBase = await get(webBaseForNavigation$);
           signal.throwIfAborted();
           const telegramAuth = await requestTelegramAuth(
             telegramLoginBotId ?? params.telegramBotId,
-            apiBase,
+            webBase,
             signal,
           );
           signal.throwIfAborted();

@@ -22,7 +22,7 @@ type AblyConnectHandle =
     tokio::task::JoinHandle<Result<ably_subscriber::Subscription, ably_subscriber::Error>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum PollReason {
+pub(crate) enum PollReason {
     Immediate,
     Deferred,
     WakeupRetry,

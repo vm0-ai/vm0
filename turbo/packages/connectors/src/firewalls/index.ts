@@ -87,7 +87,12 @@ import { cladoFirewall } from "./clado.generated";
 import { clearbitFirewall } from "./clearbit.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
-import { cloudflareFirewall } from "./cloudflare.generated";
+import {
+  cloudflareCategories,
+  cloudflareCategoryOrder,
+  cloudflareDefaultAllowed,
+  cloudflareFirewall,
+} from "./cloudflare.generated";
 import { codaFirewall } from "./coda.generated";
 import { coingeckoFirewall } from "./coingecko.generated";
 import { coresignalFirewall } from "./coresignal.generated";
@@ -674,6 +679,10 @@ const CONNECTOR_CATEGORIES: Partial<
   Record<FirewallConnectorType, ConnectorCategories>
 > = {
   clerk: { categories: clerkCategories, displayOrder: clerkCategoryOrder },
+  cloudflare: {
+    categories: cloudflareCategories,
+    displayOrder: cloudflareCategoryOrder,
+  },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },
@@ -776,6 +785,12 @@ export function getConnectorFirewall(
   return EXPANDED_CONNECTOR_FIREWALLS[type];
 }
 
+export function getAllConnectorFirewalls(): Readonly<
+  typeof EXPANDED_CONNECTOR_FIREWALLS
+> {
+  return EXPANDED_CONNECTOR_FIREWALLS;
+}
+
 /**
  * Per-connector default-allowed permission lists.
  *
@@ -790,6 +805,7 @@ const DEFAULT_ALLOWED: Partial<
   Record<FirewallConnectorType, ReadonlyArray<string>>
 > = {
   clerk: clerkDefaultAllowed,
+  cloudflare: cloudflareDefaultAllowed,
   gmail: gmailDefaultAllowed,
   slack: slackDefaultAllowed,
   stripe: stripeDefaultAllowed,

@@ -458,7 +458,7 @@ function OverviewSection({
               </p>
             </div>
           ) : (
-            <MembersTable members={members} memberMap={memberMap} />
+            <MemberUsageTable members={members} memberMap={memberMap} />
           )}
         </section>
       )}
@@ -466,7 +466,7 @@ function OverviewSection({
   );
 }
 
-function MembersTable({
+export function MemberUsageTable({
   members,
   memberMap,
 }: {

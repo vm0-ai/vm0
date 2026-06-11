@@ -41,9 +41,9 @@
 //! | 0x11 | G→H       | exec_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
-//! Exec operation messages are request-scoped; host/guest dispatch layers must
-//! use a non-zero sequence number for exec
-//! start/started/output/result/cancel/control/control_result messages.
+//! Request-scoped operation messages must use non-zero sequence numbers. This
+//! covers `write_file`, `exec_start`, `exec_cancel`, and `exec_control`; guest
+//! exec lifecycle frames reuse the original non-zero request sequence.
 //! `exec_output.output_seq` is per exec operation and starts at 0,
 //! incrementing by 1 for each output frame across stdout and stderr.
 //! `exec_start.lifecycle` uses 0=one_shot and 1=supervised.

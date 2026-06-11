@@ -1,5 +1,55 @@
 # Changelog
 
+## [8.329.1](https://github.com/vm0-ai/vm0/compare/core-v8.329.0...core-v8.329.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* aggregate team credit usage by member ([#17287](https://github.com/vm0-ai/vm0/issues/17287)) ([542d7eb](https://github.com/vm0-ai/vm0/commit/542d7eb85ecdbc188f85df346cce14c877d8e4d8))
+* reduce template picker white-screen and improve load performance ([#17236](https://github.com/vm0-ai/vm0/issues/17236)) ([72c2fc5](https://github.com/vm0-ai/vm0/commit/72c2fc51578ed4d3410a7df8437049e2eb57a120))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.1
+
+## [8.329.0](https://github.com/vm0-ai/vm0/compare/core-v8.328.1...core-v8.329.0) (2026-06-11)
+
+
+### Features
+
+* **core:** add sampleVideoThumbnailUrl to video style presets ([#17282](https://github.com/vm0-ai/vm0/issues/17282)) ([f76651a](https://github.com/vm0-ai/vm0/commit/f76651a864ded4d04a7da1d20181ded81b223da7))
+* send compact builtin firewall refs to runner ([#17252](https://github.com/vm0-ai/vm0/issues/17252)) ([e65864a](https://github.com/vm0-ai/vm0/commit/e65864afdea65f6ded9b9de7c3bcc057184852aa))
+
+
+### Bug Fixes
+
+* add illustration template preview ([#17276](https://github.com/vm0-ai/vm0/issues/17276)) ([51e0bb1](https://github.com/vm0-ai/vm0/commit/51e0bb1e6bb0db65cc17335a2c3f5742ae68b8e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.0
+    * @vm0/connectors bumped to 1.67.0
+
+## [8.328.1](https://github.com/vm0-ai/vm0/compare/core-v8.328.0...core-v8.328.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* show usage range filter in credit balance ([#17260](https://github.com/vm0-ai/vm0/issues/17260)) ([bdb1d0c](https://github.com/vm0-ai/vm0/commit/bdb1d0c4c0f8c59481fd993908b4ae933b44c324))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.83.0
+
 ## [8.328.0](https://github.com/vm0-ai/vm0/compare/core-v8.327.0...core-v8.328.0) (2026-06-11)
 
 

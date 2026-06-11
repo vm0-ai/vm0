@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.130.1](https://github.com/vm0-ai/vm0/compare/api-v1.130.0...api-v1.130.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* aggregate team credit usage by member ([#17287](https://github.com/vm0-ai/vm0/issues/17287)) ([542d7eb](https://github.com/vm0-ai/vm0/commit/542d7eb85ecdbc188f85df346cce14c877d8e4d8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.1
+    * @vm0/core bumped to 8.329.1
+    * @vm0/db bumped to 1.44.2
+
+## [1.130.0](https://github.com/vm0-ai/vm0/compare/api-v1.129.0...api-v1.130.0) (2026-06-11)
+
+
+### Features
+
+* send compact builtin firewall refs to runner ([#17252](https://github.com/vm0-ai/vm0/issues/17252)) ([e65864a](https://github.com/vm0-ai/vm0/commit/e65864afdea65f6ded9b9de7c3bcc057184852aa))
+
+
+### Bug Fixes
+
+* add illustration template preview ([#17276](https://github.com/vm0-ai/vm0/issues/17276)) ([51e0bb1](https://github.com/vm0-ai/vm0/commit/51e0bb1e6bb0db65cc17335a2c3f5742ae68b8e3))
+* **api:** remove audioInputVerbose feature flag, always use verbose STT ([#17253](https://github.com/vm0-ai/vm0/issues/17253)) ([60c89bc](https://github.com/vm0-ai/vm0/commit/60c89bcc0b76bb10f947f0f707077c275227a430))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.0
+    * @vm0/connectors bumped to 1.67.0
+    * @vm0/core bumped to 8.329.0
+    * @vm0/db bumped to 1.44.1
+
+## [1.129.0](https://github.com/vm0-ai/vm0/compare/api-v1.128.1...api-v1.129.0) (2026-06-11)
+
+
+### Features
+
+* add runner claim pickup telemetry ([#17268](https://github.com/vm0-ai/vm0/issues/17268)) ([270d94e](https://github.com/vm0-ai/vm0/commit/270d94ed8ca7820d4c097c38484871e8373b104b))
+* **db:** drop zero_agent_schedules and retire the legacy schedule paths ([#17258](https://github.com/vm0-ai/vm0/issues/17258)) ([8f89943](https://github.com/vm0-ai/vm0/commit/8f89943a31309f02c35a1c58e1d1cabfc5cfa8ba))
+
+
+### Bug Fixes
+
+* show usage range filter in credit balance ([#17260](https://github.com/vm0-ai/vm0/issues/17260)) ([bdb1d0c](https://github.com/vm0-ai/vm0/commit/bdb1d0c4c0f8c59481fd993908b4ae933b44c324))
+* store run context maps as Axiom entries ([#17232](https://github.com/vm0-ai/vm0/issues/17232)) ([c8ebf36](https://github.com/vm0-ai/vm0/commit/c8ebf363f3c6b60dd7d13094ab9e60327147d05d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.83.0
+    * @vm0/core bumped to 8.328.1
+    * @vm0/db bumped to 1.44.0
+
 ## [1.128.1](https://github.com/vm0-ai/vm0/compare/api-v1.128.0...api-v1.128.1) (2026-06-11)
 
 

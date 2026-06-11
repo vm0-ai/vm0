@@ -20,6 +20,10 @@ import {
   writeSpecFile,
 } from "./codegen";
 import {
+  CLOUDFLARE_OAUTH_SCOPES_URL,
+  CLOUDFLARE_OPENAPI_URL,
+} from "./cloudflare-sources";
+import {
   STRIPE_OPENAPI_URL,
   STRIPE_PERMISSIONS_URL,
   STRIPE_RESTRICTED_API_KEYS_URL,
@@ -240,6 +244,40 @@ const stripeUpdater: Updater = {
   },
 };
 
+const cloudflareUpdater: Updater = {
+  name: "cloudflare",
+  fetch: async () => {
+    const token = process.env.CLOUDFLARE_API_TOKEN;
+    if (!token) {
+      throw new Error(
+        "CLOUDFLARE_API_TOKEN is required to update Cloudflare firewall specs.\n" +
+          "Cloudflare's /oauth/scopes endpoint is the official source for UI permission categories.",
+      );
+    }
+
+    const entries = new Map<string, string>();
+
+    const openApiRes = await fetchRemote(
+      CLOUDFLARE_OPENAPI_URL,
+      "cloudflare: OpenAPI spec",
+    );
+    entries.set(CLOUDFLARE_OPENAPI_URL, await openApiRes.text());
+
+    const oauthScopesRes = await fetchRemote(
+      CLOUDFLARE_OAUTH_SCOPES_URL,
+      "cloudflare: OAuth scopes",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+    entries.set(CLOUDFLARE_OAUTH_SCOPES_URL, await oauthScopesRes.text());
+
+    return entries;
+  },
+};
+
 // ── Updater registry ────────────────────────────────────────────────────
 
 const UPDATERS: Updater[] = [
@@ -247,6 +285,7 @@ const UPDATERS: Updater[] = [
   staticUpdater("clerk", [
     "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2025-11-10.yml",
   ]),
+  cloudflareUpdater,
   staticUpdater("axiom", [
     "https://axiom.co/docs/restapi/versions/v2.json",
     "https://axiom.co/docs/restapi/versions/v1.json",

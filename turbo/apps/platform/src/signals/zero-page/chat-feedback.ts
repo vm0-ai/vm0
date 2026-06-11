@@ -176,6 +176,18 @@ export const dismissFeedback$ = command(({ get, set }) => {
   set(feedbackCopied$, false);
 });
 
+// Dismiss only the floating selection toolbar — the docked tray keeps its
+// comments, so clicking away from a fresh selection never wipes earlier notes.
+export const dismissFeedbackSelection$ = command(({ get, set }) => {
+  const timerId = get(feedbackCopiedTimerId$);
+  if (timerId !== null) {
+    window.clearTimeout(timerId);
+    set(feedbackCopiedTimerId$, null);
+  }
+  set(feedbackSelection$, null);
+  set(feedbackCopied$, false);
+});
+
 // Scrolling detaches the toolbar from its passage, so hide it. The docked tray
 // is pinned above the composer, not to the selection, so it stays put.
 export const dismissFeedbackOnScroll$ = command(({ get, set }) => {

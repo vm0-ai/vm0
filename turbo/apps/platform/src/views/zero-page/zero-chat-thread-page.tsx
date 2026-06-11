@@ -61,7 +61,11 @@ import type {
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_STYLE_PRESETS,
+} from "@vm0/core";
 import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -105,6 +109,10 @@ import {
   completeChatConnectorActionConnect$,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
+import {
+  completedWorkExpandedThreadIds$,
+  toggleCompletedWorkExpanded$,
+} from "../../signals/chat-page/completed-work-folding.ts";
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -186,6 +194,7 @@ import {
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   onlineComputerUseHosts$,
+  reloadOnlineComputerUseHosts$,
   selectedOnlineComputerUseHostId,
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
@@ -2187,6 +2196,23 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
+  const features = useLastResolved(featureSwitch$);
+  const completedWorkFoldingEnabled =
+    features?.[FeatureSwitchKey.ChatCompletedWorkFolding] ?? false;
+  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
+  const allFinished =
+    allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
+  const completedWorkExpandedThreadIds = useGet(
+    completedWorkExpandedThreadIds$,
+  );
+  const workExpanded = completedWorkExpandedThreadIds.has(thread.threadId);
+  const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
+  const shouldFoldCompletedWork =
+    completedWorkFoldingEnabled && allFinished && activeGroups.length > 1;
+  const hiddenGroups = shouldFoldCompletedWork ? activeGroups.slice(0, -1) : [];
+  const visibleGroups = shouldFoldCompletedWork
+    ? activeGroups.slice(-1)
+    : activeGroups;
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -2229,7 +2255,26 @@ function ChatThreadMessagesMain({
             </p>
           </div>
         )}
-        {activeGroups.map((group) => {
+        {shouldFoldCompletedWork && (
+          <CompletedWorkFoldRow
+            groups={activeGroups}
+            expanded={workExpanded}
+            onToggle={() => {
+              toggleCompletedWorkExpanded(thread.threadId);
+            }}
+          />
+        )}
+        {workExpanded &&
+          hiddenGroups.map((group) => {
+            return (
+              <PagedGroupRow
+                key={group.beginMessageId}
+                group={group}
+                thread={thread}
+              />
+            );
+          })}
+        {visibleGroups.map((group) => {
           return (
             <PagedGroupRow
               key={group.beginMessageId}
@@ -2241,6 +2286,80 @@ function ChatThreadMessagesMain({
         <ThinkingIndicator thread={thread} groups={activeGroups} />
       </div>
     </main>
+  );
+}
+
+function parseMessageTime(value: string): number | null {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function formatCompactDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+  const totalHours = Math.round(totalMinutes / 60);
+  return `${totalHours}h`;
+}
+
+function completedWorkLabel(
+  groups: readonly GroupedChatMessageGroup[],
+): string {
+  const timestamps = groups.flatMap((group) => {
+    return group.messages.flatMap((message) => {
+      const timestamp = parseMessageTime(message.createdAt);
+      return timestamp === null ? [] : [timestamp];
+    });
+  });
+  if (timestamps.length < 2) {
+    return "Worked";
+  }
+  const elapsedSeconds = Math.max(
+    1,
+    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 1000),
+  );
+  return `Worked for ${formatCompactDuration(elapsedSeconds)}`;
+}
+
+function CompletedWorkFoldRow({
+  groups,
+  expanded,
+  onToggle,
+}: {
+  groups: readonly GroupedChatMessageGroup[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const label = completedWorkLabel(groups);
+  return (
+    <div
+      data-chat-completed-work-fold
+      className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+    >
+      <div className="hidden @[900px]:block" />
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={expanded ? "Collapse work history" : "Expand work history"}
+        onClick={onToggle}
+        className="group flex h-9 w-full items-center gap-2 rounded-lg px-1 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+      >
+        <span className="min-w-0 shrink-0">{label}</span>
+        <IconChevronRight
+          size={17}
+          stroke={1.7}
+          className={cn(
+            "shrink-0 transition-transform duration-150",
+            expanded && "rotate-90",
+          )}
+        />
+        <span className="h-px min-w-8 flex-1 bg-border/50 transition-colors group-hover:bg-border" />
+      </button>
+    </div>
   );
 }
 
@@ -2464,7 +2583,7 @@ function latestRecommendedFollowups(
   if (!lastMessage || lastMessage.role !== "assistant") {
     return null;
   }
-  if (lastMessage.runLifecycleEvent !== undefined) {
+  if (lastMessage.runLifecycleEvent !== "completed") {
     return null;
   }
   const followups = lastMessage.recommendedFollowups ?? [];
@@ -2869,13 +2988,16 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
   const features = useLastResolved(featureSwitch$);
   const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
   const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
+  const lastResolvedComputerUseHosts =
+    useLastResolved(onlineComputerUseHosts$) ?? [];
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
-      : [];
+      : lastResolvedComputerUseHosts;
   const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
+  const reloadComputerUseHosts = useSet(reloadOnlineComputerUseHosts$);
   const selectedComputerUseHostId =
-    computerUseHostsLoadable.state === "hasData"
+    computerUseHostsLoadable.state === "hasData" || computerUseHosts.length > 0
       ? selectedOnlineComputerUseHostId(
           computerUseHosts,
           storedComputerUseHostId,
@@ -2890,9 +3012,12 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
     computerUse: computerUseEnabled
       ? {
           hosts: computerUseHosts,
-          loading: computerUseHostsLoadable.state === "loading",
+          loading:
+            computerUseHostsLoadable.state === "loading" &&
+            computerUseHosts.length === 0,
           selectedHostId: selectedComputerUseHostId,
           onChange: setComputerUseHostId,
+          onRefresh: reloadComputerUseHosts,
           downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
         }
       : undefined,
@@ -4720,6 +4845,16 @@ function generationTemplateLabel(
     });
     return item?.nameEn ?? formatTemplateIdLabel(value.selection.stylePresetId);
   }
+  if (value.type === "illustration") {
+    const item = ILLUSTRATION_TEMPLATE_ITEMS.find((candidate) => {
+      return (
+        candidate.illustrationStyleId === value.selection.illustrationStyleId
+      );
+    });
+    return (
+      item?.title ?? formatTemplateIdLabel(value.selection.illustrationStyleId)
+    );
+  }
   const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
     return (
       candidate.designSystemId === value.selection.designSystemId &&
@@ -4737,6 +4872,9 @@ function generationTemplateTypeLabel(
   }
   if (value.type === "video") {
     return "Video";
+  }
+  if (value.type === "illustration") {
+    return "Illustration";
   }
   return "Slides";
 }
@@ -4767,6 +4905,8 @@ function UserMessageGenerationTemplate({
     >
       {generationTemplate?.type === "video" ? (
         <IconVideo size={15} stroke={1.8} className="shrink-0" />
+      ) : generationTemplate?.type === "illustration" ? (
+        <IconPhoto size={15} stroke={1.8} className="shrink-0" />
       ) : (
         <IconPresentation size={15} stroke={1.8} className="shrink-0" />
       )}

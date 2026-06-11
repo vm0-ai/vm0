@@ -174,9 +174,17 @@ const videoGenerationTemplateRequestSchema = z.object({
   }),
 });
 
+const illustrationGenerationTemplateRequestSchema = z.object({
+  type: z.literal("illustration"),
+  selection: z.object({
+    illustrationStyleId: z.string().min(1),
+  }),
+});
+
 const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
+  illustrationGenerationTemplateRequestSchema,
 ]);
 
 const pagedChatMessageBaseSchema = z.object({
@@ -230,7 +238,6 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
     .strict(),
   pagedChatMessageBaseSchema.extend({
     role: z.literal("assistant"),
-    status: z.string().optional(),
     runLifecycleEvent: z.enum(["completed", "failed", "cancelled"]).optional(),
     recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
   }),
@@ -847,6 +854,7 @@ export {
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
+  illustrationGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
@@ -868,6 +876,9 @@ export type PresentationGenerationTemplateRequest = z.infer<
 >;
 export type VideoGenerationTemplateRequest = z.infer<
   typeof videoGenerationTemplateRequestSchema
+>;
+export type IllustrationGenerationTemplateRequest = z.infer<
+  typeof illustrationGenerationTemplateRequestSchema
 >;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;

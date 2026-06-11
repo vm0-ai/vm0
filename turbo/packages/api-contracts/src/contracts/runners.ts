@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
-  firewallsSchema,
+  executionFirewallsSchema,
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
 import { apiErrorSchema } from "./errors";
@@ -35,9 +35,18 @@ export function elapsedSinceApiStartMs(
   return Math.max(0, nowMs - apiStartTimeMs);
 }
 
+export const runnerClaimPollReasonSchema = z.enum([
+  "immediate",
+  "deferred",
+  "wakeup_retry",
+  "slow",
+  "fast",
+]);
+
 const runnerClaimTelemetrySchema = z.object({
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
   localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
+  pollReason: runnerClaimPollReasonSchema.optional(),
 });
 
 /**
@@ -196,8 +205,9 @@ export const storedExecutionContextSchema = z.object({
   apiStartTime: apiStartTimeSchema.optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Firewall for proxy-side token replacement (complete config, all permissions)
-  firewalls: firewallsSchema.optional(),
+  // Firewall entries for proxy-side token replacement. Built-ins stay compact;
+  // org custom connectors use inline firewall bodies.
+  firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
@@ -261,8 +271,9 @@ export const executionContextSchema = z.object({
   apiStartTime: apiStartTimeSchema.optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Firewall for proxy-side token replacement (complete config, all permissions)
-  firewalls: firewallsSchema.optional(),
+  // Firewall entries for proxy-side token replacement. Built-ins stay compact;
+  // org custom connectors use inline firewall bodies.
+  firewalls: executionFirewallsSchema.optional(),
   // Per-firewall network policies: which permissions are granted + unknownPolicy
   networkPolicies: networkPoliciesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)

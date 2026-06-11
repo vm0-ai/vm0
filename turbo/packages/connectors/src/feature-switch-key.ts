@@ -50,7 +50,6 @@ export enum FeatureSwitchKey {
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
-  ApiBackend = "apiBackend",
 
   ZapierConnector = "zapierConnector",
   SandboxIoLimiters = "sandboxIoLimiters",
@@ -59,6 +58,7 @@ export enum FeatureSwitchKey {
   VideoTemplatePicker = "videoTemplatePicker",
   MemoryViewer = "memoryViewer",
   MemoryDevRefresh = "memoryDevRefresh",
+  ChatCompletedWorkFolding = "chatCompletedWorkFolding",
   ChatRecommendedFollowups = "chatRecommendedFollowups",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",

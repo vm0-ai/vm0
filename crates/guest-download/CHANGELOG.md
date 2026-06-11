@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.23](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.22...guest-download-v0.20.23) (2026-06-11)
+
+
+### Bug Fixes
+
+* **guest-download:** require instruction target files ([#17269](https://github.com/vm0-ai/vm0/issues/17269)) ([2606149](https://github.com/vm0-ai/vm0/commit/2606149dd639810e1656293c1aa8b0e2a1e5269b))
+
 ## [0.20.22](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.21...guest-download-v0.20.22) (2026-06-10)
 
 

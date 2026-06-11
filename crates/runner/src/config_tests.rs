@@ -163,6 +163,97 @@ fn mode_of(path: &std::path::Path) -> u32 {
 }
 
 #[tokio::test]
+async fn diagnostic_config_read_accepts_regular_yaml() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("runner.yaml");
+    tokio::fs::write(&config, "name: test\n").await.unwrap();
+
+    let content = read_diagnostic_config_to_string(&config).await.unwrap();
+
+    assert_eq!(content.as_deref(), Some("name: test\n"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn diagnostic_config_read_rejects_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.yaml");
+    let link = dir.path().join("runner.yaml");
+    tokio::fs::write(&target, "name: test\n").await.unwrap();
+    symlink(&target, &link).unwrap();
+
+    let error = read_diagnostic_config_to_string(&link).await.unwrap_err();
+
+    assert!(
+        error.to_string().contains("open state file"),
+        "unexpected error: {error}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn diagnostic_config_read_rejects_fifo_without_blocking() {
+    let dir = tempfile::tempdir().unwrap();
+    let fifo = dir.path().join("runner.yaml");
+    let c_path = std::ffi::CString::new(fifo.to_string_lossy().as_bytes()).unwrap();
+    // SAFETY: `c_path` is a valid nul-terminated path for `mkfifo`.
+    let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+    assert_eq!(
+        result,
+        0,
+        "mkfifo failed: {}",
+        std::io::Error::last_os_error()
+    );
+
+    let error = read_diagnostic_config_to_string(&fifo).await.unwrap_err();
+
+    assert!(
+        error.to_string().contains("not a regular state file"),
+        "unexpected error: {error}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn diagnostic_config_read_rejects_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let config_dir = dir.path().join("runner.yaml");
+    tokio::fs::create_dir(&config_dir).await.unwrap();
+
+    let error = read_diagnostic_config_to_string(&config_dir)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error.to_string().contains("not a regular state file"),
+        "unexpected error: {error}"
+    );
+}
+
+#[tokio::test]
+async fn diagnostic_config_read_rejects_oversized_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("runner.yaml");
+    tokio::fs::write(
+        &config,
+        vec![b'a'; (DIAGNOSTIC_CONFIG_MAX_BYTES + 1) as usize],
+    )
+    .await
+    .unwrap();
+
+    let error = read_diagnostic_config_to_string(&config).await.unwrap_err();
+
+    assert!(
+        error
+            .to_string()
+            .contains(&format!("exceeds {DIAGNOSTIC_CONFIG_MAX_BYTES} bytes")),
+        "unexpected error: {error}"
+    );
+}
+
+#[tokio::test]
 async fn load_config_with_profiles() {
     let fixture = ConfigFixture::new().await;
     let yaml = fixture.yaml_with_identity(
