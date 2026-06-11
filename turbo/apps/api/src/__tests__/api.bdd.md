@@ -1536,3 +1536,17 @@ changed: false }`, no Ably publish).
   those stay in the kept legacy.
 - Reduced `agent-sessions-id.test.ts` (8 -> 5).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 74 — USER EXPORT REJECTIONS (CHAIN-USER-EXPORT-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `userExport` client (`/api/user/export`, get +
+  post).
+- Added `user-export-rejections.bdd.test.ts`: get rejects unauthenticated callers
+  (401) and returns `{ job: null, canExport: true, nextExportAt: null }` for a
+  user with no prior exports; post rejects unauthenticated and org-less callers
+  (401).
+- The completed / pending / failed / cooldown export states and the
+  create-and-complete flow need a seeded export job and the export executor and
+  stay in the kept legacy.
+- Reduced `user-export.test.ts` (15 -> 11).
+- Coverage verified (source-only): no regressions vs `main`.

@@ -24,6 +24,7 @@ import {
   checkpointsByIdContract,
   sessionsByIdContract,
 } from "@vm0/api-contracts/contracts/sessions";
+import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
@@ -244,6 +245,10 @@ export function createBddApi(context: TestContext) {
      * session needs a funded run (GAP-RUN-CREDITS); the auth and not-found cases
      * are reachable directly. */
     sessionsById: setupApp({ context })(sessionsByIdContract),
+    /** ts-rest client for `/api/user/export` (get status + post a new export). A
+     * completed/pending/failed export needs a seeded export job; the auth and
+     * no-previous-export cases are reachable directly. */
+    userExport: setupApp({ context })(userExportContract),
     /** ts-rest client for `/api/zero/composes` getByName. */
     composesMain: setupApp({ context })(zeroComposesMainContract),
     /** ts-rest client for `/api/zero/composes/:id/metadata` (update). */

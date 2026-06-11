@@ -207,33 +207,6 @@ beforeEach(() => {
 });
 
 describe("GET /api/user/export", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await accept(client().get({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "UNAUTHORIZED",
-        message: "Not authenticated",
-      },
-    });
-  });
-
-  it("returns null job and allows export when the user has no previous exports", async () => {
-    const userId = `user_${randomUUID()}`;
-    signIn(userId);
-
-    const response = await accept(
-      client().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      job: null,
-      canExport: true,
-      nextExportAt: null,
-    });
-  });
-
   it("returns a completed non-expired export with a fresh download URL", async () => {
     const userId = `user_${randomUUID()}`;
     signIn(userId);
@@ -421,31 +394,6 @@ describe("GET /api/user/export", () => {
 });
 
 describe("POST /api/user/export", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await postExport({}, [401]);
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "UNAUTHORIZED",
-        message: "Not authenticated",
-      },
-    });
-  });
-
-  it("returns 401 when the session has no active org", async () => {
-    const userId = `user_${randomUUID()}`;
-    signIn(userId, null);
-
-    const response = await postExport(authHeaders(), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "UNAUTHORIZED",
-        message: "Not authenticated",
-      },
-    });
-  });
-
   it("returns an active export job without creating a second one", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
