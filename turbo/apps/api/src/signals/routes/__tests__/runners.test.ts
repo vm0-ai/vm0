@@ -1376,38 +1376,6 @@ describe("POST /api/runners/*", () => {
     });
   });
 
-  it("rejects realtime token requests with no authorization", async () => {
-    const client = setupApp({ context })(runnerRealtimeTokenContract);
-    const response = await accept(
-      client.create({
-        body: { group: "vm0/test" },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Authentication required", code: "UNAUTHORIZED" },
-    });
-    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
-  });
-
-  it("rejects realtime token requests with non-Bearer authorization", async () => {
-    const client = setupApp({ context })(runnerRealtimeTokenContract);
-    const response = await accept(
-      client.create({
-        body: { group: "vm0/test" },
-        headers: { authorization: "Basic sometoken" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Authentication required", code: "UNAUTHORIZED" },
-    });
-    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
-  });
-
   it("rejects realtime token requests with an invalid CLI token", async () => {
     const client = setupApp({ context })(runnerRealtimeTokenContract);
     const response = await accept(

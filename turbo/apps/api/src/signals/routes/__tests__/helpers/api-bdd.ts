@@ -28,6 +28,7 @@ import {
   sessionsByIdContract,
 } from "@vm0/api-contracts/contracts/sessions";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
+import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
@@ -261,6 +262,10 @@ export function createBddApi(context: TestContext) {
      * completed/pending/failed export needs a seeded export job; the auth and
      * no-previous-export cases are reachable directly. */
     userExport: setupApp({ context })(userExportContract),
+    /** ts-rest client for `/api/runners/realtime/token` (runner Ably token). A
+     * successful token needs a valid runner/CLI token + vm0 group; the no-auth
+     * and non-Bearer rejections are reachable directly. */
+    runnerRealtimeToken: setupApp({ context })(runnerRealtimeTokenContract),
     /** ts-rest client for `/api/zero/composes` getByName. */
     composesMain: setupApp({ context })(zeroComposesMainContract),
     /** ts-rest client for `/api/zero/composes/:id/metadata` (update). */

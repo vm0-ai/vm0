@@ -1437,7 +1437,9 @@ First USAGE-family reduce.
 > yields 260/167 vs 257/165 (and 27/33 vs 27/32) on identical code across runs,
 > matching the branch's stable 257/165 + 27/32. They are time/execution-order
 > dependent and belong in the coverage-diff NOISE set alongside the slack-connect
-> oscillators.
+> oscillators. `test-telegram-state.ts` is likewise oscillating (the `main`
+> baseline yields 174/84 vs 174/85 on identical code, runs swing 173–174 / 83–85)
+> and joins the NOISE set, mirroring its `test-slack-state.ts` sibling.
 
 ### Round 67 — BILLING STATUS REJECTIONS (CHAIN-BILLING-STATUS-REJECTIONS, reduce-legacy)
 
@@ -1629,4 +1631,18 @@ changed: false }`, no Ably publish).
   agent-name / framework validation 400s and sandbox-token variants need seeded
   composes or structured invalid content and stay in the kept legacy.
 - Reduced `agent-composes-create.test.ts` (12 -> 11).
+- Coverage verified (source-only): no regressions vs `main`.
+
+### Round 81 — RUNNER REALTIME TOKEN REJECTIONS (CHAIN-RUNNER-REALTIME-TOKEN-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `runnerRealtimeToken` client
+  (`/api/runners/realtime/token`).
+- Added `runners-realtime-token-rejections.bdd.test.ts`: the token endpoint
+  rejects requests with no Authorization header and with a non-Bearer header
+  (401).
+- A successful token (and the invalid/expired CLI-token, non-vm0-group and
+  user-token variants) needs a valid runner/CLI token plus group config the
+  helper does not build, so they stay in the kept legacy — as do the
+  runner-token-authenticated heartbeat / poll / job-claim flows.
+- Reduced `runners.test.ts` (39 -> 37).
 - Coverage verified (source-only): no regressions vs `main`.
