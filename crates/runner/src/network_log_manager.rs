@@ -1,20 +1,28 @@
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 #[cfg(test)]
 use tokio::sync::Semaphore;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, mpsc};
 use tracing::warn;
 
 use crate::ids::RunId;
 use crate::network_log_drain::{NetworkLogDrainContext, NetworkLogDrainCoordinator};
 
+const DEFAULT_WRITER_SHARDS: usize = 4;
+const DEFAULT_SHARD_QUEUE_CAPACITY: usize = 1024;
+const DEFAULT_MAX_BATCH_ROWS: usize = 256;
+const DEFAULT_MAX_BATCH_BYTES: usize = 256 * 1024;
+
 /// Coordinates Rust-side DNS/kmsg network log attribution and file writes.
 ///
-/// Source-IP lookup and pending-write registration happen under the same lock,
-/// so `flush_path` cannot miss a row that was already accepted for that path.
+/// Source-IP acceptance and pending-write registration happen under the same
+/// lock, so `flush_path` cannot miss a row that was already accepted for that
+/// path.
 /// `NetworkLogSession::close_for_upload` first closes the source mapping, then
 /// flushes the path so upload cannot miss a newly accepted row.
 #[derive(Clone, Default)]
@@ -25,6 +33,8 @@ pub struct NetworkLogManager {
 #[derive(Default)]
 struct Inner {
     state: Mutex<State>,
+    writers: Mutex<Option<WriterPool>>,
+    writer_config: WriterConfig,
     #[cfg(test)]
     write_gate: Option<WriteGate>,
     #[cfg(test)]
@@ -73,6 +83,45 @@ impl PathState {
             notify: Arc::new(Notify::new()),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct WriterConfig {
+    shards: usize,
+    queue_capacity: usize,
+    max_batch_rows: usize,
+    max_batch_bytes: usize,
+}
+
+impl Default for WriterConfig {
+    fn default() -> Self {
+        Self {
+            shards: DEFAULT_WRITER_SHARDS,
+            queue_capacity: DEFAULT_SHARD_QUEUE_CAPACITY,
+            max_batch_rows: DEFAULT_MAX_BATCH_ROWS,
+            max_batch_bytes: DEFAULT_MAX_BATCH_BYTES,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct WriterPool {
+    shards: Arc<Vec<mpsc::Sender<QueuedAppend>>>,
+}
+
+struct QueuedAppend {
+    path: PathBuf,
+    line: String,
+}
+
+struct PathWriteBatch {
+    path: PathBuf,
+    lines: Vec<String>,
+}
+
+struct SourceSnapshot {
+    path: PathBuf,
+    generation: u64,
 }
 
 #[cfg(test)]
@@ -166,11 +215,35 @@ impl NetworkLogManager {
 
     #[cfg(test)]
     pub(crate) fn new_with_write_gate(started: Arc<Notify>, release: Arc<Semaphore>) -> Self {
+        Self::new_for_test(
+            Some(WriteGate { started, release }),
+            None,
+            WriterConfig::default(),
+        )
+    }
+
+    #[cfg(test)]
+    fn new_with_write_gate_and_config(
+        started: Arc<Notify>,
+        release: Arc<Semaphore>,
+        writer_config: WriterConfig,
+    ) -> Self {
+        Self::new_for_test(Some(WriteGate { started, release }), None, writer_config)
+    }
+
+    #[cfg(test)]
+    fn new_for_test(
+        write_gate: Option<WriteGate>,
+        close_gate: Option<CloseGate>,
+        writer_config: WriterConfig,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 state: Mutex::new(State::default()),
-                write_gate: Some(WriteGate { started, release }),
-                close_gate: None,
+                writers: Mutex::new(None),
+                writer_config,
+                write_gate,
+                close_gate,
             }),
         }
     }
@@ -180,16 +253,14 @@ impl NetworkLogManager {
         before_flush: Arc<Notify>,
         close_release: Arc<Semaphore>,
     ) -> Self {
-        Self {
-            inner: Arc::new(Inner {
-                state: Mutex::new(State::default()),
-                write_gate: None,
-                close_gate: Some(CloseGate {
-                    before_flush,
-                    release: close_release,
-                }),
+        Self::new_for_test(
+            None,
+            Some(CloseGate {
+                before_flush,
+                release: close_release,
             }),
-        }
+            WriterConfig::default(),
+        )
     }
 
     pub async fn register_source_ip(
@@ -243,26 +314,75 @@ impl NetworkLogManager {
             }
         };
 
-        let path = {
-            let mut state = self.inner.state.lock().await;
-            let Some(path) = state
-                .source_paths
-                .get(source_ip)
-                .map(SourceState::path)
-                .cloned()
-            else {
+        let Some(snapshot) = self.source_snapshot(source_ip).await else {
+            return false;
+        };
+        let writer_pool = self.writer_pool().await;
+        let Some(sender) = writer_pool.sender_for_path(&snapshot.path) else {
+            warn!("network log writer pool has no shards");
+            return false;
+        };
+        let permit = match sender.reserve_owned().await {
+            Ok(permit) => permit,
+            Err(_) => {
+                warn!(
+                    path = %snapshot.path.display(),
+                    "network log writer shard closed before append was accepted"
+                );
                 return false;
-            };
-            let path_state = state
-                .pending_paths
-                .entry(path.clone())
-                .or_insert_with(PathState::new);
-            path_state.pending += 1;
-            path
+            }
         };
 
-        self.spawn_append(path, line);
+        if !self.try_accept_snapshot(source_ip, &snapshot).await {
+            return false;
+        }
+        permit.send(QueuedAppend {
+            path: snapshot.path,
+            line,
+        });
         true
+    }
+
+    async fn source_snapshot(&self, source_ip: &str) -> Option<SourceSnapshot> {
+        let state = self.inner.state.lock().await;
+        state
+            .source_paths
+            .get(source_ip)
+            .map(|source| SourceSnapshot {
+                path: source.path().clone(),
+                generation: source.generation(),
+            })
+    }
+
+    async fn try_accept_snapshot(&self, source_ip: &str, snapshot: &SourceSnapshot) -> bool {
+        let mut state = self.inner.state.lock().await;
+        let Some(source_state) = state.source_paths.get(source_ip) else {
+            return false;
+        };
+        if !source_state.matches(&snapshot.path, snapshot.generation) {
+            return false;
+        }
+        let path_state = state
+            .pending_paths
+            .entry(snapshot.path.clone())
+            .or_insert_with(PathState::new);
+        path_state.pending += 1;
+        true
+    }
+
+    async fn writer_pool(&self) -> WriterPool {
+        let mut writers = self.inner.writers.lock().await;
+        if let Some(pool) = writers.as_ref() {
+            return pool.clone();
+        }
+        let pool = WriterPool::start(
+            Arc::downgrade(&self.inner),
+            self.inner.writer_config.normalized(),
+            #[cfg(test)]
+            self.inner.write_gate.clone(),
+        );
+        *writers = Some(pool.clone());
+        pool
     }
 
     async fn begin_session_drain(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
@@ -303,7 +423,20 @@ impl NetworkLogManager {
                 };
                 path_state.notify.clone().notified_owned()
             };
-            notified.await;
+
+            tokio::pin!(notified);
+            // Register before rechecking pending state so a concurrent final
+            // completion cannot notify between the check and the await.
+            notified.as_mut().enable();
+
+            {
+                let state = self.inner.state.lock().await;
+                if !state.pending_paths.contains_key(path) {
+                    return;
+                }
+            }
+
+            notified.as_mut().await;
         }
     }
 
@@ -311,53 +444,36 @@ impl NetworkLogManager {
     async fn before_close_upload_flush_for_test(&self) {
         if let Some(gate) = self.inner.close_gate.as_ref() {
             gate.before_flush.notify_one();
-            let _permit = gate.release.acquire().await.expect("close gate closed");
+            let permit = gate.release.acquire().await.expect("close gate closed");
+            permit.forget();
         }
     }
+}
 
-    fn spawn_append(&self, path: PathBuf, line: String) {
-        let manager = self.clone();
-        #[cfg(test)]
-        let write_gate = self.inner.write_gate.clone();
-
-        tokio::spawn(async move {
-            #[cfg(test)]
-            if let Some(gate) = write_gate {
-                gate.started.notify_one();
-                let _permit = gate.release.acquire().await.expect("write gate closed");
-            }
-
-            let write_path = path.clone();
-            let result = tokio::task::spawn_blocking(move || append_line(&write_path, &line)).await;
-
-            match result {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => {
-                    warn!(path = %path.display(), error = %e, "failed to write network log")
-                }
-                Err(e) => {
-                    warn!(path = %path.display(), error = %e, "network log writer task failed");
-                }
-            }
-
-            manager.complete_path(path).await;
-        });
-    }
-
-    async fn complete_path(&self, path: PathBuf) {
+impl Inner {
+    async fn complete_path(&self, path: PathBuf, count: usize) {
+        if count == 0 {
+            return;
+        }
         let notify = {
-            let mut state = self.inner.state.lock().await;
+            let mut state = self.state.lock().await;
             let Some(path_state) = state.pending_paths.get_mut(&path) else {
                 warn!(path = %path.display(), "network log write completed for unknown path");
                 return;
             };
 
-            if path_state.pending == 0 {
-                warn!(path = %path.display(), "network log pending count already zero");
-                return;
+            if path_state.pending < count {
+                warn!(
+                    path = %path.display(),
+                    pending = path_state.pending,
+                    completed = count,
+                    "network log pending count below completed count"
+                );
+                path_state.pending = 0;
+            } else {
+                path_state.pending -= count;
             }
 
-            path_state.pending -= 1;
             if path_state.pending == 0 {
                 state.pending_paths.remove(&path).map(|state| state.notify)
             } else {
@@ -371,8 +487,154 @@ impl NetworkLogManager {
     }
 }
 
-fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
-    crate::log_file::open_append(path, false).and_then(|mut f| f.write_all(line.as_bytes()))
+impl WriterConfig {
+    fn normalized(self) -> Self {
+        Self {
+            shards: self.shards.max(1),
+            queue_capacity: self.queue_capacity.max(1),
+            max_batch_rows: self.max_batch_rows.max(1),
+            max_batch_bytes: self.max_batch_bytes.max(1),
+        }
+    }
+}
+
+impl WriterPool {
+    fn start(
+        inner: Weak<Inner>,
+        config: WriterConfig,
+        #[cfg(test)] write_gate: Option<WriteGate>,
+    ) -> Self {
+        let mut shards = Vec::with_capacity(config.shards);
+        for _ in 0..config.shards {
+            let (tx, rx) = mpsc::channel(config.queue_capacity);
+            shards.push(tx);
+            std::mem::drop(tokio::spawn(run_writer_shard(
+                inner.clone(),
+                rx,
+                config,
+                #[cfg(test)]
+                write_gate.clone(),
+            )));
+        }
+        Self {
+            shards: Arc::new(shards),
+        }
+    }
+
+    fn sender_for_path(&self, path: &Path) -> Option<mpsc::Sender<QueuedAppend>> {
+        let shard_count = self.shards.len();
+        if shard_count == 0 {
+            return None;
+        }
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        let index = (hasher.finish() as usize) % shard_count;
+        self.shards.get(index).cloned()
+    }
+}
+
+async fn run_writer_shard(
+    inner: Weak<Inner>,
+    mut rx: mpsc::Receiver<QueuedAppend>,
+    config: WriterConfig,
+    #[cfg(test)] write_gate: Option<WriteGate>,
+) {
+    let mut next_item = None;
+    loop {
+        let first = match next_item.take() {
+            Some(item) => item,
+            None => match rx.recv().await {
+                Some(item) => item,
+                None => return,
+            },
+        };
+        let mut batches = Vec::new();
+        let mut row_count = 0;
+        let mut byte_count = 0;
+        push_queued_append(&mut batches, first, &mut row_count, &mut byte_count);
+
+        while row_count < config.max_batch_rows {
+            let item = match rx.try_recv() {
+                Ok(item) => item,
+                Err(mpsc::error::TryRecvError::Empty) => break,
+                Err(mpsc::error::TryRecvError::Disconnected) => break,
+            };
+            let item_bytes = item.line.len();
+            if byte_count > 0 && byte_count + item_bytes > config.max_batch_bytes {
+                next_item = Some(item);
+                break;
+            }
+            push_queued_append(&mut batches, item, &mut row_count, &mut byte_count);
+        }
+
+        for batch in batches {
+            write_path_batch(
+                inner.clone(),
+                batch,
+                #[cfg(test)]
+                write_gate.clone(),
+            )
+            .await;
+        }
+    }
+}
+
+fn push_queued_append(
+    batches: &mut Vec<PathWriteBatch>,
+    item: QueuedAppend,
+    row_count: &mut usize,
+    byte_count: &mut usize,
+) {
+    *row_count += 1;
+    *byte_count += item.line.len();
+    if let Some(batch) = batches.iter_mut().find(|batch| batch.path == item.path) {
+        batch.lines.push(item.line);
+    } else {
+        batches.push(PathWriteBatch {
+            path: item.path,
+            lines: vec![item.line],
+        });
+    }
+}
+
+async fn write_path_batch(
+    inner: Weak<Inner>,
+    batch: PathWriteBatch,
+    #[cfg(test)] write_gate: Option<WriteGate>,
+) {
+    #[cfg(test)]
+    if let Some(gate) = write_gate {
+        gate.started.notify_one();
+        let permit = gate.release.acquire().await.expect("write gate closed");
+        permit.forget();
+    }
+
+    let path = batch.path;
+    let count = batch.lines.len();
+    let write_path = path.clone();
+    let result = tokio::task::spawn_blocking(move || append_lines(&write_path, &batch.lines)).await;
+
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            warn!(path = %path.display(), error = %e, "failed to write network log")
+        }
+        Err(e) => {
+            warn!(path = %path.display(), error = %e, "network log writer task failed");
+        }
+    }
+
+    if let Some(inner) = inner.upgrade() {
+        inner.complete_path(path, count).await;
+    }
+}
+
+fn append_lines(path: &Path, lines: &[String]) -> std::io::Result<()> {
+    let mut file = crate::log_file::open_append(path, false)?;
+    for line in lines {
+        file.write_all(line.as_bytes())?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -529,13 +791,11 @@ mod tests {
         );
         first_started.await;
 
-        let second_started = started.notified();
         assert!(
             manager
                 .append_for_ip("10.200.0.3", json!({"type":"dns","host":"second.test"}))
                 .await
         );
-        second_started.await;
 
         let mut flush = std::pin::pin!(manager.flush_path(&path));
         let pending = poll_fn(|cx| match flush.as_mut().poll(cx) {
@@ -548,7 +808,9 @@ mod tests {
             "flush should wait while both accepted writes are pending"
         );
 
+        let second_started = started.notified();
         release.add_permits(1);
+        second_started.await;
         let still_pending = poll_fn(|cx| match flush.as_mut().poll(cx) {
             Poll::Ready(()) => Poll::Ready(false),
             Poll::Pending => Poll::Ready(true),
@@ -591,6 +853,31 @@ mod tests {
 
         manager.flush_path(&path).await;
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn append_for_ip_preserves_same_path_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        for index in 0..20 {
+            assert!(
+                manager
+                    .append_for_ip("10.200.0.2", json!({"type":"dns","index":index}))
+                    .await
+            );
+        }
+
+        manager.flush_path(&path).await;
+
+        let lines = read_json_lines(&path);
+        let indices: Vec<u64> = lines
+            .iter()
+            .map(|line| line["index"].as_u64().unwrap())
+            .collect();
+        assert_eq!(indices, (0_u64..20).collect::<Vec<_>>());
     }
 
     #[tokio::test]
@@ -661,13 +948,11 @@ mod tests {
         let _new_session = manager
             .register_source_ip("10.200.0.2", new_path.clone())
             .await;
-        let new_started = started.notified();
         assert!(
             manager
                 .append_for_ip("10.200.0.2", json!({"type":"dns","host":"new.test"}))
                 .await
         );
-        new_started.await;
 
         release.add_permits(2);
         manager.flush_path(&old_path).await;
@@ -680,6 +965,123 @@ mod tests {
         let new_lines = read_json_lines(&new_path);
         assert_eq!(new_lines.len(), 1);
         assert_eq!(new_lines[0]["host"], "new.test");
+    }
+
+    #[tokio::test]
+    async fn queue_full_waits_without_accepting_row_before_capacity() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let manager = NetworkLogManager::new_with_write_gate_and_config(
+            started.clone(),
+            release.clone(),
+            WriterConfig {
+                shards: 1,
+                queue_capacity: 1,
+                max_batch_rows: 1,
+                max_batch_bytes: DEFAULT_MAX_BATCH_BYTES,
+            },
+        );
+
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"first.test"}))
+                .await
+        );
+        started.notified().await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"second.test"}))
+                .await
+        );
+
+        let third = manager.append_for_ip("10.200.0.2", json!({"type":"dns","host":"third.test"}));
+        let mut third = std::pin::pin!(third);
+        let pending = poll_fn(|cx| match third.as_mut().poll(cx) {
+            Poll::Ready(accepted) => Poll::Ready(Some(accepted)),
+            Poll::Pending => Poll::Ready(None),
+        })
+        .await;
+        assert_eq!(
+            pending, None,
+            "third append should wait for bounded queue capacity"
+        );
+
+        manager.unregister_source_ip("10.200.0.2").await;
+        release.add_permits(2);
+        assert!(
+            !third.await,
+            "append waiting for capacity must re-check source mapping before acceptance"
+        );
+        manager.flush_path(&path).await;
+
+        let lines = read_json_lines(&path);
+        let hosts: Vec<&str> = lines
+            .iter()
+            .map(|line| line["host"].as_str().unwrap())
+            .collect();
+        assert_eq!(hosts, ["first.test", "second.test"]);
+    }
+
+    #[tokio::test]
+    async fn queue_full_rejects_row_after_source_reregister_same_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let manager = NetworkLogManager::new_with_write_gate_and_config(
+            started.clone(),
+            release.clone(),
+            WriterConfig {
+                shards: 1,
+                queue_capacity: 1,
+                max_batch_rows: 1,
+                max_batch_bytes: DEFAULT_MAX_BATCH_BYTES,
+            },
+        );
+
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"first.test"}))
+                .await
+        );
+        started.notified().await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"second.test"}))
+                .await
+        );
+
+        let third = manager.append_for_ip("10.200.0.2", json!({"type":"dns","host":"third.test"}));
+        let mut third = std::pin::pin!(third);
+        let pending = poll_fn(|cx| match third.as_mut().poll(cx) {
+            Poll::Ready(accepted) => Poll::Ready(Some(accepted)),
+            Poll::Pending => Poll::Ready(None),
+        })
+        .await;
+        assert_eq!(
+            pending, None,
+            "third append should wait for bounded queue capacity"
+        );
+
+        manager.unregister_source_ip("10.200.0.2").await;
+        let _new_session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        release.add_permits(2);
+        assert!(
+            !third.await,
+            "append waiting for capacity must not cross source generations"
+        );
+        manager.flush_path(&path).await;
+
+        let lines = read_json_lines(&path);
+        let hosts: Vec<&str> = lines
+            .iter()
+            .map(|line| line["host"].as_str().unwrap())
+            .collect();
+        assert_eq!(hosts, ["first.test", "second.test"]);
     }
 
     #[tokio::test]
