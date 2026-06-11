@@ -95,7 +95,12 @@ pub(crate) fn normalize_instruction_files(entries: &[InstructionNormalization]) 
             .copied()
             .filter(|candidate| *candidate != target_filename)
             .map(|candidate| mount_path.join(candidate.as_str()))
-            .find(|path| path.is_file());
+            .find(|path| {
+                matches!(
+                    lstat_instruction_path_state(path),
+                    InstructionPathState::RegularFile
+                )
+            });
 
         let Some(source_path) = source else {
             log_warn!(
@@ -362,6 +367,32 @@ mod tests {
         )]);
 
         assert!(mount.join("CLAUDE.md").symlink_metadata().is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn normalize_instruction_files_ignores_alternate_symlink_source() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join(".codex");
+        fs::create_dir_all(&mount).unwrap();
+        fs::write(mount.join("linked.md"), "runtime instructions").unwrap();
+        std::os::unix::fs::symlink(mount.join("linked.md"), mount.join("CLAUDE.md")).unwrap();
+
+        normalize_instruction_files(&[InstructionNormalization::new(
+            mount.to_string_lossy().into(),
+            "AGENTS.md".into(),
+        )]);
+
+        assert!(mount.join("AGENTS.md").symlink_metadata().is_err());
+        assert!(
+            mount
+                .join("CLAUDE.md")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 
     #[test]
