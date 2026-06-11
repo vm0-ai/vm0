@@ -55,21 +55,6 @@ describe("PATCH /api/agent/composes/:id/metadata", () => {
     return store.set(deleteTeamCompose$, fixture, context.signal);
   });
 
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(composesMetadataContract);
-
-    const response = await accept(
-      client.updateMetadata({
-        params: { id: randomUUID() },
-        body: { displayName: "x" },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
   it("returns 400 for invalid body", async () => {
     const fixture = await track(
       store.set(
@@ -90,27 +75,6 @@ describe("PATCH /api/agent/composes/:id/metadata", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "BAD_REQUEST" },
-    });
-  });
-
-  it("returns 400 without an active organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(composesMetadataContract);
-    const response = await accept(
-      client.updateMetadata({
-        params: { id: randomUUID() },
-        body: { displayName: "No Org" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "BAD_REQUEST",
-        message: "Explicit org context required — ensure active org in session",
-      },
     });
   });
 
@@ -232,26 +196,6 @@ describe("PATCH /api/agent/composes/:id/metadata", () => {
     expect(row?.displayName).toBe("New Name");
     expect(row?.description).toBe("Old description");
     expect(row?.sound).toBe("old-sound");
-  });
-
-  it("returns 404 for nonexistent compose", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(composesMetadataContract);
-    const response = await accept(
-      client.updateMetadata({
-        params: { id: randomUUID() },
-        body: { displayName: "Test" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Agent compose not found", code: "NOT_FOUND" },
-    });
   });
 
   it("returns 404 for compose owned by another org", async () => {

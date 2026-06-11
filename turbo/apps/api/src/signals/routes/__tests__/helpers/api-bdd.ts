@@ -21,6 +21,7 @@ import {
   composesMainContract,
   composesListContract,
   composesByIdContract,
+  composesMetadataContract,
 } from "@vm0/api-contracts/contracts/composes";
 import {
   checkpointsByIdContract,
@@ -244,6 +245,10 @@ export function createBddApi(context: TestContext) {
      * Deleting a real compose needs a seeded compose row; the auth, sandbox/zero
      * scope-forbidden and not-found cases are reachable directly. */
     agentComposesById: setupApp({ context })(composesByIdContract),
+    /** ts-rest client for `/api/agent/composes/:id/metadata` (PATCH). Updating a
+     * real compose needs a seeded compose row; the auth, no-org and not-found
+     * cases are reachable directly. */
+    agentComposesMetadata: setupApp({ context })(composesMetadataContract),
     /** ts-rest client for `/api/agent/checkpoints/:id` (get checkpoint by id). A
      * real checkpoint needs a funded run that produced it (GAP-RUN-CREDITS); the
      * auth and not-found cases are reachable directly. */

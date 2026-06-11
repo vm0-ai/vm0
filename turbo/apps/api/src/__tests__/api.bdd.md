@@ -1604,3 +1604,16 @@ changed: false }`, no Ably publish).
   the helper does not build; those stay in the kept legacy.
 - Reduced `agent-composes-delete.test.ts` (10 -> 7).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 79 — AGENT COMPOSE METADATA UPDATE REJECTIONS (CHAIN-AGENT-COMPOSES-METADATA-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the CLI-facing `agentComposesMetadata` client
+  (`/api/agent/composes/:id/metadata`, PATCH).
+- Added `agent-composes-metadata-rejections.bdd.test.ts`: metadata update rejects
+  unauthenticated callers (401) and org-less sessions (400) and 404s an unknown
+  compose ("Agent compose not found").
+- Updating a real compose's metadata (create/update/partial-field flows, the
+  invalid-body 400 via a raw request, cross-org 404, member-allowed) needs a
+  seeded compose row and stays in the kept legacy.
+- Reduced `agent-composes-metadata.test.ts` (10 -> 7).
+- Coverage verified (source-only): no regressions vs `main`.
