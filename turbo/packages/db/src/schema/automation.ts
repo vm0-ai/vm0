@@ -9,6 +9,7 @@ import {
   integer,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
@@ -180,6 +181,16 @@ export const automationTriggers = pgTable(
       index("idx_automation_triggers_next_run")
         .on(table.nextRunAt)
         .where(sql`enabled = true`),
+      // Each kind carries exactly its own config (B4 on #16847): one of
+      // cron_expression/at_time/interval_seconds for time kinds, the URL token
+      // for webhooks.
+      check(
+        "automation_triggers_kind_config_check",
+        sql`(kind = 'cron' AND cron_expression IS NOT NULL AND at_time IS NULL AND interval_seconds IS NULL)
+          OR (kind = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)
+          OR (kind = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)
+          OR (kind = 'webhook' AND webhook_token IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL AND interval_seconds IS NULL)`,
+      ),
     ];
   },
 );
