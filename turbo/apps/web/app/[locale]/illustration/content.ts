@@ -5,7 +5,7 @@
 
 export const SIGNUP_HREF = "/sign-up";
 
-export interface IllustrationFeature {
+interface IllustrationFeature {
   readonly title: string;
   readonly body: string;
 }
@@ -29,7 +29,7 @@ export const ILLUSTRATION_FEATURES: readonly IllustrationFeature[] = [
   },
 ];
 
-export interface ComparisonRow {
+interface ComparisonRow {
   readonly aspect: string;
   readonly generic: string;
   readonly zero: string;
@@ -63,7 +63,7 @@ export const ILLUSTRATION_COMPARISON: readonly ComparisonRow[] = [
   },
 ];
 
-export interface AudienceCard {
+interface AudienceCard {
   readonly title: string;
   readonly body: string;
 }
@@ -83,7 +83,7 @@ export const ILLUSTRATION_AUDIENCES: readonly AudienceCard[] = [
   },
 ];
 
-export interface FaqItem {
+interface FaqItem {
   readonly q: string;
   readonly a: string;
 }
