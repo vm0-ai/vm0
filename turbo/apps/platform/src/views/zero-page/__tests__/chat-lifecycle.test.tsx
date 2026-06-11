@@ -30,7 +30,7 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,

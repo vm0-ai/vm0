@@ -20,7 +20,7 @@ import {
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
 import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 
 const context = testContext();
 

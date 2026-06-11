@@ -991,37 +991,9 @@ export {
   type RunRunnerResponse,
 } from "./zero-runs";
 export {
-  zeroSchedulesMainContract,
-  zeroSchedulesByNameContract,
-  zeroSchedulesEnableContract,
   scheduleResponseSchema,
-  scheduleListResponseSchema,
-  deployScheduleResponseSchema,
-  type ZeroSchedulesMainContract,
-  type ZeroSchedulesByNameContract,
-  type ZeroSchedulesEnableContract,
-  zeroScheduleRunContract,
-  type ZeroScheduleRunContract,
   type ScheduleResponse,
-  type ScheduleListResponse,
-  type DeployScheduleResponse,
 } from "./zero-schedules";
-export {
-  automationsMainContract,
-  automationsByNameContract,
-  automationsEnableContract,
-  automationRunContract,
-  automationResponseSchema,
-  automationListResponseSchema,
-  automationMutationResponseSchema,
-  type AutomationsMainContract,
-  type AutomationsByNameContract,
-  type AutomationsEnableContract,
-  type AutomationRunContract,
-  type AutomationResponse,
-  type AutomationListResponse,
-  type AutomationMutationResponse,
-} from "./automations";
 export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,

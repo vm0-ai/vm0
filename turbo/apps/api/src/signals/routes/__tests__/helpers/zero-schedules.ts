@@ -43,7 +43,7 @@ export interface ScheduleSeed {
   readonly consecutiveFailures?: number;
 }
 
-export interface SchedulesScenarioValues {
+interface SchedulesScenarioValues {
   readonly schedules: readonly ScheduleSeed[];
   readonly displayName?: string;
   readonly agentName?: string;

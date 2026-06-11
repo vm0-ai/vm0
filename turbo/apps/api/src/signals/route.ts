@@ -3,7 +3,6 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
-import { automationsRoutes } from "./routes/automations";
 import { automationsV2Routes } from "./routes/automations-v2";
 import { agentComposesMetadataRoutes } from "./routes/agent-composes-metadata";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
@@ -63,7 +62,6 @@ import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewal
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
-import { webhookAutomationsRoutes } from "./routes/webhook-automations";
 import { webhooksAutomationRoutes } from "./routes/webhooks-automation";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
@@ -124,7 +122,6 @@ import { zeroReportErrorRoutes } from "./routes/zero-report-error";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
-import { zeroSchedulesRoutes } from "./routes/zero-schedules";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
@@ -199,14 +196,9 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiHealth$,
   },
   ...authMeRoutes,
-  ...automationsRoutes,
   // The unified Automations v2 resource (#16847 slice 2): one automation,
   // N triggers of any kind.
   ...automationsV2Routes,
-  // Webhook-automation management (create/list/delete) on the new tables. Listed
-  // before the inbound webhook route so the management collection/by-id paths
-  // resolve ahead of the catch-all `:token` dispatch.
-  ...webhookAutomationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
@@ -320,7 +312,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
-  ...zeroSchedulesRoutes,
   ...zeroOnboardingSetupRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOrgInviteRoutes,

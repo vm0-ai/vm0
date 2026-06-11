@@ -112,7 +112,7 @@ function automationResponse(view: AutomationViewV2): AutomationResponseV2 {
 // surface itself (#17307): while off, automations stay feature-equivalent to
 // legacy schedules (time triggers only). Creating webhook triggers, rotating
 // their secrets, and the inbound dispatch all respect this switch.
-export const webhookTriggersEnabled$ = computed(async (get) => {
+const webhookTriggersEnabled$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const overrides = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),

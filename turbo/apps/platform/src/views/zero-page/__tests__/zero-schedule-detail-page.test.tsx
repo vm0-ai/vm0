@@ -13,7 +13,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();

@@ -4,7 +4,7 @@ import {
   allOrgScheduleEntries$,
   fetchAllOrgSchedules$,
 } from "../zero-page/zero-schedule.ts";
-import { createMockScheduleResponse } from "../../mocks/handlers/api-schedules.ts";
+import { createMockScheduleResponse } from "../../mocks/handlers/schedules-store.ts";
 import { testContext } from "./test-helpers.ts";
 
 describe("allOrgScheduleEntries$", () => {
