@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
 
@@ -39,5 +40,39 @@ describe("buildGenerationTemplatePrompt", () => {
         `Image style ID: ${item.illustrationStyleId}`,
       ),
     });
+  });
+
+  it("builds video template preset guidance", () => {
+    const item = VIDEO_STYLE_PRESETS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: item.id,
+      },
+    });
+
+    expect(result).toStrictEqual({
+      status: "resolved",
+      prompt: expect.stringContaining("# Video Template Preset"),
+    });
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(`Preset ID: ${item.id}`);
+    expect(result.prompt).toContain(`Preset name: ${item.nameEn}`);
+    expect(result.prompt).toContain(
+      "The selected stylePresetId resolves to the seven video template dimensions below.",
+    );
+    expect(result.prompt).toContain("- Visual Tone:");
+    expect(result.prompt).toContain("- Camera Style:");
+    expect(result.prompt).toContain("- Editing Pace:");
+    expect(result.prompt).toContain("- Narrative Mode:");
+    expect(result.prompt).toContain("- Production Type:");
+    expect(result.prompt).toContain("- Emotional Tone:");
+    expect(result.prompt).toContain("- Style Reference:");
+    expect(result.prompt).toContain(
+      "Apply all seven preset dimensions below as hard generation constraints",
+    );
   });
 });

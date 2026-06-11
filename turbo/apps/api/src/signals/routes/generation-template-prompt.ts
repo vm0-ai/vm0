@@ -120,9 +120,13 @@ function buildVideoGenerationTemplatePrompt(
   return {
     status: "resolved",
     prompt: [
-      `## Video Style: ${preset.nameEn}`,
+      "# Video Template Preset",
+      `- The selected stylePresetId resolves to the seven video template dimensions below.`,
+      `- Preset ID: ${preset.id}`,
+      `- Preset name: ${preset.nameEn}`,
       "",
-      "Apply these style constraints to the user's scene:",
+      "- Apply all seven preset dimensions below as hard generation constraints.",
+      "- Keep the user's prompt as the source of the requested content.",
       `- Visual Tone: ${describeSlug(preset.dimensions.visualTone)}`,
       `- Camera Style: ${describeSlug(preset.dimensions.cameraStyle)}`,
       `- Editing Pace: ${describeSlug(preset.dimensions.editingPace)}`,
@@ -131,8 +135,8 @@ function buildVideoGenerationTemplatePrompt(
       `- Emotional Tone: ${describeSlug(preset.dimensions.emotionalTone)}`,
       `- Style Reference: ${describeSlug(preset.dimensions.styleReference)}`,
       "",
-      "Generate a single video prompt (2–3 sentences) that applies the above style to the user's scene.",
-      "End with: safe for all audiences, positive and uplifting, no violence, no explicit content",
+      `- In the final video prompt, reflect every dimension listed above and the style ${preset.nameEn}.`,
+      "- End the final video prompt with: safe for all audiences, positive and uplifting, no violence, no explicit content",
     ].join("\n"),
   };
 }
