@@ -352,6 +352,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CreditUsageRecords]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show ranged personal and team credit usage records in settings, and enable scoped/ranged /api/zero/usage/record queries.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZeroAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:
