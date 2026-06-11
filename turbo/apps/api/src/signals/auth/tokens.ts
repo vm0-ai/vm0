@@ -66,11 +66,7 @@ const LEGACY_CAPABILITY_ALIASES: Readonly<
 function isLegacyCapability(
   value: ZeroCapability | LegacyZeroCapability,
 ): value is LegacyZeroCapability {
-  return (
-    value === "schedule:read" ||
-    value === "schedule:write" ||
-    value === "schedule:delete"
-  );
+  return value in LEGACY_CAPABILITY_ALIASES;
 }
 
 const zeroCapabilitySchema = z.custom<ZeroCapability | LegacyZeroCapability>(

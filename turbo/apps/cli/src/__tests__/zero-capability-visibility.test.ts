@@ -662,6 +662,19 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("agent");
   });
 
+  it("should keep schedule visible with a new-style automation:read token", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["automation:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("schedule");
+    expect(hiddenCommandNames(prog)).toContain("agent");
+  });
+
   it("should show connector when connector:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",

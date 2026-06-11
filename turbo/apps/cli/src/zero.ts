@@ -50,8 +50,11 @@ const COMMAND_CAPABILITY_MAP: Record<
   agent: "agent:read",
   skill: "agent:read",
   connector: "connector:read",
-  schedule: "schedule:read",
-  automation: "schedule:read",
+  // Tokens minted before #17307 carry "schedule:read"; newer ones carry
+  // "automation:read". Accept both so the commands stay visible regardless
+  // of which side (API or CLI) deploys first.
+  schedule: ["schedule:read", "automation:read"],
+  automation: ["schedule:read", "automation:read"],
   doctor: null,
   credit: "billing:write",
   model: null,
