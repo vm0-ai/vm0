@@ -42,12 +42,28 @@ export interface ComputerUseLocalCommandLogEntry {
   readonly durationMs: number | null;
 }
 
+export type ComputerUseRuntimeErrorSource =
+  | "start"
+  | "stop"
+  | "heartbeat"
+  | "command_poll";
+
+export interface ComputerUseRuntimeErrorLogEntry {
+  readonly id: string;
+  readonly source: ComputerUseRuntimeErrorSource;
+  readonly message: string;
+  readonly occurredAt: string;
+  readonly hostId: string | null;
+  readonly status: Extract<ComputerUseHostRuntimeStatus, "error">;
+}
+
 export interface ComputerUseHostRuntimeState {
   readonly status: ComputerUseHostRuntimeStatus;
   readonly hostId: string | null;
   readonly lastHeartbeatAt: string | null;
   readonly lastCommandAt: string | null;
   readonly lastError: string | null;
+  readonly errorLog: readonly ComputerUseRuntimeErrorLogEntry[];
   readonly recentAuditEvents: readonly ComputerUseRuntimeAuditEvent[];
   readonly localCommandLog: readonly ComputerUseLocalCommandLogEntry[];
 }
@@ -79,6 +95,7 @@ export const IDLE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
+    errorLog: [],
     recentAuditEvents: [],
     localCommandLog: [],
   });

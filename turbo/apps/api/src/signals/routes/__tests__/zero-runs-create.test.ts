@@ -1826,6 +1826,92 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
+  it("injects Cloudflare OAuth access token through the existing runtime binding", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "cloudflare",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "cloudflare",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "CLOUDFLARE_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("cloudflare-access-token"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "CLOUDFLARE_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("cloudflare-refresh-token"),
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "cloudflare connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly base: string;
+          readonly auth?: { readonly headers?: Record<string, string> };
+        }[];
+      }[];
+    };
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    expect(executionContext.environment.CLOUDFLARE_TOKEN).toBe(
+      connectorSecretPlaceholder("cloudflare", "CLOUDFLARE_TOKEN"),
+    );
+    expect(executionContext.environment).not.toHaveProperty(
+      "CLOUDFLARE_ACCESS_TOKEN",
+    );
+    expect(executionContext.environment).not.toHaveProperty(
+      "CLOUDFLARE_REFRESH_TOKEN",
+    );
+    expect(decrypted).toMatchObject({
+      CLOUDFLARE_TOKEN: "cloudflare-access-token",
+    });
+    expect(decrypted).not.toHaveProperty("CLOUDFLARE_ACCESS_TOKEN");
+    expect(decrypted).not.toHaveProperty("CLOUDFLARE_REFRESH_TOKEN");
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      CLOUDFLARE_TOKEN: "cloudflare",
+    });
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "cloudflare";
+    });
+    expect(firewall?.apis[0]?.base).toBe("https://api.cloudflare.com/client");
+    expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
+      ["Bearer $", "{{ secrets.CLOUDFLARE_TOKEN }}"].join(""),
+    );
+  });
+
   it("maps static connector env aliases", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
@@ -2397,7 +2483,6 @@ describe("POST /api/zero/runs", () => {
         type: "connector",
       },
     ]);
-
     const response = await accept(
       zeroRunsClient().create({
         headers: { authorization: "Bearer clerk-session" },
@@ -2436,6 +2521,179 @@ describe("POST /api/zero/runs", () => {
     expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
       Authorization: ["Bearer $", "{{ secrets.META_ADS_TOKEN }}"].join(""),
     });
+  });
+
+  it("adds the TikTok Ads token and firewall for authorized connector runs", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "tiktok-ads",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "tiktok-ads",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "TIKTOK_ADS_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("tiktok-ads-access"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "TIKTOK_ADS_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("tiktok-ads-refresh"),
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "tiktok ads connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly auth?: {
+            readonly headers?: Record<string, string>;
+          };
+        }[];
+      }[];
+    };
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      TIKTOK_ADS_TOKEN: "tiktok-ads-access",
+    });
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      TIKTOK_ADS_TOKEN: "tiktok-ads",
+    });
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "tiktok-ads";
+    });
+    expect(firewall?.apis[0]?.auth?.headers).toStrictEqual({
+      "Access-Token": ["$", "{{ secrets.TIKTOK_ADS_TOKEN }}"].join(""),
+    });
+  });
+
+  it("injects authorized Google Cloud token through firewall without permission groups", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "google-cloud",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "google-cloud",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "GOOGLE_CLOUD_ACCESS_TOKEN",
+      encryptedValue: encryptSecretForTests("google-cloud-access"),
+      type: "connector",
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "google cloud connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly base: string;
+          readonly auth?: {
+            readonly headers?: Record<string, string>;
+          };
+          readonly permissions?: readonly unknown[];
+        }[];
+      }[];
+    };
+    expect(executionContext.environment.GOOGLE_CLOUD_TOKEN).toBe(
+      connectorSecretPlaceholder("google-cloud", "GOOGLE_CLOUD_TOKEN"),
+    );
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      GOOGLE_CLOUD_TOKEN: "google-cloud-access",
+    });
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      GOOGLE_CLOUD_TOKEN: "google-cloud",
+    });
+
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "google-cloud";
+    });
+    expect(
+      firewall?.apis.map((api) => {
+        return api.base;
+      }),
+    ).toStrictEqual([
+      "https://cloudresourcemanager.googleapis.com",
+      "https://serviceusage.googleapis.com",
+      "https://iam.googleapis.com",
+      "https://compute.googleapis.com",
+      "https://appengine.googleapis.com",
+      "https://sqladmin.googleapis.com",
+      "https://bigquery.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://run.googleapis.com",
+      "https://cloudbuild.googleapis.com",
+      "https://artifactregistry.googleapis.com",
+      "https://container.googleapis.com",
+      "https://cloudfunctions.googleapis.com",
+      "https://secretmanager.googleapis.com",
+      "https://logging.googleapis.com",
+      "https://monitoring.googleapis.com",
+      "https://cloudbilling.googleapis.com",
+      "https://pubsub.googleapis.com",
+      "https://firestore.googleapis.com",
+      "https://spanner.googleapis.com",
+    ]);
+    for (const api of firewall?.apis ?? []) {
+      expect(api.auth?.headers?.Authorization).toBe(
+        ["Bearer $", "{{ secrets.GOOGLE_CLOUD_TOKEN }}"].join(""),
+      );
+      expect(api.permissions).toStrictEqual([]);
+    }
   });
 
   it("injects authorized custom connector firewalls and secrets", async () => {

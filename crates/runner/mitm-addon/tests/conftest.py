@@ -15,6 +15,7 @@ Fixtures here exist for two reasons:
 
 import contextlib
 import json
+import uuid
 from collections.abc import Callable, Iterator
 from concurrent.futures import Future
 from pathlib import Path
@@ -49,6 +50,7 @@ def _reset_module_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """
     auth_base_forwarder.reset_forward_request_state_for_tests()
     registry.reset_cache_for_tests()
+    mitm_addon.reset_tls_admission_state_for_tests()
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
     usage.counters.reset_for_tests()
@@ -78,6 +80,7 @@ def _reset_module_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     yield
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    mitm_addon.reset_tls_admission_state_for_tests()
     usage.reset_usage_buffer_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
@@ -176,7 +179,13 @@ def real_flow():
 class _StubTLSClient:
     """Minimal stand-in for ``mitmproxy.connection.Client`` in TLS tests."""
 
-    def __init__(self, peername: tuple[str, int] | None, sni: str) -> None:
+    def __init__(
+        self,
+        peername: tuple[str, int] | None,
+        sni: str,
+        client_id: str | None,
+    ) -> None:
+        self.id = client_id or str(uuid.uuid4())
         self.peername = peername
         self.sni = sni
 
@@ -197,15 +206,25 @@ class _StubClientHelloData:
     that surface without pulling in MagicMock's attribute-proliferation.
     """
 
-    def __init__(self, peername: tuple[str, int] | None, sni: str) -> None:
-        self.context = _StubTLSContext(_StubTLSClient(peername, sni))
+    def __init__(
+        self,
+        peername: tuple[str, int] | None,
+        sni: str,
+        client_id: str | None,
+    ) -> None:
+        self.context = _StubTLSContext(_StubTLSClient(peername, sni, client_id))
         self.ignore_connection = False
 
 
 @pytest.fixture
 def make_tls_data():
-    def _make(*, client_ip: str = "10.200.0.1", sni: str = "example.com") -> _StubClientHelloData:
-        return _StubClientHelloData(peername=(client_ip, 12345), sni=sni)
+    def _make(
+        *,
+        client_ip: str = "10.200.0.1",
+        sni: str = "example.com",
+        client_id: str | None = None,
+    ) -> _StubClientHelloData:
+        return _StubClientHelloData(peername=(client_ip, 12345), sni=sni, client_id=client_id)
 
     return _make
 

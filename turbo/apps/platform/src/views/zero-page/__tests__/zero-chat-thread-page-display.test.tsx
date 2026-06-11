@@ -107,6 +107,22 @@ beforeEach(() => {
 });
 
 describe("zero chat thread page display - schedule menu", () => {
+  it("hides Computer Use when the feature switch is disabled", async () => {
+    const threadId = "d0000000-0000-4000-a000-000000000001";
+    mockChatLifecycle({ threadId });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: false },
+    });
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Computer Use")).not.toBeInTheDocument();
+  });
+
   it("hides the schedule button when no schedules are linked to the thread", async () => {
     const threadId = "d0000000-0000-4000-a000-000000000001";
     let schedulesRequested = false;

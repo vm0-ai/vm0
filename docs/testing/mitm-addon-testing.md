@@ -54,7 +54,12 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_compiled_firewall_idna_matching.py` | Compiled firewall IDNA authority matching and compatibility-alias rejection |
 | `test_compiled_firewall_unknown_policy.py` | Compiled firewall unknown-policy and unsafe-path behavior |
 | `test_compiled_firewall_precedence.py` | Compiled firewall precedence, specificity, and permission ordering |
-| `test_compiled_firewall_malformed_config.py` | Compiled firewall malformed config and fail-closed behavior |
+| `test_compiled_firewall_malformed_auth.py` | Compiled firewall malformed auth config behavior |
+| `test_compiled_firewall_malformed_base.py` | Compiled firewall malformed base and base-scope behavior |
+| `test_compiled_firewall_malformed_permissions.py` | Compiled firewall malformed permission behavior |
+| `test_compiled_firewall_malformed_policies.py` | Compiled firewall malformed policy and payload-shape behavior |
+| `test_compiled_firewall_malformed_precedence.py` | Compiled firewall malformed config precedence and interaction behavior |
+| `test_compiled_firewall_malformed_rules.py` | Compiled firewall malformed rule and rule-shape behavior |
 | `test_firewall_auth.py` | Firewall auth header resolution, fetching, forwarding, and cleanup |
 | `test_auth_base_forwarder.py` | Low-level auth.base forwarding, header filtering, and cleanup |
 | `test_firewall_rewrite_success.py` | Firewall auth URL rewrite success behavior |

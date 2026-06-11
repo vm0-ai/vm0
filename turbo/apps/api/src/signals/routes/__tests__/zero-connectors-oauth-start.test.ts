@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import type { ConnectorAuthMethodId } from "@vm0/connectors/connectors";
+import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
@@ -39,6 +41,11 @@ function mockOAuthEnv(): void {
     "AIRTABLE_OAUTH_CLIENT_SECRET",
     "airtable-test-client-secret",
   );
+  mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_ID", "cloudflare-test-client-id");
+  mockOptionalEnv(
+    "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+    "cloudflare-test-client-secret",
+  );
   mockOptionalEnv("DOCUSIGN_OAUTH_CLIENT_ID", "docusign-test-client-id");
   mockOptionalEnv(
     "DOCUSIGN_OAUTH_CLIENT_SECRET",
@@ -62,6 +69,17 @@ function mockOAuthEnv(): void {
   mockOptionalEnv("STRAVA_OAUTH_CLIENT_SECRET", "strava-test-client-secret");
   mockOptionalEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
   mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
+}
+
+function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
+  const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+    "cloudflare",
+    "oauth",
+  );
+  expect(authorizationUrl.searchParams.get("scope")?.split(" ")).toStrictEqual(
+    grant.scopes,
+  );
+  expect(grant.scopes).toContain("offline_access");
 }
 
 async function requestOauthStart(
@@ -95,6 +113,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
   const stateIds: string[] = [];
 
   beforeEach(() => {
+    mockEnv("VM0_API_URL", API_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockOAuthEnv();
   });
@@ -133,6 +152,95 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
         code: "FORBIDDEN",
       },
     });
+  });
+
+  it("rejects Google Cloud OAuth start when the connector feature is disabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+
+    const response = await requestOauthStart("google-cloud", {
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "google-cloud connector is not available",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("starts Google Cloud OAuth when the connector feature is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.GoogleCloudConnector]: true },
+    });
+
+    const response = await requestOauthStart("google-cloud", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    const scopes = new Set(
+      authorizationUrl.searchParams.get("scope")?.split(" ") ?? [],
+    );
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "google-test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${WEB_ORIGIN}/api/connectors/google-cloud/callback`,
+    );
+    expect(scopes.has("openid")).toBeTruthy();
+    expect(
+      scopes.has("https://www.googleapis.com/auth/userinfo.email"),
+    ).toBeTruthy();
+    expect(
+      scopes.has("https://www.googleapis.com/auth/cloud-platform"),
+    ).toBeTruthy();
+    expect(
+      scopes.has("https://www.googleapis.com/auth/appengine.admin"),
+    ).toBeTruthy();
+    expect(
+      scopes.has("https://www.googleapis.com/auth/sqlservice.login"),
+    ).toBeTruthy();
+    expect(scopes.has("https://www.googleapis.com/auth/compute")).toBeTruthy();
+    expect(scopes.size).toBe(6);
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/);
+
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState).toMatchObject({
+      state,
+      type: "google-cloud",
+      authMethod: "oauth",
+      userId,
+      orgId,
+      redirectUri: `${WEB_ORIGIN}/api/connectors/google-cloud/callback`,
+      consumedAt: null,
+    });
+    expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
   });
 
   it("creates a server-side OAuth handoff and returns the provider authorization URL", async () => {
@@ -269,6 +377,101 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
     expect(storedState!.codeVerifier).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+  });
+
+  it("uses the configured API origin for Cloudflare OAuth callback URLs", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.CloudflareConnector]: true },
+    });
+
+    const response = await requestOauthStart("cloudflare", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: WEB_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://dash.cloudflare.com/oauth2/auth",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "cloudflare-test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+    );
+    expectCloudflareAuthorizationScopes(authorizationUrl);
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/);
+
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState).toMatchObject({
+      state,
+      type: "cloudflare",
+      authMethod: "oauth",
+      userId,
+      orgId,
+      redirectUri: `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+      consumedAt: null,
+    });
+  });
+
+  it("keeps Cloudflare OAuth callbacks on the canonical API origin when VM0_API_URL is a tunnel", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+    mockEnv("VM0_API_URL", "https://tunnel-liangyou-vm2-www.vm7.ai");
+    mockEnv("VM0_WEB_URL", "https://www.vm7.ai:8443");
+
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.CloudflareConnector]: true },
+    });
+
+    const response = await requestOauthStart("cloudflare", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: "https://www.vm7.ai:8443",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://api.vm7.ai:8443/api/connectors/cloudflare/callback",
+    );
+    expectCloudflareAuthorizationScopes(authorizationUrl);
+
+    const state = authorizationUrl.searchParams.get("state");
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState?.redirectUri).toBe(
+      "https://api.vm7.ai:8443/api/connectors/cloudflare/callback",
+    );
   });
 
   it("returns 401 instead of relying on browser cookies when unauthenticated", async () => {

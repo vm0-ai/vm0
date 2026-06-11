@@ -176,7 +176,10 @@ import {
   ZeroChatComposer,
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
-import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
+import {
+  ChatFeedbackSelection,
+  ChatFeedbackTray,
+} from "./zero-chat-feedback-selection.tsx";
 import {
   setThreadGenerationTemplate$,
   threadGenerationTemplate$,
@@ -2401,15 +2404,16 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
             />
           </div>
 
+          {inlineFeedbackEnabled && (
+            <ChatFeedbackTray onSubmit={onSubmitFeedback} />
+          )}
           <ChatThreadComposer thread={thread} />
         </div>
 
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
 
-      {inlineFeedbackEnabled && (
-        <ChatFeedbackSelection onSubmit={onSubmitFeedback} />
-      )}
+      {inlineFeedbackEnabled && <ChatFeedbackSelection />}
     </>
   );
 }
@@ -2863,6 +2867,8 @@ function useChatThreadComposerSendState({
 }
 
 function useChatThreadComputerUse(thread: ChatThreadSignals) {
+  const features = useLastResolved(featureSwitch$);
+  const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
   const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
@@ -2879,14 +2885,18 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
   const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
 
   return {
-    selectedComputerUseHostId,
-    computerUse: {
-      hosts: computerUseHosts,
-      loading: computerUseHostsLoadable.state === "loading",
-      selectedHostId: selectedComputerUseHostId,
-      onChange: setComputerUseHostId,
-      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-    },
+    selectedComputerUseHostId: computerUseEnabled
+      ? selectedComputerUseHostId
+      : null,
+    computerUse: computerUseEnabled
+      ? {
+          hosts: computerUseHosts,
+          loading: computerUseHostsLoadable.state === "loading",
+          selectedHostId: selectedComputerUseHostId,
+          onChange: setComputerUseHostId,
+          downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+        }
+      : undefined,
   };
 }
 
@@ -4757,7 +4767,11 @@ function UserMessageGenerationTemplate({
       className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
       title={`${typeLabel} · ${label}`}
     >
-      <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      {generationTemplate?.type === "video" ? (
+        <IconVideo size={15} stroke={1.8} className="shrink-0" />
+      ) : (
+        <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      )}
       <span className="shrink-0">{typeLabel}</span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">{label}</span>

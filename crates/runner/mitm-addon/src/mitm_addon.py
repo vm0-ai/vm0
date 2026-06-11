@@ -22,10 +22,11 @@ import time
 import urllib.parse
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
+from typing import Final, Literal, TypeVar
 
-from mitmproxy import ctx, http, tcp, tls
+from mitmproxy import connection, ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
@@ -89,6 +90,26 @@ _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
+_TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
+_TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
+_TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
+_STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
+
+_TlsAdmissionKind = Literal[
+    "valid_registry_vm",
+    "invalid_registry_vm",
+    "registry_unavailable",
+]
+
+
+@dataclass(frozen=True)
+class _TlsAdmission:
+    client_ip: str
+    kind: _TlsAdmissionKind
+    run_id: str | None = None
+
+
+_tls_admissions: dict[str, _TlsAdmission] = {}
 
 # Runner-triggered flush protocols:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
@@ -495,6 +516,55 @@ def _block_invalid_registry_vm(
     )
 
 
+def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = _STALE_TLS_ADMISSION_ERROR
+    flow.response = http.Response.make(
+        503,
+        json.dumps(
+            {
+                "error": _STALE_TLS_ADMISSION_ERROR,
+                "message": (
+                    "Request blocked: TLS admission is no longer backed by a valid "
+                    "proxy registry VM"
+                ),
+                "reason": reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def _client_connection_id(client: object) -> str | None:
+    client_id = getattr(client, "id", None)
+    if isinstance(client_id, str) and client_id:
+        return client_id
+    return None
+
+
+def _record_tls_admission(client: object, admission: _TlsAdmission) -> None:
+    client_id = _client_connection_id(client)
+    if client_id is not None:
+        _tls_admissions[client_id] = admission
+
+
+def _tls_admission_for_client(client: object) -> _TlsAdmission | None:
+    client_id = _client_connection_id(client)
+    if client_id is None:
+        return None
+    return _tls_admissions.get(client_id)
+
+
+def _forget_tls_admission(client: object) -> None:
+    client_id = _client_connection_id(client)
+    if client_id is not None:
+        _tls_admissions.pop(client_id, None)
+
+
+def reset_tls_admission_state_for_tests() -> None:
+    _tls_admissions.clear()
+
+
 # ============================================================================
 # TLS ClientHello Handler
 # ============================================================================
@@ -512,15 +582,45 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
     registry_state = registry.load_registry_state(get_registry_path())
     if isinstance(registry_state, registry.RegistryUnavailable):
+        _record_tls_admission(
+            data.context.client,
+            _TlsAdmission(
+                client_ip=client_ip,
+                kind=_TLS_ADMISSION_REGISTRY_UNAVAILABLE,
+            ),
+        )
         return
 
-    if client_ip not in registry_state.vms and client_ip not in registry_state.invalid_vms:
-        # Not a registered VM - pass through without MITM interception
-        # This is critical for CIDR-based rules where all VM traffic is redirected
-        data.ignore_connection = True
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is not None:
+        _record_tls_admission(
+            data.context.client,
+            _TlsAdmission(
+                client_ip=client_ip,
+                kind=_TLS_ADMISSION_VALID_REGISTRY_VM,
+                run_id=vm_info.get("runId", ""),
+            ),
+        )
         return
 
-    # Registered VM: let mitmproxy perform MITM interception
+    if client_ip in registry_state.invalid_vms:
+        _record_tls_admission(
+            data.context.client,
+            _TlsAdmission(
+                client_ip=client_ip,
+                kind=_TLS_ADMISSION_INVALID_REGISTRY_VM,
+            ),
+        )
+        return
+
+    # Not a registered VM - pass through without MITM interception.
+    # This is critical for CIDR-based rules where all VM traffic is redirected.
+    _forget_tls_admission(data.context.client)
+    data.ignore_connection = True
+
+
+def client_disconnected(client: connection.Client) -> None:
+    _forget_tls_admission(client)
 
 
 # ============================================================================
@@ -539,14 +639,22 @@ async def request(flow: http.HTTPFlow) -> None:
     """
     # Get client IP (source VM)
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    tls_admission = _tls_admission_for_client(flow.client_conn)
 
     if not client_ip:
+        if tls_admission is not None:
+            _block_stale_tls_admission(flow, reason="client_ip_missing")
+            return
         ctx.log.warn("No client IP available, passing through")
         return
 
     registry_state = registry.load_registry_state(get_registry_path())
     if isinstance(registry_state, registry.RegistryUnavailable):
         _block_registry_unavailable(flow, registry_state)
+        return
+
+    if tls_admission is not None and tls_admission.client_ip != client_ip:
+        _block_stale_tls_admission(flow, reason="client_ip_mismatch")
         return
 
     # Look up VM info from registry. This pass-through path is valid only after
@@ -557,12 +665,22 @@ async def request(flow: http.HTTPFlow) -> None:
         if invalid_vm is not None:
             _block_invalid_registry_vm(flow, invalid_vm)
             return
+        if tls_admission is not None:
+            _block_stale_tls_admission(flow, reason="registry_entry_missing")
+            return
         # Not a registered VM, pass through without proxying
+        return
+
+    run_id = vm_info.get("runId", "")
+    if (
+        tls_admission is not None
+        and tls_admission.run_id is not None
+        and tls_admission.run_id != run_id
+    ):
+        _block_stale_tls_admission(flow, reason="run_id_mismatch")
         return
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
     compiled_network_policies = registry_state.compiled_network_policies[client_ip]
-
-    run_id = vm_info.get("runId", "")
 
     # Track request start time after early returns so unregistered flows do not carry it.
     flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
@@ -1275,6 +1393,7 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
 # mitmproxy addon registration
 addons = [
     tls_clienthello,
+    client_disconnected,
     request,
     responseheaders,
     websocket_message,

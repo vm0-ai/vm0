@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
@@ -23,9 +24,17 @@ function mockChatAPI() {
   server.use();
 }
 
-function renderChatPage() {
+function renderChatPage(options?: {
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+}) {
   mockChatAPI();
-  detachedSetupPage({ context, path: "/" });
+  detachedSetupPage({
+    context,
+    path: "/",
+    ...(options?.featureSwitches
+      ? { featureSwitches: options.featureSwitches }
+      : {}),
+  });
 }
 
 describe("zero chat page - suggested prompts", () => {
@@ -136,6 +145,21 @@ describe("zero chat page - composer", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Connectors")).toBeInTheDocument();
     });
+  });
+
+  it("should hide Computer Use when the feature switch is disabled", async () => {
+    await renderChatPage({
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(
+          "Ask me to automate workflows, manage tasks...",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Computer Use")).not.toBeInTheDocument();
   });
 
   it("should disable Send button when input is empty", async () => {

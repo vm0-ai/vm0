@@ -268,6 +268,30 @@ button {
   overflow-wrap: anywhere;
 }
 
+.runtime-status-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-error-button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(180, 35, 24, 0.22);
+  border-radius: 999px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #b42318;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.status-error-button:hover {
+  background: #fef3f2;
+}
+
 .panel {
   border-radius: 8px;
   padding: 14px 16px;
@@ -731,6 +755,139 @@ button {
   line-height: 1.4;
 }
 
+.runtime-error-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  padding: 28px;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.runtime-error-dialog {
+  width: min(680px, 100%);
+  max-height: min(760px, 100%);
+  border-radius: 8px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #ffffff;
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.34);
+  overflow: hidden;
+}
+
+.runtime-error-header {
+  min-height: 48px;
+  border-bottom: 1px solid rgba(30, 38, 52, 0.1);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runtime-error-header div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.runtime-error-header strong {
+  color: #202631;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.runtime-error-header span {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.runtime-error-body {
+  min-height: 0;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+}
+
+.runtime-error-section {
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-error-section h3 {
+  margin: 0;
+  color: #3d4a5c;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.runtime-error-message {
+  border: 1px solid rgba(180, 35, 24, 0.14);
+  border-radius: 7px;
+  padding: 10px;
+  color: #7a271a;
+  background: #fef3f2;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.runtime-error-log-list {
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-error-log-row {
+  border: 1px solid rgba(30, 38, 52, 0.08);
+  border-radius: 7px;
+  padding: 9px 10px;
+  display: grid;
+  gap: 6px;
+  background: #f8fafc;
+}
+
+.runtime-error-log-row div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.runtime-error-log-row strong {
+  color: #202631;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.runtime-error-log-row span {
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.runtime-error-log-row p {
+  margin: 0;
+  color: #3d4a5c;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .empty-state {
   min-height: 58px;
   border: 1px dashed rgba(30, 38, 52, 0.16);
@@ -929,5 +1086,18 @@ button {
 
   .screenshot-lightbox {
     padding: 12px;
+  }
+
+  .runtime-error-modal {
+    padding: 12px;
+  }
+
+  .runtime-error-log-row div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .runtime-error-log-row span {
+    text-align: left;
   }
 }
