@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.112.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.3...runner-rs-v0.112.0) (2026-06-11)
+
+
+### Features
+
+* add runner claim pickup telemetry ([#17268](https://github.com/vm0-ai/vm0/issues/17268)) ([270d94e](https://github.com/vm0-ai/vm0/commit/270d94ed8ca7820d4c097c38484871e8373b104b))
+
 ## [0.111.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.2...runner-rs-v0.111.3) (2026-06-11)
 
 

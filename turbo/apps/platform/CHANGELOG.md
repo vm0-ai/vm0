@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.438.1](https://github.com/vm0-ai/vm0/compare/app-v0.438.0...app-v0.438.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* show usage range filter in credit balance ([#17260](https://github.com/vm0-ai/vm0/issues/17260)) ([bdb1d0c](https://github.com/vm0-ai/vm0/commit/bdb1d0c4c0f8c59481fd993908b4ae933b44c324))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.83.0
+    * @vm0/core bumped to 8.328.1
+
 ## [0.438.0](https://github.com/vm0-ai/vm0/compare/app-v0.437.0...app-v0.438.0) (2026-06-11)
 
 

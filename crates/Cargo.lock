@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.22"
+version = "0.20.23"
 dependencies = [
  "flate2",
  "guest-common",
@@ -2570,7 +2570,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.111.3"
+version = "0.112.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
