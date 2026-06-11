@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.111.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.4...runner-rs-v0.111.0) (2026-06-11)
+
+
+### Features
+
+* add runner claim timing telemetry ([#17137](https://github.com/vm0-ai/vm0/issues/17137)) ([5f7e3db](https://github.com/vm0-ai/vm0/commit/5f7e3db4225e403a498fc916b5bf1c183c3f9532))
+
+
+### Bug Fixes
+
+* block stale mitm tls admissions ([#17141](https://github.com/vm0-ai/vm0/issues/17141)) ([45dc93f](https://github.com/vm0-ai/vm0/commit/45dc93faeb40225aedfdb1dce52e3158723bd2d5))
+* **mitm-addon:** handle malformed x tld sources ([#17134](https://github.com/vm0-ai/vm0/issues/17134)) ([447a77f](https://github.com/vm0-ai/vm0/commit/447a77fe28dcb4559d27bacbab61899f4c1cb243))
+* preserve model websocket usage sources ([#17128](https://github.com/vm0-ai/vm0/issues/17128)) ([55e730c](https://github.com/vm0-ai/vm0/commit/55e730c6282103c08beecece0824b217b0133cfd))
+* wait for workspace holders before unmount retry ([#17131](https://github.com/vm0-ai/vm0/issues/17131)) ([f7f7ac1](https://github.com/vm0-ai/vm0/commit/f7f7ac1b9b4a1c010be50f8160ae8646ab68608f))
+
 ## [0.110.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.3...runner-rs-v0.110.4) (2026-06-10)
 
 
