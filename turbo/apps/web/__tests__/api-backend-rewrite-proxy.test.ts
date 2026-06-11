@@ -2299,6 +2299,24 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero desktop update release rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64/release",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64/release/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/desktop/updates/stable/darwin/arm64",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero computer-use host rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/computer-use/host")).toBe(
       true,
