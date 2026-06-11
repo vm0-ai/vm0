@@ -1216,6 +1216,45 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("keeps historical illustration labels behind the template picker feature switch", async () => {
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-illustration-template-history",
+          role: "user",
+          content: "Make an illustrated launch card",
+          runId: "run-illustration-template-history",
+          generationTemplate: {
+            type: "illustration",
+            selection: {
+              illustrationStyleId: illustrationTemplate.illustrationStyleId,
+            },
+          },
+          createdAt: NOW,
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Make an illustrated launch card"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText(
+          `Message template ${illustrationTemplate.title}`,
+        ),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("queues a selected template during an active run and clears the picker state", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_ITEMS[0]!;

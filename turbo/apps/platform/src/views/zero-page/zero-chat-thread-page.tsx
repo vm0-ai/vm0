@@ -4767,7 +4767,7 @@ function UserMessageGenerationTemplate({
   const templateLabelEnabled =
     generationTemplate?.type === "video"
       ? (features?.[FeatureSwitchKey.VideoTemplatePicker] ?? false)
-      : true;
+      : (features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false);
   if (!templateLabelEnabled) {
     return null;
   }

@@ -46,7 +46,6 @@ import { generateZeroToken, verifyZeroToken } from "../../auth/tokens";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
-import { clearAllDetached } from "../../utils";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
@@ -703,7 +702,7 @@ describe("POST /api/zero/chat/messages", () => {
         },
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -791,6 +790,26 @@ describe("POST /api/zero/chat/messages", () => {
     );
     expect(unknownVideoStyle.body.error.message).toBe(
       "Unknown video style preset",
+    );
+
+    const unknownIllustrationStyle = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make an illustration",
+          generationTemplate: {
+            type: "illustration",
+            selection: {
+              illustrationStyleId: "image-style:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownIllustrationStyle.body.error.message).toBe(
+      "Unknown generation image style",
     );
   });
 
