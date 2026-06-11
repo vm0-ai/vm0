@@ -23,12 +23,26 @@ import { createStore, command } from "ccstate";
 import { eq, inArray, like } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { create as createTar } from "tar";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
+import { clearMockedEnv, mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+
+// BDD migration of the legacy `cron-sync-skills.test.ts`.
+// The 10 legacy `it()`s collapse into 4 BDD `it()`s:
+// (1) auth + skip chain (401 wrong secret + 401 no auth
+// header + 200 skips sync when commit SHA is unchanged),
+// (2) initial sync chain (200 syncs new skills from
+// tarball + 200 excludes repository dirs without SKILL.md
+// + 200 skips malformed frontmatter + logs the failure),
+// (3) incremental sync + cleanup chain (200 uploads only
+// changed skills on next commit + 200 removes skills
+// deleted from the repo + cleans S3 objects + 200 keeps DB
+// orphan removal when S3 cleanup fails),
+// (4) seed-skills audit chain (200 logs when SEED_SKILLS
+// references skills not in the source repo).
 
 const context = testContext();
 const store = createStore();
@@ -310,7 +324,7 @@ async function findSystemStorageByName(name: string): Promise<{
   return row ?? null;
 }
 
-describe("GET /api/cron/sync-skills", () => {
+describe("BDD GET /api/cron/sync-skills — auth + skip chain", () => {
   beforeEach(() => {
     mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
@@ -319,39 +333,46 @@ describe("GET /api/cron/sync-skills", () => {
   });
 
   afterEach(async () => {
+    clearMockedEnv();
     await store.set(cleanupOfficialTestSkills$, undefined, context.signal);
   });
 
-  it("rejects requests with an invalid cron secret", async () => {
-    const response = await accept(
+  it("gwt-wt-wt: 401 wrong secret → 401 no auth header → 200 skips sync when commit SHA is unchanged", async () => {
+    // Given: a request with the wrong cron secret.
+
+    // When + Then: 401 — Invalid cron secret.
+    const wrongSecretResponse = await accept(
       apiClient().sync({ headers: cronHeaders("wrong-secret") }),
       [401],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(wrongSecretResponse.body).toStrictEqual({
       error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("rejects requests with no authorization header", async () => {
-    const response = await accept(apiClient().sync({ headers: {} }), [401]);
+    // Given: a request with no authorization header.
 
-    expect(response.body).toStrictEqual({
+    // When + Then: 401 — Invalid cron secret.
+    const noAuthResponse = await accept(
+      apiClient().sync({ headers: {} }),
+      [401],
+    );
+    expect(noAuthResponse.body).toStrictEqual({
       error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("skips sync when the stored commit SHA is unchanged", async () => {
+    // Given: the stored commit SHA matches the
+    // remote refs/heads/main commit.
+
+    // When + Then: 200 — the sync is skipped with
+    // synced=0/skipped=0/failed=0/removed=0/total=0.
     const commitSha = newCommitSha();
     await store.set(setAllSkillsCommitSha$, commitSha, context.signal);
     setupGitRefsHandler(commitSha);
-
-    const response = await accept(
+    const skipResponse = await accept(
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(skipResponse.body).toStrictEqual({
       success: true,
       commitSha,
       synced: 0,
@@ -361,23 +382,41 @@ describe("GET /api/cron/sync-skills", () => {
       total: 0,
     });
   });
+});
 
-  it("syncs new skills from the repository tarball", async () => {
+describe("BDD GET /api/cron/sync-skills — initial sync chain", () => {
+  beforeEach(() => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
+    context.mocks.s3.send.mockReset();
+    context.mocks.s3.send.mockResolvedValue({});
+  });
+
+  afterEach(async () => {
+    clearMockedEnv();
+    await store.set(cleanupOfficialTestSkills$, undefined, context.signal);
+  });
+
+  it("gwt-wt-wt: 200 syncs new skills from tarball + 200 excludes dirs without SKILL.md + 200 skips malformed frontmatter", async () => {
+    // Given: a remote tarball with all seed skills + 2
+    // extras (alpha + beta).
+
+    // When + Then: 200 — synced + skipped > 0 + alpha
+    // skill + storage rows are persisted.
     const commitSha = newCommitSha();
     setupMswHandlers(
       commitSha,
       createFullTarball([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
     );
-
-    const response = await accept(
+    const syncResponse = await accept(
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.success).toBeTruthy();
-    expect(response.body.commitSha).toBe(commitSha);
-    expect(response.body.synced + response.body.skipped).toBeGreaterThan(0);
-
+    expect(syncResponse.body.success).toBeTruthy();
+    expect(syncResponse.body.commitSha).toBe(commitSha);
+    expect(
+      syncResponse.body.synced + syncResponse.body.skipped,
+    ).toBeGreaterThan(0);
     const alphaSkill = await findSkillByUrl(
       testSkillUrl(EXTRA_SKILLS.alphaSkill.name),
     );
@@ -391,7 +430,6 @@ describe("GET /api/cron/sync-skills", () => {
       },
     });
     expect(alphaSkill?.versionHash).toBeTruthy();
-
     const alphaStorage = await findSystemStorageByName(
       getSkillStorageName(
         `vm0-ai/vm0-skills/tree/main/${EXTRA_SKILLS.alphaSkill.name}`,
@@ -401,36 +439,41 @@ describe("GET /api/cron/sync-skills", () => {
       type: "volume",
       headVersionId: expect.any(String),
     });
-  });
 
-  it("excludes repository directories without a SKILL.md file", async () => {
-    const commitSha = newCommitSha();
+    // Given: a remote tarball that includes a directory
+    // without SKILL.md.
+
+    // When + Then: 200 — total reflects seed skills +
+    // 2 extras + the no-SKILL.md directory is not
+    // persisted as a skill.
+    const noSkillMdCommit = newCommitSha();
     const nonSkillDirectory = {
       name: `${TEST_SKILL_PREFIX}-no-skill-md`,
       files: [{ path: "README.md", content: "Not a skill." }],
     };
     setupMswHandlers(
-      commitSha,
+      noSkillMdCommit,
       createFullTarball([
         EXTRA_SKILLS.alphaSkill,
         EXTRA_SKILLS.betaSkill,
         nonSkillDirectory,
       ]),
     );
-
-    const response = await accept(
+    const noSkillMdResponse = await accept(
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.total).toBe(ALL_SEED_SKILL_NAMES.length + 2);
+    expect(noSkillMdResponse.body.total).toBe(ALL_SEED_SKILL_NAMES.length + 2);
     await expect(
       findSkillByUrl(testSkillUrl(nonSkillDirectory.name)),
     ).resolves.toBeNull();
-  });
 
-  it("skips malformed skill frontmatter and syncs other skills", async () => {
-    const commitSha = newCommitSha();
+    // Given: a remote tarball with one bad-YAML skill
+    // + one good extra.
+
+    // When + Then: 200 — failed=1 + the bad-YAML skill
+    // is not persisted + the good extra is persisted.
+    const badYamlCommit = newCommitSha();
     const badSkill = {
       name: `${TEST_SKILL_PREFIX}-bad-yaml`,
       files: [
@@ -450,16 +493,14 @@ describe("GET /api/cron/sync-skills", () => {
       ],
     };
     setupMswHandlers(
-      commitSha,
+      badYamlCommit,
       createFullTarball([EXTRA_SKILLS.alphaSkill, badSkill]),
     );
-
-    const response = await accept(
+    const badYamlResponse = await accept(
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.failed).toBe(1);
+    expect(badYamlResponse.body.failed).toBe(1);
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
     ).resolves.not.toBeNull();
@@ -467,8 +508,30 @@ describe("GET /api/cron/sync-skills", () => {
       findSkillByUrl(testSkillUrl(badSkill.name)),
     ).resolves.toBeNull();
   });
+});
 
-  it("only uploads changed skills during incremental sync", async () => {
+describe("BDD GET /api/cron/sync-skills — incremental sync + cleanup chain", () => {
+  beforeEach(() => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
+    context.mocks.s3.send.mockReset();
+    context.mocks.s3.send.mockResolvedValue({});
+  });
+
+  afterEach(async () => {
+    clearMockedEnv();
+    await store.set(cleanupOfficialTestSkills$, undefined, context.signal);
+  });
+
+  it("gwt-wt-wt: 200 uploads only changed skills → 200 removes skills + S3 objects → 200 keeps DB orphan removal when S3 fails", async () => {
+    // Given: an initial sync with alpha + beta skills.
+
+    // When: the second sync changes alpha only.
+
+    // Then: 200 — commitSha updates + synced=1 +
+    // skipped>=1 + exactly 2 PutObject commands (one
+    // per changed file) + alpha's frontmatter is
+    // updated.
     const firstCommitSha = newCommitSha();
     setupMswHandlers(
       firstCommitSha,
@@ -499,17 +562,14 @@ describe("GET /api/cron/sync-skills", () => {
       nextCommitSha,
       createFullTarball([modifiedAlpha, EXTRA_SKILLS.betaSkill]),
     );
-
-    const response = await accept(
+    const incrementalResponse = await accept(
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.commitSha).toBe(nextCommitSha);
-    expect(response.body.synced).toBe(1);
-    expect(response.body.skipped).toBeGreaterThanOrEqual(1);
+    expect(incrementalResponse.body.commitSha).toBe(nextCommitSha);
+    expect(incrementalResponse.body.synced).toBe(1);
+    expect(incrementalResponse.body.skipped).toBeGreaterThanOrEqual(1);
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
-
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
     ).resolves.toMatchObject({
@@ -519,36 +579,39 @@ describe("GET /api/cron/sync-skills", () => {
         description: "Updated alpha skill",
       },
     });
-  });
 
-  it("removes skills deleted from the source repository and cleans S3 objects", async () => {
-    const firstCommitSha = newCommitSha();
+    // Given: an initial sync with alpha + beta + a
+    // mocked S3 ListObjectsV2 returning 2 keys + a
+    // second sync with alpha only.
+
+    // When + Then: 200 — removed=1 + beta is removed
+    // from the DB + alpha is still present + the S3
+    // DeleteObjects command is sent for the 2 listed
+    // keys under the test bucket.
+    const removeFirstCommit = newCommitSha();
     setupMswHandlers(
-      firstCommitSha,
+      removeFirstCommit,
       createFullTarball([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
     );
     await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
 
     setupS3ListObjects(["mock/archive.tar.gz", "mock/manifest.json"]);
-    const nextCommitSha = newCommitSha();
+    const removeNextCommit = newCommitSha();
     setupMswHandlers(
-      nextCommitSha,
+      removeNextCommit,
       createFullTarball([EXTRA_SKILLS.alphaSkill]),
     );
-
-    const response = await accept(
+    const removeResponse = await accept(
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.removed).toBe(1);
+    expect(removeResponse.body.removed).toBe(1);
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.betaSkill.name)),
     ).resolves.toBeNull();
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
     ).resolves.not.toBeNull();
-
     const deleteCommand = s3CallsByName("DeleteObjectsCommand")[0];
     expect(commandInput(deleteCommand)).toMatchObject({
       Bucket: BUCKET,
@@ -559,12 +622,17 @@ describe("GET /api/cron/sync-skills", () => {
         ],
       },
     });
-  });
 
-  it("keeps DB orphan removal when S3 cleanup fails", async () => {
-    const firstCommitSha = newCommitSha();
+    // Given: an initial sync with alpha + beta + a
+    // mocked S3 ListObjectsV2 that rejects with an
+    // error + a second sync with alpha only.
+
+    // When + Then: 200 — removed=1 + the beta skill is
+    // removed from the DB despite the S3 cleanup
+    // failure.
+    const failingFirstCommit = newCommitSha();
     setupMswHandlers(
-      firstCommitSha,
+      failingFirstCommit,
       createFullTarball([EXTRA_SKILLS.alphaSkill, EXTRA_SKILLS.betaSkill]),
     );
     await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
@@ -575,24 +643,44 @@ describe("GET /api/cron/sync-skills", () => {
       }
       return Promise.resolve({});
     });
-    const nextCommitSha = newCommitSha();
+    const failingNextCommit = newCommitSha();
     setupMswHandlers(
-      nextCommitSha,
+      failingNextCommit,
       createFullTarball([EXTRA_SKILLS.alphaSkill]),
     );
-
-    const response = await accept(
+    const failingResponse = await accept(
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.removed).toBe(1);
+    expect(failingResponse.body.removed).toBe(1);
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.betaSkill.name)),
     ).resolves.toBeNull();
   });
+});
 
-  it("logs when seed skills are missing from the source repository", async () => {
+describe("BDD GET /api/cron/sync-skills — seed-skills audit chain", () => {
+  beforeEach(() => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
+    context.mocks.s3.send.mockReset();
+    context.mocks.s3.send.mockResolvedValue({});
+  });
+
+  afterEach(async () => {
+    clearMockedEnv();
+    await store.set(cleanupOfficialTestSkills$, undefined, context.signal);
+  });
+
+  it("gwt-wt-wt: 200 logs when SEED_SKILLS references skills not in the source repo", async () => {
+    // Given: AXIOM envs + a remote tarball that omits
+    // 2 SEED_SKILLS.
+
+    // When: a sync runs.
+
+    // Then: axiomLogging.error is called with the
+    // "SEED_SKILLS references skills not found" message
+    // and the missing-skill context.
     mockEnv("AXIOM_TOKEN_TELEMETRY", "test-token");
     mockEnv("AXIOM_DATASET_SUFFIX", "dev");
     const omittedSkills = SEED_SKILLS.slice(0, 2);
@@ -617,9 +705,7 @@ describe("GET /api/cron/sync-skills", () => {
         }),
       ),
     );
-
     await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
-
     expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
       expect.stringContaining("SEED_SKILLS references skills not found"),
       expect.objectContaining({
@@ -629,9 +715,5 @@ describe("GET /api/cron/sync-skills", () => {
         ]),
       }),
     );
-
-    const restoreCommitSha = newCommitSha();
-    setupMswHandlers(restoreCommitSha, createFullTarball([]));
-    await accept(apiClient().sync({ headers: cronHeaders() }), [200]);
   });
 });
