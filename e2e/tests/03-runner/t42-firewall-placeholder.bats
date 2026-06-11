@@ -99,7 +99,7 @@ setup_test_connector() {
     fi
 }
 
-@test "firewall: placeholder env vars" {
+@test "firewall: placeholder env vars and slack default write deny" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     # No firewalls needed — connector auto-add provides firewalls.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -122,7 +122,7 @@ EOF
     # Verify env vars from both firewall configs are set to placeholder values.
     run $VM0_CLI run "${AGENT_NAME}-multi" \
         --artifact "$ARTIFACT_NAME-multi:/home/user/workspace" \
-        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\""
+        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\" && BODY_FILE=\$(mktemp) && SLACK_STATUS=\$(curl -sS -o \"\$BODY_FILE\" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H \"Authorization: Bearer \$SLACK_TOKEN\" -H 'Content-Type: application/json' --data '{\"channel\":\"C0000000000\",\"text\":\"e2e\"}') && echo \"SLACK_WRITE_STATUS=\$SLACK_STATUS\" && echo \"SLACK_WRITE_BODY=\$(cat \"\$BODY_FILE\")\""
 
     echo "$output"
     assert_success
@@ -130,6 +130,9 @@ EOF
 
     assert_output --partial "GITHUB_TOKEN=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"
     assert_output --partial "SLACK_TOKEN=xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf"
+    assert_output --partial "SLACK_WRITE_STATUS=403"
+    assert_output --partial '"error": "permission_denied"'
+    assert_output --partial '"permissions": ["chat:write"]'
 }
 
 @test "firewall: connector auto-adds firewall without firewalls" {
