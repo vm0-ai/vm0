@@ -639,6 +639,95 @@ class TestRunnerUsageFlushSignal:
             wait_for_usage_flush_worker_to_stop()
             usage.set_pending_path("")
 
+    def test_signal_retries_failed_active_timer_flush_before_ack_snapshot(self, tmp_path):
+        reset_runner_usage_flush_state()
+        flush_owner_lock = _InstrumentedFlushOwnerLock()
+        first_enqueue_started = threading.Event()
+        release_first_enqueue = threading.Event()
+        enqueued_run_ids: list[str] = []
+        enqueued_idempotency_keys: list[str] = []
+        timer_errors: list[str] = []
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        proxy_log_path = str(tmp_path / "proxy.jsonl")
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+
+        def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+            del url, sandbox_token, path
+            assert log_type == "usage_event"
+            enqueued_run_ids.append(payload["runId"])
+            enqueued_idempotency_keys.append(payload["events"][0]["idempotencyKey"])
+            if len(enqueued_run_ids) == 1:
+                first_enqueue_started.set()
+                assert release_first_enqueue.wait(timeout=2)
+                raise OSError("timer failed")
+
+        enqueue = RecordingEnqueue(side_effect=enqueue_webhook)
+        timers = install_recording_usage_timer(
+            enqueue_webhook=enqueue,
+            flush_owner_lock=flush_owner_lock,
+        )
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [event(source_key="source-1")],
+            proxy_log_path,
+        )
+
+        def timer_flush():
+            try:
+                timers[0].callback()
+            except OSError as exc:
+                timer_errors.append(str(exc))
+
+        timer_thread = threading.Thread(target=timer_flush)
+        timer_thread_started = False
+
+        try:
+            timer_thread.start()
+            timer_thread_started = True
+            assert first_enqueue_started.wait(timeout=1)
+
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+            state_before_release = json.loads(pending_path.read_text())
+            assert "flushRequestId" not in state_before_release
+
+            release_first_enqueue.set()
+            timer_thread.join(timeout=1)
+            wait_for_usage_flush_worker_to_stop()
+
+            assert not timer_thread.is_alive()
+            assert timer_errors == ["timer failed"]
+            assert enqueued_run_ids == ["run-1", "run-1"]
+            assert enqueued_idempotency_keys[0] == enqueued_idempotency_keys[1]
+            assert len(timers) == 2
+            assert timers[0].cancelled is True
+            assert timers[1].cancelled is True
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+        finally:
+            release_first_enqueue.set()
+            if timer_thread_started:
+                timer_thread.join(timeout=1)
+            wait_for_usage_flush_worker_to_stop()
+            usage.set_pending_path("")
+
     def test_signal_during_active_flush_runs_follow_up_flush(self):
         reset_runner_usage_flush_state()
         first_flush_started = threading.Event()
