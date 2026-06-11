@@ -10,6 +10,7 @@ test("create a new schedule and verify it appears in the list", async ({
 
   // Navigate to schedule page — the `zeroAutomations` switch is globally on
   // (#17307), so the surface renders the Automations product noun.
+  // The legacy /schedules path redirects to /automations (#17307).
   await page.goto(`${appUrl}/schedules`);
   await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible(
     { timeout: 20_000 },
@@ -19,13 +20,13 @@ test("create a new schedule and verify it appears in the list", async ({
   ).toHaveAttribute("aria-hidden", "true", { timeout: 60_000 });
 
   // Click "Add automation" in the page header (the list empty-state may show
-  // a second "Add schedule" button)
+  // a second "Add automation" button)
   await page
     .getByRole("banner")
     .getByRole("button", { name: "Add automation" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Add schedule" }),
+    page.getByRole("heading", { name: "Add automation" }),
   ).toBeVisible({ timeout: 30_000 });
 
   // Fill prompt and submit
@@ -33,10 +34,10 @@ test("create a new schedule and verify it appears in the list", async ({
   await page.getByRole("button", { name: "Create" }).click();
 
   // After creation, app navigates to schedule detail page — verify the redirect
-  await page.waitForURL(/\/schedules\/[^/]+$/, { timeout: 20_000 });
+  await page.waitForURL(/\/automations\/[^/]+$/, { timeout: 20_000 });
 
-  // Verify we're on a specific schedule detail page (URL contains an ID, not just /schedules/)
-  expect(page.url()).toMatch(/\/schedules\/[^/]+$/);
+  // Verify we're on a specific automation detail page (URL contains an ID)
+  expect(page.url()).toMatch(/\/automations\/[^/]+$/);
 
   // Verify the detail page renders the schedule (toggle visible = schedule exists)
   await expect(page.getByRole("switch").first()).toBeVisible({
