@@ -485,12 +485,16 @@ function buildCustomSkillVolumes(
   customSkills: readonly string[],
   framework: SupportedFramework,
 ): readonly AdditionalVolume[] {
-  return customSkills.map((name) => {
-    return {
-      name: getCustomSkillStorageName(name),
-      mountPath: skillMountPath(framework, name),
-    };
-  });
+  return customSkills
+    .filter((name) => {
+      return !SEED_SKILLS.includes(name);
+    })
+    .map((name) => {
+      return {
+        name: getCustomSkillStorageName(name),
+        mountPath: skillMountPath(framework, name),
+      };
+    });
 }
 
 function buildInjectedSkillVolumes(
