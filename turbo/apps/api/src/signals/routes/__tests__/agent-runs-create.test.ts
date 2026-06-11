@@ -630,6 +630,8 @@ describe("POST /api/agent/runs", () => {
         { name: "USER_DEFINED_DYNAMIC_ENV_17220", value: "visible" },
       ]),
     );
+    expect(snapshot.networkPolicyEntries).toStrictEqual(expect.any(Array));
+    expect(snapshot.featureFlagEntries).toStrictEqual(expect.any(Array));
   });
 
   it("does not load unreferenced persisted secrets into runner secrets", async () => {

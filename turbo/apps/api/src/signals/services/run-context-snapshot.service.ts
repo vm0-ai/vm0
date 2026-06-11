@@ -230,6 +230,7 @@ export function featureFlagsRecordToEntries(
 export function normalizeRunContextSnapshot(
   snapshot: Record<string, unknown>,
 ): NormalizedRunContextSnapshot {
+  // Temporary legacy map fallback for #17222; remove after June 18, 2026.
   const environment = Array.isArray(snapshot.environmentEntries)
     ? environmentFromEntries(snapshot.environmentEntries)
     : (stringRecordValue(snapshot.environment) ?? {});
