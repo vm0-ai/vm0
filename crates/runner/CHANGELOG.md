@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.113.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.112.1...runner-rs-v0.113.0) (2026-06-11)
+
+
+### Features
+
+* send compact builtin firewall refs to runner ([#17252](https://github.com/vm0-ai/vm0/issues/17252)) ([e65864a](https://github.com/vm0-ai/vm0/commit/e65864afdea65f6ded9b9de7c3bcc057184852aa))
+
+
+### Bug Fixes
+
+* **mitm-addon:** validate X fallback query hints ([#17263](https://github.com/vm0-ai/vm0/issues/17263)) ([92bda16](https://github.com/vm0-ai/vm0/commit/92bda16ac194f6b5a66bdc3f801eb291f330d160))
+
+
+### Performance Improvements
+
+* **mitm-addon:** skip non-terminal responses websocket usage scans ([#17283](https://github.com/vm0-ai/vm0/issues/17283)) ([e1bb5a9](https://github.com/vm0-ai/vm0/commit/e1bb5a992a537a01fd1e0f8815fff8a2a9f2ea21))
+
 ## [0.112.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.112.0...runner-rs-v0.112.1) (2026-06-11)
 
 

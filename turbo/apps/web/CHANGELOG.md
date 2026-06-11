@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.422.1](https://github.com/vm0-ai/vm0/compare/web-v12.422.0...web-v12.422.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* add illustration template preview ([#17276](https://github.com/vm0-ai/vm0/issues/17276)) ([51e0bb1](https://github.com/vm0-ai/vm0/commit/51e0bb1e6bb0db65cc17335a2c3f5742ae68b8e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.0
+    * @vm0/core bumped to 8.329.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.67.0
+
 ## [12.422.0](https://github.com/vm0-ai/vm0/compare/web-v12.421.4...web-v12.422.0) (2026-06-11)
 
 

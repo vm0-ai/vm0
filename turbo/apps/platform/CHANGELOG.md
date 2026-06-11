@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.438.2](https://github.com/vm0-ai/vm0/compare/app-v0.438.1...app-v0.438.2) (2026-06-11)
+
+
+### Bug Fixes
+
+* add illustration template preview ([#17276](https://github.com/vm0-ai/vm0/issues/17276)) ([51e0bb1](https://github.com/vm0-ai/vm0/commit/51e0bb1e6bb0db65cc17335a2c3f5742ae68b8e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.0
+    * @vm0/connectors bumped to 1.67.0
+    * @vm0/core bumped to 8.329.0
+
 ## [0.438.1](https://github.com/vm0-ai/vm0/compare/app-v0.438.0...app-v0.438.1) (2026-06-11)
 
 

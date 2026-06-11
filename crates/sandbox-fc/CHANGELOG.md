@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.21](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.20...sandbox-fc-v0.37.21) (2026-06-11)
+
+
+### Refactoring
+
+* split snapshot attempt cleanup module ([#17279](https://github.com/vm0-ai/vm0/issues/17279)) ([c8d48d1](https://github.com/vm0-ai/vm0/commit/c8d48d113dbdda4a80b2eced2a171cb65b0ecf78))
+
 ## [0.37.20](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.19...sandbox-fc-v0.37.20) (2026-06-11)
 
 ## [0.37.19](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.18...sandbox-fc-v0.37.19) (2026-06-10)
