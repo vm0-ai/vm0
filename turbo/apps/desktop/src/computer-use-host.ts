@@ -512,6 +512,10 @@ export class ComputerUseHostRuntime {
     }
     const body = (await next.json()) as ComputerUseHostNextResponse;
     if (body.status === "idle") {
+      this.setState({
+        status: "online",
+        lastError: null,
+      });
       return;
     }
 

@@ -173,6 +173,46 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
+  it("clears a command polling error when the next idle claim succeeds", async () => {
+    vi.useFakeTimers();
+    const heartbeat = deferred<Response>();
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return heartbeat.promise;
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? new Response("{}", { status: 500 })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/stop")) {
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "error",
+      lastError: "Computer Use command claim failed: 500",
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+    });
+
+    await runtime.stop();
+  });
+
   it("records local native command payloads and results", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T08:00:00.000Z"));
