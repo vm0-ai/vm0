@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const TEST_IMAGE_SIZE: u64 = 64 * 1024 * 1024;
+const TEST_IMAGE_SIZE: u64 = 64 * 1024 * 1024;
 
 pub struct NbdTestFixture {
     tmp: tempfile::TempDir,
