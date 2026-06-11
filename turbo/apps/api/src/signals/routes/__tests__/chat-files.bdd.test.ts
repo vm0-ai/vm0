@@ -18,14 +18,15 @@ helper gap:
 - CHAT-02 signed assistant callback, integration-message, and event-consumer
   ingestion still need a visible API helper that creates a run and exposes the
   callback signing material without reading agent_run_callbacks.
-- CHAT-03 non-empty artifacts and memory updates still need a visible run or
-  callback journey that publishes uploaded artifacts and memory versions
-  without direct fixture writes.
+- CHAT-03 memory updates still need a visible run or callback journey that
+  publishes memory versions without direct fixture writes; non-empty run
+  artifacts and Google Drive status now live in chat-threads.bdd.test.ts.
 - FILE-01 legacy /f/:userId/:id/:filename and raw hosted-content download do
   not have exported ts-rest contracts; this file covers typed upload, storage,
   and host APIs instead of using DB or untyped route fallbacks.
-- CHAIN-CHAT run-to-callback-to-artifact is blocked by the CHAT-02 callback
-  signing gap and by run admission setup that previously used DB fixtures.
+- CHAIN-CHAT callback-signing branches are blocked by the CHAT-02 callback
+  signing gap; the run-to-artifact path is covered through public run and
+  sandbox upload APIs in chat-threads.bdd.test.ts.
 */
 
 const context = testContext();
