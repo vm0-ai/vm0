@@ -268,6 +268,19 @@ exit 0
     }
 
     #[cfg(target_os = "linux")]
+    fn copy_executable(source: &Path, destination: &Path) {
+        let mut source_file = fs::File::open(source).unwrap();
+        let mut destination_file = fs::File::create(destination).unwrap();
+        std::io::copy(&mut source_file, &mut destination_file).unwrap();
+        destination_file.sync_all().unwrap();
+        drop(destination_file);
+
+        let mut permissions = fs::metadata(destination).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(destination, permissions).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
     fn wait_for_child_exit_or_kill(child: &mut Child) -> Option<ExitStatus> {
         let deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < deadline {
@@ -457,10 +470,7 @@ exit 0
         let holder_bin = workspace_dir.join("holder-sleep");
         fs::create_dir(&workspace_dir).unwrap();
         fs::create_dir(&fake_bin).unwrap();
-        fs::copy(sleep_binary_path(), &holder_bin).unwrap();
-        let mut permissions = fs::metadata(&holder_bin).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&holder_bin, permissions).unwrap();
+        copy_executable(Path::new(sleep_binary_path()), &holder_bin);
         write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
         write_fake_sync(&fake_bin, &log_path);
         write_busy_then_successful_fake_umount(&fake_bin, &log_path, &count_path);
