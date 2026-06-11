@@ -289,6 +289,21 @@ describe("Navbar dropdown interactions", () => {
     expect(resources).not.toHaveClass("nav-trigger-active");
   });
 
+  it("keeps the open menu when a dropdown item is opened with a modifier click", () => {
+    renderNavbarClient();
+
+    const resources = getDesktopNavTrigger("resources");
+    fireEvent.pointerEnter(resources);
+    expect(resources).toHaveClass("nav-trigger-active");
+
+    const firstItem =
+      document.querySelector<HTMLAnchorElement>(".nav-popover-item");
+    expect(firstItem).not.toBeNull();
+    fireEvent.click(firstItem!, { metaKey: true });
+
+    expect(resources).toHaveClass("nav-trigger-active");
+  });
+
   it("does not reopen from trigger focus restoration after a dropdown item click", () => {
     vi.useFakeTimers();
     try {
