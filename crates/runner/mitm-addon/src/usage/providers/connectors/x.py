@@ -612,36 +612,45 @@ def _parse_request_query_fallback_hints(original_url: str) -> dict:
             if separator and raw_value:
                 hint_key = _decode_request_query_hint_key(raw_key)
                 if hint_key is not None:
-                    if _exceeds_query_hint_byte_limit(
-                        raw_value, _REQUEST_QUERY_HINT_VALUE_MAX_BYTES
+                    id_count_max = policy.id_count_max if hint_key == policy.id_query_key else None
+                    max_results_min = (
+                        policy.max_results_min
+                        if hint_key == _REQUEST_MAX_RESULTS_QUERY_KEY and not max_results_seen
+                        else None
+                    )
+                    max_results_max = (
+                        policy.max_results_max
+                        if hint_key == _REQUEST_MAX_RESULTS_QUERY_KEY and not max_results_seen
+                        else None
+                    )
+                    if id_count_max is not None or (
+                        max_results_min is not None and max_results_max is not None
                     ):
-                        return _empty_request_query_fallback_hints()
+                        if _exceeds_query_hint_byte_limit(
+                            raw_value, _REQUEST_QUERY_HINT_VALUE_MAX_BYTES
+                        ):
+                            return _empty_request_query_fallback_hints()
 
-                    decoded_value = urllib.parse.unquote_plus(raw_value)
-                    if hint_key == policy.id_query_key and policy.id_count_max is not None:
-                        remaining = policy.id_count_max - ids_count
-                        if remaining < 1:
-                            ids_count = 0
-                            break
-                        value_count = _count_bounded_non_empty_comma_segments(
-                            decoded_value, remaining
-                        )
-                        if value_count is None:
-                            ids_count = 0
-                            break
-                        ids_count += value_count
-                    elif (
-                        hint_key == _REQUEST_MAX_RESULTS_QUERY_KEY
-                        and policy.max_results_min is not None
-                        and policy.max_results_max is not None
-                        and not max_results_seen
-                    ):
-                        max_results_seen = True
-                        max_results = _parse_bounded_positive_decimal(
-                            decoded_value,
-                            policy.max_results_min,
-                            policy.max_results_max,
-                        )
+                        decoded_value = urllib.parse.unquote_plus(raw_value)
+                        if id_count_max is not None:
+                            remaining = id_count_max - ids_count
+                            if remaining < 1:
+                                ids_count = 0
+                                break
+                            value_count = _count_bounded_non_empty_comma_segments(
+                                decoded_value, remaining
+                            )
+                            if value_count is None:
+                                ids_count = 0
+                                break
+                            ids_count += value_count
+                        elif max_results_min is not None and max_results_max is not None:
+                            max_results_seen = True
+                            max_results = _parse_bounded_positive_decimal(
+                                decoded_value,
+                                max_results_min,
+                                max_results_max,
+                            )
 
         if end == len(query):
             break

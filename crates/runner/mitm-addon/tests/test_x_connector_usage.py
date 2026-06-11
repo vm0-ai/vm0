@@ -1284,6 +1284,58 @@ class TestXConnectorUsage:
         assert '"level":"error"' in content or '"level": "error"' in content
 
     @pytest.mark.parametrize(
+        ("path", "query_template", "permission", "rule", "expected_quantity"),
+        [
+            (
+                "/2/tweets/search/recent",
+                "ids={large}&query=hello&max_results=50",
+                "tweet.read",
+                "GET /2/tweets/search/recent",
+                50,
+            ),
+            (
+                "/2/tweets",
+                "max_results={large}&ids=1,2",
+                "tweet.read",
+                "GET /2/tweets",
+                2,
+            ),
+            (
+                "/2/tweets/search/recent",
+                "query=hello&max_results=50&max_results={large}",
+                "tweet.read",
+                "GET /2/tweets/search/recent",
+                50,
+            ),
+        ],
+    )
+    def test_unparseable_response_ignores_oversized_irrelevant_fallback_hint_values(
+        self,
+        tmp_path,
+        real_flow,
+        path,
+        query_template,
+        permission,
+        rule,
+        expected_quantity,
+    ):
+        """Oversized values only fail the hint that would actually be trusted."""
+        query = query_template.format(large="x" * 20_000)
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=path,
+            query=query,
+            body=b"not json",
+            permission=permission,
+            rule=rule,
+        )
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["quantity"] == expected_quantity
+
+    @pytest.mark.parametrize(
         ("path", "query", "permission", "rule", "expected_category", "expected_quantity"),
         [
             ("/2/tweets", "ids=1,2,3", "tweet.read", "GET /2/tweets", "posts.read", 3),
