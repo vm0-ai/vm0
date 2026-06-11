@@ -1,6 +1,6 @@
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useLastResolved, useSet, useLoadable } from "ccstate-react";
 import {
   Dialog,
   DialogContent,
@@ -24,8 +24,10 @@ import {
   IconKey,
   IconUsers,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import {
   isAdminOnlySettingsSection,
   settingsActiveSection$,
@@ -129,8 +131,8 @@ const MODELS_GROUP = {
   items: [{ id: "model", label: "Models", icon: IconCpu }],
 } as const satisfies SidebarGroup;
 
-// The usage section is visible to everyone; admins see the org credit balance
-// and team usage, while members see only their own credit usage.
+// The usage section is visible to everyone; the label and detail UI depend on
+// org role and the credit usage records feature switch.
 const CREDIT_BALANCE_ITEM = {
   id: "usage",
   label: "Credit balance",
@@ -142,13 +144,19 @@ const BILLING_ADMIN_ITEMS = [
   { id: "invoices", label: "Invoices", icon: IconFileInvoice },
 ] as const satisfies readonly SidebarItem[];
 
-function billingGroup(isAdmin: boolean): SidebarGroup {
+function billingGroup(
+  isAdmin: boolean,
+  creditUsageRecordsEnabled: boolean,
+): SidebarGroup {
   return {
     label: "Billing & pricing",
     items: [
       {
         ...CREDIT_BALANCE_ITEM,
-        label: isAdmin ? "Credit balance" : "Credit usage",
+        label:
+          !isAdmin && creditUsageRecordsEnabled
+            ? "Credit usage"
+            : "Credit balance",
       },
       ...(isAdmin ? BILLING_ADMIN_ITEMS : []),
     ],
@@ -213,12 +221,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const features = useLastResolved(featureSwitch$);
+  const creditUsageRecordsEnabled =
+    features?.[FeatureSwitchKey.CreditUsageRecords] ?? false;
 
   const sidebarGroups: readonly SidebarGroup[] = [
     PERSONAL_GROUP,
     ...(isAdmin ? [WORKSPACE_GROUP] : []),
     MODELS_GROUP,
-    billingGroup(isAdmin),
+    billingGroup(isAdmin, creditUsageRecordsEnabled),
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section
@@ -227,7 +238,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       ? "preference"
       : activeSection;
   const meta =
-    resolvedSection === "usage" && !isAdmin
+    resolvedSection === "usage" && !isAdmin && creditUsageRecordsEnabled
       ? {
           title: "Credit usage",
           description:

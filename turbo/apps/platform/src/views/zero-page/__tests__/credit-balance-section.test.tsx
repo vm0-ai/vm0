@@ -5,6 +5,7 @@ import type {
   UsageRecordRow,
   UsageRecordSource,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
   click,
@@ -65,8 +66,22 @@ function setUsageRows(rows: UsageRecordRow[]): void {
   setMockUsageRecord(response);
 }
 
-async function openCreditBalanceSection(): Promise<HTMLElement> {
-  detachedSetupPage({ context, path: "/" });
+async function openCreditBalanceSection({
+  creditUsageRecords = true,
+}: {
+  readonly creditUsageRecords?: boolean;
+} = {}): Promise<HTMLElement> {
+  detachedSetupPage({
+    context,
+    path: "/",
+    ...(creditUsageRecords
+      ? {
+          featureSwitches: {
+            [FeatureSwitchKey.CreditUsageRecords]: true,
+          },
+        }
+      : {}),
+  });
   await waitFor(() => {
     expect(screen.getByText("Default Org")).toBeInTheDocument();
   });
@@ -121,6 +136,26 @@ describe("credit balance settings section", () => {
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByText("Team usage")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("All sources")).not.toBeInTheDocument();
+  });
+
+  it("keeps ranged usage controls behind the credit usage records switch", async () => {
+    setMockOrg({ role: "member" });
+    setUsageRows([
+      usageRow({ title: "Member chat", source: "chat", index: 1 }),
+    ]);
+
+    const dialog = await openCreditBalanceSection({
+      creditUsageRecords: false,
+    });
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Member chat")).toBeInTheDocument();
+    });
+    expect(
+      within(dialog).getAllByText("Credit balance").length,
+    ).toBeGreaterThan(0);
+    expect(within(dialog).getByText("All sources")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Today")).not.toBeInTheDocument();
   });
 
   it("closes the settings dialog when a usage row is clicked", async () => {

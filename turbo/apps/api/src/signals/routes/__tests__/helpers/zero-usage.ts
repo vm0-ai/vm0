@@ -12,6 +12,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, inArray } from "drizzle-orm";
@@ -188,6 +189,11 @@ export const deleteUsageFixture$ = command(
     await db
       .delete(orgMembersMetadata)
       .where(eq(orgMembersMetadata.orgId, fixture.orgId));
+    signal.throwIfAborted();
+
+    await db
+      .delete(userFeatureSwitches)
+      .where(eq(userFeatureSwitches.orgId, fixture.orgId));
     signal.throwIfAborted();
 
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));

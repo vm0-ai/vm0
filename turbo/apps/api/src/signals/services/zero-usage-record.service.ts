@@ -36,11 +36,13 @@ const PASSTHROUGH_TRIGGER_SOURCES = [
   "agent",
 ] as const;
 
+type UsageRecordRangeArg = UsageRecordRange | "all";
+
 interface UsageRecordArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly scope: UsageRecordScope;
-  readonly range: UsageRecordRange;
+  readonly range: UsageRecordRangeArg;
   readonly tz: string;
   readonly page: number;
   readonly pageSize: number;
@@ -179,8 +181,16 @@ function calendarDateInTz(date: Date, tz: string): string {
   ].join("-");
 }
 
-function startOfDayInTz(date: Date, tz: string): Date {
-  return startOfCalendarDateInTz(calendarDateInTz(date, tz), tz);
+function addCalendarDays(isoDate: string, days: number): string {
+  const [yearPart, monthPart, dayPart] = isoDate.split("-");
+  const date = new Date(
+    Date.UTC(Number(yearPart), Number(monthPart) - 1, Number(dayPart) + days),
+  );
+  return [
+    date.getUTCFullYear().toString().padStart(4, "0"),
+    (date.getUTCMonth() + 1).toString().padStart(2, "0"),
+    date.getUTCDate().toString().padStart(2, "0"),
+  ].join("-");
 }
 
 function fixedRangeToPeriod(
@@ -188,14 +198,15 @@ function fixedRangeToPeriod(
   tz: string,
 ): UsageRecordPeriod {
   const now = nowDate();
-  const todayStart = startOfDayInTz(now, tz);
+  const todayDate = calendarDateInTz(now, tz);
+  const todayStart = startOfCalendarDateInTz(todayDate, tz);
 
   switch (range) {
     case "today": {
       return { start: todayStart, end: now };
     }
     case "yesterday": {
-      const start = new Date(todayStart.getTime() - DAY_MS);
+      const start = startOfCalendarDateInTz(addCalendarDays(todayDate, -1), tz);
       return { start, end: todayStart };
     }
     case "24h": {
@@ -213,12 +224,15 @@ function fixedRangeToPeriod(
 function recordWith(
   userIdLit: string,
   orgIdLit: string,
-  period: UsageRecordPeriod,
+  period: UsageRecordPeriod | null,
 ): string {
   const threadedSourceList = THREADED_SOURCES.map(pgLit).join(", ");
   const userPredicate = userIdLit ? `AND ue.user_id = ${userIdLit}` : "";
-  const startTsLit = pgLit(period.start.toISOString());
-  const endTsLit = pgLit(period.end.toISOString());
+  const periodPredicate = period
+    ? `
+        AND ue.created_at >= ${pgLit(period.start.toISOString())}::timestamptz
+        AND ue.created_at < ${pgLit(period.end.toISOString())}::timestamptz`
+    : "";
   return `
     WITH usage_rows AS (
       SELECT
@@ -230,8 +244,7 @@ function recordWith(
       WHERE ue.org_id = ${orgIdLit}
         ${userPredicate}
         AND ue.status = 'processed'
-        AND ue.created_at >= ${startTsLit}::timestamptz
-        AND ue.created_at < ${endTsLit}::timestamptz
+        ${periodPredicate}
     ),
     runs AS (
       SELECT
@@ -361,7 +374,7 @@ async function queryUsageRecordBreakdown(
   db: Db,
   userIdLit: string,
   orgIdLit: string,
-  period: UsageRecordPeriod,
+  period: UsageRecordPeriod | null,
   rowKeys: readonly string[],
 ): Promise<Map<string, UsageRecordRow["breakdown"]>> {
   if (rowKeys.length === 0) {
@@ -369,8 +382,11 @@ async function queryUsageRecordBreakdown(
   }
 
   const userPredicate = userIdLit ? `AND ue.user_id = ${userIdLit}` : "";
-  const startTsLit = pgLit(period.start.toISOString());
-  const endTsLit = pgLit(period.end.toISOString());
+  const periodPredicate = period
+    ? `
+          AND ue.created_at >= ${pgLit(period.start.toISOString())}::timestamptz
+          AND ue.created_at < ${pgLit(period.end.toISOString())}::timestamptz`
+    : "";
   const rowKeyList = rowKeys.map(pgLit).join(", ");
   const sourceSql = sourceExpr("zr.trigger_source");
   const kindSql = usageKindExpr("ue.kind");
@@ -391,8 +407,7 @@ async function queryUsageRecordBreakdown(
         WHERE ue.org_id = ${orgIdLit}
           ${userPredicate}
           AND ue.status = 'processed'
-          AND ue.created_at >= ${startTsLit}::timestamptz
-          AND ue.created_at < ${endTsLit}::timestamptz
+          ${periodPredicate}
       ),
       keyed AS (
         SELECT
@@ -483,10 +498,12 @@ export const zeroUsageRecord$ = command(
     }
 
     const period =
-      args.range === "billingPeriod"
-        ? billingPeriod
-        : fixedRangeToPeriod(args.range, args.tz);
-    if (!period) {
+      args.range === "all"
+        ? null
+        : args.range === "billingPeriod"
+          ? billingPeriod
+          : fixedRangeToPeriod(args.range, args.tz);
+    if (args.range !== "all" && !period) {
       throw new Error("usage record period was not resolved");
     }
 
@@ -537,10 +554,12 @@ export const zeroUsageRecord$ = command(
     signal.throwIfAborted();
 
     return {
-      period: {
-        start: period.start.toISOString(),
-        end: period.end.toISOString(),
-      },
+      period: period
+        ? {
+            start: period.start.toISOString(),
+            end: period.end.toISOString(),
+          }
+        : null,
       rows: rows.map((row) => {
         return {
           source: row.source,
