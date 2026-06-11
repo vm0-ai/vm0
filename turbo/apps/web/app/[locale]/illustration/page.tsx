@@ -4,6 +4,7 @@ import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 import { ILLUSTRATION_ASSET_BASE, ILLUSTRATION_STYLES } from "@vm0/core";
 import { IllustrationGalleryClient } from "./IllustrationGalleryClient";
+import { ILLUSTRATION_FAQ } from "./content";
 
 const BASE_URL = "https://www.vm0.ai";
 
@@ -25,9 +26,9 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   const url = `${BASE_URL}/${locale}/illustration`;
-  const title = "Illustration — VM0";
+  const title = "AI Illustration in a Consistent House Style — VM0";
   const description =
-    "An open gallery of every illustration style in the vm0-skills register. Each plate shows one piece in that style with every AI variation behind it.";
+    "Generate on-brand editorial illustration with Zero. Pick from 30+ locked styles in the vm0-skills register and keep every piece in a series on the same palette, line, and cast — not one-off prompt roulette.";
 
   return {
     title,
@@ -77,6 +78,21 @@ export default async function IllustrationPage({ params }: PageProps) {
     }),
   };
 
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: ILLUSTRATION_FAQ.map((item) => {
+      return {
+        "@type": "Question",
+        name: item.q,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: item.a,
+        },
+      };
+    }),
+  };
+
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -103,6 +119,9 @@ export default async function IllustrationPage({ params }: PageProps) {
       </script>
       <script type="application/ld+json" suppressHydrationWarning>
         {JSON.stringify(breadcrumbJsonLd)}
+      </script>
+      <script type="application/ld+json" suppressHydrationWarning>
+        {JSON.stringify(faqJsonLd)}
       </script>
       <IllustrationGalleryClient />
     </div>
