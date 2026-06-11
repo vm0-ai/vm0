@@ -436,6 +436,14 @@ function chatCallbackUrl(): string {
   ).toString();
 }
 
+function buildChatRunCallback(threadId: string, agentId: string) {
+  return {
+    url: chatCallbackUrl(),
+    secret: generateCallbackSecret(),
+    payload: { threadId, agentId },
+  };
+}
+
 function buildWebChatPrompt(): string {
   return [
     "# Current Integration\nYou are currently running inside: Web",
@@ -461,17 +469,158 @@ function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
   generationTemplatePrompt: string,
+  workflowPrompt: string,
 ): string {
   return [
     buildWebChatPrompt(),
     priorContext,
     incompleteContext,
     generationTemplatePrompt,
+    workflowPrompt,
   ]
     .filter((part) => {
       return part.length > 0;
     })
     .join("\n\n");
+}
+
+function normalizedIncludesAny(
+  normalizedText: string,
+  terms: readonly string[],
+): boolean {
+  return terms.some((term) => {
+    return normalizedText.includes(term);
+  });
+}
+
+function attachmentsSuggestWorkIntakeInput(
+  attachFiles: readonly AttachFile[] | undefined,
+): boolean {
+  if (!attachFiles || attachFiles.length === 0) {
+    return false;
+  }
+
+  return attachFiles.some((file) => {
+    const normalizedFilename = file.filename.toLowerCase();
+    const normalizedType = file.contentType.toLowerCase();
+    return (
+      normalizedFilename.endsWith(".vtt") ||
+      normalizedFilename.endsWith(".srt") ||
+      normalizedFilename.includes("transcript") ||
+      normalizedFilename.includes("meeting") ||
+      normalizedFilename.includes("notes") ||
+      normalizedFilename.includes("feedback") ||
+      normalizedFilename.includes("requirements") ||
+      normalizedFilename.includes("backlog") ||
+      normalizedType === "text/vtt" ||
+      normalizedType === "text/plain" ||
+      normalizedType === "text/markdown"
+    );
+  });
+}
+
+function shouldActivateWorkIntakeReconciliationWorkflow(
+  prompt: string,
+  attachFiles: readonly AttachFile[] | undefined,
+): boolean {
+  const normalizedPrompt = prompt.toLowerCase();
+  const intakeTerms = [
+    "meeting notes",
+    "meeting minutes",
+    "meeting transcript",
+    "call notes",
+    "sales call",
+    "customer call",
+    "transcript",
+    "customer feedback",
+    "customer request",
+    "feature request",
+    "product feedback",
+    "requirements",
+    "action items",
+    "follow-up",
+    "follow up",
+    "slack thread",
+    "backlog",
+    "roadmap",
+    "prd",
+    "incident review",
+    "sprint planning",
+  ] as const;
+  const workTerms = [
+    "linear",
+    "jira",
+    "github",
+    "slack",
+    "prd",
+    "ticket",
+    "issue",
+    "action item",
+    "customer request",
+    "requirement",
+    "blocker",
+    "owner",
+    "deadline",
+    "decision",
+    "risk",
+    "customer",
+    "crm",
+    "salesforce",
+    "hubspot",
+  ] as const;
+  const reconciliationTerms = [
+    "reconcile",
+    "triage",
+    "dedupe",
+    "duplicate",
+    "existing ticket",
+    "group",
+    "merge",
+    "organize",
+    "turn into work",
+    "turn into tickets",
+    "create tickets",
+  ] as const;
+
+  const hasIntakeInput =
+    normalizedIncludesAny(normalizedPrompt, intakeTerms) ||
+    attachmentsSuggestWorkIntakeInput(attachFiles);
+  const hasWorkSignal = normalizedIncludesAny(normalizedPrompt, workTerms);
+  const asksForReconciliation = normalizedIncludesAny(
+    normalizedPrompt,
+    reconciliationTerms,
+  );
+
+  return hasIntakeInput && (hasWorkSignal || asksForReconciliation);
+}
+
+function buildWorkIntakeReconciliationWorkflowPrompt(
+  prompt: string,
+  attachFiles: readonly AttachFile[] | undefined,
+): string {
+  if (!shouldActivateWorkIntakeReconciliationWorkflow(prompt, attachFiles)) {
+    return "";
+  }
+
+  return [
+    "# Active Workflow: Work Intake Reconciliation",
+    "The user's message appears to contain scattered work intake: meeting notes, transcripts, customer feedback, Slack discussion, backlog context, PRD notes, or requirements. Do not only summarize it.",
+    "Treat the task as reconciliation: identify what needs to become tracked work, what may already exist, and what needs more context before execution.",
+    "",
+    "Default response shape:",
+    "- Start with a concise summary only if it helps orient the user.",
+    "- Extract requirements, decisions, risks, open questions, owners, and deadlines.",
+    "- For each important requirement or action, list evidence from the provided material.",
+    "- Identify existing-work hints such as ticket IDs, issue names, Slack threads, PRDs, CRM records, repos, or customer names.",
+    "- Call out conflicts, duplicates, missing owners, unclear deadlines, and commitments that should not be overpromised.",
+    "- Separate next steps into: can do now, needs connector or permission, and needs user approval.",
+    "",
+    "Connector guidance:",
+    "- Recommend a connector only when it unlocks a concrete next step for this task.",
+    "- Explain the exact added capability, such as checking a Linear ticket, finding a Slack evidence thread, searching a GitHub issue, updating a PRD, or recording CRM context.",
+    "- Do not recommend optional connectors that only provide vague extra context.",
+    "- Do not execute external writes such as creating tickets, sending messages, changing CRM fields, or editing docs unless the user clearly requested that action or approved the proposed action.",
+  ].join("\n");
 }
 
 function buildFullPrompt(
@@ -1299,6 +1448,56 @@ async function computerUseFeatureEnabled(params: {
     userId: params.userId,
     overrides: context.overrides,
   });
+}
+
+async function workIntakeReconciliationFeatureEnabled(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<boolean> {
+  const context = await loadUserFeatureSwitchContext(
+    params.db,
+    params.orgId,
+    params.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.ChatWorkIntakeReconciliation, {
+    orgId: params.orgId,
+    userId: params.userId,
+    overrides: context.overrides,
+  });
+}
+
+async function buildNormalChatAppendSystemPrompt(
+  params: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly prompt: string;
+    readonly attachFiles: readonly AttachFile[] | undefined;
+    readonly incompleteContext: string;
+    readonly priorContext: string;
+    readonly generationTemplatePrompt: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
+  const workflowPrompt = (await workIntakeReconciliationFeatureEnabled({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+  }))
+    ? buildWorkIntakeReconciliationWorkflowPrompt(
+        params.prompt,
+        params.attachFiles,
+      )
+    : "";
+  signal.throwIfAborted();
+
+  return buildAppendSystemPrompt(
+    params.incompleteContext,
+    params.priorContext,
+    params.generationTemplatePrompt,
+    workflowPrompt,
+  );
 }
 
 async function updateThreadComputerUseHost(params: {
@@ -2456,6 +2655,20 @@ const createNormalChatRun$ = command(
       });
     }
 
+    const appendSystemPrompt = await buildNormalChatAppendSystemPrompt(
+      {
+        db: prepared.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        prompt: args.body.prompt,
+        attachFiles: args.body.attachFiles,
+        incompleteContext: prepared.thread.incompleteContext,
+        priorContext: prepared.priorContext,
+        generationTemplatePrompt: prepared.generationTemplatePrompt,
+      },
+      signal,
+    );
+
     const runResult = await set(
       createZeroRun$,
       {
@@ -2468,14 +2681,7 @@ const createNormalChatRun$ = command(
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
         callbacks: [
-          {
-            url: chatCallbackUrl(),
-            secret: generateCallbackSecret(),
-            payload: {
-              threadId: prepared.thread.threadId,
-              agentId: args.body.agentId,
-            },
-          },
+          buildChatRunCallback(prepared.thread.threadId, args.body.agentId),
         ],
         body: {
           prompt: fullPrompt,
@@ -2490,11 +2696,7 @@ const createNormalChatRun$ = command(
           debugNoMockCodex: args.body.debugNoMockCodex,
         },
         triggerSource: "web",
-        appendSystemPrompt: buildAppendSystemPrompt(
-          prepared.thread.incompleteContext,
-          prepared.priorContext,
-          prepared.generationTemplatePrompt,
-        ),
+        appendSystemPrompt,
       },
       signal,
     );

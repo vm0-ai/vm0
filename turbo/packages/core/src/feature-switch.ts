@@ -339,6 +339,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Generate and show recommended follow-up prompts after completed chat runs.",
     enabled: true,
   },
+  [FeatureSwitchKey.ChatWorkIntakeReconciliation]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Inject work-intake reconciliation guidance for meetings, transcripts, customer feedback, and scattered requirements in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
     maintainer: "bingjie@vm0.ai",
     description: "Show a PPTX download action for presentation HTML artifacts.",

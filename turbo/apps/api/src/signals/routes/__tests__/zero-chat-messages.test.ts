@@ -552,6 +552,9 @@ describe("POST /api/zero/chat/messages", () => {
       chatThreadId: response.body.threadId,
     });
     expect(run?.appendSystemPrompt).not.toContain("# Generation Template");
+    expect(run?.appendSystemPrompt).not.toContain(
+      "# Active Workflow: Work Intake Reconciliation",
+    );
 
     const message = await firstUserMessage(response.body.threadId);
     expect(message).toMatchObject({
@@ -592,6 +595,54 @@ describe("POST /api/zero/chat/messages", () => {
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadRunCreated:${response.body.threadId}`,
       null,
+    );
+  });
+
+  it("adds work intake reconciliation guidance when the feature is enabled", async () => {
+    const fixture = await track(seedFixture());
+    await store
+      .set(writeDb$)
+      .insert(userFeatureSwitches)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        switches: {
+          [FeatureSwitchKey.ChatWorkIntakeReconciliation]: true,
+        },
+        updatedAt: nowDate(),
+      });
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: [
+        "Please process these meeting notes and identify customer requirements.",
+        "",
+        "Acme said SAML SSO blocks the enterprise upgrade.",
+        "Sarah mentioned Linear ENG-482 already exists but is still P3.",
+        "David said a Slack thread from Globex may contain the same request.",
+        "Mark mentioned a GitHub issue about org-level auth policy.",
+      ].join("\n"),
+    });
+    await flushWaitUntilForTest();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.appendSystemPrompt).toContain(
+      "# Active Workflow: Work Intake Reconciliation",
+    );
+    expect(run?.appendSystemPrompt).toContain("Do not only summarize it.");
+    expect(run?.appendSystemPrompt).toContain(
+      "Separate next steps into: can do now, needs connector or permission, and needs user approval.",
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      "Recommend a connector only when it unlocks a concrete next step for this task.",
     );
   });
 
