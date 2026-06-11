@@ -12,6 +12,8 @@ import {
   buildCronExpression,
   buildAtTime,
   isAtTimePast,
+  cronUtcToLocalTime,
+  atTimeInTimezone,
   type ScheduleBody,
   type CronTimeOption,
 } from "./cron.ts";
@@ -57,10 +59,10 @@ function scheduleToTimeString(s: ScheduleResponse): string {
   }
 
   if (s.triggerType === "once" && s.atTime) {
-    const at = new Date(s.atTime);
-    const date = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-    const hour = at.getHours();
-    const minute = at.getMinutes();
+    const { date, hour, minute } = atTimeInTimezone(
+      s.atTime,
+      s.timezone ?? "UTC",
+    );
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
@@ -71,36 +73,6 @@ function scheduleToTimeString(s: ScheduleResponse): string {
   }
 
   return "Scheduled";
-}
-
-function cronUtcToLocalTime(
-  utcHour: number,
-  utcMinute: number,
-  timezone: string,
-): { hour: number; minute: number } {
-  if (timezone === "UTC" || timezone === "Etc/UTC") {
-    return { hour: utcHour, minute: utcMinute };
-  }
-  const d = new Date();
-  d.setUTCHours(utcHour, utcMinute, 0, 0);
-  const parts = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: timezone,
-  }).formatToParts(d);
-  return {
-    hour: Number(
-      parts.find((p) => {
-        return p.type === "hour";
-      })?.value ?? utcHour,
-    ),
-    minute: Number(
-      parts.find((p) => {
-        return p.type === "minute";
-      })?.value ?? utcMinute,
-    ),
-  };
 }
 
 function cronToTimeString(cron: string, timezone = "UTC"): string {
