@@ -5,11 +5,17 @@ import {
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
+import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 
-export const ZERO_DESKTOP_DOWNLOAD_URL =
-  "https://github.com/vm0-ai/vm0/releases/tag/desktop-updates";
+const ZERO_DESKTOP_RELEASE_PATH =
+  "/api/zero/desktop/updates/stable/darwin/arm64/release";
+
+export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
+  ZERO_DESKTOP_RELEASE_PATH,
+  resolveApiBaseForNavigation(true),
+).toString();
 
 type OnlineComputerUseHost = Pick<
   ComputerUseHost,

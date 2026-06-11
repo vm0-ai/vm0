@@ -3289,62 +3289,62 @@
       },
       "cold-outreach-pipeline": {
         "title": "Automate Cold Email from ICP to Inbox",
-        "description": "Zero searches Apollo for matching leads, enriches emails, scrapes company websites, generates personalized opening lines, and uploads to Instantly.",
+        "description": "Zero searches Apollo for ICP-matching leads, scores each one against your signals, tracks the pipeline in a Notion database, and drafts a personalized multi-touch sequence in Gmail.",
         "timeSaved": "~45 min saved",
-        "scenario": "It's Monday morning. You need 30 qualified leads for this week's campaign. That means an hour in Apollo tweaking filters, exporting CSVs, cross-referencing company websites to write opening lines that don't sound like a template, then uploading everything to Instantly. By the time the first email sends, half your morning is gone. With Zero, you describe your ICP in plain English and get a fully personalized, campaign-ready lead list in minutes.",
+        "scenario": "It's Monday morning. You need 30 qualified leads for this week's campaign. That means an hour in Apollo tweaking filters, exporting CSVs, reading company websites so the first line doesn't sound like a template, then logging everything in a spreadsheet and writing each email by hand. By the time the first draft is ready, half your morning is gone. With Zero, you describe your ICP in plain English and get a scored lead list in Notion plus personalized drafts waiting in Gmail.",
         "promptVariants": [
           {
             "label": "Detailed",
-            "prompt": "@Zero find 25 leads matching this ICP: executive assistants at 1–10 person law firms in the US. Enrich emails via Apollo, scrape each company website for context, generate a personalized opening line per lead, and upload them to Instantly campaign abc-123-def. My sender name is Ethan, Founder @ vm0."
+            "prompt": "@Zero build and run a cold outreach pipeline. Search Apollo for founders and engineering leads at seed to Series A dev tool startups, score each lead 0-18 across our 6 ICP signals, and qualify anything above 10. Add qualified leads to our Notion pipeline database, then draft a 3-touch Gmail sequence per lead: E1 today, E2 on day 4-5, E3 breakup on day 8-9. Stop the sequence the moment someone replies."
           },
           {
             "label": "Quick",
-            "prompt": "@Zero find 20 US-based startup CTOs, personalize, and upload to Instantly campaign abc-123-def."
+            "prompt": "@Zero find 20 ICP-matching leads in Apollo, add them to the Notion pipeline, and draft a personalized first email for each in Gmail."
           },
           {
             "label": "Scheduled",
-            "prompt": "@Zero every Monday at 9am, find 25 new leads matching our ICP (DevOps engineers at Series A startups), personalize, and upload to Instantly campaign abc-123-def."
+            "prompt": "@Zero every Monday at 9am, top up the Notion pipeline with 25 newly qualified leads and draft whatever follow-ups are due this week."
           }
         ],
         "slackPreview": [
           {
             "name": "Ethan",
-            "text": "@Zero find 25 executive assistants at small US law firms. Enrich via Apollo, personalize with company context, upload to Instantly campaign abc-123-def."
+            "text": "@Zero run the outreach pipeline: 25 founders at seed-stage dev tool startups, score them against our ICP, add qualified leads to Notion, drafts in Gmail."
           },
           {
             "name": "Zero",
-            "text": "Done. Pipeline complete for run 20260422-091530:\n\n• Apollo search: 38 candidates found\n• Email enrichment: 27 verified emails\n• Website personalization: 25/27 scraped\n• Instantly upload: 25 leads enrolled, 2 skipped (duplicates)\n\nSample opening line:\n\"Managing calendars and filings for a boutique litigation practice sounds like it demands serious coordination skills.\"\n\nCached to Google Drive — reuse with run ID 20260422-091530."
+            "text": "Pipeline run complete:\n\n• Apollo search: 38 candidates found\n• Email enrichment: 27 verified emails\n• Scoring: 14 leads at 10+ of 18, added to the Notion pipeline\n• Gmail: 14 personalized first-touch drafts ready for review\n• Follow-ups: E2 scheduled for day 4-5, E3 breakup for day 8-9\n\nNothing sends without your review. Reply detection is on, so a response from a prospect stops their sequence."
           }
         ],
         "steps": [
           {
-            "title": "Zero searches Apollo for ICP-matching prospects",
-            "description": "Zero translates your natural-language ICP into Apollo search filters — job titles, company size, location, and verified-email-only — then paginates through results to collect enough candidates. Emails are enriched via Apollo's bulk match API in small batches to maximize hit rate."
+            "title": "Zero searches Apollo and scores every lead",
+            "description": "Zero translates your plain-English ICP into Apollo search filters, enriches emails via the bulk match API, then scores each lead 0 to 18 across six signals like role, company stage, and product fit. Only leads above your qualification bar move forward."
           },
           {
-            "title": "Company websites scraped for personalization context",
-            "description": "For each unique company domain, Zero scrapes the website to understand what the company does, its positioning, and recent activity. This context feeds into the personalization engine so every opening line references something real about the prospect's company."
+            "title": "Qualified leads land in a Notion pipeline",
+            "description": "Every qualified lead gets a row in your Notion database with company, stage, website, and sequence status. The database is the shared source of truth, so anyone on the team can see who is in play and which touch went out last."
           },
           {
-            "title": "AI-personalized leads uploaded to Instantly",
-            "description": "Claude generates a unique, natural-sounding opening sentence for each lead — no templates, no product pitches in the opener. The full lead list (name, email, company, personalization line) is uploaded to your Instantly campaign, ready to send."
+            "title": "Personalized drafts queue up in Gmail",
+            "description": "Zero reads each company's website and recent activity, then writes an opening line that references something real. The first touch lands as a Gmail draft for your review, follow-ups go out on day 4-5, and a breakup note closes the loop on day 8-9. A reply stops the sequence."
           }
         ],
         "nextActions": [
           {
-            "title": "Review personalization quality",
-            "description": "Spot-check opening lines before launching the campaign",
-            "examplePrompt": "@Zero show me the personalization lines for run 20260422-091530. Flag any that sound generic or mention our product."
+            "title": "Review drafts before they send",
+            "description": "Spot-check opening lines while they are still drafts",
+            "examplePrompt": "@Zero show me today's first-touch drafts. Flag any opener that sounds templated or pitches the product too early."
           },
           {
             "title": "Expand to a new segment",
-            "description": "Target a different ICP without rebuilding the pipeline",
-            "examplePrompt": "@Zero same pipeline, but target HR managers at 50–200 person SaaS companies in the UK. Upload to Instantly campaign xyz-456-ghi."
+            "description": "Point the same pipeline at a different ICP",
+            "examplePrompt": "@Zero same pipeline, but target HR managers at 50-200 person SaaS companies in the UK. Add them to the Notion pipeline."
           },
           {
-            "title": "Schedule weekly lead generation",
-            "description": "Automate recurring prospecting on a fixed cadence",
-            "examplePrompt": "@Zero every Monday at 9am, find 25 new leads matching our ICP and upload to Instantly campaign abc-123-def."
+            "title": "Make it routine",
+            "description": "Keep the pipeline full without thinking about it",
+            "examplePrompt": "@Zero every Monday at 9am, refill the Notion pipeline with 25 newly qualified leads and draft the follow-ups that are due."
           }
         ],
         "integrations": [
@@ -3352,16 +3352,16 @@
             "description": "Apollo provides prospect search and verified email enrichment. Zero uses the People Search and Bulk Match APIs to find leads matching your ICP criteria."
           },
           {
-            "description": "Instantly receives the enriched, personalized lead list. Zero uploads directly to your specified campaign so leads are ready for automated email sequences."
+            "description": "Notion hosts the pipeline database. Zero creates a row per qualified lead with score, stage, and sequence status, and updates it as each touch goes out."
           },
           {
-            "description": "Optional — request pipeline runs and receive completion summaries directly in Slack."
+            "description": "Gmail is where drafts land and replies arrive. Zero writes every email as a draft in your own account, so you review before anything sends and threads stay in your inbox."
           }
         ],
         "tips": [
-          "Be specific with your ICP. Include job titles, company size range, and target geography — vague descriptions produce noisy results.",
-          "Start with a batch of 20 leads to validate personalization quality before scaling up to 50 per run.",
-          "Save your run ID. Zero caches Apollo and enrichment data to Google Drive, so you can re-personalize or re-upload without burning API credits."
+          "Give Zero context docs: your positioning, ICP definition, and pricing. The more it knows about who you sell to, the sharper the scoring and the opening lines.",
+          "Set an explicit qualification bar, like 10 of 18, and let everything below it stay in Apollo. A smaller, sharper pipeline outperforms a long noisy list.",
+          "Keep the sequence short and respectful: a first touch, one follow-up, one breakup. If a prospect replies, Zero stops the sequence and hands the thread to you."
         ]
       },
       "podcast-deep-research": {

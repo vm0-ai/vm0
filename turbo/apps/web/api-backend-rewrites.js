@@ -17,6 +17,10 @@ const DESKTOP_AUTH_HANDOFF_COMPLETE_REWRITE_SOURCE = `/api/desktop-auth/handoff/
 const DESKTOP_AUTH_HANDOFF_COMPLETE_PATH_RE = new RegExp(
   `^/api/desktop-auth/handoff/${UUID_PATH_SEGMENT_PATTERN}/complete$`,
 );
+const ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE =
+  "/api/zero/desktop/updates/:channel/:platform/:arch/release";
+const ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE =
+  /^\/api\/zero\/desktop\/updates\/[^/]+\/[^/]+\/[^/]+\/release$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 const ZERO_RUNS_REWRITE_SOURCE = "/api/zero/runs";
@@ -433,6 +437,11 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
     "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
+  ],
+  [
+    ZERO_DESKTOP_UPDATE_RELEASE_REWRITE_SOURCE,
+    "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+    ZERO_DESKTOP_UPDATE_RELEASE_PATH_RE,
   ],
   [
     AGENT_RUN_CANCEL_REWRITE_SOURCE,

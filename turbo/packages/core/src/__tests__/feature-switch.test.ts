@@ -112,7 +112,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
-      false,
+      true,
     );
   });
 
