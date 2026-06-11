@@ -4,6 +4,7 @@ import {
   type UsageRecordRange,
   type UsageRecordScope,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
+import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 
@@ -24,7 +25,6 @@ export const setCreditBalanceTab$ = command(
 const PAGE_STEP = 20;
 
 const myUsagePageSize$ = state(PAGE_STEP);
-const teamUsagePageSize$ = state(PAGE_STEP);
 const myUsageRangeState$ = state<UsageRecordRange>("today");
 const teamUsageRangeState$ = state<UsageRecordRange>("billingPeriod");
 
@@ -44,16 +44,11 @@ export const setMyUsageRange$ = command(({ set }, range: UsageRecordRange) => {
 export const setTeamUsageRange$ = command(
   ({ set }, range: UsageRecordRange) => {
     set(teamUsageRangeState$, range);
-    set(teamUsagePageSize$, PAGE_STEP);
   },
 );
 
 export const loadMoreUsageRecord$ = command(
-  ({ get, set }, scope: UsageRecordScope) => {
-    if (scope === "team") {
-      set(teamUsagePageSize$, get(teamUsagePageSize$) + PAGE_STEP);
-      return;
-    }
+  ({ get, set }, _scope: UsageRecordScope) => {
     set(myUsagePageSize$, get(myUsagePageSize$) + PAGE_STEP);
   },
 );
@@ -83,17 +78,13 @@ export const myUsageRecordAsync$ = computed(async (get) => {
   return result.body;
 });
 
-export const teamUsageRecordAsync$ = computed(async (get) => {
-  const pageSize = get(teamUsagePageSize$);
+export const teamMemberUsageAsync$ = computed(async (get) => {
   const range = get(teamUsageRangeState$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroUsageRecordContract);
+  const client = createClient(zeroUsageMembersContract);
   const result = await accept(
     client.get({
       query: {
-        page: 1,
-        pageSize,
-        scope: "team",
         range,
         tz: currentTimeZone(),
       },

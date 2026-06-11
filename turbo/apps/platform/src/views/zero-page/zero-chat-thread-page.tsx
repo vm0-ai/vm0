@@ -2469,7 +2469,7 @@ function latestRecommendedFollowups(
   if (!lastMessage || lastMessage.role !== "assistant") {
     return null;
   }
-  if (lastMessage.runLifecycleEvent !== undefined) {
+  if (lastMessage.runLifecycleEvent !== "completed") {
     return null;
   }
   const followups = lastMessage.recommendedFollowups ?? [];

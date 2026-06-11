@@ -127,12 +127,12 @@ describe("GET /api/zero/usage/record", () => {
     });
   });
 
-  it("returns 403 when a non-admin requests team usage", async () => {
+  it("returns 403 when team usage records are requested", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
     await enableCreditUsageRecords(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const response = await accept(
       apiClient().get({
@@ -144,7 +144,7 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Only org admins can view team usage",
+        message: "Team usage records are aggregated by member",
         code: "FORBIDDEN",
       },
     });
@@ -715,7 +715,7 @@ describe("GET /api/zero/usage/record", () => {
     ).toStrictEqual(["DST previous day"]);
   });
 
-  it("returns team usage rows with member emails for admins", async () => {
+  it("does not return team usage rows with conversation details for admins", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
@@ -776,24 +776,13 @@ describe("GET /api/zero/usage/record", () => {
         query: { scope: "team", range: "7d", tz: "UTC" },
         headers: authHeaders(),
       }),
-      [200],
+      [403],
     );
 
-    expect(response.body.rows).toHaveLength(2);
-    expect(response.body.rows[0]).toMatchObject({
-      title: "Teammate chat",
-      credits: 40,
-      member: {
-        userId: teammateId,
-        email: `${teammateId}@example.com`,
-      },
-    });
-    expect(response.body.rows[1]).toMatchObject({
-      title: "Admin chat",
-      credits: 20,
-      member: {
-        userId: fixture.userId,
-        email: `${fixture.userId}@example.com`,
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Team usage records are aggregated by member",
+        code: "FORBIDDEN",
       },
     });
   });

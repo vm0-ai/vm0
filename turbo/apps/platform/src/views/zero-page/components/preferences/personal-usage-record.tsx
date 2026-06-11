@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import {
   IconBrandGithub,
   IconBrandSlack,
@@ -12,6 +12,7 @@ import {
   IconRobot,
   IconTerminal2,
 } from "@tabler/icons-react";
+import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type {
   UsageRecordKind,
   UsageRecordRange,
@@ -20,6 +21,7 @@ import type {
   UsageRecordScope,
   UsageRecordSource,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
+import type { UsageMembersResponse } from "@vm0/api-contracts/contracts/zero-usage";
 import {
   Button,
   DropdownMenu,
@@ -36,13 +38,15 @@ import {
 import {
   loadMoreUsageRecord$,
   myUsageRecordAsync$,
-  teamUsageRecordAsync$,
+  teamMemberUsageAsync$,
 } from "../../../../signals/zero-page/settings/personal-usage-record.ts";
+import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { setSettingsDialogOpen$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { nowDate } from "../../../../lib/time.ts";
 import { Link } from "../../../router/link.tsx";
+import { MemberUsageTable } from "../org-manage/org-usage-tab.tsx";
 
 const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
 
@@ -103,6 +107,11 @@ type UsageRecordLoadable =
   | { readonly state: "loading" }
   | { readonly state: "hasError" }
   | { readonly state: "hasData"; readonly data: UsageRecordResponse };
+
+type UsageMembersLoadable =
+  | { readonly state: "loading" }
+  | { readonly state: "hasError" }
+  | { readonly state: "hasData"; readonly data: UsageMembersResponse };
 
 function formatCredits(n: number): string {
   if (n >= 1_000_000) {
@@ -392,12 +401,53 @@ function UsageRecordContent({
   );
 }
 
+function TeamMemberUsageContent({
+  loadable,
+  range,
+}: {
+  loadable: UsageMembersLoadable;
+  range: UsageRecordRange;
+}) {
+  const membersLoadable = useLoadable(orgMembers$);
+  const orgMembersList =
+    membersLoadable.state === "hasData" ? membersLoadable.data : [];
+  const memberMap = new Map<string, OrgMember>(
+    orgMembersList.map((member) => {
+      return [member.userId, member];
+    }),
+  );
+
+  return (
+    <section className="flex flex-col gap-4">
+      {loadable.state === "loading" && <UsageRecordSkeleton />}
+      {loadable.state === "hasError" && (
+        <p className="text-sm text-muted-foreground" role="alert">
+          Couldn&apos;t load team usage. Please try again later.
+        </p>
+      )}
+      {loadable.state === "hasData" &&
+        (!loadable.data.period ? (
+          <p className="text-sm text-muted-foreground">
+            No active billing period. Team usage is available on paid plans.
+          </p>
+        ) : loadable.data.members.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>
+        ) : (
+          <MemberUsageTable
+            members={loadable.data.members}
+            memberMap={memberMap}
+          />
+        ))}
+    </section>
+  );
+}
+
 export function PersonalUsageRecord({ range }: { range: UsageRecordRange }) {
   const loadable = useLastLoadable(myUsageRecordAsync$);
   return <UsageRecordContent loadable={loadable} range={range} scope="mine" />;
 }
 
 export function TeamUsageRecord({ range }: { range: UsageRecordRange }) {
-  const loadable = useLastLoadable(teamUsageRecordAsync$);
-  return <UsageRecordContent loadable={loadable} range={range} scope="team" />;
+  const loadable = useLastLoadable(teamMemberUsageAsync$);
+  return <TeamMemberUsageContent loadable={loadable} range={range} />;
 }

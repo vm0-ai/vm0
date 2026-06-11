@@ -9,6 +9,64 @@ use super::support::{
 
 use super::super::signals::{SignalController, SignalHandlerTask, handle_resume_signal};
 use crate::idle_pool::ParkingState;
+use crate::provider::{ClaimedJob, CompletionAuth, JobCandidate};
+use crate::types::{HeartbeatState, HeldSessionState, SandboxReuseResult};
+use async_trait::async_trait;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+struct ShutdownRecordingProvider {
+    shutdowns: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl crate::provider::JobProvider for ShutdownRecordingProvider {
+    async fn discover(&self) -> Option<JobCandidate> {
+        panic!("publish failure cleanup test does not discover jobs")
+    }
+
+    async fn claim(&self, _candidate: JobCandidate) -> Option<ClaimedJob> {
+        panic!("publish failure cleanup test does not claim jobs")
+    }
+
+    async fn complete(
+        &self,
+        _run_id: RunId,
+        _exit_code: i32,
+        _error: Option<&str>,
+        _sandbox_id: Option<sandbox::SandboxId>,
+        _reuse_result: Option<SandboxReuseResult>,
+        _completion_auth: CompletionAuth,
+    ) {
+        panic!("publish failure cleanup test does not complete jobs")
+    }
+
+    async fn heartbeat(&self, _state: &HeartbeatState) {}
+
+    async fn set_held_session_states(&self, _states: Vec<HeldSessionState>) {}
+
+    async fn shutdown(&self) {
+        self.shutdowns.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+struct ShutdownRecordingRuntime {
+    shutdowns: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl sandbox::SandboxRuntime for ShutdownRecordingRuntime {
+    async fn create_factory(
+        &self,
+        _config: sandbox::FactoryConfig,
+    ) -> sandbox::Result<Box<dyn sandbox::SandboxFactory>> {
+        panic!("publish failure cleanup test does not create factories")
+    }
+
+    async fn shutdown(&mut self) {
+        self.shutdowns.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 fn usage_pending_path(base_dir: &std::path::Path) -> std::path::PathBuf {
     base_dir.join("mitm-addon").join("usage-pending")
@@ -43,6 +101,45 @@ fn write_usage_pending_state(
         .to_string(),
     )
     .unwrap();
+}
+
+#[tokio::test]
+async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = crate::paths::HomePaths::with_root(dir.path().join("vm0-runner"));
+    std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
+    std::fs::write(home.live_runner_instances_dir(), b"not a directory").unwrap();
+
+    let provider_shutdowns = Arc::new(AtomicUsize::new(0));
+    let provider = ShutdownRecordingProvider {
+        shutdowns: Arc::clone(&provider_shutdowns),
+    };
+    let runtime_shutdowns = Arc::new(AtomicUsize::new(0));
+    let mut runtime = ShutdownRecordingRuntime {
+        shutdowns: Arc::clone(&runtime_shutdowns),
+    };
+    let metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
+        config_path: dir.path().join("runner.yaml"),
+        base_dir: dir.path().join("base"),
+        runner_name: "test-runner".into(),
+        runner_group: "vm0/test".into(),
+    };
+
+    let error = publish_live_runner_instance_or_shutdown_startup_resources(
+        &home,
+        metadata,
+        &provider,
+        &mut runtime,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        error.to_string().contains("ensure live runner instances"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(provider_shutdowns.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime_shutdowns.load(Ordering::SeqCst), 1);
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {

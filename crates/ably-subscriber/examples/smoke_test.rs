@@ -17,12 +17,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
 
-use ably_subscriber::{Event, SubscribeConfig, TokenRequest, subscribe};
+use ably_subscriber::{Event, SubscribeConfig, subscribe};
 
-type HmacSha256 = Hmac<Sha256>;
+mod common;
 
 /// A test case: publish `data` with optional `encoding`, expect `expected` back.
 struct TestCase {
@@ -171,37 +169,6 @@ fn test_cases() -> Vec<TestCase> {
     ]
 }
 
-fn create_token_request(
-    key_name: &str,
-    key_secret: &str,
-    ttl_ms: i64,
-) -> Result<TokenRequest, Box<dyn std::error::Error + Send + Sync>> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("system time error: {e}"))?;
-    let timestamp = now.as_millis() as i64;
-    let nonce = format!("{:x}{:x}", now.as_nanos(), std::process::id());
-    let ttl = ttl_ms;
-    let capability = r#"{"*":["*"]}"#;
-
-    let sign_text = format!("{key_name}\n{ttl}\n{capability}\n\n{timestamp}\n{nonce}\n");
-
-    let mut mac = HmacSha256::new_from_slice(key_secret.as_bytes())
-        .map_err(|e| format!("HMAC error: {e}"))?;
-    mac.update(sign_text.as_bytes());
-    let mac_b64 = BASE64.encode(mac.finalize().into_bytes());
-
-    Ok(TokenRequest {
-        key_name: key_name.to_string(),
-        timestamp,
-        nonce,
-        mac: mac_b64,
-        capability: capability.to_string(),
-        ttl: Some(ttl),
-        client_id: None,
-    })
-}
-
 /// Wait for the `Connected` event on a subscription (15s timeout).
 async fn wait_for_connected(
     sub: &mut ably_subscriber::Subscription,
@@ -319,7 +286,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Box::new(move || {
             let kn = kn.clone();
             let ks = ks.clone();
-            Box::pin(async move { create_token_request(&kn, &ks, 3_600_000) })
+            Box::pin(async move { common::create_token_request(&kn, &ks, common::ONE_HOUR_TTL_MS) })
         }),
         channel.clone(),
     ))
@@ -418,8 +385,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let n = cc.fetch_add(1, Ordering::Relaxed);
                 // First token: short TTL forces immediate renewal.
                 // Subsequent: normal TTL avoids a tight renewal loop.
-                let ttl = if n == 0 { 15_000 } else { 3_600_000 };
-                create_token_request(&kn, &ks, ttl)
+                let ttl = if n == 0 {
+                    15_000
+                } else {
+                    common::ONE_HOUR_TTL_MS
+                };
+                common::create_token_request(&kn, &ks, ttl)
             })
         }),
         renewal_channel.clone(),

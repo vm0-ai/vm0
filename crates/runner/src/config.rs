@@ -50,6 +50,7 @@ pub(crate) const DEFAULT_CONCURRENCY_FACTOR: f64 = 1.0;
 const MAX_VCPU: u32 = 1024;
 const MAX_MEMORY_MB: u32 = 1_048_576; // 1 TB
 const MAX_DISK_MB: u32 = 1_048_576; // 1 TB
+pub(crate) const DIAGNOSTIC_CONFIG_MAX_BYTES: u64 = 1024 * 1024;
 
 /// Top-level runner configuration, deserialized from `runner.yaml`.
 ///
@@ -167,6 +168,20 @@ pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
     // Image artifacts are mutable cache outputs. Runtime callers validate
     // them only after acquiring the matching shared rootfs/snapshot locks.
     load_with_home(path, &home, false).await
+}
+
+/// Read a runner config selected by diagnostic/discovery code.
+///
+/// This does not replace normal startup config loading. It is for candidate
+/// paths discovered from local process state, where the path itself is not a
+/// trusted operator-supplied argument.
+pub(crate) async fn read_diagnostic_config_to_string(path: &Path) -> RunnerResult<Option<String>> {
+    crate::state_file::read_to_string(
+        path,
+        DIAGNOSTIC_CONFIG_MAX_BYTES,
+        crate::state_file::OwnerCheck::CurrentEuid,
+    )
+    .await
 }
 
 async fn load_with_home(
