@@ -104,59 +104,6 @@ describe("GET /api/agent/checkpoints/:id", () => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(checkpointsByIdContract);
-
-    const response = await accept(
-      client.getById({ params: { id: randomUUID() }, headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no active organization", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, null);
-    const client = setupApp({ context })(checkpointsByIdContract);
-
-    const response = await accept(
-      client.getById({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 404 when the checkpoint does not exist", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(checkpointsByIdContract);
-
-    const response = await accept(
-      client.getById({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Checkpoint not found", code: "NOT_FOUND" },
-    });
-  });
-
   it("returns 404 when the checkpoint belongs to another user", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),

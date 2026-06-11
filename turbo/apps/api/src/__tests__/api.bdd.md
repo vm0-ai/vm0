@@ -1482,3 +1482,16 @@ First USAGE-family reduce.
   compose rows and stay in the kept legacy.
 - Reduced `agent-composes-read.test.ts` (20 -> 17).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 70 — CHECKPOINT GET-BY-ID REJECTIONS (CHAIN-CHECKPOINTS-BY-ID-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `checkpointsById` client
+  (`/api/agent/checkpoints/:id`).
+- Added `agent-checkpoints-id-rejections.bdd.test.ts`: get-by-id rejects
+  unauthenticated and org-less callers (401) and 404s an unknown checkpoint
+  ("Checkpoint not found").
+- Reading a real checkpoint needs a funded run that produced it
+  (GAP-RUN-CREDITS), and the other-user / other-org 404 variants need a seeded
+  foreign checkpoint; those stay in the kept legacy.
+- Reduced `agent-checkpoints-id.test.ts` (7 -> 4).
+- Coverage verified (source-only): no regressions vs `main`.

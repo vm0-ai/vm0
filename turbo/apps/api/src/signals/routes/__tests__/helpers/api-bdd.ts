@@ -19,6 +19,7 @@ import {
   composesMainContract,
   composesListContract,
 } from "@vm0/api-contracts/contracts/composes";
+import { checkpointsByIdContract } from "@vm0/api-contracts/contracts/sessions";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
@@ -230,6 +231,10 @@ export function createBddApi(context: TestContext) {
      * compose rows; the auth, no-org and empty-list cases are reachable. */
     agentComposesMain: setupApp({ context })(composesMainContract),
     agentComposesList: setupApp({ context })(composesListContract),
+    /** ts-rest client for `/api/agent/checkpoints/:id` (get checkpoint by id). A
+     * real checkpoint needs a funded run that produced it (GAP-RUN-CREDITS); the
+     * auth and not-found cases are reachable directly. */
+    checkpointsById: setupApp({ context })(checkpointsByIdContract),
     /** ts-rest client for `/api/zero/composes` getByName. */
     composesMain: setupApp({ context })(zeroComposesMainContract),
     /** ts-rest client for `/api/zero/composes/:id/metadata` (update). */
