@@ -121,17 +121,59 @@ class _RequestFallbackHintPolicy(NamedTuple):
     max_results_max: int | None
 
 
+_REQUEST_IDS_100_HINT_POLICY = _RequestFallbackHintPolicy("ids", 100, None, None)
+_REQUEST_USERNAMES_100_HINT_POLICY = _RequestFallbackHintPolicy("usernames", 100, None, None)
+_REQUEST_PAGE_1_TO_100_HINT_POLICY = _RequestFallbackHintPolicy(None, None, 1, 100)
+_REQUEST_PAGE_5_TO_100_HINT_POLICY = _RequestFallbackHintPolicy(None, None, 5, 100)
+_REQUEST_PAGE_10_TO_100_HINT_POLICY = _RequestFallbackHintPolicy(None, None, 10, 100)
+_REQUEST_PAGE_1_TO_1000_HINT_POLICY = _RequestFallbackHintPolicy(None, None, 1, 1000)
+
+
 _REQUEST_FALLBACK_HINT_POLICY_SPECS: tuple[tuple[str, _RequestFallbackHintPolicy], ...] = (
-    # X batch lookup selectors. Docs cap these selector lists at 100 entries.
-    ("/2/tweets", _RequestFallbackHintPolicy("ids", 100, None, None)),
-    ("/2/users", _RequestFallbackHintPolicy("ids", 100, None, None)),
-    ("/2/users/by", _RequestFallbackHintPolicy("usernames", 100, None, None)),
-    # X page-size hints. The bounds are endpoint-specific; unlisted paths do
-    # not get to use a same-named query parameter as fallback billing evidence.
-    ("/2/tweets/search/recent", _RequestFallbackHintPolicy(None, None, 10, 100)),
-    ("/2/users/search", _RequestFallbackHintPolicy(None, None, 1, 1000)),
-    ("/2/users/{id}/followers", _RequestFallbackHintPolicy(None, None, 1, 1000)),
-    ("/2/users/{id}/following", _RequestFallbackHintPolicy(None, None, 1, 1000)),
+    # X query hints are trusted only for documented count-source parameters on
+    # billable generated-firewall GET paths. App-only paths stay omitted because
+    # ``classify_bucket`` skips them before fallback parsing.
+    ("/2/spaces", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/tweets", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/tweets/analytics", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/users", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/users/by", _REQUEST_USERNAMES_100_HINT_POLICY),
+    ("/2/users/public_keys", _REQUEST_IDS_100_HINT_POLICY),
+    ("/2/chat/conversations", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/communities/search", _REQUEST_PAGE_10_TO_100_HINT_POLICY),
+    ("/2/dm_conversations/with/{participant_id}/dm_events", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/dm_conversations/{id}/dm_events", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/dm_events", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/lists/{id}/followers", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/lists/{id}/members", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/lists/{id}/tweets", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/news/search", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/notes/search/notes_written", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/notes/search/posts_eligible_for_notes", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/spaces/search", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/spaces/{id}/buyers", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/spaces/{id}/tweets", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/tweets/search/recent", _REQUEST_PAGE_10_TO_100_HINT_POLICY),
+    ("/2/tweets/{id}/liking_users", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/tweets/{id}/quote_tweets", _REQUEST_PAGE_10_TO_100_HINT_POLICY),
+    ("/2/tweets/{id}/retweeted_by", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/tweets/{id}/retweets", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/reposts_of_me", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/search", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/affiliates", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/blocking", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/bookmarks", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/bookmarks/folders", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/followed_lists", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/followers", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/following", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/liked_tweets", _REQUEST_PAGE_5_TO_100_HINT_POLICY),
+    ("/2/users/{id}/list_memberships", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/mentions", _REQUEST_PAGE_5_TO_100_HINT_POLICY),
+    ("/2/users/{id}/muting", _REQUEST_PAGE_1_TO_1000_HINT_POLICY),
+    ("/2/users/{id}/owned_lists", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/timelines/reverse_chronological", _REQUEST_PAGE_1_TO_100_HINT_POLICY),
+    ("/2/users/{id}/tweets", _REQUEST_PAGE_5_TO_100_HINT_POLICY),
 )
 
 

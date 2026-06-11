@@ -1321,6 +1321,70 @@ class TestXConnectorUsage:
                 "following_followers.read",
                 1000,
             ),
+            (
+                "/2/spaces",
+                "ids=1,2",
+                "space.read",
+                "GET /2/spaces",
+                "space.read",
+                2,
+            ),
+            (
+                "/2/tweets/analytics",
+                "ids=1,2",
+                "tweet.read",
+                "GET /2/tweets/analytics",
+                "analytics.read",
+                2,
+            ),
+            (
+                "/2/tweets/123/quote_tweets",
+                "max_results=100",
+                "tweet.read",
+                "GET /2/tweets/{id}/quote_tweets",
+                "posts.read",
+                100,
+            ),
+            (
+                "/2/tweets/123/retweeted_by",
+                "max_results=100",
+                "tweet.read",
+                "GET /2/tweets/{id}/retweeted_by",
+                "user.read",
+                100,
+            ),
+            (
+                "/2/users/123/tweets",
+                "max_results=100",
+                "users.read",
+                "GET /2/users/{id}/tweets",
+                "posts.read",
+                100,
+            ),
+            (
+                "/2/users/123/liked_tweets",
+                "max_results=5",
+                "like.read",
+                "GET /2/users/{id}/liked_tweets",
+                "posts.read",
+                5,
+            ),
+            (
+                "/2/lists/123/members",
+                "max_results=100",
+                "list.read",
+                "GET /2/lists/{id}/members",
+                "list.read",
+                100,
+            ),
+            (
+                "/2/dm_events",
+                "max_results=100",
+                "dm.read",
+                "GET /2/dm_events",
+                "dm_event.read",
+                100,
+            ),
         ],
     )
     def test_x_json_parse_error_with_request_hints_uses_fallback_without_error_log(
@@ -1383,24 +1447,63 @@ class TestXConnectorUsage:
         assert entry["parse_error"] == "incomplete json"
 
     @pytest.mark.parametrize(
-        "query",
+        ("path", "query", "permission", "rule"),
         [
-            "query=hello&max_results=-5",
-            "query=hello&max_results=999999",
-            "query=hello&max_results=+50",
-            "query=hello&max_results=%2050",
+            (
+                "/2/tweets/search/recent",
+                "query=hello&max_results=-5",
+                "tweet.read",
+                "GET /2/tweets/search/recent",
+            ),
+            (
+                "/2/tweets/search/recent",
+                "query=hello&max_results=999999",
+                "tweet.read",
+                "GET /2/tweets/search/recent",
+            ),
+            (
+                "/2/tweets/search/recent",
+                "query=hello&max_results=+50",
+                "tweet.read",
+                "GET /2/tweets/search/recent",
+            ),
+            (
+                "/2/tweets/search/recent",
+                "query=hello&max_results=%2050",
+                "tweet.read",
+                "GET /2/tweets/search/recent",
+            ),
+            (
+                "/2/lists/123/members",
+                "max_results=101",
+                "list.read",
+                "GET /2/lists/{id}/members",
+            ),
+            (
+                "/2/users/123/tweets",
+                "max_results=4",
+                "users.read",
+                "GET /2/users/{id}/tweets",
+            ),
+            (
+                "/2/users/search",
+                "query=alice&max_results=1001",
+                "users.read",
+                "GET /2/users/search",
+            ),
         ],
     )
     def test_x_json_parse_error_with_invalid_max_results_preserves_audit_log(
-        self, tmp_path, real_flow, query
+        self, tmp_path, real_flow, path, query, permission, rule
     ):
         flow = self._make_x_flow(
             real_flow,
             tmp_path,
-            path="/2/tweets/search/recent",
+            path=path,
             query=query,
             body=b"not json",
-            rule="GET /2/tweets/search/recent",
+            permission=permission,
+            rule=rule,
         )
         proxy_log = tmp_path / "proxy.jsonl"
 
