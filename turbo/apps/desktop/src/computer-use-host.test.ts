@@ -213,6 +213,45 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
+  it("keeps heartbeat deactivation when a late idle command poll resolves", async () => {
+    vi.useFakeTimers();
+    const heartbeat = deferred<Response>();
+    const commandPoll = deferred<Response>();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return heartbeat.promise;
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return commandPoll.promise;
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    heartbeat.resolve(new Response("{}", { status: 401 }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+    });
+
+    commandPoll.resolve(jsonResponse({ status: "idle" }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+    });
+  });
+
   it("records local native command payloads and results", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T08:00:00.000Z"));
