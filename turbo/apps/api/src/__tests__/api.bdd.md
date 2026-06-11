@@ -1646,3 +1646,20 @@ changed: false }`, no Ably publish).
   runner-token-authenticated heartbeat / poll / job-claim flows.
 - Reduced `runners.test.ts` (39 -> 37).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 82 — CUSTOM SKILL REJECTIONS (CHAIN-SKILLS-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `skillsDetail` client
+  (`/api/zero/skills/:name`, get/update/delete); reused the existing `skills`
+  collection client's `list`.
+- Added `zero-skills-rejections.bdd.test.ts`: list rejects unauthenticated /
+  org-less callers (401) and is empty for a fresh org; get-by-name rejects
+  unauthenticated / org-less callers (401) and 404s an unknown skill
+  ("Skill not found: <name>"); delete rejects unauthenticated / org-less callers
+  (401) and a non-admin member (403 "Only org admins can delete custom skills",
+  checked before lookup).
+- Skills with content (create / update / multi-file detail, member-allowed
+  reads, duplicate / built-in 409s, invalid-body 400s) need a seeded skill
+  volume or a raw request and stay in the kept legacy.
+- Reduced `zero-skills.test.ts` (56 -> 47).
+- Coverage verified (source-only): no regressions vs `main`.

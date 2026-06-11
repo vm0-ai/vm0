@@ -125,6 +125,7 @@ import {
   zeroAgentInstructionsContract,
   zeroAgentsMainContract,
   zeroSkillsCollectionContract,
+  zeroSkillsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   zeroComposesByIdContract,
@@ -188,6 +189,10 @@ export function createBddApi(context: TestContext) {
     /** ts-rest client for `/api/zero/skills` (create), used to build the
      * `customSkills` precondition through the public API. */
     skills: setupApp({ context })(zeroSkillsCollectionContract),
+    /** ts-rest client for `/api/zero/skills/:name` (get/update/delete a custom
+     * skill by name). A real skill needs a seeded skill volume; the auth,
+     * not-found and admin-only rejections are reachable directly. */
+    skillsDetail: setupApp({ context })(zeroSkillsDetailContract),
     /** ts-rest client for `/api/zero/custom-connectors` (create/list), used to
      * build the org custom-connector precondition through the public API. */
     customConnectors: setupApp({ context })(zeroCustomConnectorsContract),

@@ -541,38 +541,6 @@ describe("GET /api/zero/skills", () => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(listClient().list({ headers: {} }), [401]);
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      listClient().list({ headers: authHeaders() }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns empty array when no skills exist", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      listClient().list({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual([]);
-  });
-
   it("returns all org skills", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
@@ -665,27 +633,6 @@ describe("GET /api/zero/skills", () => {
 describe("GET /api/zero/skills/:name", () => {
   const track = createFixtureTracker<SkillsFixture>((fixture) => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(
-      detailClient().get({ headers: {}, params: { name: "any" } }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      detailClient().get({ headers: authHeaders(), params: { name: "any" } }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
   });
 
   it("returns skill detail with content", async () => {
@@ -838,25 +785,6 @@ describe("GET /api/zero/skills/:name", () => {
       content: null,
       files: null,
       fileContents: null,
-    });
-  });
-
-  it("returns 404 for a non-existent skill", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      detailClient().get({
-        headers: authHeaders(),
-        params: { name: "no-such-skill" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Skill not found: no-such-skill", code: "NOT_FOUND" },
     });
   });
 
@@ -1159,70 +1087,6 @@ describe("PUT /api/zero/skills/:name", () => {
 describe("DELETE /api/zero/skills/:name", () => {
   const track = createFixtureTracker<SkillsFixture>((fixture) => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await detailClient().delete({
-      headers: {},
-      params: { name: "any" },
-    });
-
-    expect(response.status).toBe(401);
-    if (response.status !== 401) {
-      throw new Error("Expected unauthorized response");
-    }
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const response = await detailClient().delete({
-      headers: authHeaders(),
-      params: { name: "any" },
-    });
-
-    expect(response.status).toBe(401);
-    if (response.status !== 401) {
-      throw new Error("Expected unauthorized response");
-    }
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 403 when an org member deletes a skill", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    await store.set(
-      seedSkill$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "admin-skill",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const response = await detailClient().delete({
-      headers: authHeaders(),
-      params: { name: "admin-skill" },
-    });
-
-    expect(response.status).toBe(403);
-    if (response.status !== 403) {
-      throw new Error("Expected forbidden response");
-    }
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only org admins can delete custom skills",
-        code: "FORBIDDEN",
-      },
-    });
   });
 
   it("returns 404 for a non-existent skill", async () => {
