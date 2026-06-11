@@ -15,25 +15,6 @@ export const setSearch = (search: string) => {
   overrides.search = search;
 };
 
-export function mockLocation(
-  {
-    pathname,
-    search,
-  }: {
-    pathname: string;
-    search: string;
-  },
-  signal: AbortSignal,
-) {
-  overrides.pathname = pathname;
-  overrides.search = search;
-
-  signal.addEventListener("abort", () => {
-    overrides.pathname = undefined;
-    overrides.search = undefined;
-  });
-}
-
 export const pathname = () => {
   return overrides.pathname ?? location.pathname;
 };

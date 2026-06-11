@@ -43,6 +43,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
+import { nowDate } from "../../lib/time.ts";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
@@ -1732,7 +1733,7 @@ function createSendOptimisticMessageEntry({
       attachFiles: result.attachments,
       generationTemplate: options?.generationTemplate,
       ...sendMessageRevocationPatch(options),
-      createdAt: new Date().toISOString(),
+      createdAt: nowDate().toISOString(),
     },
   };
 }
@@ -1952,7 +1953,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       set(draft.clear$);
 
       const clientMessageId = crypto.randomUUID();
-      const nowIso = new Date().toISOString();
+      const nowIso = nowDate().toISOString();
       set(appendOptimisticChatMessage$, {
         threadId,
         optimisticUserMessageAssociation: "queue",
@@ -2032,7 +2033,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
           role: "user",
           content: null,
           revokesMessageId: message.id,
-          createdAt: new Date().toISOString(),
+          createdAt: nowDate().toISOString(),
         },
       });
       set(
@@ -2115,7 +2116,7 @@ function createCancelRunWithQueuedRecall({
           role: "user",
           content: null,
           interruptsRunId: runId,
-          createdAt: new Date().toISOString(),
+          createdAt: nowDate().toISOString(),
         },
       });
       return { runId, clientMessageId };
@@ -2130,7 +2131,7 @@ function createCancelRunWithQueuedRecall({
           role: "user",
           content: null,
           revokesMessageId: message.id,
-          createdAt: new Date().toISOString(),
+          createdAt: nowDate().toISOString(),
         },
       });
       return {

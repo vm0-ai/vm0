@@ -21,14 +21,6 @@ const defaultResponse: UsageRecordResponse = {
 
 let mockUsageRecordResponse: UsageRecordResponse = { ...defaultResponse };
 
-export function setMockUsageRecord(response: UsageRecordResponse): void {
-  mockUsageRecordResponse = {
-    period: response.period,
-    rows: [...response.rows],
-    pagination: { ...response.pagination },
-  };
-}
-
 export function resetMockUsageRecord(): void {
   mockUsageRecordResponse = {
     period: defaultResponse.period,

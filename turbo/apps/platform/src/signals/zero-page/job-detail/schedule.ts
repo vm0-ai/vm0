@@ -1,5 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
+
+import { now, nowDate } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { agentDetail$ } from "./detail.ts";
 import {
@@ -161,7 +163,7 @@ export const agentScheduleEntries$ = computed(
 // Schedule CRUD
 // ---------------------------------------------------------------------------
 
-export interface AgentScheduleSaveParams {
+interface AgentScheduleSaveParams {
   prompt: string;
   description?: string;
   freq: string;
@@ -187,7 +189,7 @@ export const saveAgentSchedule$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
+    const scheduleName = params.editName ?? `zero-${now().toString(36)}`;
 
     const base = {
       agentId: detail.agentId,
@@ -215,7 +217,7 @@ export const saveAgentSchedule$ = command(
       );
       body = { ...base, atTime };
     } else if (params.freq === "now") {
-      body = { ...base, atTime: new Date().toISOString() };
+      body = { ...base, atTime: nowDate().toISOString() };
     } else {
       const freqMap: Record<string, CronTimeOption> = {
         every_weekday: "every-weekday",

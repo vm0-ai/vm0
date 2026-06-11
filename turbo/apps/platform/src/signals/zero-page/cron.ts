@@ -4,6 +4,8 @@
 
 import { getGmtOffset } from "@vm0/core/timezone";
 
+import { now, nowDate } from "../../lib/time.ts";
+
 type ScheduleTimeOption =
   | "every-weekday"
   | "every-day"
@@ -54,15 +56,15 @@ export function isAtTimePast(
   const [y, mo, d] = date.split("-").map(Number) as [number, number, number];
   const h = Number.parseInt(hour, 10);
   const m = Number.parseInt(minute, 10);
-  return new Date(y, mo - 1, d, h, m).getTime() <= Date.now();
+  return new Date(y, mo - 1, d, h, m).getTime() <= now();
 }
 
 /** Today's date in the local timezone formatted as YYYY-MM-DD. */
 export function getTodayDateLocal(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const mo = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+  const today = nowDate();
+  const y = today.getFullYear();
+  const mo = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
   return `${y}-${mo}-${day}`;
 }
 
@@ -136,7 +138,7 @@ export function cronUtcToLocalTime(
   if (timezone === "UTC" || timezone === "Etc/UTC") {
     return { hour: utcHour, minute: utcMinute };
   }
-  const d = new Date();
+  const d = nowDate();
   d.setUTCHours(utcHour, utcMinute, 0, 0);
   const parts = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",

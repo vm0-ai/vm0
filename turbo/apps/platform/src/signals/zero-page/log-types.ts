@@ -52,20 +52,6 @@ export interface LogEntry {
   completedAt: string | null;
 }
 
-export interface LogsListResponse {
-  data: LogEntry[];
-  pagination: {
-    hasMore: boolean;
-    nextCursor: string | null;
-    totalPages: number;
-  };
-  filters: {
-    statuses: LogStatus[];
-    sources: TriggerSource[];
-    agents: string[];
-  };
-}
-
 // Detail response - full log information
 interface Artifact {
   name: string | null;

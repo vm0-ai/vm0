@@ -284,7 +284,7 @@ export const onboardingShowDialog$ = computed(async (get) => {
  * back to the URL keeps the historical behavior intact when the composer
  * isn't shown.
  */
-export const onboardingResolvedPrompt$ = computed((get) => {
+const onboardingResolvedPrompt$ = computed((get) => {
   const draft = get(onboardingPromptDraft$).trim();
   if (draft.length > 0) {
     return draft;

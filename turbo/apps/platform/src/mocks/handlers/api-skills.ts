@@ -20,50 +20,6 @@ function metadata(skill: ZeroAgentSkillDetailResponse): ZeroAgentCustomSkill {
   };
 }
 
-function toDetail(
-  skill: ZeroAgentCustomSkill,
-  content = "",
-): ZeroAgentSkillDetailResponse {
-  return {
-    ...skill,
-    content,
-    files: [
-      { path: "SKILL.md", size: new TextEncoder().encode(content).length },
-    ],
-    fileContents: [{ path: "SKILL.md", content }],
-  };
-}
-
-function toDetailResponse(
-  skill: ZeroAgentSkillContentResponse | ZeroAgentSkillDetailResponse,
-): ZeroAgentSkillDetailResponse {
-  if ("fileContents" in skill) {
-    return skill;
-  }
-  return {
-    ...skill,
-    fileContents:
-      skill.content === null
-        ? null
-        : [{ path: "SKILL.md", content: skill.content }],
-  };
-}
-
-export function setMockSkills(
-  skills: readonly (
-    | ZeroAgentSkillDetailResponse
-    | ZeroAgentSkillContentResponse
-    | ZeroAgentCustomSkill
-  )[],
-): void {
-  mockSkills = skills.map((skill) => {
-    if ("content" in skill) {
-      return toDetailResponse(skill);
-    }
-    return toDetail(skill);
-  });
-}
-
 export function resetMockSkills(): void {
   mockSkills = [...DEFAULT_SKILLS];
 }

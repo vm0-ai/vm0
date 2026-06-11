@@ -1,7 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
+
 import { accept } from "../../../lib/accept.ts";
+import { now } from "../../../lib/time.ts";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -208,7 +210,7 @@ function connectorTokenExpiresAtMs(
 
 export function connectorCurrentConnectionStatus(
   connector: ConnectorTypeWithStatus,
-  nowMs = Date.now(),
+  nowMs = now(),
 ): ConnectorConnectionStatus {
   if (connector.connectionStatus === "not-connected") {
     return "not-connected";
@@ -228,7 +230,7 @@ function formatExpiryCountdown(value: number, unit: "day" | "hour"): string {
 
 export function connectorExpiryCountdownText(
   connector: ConnectorTypeWithStatus,
-  nowMs = Date.now(),
+  nowMs = now(),
 ): string | null {
   if (
     connectorCurrentConnectionStatus(connector, nowMs) !== "connected" ||
@@ -990,7 +992,7 @@ function createConnectorConnectFlowState(
 ): ConnectorConnectFlowState {
   return {
     type,
-    id: `${type}-connect-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    id: `${type}-connect-${now()}-${Math.random().toString(36).slice(2)}`,
   };
 }
 
@@ -1020,7 +1022,7 @@ type ConnectConnectorOAuthDeviceAuthParams = {
 };
 
 function createConnectorOAuthDeviceAuthRequestId(type: ConnectorType): string {
-  return `${type}-oauth-device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${type}-oauth-device-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function oauthDeviceAuthErrorMessage(error: unknown): string {
@@ -1141,7 +1143,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
           return true;
         }
 
-        const remainingMs = current.expiresAtMs - Date.now();
+        const remainingMs = current.expiresAtMs - now();
         if (remainingMs <= 0) {
           expired = true;
           return true;
@@ -1219,7 +1221,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
           errorMessage: null,
         });
 
-        const nextRemainingMs = latest.expiresAtMs - Date.now();
+        const nextRemainingMs = latest.expiresAtMs - now();
         if (nextRemainingMs <= 0) {
           expired = true;
           return true;
@@ -1245,7 +1247,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
   },
 );
 
-export const connectConnectorOAuthDeviceAuth$ = command(
+const connectConnectorOAuthDeviceAuth$ = command(
   async (
     { get, set },
     args: ConnectConnectorOAuthDeviceAuthParams,
@@ -1324,8 +1326,7 @@ export const connectConnectorOAuthDeviceAuth$ = command(
           userCode: startResult.userCode,
           verificationUri: startResult.verificationUri,
           verificationUriComplete: startResult.verificationUriComplete,
-          expiresAtMs:
-            Date.now() + secondsToMilliseconds(startResult.expiresIn),
+          expiresAtMs: now() + secondsToMilliseconds(startResult.expiresIn),
           pollIntervalMs: Math.max(
             secondsToMilliseconds(startResult.interval),
             OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS,
@@ -1414,7 +1415,7 @@ type CompleteConnectorExternalCodeParams = {
 };
 
 function createConnectorExternalCodeRequestId(type: ConnectorType): string {
-  return `${type}-external-code-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${type}-external-code-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function externalCodeErrorMessage(error: unknown): string {
@@ -1568,8 +1569,7 @@ export const connectConnectorExternalCode$ = command(
           sessionId: startResult.sessionId,
           sessionToken: startResult.sessionToken,
           authorizationUrl: startResult.authorizationUrl,
-          expiresAtMs:
-            Date.now() + secondsToMilliseconds(startResult.expiresIn),
+          expiresAtMs: now() + secondsToMilliseconds(startResult.expiresIn),
           code: "",
           errorMessage: null,
         });
@@ -1616,7 +1616,7 @@ const completeConnectorExternalCode$ = command(
     ) {
       return false;
     }
-    if (Date.now() > current.expiresAtMs) {
+    if (now() > current.expiresAtMs) {
       set(internalConnectorExternalCodeState$, {
         status: "expired",
         connectorType: type,

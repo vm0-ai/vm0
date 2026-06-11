@@ -231,7 +231,6 @@ import {
   setChatKeyboardScrollRoot$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
@@ -3012,7 +3011,6 @@ function ChatThreadComposer({
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}
           />
-          <PersonalProviderDialog />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
         </div>

@@ -8,6 +8,7 @@ import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
 import { subscribeThreadListChanged$ } from "../signals/chat-thread-list-reload.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
+import { IN_VITEST } from "../env.ts";
 import "./css/index.css";
 
 export const setupRouter = (
@@ -24,7 +25,11 @@ export const setupRouter = (
             <Router />
           </ErrorBoundary>
         </VM0ClerkProvider>
-        <Toaster position="top-center" visibleToasts={1} />
+        <Toaster
+          position="top-center"
+          visibleToasts={1}
+          duration={IN_VITEST ? Infinity : undefined}
+        />
       </StoreProvider>
     </StrictMode>,
   );

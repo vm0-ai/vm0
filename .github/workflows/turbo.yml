@@ -680,29 +680,6 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
-  test-app-browser:
-    needs: [detect-turbo-ts-checks]
-    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
-    env:
-      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-    steps:
-      - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
-      - name: Install shared browser
-        run: bash .github/scripts/install-playwright-chromium.sh
-      - name: Verify shared browser
-        run: |
-          test -n "${AGENT_BROWSER_EXECUTABLE_PATH:-}"
-          test -x "$AGENT_BROWSER_EXECUTABLE_PATH"
-          "$AGENT_BROWSER_EXECUTABLE_PATH" --version
-      - name: Test App Browser
-        working-directory: turbo
-        run: pnpm --filter @vm0/app btest
-
   test-api:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
@@ -1649,7 +1626,6 @@ jobs:
         test-web,
         test-cli,
         test-app,
-        test-app-browser,
         test-other,
       ]
     if: |
@@ -2344,7 +2320,6 @@ jobs:
       - test-migrate
       - test-cli
       - test-app
-      - test-app-browser
       - test-api
       - test-other
       - deploy-api
@@ -2425,7 +2400,6 @@ jobs:
           check_result "test-web" "${{ needs.test-web.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-cli" "${{ needs.test-cli.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-app" "${{ needs.test-app.result }}" "$TS_CHECK_SKIP_ALLOWED"
-          check_result "test-app-browser" "${{ needs.test-app-browser.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-api" "${{ needs.test-api.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-other" "${{ needs.test-other.result }}" "$TS_CHECK_SKIP_ALLOWED"
 

@@ -17,10 +17,6 @@ const EMPTY_MEMORY: MemoryDetailResponse = {
 
 let mockMemory: MemoryDetailResponse = { ...EMPTY_MEMORY };
 
-export function setMockMemory(memory: MemoryDetailResponse): void {
-  mockMemory = memory;
-}
-
 export function resetMockMemory(): void {
   mockMemory = { ...EMPTY_MEMORY };
 }

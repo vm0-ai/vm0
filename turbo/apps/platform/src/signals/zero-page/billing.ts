@@ -166,7 +166,6 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
 // State
 // ---------------------------------------------------------------------------
 
-const internalDialogOpen$ = state(false);
 const billingReload$ = state(0);
 interface CompletedBillingCheckout {
   readonly tier: CompletedBillingCheckoutTier;
@@ -185,9 +184,6 @@ const internalFormAmountOverride$ = state<string | null>(null);
 // Selectors
 // ---------------------------------------------------------------------------
 
-export const billingDialogOpen$ = computed((get) => {
-  return get(internalDialogOpen$);
-});
 export const downgradeDialogOpen$ = computed((get) => {
   return get(internalDowngradeDialogOpen$);
 });
@@ -240,10 +236,6 @@ export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => {
     return x + 1;
   });
-});
-
-export const setBillingDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalDialogOpen$, open);
 });
 
 export const startCheckout$ = command(

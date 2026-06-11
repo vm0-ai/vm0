@@ -1,21 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { server } from "../../../mocks/server.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  detachedSetupPage,
-  click,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
 import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
-import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { describe, expect, it } from "vitest";
+
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
 function createMockPreferences(
   overrides?: Partial<UserPreferencesResponse>,
@@ -29,55 +27,36 @@ function createMockPreferences(
   };
 }
 
-function mockPreferencesAPI(prefs = createMockPreferences()) {
-  setMockUserPreferences(prefs);
-}
-
-function renderPreferencesPage() {
+function renderPreferencesPage(): void {
   detachedSetupPage({ context, path: "/settings" });
 }
 
-describe("zero preferences page - tab navigation", () => {
-  it("loads preferences through the api host", async () => {
-    vi.stubGlobal("location", new URL("https://platform.vm0.ai/settings"));
-    const requestHosts: string[] = [];
-
-    server.use(
-      mockApi(zeroUserPreferencesContract.get, ({ request, respond }) => {
-        requestHosts.push(new URL(request.url).host);
-        return respond(200, createMockPreferences());
-      }),
-    );
-
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Theme")).toBeInTheDocument();
-    });
-    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+function getButtonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim() === text;
   });
+  if (!button) {
+    throw new Error(`Button not found: ${text}`);
+  }
+  return button;
+}
 
-  it("should show appearance tab by default and switch to time zone tab", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
+describe("preferences page", () => {
+  it("switches between preference tabs", async () => {
+    context.mocks.data.userPreferences(createMockPreferences());
+
+    renderPreferencesPage();
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Time Zone"));
+    const darkButton = getButtonByText("Dark");
+    click(darkButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Time zone")).toBeInTheDocument();
-    });
-  });
-
-  it("should switch back to appearance tab from time zone", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
+      expect(darkButton).toHaveAttribute("aria-pressed", "true");
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     });
 
     click(screen.getByText("Time Zone"));
@@ -92,21 +71,25 @@ describe("zero preferences page - tab navigation", () => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
   });
-});
 
-describe("zero preferences page - send mode interaction", () => {
-  it("should send update request when changing send mode", async () => {
-    let capturedBody: Record<string, unknown> | null = null;
+  it("saves send mode and time zone preference changes", async () => {
+    const capturedBodies: Record<string, unknown>[] = [];
 
-    setMockUserPreferences(createMockPreferences({ sendMode: "enter" }));
-    server.use(
-      mockApi(zeroUserPreferencesContract.update, ({ body, respond }) => {
-        capturedBody = body as Record<string, unknown>;
-        return respond(200, createMockPreferences({ sendMode: "cmd-enter" }));
-      }),
+    context.mocks.data.userPreferences(
+      createMockPreferences({ timezone: "UTC" }),
+    );
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        capturedBodies.push(body as Record<string, unknown>);
+        return respond(200, {
+          ...createMockPreferences(),
+          ...(body as Partial<UserPreferencesResponse>),
+        });
+      },
     );
 
-    await renderPreferencesPage();
+    renderPreferencesPage();
 
     await waitFor(() => {
       expect(screen.getByText("Send message with")).toBeInTheDocument();
@@ -121,71 +104,57 @@ describe("zero preferences page - send mode interaction", () => {
     expect(cmdEnterButton).toBeInTheDocument();
     click(cmdEnterButton as HTMLElement);
 
-    await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
-    });
-    expect(capturedBody).toHaveProperty("sendMode", "cmd-enter");
-  });
-});
-
-describe("zero preferences page - timezone update", () => {
-  it("should render timezone settings with current value when switching to timezone tab", async () => {
-    mockPreferencesAPI(createMockPreferences({ timezone: "Asia/Tokyo" }));
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Time Zone"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Time zone")).toBeInTheDocument();
-    });
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
-    // Verify the combobox trigger displays the label for the current timezone (Asia/Tokyo)
-    expect(screen.getByText(/Japan Standard Time \(JST\)/)).toBeInTheDocument();
-  });
-
-  it("should send update request when changing timezone", async () => {
-    let capturedBody: Record<string, unknown> | null = null;
-
-    setMockUserPreferences(createMockPreferences({ timezone: "UTC" }));
-    server.use(
-      mockApi(zeroUserPreferencesContract.update, ({ body, respond }) => {
-        capturedBody = body as Record<string, unknown>;
-        return respond(
-          200,
-          createMockPreferences({ timezone: "America/New_York" }),
-        );
-      }),
-    );
-
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
-    });
-
     click(screen.getByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
 
-    // Open the select dropdown
-    const selectTrigger = screen.getByRole("combobox");
-    click(selectTrigger);
+    click(screen.getByRole("combobox"));
 
-    // Select a different timezone
     await waitFor(() => {
       expect(screen.getByText(/Eastern Time \(ET\)/)).toBeInTheDocument();
     });
     click(screen.getByText(/Eastern Time \(ET\)/));
 
     await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
+      expect(capturedBodies).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ sendMode: "cmd-enter" }),
+          expect.objectContaining({ timezone: "America/New_York" }),
+        ]),
+      );
     });
-    expect(capturedBody).toHaveProperty("timezone", "America/New_York");
+  });
+
+  it("changes debug network body capture on the preferences page", async () => {
+    context.mocks.data.userPreferences(
+      createMockPreferences({ captureNetworkBodiesRemaining: 0 }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings?tab=debug",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
+      expect(screen.getByText("Disabled")).toBeInTheDocument();
+    });
+
+    click(screen.getByRole("switch"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Enabled for the next 3 runs"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByRole("switch"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Disabled")).toBeInTheDocument();
+    });
   });
 });

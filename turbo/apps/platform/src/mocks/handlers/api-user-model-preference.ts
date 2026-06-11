@@ -2,6 +2,7 @@ import {
   type UserModelPreferenceResponse,
   zeroUserModelPreferenceContract,
 } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
 let mockUserModelPreference: UserModelPreferenceResponse = {
@@ -29,7 +30,7 @@ export const apiUserModelPreferenceHandlers = [
   mockApi(zeroUserModelPreferenceContract.update, ({ body, respond }) => {
     mockUserModelPreference = {
       selectedModel: body.selectedModel,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowDate().toISOString(),
     };
     return respond(200, mockUserModelPreference);
   }),

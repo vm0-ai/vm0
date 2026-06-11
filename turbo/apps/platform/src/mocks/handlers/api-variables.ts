@@ -6,6 +6,7 @@
 
 import { zeroVariablesContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import type { VariableResponse } from "@vm0/api-contracts/contracts/variables";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
 let mockVariables: VariableResponse[] = [];
@@ -16,7 +17,7 @@ export function resetMockVariables(): void {
 
 export const apiVariablesHandlers = [
   mockApi(zeroVariablesContract.set, ({ body, respond }) => {
-    const now = new Date().toISOString();
+    const now = nowDate().toISOString();
     const existing = mockVariables.find((v) => v.name === body.name);
     const created = !existing;
 

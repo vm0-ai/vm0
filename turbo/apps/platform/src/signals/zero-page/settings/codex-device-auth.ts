@@ -7,6 +7,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 
 import { ApiError, accept } from "../../../lib/accept.ts";
+import { now } from "../../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
@@ -106,7 +107,7 @@ export const setCodexDeviceAuthDialogStatePersonal$ = command(
 );
 
 function createRequestId(scope: CodexDeviceAuthScope): string {
-  return `${scope}-codex-device-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${scope}-codex-device-auth-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function secondsToMilliseconds(seconds: number): number {
@@ -249,7 +250,7 @@ async function pollCodexDeviceAuth(args: {
   await setLoop(
     async (signal) => {
       const remainingMs =
-        activeFlowOrExpired(args.getFlow(), args.requestId) - Date.now();
+        activeFlowOrExpired(args.getFlow(), args.requestId) - now();
       if (remainingMs <= 0) {
         expired = true;
         return true;
@@ -298,7 +299,7 @@ async function pollCodexDeviceAuth(args: {
         errorMessage: completion.value.errorMessage,
       });
 
-      const nextRemainingMs = latest.expiresAtMs - Date.now();
+      const nextRemainingMs = latest.expiresAtMs - now();
       if (nextRemainingMs <= 0) {
         expired = true;
         return true;
@@ -363,8 +364,7 @@ async function runCodexDeviceAuthFlow(args: {
     return false;
   }
 
-  const expiresAtMs =
-    Date.now() + secondsToMilliseconds(started.value.expiresIn);
+  const expiresAtMs = now() + secondsToMilliseconds(started.value.expiresIn);
   const pollIntervalMs = Math.max(
     secondsToMilliseconds(started.value.interval),
     CODEX_DEVICE_AUTH_MIN_POLL_MS,

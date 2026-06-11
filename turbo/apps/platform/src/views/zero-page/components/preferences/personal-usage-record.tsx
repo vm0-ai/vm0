@@ -44,6 +44,7 @@ import {
 import { setSettingsDialogOpen$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { nowDate } from "../../../../lib/time.ts";
 import { Link } from "../../../router/link.tsx";
 
 const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
@@ -126,7 +127,7 @@ function formatCredits(n: number): string {
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
-  const sameYear = date.getFullYear() === new Date().getFullYear();
+  const sameYear = date.getFullYear() === nowDate().getFullYear();
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",

@@ -1,4 +1,4 @@
-import type { ReactNode, Ref, RefCallback } from "react";
+import type { ReactNode, Ref } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   TransformComponent,
@@ -53,77 +53,11 @@ type ZoomableArtifactImageCanvasProps = {
   imageClassName?: string;
   imageRef?: Ref<HTMLImageElement>;
   imageTestId: string;
-  keyboardShortcuts?: boolean;
   onError?: () => void;
   onLoad?: () => void;
   src: string;
   zoomKey?: string;
 };
-
-function keyboardShortcutRef({
-  resetZoom,
-  zoomIn,
-  zoomOut,
-}: Pick<
-  ZoomableImageControls,
-  "resetZoom" | "zoomIn" | "zoomOut"
->): RefCallback<HTMLSpanElement> {
-  let detachKeydown: (() => void) | null = null;
-
-  return (element) => {
-    detachKeydown?.();
-    detachKeydown = null;
-
-    if (!element) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!event.metaKey && !event.ctrlKey) {
-        return;
-      }
-
-      if (event.key === "+" || event.key === "=") {
-        event.preventDefault();
-        event.stopPropagation();
-        zoomIn();
-        return;
-      }
-
-      if (event.key === "-" || event.key === "_") {
-        event.preventDefault();
-        event.stopPropagation();
-        zoomOut();
-        return;
-      }
-
-      if (event.key === "0") {
-        event.preventDefault();
-        event.stopPropagation();
-        resetZoom();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    detachKeydown = () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  };
-}
-
-function ZoomableImageKeyboardShortcuts({
-  controls,
-  enabled,
-}: {
-  controls: ZoomableImageControls;
-  enabled: boolean;
-}) {
-  if (!enabled) {
-    return null;
-  }
-
-  return <span ref={keyboardShortcutRef(controls)} hidden />;
-}
 
 function controlsFromTransform({
   displayZoom,
@@ -191,7 +125,6 @@ export function ZoomableArtifactImageCanvas({
   imageClassName,
   imageRef,
   imageTestId,
-  keyboardShortcuts = false,
   onError,
   onLoad,
   src,
@@ -264,10 +197,6 @@ export function ZoomableArtifactImageCanvas({
             )}
             data-testid={canvasTestId}
           >
-            <ZoomableImageKeyboardShortcuts
-              controls={controls}
-              enabled={keyboardShortcuts}
-            />
             {children?.(controls)}
             <TransformComponent
               contentClass={contentClassName}

@@ -30,10 +30,6 @@ export function resetMockOrg(): void {
   };
 }
 
-export function setMockOrgLogo(logoUrl: string | null): void {
-  mockLogoUrl = logoUrl;
-}
-
 export function resetMockOrgLogo(): void {
   mockLogoUrl = null;
 }
