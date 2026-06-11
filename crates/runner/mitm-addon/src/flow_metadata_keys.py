@@ -89,9 +89,15 @@ Response streaming
 
 Model-provider usage
 --------------------
-- ``MODEL_PROVIDER_USAGE``: ``dict`` of normalized token usage. Written by
-  streaming/JSON/WebSocket extractors or fallback extraction, then read by
-  model usage-event and observation reporters.
+- ``MODEL_PROVIDER_USAGE``: ``dict`` of normalized token usage for one
+  flow-level model response source. Written by streaming/JSON extractors,
+  WebSocket missing-response-id fallback extraction, or fallback extraction,
+  then read by model usage-event and observation reporters.
+- ``MODEL_PROVIDER_USAGE_SOURCES``: ``dict`` keyed by WebSocket response id,
+  with normalized token usage dict values. Written by WebSocket model-provider
+  usage extraction and read by model usage-event and observation reporters.
+  Retained after terminal reporting for diagnostics, like
+  ``MODEL_PROVIDER_USAGE``.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` model id from registry VM info.
   Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
@@ -144,6 +150,7 @@ TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
 
 # Usage and streaming metadata
 MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
+MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 STREAM_BUFFER: Final = "stream_buffer"

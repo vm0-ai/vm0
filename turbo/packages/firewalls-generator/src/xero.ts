@@ -66,13 +66,54 @@ interface XeroSpec {
 // Unknown scopeless endpoints cause a build error — add them here or
 // investigate why they lack scopes.
 
-const INCLUDED_SCOPELESS = new Map<string, string>([
+interface IncludedScopelessEndpoint {
+  readonly permissionName: string;
+  readonly basePath?: string;
+}
+
+interface NarrowedRule {
+  readonly baseUrl: string;
+  readonly rule: string;
+}
+
+const INCLUDED_SCOPELESS = new Map<string, IncludedScopelessEndpoint>([
   // Identity endpoints use openid scopes (not OAuth2) but still need
   // Bearer token auth. Required to retrieve tenant IDs before any
   // accounting API call.
-  ["GET /Connections", "connections"],
-  ["DELETE /Connections/{id}", "connections"],
+  [
+    "GET /Connections",
+    { permissionName: "connections", basePath: "/Connections" },
+  ],
+  [
+    "DELETE /Connections/{id}",
+    { permissionName: "connections", basePath: "/Connections" },
+  ],
 ]);
+
+function narrowRuleToBasePath(
+  baseUrl: string,
+  rule: string,
+  basePath: string | undefined,
+): NarrowedRule {
+  if (basePath === undefined) {
+    return { baseUrl, rule };
+  }
+
+  const spaceIndex = rule.indexOf(" ");
+  const method = rule.slice(0, spaceIndex);
+  const path = rule.slice(spaceIndex + 1);
+  if (!path.startsWith(basePath)) {
+    throw new Error(`${rule} cannot be narrowed to base path ${basePath}`);
+  }
+  const relativePath = path.slice(basePath.length);
+  if (relativePath !== "" && !relativePath.startsWith("/")) {
+    throw new Error(`${rule} does not align with base path ${basePath}`);
+  }
+  return {
+    baseUrl: `${baseUrl}${basePath}`,
+    rule: `${method} ${relativePath === "" ? "/" : relativePath}`,
+  };
+}
 
 // ── Grouping ─────────────────────────────────────────────────────────────
 
@@ -130,9 +171,19 @@ function buildGroups(specs: ParsedSpec[]): {
         }
 
         if (scopes.length === 0) {
-          const permName = INCLUDED_SCOPELESS.get(rule);
-          if (permName) {
-            addRule(groups, permName, spec.baseUrl, rule);
+          const includedEndpoint = INCLUDED_SCOPELESS.get(rule);
+          if (includedEndpoint) {
+            const narrowed = narrowRuleToBasePath(
+              spec.baseUrl,
+              rule,
+              includedEndpoint.basePath,
+            );
+            addRule(
+              groups,
+              includedEndpoint.permissionName,
+              narrowed.baseUrl,
+              narrowed.rule,
+            );
           } else {
             unknownScopeless.push(`${rule} (${spec.baseUrl})`);
           }

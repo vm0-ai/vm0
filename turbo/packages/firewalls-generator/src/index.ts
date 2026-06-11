@@ -94,6 +94,7 @@ import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGemini } from "./gemini";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
+import { generate as generateGoogleCloud } from "./google-cloud";
 import { generate as generateGranola } from "./granola";
 import { generate as generateGreenhouse } from "./greenhouse";
 import { generate as generateGroq } from "./groq";
@@ -131,6 +132,7 @@ import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateManus } from "./manus";
 import { generate as generateMapbox } from "./mapbox";
+import { generate as generateMassive } from "./massive";
 import { generate as generateMathpix } from "./mathpix";
 import { generate as generateMem0 } from "./mem0";
 import { generate as generateMercury } from "./mercury";
@@ -193,6 +195,7 @@ import { generate as generateRunway } from "./runway";
 import { generate as generateScrapeninja } from "./scrapeninja";
 import { generate as generateSalesforce } from "./salesforce";
 import { generate as generateSegment } from "./segment";
+import { generate as generateSemrush } from "./semrush";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
 import { generate as generateShopify } from "./shopify";
@@ -216,6 +219,7 @@ import { generate as generateSupermemory } from "./supermemory";
 import { generate as generateTavily } from "./tavily";
 import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTicketmaster } from "./ticketmaster";
+import { generate as generateTikTokAds } from "./tiktok-ads";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTogether } from "./together";
@@ -339,6 +343,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
   gitlab: generateGitlab,
   "google-ads": generateGoogleAds,
+  "google-cloud": generateGoogleCloud,
   granola: generateGranola,
   greenhouse: generateGreenhouse,
   groq: generateGroq,
@@ -374,6 +379,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   make: generateMake,
   mailsac: generateMailsac,
   manus: generateManus,
+  massive: generateMassive,
   mem0: generateMem0,
   mercury: generateMercury,
   meshy: generateMeshy,
@@ -431,6 +437,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   salesforce: generateSalesforce,
   scrapeninja: generateScrapeninja,
   segment: generateSegment,
+  semrush: generateSemrush,
   sentry: generateSentry,
   serpapi: generateSerpapi,
   shopify: generateShopify,
@@ -454,6 +461,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tavily: generateTavily,
   "test-oauth": generateTestOauth,
   ticketmaster: generateTicketmaster,
+  "tiktok-ads": generateTikTokAds,
   tldv: generateTldv,
   todoist: generateTodoist,
   together: generateTogether,

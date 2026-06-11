@@ -35,7 +35,7 @@ import {
 } from "../services/zero-connector-data.service";
 import { userConnectorAvailability } from "../services/connector-availability.service";
 import type { RouteEntry } from "../route";
-import { getConnectorOAuthOrigin } from "./connector-oauth-origin";
+import { getConnectorOAuthCallbackOrigin } from "./connector-oauth-origin";
 import { CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS } from "./connector-oauth-route-state";
 import {
   buildResolvedConnectorAuthCodeAuthUrl,
@@ -310,7 +310,11 @@ const startConnectorOauthInner$ = command(
       return connectorUnavailable(type);
     }
 
-    const origin = getConnectorOAuthOrigin(request);
+    const origin = getConnectorOAuthCallbackOrigin({
+      request,
+      type: authCodeStartType.type,
+      authMethod: authCodeStartType.authMethod,
+    });
     const prepared = prepareResolvedConnectorAuthCodeStart({
       type: authCodeStartType.type,
       authMethod: authCodeStartType.authMethod,

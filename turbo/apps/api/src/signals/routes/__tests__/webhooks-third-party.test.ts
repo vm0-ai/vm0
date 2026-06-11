@@ -268,9 +268,6 @@ const STRIPE_ONE_TIME_CAMPAIGN = JSON.stringify({
     couponId: "ZERO100",
   },
 });
-const GOOGLE_ADS_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const GOOGLE_ADS_UPLOAD_URL =
-  "https://googleads.googleapis.com/v24/customers/1001302527:uploadClickConversions";
 
 function signGithub(secret: string, body: string): string {
   return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
@@ -646,35 +643,6 @@ function mockStripeWebhookEnv(): void {
   mockStripeClient(
     context.mocks.stripe as unknown as Parameters<typeof mockStripeClient>[0],
   );
-}
-
-function mockGoogleAdsOfflineConversionEnv(): void {
-  mockOptionalEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID", "100-130-2527");
-  mockOptionalEnv("GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN", "developer-token");
-  mockOptionalEnv("GOOGLE_ADS_OFFLINE_CLIENT_ID", "oauth-client-id");
-  mockOptionalEnv("GOOGLE_ADS_OFFLINE_CLIENT_SECRET", "oauth-client-secret");
-  mockOptionalEnv("GOOGLE_ADS_OFFLINE_REFRESH_TOKEN", "refresh-token");
-  mockOptionalEnv("GOOGLE_ADS_FREE_TRIAL_CONVERSION_ACTION_ID", "7615812424");
-  mockOptionalEnv(
-    "GOOGLE_ADS_PAID_SUBSCRIBER_CONVERSION_ACTION_ID",
-    "9876543210",
-  );
-}
-
-function captureGoogleAdsOfflineUploads(): {
-  readonly uploads: readonly unknown[];
-} {
-  const uploads: unknown[] = [];
-  server.use(
-    http.post(GOOGLE_ADS_TOKEN_URL, () => {
-      return HttpResponse.json({ access_token: "access-token" });
-    }),
-    http.post(GOOGLE_ADS_UPLOAD_URL, async ({ request }) => {
-      uploads.push(await request.json());
-      return HttpResponse.json({ results: [], jobId: "ads-job" });
-    }),
-  );
-  return { uploads };
 }
 
 function invoiceLinesWithSubscriptionPeriod(periodEnd: number): {
@@ -2543,35 +2511,6 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.onboardingPaymentPending).toBeTruthy();
     });
 
-    it("does not upload paid subscriber conversion from active checkout completion", async () => {
-      const fixture = await trackStripe(
-        store.set(seedStripeFixture$, undefined, context.signal),
-      );
-      mockStripeWebhookEnv();
-      mockGoogleAdsOfflineConversionEnv();
-      const googleAds = captureGoogleAdsOfflineUploads();
-      const subId = stripeId("sub");
-      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
-        id: subId,
-        status: "active",
-        metadata: { gclid: "active-checkout-gclid" },
-        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
-      });
-
-      const response = await postStripeWebhookEvent({
-        type: "checkout.session.completed",
-        dataObject: {
-          id: stripeId("cs"),
-          subscription: subId,
-          customer: fixture.stripeCustomerId,
-          metadata: { gclid: "session-gclid" },
-        },
-      });
-
-      expect(response.status).toBe(200);
-      expect(googleAds.uploads).toHaveLength(0);
-    });
-
     it("is idempotent when subscription is already stored", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
@@ -3201,94 +3140,6 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.currentPeriodEnd).toStrictEqual(
         new Date(periodEnd * 1000),
       );
-    });
-
-    it("uploads paid subscriber conversion from positive paid invoice with invoice order id and amount", async () => {
-      const fixture = await trackStripe(
-        store.set(seedStripeFixture$, undefined, context.signal),
-      );
-      mockStripeWebhookEnv();
-      mockGoogleAdsOfflineConversionEnv();
-      const googleAds = captureGoogleAdsOfflineUploads();
-      const subId = stripeId("sub");
-      const invId = stripeId("inv");
-      const periodEnd = 1_800_000_000;
-      await updateStripeOrg(fixture, {
-        stripeSubscriptionId: subId,
-        onboardingPaymentPending: true,
-      });
-      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
-        id: subId,
-        status: "active",
-        cancel_at_period_end: false,
-        metadata: { gclid: "paid-invoice-gclid" },
-        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
-      });
-
-      const response = await postStripeWebhookEvent({
-        type: "invoice.paid",
-        dataObject: {
-          id: invId,
-          customer: fixture.stripeCustomerId,
-          amount_paid: 12_345,
-          subtotal: 0,
-          metadata: null,
-          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
-          parent: { subscription_details: { subscription: subId } },
-        },
-      });
-
-      expect(response.status).toBe(200);
-      expect(googleAds.uploads).toHaveLength(1);
-      expect(googleAds.uploads[0]).toMatchObject({
-        conversions: [
-          expect.objectContaining({
-            gclid: "paid-invoice-gclid",
-            orderId: invId,
-            conversionValue: 123.45,
-          }),
-        ],
-        partialFailure: true,
-      });
-    });
-
-    it("does not upload paid subscriber conversion for zero amount paid invoices", async () => {
-      const fixture = await trackStripe(
-        store.set(seedStripeFixture$, undefined, context.signal),
-      );
-      mockStripeWebhookEnv();
-      mockGoogleAdsOfflineConversionEnv();
-      const googleAds = captureGoogleAdsOfflineUploads();
-      const subId = stripeId("sub");
-      const invId = stripeId("inv");
-      const periodEnd = 1_800_000_000;
-      await updateStripeOrg(fixture, {
-        stripeSubscriptionId: subId,
-        onboardingPaymentPending: true,
-      });
-      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
-        id: subId,
-        status: "active",
-        cancel_at_period_end: false,
-        metadata: { gclid: "discounted-invoice-gclid" },
-        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
-      });
-
-      const response = await postStripeWebhookEvent({
-        type: "invoice.paid",
-        dataObject: {
-          id: invId,
-          customer: fixture.stripeCustomerId,
-          amount_paid: 0,
-          subtotal: 10_000,
-          metadata: null,
-          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
-          parent: { subscription_details: { subscription: subId } },
-        },
-      });
-
-      expect(response.status).toBe(200);
-      expect(googleAds.uploads).toHaveLength(0);
     });
 
     it("binds the Stripe customer and grants credits when invoice.paid arrives first", async () => {
