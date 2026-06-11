@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.438.0](https://github.com/vm0-ai/vm0/compare/app-v0.437.0...app-v0.438.0) (2026-06-11)
+
+
+### Features
+
+* add credit usage range controls ([#17192](https://github.com/vm0-ai/vm0/issues/17192)) ([0c9eafb](https://github.com/vm0-ai/vm0/commit/0c9eafb0e208e60edaed58b1612105a0b875a4db))
+* enable chat thread rename ([#17218](https://github.com/vm0-ai/vm0/issues/17218)) ([9f74397](https://github.com/vm0-ai/vm0/commit/9f743971ada9832fb08c367dfc4e9f3e4a7c020a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.82.0
+    * @vm0/connectors bumped to 1.66.0
+    * @vm0/core bumped to 8.328.0
+
 ## [0.437.0](https://github.com/vm0-ai/vm0/compare/app-v0.436.0...app-v0.437.0) (2026-06-11)
 
 

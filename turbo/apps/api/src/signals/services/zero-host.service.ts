@@ -23,6 +23,7 @@ import { type Db, writeDb$ } from "../external/db";
 import { generateText } from "../external/openrouter";
 import {
   copyHostedSitesS3Object,
+  generateHostedSitesPresignedGetUrl,
   generateHostedSitesPresignedPutUrl,
   hostedSitesS3ObjectExists,
   putHostedSitesS3Object,
@@ -32,6 +33,7 @@ import { safeJsonParse } from "../utils";
 import { recordHostedSiteArtifact$ } from "./run-uploaded-files.service";
 
 const PUT_URL_TTL_SECONDS = 3600;
+const GET_URL_TTL_SECONDS = 3600;
 const MAX_HOSTED_SITE_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_HOSTED_SITE_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_PUBLIC_SLUG_ATTEMPTS = 5;
@@ -111,7 +113,8 @@ type GetHostedSiteFilesResult =
       readonly body: HostedSiteFilesResponse;
     }
   | { readonly status: "not_found"; readonly message: string }
-  | { readonly status: "conflict"; readonly message: string };
+  | { readonly status: "conflict"; readonly message: string }
+  | { readonly status: "config_error"; readonly message: string };
 
 type RedeployPresentationTargetResult =
   | {
@@ -793,7 +796,7 @@ export const completeHostedSiteDeployment$ = command(
 
 export const getHostedSiteFiles$ = command(
   async (
-    { set },
+    { get, set },
     args: GetHostedSiteFilesArgs,
     signal: AbortSignal,
   ): Promise<GetHostedSiteFilesResult> => {
@@ -847,9 +850,31 @@ export const getHostedSiteFiles$ = command(
       };
     }
 
-    const files = Object.values(deployment.manifest.files).sort((a, b) => {
-      return a.path.localeCompare(b.path);
-    });
+    const manifestFiles = Object.values(deployment.manifest.files).sort(
+      (a, b) => {
+        return a.path.localeCompare(b.path);
+      },
+    );
+    signal.throwIfAborted();
+
+    const hostedR2 = hostedR2Config();
+    if (hostedR2.status === "config_error") {
+      return hostedR2;
+    }
+
+    const files = await Promise.all(
+      manifestFiles.map(async (file) => {
+        const downloadUrl = await get(
+          generateHostedSitesPresignedGetUrl(
+            hostedR2.config.bucket,
+            fileKey(deployment.r2Prefix, file.path),
+            GET_URL_TTL_SECONDS,
+            true,
+          ),
+        );
+        return { ...file, downloadUrl };
+      }),
+    );
     signal.throwIfAborted();
 
     return {

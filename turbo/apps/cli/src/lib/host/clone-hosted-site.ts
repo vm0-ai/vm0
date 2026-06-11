@@ -90,10 +90,9 @@ function sha256(bytes: Buffer): string {
 
 async function downloadHostedFile(
   file: HostedSiteFilesResponse["files"][number],
-  siteUrl: string,
   destination: string,
 ): Promise<void> {
-  const response = await fetch(new URL(file.path, siteUrl));
+  const response = await fetch(file.downloadUrl);
   if (!response.ok) {
     throw new Error(
       `Failed to download ${file.path} (HTTP ${response.status})`,
@@ -133,7 +132,7 @@ export async function cloneHostedSite(
 
   for (const file of hostedSite.files) {
     options.onProgress?.({ phase: "downloading", path: file.path });
-    await downloadHostedFile(file, hostedSite.url, options.destination);
+    await downloadHostedFile(file, options.destination);
   }
 
   return {

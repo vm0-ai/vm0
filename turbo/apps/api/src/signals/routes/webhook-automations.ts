@@ -1,43 +1,26 @@
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import {
   webhookAutomationsByIdContract,
   webhookAutomationsMainContract,
   type WebhookAutomationResponse,
 } from "@vm0/api-contracts/contracts/webhook-automations";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   createWebhookAutomation$,
   deleteWebhookAutomation$,
   listWebhookAutomations$,
   type WebhookAutomationView,
 } from "../services/webhook-automations.service";
+import { automationsEnabled$ } from "./automations";
 import type { RouteEntry } from "../route";
 
 function toResponse(view: WebhookAutomationView): WebhookAutomationResponse {
   return view;
 }
-
-// Webhook automations share the time-automation gate: when the zeroAutomations
-// switch is off the surface is unreachable, so handlers report not-found and the
-// new paths are indistinguishable from unmounted routes.
-const automationsEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ZeroAutomations, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
 
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!(await get(automationsEnabled$))) {

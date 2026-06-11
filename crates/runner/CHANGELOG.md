@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.111.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.1...runner-rs-v0.111.2) (2026-06-11)
+
+
+### Documentation
+
+* document runner proxy architecture ([#17227](https://github.com/vm0-ai/vm0/issues/17227)) ([78e3676](https://github.com/vm0-ai/vm0/commit/78e36764b427a64fdce76cb57f1f498d0c738d77))
+
 ## [0.111.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.0...runner-rs-v0.111.1) (2026-06-11)
 
 

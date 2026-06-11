@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.128.0](https://github.com/vm0-ai/vm0/compare/api-v1.127.1...api-v1.128.0) (2026-06-11)
+
+
+### Features
+
+* add credit usage range controls ([#17192](https://github.com/vm0-ai/vm0/issues/17192)) ([0c9eafb](https://github.com/vm0-ai/vm0/commit/0c9eafb0e208e60edaed58b1612105a0b875a4db))
+* **api:** cut schedule reads and writes over to the events-first tables ([#17225](https://github.com/vm0-ai/vm0/issues/17225)) ([967f948](https://github.com/vm0-ai/vm0/commit/967f94879bcbca83f3ae90854de72c81597dc5de))
+* **api:** per-trigger webhook gate + trigger kind-config constraint ([#17233](https://github.com/vm0-ai/vm0/issues/17233)) ([05e3b88](https://github.com/vm0-ai/vm0/commit/05e3b88b941366649313ecaec0c6e1f771051f9e))
+* promote computer-use to seed skill ([#17224](https://github.com/vm0-ai/vm0/issues/17224)) ([ea828c1](https://github.com/vm0-ai/vm0/commit/ea828c17a224e259da51003d3af24576647beaa0))
+
+
+### Bug Fixes
+
+* download hosted site clones from r2 ([#17240](https://github.com/vm0-ai/vm0/issues/17240)) ([d0da982](https://github.com/vm0-ai/vm0/commit/d0da9827fc74145974e4bb48e7fde90169ef3b57))
+* only auto-name chat threads once ([#17228](https://github.com/vm0-ai/vm0/issues/17228)) ([808d124](https://github.com/vm0-ai/vm0/commit/808d124df97492db9996c85d3f5a82cc43125daa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.82.0
+    * @vm0/connectors bumped to 1.66.0
+    * @vm0/core bumped to 8.328.0
+    * @vm0/db bumped to 1.43.0
+
 ## [1.127.1](https://github.com/vm0-ai/vm0/compare/api-v1.127.0...api-v1.127.1) (2026-06-11)
 
 

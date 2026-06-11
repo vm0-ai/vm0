@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.4...guest-mock-codex-v0.2.5) (2026-06-11)
+
+
+### Performance Improvements
+
+* avoid cloning mock codex prompt parts ([#17210](https://github.com/vm0-ai/vm0/issues/17210)) ([3251264](https://github.com/vm0-ai/vm0/commit/3251264313c7a0562285cbf1d4b2f291d5bfe997))
+
 ## [0.2.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.3...guest-mock-codex-v0.2.4) (2026-06-10)
 
 
