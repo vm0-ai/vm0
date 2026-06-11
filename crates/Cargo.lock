@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "0.7.19"
+version = "0.7.20"
 dependencies = [
  "base64",
  "futures-util",
@@ -2570,7 +2570,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.110.4"
+version = "0.111.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",

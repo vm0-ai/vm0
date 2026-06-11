@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.421.2](https://github.com/vm0-ai/vm0/compare/web-v12.421.1...web-v12.421.2) (2026-06-11)
+
+
+### Bug Fixes
+
+* route desktop connect link to release page ([#17190](https://github.com/vm0-ai/vm0/issues/17190)) ([cfa3531](https://github.com/vm0-ai/vm0/commit/cfa3531ce706ac773080c28868f7dcb6a2739bb3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.0
+    * @vm0/core bumped to 8.326.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.64.0
+
 ## [12.421.1](https://github.com/vm0-ai/vm0/compare/web-v12.421.0...web-v12.421.1) (2026-06-10)
 
 

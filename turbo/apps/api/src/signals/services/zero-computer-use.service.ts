@@ -146,7 +146,7 @@ function generateOpaqueToken(prefix: string): string {
 }
 
 function normalizeHostName(hostName: string): string {
-  return hostName.trim().slice(0, 128);
+  return hostName.trim().slice(0, 253);
 }
 
 function normalizeVersion(version: string): string {
@@ -490,6 +490,7 @@ function timeoutErrorForCommand(
 function serializeHost(row: ComputerUseHostRow, now: Date) {
   return {
     id: row.id,
+    hostName: row.displayName,
     displayName: row.displayName,
     appVersion: row.appVersion,
     osVersion: row.osVersion,

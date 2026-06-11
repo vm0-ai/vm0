@@ -1,6 +1,7 @@
 import { desktopUpdatesContract } from "@vm0/api-contracts/contracts/desktop-updates";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
   clearDesktopUpdateManifestCacheForTest,
@@ -12,6 +13,12 @@ const context = testContext();
 
 function client() {
   return setupApp({ context })(desktopUpdatesContract);
+}
+
+function appRequest(path: string): Promise<Response> {
+  return Promise.resolve(
+    createApp({ signal: context.signal }).request(path, { method: "GET" }),
+  );
 }
 
 function stableManifest(
@@ -45,6 +52,27 @@ function darwinArm64Release(version: string, url: string) {
 describe("desktop update routes", () => {
   beforeEach(() => {
     clearDesktopUpdateManifestCacheForTest();
+  });
+
+  it("redirects the release page route to the current stable desktop release", async () => {
+    mockDesktopUpdateManifestForTest(
+      stableManifest("0.2.1", {
+        "0.2.1": darwinArm64Release(
+          "0.2.1",
+          "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip",
+        ),
+      }),
+    );
+
+    const response = await appRequest(
+      "http://api.test/api/zero/desktop/updates/stable/darwin/arm64/release",
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/tag/desktop-v0.2.1",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("serves the current stable macOS arm64 update from the manifest", async () => {

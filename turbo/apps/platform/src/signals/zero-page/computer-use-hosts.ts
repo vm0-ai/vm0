@@ -5,16 +5,24 @@ import {
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
+import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 
-export const ZERO_DESKTOP_DOWNLOAD_URL =
-  "https://github.com/vm0-ai/vm0/releases/tag/desktop-updates";
+const ZERO_DESKTOP_RELEASE_PATH =
+  "/api/zero/desktop/updates/stable/darwin/arm64/release";
 
-type OnlineComputerUseHost = Pick<
+export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
+  ZERO_DESKTOP_RELEASE_PATH,
+  resolveApiBaseForNavigation(true),
+).toString();
+
+interface OnlineComputerUseHost extends Pick<
   ComputerUseHost,
   "id" | "displayName" | "lastSeenAt"
->;
+> {
+  readonly hostName: string;
+}
 
 export function selectedOnlineComputerUseHostId(
   hosts: readonly { readonly id: string }[],
@@ -52,6 +60,7 @@ export const onlineComputerUseHosts$ = computed(
       .map((host) => {
         return {
           id: host.id,
+          hostName: host.hostName ?? host.displayName,
           displayName: host.displayName,
           lastSeenAt: host.lastSeenAt,
         };

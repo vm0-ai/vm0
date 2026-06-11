@@ -11,6 +11,8 @@ import { now } from "../../lib/time";
 
 const DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
+const DESKTOP_RELEASE_PAGE_URL_PREFIX =
+  "https://github.com/vm0-ai/vm0/releases/tag/desktop-v";
 
 const DESKTOP_UPDATE_MANIFEST_CACHE_TTL_MS = 60_000;
 
@@ -117,6 +119,14 @@ function squirrelRelease(
   };
 }
 
+function desktopReleasePageUrl(
+  release: DesktopUpdateManifest["releases"][string],
+): string {
+  return `${DESKTOP_RELEASE_PAGE_URL_PREFIX}${encodeURIComponent(
+    release.version,
+  )}`;
+}
+
 function selectDesktopRelease(
   manifest: DesktopUpdateManifest,
   request: DesktopUpdateFeedRequest,
@@ -217,4 +227,13 @@ export async function loadDesktopUpdateFeed(
 ): Promise<SquirrelMacReleases | null> {
   const manifest = await loadDesktopUpdateManifest(signal);
   return buildDesktopUpdateFeed(manifest, request);
+}
+
+export async function loadDesktopReleasePageUrl(
+  request: DesktopUpdateFeedRequest,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const manifest = await loadDesktopUpdateManifest(signal);
+  const selected = selectDesktopRelease(manifest, request);
+  return selected ? desktopReleasePageUrl(selected.release) : null;
 }

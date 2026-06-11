@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.436.0](https://github.com/vm0-ai/vm0/compare/app-v0.435.0...app-v0.436.0) (2026-06-11)
+
+
+### Features
+
+* add Google Cloud connector ([#16302](https://github.com/vm0-ai/vm0/issues/16302)) ([edc2046](https://github.com/vm0-ai/vm0/commit/edc2046a5f599fcfc33d45d7fc68a54bf8835c09))
+* add semrush and massive connectors ([#17147](https://github.com/vm0-ai/vm0/issues/17147)) ([941de50](https://github.com/vm0-ai/vm0/commit/941de5089d10f1f45e6815dac7eedec75b94be73))
+* add TikTok Ads connector ([#17148](https://github.com/vm0-ai/vm0/issues/17148)) ([5e0824b](https://github.com/vm0-ai/vm0/commit/5e0824bb254f1bbef2672792bc5e56560d7717c7))
+* batch inline chat feedback in a docked tray with scrollable quotes ([#17004](https://github.com/vm0-ai/vm0/issues/17004)) ([3a11c28](https://github.com/vm0-ai/vm0/commit/3a11c28c04e2857e9f7216084880a09869cad14c))
+* enable connector permission reset by default ([#17140](https://github.com/vm0-ai/vm0/issues/17140)) ([036ed23](https://github.com/vm0-ai/vm0/commit/036ed23787cf999cc9c002c0764b9382d3b99993))
+
+
+### Bug Fixes
+
+* hide computer use button behind feature flag ([#17157](https://github.com/vm0-ai/vm0/issues/17157)) ([be5e47e](https://github.com/vm0-ai/vm0/commit/be5e47e824daa820b666d4b12d5a041d11a36282))
+* preserve twenty connector icon colors ([#17166](https://github.com/vm0-ai/vm0/issues/17166)) ([cdd0fea](https://github.com/vm0-ai/vm0/commit/cdd0fea670b7a962d6f7b4d756ae0219a5783bb4))
+* replace massive connector icon with svg ([#17179](https://github.com/vm0-ai/vm0/issues/17179)) ([34b661a](https://github.com/vm0-ai/vm0/commit/34b661ae23ed53c617eefbec121e904023d0c0f1))
+* replace semrush connector icon with svg ([#17180](https://github.com/vm0-ai/vm0/issues/17180)) ([41cab70](https://github.com/vm0-ai/vm0/commit/41cab708cbecb710cd3944bf16e754148c2b7ce5))
+* route desktop connect link to release page ([#17190](https://github.com/vm0-ai/vm0/issues/17190)) ([cfa3531](https://github.com/vm0-ai/vm0/commit/cfa3531ce706ac773080c28868f7dcb6a2739bb3))
+* update google cloud connector icon ([#17183](https://github.com/vm0-ai/vm0/issues/17183)) ([2d8550b](https://github.com/vm0-ai/vm0/commit/2d8550b041f2d0d0b1573f0cfc060cd30ef202fb))
+* update google search console connector icon ([#17177](https://github.com/vm0-ai/vm0/issues/17177)) ([54fff03](https://github.com/vm0-ai/vm0/commit/54fff03d6f95949708da857805679f839dcd2ce3))
+* update strapi connector icon ([#17155](https://github.com/vm0-ai/vm0/issues/17155)) ([714f0c2](https://github.com/vm0-ai/vm0/commit/714f0c281f0d47ba2b44919b1b7a44afeef35af9))
+* update tripo connector icon ([#17163](https://github.com/vm0-ai/vm0/issues/17163)) ([44a363a](https://github.com/vm0-ai/vm0/commit/44a363a3754988a21cf89a7843eb7409d8625b93))
+* update wandb connector icon color ([#17171](https://github.com/vm0-ai/vm0/issues/17171)) ([fb3b50a](https://github.com/vm0-ai/vm0/commit/fb3b50a38b8d939f1967c5ea7e4d68706d0671a4))
+* update webflow connector icon color ([#17164](https://github.com/vm0-ai/vm0/issues/17164)) ([cc113e5](https://github.com/vm0-ai/vm0/commit/cc113e5ee7de9c16301a88de926f43662cc2f195))
+* update wrike connector icon color ([#17173](https://github.com/vm0-ai/vm0/issues/17173)) ([a49e69c](https://github.com/vm0-ai/vm0/commit/a49e69c28b3b8aa490d1603e0824f8acfe92a4bc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.0
+    * @vm0/connectors bumped to 1.64.0
+    * @vm0/core bumped to 8.326.0
+
 ## [0.435.0](https://github.com/vm0-ai/vm0/compare/app-v0.434.0...app-v0.435.0) (2026-06-10)
 
 

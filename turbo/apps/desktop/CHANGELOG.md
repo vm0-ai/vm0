@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.9.0...desktop-v0.10.0) (2026-06-11)
+
+
+### Features
+
+* add desktop runtime error details ([#17156](https://github.com/vm0-ai/vm0/issues/17156)) ([8f1a863](https://github.com/vm0-ai/vm0/commit/8f1a863dd083e5300baea20d7cc8065895603f56))
+
+
+### Bug Fixes
+
+* move desktop workspace menu below main window ([#17135](https://github.com/vm0-ai/vm0/issues/17135)) ([ca28c33](https://github.com/vm0-ai/vm0/commit/ca28c33d67c54d50e2c7e707e884e0e8a39edd39))
+
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.8.0...desktop-v0.9.0) (2026-06-10)
 
 
