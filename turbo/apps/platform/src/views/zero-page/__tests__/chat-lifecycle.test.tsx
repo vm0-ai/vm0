@@ -2129,7 +2129,7 @@ describe("chat lifecycle", () => {
       "Mention the dates before the risk summary.",
     );
 
-    await user.click(buttonByText("Send 1 comment"));
+    await user.click(screen.getByLabelText("Send feedback"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -2190,27 +2190,31 @@ describe("chat lifecycle", () => {
     });
     await user.click(buttonByText("Provide feedback"));
 
-    await user.click(buttonByText("1 comment"));
-
-    expect(
-      screen.getByText("Assign each risk to an owner."),
-    ).toBeInTheDocument();
+    const comments = screen.getAllByPlaceholderText(
+      "What should change about this?",
+    );
+    expect(comments).toHaveLength(2);
+    // The newest fragment sits on top with an empty note; the first note
+    // persists in the row below it.
+    expect(comments[0]).toHaveValue("");
+    expect(comments[1]).toHaveValue("Assign each risk to an owner.");
     expect(
       screen.getByText(
         "Select more text and click Provide feedback to add another comment",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByPlaceholderText("What should change about this?"),
-    ).toHaveValue("");
 
-    await user.click(screen.getByLabelText("Close"));
+    // Removing the empty draft row leaves the noted fragment intact.
+    await user.click(screen.getAllByLabelText("Remove feedback")[0]);
 
     await waitFor(() => {
       expect(
-        screen.queryByText("Feedback on this reply"),
-      ).not.toBeInTheDocument();
+        screen.getAllByPlaceholderText("What should change about this?"),
+      ).toHaveLength(1);
     });
+    expect(
+      screen.getByPlaceholderText("What should change about this?"),
+    ).toHaveValue("Assign each risk to an owner.");
   });
 
   it("edits and sends multiple inline feedback comments", async () => {
@@ -2271,32 +2275,18 @@ describe("chat lifecycle", () => {
     await user.click(buttonByText("Provide feedback"));
 
     await fill(
-      await screen.findByPlaceholderText("What should change about this?"),
+      screen.getAllByPlaceholderText("What should change about this?")[0],
       "Mention launch dates before the risk summary.",
     );
 
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-    await user.click(buttonByText("Provide feedback"));
-
-    click(buttonByText("2 comments"));
-    const firstCommentCard = screen
-      .getByText("Assign each risk to an owner.")
-      .closest("button");
-    if (!firstCommentCard) {
-      throw new Error("Feedback comment card not found");
-    }
-    click(firstCommentCard);
-
-    const editingComment = await screen.findByPlaceholderText(
+    // Edit the first fragment's note in place — the oldest sits at the bottom.
+    const editingComment = screen.getAllByPlaceholderText(
       "What should change about this?",
-    );
+    )[1];
     expect(editingComment).toHaveValue("Assign each risk to an owner.");
     await fill(editingComment, "Assign named owners to each launch risk.");
 
-    await user.click(buttonByText("Send 2 comments"));
+    await user.click(screen.getByLabelText("Send feedback"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
