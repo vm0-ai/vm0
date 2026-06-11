@@ -1,3 +1,32 @@
+//! Exec-control sink lifecycle and stream serialization.
+//!
+//! A sink belongs to one active exec operation and is shared by the accept
+//! thread, forwarding workers, and operation cleanup. `accept.rs` drives the
+//! process-control accept and hello handshake, while `forward.rs` waits for the
+//! sink, serializes access to the connected stream, and marks the sink failed on
+//! terminal connected-stream errors. While the operation is active, accept or
+//! hello failures move the sink to `Failed`; operation cleanup moves it to
+//! `Closed`.
+//!
+//! The lifecycle starts in `Waiting`. A successful connection path moves through
+//! `Handshaking` while the accepted process-control stream sends its hello, and
+//! reaches `Connected` once forwarding can use the stream. `Failed` preserves a
+//! sink error for later requests, and `Closed` represents operation cleanup.
+//! Requests wait in `Waiting` or `Handshaking` until the sink connects, fails,
+//! closes, or their deadline expires. Connected requests serialize over the
+//! process-control stream. Failed sinks return `SinkError`; closed or inactive
+//! sinks return `Inactive`.
+//!
+//! `inner` and `ready` own connection-state changes and wake waiting forwarders.
+//! `active` is the operation-lifetime gate, so close/drop can stop queued or
+//! in-flight forwarding even when a connected stream guard is busy. The
+//! connected stream has a separate `locked` gate so waiters can keep their
+//! request deadlines and be woken by close/fail before taking the stream mutex.
+//! `pending` limits outstanding forwarding work; when it is full, new requests
+//! release their transient count and return `QueueFull`. `PendingControlSlot`
+//! releases reserved work. The shutdown stream clones let close/fail interrupt
+//! handshakes or connected I/O without waiting for the active stream guard.
+
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -13,36 +42,59 @@ use super::{
 };
 
 pub(super) struct ControlSinkState {
+    /// Connection lifecycle state paired with `ready` for waiter wakeups.
     pub(super) inner: Mutex<ControlSinkInner>,
+    /// Notifies waiters after lifecycle state changes.
     pub(super) ready: Condvar,
+    /// Operation-lifetime gate; once false, requests resolve as inactive.
     pub(super) active: AtomicBool,
+    /// Backpressure counter for outstanding forwarding work; full means queue-full.
     pub(super) pending: AtomicUsize,
 }
 
+/// Connected sink state.
+///
+/// `shutdown` is a clone of the stream used only to interrupt connected I/O
+/// without taking the stream mutex held by the active forwarder.
 pub(super) struct ConnectedControlSink {
     pub(super) stream: Arc<ControlStreamState>,
     shutdown: UnixStream,
 }
 
+/// Shared connected stream plus a waitable serialization gate.
+///
+/// `locked` is separate from `stream` so waiting forwarders can wait with their
+/// request deadline and can be woken by close/fail without contending on a busy
+/// stream mutex.
 pub(super) struct ControlStreamState {
     stream: Mutex<UnixStream>,
     locked: Mutex<bool>,
     ready: Condvar,
 }
 
+/// RAII guard for the forwarder that owns the connected-stream gate.
 pub(super) struct ControlStreamGuard<'a> {
     state: &'a ControlStreamState,
     stream: MutexGuard<'a, UnixStream>,
 }
 
 pub(super) enum ControlSinkInner {
+    /// No process-control stream has been accepted yet.
     Waiting,
+    /// A stream was accepted and can be interrupted through the stored clone.
     Handshaking(UnixStream),
+    /// The process-control stream is ready for serialized forwarding.
     Connected(ConnectedControlSink),
+    /// A terminal sink error to return to subsequent requests.
     Failed(String),
+    /// Operation cleanup completed; subsequent requests resolve inactive.
     Closed,
 }
 
+/// Reserved pending capacity for one forwarding worker.
+///
+/// Dropping the slot releases the `pending` counter even if forwarding exits
+/// through timeout, sink failure, inactive operation, or result-send failure.
 pub(super) struct PendingControlSlot {
     sink: Arc<ControlSinkState>,
 }

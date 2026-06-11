@@ -595,6 +595,7 @@ mod tests {
     use crate::paths::RunnerPaths;
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
+    use crate::storage_fingerprints::StorageFingerprint;
     use crate::types::SandboxReuseResult;
     use crate::workspace_image_cache::{
         SessionWorkspaceCache, WorkspaceImagePrepareRequest, WorkspaceImagePromotionContext,
@@ -904,14 +905,14 @@ mod tests {
                 prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, session_id)
                     .await;
             let sandbox = MockSandbox::new(format!("workspace-promotion-{session_id}"));
-            let storage_fingerprints = crate::storage_fingerprints::StorageFingerprints {
+            let storage_fingerprints = StorageFingerprints {
                 storages: std::collections::HashMap::from([(
                     CANONICAL_WORKING_DIR.to_owned(),
-                    ("repo".to_owned(), "v1".to_owned()),
+                    StorageFingerprint::new("repo", "v1"),
                 )]),
                 artifacts: std::collections::HashMap::from([(
                     format!("{CANONICAL_WORKING_DIR}/artifact"),
-                    ("artifact".to_owned(), "v1".to_owned()),
+                    StorageFingerprint::new("artifact", "v1"),
                 )]),
             };
             let promotion = test_promotion_context(
@@ -945,18 +946,20 @@ mod tests {
             let previous_storage = checkout
                 .previous_storage()
                 .expect("cache hit should expose previous storage fingerprints");
-            assert!(StorageFingerprints::fingerprint_is_tainted(
+            assert!(
                 previous_storage
                     .storages
                     .get(CANONICAL_WORKING_DIR)
                     .expect("storage path should be retained for cleanup")
-            ));
-            assert!(StorageFingerprints::fingerprint_is_tainted(
+                    .is_tainted()
+            );
+            assert!(
                 previous_storage
                     .artifacts
                     .get(&format!("{CANONICAL_WORKING_DIR}/artifact"))
                     .expect("artifact path should be retained for cleanup")
-            ));
+                    .is_tainted()
+            );
         }
     }
 
