@@ -232,7 +232,7 @@ mod tests {
             device_rate_limits: None,
             budget_lease: ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
             source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
         })
     }
 
@@ -267,7 +267,7 @@ mod tests {
                     None,
                     WorkspaceCacheTerminalStatus::Success,
                     completed_at.into(),
-                    &crate::idle_pool::StorageFingerprints::default(),
+                    &crate::storage_fingerprints::StorageFingerprints::default(),
                 )
                 .await
                 .unwrap()

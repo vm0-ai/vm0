@@ -19,7 +19,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { buildTelegramBotAvatarUrl } from "../../external/telegram-avatar";
 import {
   deleteOrgMembership$,
@@ -1855,7 +1855,7 @@ describe("POST /api/integrations/telegram/link", () => {
     );
 
     expect(response.body.telegramUserId).toBe(telegramUserId);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(sentMessages).toStrictEqual([
       {
         chat_id: telegramUserId,

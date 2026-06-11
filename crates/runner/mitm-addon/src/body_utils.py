@@ -533,6 +533,40 @@ def _decompress_zlib_json_usage_body(
     return bytes(out), None
 
 
+def _validate_complete_zstd_frames(data: bytes) -> str | None:
+    remaining_data = data
+    while remaining_data:
+        obj = zstandard.ZstdDecompressor().decompressobj()
+        try:
+            obj.decompress(remaining_data)
+        except zstandard.ZstdError:
+            return "invalid compressed body"
+        if not obj.eof:
+            return "incomplete compressed body"
+        remaining_data = obj.unused_data
+    return None
+
+
+def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[bytes, str | None]:
+    if max_output <= 0:
+        return b"", None
+
+    try:
+        with zstandard.ZstdDecompressor().stream_reader(data, read_across_frames=True) as reader:
+            body = reader.read(max_output)
+            # Force validation of any trailing frame without accumulating it.
+            extra = reader.read(1)
+    except zstandard.ZstdError as exc:
+        with contextlib.suppress(AttributeError):
+            # ctx.log unavailable outside mitmproxy runtime
+            ctx.log.debug(f"Decompression failed (zstd): {exc}")
+        return b"", "invalid compressed body"
+
+    if extra:
+        return body, None
+    return body, _validate_complete_zstd_frames(data)
+
+
 def decompress_json_usage_body(
     data: bytes, headers: http.Headers, max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT
 ) -> tuple[bytes, str | None]:
@@ -559,31 +593,7 @@ def decompress_json_usage_body(
             return body, "incomplete compressed body"
         return body, None
     if encoding == "zstd":
-        try:
-            # First use stream_reader().read(max_output) as the bounded-output
-            # primary path. For zstd, an incomplete frame can read as empty
-            # without proving whether the frame is a valid empty payload, so
-            # only the empty-output case needs a second state check below.
-            with zstandard.ZstdDecompressor().stream_reader(data) as reader:
-                body = reader.read(max_output)
-        except zstandard.ZstdError as exc:
-            with contextlib.suppress(AttributeError):
-                # ctx.log unavailable outside mitmproxy runtime
-                ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-            return b"", "invalid compressed body"
-        if data and not body:
-            try:
-                # A fresh decompressobj exposes eof, which distinguishes a
-                # complete empty zstd frame from an incomplete prefix. The
-                # gzip/deflate and brotli branches already get equivalent
-                # completion signals through their codec-specific helpers.
-                obj = zstandard.ZstdDecompressor().decompressobj()
-                obj.decompress(data)
-            except zstandard.ZstdError:
-                return body, "incomplete compressed body"
-            if not obj.eof:
-                return body, "incomplete compressed body"
-        return body, None
+        return _decompress_zstd_json_usage_body(data, max_output)
     if encoding and encoding != "identity" and data:
         return b"", "unsupported content encoding"
     return decompress_body(data, headers, max_output=max_output), None

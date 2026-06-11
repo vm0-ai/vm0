@@ -50,8 +50,10 @@ const MAPS_PRICING_ROWS = [
   ["routes.directions", 6],
   ["routes.directions.advanced", 12],
   ["places.text_search.pro", 39],
+  ["places.text_search.enterprise", 42],
   ["places.details.essentials", 6],
   ["places.details.pro", 21],
+  ["places.details.enterprise", 24],
 ] as const;
 
 function authHeaders() {
@@ -156,6 +158,13 @@ async function orgCredits(orgId: string): Promise<number | undefined> {
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId));
   return row?.credits;
+}
+
+function fieldMaskParts(fieldMask: string | null): string[] {
+  if (fieldMask === null) {
+    throw new Error("Google Places field mask was not sent");
+  }
+  return fieldMask.split(",");
 }
 
 describe("POST /api/zero/maps/*", () => {
@@ -278,6 +287,7 @@ describe("POST /api/zero/maps/*", () => {
     );
 
     expect(fieldMask).toContain("places.displayName");
+    expect(fieldMask).not.toContain("places.priceLevel");
     expect(requestBody).toStrictEqual({
       textQuery: "coffee",
       maxResultCount: 3,
@@ -291,6 +301,77 @@ describe("POST /api/zero/maps/*", () => {
     });
     expect(response.body.billingCategory).toBe("places.text_search.pro");
     expect(response.body.creditsCharged).toBe(39);
+  });
+
+  it("searches places with the Enterprise field mask and charges the marked-up Enterprise price", async () => {
+    const fixture = await track(seedMapsFixture());
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    let fieldMask: string | null = null;
+    server.use(
+      http.post(GOOGLE_PLACES_SEARCH_TEXT_URL, ({ request }) => {
+        fieldMask = request.headers.get("x-goog-fieldmask");
+        return HttpResponse.json({
+          places: [
+            {
+              id: "ChIJtest",
+              displayName: { text: "Coffee" },
+              googleMapsUri: "https://maps.google.com/?cid=test",
+              priceLevel: "PRICE_LEVEL_MODERATE",
+              priceRange: {
+                startPrice: { currencyCode: "USD", units: "10" },
+                endPrice: { currencyCode: "USD", units: "20" },
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const client = setupApp({ context })(zeroMapsContract);
+    const response = await accept(
+      client.placesSearch({
+        headers: authHeaders(),
+        body: { query: "coffee", limit: 3, fields: "enterprise" },
+      }),
+      [200],
+    );
+
+    expect(fieldMaskParts(fieldMask)).toStrictEqual(
+      expect.arrayContaining([
+        "places.displayName",
+        "places.googleMapsUri",
+        "places.priceLevel",
+        "places.priceRange",
+      ]),
+    );
+    expect(response.body.billingCategory).toBe("places.text_search.enterprise");
+    expect(response.body.creditsCharged).toBe(42);
+    await expect(orgCredits(fixture.orgId)).resolves.toBe(958);
+  });
+
+  it("checks places search Enterprise credits before calling Google Maps", async () => {
+    const fixture = await track(seedMapsFixture(39));
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    let googleCalled = false;
+    server.use(
+      http.post(GOOGLE_PLACES_SEARCH_TEXT_URL, () => {
+        googleCalled = true;
+        return HttpResponse.json({ places: [] });
+      }),
+    );
+
+    const client = setupApp({ context })(zeroMapsContract);
+    const response = await accept(
+      client.placesSearch({
+        headers: authHeaders(),
+        body: { query: "coffee", limit: 5, fields: "enterprise" },
+      }),
+      [402],
+    );
+
+    expect(googleCalled).toBeFalsy();
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    await expect(orgCredits(fixture.orgId)).resolves.toBe(39);
   });
 
   it("rejects requests below the operation price before calling Google Maps", async () => {
@@ -345,6 +426,57 @@ describe("POST /api/zero/maps/*", () => {
     expect(fieldMask).toContain("displayName");
     expect(response.body.billingCategory).toBe("places.details.pro");
     expect(response.body.creditsCharged).toBe(21);
+  });
+
+  it("fetches Enterprise place details with price fields and charges the marked-up Enterprise price", async () => {
+    const fixture = await track(seedMapsFixture());
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    let fieldMask: string | null = null;
+    server.use(
+      http.get(GOOGLE_PLACE_DETAILS_URL, ({ request }) => {
+        fieldMask = request.headers.get("x-goog-fieldmask");
+        return HttpResponse.json({
+          id: "ChIJtest",
+          displayName: { text: "Coffee" },
+          priceLevel: "PRICE_LEVEL_MODERATE",
+          priceRange: {
+            startPrice: { currencyCode: "USD", units: "10" },
+            endPrice: { currencyCode: "USD", units: "20" },
+          },
+          rating: 4.5,
+          userRatingCount: 120,
+          nationalPhoneNumber: "(415) 555-0100",
+          websiteUri: "https://example.com",
+        });
+      }),
+    );
+
+    const client = setupApp({ context })(zeroMapsContract);
+    const response = await accept(
+      client.placesDetails({
+        headers: authHeaders(),
+        body: { placeId: "places/ChIJtest", fields: "enterprise" },
+      }),
+      [200],
+    );
+
+    expect(fieldMaskParts(fieldMask)).toStrictEqual(
+      expect.arrayContaining([
+        "displayName",
+        "googleMapsUri",
+        "priceLevel",
+        "priceRange",
+        "rating",
+        "userRatingCount",
+        "regularOpeningHours",
+        "currentOpeningHours",
+        "websiteUri",
+        "nationalPhoneNumber",
+      ]),
+    );
+    expect(response.body.billingCategory).toBe("places.details.enterprise");
+    expect(response.body.creditsCharged).toBe(24);
+    await expect(orgCredits(fixture.orgId)).resolves.toBe(976);
   });
 
   it("rejects zero tokens without maps:read before calling Google Maps", async () => {

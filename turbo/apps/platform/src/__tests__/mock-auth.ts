@@ -20,6 +20,16 @@ export interface MockedMembership {
   };
 }
 
+export interface MockedClientSession {
+  id: string;
+  status?: string;
+  user?: {
+    fullName?: string | null;
+    imageUrl?: string;
+    primaryEmailAddress?: { emailAddress: string } | null;
+  };
+}
+
 interface MockedUser {
   id: string;
   fullName: string;
@@ -49,6 +59,7 @@ let internalMockedOrganization: {
 } | null = null;
 let internalMockedInvitations: MockedInvitation[] = [];
 let internalMockedMemberships: MockedMembership[] = [{ id: "org_default" }];
+let internalMockedClientSessions: MockedClientSession[] = [];
 
 export function mockUser(
   user: {
@@ -57,6 +68,8 @@ export function mockUser(
     email?: string;
     firstName?: string;
     imageUrl?: string;
+    createOrganizationEnabled?: boolean;
+    clientSessions?: MockedClientSession[];
   } | null,
   session: { token: string } | null,
 ) {
@@ -66,7 +79,7 @@ export function mockUser(
       imageUrl: user.imageUrl,
       primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
       unsafeMetadata: {},
-      createOrganizationEnabled: false,
+      createOrganizationEnabled: user.createOrganizationEnabled ?? false,
       get organizationMemberships() {
         return internalMockedMemberships;
       },
@@ -83,8 +96,20 @@ export function mockUser(
         return Promise.resolve();
       },
     };
+    internalMockedClientSessions = user.clientSessions ?? [
+      {
+        id: "test-session-id",
+        status: "active",
+        user: {
+          fullName: user.fullName,
+          imageUrl: user.imageUrl,
+          primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
+        },
+      },
+    ];
   } else {
     internalMockedUser = null;
+    internalMockedClientSessions = [];
   }
   internalMockedSession = session;
 }
@@ -123,7 +148,11 @@ export function clearMockedAuth() {
   internalMockedOrganization = null;
   internalMockedInvitations = [];
   internalMockedMemberships = [{ id: "org_default" }];
+  internalMockedClientSessions = [];
   clerkListeners.length = 0;
+  mockedClerk.signOut.mockReset();
+  mockedClerk.openSignIn.mockReset();
+  mockedClerk.openUserProfile.mockReset();
   mockedClerk.setActive.mockReset();
   mockedClerk.createOrganization.mockReset();
   mockedClerk.sessionGetToken.mockReset();
@@ -171,11 +200,17 @@ export const mockedClerk = {
   sessionGetToken,
   clientSignInCreate,
   client: {
+    get sessions() {
+      return internalMockedClientSessions;
+    },
     signIn: {
       create: clientSignInCreate,
     },
   },
   signOut: vi.fn(() => {
+    return Promise.resolve();
+  }),
+  openSignIn: vi.fn(() => {
     return Promise.resolve();
   }),
   openUserProfile: vi.fn(() => {
@@ -194,17 +229,17 @@ export const mockedClerk = {
     };
   },
   redirectToSignIn: vi.fn(),
-  setActive: vi.fn((_params: { organization: string }) => {
-    return Promise.resolve();
-  }),
+  setActive: vi.fn(
+    (params: {
+      organization?: string;
+      session?: string;
+      beforeEmit?: () => void;
+    }) => {
+      params.beforeEmit?.();
+      return Promise.resolve();
+    },
+  ),
   createOrganization: vi.fn((_params: { name: string; slug: string }) => {
     return Promise.resolve({ id: "new-org-id" });
   }),
 };
-
-/** Fire all registered Clerk listeners (simulates token refresh / auth change). */
-export function fireClerkListeners() {
-  for (const cb of clerkListeners) {
-    cb();
-  }
-}

@@ -51,7 +51,7 @@ import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
 } from "../../services/agent-run-queue-payload.service";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -294,7 +294,8 @@ function mockGitHubAppCredentials(): void {
 function setupGitHubApiMocks(args: {
   readonly installationId: string;
   readonly comments?: readonly GitHubApiComment[];
-}): void {
+}): { readonly capturedComments: readonly CapturedGitHubIssueComment[] } {
+  const capturedComments: CapturedGitHubIssueComment[] = [];
   server.use(
     http.post(
       `https://api.github.com/app/installations/${args.installationId}/access_tokens`,
@@ -313,7 +314,9 @@ function setupGitHubApiMocks(args: {
     ),
     http.post(
       "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-      () => {
+      async ({ request }) => {
+        const body = (await request.json()) as { readonly body: string };
+        capturedComments.push({ body: body.body });
         return HttpResponse.json({ id: 9876 });
       },
     ),
@@ -324,6 +327,7 @@ function setupGitHubApiMocks(args: {
       },
     ),
   );
+  return { capturedComments };
 }
 
 function gitHubWebhookHeaders(args: {
@@ -1375,7 +1379,7 @@ describe("POST /api/webhooks/github", () => {
       event: "issues",
       payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1418,7 +1422,7 @@ describe("POST /api/webhooks/github", () => {
         issueBody: `Please inspect this attachment:\n\n![screenshot.png](${fileUrl})`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1475,7 +1479,7 @@ describe("POST /api/webhooks/github", () => {
       event: "issues",
       payload: buildGitHubIssuesPayload(fixture, { action: "opened", repo }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1550,7 +1554,7 @@ describe("POST /api/webhooks/github", () => {
       event: "issues",
       payload: buildGitHubIssuesPayload(fixture, { action: "opened", repo }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1573,6 +1577,11 @@ describe("POST /api/webhooks/github", () => {
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
     mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    const { capturedComments } = setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
 
     const response = await postGitHubWebhook({
       event: "issues",
@@ -1585,7 +1594,7 @@ describe("POST /api/webhooks/github", () => {
         label: { id: 1, name: GITHUB_APP_SLUG },
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1593,6 +1602,13 @@ describe("POST /api/webhooks/github", () => {
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
+    expect(capturedComments).toHaveLength(1);
+    expect(capturedComments[0]?.body).toContain(
+      `Zero received the "${GITHUB_APP_SLUG}" label and started working.`,
+    );
+    expect(capturedComments[0]?.body).toContain(
+      `Audit: http://localhost:3002/activities/${runs[0]?.id}`,
+    );
   });
 
   it("starts a new session for label triggers on a GitHub issue with an existing session", async () => {
@@ -1647,7 +1663,7 @@ describe("POST /api/webhooks/github", () => {
         label: { id: 1, name: GITHUB_APP_SLUG },
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1689,7 +1705,7 @@ describe("POST /api/webhooks/github", () => {
         label: { id: 1, name: GITHUB_APP_SLUG },
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1721,7 +1737,7 @@ describe("POST /api/webhooks/github", () => {
         senderId: otherGithubUserId,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(createdByMeResponse.status).toBe(200);
     await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(0);
 
@@ -1738,7 +1754,7 @@ describe("POST /api/webhooks/github", () => {
         senderId: otherGithubUserId,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(anyoneResponse.status).toBe(200);
     await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(1);
@@ -1775,7 +1791,7 @@ describe("POST /api/webhooks/github", () => {
       });
       expect(response.status).toBe(200);
       expect(response.body).toBe("OK");
-      await clearAllDetached();
+      await flushWaitUntilForTest();
     }
 
     const runs = await selectGitHubRuns(fixture);
@@ -1802,7 +1818,7 @@ describe("POST /api/webhooks/github", () => {
         issueTitle: "Fallback title",
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1841,7 +1857,7 @@ describe("POST /api/webhooks/github", () => {
       event: "issue_comment",
       payload: buildGitHubIssueCommentPayload(fixture),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -1888,7 +1904,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: "@Zero please handle this",
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1924,7 +1940,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: `@${GITHUB_APP_SLUG}[bot] please inspect\n\n<img width="480" height="480" alt="Image" src="${fileUrl}">`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -1979,7 +1995,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: `@${GITHUB_APP_SLUG} continue this session`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
@@ -2025,7 +2041,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: `@${GITHUB_APP_SLUG}[bot] please help`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(capturedComments).toHaveLength(1);
@@ -2077,7 +2093,7 @@ describe("POST /api/webhooks/github", () => {
       });
       expect(response.status).toBe(200);
       expect(response.body).toBe("OK");
-      await clearAllDetached();
+      await flushWaitUntilForTest();
     }
 
     const runs = await selectGitHubRuns(fixture);
@@ -2097,7 +2113,7 @@ describe("POST /api/webhooks/github", () => {
         installationId: remoteGitHubId(),
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2119,7 +2135,7 @@ describe("POST /api/webhooks/github", () => {
         commentBody: `@${GITHUB_APP_SLUG}[bot] please help`,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2167,7 +2183,7 @@ describe("POST /api/webhooks/github", () => {
         senderId: fixture.githubUserId,
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2202,7 +2218,7 @@ describe("POST /api/webhooks/github", () => {
         targetId: remoteGitHubId(),
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2222,7 +2238,7 @@ describe("POST /api/webhooks/github", () => {
         targetId: remoteGitHubId(),
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2258,7 +2274,7 @@ describe("POST /api/webhooks/github", () => {
         targetId: remoteGitHubId(),
       }),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -2629,23 +2645,24 @@ describe("POST /api/webhooks/stripe", () => {
       });
     });
 
-    it("grants custom credit purchase credits from the checkout subtotal before discounts", async () => {
+    it("does not grant invoice-backed custom credit purchase credits from checkout completion", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
       mockStripeWebhookEnv();
       const creditsBefore = (await selectStripeBilling(fixture)).credits;
       const sessionId = stripeId("cs");
+      const invoiceId = stripeId("inv");
 
       const response = await postStripeWebhookEvent({
         type: "checkout.session.completed",
         dataObject: {
           id: sessionId,
+          invoice: invoiceId,
           subscription: null,
           customer: fixture.stripeCustomerId,
           payment_status: "paid",
           amount_subtotal: 10_000,
-          amount_total: 5000,
           metadata: {
             purpose: "credit_purchase",
             orgId: fixture.orgId,
@@ -2655,20 +2672,13 @@ describe("POST /api/webhooks/stripe", () => {
       });
 
       expect(response.status).toBe(200);
-      expect((await selectStripeBilling(fixture)).credits).toBe(
-        creditsBefore + 100_000,
-      );
-      const records = await selectStripeCreditExpiresRecords(fixture);
-      expect(records).toHaveLength(1);
-      expect(records[0]).toMatchObject({
-        source: "auto_recharge",
-        stripeInvoiceId: sessionId,
-        amount: 100_000,
-        remaining: 100_000,
-      });
+      expect((await selectStripeBilling(fixture)).credits).toBe(creditsBefore);
+      await expect(
+        selectStripeCreditExpiresRecords(fixture),
+      ).resolves.toHaveLength(0);
     });
 
-    it("keeps processing older custom credit checkout sessions from the checkout total", async () => {
+    it("keeps processing legacy custom credit checkout sessions without an invoice", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2680,6 +2690,7 @@ describe("POST /api/webhooks/stripe", () => {
         type: "checkout.session.completed",
         dataObject: {
           id: sessionId,
+          invoice: null,
           subscription: null,
           customer: fixture.stripeCustomerId,
           payment_status: "paid",
@@ -2696,6 +2707,14 @@ describe("POST /api/webhooks/stripe", () => {
       expect((await selectStripeBilling(fixture)).credits).toBe(
         creditsBefore + 100_000,
       );
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        source: "auto_recharge",
+        stripeInvoiceId: sessionId,
+        amount: 100_000,
+        remaining: 100_000,
+      });
     });
 
     it("restores a scheduled cancellation after setup checkout collects a payment method", async () => {
@@ -3041,6 +3060,44 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   describe("invoice.paid", () => {
+    it("grants custom credit purchase credits from the invoice subtotal before discounts", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+      const invoiceId = stripeId("inv");
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invoiceId,
+          customer: fixture.stripeCustomerId,
+          subtotal: 10_000,
+          metadata: {
+            type: "credit_purchase",
+            purpose: "credit_purchase",
+            orgId: fixture.orgId,
+            creditsAmountMode: "amount_subtotal",
+          },
+          parent: null,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect((await selectStripeBilling(fixture)).credits).toBe(
+        creditsBefore + 100_000,
+      );
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        source: "auto_recharge",
+        stripeInvoiceId: invoiceId,
+        amount: 100_000,
+        remaining: 100_000,
+      });
+    });
+
     it("grants 20k credits for pro tier", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
@@ -3139,6 +3196,58 @@ describe("POST /api/webhooks/stripe", () => {
         amount: 20_000,
         remaining: 20_000,
       });
+    });
+
+    it("creates org metadata from Clerk and grants credits when invoice.paid arrives first", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const db = store.set(writeDb$);
+      const customerId = stripeId("cus");
+      const subId = stripeId("sub");
+      const invId = stripeId("inv");
+      const periodEnd = 1_800_000_000;
+      await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
+      context.mocks.stripe.customers.retrieve.mockResolvedValue({
+        id: customerId,
+        metadata: { orgId: fixture.orgId },
+      });
+      context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
+        id: fixture.orgId,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: customerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(
+        context.mocks.clerk.organizations.getOrganization,
+      ).toHaveBeenCalledWith({ organizationId: fixture.orgId });
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.stripeCustomerId).toBe(customerId);
+      expect(billing.stripeSubscriptionId).toBe(subId);
+      expect(billing.subscriptionStatus).toBe("active");
+      expect(billing.tier).toBe("pro");
+      expect(billing.credits).toBe(20_000);
+      expect(billing.lastProcessedInvoiceId).toBe(invId);
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(periodEnd * 1000),
+      );
     });
 
     it("grants 120k credits for team tier", async () => {
@@ -4752,7 +4861,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -4805,7 +4914,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -4843,7 +4952,7 @@ describe("POST /api/webhooks/clerk", () => {
       body: "{}",
     });
 
-    await expect(clearAllDetached()).resolves.toBeUndefined();
+    await expect(flushWaitUntilForTest()).resolves.toBeUndefined();
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
   });
@@ -4864,7 +4973,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -4934,7 +5043,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -5005,7 +5114,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -5040,7 +5149,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -5078,7 +5187,7 @@ describe("POST /api/webhooks/clerk", () => {
       path: "/api/webhooks/clerk",
       body: "{}",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");

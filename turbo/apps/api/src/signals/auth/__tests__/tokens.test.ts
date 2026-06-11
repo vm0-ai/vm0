@@ -136,4 +136,29 @@ describe("auth tokens", () => {
       "banking:read",
     );
   });
+
+  it("gates computer-use capability on an explicit host grant", () => {
+    const defaultToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.ComputerUse]: true },
+    );
+    const scopedToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.ComputerUse]: true },
+      { computerUseHostId: "00000000-0000-4000-8000-000000000001" },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "computer-use:write",
+    );
+    expect(verifyZeroToken(defaultToken)?.computerUseHostId).toBeUndefined();
+    expect(verifyZeroToken(scopedToken)).toMatchObject({
+      computerUseHostId: "00000000-0000-4000-8000-000000000001",
+      capabilities: expect.arrayContaining(["computer-use:write"]),
+    });
+  });
 });

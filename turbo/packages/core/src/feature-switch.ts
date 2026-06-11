@@ -54,6 +54,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Canva design connector",
     enabled: false,
   },
+  [FeatureSwitchKey.CloudflareConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Cloudflare OAuth connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Deel HR connector",
@@ -72,6 +77,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Figma design connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleCloudConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Google Cloud connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.MercuryConnector]: {
@@ -122,6 +132,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
+    enabled: true,
+  },
+  [FeatureSwitchKey.TikTokAdsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the TikTok Ads Manager connector",
     enabled: false,
   },
   [FeatureSwitchKey.StripeConnector]: {
@@ -149,6 +164,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Resend email service connector",
     enabled: false,
+  },
+  [FeatureSwitchKey.GoogleMapsConnector]: {
+    maintainer: "linghan@vm0.ai",
+    description: "Enable the Google Maps connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleAnalyticsConnector]: {
+    maintainer: "linghan@vm0.ai",
+    description: "Enable the Google Analytics connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
+    maintainer: "linghan@vm0.ai",
+    description: "Enable the Google Search Console connector",
+    enabled: true,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -195,6 +225,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show audit log links in integration replies",
     enabled: false,
   },
+  [FeatureSwitchKey.AudioInput]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable verbose (timestamped-segment) speech-to-text on /api/zero/voice-io/stt; when off, transcription falls back to plain text",
+    enabled: false,
+  },
   [FeatureSwitchKey.AudioOutput]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -217,7 +253,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -262,13 +298,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.SessionWorkspaceImageCache]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable runner session workspace image cache reuse for canonical workspace drives.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatGithubPrTracking]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -280,6 +309,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show the Template picker in the Zero chat composer for per-message generation template selection.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.VideoTemplatePicker]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Show the Video style picker tab in the Zero chat composer for AI video generation with curated style presets.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -301,8 +337,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Generate and show recommended follow-up prompts after completed chat runs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
     maintainer: "bingjie@vm0.ai",
@@ -317,19 +352,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ExpiringPermissionGrants]: {
-    maintainer: "liangyou@vm0.ai",
+  [FeatureSwitchKey.CreditUsageRecords]: {
+    maintainer: "ethan@vm0.ai",
     description:
-      "Show duration controls for explicit current-user permission grants.",
+      "Show ranged personal and team credit usage records in settings, and enable scoped/ranged /api/zero/usage/record queries.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ConnectorPermissionReset]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Show staged connector-level reset controls for current-user permission grants.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZeroAutomations]: {
     maintainer: "lancy@vm0.ai",

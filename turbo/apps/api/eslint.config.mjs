@@ -83,6 +83,9 @@ const promiseChainAllowlist = [
   // Centralized async helpers — these implement .then/.catch so the rest of
   // the codebase doesn't have to.
   "src/signals/utils.ts",
+  // Runtime wrapper around @vercel/functions waitUntil. It tracks promise
+  // settlement for tests while leaving business code on domain helpers.
+  "src/signals/context/wait-until.ts",
 ];
 
 export default [

@@ -9,10 +9,24 @@ export type ComputerUseHostRuntimeStatus =
   | "idle"
   | "connecting"
   | "online"
+  | "recovering"
   | "unauthenticated"
   | "needs_organization"
   | "disabled"
   | "error";
+
+export type ComputerUseRuntimeRecoveryPhase =
+  | "start"
+  | "heartbeat"
+  | "command_poll";
+
+export interface ComputerUseRuntimeRecoveryState {
+  readonly phase: ComputerUseRuntimeRecoveryPhase;
+  readonly attempt: number;
+  readonly nextRetryAt: string;
+  readonly lastRetryAt: string;
+  readonly retryDelayMs: number;
+}
 
 export interface ComputerUseRuntimeAuditEvent {
   readonly commandId: string;
@@ -42,14 +56,37 @@ export interface ComputerUseLocalCommandLogEntry {
   readonly durationMs: number | null;
 }
 
+export type ComputerUseRuntimeErrorSource =
+  | "audit"
+  | "start"
+  | "stop"
+  | "heartbeat"
+  | "command_poll";
+
+export interface ComputerUseRuntimeErrorLogEntry {
+  readonly id: string;
+  readonly source: ComputerUseRuntimeErrorSource;
+  readonly message: string;
+  readonly occurredAt: string;
+  readonly hostId: string | null;
+  readonly status: Extract<ComputerUseHostRuntimeStatus, "error">;
+}
+
 export interface ComputerUseHostRuntimeState {
   readonly status: ComputerUseHostRuntimeStatus;
   readonly hostId: string | null;
   readonly lastHeartbeatAt: string | null;
   readonly lastCommandAt: string | null;
   readonly lastError: string | null;
+  readonly recovery: ComputerUseRuntimeRecoveryState | null;
+  readonly errorLog: readonly ComputerUseRuntimeErrorLogEntry[];
   readonly recentAuditEvents: readonly ComputerUseRuntimeAuditEvent[];
   readonly localCommandLog: readonly ComputerUseLocalCommandLogEntry[];
+}
+
+export interface DesktopKeepAwakeState {
+  readonly enabled: boolean;
+  readonly active: boolean;
 }
 
 export interface DesktopComputerUseState {
@@ -58,6 +95,7 @@ export interface DesktopComputerUseState {
   readonly supported: boolean;
   readonly permissions: ComputerUsePermissionState;
   readonly host: ComputerUseHostRuntimeState;
+  readonly keepAwake: DesktopKeepAwakeState;
 }
 
 export function hasRequiredComputerUsePermissions(
@@ -73,6 +111,8 @@ export const IDLE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
     lastHeartbeatAt: null,
     lastCommandAt: null,
     lastError: null,
+    recovery: null,
+    errorLog: [],
     recentAuditEvents: [],
     localCommandLog: [],
   });

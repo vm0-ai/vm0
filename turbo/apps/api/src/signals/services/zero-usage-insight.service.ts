@@ -504,18 +504,27 @@ async function queryUsageInsightTopSchedules(
     sql.raw(`
       ${usageRowsWith(p)},
       agg AS (
+        -- Scheduled runs carry automation provenance after the #16847 cutover;
+        -- runs from before it carry schedule_id. Group on whichever is set so
+        -- the dimension spans the cutover (an automation and its source
+        -- schedule surface as separate ids only across that boundary).
         SELECT
-          zr.schedule_id,
-          COALESCE(zas.name, 'Unnamed schedule') AS schedule_name,
-          zas.description AS schedule_description,
+          COALESCE(zr.automation_id, zr.schedule_id) AS schedule_id,
+          COALESCE(a.name, zas.name, 'Unnamed schedule') AS schedule_name,
+          COALESCE(a.description, zas.description) AS schedule_description,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens,
           ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
         FROM usage_rows ${USAGE_ROW_ALIAS}
         INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
         LEFT JOIN zero_agent_schedules zas ON zas.id = zr.schedule_id
-        WHERE zr.schedule_id IS NOT NULL
-        GROUP BY zr.schedule_id, zas.name, zas.description
+        LEFT JOIN automations a ON a.id = zr.automation_id
+        WHERE zr.trigger_source = 'schedule'
+          AND (zr.schedule_id IS NOT NULL OR zr.automation_id IS NOT NULL)
+        GROUP BY
+          COALESCE(zr.automation_id, zr.schedule_id),
+          COALESCE(a.name, zas.name, 'Unnamed schedule'),
+          COALESCE(a.description, zas.description)
       )
       SELECT * FROM agg WHERE rn <= 100
       UNION ALL

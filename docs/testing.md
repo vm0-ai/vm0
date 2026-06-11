@@ -175,6 +175,15 @@ vi.spyOn(Date, "now").mockReturnValue(fixedTimestamp);
 
 Fake timers can mask race conditions and timing bugs. If you need deterministic time, mock `Date.now()` specifically.
 
+### Manual Detached Cleanup
+
+Do not manually `await clearAllDetached()` inside a test body. The global test
+teardown owns detached cleanup so one test's background work cannot leak into
+the next test. If a test is flaky during its own execution, assume there is a
+floating promise and fix the missing `await`, ownership signal, or explicit
+test synchronization point; do not patch the symptom with waits, manual clears,
+or extra `detach()` calls.
+
 ### Over-Testing
 
 Not everything needs a test. We don't test:

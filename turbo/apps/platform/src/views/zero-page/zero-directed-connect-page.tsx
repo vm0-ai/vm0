@@ -50,10 +50,14 @@ import {
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
+import {
+  shouldShowGoogleSecurityWarningNotice,
+  shouldShowMetaAdsReviewNotice,
+} from "../../lib/google-security-warning.ts";
 import {
   Vm0LogoLink,
   GoogleSecurityWarningNotice,
+  MetaAdsReviewNotice,
 } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 
@@ -434,6 +438,25 @@ function useDirectedConnectConnectorType(): ConnectorType | null {
   return parsed.success ? parsed.data : null;
 }
 
+function ConnectorConnectNotices({
+  connectorType,
+  isConnected,
+}: {
+  readonly connectorType: ConnectorType;
+  readonly isConnected: boolean;
+}) {
+  if (isConnected) {
+    return null;
+  }
+  if (shouldShowGoogleSecurityWarningNotice(connectorType)) {
+    return <GoogleSecurityWarningNotice />;
+  }
+  if (shouldShowMetaAdsReviewNotice(connectorType)) {
+    return <MetaAdsReviewNotice />;
+  }
+  return null;
+}
+
 function DirectedConnectCard() {
   const connectorType = useDirectedConnectConnectorType();
   const agentId = useGet(directedConnectAgentId$);
@@ -533,10 +556,10 @@ function DirectedConnectCard() {
                   <p className="w-60 text-sm text-muted-foreground">
                     {config.helpText}
                   </p>
-                  {!isConnected &&
-                    shouldShowGoogleSecurityWarningNotice(connectorType) && (
-                      <GoogleSecurityWarningNotice />
-                    )}
+                  <ConnectorConnectNotices
+                    connectorType={connectorType}
+                    isConnected={isConnected}
+                  />
                 </>
               )}
             </div>

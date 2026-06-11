@@ -197,8 +197,16 @@ export function downloadS3Buffer(
   bucket: string,
   key: string,
 ): Computed<Promise<Buffer>> {
+  return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key);
+}
+
+function downloadS3BufferWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+): Computed<Promise<Buffer>> {
   return computed(async (get): Promise<Buffer> => {
-    const client = get(s3ClientForBucket(bucket));
+    const client = get(client$);
     const response = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
     );
@@ -220,6 +228,13 @@ export function downloadS3Buffer(
       totalLength,
     );
   });
+}
+
+export function downloadHostedSitesS3Buffer(
+  bucket: string,
+  key: string,
+): Computed<Promise<Buffer>> {
+  return downloadS3BufferWithClient(hostedSitesS3Client$, bucket, key);
 }
 
 /**
@@ -278,6 +293,20 @@ export function generateHostedSitesPresignedPutUrl(
   );
 }
 
+export function generateHostedSitesPresignedGetUrl(
+  bucket: string,
+  key: string,
+  expiresIn: number,
+  usePublicEndpoint = false,
+): Computed<Promise<string>> {
+  return generatePresignedGetUrlWithClient(
+    usePublicEndpoint ? hostedSitesPublicS3Client$ : hostedSitesS3Client$,
+    bucket,
+    key,
+    expiresIn,
+  );
+}
+
 export function generatePresignedGetUrl(
   bucket: string,
   key: string,
@@ -285,8 +314,24 @@ export function generatePresignedGetUrl(
   filename?: string,
   usePublicEndpoint = false,
 ): Computed<Promise<string>> {
+  return generatePresignedGetUrlWithClient(
+    s3ClientForBucket(bucket, usePublicEndpoint),
+    bucket,
+    key,
+    expiresIn,
+    filename,
+  );
+}
+
+function generatePresignedGetUrlWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+  expiresIn: number,
+  filename?: string,
+): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
-    const client = get(s3ClientForBucket(bucket, usePublicEndpoint));
+    const client = get(client$);
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,

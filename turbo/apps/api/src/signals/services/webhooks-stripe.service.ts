@@ -7,8 +7,10 @@ import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
+import { settle } from "../utils";
 import { getCampaign } from "./one-time-products";
 import {
   checkoutTierConflictMessage,
@@ -36,9 +38,12 @@ const L = logger("WebhookStripe");
 type BillingDowngradeCheckoutTargetTier = "pro-suspend" | "pro";
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ClerkClient = ReturnType<typeof clerk$.read>;
+type ClerkClientProvider = () => ClerkClient;
 
 interface CheckoutSessionInput {
   readonly id: string;
+  readonly invoice?: string | { readonly id: string } | null;
   readonly subscription: string | { readonly id: string } | null;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
@@ -59,6 +64,7 @@ interface InvoiceInput {
   readonly id: string;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
+  readonly subtotal?: number | null;
   readonly lines: {
     readonly data: readonly {
       readonly period: { readonly end: number };
@@ -247,23 +253,35 @@ function subscriptionCreditExpiresAt(
 
 const CREDITS_PER_DOLLAR = 1000;
 
+function creditsFromAmountCents(
+  amountCents: number | null | undefined,
+): number {
+  if (amountCents === undefined || amountCents === null) {
+    return Number.NaN;
+  }
+  return Math.floor((amountCents * CREDITS_PER_DOLLAR) / 100);
+}
+
 function creditPurchaseAmount(session: CheckoutSessionInput): number {
   const metadata = session.metadata ?? {};
   if (metadata.creditsAmountMode === "amount_subtotal") {
-    const amountSubtotal = session.amount_subtotal ?? session.amount_total;
-    if (amountSubtotal === undefined || amountSubtotal === null) {
-      return Number.NaN;
-    }
-    return Math.floor((amountSubtotal * CREDITS_PER_DOLLAR) / 100);
+    return creditsFromAmountCents(
+      session.amount_subtotal ?? session.amount_total,
+    );
   }
   if (metadata.creditsAmountMode === "amount_total") {
-    const amountTotal = session.amount_total;
-    if (amountTotal === undefined || amountTotal === null) {
-      return Number.NaN;
-    }
-    return Math.floor((amountTotal * CREDITS_PER_DOLLAR) / 100);
+    return creditsFromAmountCents(session.amount_total);
   }
   return Number(metadata.creditsAmount);
+}
+
+function checkoutSessionInvoiceId(
+  session: CheckoutSessionInput,
+): string | null {
+  if (typeof session.invoice === "string") {
+    return session.invoice;
+  }
+  return session.invoice?.id ?? null;
 }
 
 function autoRechargeNeverExpiresAt(): Date {
@@ -508,6 +526,53 @@ async function handleAutoRechargeInvoicePaid(
   return { handled: true, drainOrgId: orgId };
 }
 
+async function handleCreditPurchaseInvoicePaid(
+  db: Db,
+  invoice: Pick<InvoiceInput, "id" | "metadata" | "subtotal">,
+): Promise<PaidWebhookOutcome> {
+  const metadata = invoice.metadata;
+  if (
+    !metadata ||
+    (metadata.type !== "credit_purchase" &&
+      metadata.purpose !== "credit_purchase")
+  ) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const orgId = metadata.orgId;
+  const creditsAmount = creditsFromAmountCents(invoice.subtotal);
+  if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
+    L.warn("credit_purchase invoice has invalid metadata or subtotal", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      subtotal: invoice.subtotal ?? null,
+      metadata,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: "auto_recharge",
+      stripeInvoiceId: invoice.id,
+      amount: creditsAmount,
+      expiresAt: autoRechargeNeverExpiresAt(),
+    });
+
+    if (!inserted) {
+      L.debug("credit_purchase invoice already processed", {
+        invoiceId: invoice.id,
+        orgId,
+      });
+      return;
+    }
+
+    await grantOrgCredits(tx, orgId, creditsAmount);
+  });
+
+  return { handled: true, drainOrgId: orgId };
+}
+
 async function handleOneTimePurchaseCompleted(
   db: Db,
   session: CheckoutSessionInput,
@@ -564,15 +629,25 @@ async function handleCreditPurchaseCompleted(
   db: Db,
   session: CheckoutSessionInput,
 ): Promise<string | null> {
+  if (session.payment_status !== "paid") {
+    L.debug("credit_purchase checkout completed before payment settled", {
+      sessionId: session.id,
+      paymentStatus: session.payment_status ?? null,
+    });
+    return null;
+  }
+
   const metadata = session.metadata ?? {};
   const orgId = metadata.orgId;
   const creditsAmount = creditPurchaseAmount(session);
 
   if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
-    L.warn("credit_purchase missing metadata", {
+    L.warn("credit_purchase checkout has invalid metadata or amount", {
       sessionId: session.id,
       hasOrgId: Boolean(orgId),
-      creditsAmount: metadata.creditsAmount ?? null,
+      amountSubtotal: session.amount_subtotal ?? null,
+      amountTotal: session.amount_total ?? null,
+      metadata,
     });
     return null;
   }
@@ -586,7 +661,7 @@ async function handleCreditPurchaseCompleted(
     });
 
     if (!inserted) {
-      L.debug("credit_purchase already processed", {
+      L.debug("credit_purchase checkout already processed", {
         sessionId: session.id,
         orgId,
       });
@@ -602,7 +677,7 @@ async function handleCreditPurchaseCompleted(
 async function handlePaidCheckoutPurpose(
   db: Db,
   session: CheckoutSessionInput,
-  purpose: "credit_purchase" | "one_time_purchase",
+  purpose: "one_time_purchase",
 ): Promise<PaidWebhookOutcome> {
   if (session.metadata?.purpose !== purpose) {
     return { handled: false, drainOrgId: null };
@@ -616,11 +691,7 @@ async function handlePaidCheckoutPurpose(
     return { handled: true, drainOrgId: null };
   }
 
-  const drainOrgId =
-    purpose === "credit_purchase"
-      ? await handleCreditPurchaseCompleted(db, session)
-      : await handleOneTimePurchaseCompleted(db, session);
-
+  const drainOrgId = await handleOneTimePurchaseCompleted(db, session);
   return { handled: true, drainOrgId };
 }
 
@@ -938,8 +1009,94 @@ async function orgHasStripeCustomer(
   return Boolean(existing);
 }
 
+function isClerkNotFound(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  return (
+    Reflect.get(error, "statusCode") === 404 ||
+    Reflect.get(error, "code") === "NOT_FOUND" ||
+    Reflect.get(error, "name") === "NotFoundError"
+  );
+}
+
+async function clerkOrganizationExists(
+  clerk: ClerkClient,
+  orgId: string,
+): Promise<boolean> {
+  const result = await settle(
+    clerk.organizations.getOrganization({ organizationId: orgId }),
+  );
+  if (result.ok) {
+    return true;
+  }
+  if (isClerkNotFound(result.error)) {
+    return false;
+  }
+  throw result.error;
+}
+
+async function bindStripeCustomerToOrgMetadata(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly customerId: string;
+  },
+): Promise<boolean> {
+  const rows = await db
+    .update(orgMetadata)
+    .set({ stripeCustomerId: args.customerId, updatedAt: nowDate() })
+    .where(
+      and(
+        eq(orgMetadata.orgId, args.orgId),
+        isNull(orgMetadata.stripeCustomerId),
+      ),
+    )
+    .returning({ orgId: orgMetadata.orgId });
+
+  return rows.length > 0;
+}
+
+async function insertStripeCustomerForClerkOrg(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  args: {
+    readonly orgId: string;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+  },
+): Promise<boolean> {
+  const existsInClerk = await clerkOrganizationExists(getClerk(), args.orgId);
+  if (!existsInClerk) {
+    L.warn("stripe customer metadata references missing Clerk org", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      orgId: args.orgId,
+    });
+    return false;
+  }
+
+  const rows = await db
+    .insert(orgMetadata)
+    .values({ orgId: args.orgId, stripeCustomerId: args.customerId })
+    .onConflictDoNothing({ target: orgMetadata.orgId })
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length > 0) {
+    L.debug("inserted org metadata from Stripe customer metadata", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      orgId: args.orgId,
+    });
+    return true;
+  }
+
+  return await bindStripeCustomerToOrgMetadata(db, args);
+}
+
 async function bindStripeCustomerFromMetadata(
   db: Db,
+  getClerk: ClerkClientProvider,
   args: {
     readonly customerId: string;
     readonly subscriptionId: string;
@@ -968,15 +1125,12 @@ async function bindStripeCustomerFromMetadata(
     return false;
   }
 
-  const rows = await db
-    .update(orgMetadata)
-    .set({ stripeCustomerId: args.customerId, updatedAt: nowDate() })
-    .where(
-      and(eq(orgMetadata.orgId, orgId), isNull(orgMetadata.stripeCustomerId)),
-    )
-    .returning({ orgId: orgMetadata.orgId });
-
-  if (rows.length > 0) {
+  if (
+    await bindStripeCustomerToOrgMetadata(db, {
+      orgId,
+      customerId: args.customerId,
+    })
+  ) {
     return true;
   }
 
@@ -985,6 +1139,14 @@ async function bindStripeCustomerFromMetadata(
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
+
+  if (!org) {
+    return await insertStripeCustomerForClerkOrg(db, getClerk, {
+      orgId,
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+    });
+  }
 
   L.warn("stripe customer metadata could not bind org", {
     customerId: args.customerId,
@@ -1016,6 +1178,7 @@ async function invoicePaidOrgForCustomer(
 
 async function invoicePaidOrgForCustomerOrMetadata(
   db: Db,
+  getClerk: ClerkClientProvider,
   args: {
     readonly customerId: string;
     readonly subscriptionId: string;
@@ -1026,23 +1189,28 @@ async function invoicePaidOrgForCustomerOrMetadata(
     return org;
   }
 
-  const bound = await bindStripeCustomerFromMetadata(db, args);
+  const bound = await bindStripeCustomerFromMetadata(db, getClerk, args);
   return bound ? await invoicePaidOrgForCustomer(db, args.customerId) : null;
 }
 
+type BindSubscriptionToCustomerOrgArgs = {
+  readonly customerId: string;
+  readonly subscription: SubscriptionInput;
+} & (
+  | { readonly source: "checkout.session.completed" }
+  | {
+      readonly source: "customer.subscription.created";
+      readonly getClerk: ClerkClientProvider;
+    }
+);
+
 async function bindSubscriptionToCustomerOrg(
   db: Db,
-  args: {
-    readonly customerId: string;
-    readonly subscription: SubscriptionInput;
-    readonly source:
-      | "checkout.session.completed"
-      | "customer.subscription.created";
-  },
+  args: BindSubscriptionToCustomerOrgArgs,
 ): Promise<readonly string[]> {
   if (
     args.source === "customer.subscription.created" &&
-    !(await bindStripeCustomerFromMetadata(db, {
+    !(await bindStripeCustomerFromMetadata(db, args.getClerk, {
       customerId: args.customerId,
       subscriptionId: args.subscription.id,
     }))
@@ -1489,19 +1657,22 @@ async function handleCheckoutCompleted(
     };
   }
 
-  const creditPurchaseResult = await handlePaidCheckoutPurpose(
-    db,
-    session,
-    "credit_purchase",
-  );
-  if (creditPurchaseResult.handled) {
-    return {
-      drainOrgId: creditPurchaseResult.drainOrgId,
-      orgIds:
-        creditPurchaseResult.drainOrgId === null
-          ? []
-          : [creditPurchaseResult.drainOrgId],
-    };
+  if (session.metadata?.purpose === "credit_purchase") {
+    const invoiceId = checkoutSessionInvoiceId(session);
+    if (!invoiceId) {
+      const drainOrgId = await handleCreditPurchaseCompleted(db, session);
+      return {
+        drainOrgId,
+        orgIds: drainOrgId === null ? [] : [drainOrgId],
+      };
+    }
+
+    L.debug("credit_purchase checkout completed; waiting for invoice.paid", {
+      sessionId: session.id,
+      invoiceId,
+      paymentStatus: session.payment_status ?? null,
+    });
+    return { drainOrgId: null, orgIds: [] };
   }
 
   const oneTimePurchaseResult = await handlePaidCheckoutPurpose(
@@ -1537,6 +1708,7 @@ async function handleCheckoutCompleted(
 
 async function handleSubscriptionCreated(
   db: Db,
+  getClerk: ClerkClientProvider,
   subscription: SubscriptionInput,
 ): Promise<readonly string[]> {
   const customerId = customerIdFromSubscription(subscription);
@@ -1551,16 +1723,26 @@ async function handleSubscriptionCreated(
     customerId,
     subscription,
     source: "customer.subscription.created",
+    getClerk,
   });
 }
 
 async function handleInvoicePaid(
   db: Db,
+  getClerk: ClerkClientProvider,
   invoice: InvoiceInput,
 ): Promise<string | null> {
   const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
   if (autoRechargeResult.handled) {
     return autoRechargeResult.drainOrgId;
+  }
+
+  const creditPurchaseResult = await handleCreditPurchaseInvoicePaid(
+    db,
+    invoice,
+  );
+  if (creditPurchaseResult.handled) {
+    return creditPurchaseResult.drainOrgId;
   }
 
   const subscriptionId = subscriptionIdFromInvoice(invoice);
@@ -1577,7 +1759,7 @@ async function handleInvoicePaid(
     return null;
   }
 
-  const org = await invoicePaidOrgForCustomerOrMetadata(db, {
+  const org = await invoicePaidOrgForCustomerOrMetadata(db, getClerk, {
     customerId,
     subscriptionId,
   });
@@ -1784,8 +1966,15 @@ async function handleSubscriptionDeleted(
 }
 
 export const handleStripeWebhookEvent$ = command(
-  async ({ set }, event: Stripe.Event, signal: AbortSignal): Promise<void> => {
+  async (
+    { get, set },
+    event: Stripe.Event,
+    signal: AbortSignal,
+  ): Promise<void> => {
     const db = set(writeDb$);
+    const getClerk = (): ClerkClient => {
+      return get(clerk$);
+    };
     let drainOrgId: string | null = null;
     const billingChangedOrgIds = new Set<string>();
     L.debug("stripe webhook received", { type: event.type, id: event.id });
@@ -1810,7 +1999,11 @@ export const handleStripeWebhookEvent$ = command(
         break;
       }
       case "invoice.paid": {
-        const paidDrainOrgId = await handleInvoicePaid(db, event.data.object);
+        const paidDrainOrgId = await handleInvoicePaid(
+          db,
+          getClerk,
+          event.data.object,
+        );
         signal.throwIfAborted();
         drainOrgId = paidDrainOrgId;
         if (paidDrainOrgId) {
@@ -1819,7 +2012,11 @@ export const handleStripeWebhookEvent$ = command(
         break;
       }
       case "customer.subscription.created": {
-        const orgIds = await handleSubscriptionCreated(db, event.data.object);
+        const orgIds = await handleSubscriptionCreated(
+          db,
+          getClerk,
+          event.data.object,
+        );
         signal.throwIfAborted();
         for (const orgId of orgIds) {
           billingChangedOrgIds.add(orgId);

@@ -1,926 +1,612 @@
-import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
-import { server } from "../../../mocks/server.ts";
-import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { screen, waitFor, within } from "@testing-library/react";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
+  zeroScheduleRunContract,
+  zeroSchedulesMainContract,
+} from "@vm0/api-contracts/contracts/zero-schedules";
+import { describe, expect, it } from "vitest";
+
+import {
+  click,
   detachedSetupPage,
   fill,
-  click,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import {
-  setMockSchedules,
-  createMockScheduleResponse,
-} from "../../../mocks/handlers/api-schedules.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
-import {
-  zeroSchedulesMainContract,
-  zeroSchedulesByNameContract,
-  zeroSchedulesEnableContract,
-  type ScheduleResponse,
-} from "@vm0/api-contracts/contracts/zero-schedules";
+import { mockNow } from "../../../__tests__/time.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
-function createMockSchedules(): ScheduleResponse[] {
-  return [
-    createMockScheduleResponse({
-      id: "f0000001-0000-4000-a000-000000000001",
-      displayName: "Zero",
-      name: "morning-briefing",
-      cronExpression: "0 9 * * 1-5",
-      prompt: "Summarize yesterday's threads",
-      createdAt: "2026-03-01T00:00:00Z",
-      updatedAt: "2026-03-01T00:00:00Z",
-    }),
-    createMockScheduleResponse({
-      id: "f0000001-0000-4000-a000-000000000002",
-      displayName: "Zero",
-      name: "check-inbox",
-      triggerType: "loop",
-      cronExpression: null,
-      intervalSeconds: 900,
-      prompt: "Check inbox for urgent items",
-      createdAt: "2026-03-02T00:00:00Z",
-      updatedAt: "2026-03-02T00:00:00Z",
-    }),
-    createMockScheduleResponse({
-      id: "f0000001-0000-4000-a000-000000000003",
-      displayName: "Zero",
-      name: "disabled-schedule",
-      cronExpression: "0 12 * * *",
-      prompt: "Disabled daily task",
-      enabled: false,
-      createdAt: "2026-02-28T00:00:00Z",
-      updatedAt: "2026-02-28T00:00:00Z",
-    }),
-  ];
-}
+const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
+const researchAgentId = "a0000000-0000-4000-a000-000000000301";
 
-function mockDeployResponse(): {
-  schedule: ScheduleResponse;
-  created: boolean;
-} {
+function createAgent(id: string, displayName: string): TeamComposeItem {
   return {
-    schedule: createMockScheduleResponse({
-      id: "d0000001-0000-4000-a000-000000000001",
-      displayName: "Zero",
-      name: "new-schedule",
-      cronExpression: "0 9 * * *",
-      prompt: "Daily standup summary",
-      createdAt: "2026-04-01T00:00:00Z",
-      updatedAt: "2026-04-01T00:00:00Z",
-    }),
-    created: true,
+    id,
+    ownerId: "test-user-123",
+    displayName,
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    customSkills: [],
+    visibility: "public",
+    headVersionId: "version_1",
+    updatedAt: "2026-03-10T00:00:00Z",
   };
 }
 
-function mockScheduleAPI(schedules = createMockSchedules()) {
-  setMockSchedules(schedules);
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
 }
 
-function renderSchedulePage() {
-  detachedSetupPage({ context, path: "/schedules?tab=list" });
+function menuItemByText(text: string): HTMLElement {
+  const item = queryAllByRoleFast("menuitem").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!item) {
+    throw new Error(`${text} menu item not found`);
+  }
+  return item;
 }
 
-/** Open the dropdown menu for a schedule row, then click a menu item. */
-async function openMenuAndClick(
-  timeLabel: string,
-  action: "Edit" | "Delete" | "Run now",
-) {
-  const menuTrigger = screen.getAllByLabelText(
-    `More actions for ${timeLabel}`,
-  )[0];
-  click(menuTrigger);
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
+}
+
+function selectOptionByLabel(
+  label: string,
+  option: string,
+  container: HTMLElement,
+): void {
+  click(within(container).getByLabelText(label));
+  click(screen.getByRole("option", { name: option }));
+}
+
+function mockSchedulePageStory(): void {
+  context.mocks.data.team([
+    createAgent(zeroAgentId, "Zero"),
+    createAgent(researchAgentId, "Research Agent"),
+  ]);
+  context.mocks.data.schedules([
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000301",
+      agentId: zeroAgentId,
+      displayName: "Zero",
+      name: "weekday-morning-brief",
+      cronExpression: "30 14 * * 1-5",
+      timezone: "UTC",
+      prompt: "Send morning brief to the team channel",
+      description: "Morning brief",
+      enabled: true,
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000302",
+      agentId: researchAgentId,
+      displayName: "Research Agent",
+      name: "office-climate-loop",
+      triggerType: "loop",
+      cronExpression: null,
+      intervalSeconds: 2700,
+      timezone: "UTC",
+      prompt: "Turn on the air conditioning in my office",
+      description: "Office AC",
+      enabled: true,
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000303",
+      agentId: zeroAgentId,
+      displayName: "Zero",
+      name: "monthly-billing-audit",
+      cronExpression: "15 16 12 * *",
+      timezone: "UTC",
+      prompt: "Review monthly billing anomalies",
+      description: "Billing audit",
+      enabled: true,
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000304",
+      agentId: researchAgentId,
+      displayName: "Research Agent",
+      name: "launch-readiness-check",
+      triggerType: "once",
+      cronExpression: null,
+      atTime: "2026-06-12T18:45:00Z",
+      timezone: "UTC",
+      prompt: "Run the launch readiness checklist",
+      description: "Release checklist",
+      enabled: true,
+    }),
+  ]);
+}
+
+function mockScheduleCreateStory(): void {
+  context.mocks.data.team([
+    createAgent(zeroAgentId, "Zero"),
+    createAgent(researchAgentId, "Research Agent"),
+  ]);
+  context.mocks.data.schedules([]);
+}
+
+function mockScheduleListEdgeStory(): void {
+  context.mocks.data.team([createAgent(zeroAgentId, "Zero")]);
+  context.mocks.data.schedules([
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000305",
+      agentId: zeroAgentId,
+      displayName: "Zero",
+      name: "disabled-escalation-review",
+      cronExpression: "7 9 * * 1-5",
+      timezone: "UTC",
+      prompt: "Review overnight escalations",
+      description: null,
+      enabled: false,
+    }),
+  ]);
+}
+
+async function openSchedulePage(): Promise<void> {
+  detachedSetupPage({ context, path: "/schedules" });
+
   await waitFor(() => {
-    expect(
-      queryAllByRoleFast("menuitem").find((el) => {
-        return el.textContent?.includes(action);
-      }),
-    ).toBeDefined();
+    expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    expect(screen.getByText("Week view")).toBeInTheDocument();
   });
-  click(
-    queryAllByRoleFast("menuitem").find((el) => {
-      return el.textContent?.includes(action);
-    })!,
-  );
 }
 
-describe("zero schedule page - agent labels", () => {
-  it("should display agent displayName for schedules belonging to sub-agents", async () => {
-    // Mock team API with a sub-agent that has a displayName
-    setMockTeam([
-      {
-        id: "c0000000-0000-4000-a000-000000000001",
-        displayName: "Zero",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "v1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-      {
-        id: "e0000000-0000-4000-a000-000000000002",
-        displayName: "Research Agent",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "v2",
-        updatedAt: "2024-01-02T00:00:00Z",
-      },
-    ]);
-    setMockSchedules([
-      createMockScheduleResponse({
-        agentId: "e0000000-0000-4000-a000-000000000002",
-        displayName: "Research Agent",
-        name: "morning-briefing",
-        cronExpression: "0 9 * * 1-5",
-        prompt: "Summarize yesterday's threads",
-      }),
-    ]);
-    await renderSchedulePage();
+async function openScheduleList(): Promise<void> {
+  await openSchedulePage();
+  click(tabByText("List"));
 
-    // The agent column should show "Research Agent" (from schedule displayName)
-    await waitFor(() => {
-      expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(screen.getByText("Instruction")).toBeInTheDocument();
+    expect(screen.getByText("Schedule at")).toBeInTheDocument();
+  });
+}
+
+async function openAutomationsList(): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/schedules",
+    featureSwitches: { [FeatureSwitchKey.ZeroAutomations]: true },
   });
 
-  it("should fall back to agent id when displayName is null", async () => {
-    setMockTeam([
-      {
-        id: "c0000000-0000-4000-a000-000000000001",
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "v1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-      {
-        id: "e0000000-0000-4000-a000-000000000003",
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "v2",
-        updatedAt: "2024-01-02T00:00:00Z",
-      },
-    ]);
-    setMockSchedules([
-      createMockScheduleResponse({
-        agentId: "e0000000-0000-4000-a000-000000000003",
-        displayName: null,
-        name: "morning-briefing",
-        cronExpression: "0 9 * * 1-5",
-        prompt: "Summarize yesterday's threads",
-      }),
-    ]);
-    await renderSchedulePage();
-
-    // Falls back to raw agent id when displayName is null
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("e0000000-0000-4000-a000-000000000003")[0],
-      ).toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(screen.getByText("Automations")).toBeInTheDocument();
+    expect(screen.getByText("Week view")).toBeInTheDocument();
   });
+  click(tabByText("List"));
 
-  it("should only show schedules belonging to the filtered agent (SCHED-D-001)", async () => {
-    setMockSchedules([
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000099",
-        displayName: "Zero",
-        name: "alpha-only-task",
-        cronExpression: "0 9 * * 1-5",
-        prompt: "Alpha only task",
-        createdAt: "2026-03-01T00:00:00Z",
-        updatedAt: "2026-03-01T00:00:00Z",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000098",
-        agentId: "c0000000-0000-4000-a000-000000000002",
-        displayName: "Beta Agent",
-        name: "beta-only-task",
-        cronExpression: "0 10 * * 1-5",
-        prompt: "Beta only task",
-        createdAt: "2026-03-02T00:00:00Z",
-        updatedAt: "2026-03-02T00:00:00Z",
-      }),
-    ]);
-    await renderSchedulePage();
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText(/Open schedule Alpha only task/)[0],
-      ).toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(screen.getByText("Instruction")).toBeInTheDocument();
+    expect(screen.getByText("Schedule at")).toBeInTheDocument();
+  });
+}
+
+describe("zero schedule page", () => {
+  it("shows scheduled work in the calendar", async () => {
+    mockSchedulePageStory();
+
+    await openSchedulePage();
+
+    expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Every 45 minutes")[0]).toBeInTheDocument();
+    expect(screen.getByText("Monthly")).toBeInTheDocument();
+    expect(screen.getByText("Once")).toBeInTheDocument();
     expect(
-      screen.getAllByLabelText(/Open schedule Beta only task/)[0],
+      screen.getByText("Every month on day 12 at 4:15 PM"),
     ).toBeInTheDocument();
     expect(
-      screen.queryAllByLabelText(/Open schedule Gamma only task/),
-    ).toHaveLength(0);
+      screen.getByText("Once on 2026-06-12 at 6:45 PM"),
+    ).toBeInTheDocument();
   });
 
-  it("should display schedules from multiple agents with their respective agent labels (SCHED-D-006)", async () => {
-    setMockSchedules([
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000011",
-        agentId: "c0000000-0000-4000-a000-000000000011",
-        displayName: "Alpha Bot",
-        name: "alpha-schedule",
-        cronExpression: "0 9 * * 1-5",
-        prompt: "Alpha daily standup",
-        createdAt: "2026-03-01T00:00:00Z",
-        updatedAt: "2026-03-01T00:00:00Z",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000022",
-        agentId: "c0000000-0000-4000-a000-000000000022",
-        displayName: "Beta Bot",
-        name: "beta-schedule",
-        triggerType: "loop",
-        cronExpression: null,
-        intervalSeconds: 1800,
-        prompt: "Beta monitoring check",
-        createdAt: "2026-03-02T00:00:00Z",
-        updatedAt: "2026-03-02T00:00:00Z",
-      }),
-    ]);
-    await renderSchedulePage();
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText(/Open schedule Alpha daily standup/)[0],
-      ).toBeInTheDocument();
-    });
+  it("protects unsaved create edits", async () => {
+    mockScheduleCreateStory();
+
+    await openSchedulePage();
+
+    click(buttonByText("Add schedule"));
+
+    const createDialog = await screen.findByRole("dialog");
+    expect(within(createDialog).getByText("Add schedule")).toBeInTheDocument();
+    expect(within(createDialog).getByText("Agent")).toBeInTheDocument();
+    expect(within(createDialog).getByText("Prompt")).toBeInTheDocument();
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Draft the weekly support handoff",
+    );
+
+    selectOptionByLabel("Agent", "Research Agent", createDialog);
     expect(
-      screen.getAllByLabelText(/Open schedule Beta monitoring check/)[0],
+      within(createDialog).getByText("Research Agent"),
     ).toBeInTheDocument();
-    // Two distinct schedules from two distinct agents should both be rendered
+
+    selectOptionByLabel("Time", "Loop", createDialog);
+    expect(within(createDialog).getByText("Every")).toBeInTheDocument();
+    expect(within(createDialog).getByText("15 minutes")).toBeInTheDocument();
+
+    selectOptionByLabel("Every", "60 minutes", createDialog);
+    expect(within(createDialog).getByText("60 minutes")).toBeInTheDocument();
+
+    selectOptionByLabel("Time", "Every week", createDialog);
+    expect(within(createDialog).getByText("Day of week")).toBeInTheDocument();
+    expect(buttonByText("Mon", createDialog)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    click(buttonByText("Wed", createDialog));
+    expect(buttonByText("Wed", createDialog)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    selectOptionByLabel("Time", "Every month", createDialog);
+    expect(within(createDialog).getByText("Day of month")).toBeInTheDocument();
+    selectOptionByLabel("Day of month", "12", createDialog);
+    expect(within(createDialog).getByText("12")).toBeInTheDocument();
+
+    selectOptionByLabel("Time", "Once", createDialog);
+    expect(within(createDialog).getByLabelText("Date")).toBeInTheDocument();
+
     expect(
-      queryAllByRoleFast("link").filter((el) => {
-        return /Open schedule/.test(el.getAttribute("aria-label") ?? "");
-      }),
-    ).toHaveLength(2);
-  });
-});
-
-describe("zero schedule page - list view", () => {
-  it("should render schedule entries with time and prompt", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
-    });
-
-    expect(
-      screen.getAllByText("Check inbox for urgent items")[0],
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/Every weekday at 9:00 AM/)[0],
-    ).toBeInTheDocument();
-    expect(screen.getAllByText(/Every 15 minutes/)[0]).toBeInTheDocument();
-  });
-
-  it("should render page title and subtitle", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(
-        "Automated tasks scheduled across all agents in your workspace.",
+      within(createDialog).getByDisplayValue(
+        "Draft the weekly support handoff",
       ),
     ).toBeInTheDocument();
-  });
+    click(buttonByText("Cancel", createDialog));
 
-  it("should show empty state when no schedules exist", async () => {
-    mockScheduleAPI([]);
-    await renderSchedulePage();
+    const confirmClose = await screen.findByRole("alertdialog");
+    expect(
+      within(confirmClose).getByText("You have unsaved changes"),
+    ).toBeInTheDocument();
+    click(buttonByText("Continue Editing", confirmClose));
 
     await waitFor(() => {
-      expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     });
     expect(
-      screen.getByText(
-        "Set up a schedule and your agents will handle the rest.",
+      within(createDialog).getByDisplayValue(
+        "Draft the weekly support handoff",
       ),
     ).toBeInTheDocument();
-  });
 
-  it("should have Add schedule button in header", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
-    });
-  });
-
-  it("should show a row action menu for each schedule entry", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
+    click(buttonByText("Cancel", createDialog));
+    const discardChanges = await screen.findByRole("alertdialog");
+    click(buttonByText("Discard Changes", discardChanges));
 
     await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    const menus = queryAllByRoleFast("button").filter((el) => {
-      return /More actions for/.test(el.getAttribute("aria-label") ?? "");
-    });
-    expect(menus).toHaveLength(3);
   });
 
-  it("should make each schedule row clickable to detail page", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
+  it("creates a schedule and opens the new detail page", async () => {
+    mockScheduleCreateStory();
+
+    await openSchedulePage();
+
+    click(buttonByText("Add schedule"));
+
+    const createDialog = await screen.findByRole("dialog");
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Draft the weekly support handoff",
+    );
+    click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
       expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
+        screen.getByRole("heading", {
+          name: "Draft the weekly support handoff",
+        }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows scheduled work in the list", async () => {
+    mockSchedulePageStory();
+
+    await openScheduleList();
+
+    expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Every 45 minutes")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Billing audit")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Release checklist")[0]).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Every month on day 12 at 4:15 PM")[0],
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Once on 2026-06-12 at 6:45 PM")[0],
+    ).toBeInTheDocument();
     expect(
       screen.getAllByLabelText(
-        /Open schedule Summarize yesterday's threads/i,
+        "Open schedule Send morning brief to the team channel",
       )[0],
     ).toBeInTheDocument();
   });
 
-  it("should expose Run now, Edit, and Delete in the row menu", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
+  it("opens create scheduling from the empty list", async () => {
+    mockScheduleCreateStory();
+
+    await openSchedulePage();
+    click(tabByText("List"));
 
     await waitFor(() => {
+      expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
       expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
-    });
-    const menuTrigger = screen.getAllByLabelText(
-      "More actions for Every weekday at 9:00 AM",
-    )[0];
-    click(menuTrigger);
-    await waitFor(() => {
-      expect(screen.getByText(/Run now/)).toBeInTheDocument();
-      expect(screen.getByText("Edit")).toBeInTheDocument();
-      expect(screen.getByText("Delete")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("zero schedule page - create dialog", () => {
-  it("should open create dialog when Add schedule is clicked", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    // Wait for the schedule list to render (non-empty so only one Add schedule in header)
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
+        screen.getByText(
+          "Set up a schedule and your agents will handle the rest.",
+        ),
       ).toBeInTheDocument();
     });
 
-    click(screen.getByText(/Add schedule/i));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByLabelText("Prompt")).toBeInTheDocument();
-  });
-
-  it("should save a new schedule via API", async () => {
-    let capturedPrompt: string | null = null;
-
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-        capturedPrompt = body.prompt;
-        return respond(201, mockDeployResponse());
-      }),
+    const addScheduleButtons = queryAllByRoleFast("button").filter(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Add schedule"
+        );
+      },
     );
+    click(addScheduleButtons[addScheduleButtons.length - 1]!);
 
-    await renderSchedulePage();
-
-    // Wait for schedules to render
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Add schedule/i));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    // Fill in prompt
-    const promptInput = screen.getByLabelText("Prompt");
-    await fill(promptInput, "Daily standup summary");
-
-    // Click Create
-    click(screen.getByText("Create"));
-
-    await waitFor(() => {
-      expect(capturedPrompt).toBeTruthy();
-    });
-    expect(capturedPrompt).toBe("Daily standup summary");
-  });
-});
-
-describe("zero schedule page - toggle enabled", () => {
-  it("should send PATCH request when toggling schedule enabled state", async () => {
-    let capturedAction: string | null = null;
-
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
-        capturedAction = "disable";
-        return respond(200, createMockSchedules()[0]);
-      }),
-      mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
-        capturedAction = "enable";
-        return respond(200, createMockSchedules()[0]);
-      }),
-    );
-
-    await renderSchedulePage();
-
-    // Wait for the schedule list to render
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText("Disable Every weekday at 9:00 AM")[0],
-      ).toBeInTheDocument();
-    });
-
-    // Toggle the first schedule's enabled switch
-    const toggleSwitch = screen.getAllByLabelText(
-      "Disable Every weekday at 9:00 AM",
-    )[0];
-    click(toggleSwitch);
-
-    await waitFor(() => {
-      expect(capturedAction).toBe("disable");
-    });
-  });
-});
-
-describe("zero schedule page - delete confirmation", () => {
-  it("should show confirmation dialog when delete button is clicked", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
-    });
-
-    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
-
-    await waitFor(() => {
-      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
-    });
-    expect(screen.getByText("morning-briefing")).toBeInTheDocument();
-    expect(screen.getByText("Cancel")).toBeInTheDocument();
-    expect(screen.getByText("Delete")).toBeInTheDocument();
+    const createDialog = await screen.findByRole("dialog");
+    expect(within(createDialog).getByText("Agent")).toBeInTheDocument();
+    expect(within(createDialog).getByText("Prompt")).toBeInTheDocument();
   });
 
-  it("should close dialog without deleting when Cancel is clicked", async () => {
-    let deleteCalled = false;
+  it("keeps the list loading state visible until schedules resolve", async () => {
+    context.mocks.data.team([
+      createAgent(zeroAgentId, "Zero"),
+      createAgent(researchAgentId, "Research Agent"),
+    ]);
 
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesByNameContract.delete, ({ respond }) => {
-        deleteCalled = true;
-        return respond(204);
-      }),
-    );
+    const schedulesReady = context.mocks.deferred<void>();
 
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
+    context.mocks.api(zeroSchedulesMainContract.list, async ({ respond }) => {
+      await schedulesReady.promise;
+      return respond(200, {
+        schedules: [
+          createMockScheduleResponse({
+            id: "f0000001-0000-4000-a000-000000000306",
+            agentId: researchAgentId,
+            displayName: "Research Agent",
+            name: "launch-loading-check",
+            cronExpression: "45 17 * * 1-5",
+            timezone: "UTC",
+            prompt: "Check launch risks before standup",
+            description: "Launch loading check",
+            enabled: true,
+          }),
+        ],
+      });
     });
-
-    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
-
-    await waitFor(() => {
-      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Cancel"));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
-    });
-    expect(deleteCalled).toBeFalsy();
-  });
-
-  it("should call delete API when Delete is confirmed", async () => {
-    let deletedName: string | null = null;
-
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesByNameContract.delete, ({ params, respond }) => {
-        deletedName = params.name;
-        return respond(204);
-      }),
-    );
-
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
-    });
-
-    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
-
-    await waitFor(() => {
-      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Delete"));
-
-    await waitFor(() => {
-      expect(deletedName).toBe("morning-briefing");
-    });
-  });
-
-  it("should show Deleting… and disable buttons while delete API is pending", async () => {
-    const deleteDeferred = createDeferredPromise<void>(context.signal);
-
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesByNameContract.delete, ({ respond }) => {
-        return deleteDeferred.promise.then(() => {
-          return respond(204);
-        });
-      }),
-    );
-
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
-    });
-
-    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
-
-    await waitFor(() => {
-      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Delete"));
-
-    // Dialog stays open with loading state
-    await waitFor(() => {
-      expect(screen.getByText("Deleting…")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
-    expect(screen.getByText("Cancel")).toBeDisabled();
-    expect(screen.getByText("Deleting…")).toBeDisabled();
-
-    deleteDeferred.resolve();
-
-    // Dialog closes after completion
-    await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
-    });
-  });
-
-  it("should close dialog immediately after Delete is confirmed", async () => {
-    let deletedName: string | null = null;
-
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesByNameContract.delete, ({ params, respond }) => {
-        deletedName = params.name;
-        return respond(204);
-      }),
-    );
-
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
-    });
-
-    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
-
-    await waitFor(() => {
-      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Delete"));
-
-    // Dialog should close immediately
-    await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
-    });
-    expect(deletedName).toBe("morning-briefing");
-  });
-});
-
-describe("zero schedule page - create dialog confirm close", () => {
-  it("should show confirm overlay when Cancel is clicked with prompt text", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Add schedule/i));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    const promptInput = screen.getByLabelText("Prompt");
-    await fill(promptInput, "Some new task");
-
-    click(screen.getByText("Cancel"));
-
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-  });
-
-  it("should close create dialog directly when Cancel is clicked without changes", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Add schedule/i));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Cancel"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("heading", { name: "Add schedule" }),
-      ).not.toBeInTheDocument();
-    });
-    expect(
-      screen.queryByText("You have unsaved changes"),
-    ).not.toBeInTheDocument();
-  });
-});
-
-describe("zero schedule page - schedule dialog fields", () => {
-  it("should show agent selector in create dialog", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Add schedule/i));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByLabelText("Agent")).toBeInTheDocument();
-  });
-
-  it("should disable Create button when prompt is empty", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Add schedule/i));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Create")).toBeDisabled();
-  });
-
-  it("should enable Create button when prompt is filled", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Add schedule/i));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Prompt"), "Do something");
-
-    expect(screen.getByText("Create")).toBeEnabled();
-  });
-
-  it("should surface save error via toast and keep dialog open", async () => {
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
-        return respond(400, {
-          error: {
-            message: "Schedule limit reached",
-            code: "INTERNAL_SERVER_ERROR",
-          },
-        });
-      }),
-    );
-
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Add schedule/i));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Prompt"), "Some task");
-
-    click(screen.getByText("Create"));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Schedule limit reached/)).toBeInTheDocument();
-    });
-    expect(
-      screen.getByRole("heading", { name: "Add schedule" }),
-    ).toBeInTheDocument();
-  });
-});
-
-describe("zero schedule page - view modes", () => {
-  it("should render list and calendar view tabs", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/List/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Calendar/i)).toBeInTheDocument();
-  });
-
-  it("should switch to calendar view when Calendar tab is clicked", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Calendar/i)).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Calendar/i));
-
-    await waitFor(() => {
-      expect(screen.getByText("Week view")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("zero schedule page - loading state", () => {
-  it("should show skeleton while schedules are being fetched (SCHED-D-004)", async () => {
-    const hangDeferred = createDeferredPromise<void>(context.signal);
-    server.use(
-      mockApi(zeroSchedulesMainContract.list, async ({ respond }) => {
-        await hangDeferred.promise;
-        return respond(200, { schedules: [] });
-      }),
-    );
 
     detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("schedule-calendar-skeleton"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
     });
-
-    hangDeferred.resolve();
-  });
-});
-
-describe("zero schedule page - create dialog timezone default", () => {
-  it("should use preference timezone in submitted request when set", async () => {
-    setMockUserPreferences({ timezone: "Asia/Tokyo" });
-
-    let capturedTimezone: string | null = null;
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-        capturedTimezone = body.timezone;
-        return respond(201, mockDeployResponse());
-      }),
-    );
-
-    detachedSetupPage({ context, path: "/schedules?tab=list" });
-
-    // Wait for schedules to render (preferences will have loaded by then)
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByText(/Add schedule/i));
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Prompt"), "Daily task");
-    click(screen.getByText("Create"));
+    click(tabByText("List"));
 
     await waitFor(() => {
-      expect(capturedTimezone).toBeTruthy();
+      expect(screen.getByTestId("schedule-list-skeleton")).toBeInTheDocument();
     });
-    expect(capturedTimezone).toBe("Asia/Tokyo");
+
+    schedulesReady.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("schedule-list-skeleton"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getAllByText("Launch loading check").length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText("Every weekday at 5:45 PM").length,
+      ).toBeGreaterThan(0);
+    });
   });
 
-  it("should fall back to local timezone in submitted request when preference not set", async () => {
-    // timezone is null by default (reset via resetAllMockHandlers in afterEach)
-    const localTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  it("opens disabled prompt-only schedules from list rows", async () => {
+    mockScheduleListEdgeStory();
 
-    let capturedTimezone: string | null = null;
-    setMockSchedules(createMockSchedules());
-    server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-        capturedTimezone = body.timezone;
-        return respond(201, mockDeployResponse());
-      }),
+    await openScheduleList();
+
+    expect(
+      screen.getAllByText("Review overnight escalations")[0],
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Every weekday at 9:07 AM")[0],
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByLabelText("Enable Every weekday at 9:07 AM")[0],
+    ).toBeInTheDocument();
+
+    click(
+      screen.getAllByLabelText("Open schedule Review overnight escalations")[0],
     );
 
-    detachedSetupPage({ context, path: "/schedules?tab=list" });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Review overnight escalations" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("toggles and runs schedules from the list", async () => {
+    mockSchedulePageStory();
+
+    await openScheduleList();
+
+    click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
 
     await waitFor(() => {
       expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
+        screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0],
       ).toBeInTheDocument();
     });
 
-    click(screen.getByText(/Add schedule/i));
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
+      expect(screen.getByText("View activity")).toBeInTheDocument();
+      expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+    });
+  });
+
+  it("manages automations through the schedule page surface", async () => {
+    mockNow();
+    mockSchedulePageStory();
+
+    await openAutomationsList();
+
+    expect(screen.getByText("Automations")).toBeInTheDocument();
+    expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
+
+    click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
+
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
+        screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0],
       ).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Prompt"), "Daily task");
-    click(screen.getByText("Create"));
+    click(screen.getAllByLabelText("Enable Every weekday at 2:30 PM")[0]);
 
     await waitFor(() => {
-      expect(capturedTimezone).toBeTruthy();
+      expect(
+        screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0],
+      ).toBeInTheDocument();
     });
-    expect(capturedTimezone).toBe(localTimezone);
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
+      expect(screen.getByText("View activity")).toBeInTheDocument();
+    });
+
+    click(
+      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
+    );
+    click(menuItemByText("Delete"));
+
+    const deleteDialog = await screen.findByRole("dialog");
+    click(buttonByText("Delete", deleteDialog));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
+    });
+
+    click(buttonByText("Add automation"));
+
+    const createDialog = await screen.findByRole("dialog");
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Review automation coverage",
+    );
+    click(buttonByText("Create", createDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Review automation coverage" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("surfaces run-now failures from the schedule list", async () => {
+    mockSchedulePageStory();
+    context.mocks.api(zeroScheduleRunContract.run, ({ respond }) => {
+      return respond(503, {
+        error: {
+          message: "Runner queue unavailable",
+          code: "PROVIDER_UNAVAILABLE",
+        },
+      });
+    });
+
+    await openScheduleList();
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Runner queue unavailable")).toBeInTheDocument();
+      expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+    });
+  });
+
+  it("deletes a schedule from the list after confirmation", async () => {
+    mockSchedulePageStory();
+
+    await openScheduleList();
+
+    click(
+      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
+    );
+    click(menuItemByText("Delete"));
+
+    const deleteDialog = await screen.findByRole("dialog");
+    expect(
+      within(deleteDialog).getByText("Delete schedule?"),
+    ).toBeInTheDocument();
+    expect(
+      within(deleteDialog).getByText("weekday-morning-brief"),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Cancel", deleteDialog));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+    });
+
+    click(
+      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
+    );
+    click(menuItemByText("Delete"));
+
+    const confirmDeleteDialog = await screen.findByRole("dialog");
+    click(buttonByText("Delete", confirmDeleteDialog));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+  });
+
+  it("opens a schedule detail from the list", async () => {
+    mockSchedulePageStory();
+
+    await openScheduleList();
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Edit"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Office AC" }),
+      ).toBeInTheDocument();
+    });
   });
 });

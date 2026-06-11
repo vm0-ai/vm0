@@ -2,8 +2,6 @@
  * Builtin firewall configs registry.
  *
  * Generated configs are imported here and exposed as a lookup map.
- * The firewall loader checks this registry before falling back to
- * remote GitHub fetch.
  */
 
 import {
@@ -59,6 +57,7 @@ import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { atlascloudFirewall } from "./atlascloud.generated";
 import { aviationstackFirewall } from "./aviationstack.generated";
+import { awsFirewall } from "./aws.generated";
 // NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
 // mathpix/nyne/openrouter/openweather/reducto were added in the same
 // Sponge-catalog batch and are wired below.
@@ -130,11 +129,14 @@ import { geminiFirewall } from "./gemini.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { googleAdsFirewall } from "./google-ads.generated";
+import { googleAnalyticsFirewall } from "./google-analytics.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
+import { googleCloudFirewall } from "./google-cloud.generated";
 import { googleMapsFirewall } from "./google-maps.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleMeetFirewall } from "./google-meet.generated";
+import { googleSearchConsoleFirewall } from "./google-search-console.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
 import { greenhouseFirewall } from "./greenhouse.generated";
@@ -172,6 +174,7 @@ import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { manusFirewall } from "./manus.generated";
 import { mapboxFirewall } from "./mapbox.generated";
+import { massiveFirewall } from "./massive.generated";
 import { mathpixFirewall } from "./mathpix.generated";
 import { mem0Firewall } from "./mem0.generated";
 import { mercuryFirewall } from "./mercury.generated";
@@ -232,6 +235,7 @@ import { runwayFirewall } from "./runway.generated";
 import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
 import { segmentFirewall } from "./segment.generated";
+import { semrushFirewall } from "./semrush.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
 import { shopifyFirewall } from "./shopify.generated";
@@ -259,6 +263,7 @@ import { supermemoryFirewall } from "./supermemory.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { testOauthFirewall } from "./test-oauth.generated";
 import { ticketmasterFirewall } from "./ticketmaster.generated";
+import { tiktokAdsFirewall } from "./tiktok-ads.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { togetherFirewall } from "./together.generated";
@@ -327,6 +332,7 @@ const CONNECTOR_FIREWALLS = {
   attio: attioFirewall,
   atlassian: atlassianFirewall,
   atlascloud: atlascloudFirewall,
+  aws: awsFirewall,
   axiom: axiomFirewall,
   base44: base44Firewall,
   bentoml: bentomlFirewall,
@@ -396,10 +402,13 @@ const CONNECTOR_FIREWALLS = {
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,
   "google-ads": googleAdsFirewall,
+  "google-analytics": googleAnalyticsFirewall,
   "google-calendar": googleCalendarFirewall,
+  "google-cloud": googleCloudFirewall,
   "google-docs": googleDocsFirewall,
   "google-drive": googleDriveFirewall,
   "google-meet": googleMeetFirewall,
+  "google-search-console": googleSearchConsoleFirewall,
   "google-sheets": googleSheetsFirewall,
   granola: granolaFirewall,
   greenhouse: greenhouseFirewall,
@@ -435,6 +444,7 @@ const CONNECTOR_FIREWALLS = {
   make: makeFirewall,
   mailsac: mailsacFirewall,
   manus: manusFirewall,
+  massive: massiveFirewall,
   mem0: mem0Firewall,
   mercury: mercuryFirewall,
   meshy: meshyFirewall,
@@ -490,6 +500,7 @@ const CONNECTOR_FIREWALLS = {
   salesforce: salesforceFirewall,
   scrapeninja: scrapeninjaFirewall,
   segment: segmentFirewall,
+  semrush: semrushFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
   shopify: shopifyFirewall,
@@ -513,6 +524,7 @@ const CONNECTOR_FIREWALLS = {
   tavily: tavilyFirewall,
   "test-oauth": testOauthFirewall,
   ticketmaster: ticketmasterFirewall,
+  "tiktok-ads": tiktokAdsFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   together: togetherFirewall,
@@ -722,10 +734,6 @@ export function groupPermissionsByCategory<T extends { name: string }>(
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Signature-based auth — requires computing signatures, not simple header injection
-  // AWS is feature-gated while SigV4 firewall auth is pending; do not treat it
-  // as a full firewall connector until request signing is handled by firewall auth.
-  | "aws"
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other

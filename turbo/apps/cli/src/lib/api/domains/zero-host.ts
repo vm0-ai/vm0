@@ -2,15 +2,21 @@ import type {
   HostedSitePrepareRequest,
   HostedSitePrepareResponse,
   HostedSiteCompleteResponse,
+  HostedSiteFilesResponse,
 } from "@vm0/api-contracts/contracts/zero-host";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 
-function authHeaders(token: string): Record<string, string> {
+function authHeaders(
+  token: string,
+  options: { readonly json?: boolean } = {},
+): Record<string, string> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
   };
+  if (options.json) {
+    headers["Content-Type"] = "application/json";
+  }
   const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypassSecret) {
     headers["x-vercel-protection-bypass"] = bypassSecret;
@@ -56,7 +62,7 @@ export async function prepareHostedSite(
     new URL("/api/zero/host/deployments/prepare", baseUrl),
     {
       method: "POST",
-      headers: authHeaders(token),
+      headers: authHeaders(token, { json: true }),
       body: JSON.stringify(body),
     },
   );
@@ -81,7 +87,7 @@ export async function completeHostedSite(
     ),
     {
       method: "POST",
-      headers: authHeaders(token),
+      headers: authHeaders(token, { json: true }),
       body: JSON.stringify({}),
     },
   );
@@ -93,4 +99,28 @@ export async function completeHostedSite(
     throw new ApiRequestError(message, code, response.status);
   }
   return (await response.json()) as HostedSiteCompleteResponse;
+}
+
+export async function getHostedSiteFiles(
+  publicSlug: string,
+): Promise<HostedSiteFilesResponse> {
+  const { baseUrl, token } = await getAuthContext();
+  const response = await fetch(
+    new URL(
+      `/api/zero/host/sites/${encodeURIComponent(publicSlug)}/files`,
+      baseUrl,
+    ),
+    {
+      method: "GET",
+      headers: authHeaders(token),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to get hosted-site files",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return (await response.json()) as HostedSiteFilesResponse;
 }

@@ -151,6 +151,42 @@ function wavBytesWithOversizedDataChunk(
   return bytes;
 }
 
+// Canonical header with a correctly-sized data chunk, followed by a trailing
+// LIST chunk. Duration must come from the declared data size, not the whole
+// remaining buffer (which would count the trailing chunk as audio).
+function wavBytesWithTrailingChunk(
+  durationSeconds: number,
+): Uint8Array<ArrayBuffer> {
+  const sampleRate = 24_000;
+  const channels = 1;
+  const bitsPerSample = 16;
+  const bytesPerSample = channels * (bitsPerSample / 8);
+  const byteRate = sampleRate * bytesPerSample;
+  const dataSize = byteRate * durationSeconds;
+  const trailingSize = byteRate * 3; // 3s of bytes; over-count would add ~3s
+  const buffer = new ArrayBuffer(44 + dataSize + 8 + trailingSize);
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+
+  writeAscii(bytes, 0, "RIFF");
+  view.setUint32(4, bytes.byteLength - 8, true);
+  writeAscii(bytes, 8, "WAVE");
+  writeAscii(bytes, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeAscii(bytes, 36, "data");
+  view.setUint32(40, dataSize, true);
+  writeAscii(bytes, 44 + dataSize, "LIST");
+  view.setUint32(44 + dataSize + 4, trailingSize, true);
+
+  return bytes;
+}
+
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -215,6 +251,7 @@ async function deleteSpeechPricing(): Promise<void> {
 }
 
 async function seedVoiceFixture(options: {
+  readonly audioInputEnabled?: boolean;
   readonly audioOutputEnabled?: boolean;
   readonly credits?: number;
   readonly tier?: OrgTier;
@@ -239,11 +276,18 @@ async function seedVoiceFixture(options: {
     userId,
   });
 
+  const switches: Record<string, boolean> = {};
+  if (options.audioInputEnabled) {
+    switches[FeatureSwitchKey.AudioInput] = true;
+  }
   if (options.audioOutputEnabled) {
+    switches[FeatureSwitchKey.AudioOutput] = true;
+  }
+  if (Object.keys(switches).length > 0) {
     await writeDb.insert(userFeatureSwitches).values({
       orgId,
       userId,
-      switches: { [FeatureSwitchKey.AudioOutput]: true },
+      switches,
     });
   }
 
@@ -740,6 +784,197 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(counts.get(AUDIO_INPUT_BEHAVIOR_KEY)).toBe(1);
     expect(counts.get(sttDailyRateKey())).toBe(1);
     expect(counts.get(sttDailyDurationKey())).toBe(2);
+  });
+
+  it("meters /stt WAV duration from the data chunk, not a fixed 44-byte offset", async () => {
+    // ffmpeg-produced WAV can carry chunks (LIST/INFO/JUNK) before the data
+    // chunk, so the data chunk is not at byte 44. A fixed-offset reader would
+    // mis-measure this clip; the RIFF chunk-walk must report its true length.
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "hello from voice" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytesWithOversizedDataChunk(120))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      readBehaviorCount(fixture, sttDailyDurationKey()),
+    ).resolves.toBe(120);
+  });
+
+  it("meters /stt WAV duration from the declared data size, ignoring trailing chunks", async () => {
+    // A well-formed WAV with a LIST chunk after data must be measured from the
+    // declared data size, not the whole remaining buffer (which would count the
+    // 3s-worth trailing chunk as audio and over-meter to 63s).
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "hello from voice" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytesWithTrailingChunk(60))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      readBehaviorCount(fixture, sttDailyDurationKey()),
+    ).resolves.toBe(60);
+  });
+
+  it("does not reject large compressed audio on a byte-size estimate", async () => {
+    // A 400 KB mp3 upload. The old size-based estimate (bytes / 8 kbps) computed
+    // ~400s and rejected it with AUDIO_DURATION_TOO_LONG; real duration parsing
+    // measures the actual length instead, so a short-but-dense clip is no longer
+    // falsely rejected on file size.
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "hello from voice" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(
+        sttFile(new Uint8Array(400_000), "audio/mpeg", "speech.mp3"),
+      ),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("uses whisper-1 and verbose_json when ?verbose=true, returns segments", async () => {
+    const fixture = await track(seedVoiceFixture({ audioInputEnabled: true }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedModel: FormDataEntryValue | null = null;
+    let observedResponseFormat: FormDataEntryValue | null = null;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, async ({ request }) => {
+        const form = await request.formData();
+        observedModel = form.get("model");
+        observedResponseFormat = form.get("response_format");
+        return HttpResponse.json({
+          text: "hello world",
+          segments: [{ start: 0, end: 1.5, text: " hello world" }],
+        });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt?verbose=true", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytes(2))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      text: "hello world",
+      segments: [{ start: 0, end: 1.5, text: " hello world" }],
+    });
+    expect(observedModel).toBe("whisper-1");
+    expect(observedResponseFormat).toBe("verbose_json");
+  });
+
+  it("falls back to plain transcription when ?verbose=true but AudioInput is off", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedModel: FormDataEntryValue | null = null;
+    let observedResponseFormat: FormDataEntryValue | null = null;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, async ({ request }) => {
+        const form = await request.formData();
+        observedModel = form.get("model");
+        observedResponseFormat = form.get("response_format");
+        return HttpResponse.json({ text: "hello world" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt?verbose=true", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytes(2))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      text: "hello world",
+    });
+    expect(observedModel).toBe(VOICE_IO_STT_MODEL);
+    expect(observedResponseFormat).toBe("json");
+  });
+
+  it("authorizes a sandbox token carrying file:write on /stt", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId: `run_${randomUUID()}`,
+    });
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "from agent" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: sttForm(sttFile(wavBytes(2))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      text: "from agent",
+    });
+  });
+
+  it("rejects a sandbox token without file:write on /stt", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: sttForm(sttFile(wavBytes(2))),
+    });
+
+    expect(response.status).toBe(403);
   });
 
   it("does not increment the legacy /stt free-tier counter for pro orgs", async () => {

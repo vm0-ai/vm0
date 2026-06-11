@@ -250,6 +250,13 @@ The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial, 8 minutes f
 - All required checks must show **green (passed)**
 - "Cancelled" status does **not** satisfy the requirement
 
+## Presentation Generation
+
+**Always publish with the `--artifact-kind presentation-html` flag:**
+```bash
+zero host <dir> --site <slug> --artifact-kind presentation-html
+```
+
 ## Language Standard
 
 **All project artifacts must be written in English,** but direct communication with users should use the user's preferred language.

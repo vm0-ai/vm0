@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { nowDate } from "../../lib/time.ts";
 
 // ---------------------------------------------------------------------------
 // Schedule form data — single state object for all form fields
@@ -21,7 +22,7 @@ export interface ScheduleFormData {
 export function createDefaultFormData(): ScheduleFormData {
   return {
     freq: "every_day",
-    date: new Date().toISOString().slice(0, 10),
+    date: nowDate().toISOString().slice(0, 10),
     hour: 9,
     minute: 0,
     timezone: new Intl.DateTimeFormat().resolvedOptions().timeZone,

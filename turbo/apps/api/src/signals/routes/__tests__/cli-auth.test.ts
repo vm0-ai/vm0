@@ -25,6 +25,7 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { userConnectors } from "@vm0/db/schema/user-connector";
+import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
@@ -549,6 +550,28 @@ describe("CLI auth routes", () => {
     return row ? decryptSecretForTests(row.encryptedValue) : undefined;
   }
 
+  async function findConnectorVariable(args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly name: string;
+  }): Promise<string | undefined> {
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({ value: variables.value })
+      .from(variables)
+      .where(
+        and(
+          eq(variables.orgId, args.orgId),
+          eq(variables.userId, args.userId),
+          eq(variables.name, args.name),
+          eq(variables.type, "connector"),
+        ),
+      )
+      .limit(1);
+
+    return row?.value;
+  }
+
   async function readConnectorState(args: {
     readonly orgId: string;
     readonly userId: string;
@@ -699,6 +722,7 @@ describe("CLI auth routes", () => {
         .delete(modelProviders)
         .where(inArray(modelProviders.orgId, orgIds));
       await writeDb.delete(secrets).where(inArray(secrets.orgId, orgIds));
+      await writeDb.delete(variables).where(inArray(variables.orgId, orgIds));
       await writeDb
         .delete(creditExpiresRecord)
         .where(inArray(creditExpiresRecord.orgId, orgIds));
@@ -1949,6 +1973,13 @@ describe("CLI auth routes", () => {
           name: "TEST_OAUTH_REFRESH_TOKEN",
         }),
       ).resolves.toBe("test-oauth-refresh-token");
+      await expect(
+        findConnectorVariable({
+          orgId,
+          userId,
+          name: "TEST_OAUTH_API_TENANT_ID",
+        }),
+      ).resolves.toBe("test-oauth-oauth-tenantId");
     });
 
     it("maps legacy test token fields to method-specific grant outputs", async () => {
@@ -2000,6 +2031,13 @@ describe("CLI auth routes", () => {
           name: "TEST_OAUTH_API_REFRESH_TOKEN",
         }),
       ).resolves.toBe("test-oauth-api-refresh-token");
+      await expect(
+        findConnectorVariable({
+          orgId,
+          userId,
+          name: "TEST_OAUTH_API_TENANT_ID",
+        }),
+      ).resolves.toBe("test-oauth-api-tenantId");
       await expect(
         findConnectorSecret({
           orgId,

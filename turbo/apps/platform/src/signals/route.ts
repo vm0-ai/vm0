@@ -175,7 +175,7 @@ interface NavigateOptions {
   replace?: boolean;
 }
 
-export const navigate$ = command(
+const navigate$ = command(
   async (
     { get, set },
     pathname: string,

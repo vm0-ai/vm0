@@ -691,12 +691,6 @@ function slideIdForElement(slide: Element, index: number): string {
     : `slide-${index + 1}`;
 }
 
-export function presentationSpeakerNotesFromHtml(
-  html: string,
-): readonly PresentationPptxSpeakerNote[] {
-  return presentationSpeakerNotesFromDocument(parseHtml(html));
-}
-
 function presentationSpeakerNotesFromDocument(
   doc: Document,
 ): readonly PresentationPptxSpeakerNote[] {

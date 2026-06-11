@@ -320,6 +320,20 @@ function formatGithubConnectPrompt(args: {
   return `To use ${args.agentName}, connect your GitHub account first.\n\n[Connect GitHub](${args.connectUrl})`;
 }
 
+function buildGithubRunAuditUrl(runId: string): string {
+  return `${env("APP_URL").replace(/\/$/u, "")}/activities/${encodeURIComponent(runId)}`;
+}
+
+function formatGithubLabelTriggerStartedComment(args: {
+  readonly labelName: string;
+  readonly auditUrl: string;
+}): string {
+  return [
+    `Zero received the "${args.labelName}" label and started working.`,
+    `Audit: ${args.auditUrl}`,
+  ].join("\n\n");
+}
+
 function formatGithubContextSender(args: {
   readonly login: string;
   readonly type: string;
@@ -897,6 +911,30 @@ async function maybeAddCommentReaction(args: {
   });
 }
 
+async function postGithubLabelTriggerStartedComment(args: {
+  readonly token: string | undefined;
+  readonly repo: string;
+  readonly issueNumber: number;
+  readonly labelName: string | undefined;
+  readonly runId: string | undefined;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (!args.token || !args.labelName || !args.runId) {
+    return;
+  }
+
+  await postGithubIssueCommentBestEffort({
+    token: args.token,
+    repo: args.repo,
+    issueNumber: args.issueNumber,
+    body: formatGithubLabelTriggerStartedComment({
+      labelName: args.labelName,
+      auditUrl: buildGithubRunAuditUrl(args.runId),
+    }),
+    signal: args.signal,
+  });
+}
+
 async function loadGitHubRunTarget(args: {
   readonly db: Db;
   readonly composeId: string;
@@ -1032,6 +1070,25 @@ async function updateExistingSessionComment(args: {
         eq(githubIssueSessions.issueNumber, args.issueNumber),
       ),
     );
+}
+
+async function finalizeSuccessfulGithubDispatch(args: {
+  readonly db: Db;
+  readonly installationDbId: string;
+  readonly repo: string;
+  readonly issueNumber: number;
+  readonly existingSessionId: string | undefined;
+  readonly commentId: string | undefined;
+  readonly token: string | undefined;
+  readonly labelName: string | undefined;
+  readonly runId: string | undefined;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await postGithubLabelTriggerStartedComment(args);
+  args.signal.throwIfAborted();
+
+  await updateExistingSessionComment(args);
+  args.signal.throwIfAborted();
 }
 
 const runAgentForGitHub$ = command(
@@ -1596,15 +1653,18 @@ const dispatchGithubAgentRun$ = command(
       issueNumber,
     });
 
-    await updateExistingSessionComment({
+    await finalizeSuccessfulGithubDispatch({
       db,
       installationDbId: installation.id,
       repo: params.repo,
       issueNumber,
       existingSessionId,
       commentId: params.commentId,
+      token,
+      labelName: params.matchedLabelName,
+      runId: dispatchResult.runId,
+      signal,
     });
-    signal.throwIfAborted();
   },
 );
 

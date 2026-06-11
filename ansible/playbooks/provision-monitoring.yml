@@ -1,7 +1,8 @@
 # Provision Monitoring with Grafana Alloy
 #
 # Installs Grafana Alloy on bare metal hosts to collect system metrics
-# (via built-in prometheus.exporter.unix) and remote-write to Grafana Cloud.
+# (via built-in prometheus.exporter.unix), workspace image cache textfile
+# metrics, and remote-write to Grafana Cloud.
 #
 # Usage:
 #   ansible-playbook -i "host1,host2," playbooks/provision-monitoring.yml \
@@ -66,6 +67,84 @@
         lock_timeout: 300
       become: true
 
+    - name: Ensure VM0 monitoring directory exists
+      file:
+        path: /var/lib/vm0-monitoring
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Ensure VM0 monitoring textfile collector directory exists
+      file:
+        path: /var/lib/vm0-monitoring/textfile-collector
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Install VM0 monitoring collector script
+      copy:
+        src: ../files/vm0-monitoring-collect.sh
+        dest: /usr/local/bin/vm0-monitoring-collect
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Install VM0 monitoring collector service
+      copy:
+        content: |
+          [Unit]
+          Description=Collect VM0 host monitoring metrics
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/vm0-monitoring-collect
+        dest: /etc/systemd/system/vm0-monitoring-collect.service
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Install VM0 monitoring collector timer
+      copy:
+        content: |
+          [Unit]
+          Description=Collect VM0 host monitoring metrics every minute
+
+          [Timer]
+          OnBootSec=1min
+          OnUnitActiveSec=1min
+          AccuracySec=15s
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+        dest: /etc/systemd/system/vm0-monitoring-collect.timer
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Generate initial VM0 host monitoring metrics
+      systemd:
+        name: vm0-monitoring-collect.service
+        state: started
+        daemon_reload: true
+      become: true
+      changed_when: false
+
+    - name: Enable VM0 monitoring collector timer
+      systemd:
+        name: vm0-monitoring-collect.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+      become: true
+
     - name: Configure Grafana Alloy
       copy:
         content: |
@@ -74,13 +153,16 @@
             set_collectors = [
               "cpu", "diskstats", "filesystem", "loadavg", "meminfo",
               "netdev", "os", "pressure", "processes",
-              "uname", "vmstat",
+              "textfile", "uname", "vmstat",
             ]
             disk {
               device_exclude = `^(nbd|ram|loop|fd|(h|s|v|xv)d[a-z]|nvme\d+n\d+p)\d+$`
             }
             netdev {
               device_include = "^(en|eth|bond).*"
+            }
+            textfile {
+              directory = "/var/lib/vm0-monitoring/textfile-collector"
             }
           }
 

@@ -280,7 +280,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
                 state.read_error_key = key
                 ctx.log.warn(f"Failed to read proxy registry: {message}")
             return _mark_unavailable(state, reason="read_failed", message=message)
-        except (json.JSONDecodeError, UnicodeDecodeError, _RegistryFormatError) as e:
+        except (ValueError, RecursionError) as e:
             message = str(e)
             state.failed_key = key
             state.read_error_key = None

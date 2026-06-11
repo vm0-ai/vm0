@@ -10,11 +10,14 @@ import { slock } from "./connectors/slock";
 import { googleSheets } from "./connectors/google-sheets";
 import { googleCalendar } from "./connectors/google-calendar";
 import { googleDocs } from "./connectors/google-docs";
+import { googleCloud } from "./connectors/google-cloud";
 import { linear } from "./connectors/linear";
 import { intervalsIcu } from "./connectors/intervals-icu";
 import { vercel } from "./connectors/vercel";
 import { strava } from "./connectors/strava";
 import { googleMeet } from "./connectors/google-meet";
+import { googleSearchConsole } from "./connectors/google-search-console";
+import { googleAnalytics } from "./connectors/google-analytics";
 import { hubspot } from "./connectors/hubspot";
 import { sentry } from "./connectors/sentry";
 import { todoist } from "./connectors/todoist";
@@ -148,12 +151,14 @@ import { mailsac } from "./connectors/mailsac";
 import { make } from "./connectors/make";
 import { manus } from "./connectors/manus";
 import { mapbox } from "./connectors/mapbox";
+import { massive } from "./connectors/massive";
 import { mathpix } from "./connectors/mathpix";
 import { mem0 } from "./connectors/mem0";
 import { mercury } from "./connectors/mercury";
 import { meshy } from "./connectors/meshy";
 import { metaAds } from "./connectors/meta-ads";
 import { metabase } from "./connectors/metabase";
+import { tiktokAds } from "./connectors/tiktok-ads";
 import { minimax } from "./connectors/minimax";
 import { minio } from "./connectors/minio";
 import { miro } from "./connectors/miro";
@@ -210,6 +215,7 @@ import { runway } from "./connectors/runway";
 import { salesforce } from "./connectors/salesforce";
 import { scrapeninja } from "./connectors/scrapeninja";
 import { segment } from "./connectors/segment";
+import { semrush } from "./connectors/semrush";
 import { sendgrid } from "./connectors/sendgrid";
 import { serpapi } from "./connectors/serpapi";
 import { servicenow } from "./connectors/servicenow";
@@ -335,9 +341,12 @@ export interface ConnectorManualGrantConfig {
   readonly fields: Record<string, ConnectorManualGrantFieldConfig>;
 }
 
+export type ConnectorAuthCodeCallbackOrigin = "web" | "api";
+
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
   readonly scopes: string[];
+  readonly callbackOrigin?: ConnectorAuthCodeCallbackOrigin;
   readonly outputs: ConnectorGrantOutputBindings;
 }
 
@@ -402,6 +411,9 @@ export type ConnectorPlatformSecretName =
 
 export type ConnectorSecretValueRef = `$secrets.${string}`;
 export type ConnectorVariableValueRef = `$vars.${string}`;
+export type ConnectorOutputValueRef =
+  | ConnectorSecretValueRef
+  | ConnectorVariableValueRef;
 export type ConnectorRefreshTokenInputValueRef =
   | ConnectorSecretValueRef
   | ConnectorVariableValueRef;
@@ -415,7 +427,7 @@ export type ConnectorEnvBindings = Record<string, ConnectorEnvBindingValue>;
 
 export type ConnectorGrantOutputBindings = Record<
   string,
-  ConnectorSecretValueRef
+  ConnectorOutputValueRef
 >;
 export type ConnectorRevokeInputBindings = Record<
   string,
@@ -446,7 +458,7 @@ export type ConnectorRefreshTokenInputBindings = Record<
 >;
 export type ConnectorRefreshTokenOutputBindings = Record<
   string,
-  ConnectorSecretValueRef
+  ConnectorOutputValueRef
 >;
 
 export interface ConnectorRefreshTokenAccessConfig extends ConnectorEnvBindingAccessConfigBase {
@@ -701,8 +713,9 @@ type ConnectorRefreshInputValueRef<Storage> =
   | `$secrets.${ConnectorStorageSecretName<Storage>}`
   | `$vars.${ConnectorStorageVariableName<Storage>}`;
 
-type ConnectorRefreshOutputValueRef<Storage> =
-  `$secrets.${ConnectorStorageSecretName<Storage>}`;
+type ConnectorStorageOutputValueRef<Storage> =
+  | `$secrets.${ConnectorStorageSecretName<Storage>}`
+  | `$vars.${ConnectorStorageVariableName<Storage>}`;
 
 type ConnectorRevokeInputValueRef<Storage> =
   `$secrets.${ConnectorStorageSecretName<Storage>}`;
@@ -742,15 +755,15 @@ type ValidatedConnectorRefreshInputs<Inputs, Storage> = {
 };
 
 type ValidatedConnectorRefreshOutputs<Outputs, Storage> = {
-  readonly [OutputName in keyof Outputs]: Outputs[OutputName] extends ConnectorRefreshOutputValueRef<Storage>
+  readonly [OutputName in keyof Outputs]: Outputs[OutputName] extends ConnectorStorageOutputValueRef<Storage>
     ? Outputs[OutputName]
-    : ConnectorRefreshOutputValueRef<Storage>;
+    : ConnectorStorageOutputValueRef<Storage>;
 };
 
 type ValidatedConnectorGrantOutputs<Outputs, Storage> = {
-  readonly [OutputName in keyof Outputs]: Outputs[OutputName] extends ConnectorRefreshOutputValueRef<Storage>
+  readonly [OutputName in keyof Outputs]: Outputs[OutputName] extends ConnectorStorageOutputValueRef<Storage>
     ? Outputs[OutputName]
-    : ConnectorRefreshOutputValueRef<Storage>;
+    : ConnectorStorageOutputValueRef<Storage>;
 };
 
 type ValidatedConnectorRevokeInputs<Inputs, Storage> = {
@@ -776,8 +789,16 @@ type ConnectorRefreshableSecretName<
     ? Extract<SecretName, string>
     : never;
 
-type ConnectorRefreshOutputSecretNameFromRef<Ref> =
-  Ref extends `$secrets.${infer Name}` ? Name : never;
+type ConnectorRequiredRefreshOutputNameFromRef<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+  OutputName,
+  Ref,
+> = Ref extends `$secrets.${infer Name}`
+  ? Name extends ConnectorRefreshableSecretName<Type, Method>
+    ? OutputName
+    : never
+  : never;
 
 type ConnectorRequiredRefreshOutputName<
   Type extends ConnectorType,
@@ -786,11 +807,12 @@ type ConnectorRequiredRefreshOutputName<
   readonly [OutputName in keyof ConnectorRefreshOutputsFor<
     Type,
     Method
-  >]: ConnectorRefreshOutputSecretNameFromRef<
+  >]: ConnectorRequiredRefreshOutputNameFromRef<
+    Type,
+    Method,
+    OutputName,
     ConnectorRefreshOutputsFor<Type, Method>[OutputName]
-  > extends ConnectorRefreshableSecretName<Type, Method>
-    ? OutputName
-    : never;
+  >;
 }[keyof ConnectorRefreshOutputsFor<Type, Method>];
 
 type ValidatedConnectorRefreshableSecrets<Secrets, Outputs> =
@@ -980,6 +1002,8 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...vercel,
   ...strava,
   ...googleMeet,
+  ...googleSearchConsole,
+  ...googleAnalytics,
   ...hubspot,
   ...sentry,
   ...todoist,
@@ -987,6 +1011,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...airtable,
   ...docusign,
   ...googleAds,
+  ...googleCloud,
   ...googleMaps,
   ...gumroad,
   ...spotify,
@@ -1113,12 +1138,14 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...make,
   ...manus,
   ...mapbox,
+  ...massive,
   ...mathpix,
   ...mem0,
   ...mercury,
   ...meshy,
   ...metaAds,
   ...metabase,
+  ...tiktokAds,
   ...minimax,
   ...minio,
   ...miro,
@@ -1175,6 +1202,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...salesforce,
   ...scrapeninja,
   ...segment,
+  ...semrush,
   ...sendgrid,
   ...serpapi,
   ...servicenow,

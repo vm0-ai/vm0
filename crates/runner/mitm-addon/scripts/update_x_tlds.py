@@ -36,6 +36,10 @@ class TldFetchError(RuntimeError):
     """Raised when the live IANA TLD source cannot be fetched."""
 
 
+class TldSourceError(ValueError):
+    """Raised when an IANA TLD source cannot be read or parsed."""
+
+
 class SnapshotComparison(NamedTuple):
     checked_version: str
     source_version: str
@@ -74,6 +78,8 @@ def fetch_source() -> str:
     except urllib.error.HTTPError as exc:
         with exc:
             raise TldFetchError(f"failed to fetch {SOURCE_URL}: HTTP {exc.code}") from exc
+    except UnicodeDecodeError as exc:
+        raise TldFetchError(f"failed to fetch {SOURCE_URL}: invalid UTF-8 response body") from exc
     except (OSError, http.client.HTTPException) as exc:
         raise TldFetchError(f"failed to fetch {SOURCE_URL}: {exc}") from exc
 
@@ -81,11 +87,11 @@ def fetch_source() -> str:
 def parse_source(source: str) -> tuple[str, tuple[str, ...]]:
     lines = source.splitlines()
     if not lines:
-        raise ValueError("IANA TLD source is empty")
+        raise TldSourceError("IANA TLD source is empty")
 
     version_match = VERSION_RE.match(lines[0])
     if version_match is None:
-        raise ValueError("IANA TLD source is missing the version header")
+        raise TldSourceError("IANA TLD source is missing the version header")
     version = version_match.group("version")
 
     tlds: set[str] = set()
@@ -97,15 +103,26 @@ def parse_source(source: str) -> tuple[str, tuple[str, ...]]:
         try:
             tld.encode("ascii")
         except UnicodeEncodeError as exc:
-            raise ValueError(f"IANA TLD is not ASCII: {raw}") from exc
+            raise TldSourceError(f"IANA TLD is not ASCII: {raw}") from exc
         if TLD_RE.fullmatch(tld) is None or tld.startswith("-") or tld.endswith("-"):
-            raise ValueError(f"IANA TLD has invalid syntax: {raw}")
+            raise TldSourceError(f"IANA TLD has invalid syntax: {raw}")
         tlds.add(tld)
 
     if not tlds:
-        raise ValueError("IANA TLD source contains no TLD entries")
+        raise TldSourceError("IANA TLD source contains no TLD entries")
 
     return version, tuple(sorted(tlds))
+
+
+def read_source_file(source_file: Path) -> str:
+    try:
+        return source_file.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise TldSourceError(
+            f"failed to read IANA TLD source file {source_file}: invalid UTF-8"
+        ) from exc
+    except OSError as exc:
+        raise TldSourceError(f"failed to read IANA TLD source file {source_file}: {exc}") from exc
 
 
 def render_module(version: str, tlds: tuple[str, ...]) -> str:
@@ -190,7 +207,7 @@ def compare_snapshot_to_source(source: str) -> SnapshotComparison:
 
 
 def check_source(source_file: Path) -> int:
-    comparison = compare_snapshot_to_source(source_file.read_text(encoding="utf-8"))
+    comparison = compare_snapshot_to_source(read_source_file(source_file))
     sys.stdout.write(
         f"checked-in IANA TLD version {comparison.checked_version} "
         f"({comparison.checked_count} TLDs)\n"
@@ -233,7 +250,7 @@ def write_generated_module(contents: str) -> None:
 
 
 def update_generated(source_file: Path | None) -> int:
-    source = source_file.read_text(encoding="utf-8") if source_file is not None else fetch_source()
+    source = read_source_file(source_file) if source_file is not None else fetch_source()
     version, tlds = parse_source(source)
     write_generated_module(render_module(version, tlds))
     sys.stdout.write(f"wrote {OUTPUT_PATH} with {len(tlds)} TLDs from IANA version {version}\n")
@@ -265,12 +282,12 @@ def main() -> int:
         if args.source_file is not None:
             parser.error("--check cannot be combined with --source-file")
         return check_generated()
-    if args.check_source:
-        if args.source_file is None:
-            parser.error("--check-source requires --source-file")
-        return check_source(args.source_file)
     try:
+        if args.check_source:
+            if args.source_file is None:
+                parser.error("--check-source requires --source-file")
+            return check_source(args.source_file)
         return update_generated(args.source_file)
-    except TldFetchError as exc:
+    except (TldFetchError, TldSourceError) as exc:
         sys.stderr.write(f"{exc}\n")
         return 1

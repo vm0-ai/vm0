@@ -108,6 +108,26 @@ jobs:
           cache: pnpm
           cache-dependency-path: turbo/pnpm-lock.yaml
 
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Desktop App* building signed macOS release..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Desktop App* building signed macOS release...\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --strict-peer-dependencies
 
@@ -288,6 +308,49 @@ jobs:
           gh release upload "$MANIFEST_TAG" "$manifest_path" \
             --repo "${{ github.repository }}" \
             --clobber
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Desktop App* ✅ Published signed macOS release"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Desktop App* ✅ Published signed macOS release\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>\n⬇️ <${{ github.server_url }}/${{ github.repository }}/releases/download/desktop-v${{ needs.release-please.outputs.desktop_version }}/Zero-darwin-arm64-${{ needs.release-please.outputs.desktop_version }}.zip|Download macOS app>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Desktop App* ❌ Release failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Desktop App* ❌ Release failed\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
       - name: Delete temporary keychain
         if: ${{ always() && steps.signing-certificate.outputs.keychain_path != '' }}

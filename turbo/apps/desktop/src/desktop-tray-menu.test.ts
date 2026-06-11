@@ -16,6 +16,8 @@ const baseHostState: ComputerUseHostRuntimeState = {
   lastHeartbeatAt: null,
   lastCommandAt: null,
   lastError: null,
+  recovery: null,
+  errorLog: [],
   recentAuditEvents: [],
   localCommandLog: [],
 };
@@ -33,6 +35,12 @@ const signedInAuth: DesktopAuthState = {
   },
 };
 
+const signingInAuth: DesktopAuthState = {
+  status: "signing_in",
+  user: null,
+  organization: null,
+};
+
 function computerUseState(
   host: Partial<ComputerUseHostRuntimeState> = {},
   permissions: DesktopComputerUseState["permissions"] = {
@@ -45,6 +53,10 @@ function computerUseState(
     platform: "darwin",
     supported: true,
     permissions,
+    keepAwake: {
+      enabled: false,
+      active: false,
+    },
     host: {
       ...baseHostState,
       ...host,
@@ -73,11 +85,16 @@ function trayActions(
   return {
     showMainWindow: vi.fn(),
     startComputerUse: vi.fn(),
+    stopComputerUse: vi.fn(),
     refreshStatus: vi.fn(),
     openSignIn: vi.fn(),
     switchWorkspace: vi.fn(),
+    signOut: vi.fn(),
+    requestAccessibilityPermission: vi.fn(),
+    requestScreenRecordingPermission: vi.fn(),
     openAccessibilitySettings: vi.fn(),
     openScreenRecordingSettings: vi.fn(),
+    setKeepAwakeEnabled: vi.fn(),
     quit: vi.fn(),
     ...overrides,
   };
@@ -123,7 +140,21 @@ describe("desktop tray menu", () => {
       trayActions(),
     );
 
+    expect(menu.map((item) => item.label).filter((label) => label)).toEqual([
+      "Show Main Window",
+      "Workspace: Max & Zoe",
+      "Computer Use: Online",
+      "Keep Mac Awake",
+      "No Recent Commands",
+      "Quit",
+    ]);
     expect(findItem(menu, "Show Main Window")).toBeDefined();
+    expect(findItem(menu, "Keep Mac Awake")).toStrictEqual({
+      label: "Keep Mac Awake",
+      type: "checkbox",
+      checked: false,
+      click: expect.any(Function),
+    });
     expect(findItem(menu, "Computer Use: Online")).toBeDefined();
     expect(findItem(menu, "Workspace: Max & Zoe")).toBeDefined();
     expect(findItem(menu, "No Recent Commands")).toStrictEqual({
@@ -133,7 +164,32 @@ describe("desktop tray menu", () => {
     expect(findItem(menu, "Quit")).toBeDefined();
   });
 
-  it("enables starting Computer Use when idle and signed in", () => {
+  it("toggles keep-awake from the top-level menu", () => {
+    const setKeepAwakeEnabled = vi.fn();
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: {
+          ...computerUseState({ status: "online" }),
+          keepAwake: {
+            enabled: true,
+            active: true,
+          },
+        },
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions({ setKeepAwakeEnabled }),
+    );
+
+    const keepAwakeItem = findItem(menu, "Keep Mac Awake");
+
+    expect(keepAwakeItem.type).toBe("checkbox");
+    expect(keepAwakeItem.checked).toBe(true);
+    click(keepAwakeItem);
+    expect(setKeepAwakeEnabled).toHaveBeenCalledWith(false);
+  });
+
+  it("enables starting Computer Use when ready and signed in", () => {
     const startComputerUse = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
@@ -144,12 +200,53 @@ describe("desktop tray menu", () => {
       trayActions({ startComputerUse }),
     );
 
-    const computerUseMenu = submenu(findItem(menu, "Computer Use: Idle"));
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Ready"));
     const startItem = findItem(computerUseMenu, "Start Computer Use");
 
     expect(startItem.enabled).toBe(true);
+    expect(findItem(computerUseMenu, "Stop Computer Use").enabled).toBe(false);
     click(startItem);
     expect(startComputerUse).toHaveBeenCalledOnce();
+  });
+
+  it("enables stopping Computer Use while online", () => {
+    const stopComputerUse = vi.fn();
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "online" }),
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions({ stopComputerUse }),
+    );
+
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Online"));
+    const stopItem = findItem(computerUseMenu, "Stop Computer Use");
+
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(stopItem.enabled).toBe(true);
+    click(stopItem);
+    expect(stopComputerUse).toHaveBeenCalledOnce();
+  });
+
+  it("keeps stop enabled while Computer Use is recovering", () => {
+    const stopComputerUse = vi.fn();
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "recovering" }),
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions({ stopComputerUse }),
+    );
+
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Recovering"));
+    const stopItem = findItem(computerUseMenu, "Stop Computer Use");
+
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(stopItem.enabled).toBe(true);
+    click(stopItem);
+    expect(stopComputerUse).toHaveBeenCalledOnce();
   });
 
   it("shows sign-in next to disabled start when Computer Use needs auth", () => {
@@ -167,14 +264,59 @@ describe("desktop tray menu", () => {
       trayActions({ openSignIn }),
     );
 
-    const computerUseMenu = submenu(findItem(menu, "Computer Use: Idle"));
+    const computerUseMenu = submenu(
+      findItem(menu, "Computer Use: Sign in required"),
+    );
 
     expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
     click(findItem(computerUseMenu, "Sign in to Zero"));
     expect(openSignIn).toHaveBeenCalledOnce();
   });
 
+  it("shows signing in and disables start while auth is signing in", () => {
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "idle" }),
+        auth: signingInAuth,
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    const computerUseMenu = submenu(
+      findItem(menu, "Computer Use: Signing in..."),
+    );
+    expect(findItem(computerUseMenu, "Status: Signing in...").enabled).toBe(
+      false,
+    );
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(findItem(computerUseMenu, "Signing in...").enabled).toBe(false);
+  });
+
+  it("keeps stale signed-in auth from showing ready while auth is loading", () => {
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "idle" }),
+        auth: signedInAuth,
+        authLoading: true,
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    const computerUseMenu = submenu(
+      findItem(menu, "Computer Use: Signing in..."),
+    );
+    expect(findItem(computerUseMenu, "Status: Signing in...").enabled).toBe(
+      false,
+    );
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(findItem(menu, "Signing in to Zero...")).toBeDefined();
+  });
+
   it("shows permission actions when Computer Use is blocked locally", () => {
+    const requestAccessibilityPermission = vi.fn();
+    const requestScreenRecordingPermission = vi.fn();
     const openAccessibilitySettings = vi.fn();
     const openScreenRecordingSettings = vi.fn();
     const menu = buildDesktopTrayMenuItems(
@@ -187,6 +329,8 @@ describe("desktop tray menu", () => {
         authError: null,
       },
       trayActions({
+        requestAccessibilityPermission,
+        requestScreenRecordingPermission,
         openAccessibilitySettings,
         openScreenRecordingSettings,
       }),
@@ -195,6 +339,41 @@ describe("desktop tray menu", () => {
     const computerUseMenu = submenu(
       findItem(menu, "Computer Use: Needs permissions"),
     );
+    click(findItem(computerUseMenu, "Request Accessibility Permission"));
+    click(findItem(computerUseMenu, "Accessibility Settings"));
+    click(findItem(computerUseMenu, "Request Screen Recording Permission"));
+    click(findItem(computerUseMenu, "Screen Recording Settings"));
+
+    expect(requestAccessibilityPermission).toHaveBeenCalledOnce();
+    expect(requestScreenRecordingPermission).toHaveBeenCalledOnce();
+    expect(openAccessibilitySettings).toHaveBeenCalledOnce();
+    expect(openScreenRecordingSettings).toHaveBeenCalledOnce();
+  });
+
+  it("shows ready permissions and keeps settings available", () => {
+    const openAccessibilitySettings = vi.fn();
+    const openScreenRecordingSettings = vi.fn();
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "idle" }),
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions({
+        openAccessibilitySettings,
+        openScreenRecordingSettings,
+      }),
+    );
+
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Ready"));
+    expect(findItem(computerUseMenu, "Status: Ready").enabled).toBe(false);
+    expect(findItem(computerUseMenu, "Accessibility: Ready").enabled).toBe(
+      false,
+    );
+    expect(findItem(computerUseMenu, "Screen Recording: Ready").enabled).toBe(
+      false,
+    );
+
     click(findItem(computerUseMenu, "Accessibility Settings"));
     click(findItem(computerUseMenu, "Screen Recording Settings"));
 
@@ -204,13 +383,14 @@ describe("desktop tray menu", () => {
 
   it("shows signed-in account and workspace actions", () => {
     const switchWorkspace = vi.fn();
+    const signOut = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
         computerUse: computerUseState(),
         auth: signedInAuth,
         authError: null,
       },
-      trayActions({ switchWorkspace }),
+      trayActions({ switchWorkspace, signOut }),
     );
 
     const authMenu = submenu(findItem(menu, "Workspace: Max & Zoe"));
@@ -220,7 +400,14 @@ describe("desktop tray menu", () => {
     );
     expect(findItem(authMenu, "Workspace: Max & Zoe").enabled).toBe(false);
     click(findItem(authMenu, "Switch Workspace"));
+    click(findItem(authMenu, "Sign out"));
     expect(switchWorkspace).toHaveBeenCalledOnce();
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(
+      authMenu.some((item) => {
+        return item.label === "Sign in again";
+      }),
+    ).toBe(false);
   });
 
   it("shows sign-in action when signed out", () => {

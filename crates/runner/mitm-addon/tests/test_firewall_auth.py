@@ -12,6 +12,7 @@ import pytest
 
 import auth
 import matching
+from aws_sigv4 import AwsSigV4Credentials
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
     cached_headers,
@@ -47,6 +48,7 @@ def _auth_success(
     refreshed_secrets: list[str] | None = None,
     base: str | None = None,
     query: dict[str, str] | None = None,
+    aws_sigv4: AwsSigV4Credentials | None = None,
 ) -> auth._FirewallAuthSuccess:
     return auth._FirewallAuthSuccess(
         payload=auth._FirewallAuthPayload(
@@ -54,6 +56,7 @@ def _auth_success(
             resolved_secrets=resolved_secrets or [],
             base=base,
             query=query,
+            aws_sigv4=aws_sigv4,
         ),
         expires_at=expires_at,
         refreshed_connectors=refreshed_connectors or [],
@@ -202,6 +205,7 @@ class TestGetFirewallHeaders:
             "vars_map": None,
             "auth_base": None,
             "auth_query": None,
+            "auth_aws_sigv4": None,
             "firewall_billable": False,
             "force_refresh": False,
         }
@@ -744,6 +748,177 @@ class TestHandleFirewallRequest:
         )
         assert "Firewall https://api.github.com: api.github.com" in log_text
 
+    async def test_standard_auth_filters_unsafe_resolved_headers(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
+        flow = _firewall_flow(
+            real_flow,
+            path="/repos?existing=1",
+        )
+        api_entry = _api_entry(
+            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        token_meta = _token_meta(
+            headers={
+                "Connection": "Authorization, X-Injected",
+                "Host": "evil.example.com",
+                "Content-Length": "999",
+                "Transfer-Encoding": "chunked",
+                "Keep-Alive": "timeout=5",
+                "Proxy-Authenticate": "Basic realm=proxy",
+                "Proxy-Authorization": "Basic secret",
+                "Proxy-Connection": "keep-alive",
+                "TE": "trailers",
+                "Trailer": "X-Trailer",
+                "Upgrade": "websocket",
+                "Authorization": "Bearer real-token",
+                "X-Injected": "trusted",
+            },
+        )
+        token_meta["query"] = {"api_key": "secret"}
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        header_names = {name.lower() for name, _value in flow.request.headers.items(multi=True)}
+        assert flow.request.headers["Host"] == "api.github.com"
+        assert "connection" not in header_names
+        assert "content-length" not in header_names
+        assert "transfer-encoding" not in header_names
+        assert "keep-alive" not in header_names
+        assert "proxy-authenticate" not in header_names
+        assert "proxy-authorization" not in header_names
+        assert "proxy-connection" not in header_names
+        assert "te" not in header_names
+        assert "trailer" not in header_names
+        assert "upgrade" not in header_names
+        assert flow.request.headers["Authorization"] == "Bearer real-token"
+        assert flow.request.headers["X-Injected"] == "trusted"
+        assert flow.request.query["existing"] == "1"
+        assert flow.request.query["api_key"] == "secret"
+
+    async def test_standard_auth_filters_unsafe_headers_before_aws_sigv4_signing(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        placeholder_authorization = (
+            "AWS4-HMAC-SHA256 "
+            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+            "SignedHeaders=content-type;host;x-amz-date, "
+            "Signature=placeholder"
+        )
+        flow = real_flow(
+            with_response=False,
+            host="sts.amazonaws.com",
+            path="/",
+            method="POST",
+            request_body=b"Action=GetCallerIdentity&Version=2011-06-15",
+            request_headers=headers(
+                ("Host", "sts.amazonaws.com"),
+                ("Content-Type", "application/x-www-form-urlencoded"),
+                ("X-Amz-Date", "20260101T000000Z"),
+                ("Authorization", placeholder_authorization),
+            ),
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = _api_entry(
+            base="https://sts.amazonaws.com",
+            auth_config={
+                "headers": {"Host": "${{ secrets.UNSAFE_HOST }}"},
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                },
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry, rule="POST /", rel_path="/")
+        token_meta = _token_meta(
+            headers={
+                "Host": "evil.example.com",
+                "X-Amz-Meta-Test": "trusted-meta",
+            },
+        )
+        token_meta["aws_sigv4"] = AwsSigV4Credentials(
+            "AKIDEXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+            "real-session-token",
+        )
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        assert flow.request.headers["host"] == "sts.amazonaws.com"
+        assert flow.request.headers["x-amz-meta-test"] == "trusted-meta"
+        assert flow.request.headers["x-amz-security-token"] == "real-session-token"
+        assert (
+            "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"
+            in flow.request.headers["authorization"]
+        )
+        assert "evil.example.com" not in flow.request.headers["authorization"]
+
+    @pytest.mark.parametrize(
+        "resolved_headers",
+        [
+            pytest.param({"": "value"}, id="empty-name"),
+            pytest.param({"Bad\nName": "value"}, id="newline-name"),
+            pytest.param({":authority": "evil.example.com"}, id="pseudo-header-name"),
+            pytest.param({"X-Test": "bad\r\nX-Injected: value"}, id="newline-value"),
+        ],
+    )
+    async def test_standard_auth_rejects_malformed_resolved_headers(
+        self,
+        resolved_headers: dict[str, str],
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        token_meta = _token_meta(
+            headers={
+                **resolved_headers,
+                "Authorization": "Bearer real-token",
+            },
+        )
+        token_meta["query"] = {"api_key": "secret"}
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "invalid_resolved_auth_header"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "invalid_resolved_auth_header"
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+
     async def test_missing_billable_firewalls_falls_back_to_empty(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
@@ -1001,6 +1176,49 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["connectors"] == ["codex-oauth-token"]
         assert body["failureReason"] == "upstream_provider"
+
+    async def test_structured_api_4xx_error_blocks_without_auth_mutation(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        api_error = auth.FirewallAuthApiError(
+            status=403,
+            code="FORBIDDEN",
+            message="Firewall auth denied",
+        )
+
+        with (
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(side_effect=api_error),
+            ),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        assert flow.metadata["firewall_action"] == "BLOCK"
+        assert flow.metadata["firewall_error"] == "FORBIDDEN"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "FORBIDDEN"
+        assert body["message"] == "Firewall auth denied"
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
 
     async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
@@ -1309,6 +1527,11 @@ class TestFetchFirewallHeaders:
                 },
                 "base": "https://example.com/webhook/secret",
                 "query": {"api_key": "resolved-key"},
+                "awsSigv4": {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": "session-token",
+                },
                 "expiresAt": expires_at,
                 "resolvedSecrets": ["API_TOKEN"],
                 "refreshedConnectors": ["notion"],
@@ -1330,6 +1553,11 @@ class TestFetchFirewallHeaders:
         }
         assert result.payload.base == "https://example.com/webhook/secret"
         assert result.payload.query == {"api_key": "resolved-key"}
+        assert result.payload.aws_sigv4 == AwsSigV4Credentials(
+            "access-key-id",
+            "secret-access-key",
+            "session-token",
+        )
         assert result.expires_at == expires_at
         assert result.payload.resolved_secrets == ["API_TOKEN"]
         assert result.refreshed_connectors == ["notion"]
@@ -1354,6 +1582,11 @@ class TestFetchFirewallHeaders:
                 vars_map={"TEAM": "vm0"},
                 auth_base="${{ secrets.WEBHOOK_URL }}",
                 auth_query={"api_key": "${{ secrets.API_KEY }}"},
+                auth_aws_sigv4={
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                },
                 firewall_billable=True,
                 force_refresh=True,
             )
@@ -1366,6 +1599,11 @@ class TestFetchFirewallHeaders:
         assert body["vars"] == {"TEAM": "vm0"}
         assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
         assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
+        assert body["authAwsSigv4"] == {
+            "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+            "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+        }
         assert body["firewallBillable"] is True
         assert body["forceRefresh"] is True
         assert "firewallName" not in body

@@ -22,7 +22,6 @@ import {
   IconWand,
 } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
   Tabs,
@@ -81,7 +80,7 @@ import {
 } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
-import { currentAgent$ } from "../../signals/agent.ts";
+import { currentAgent$, currentAgentId$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
@@ -95,7 +94,6 @@ import {
   upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   allConnectorTypes$,
   matchesConnectorSearch,
@@ -460,12 +458,11 @@ interface ChangedUserGrantPolicy {
 }
 
 function selectedGrantExpiresIn(
-  expirationEnabled: boolean,
   expiresInByPermission: GrantExpirationSelections,
   permission: string,
   action: UserPermissionGrantAction,
 ): UserPermissionGrantExpiresIn | undefined {
-  if (!expirationEnabled || action !== "allow") {
+  if (action !== "allow") {
     return undefined;
   }
   return expiresInByPermission[permission];
@@ -488,13 +485,11 @@ function addNamedPolicyChanges({
   changes,
   initial,
   current,
-  expirationEnabled,
   expiresInByPermission,
 }: {
   changes: Map<string, ChangedUserGrantPolicy>;
   initial: FirewallPolicies[ConnectorType] | undefined;
   current: FirewallPolicies[ConnectorType] | undefined;
-  expirationEnabled: boolean;
   expiresInByPermission: GrantExpirationSelections;
 }): void {
   for (const [permission, action] of Object.entries(current?.policies ?? {})) {
@@ -504,12 +499,7 @@ function addNamedPolicyChanges({
         changes,
         permission,
         grantAction,
-        selectedGrantExpiresIn(
-          expirationEnabled,
-          expiresInByPermission,
-          permission,
-          grantAction,
-        ),
+        selectedGrantExpiresIn(expiresInByPermission, permission, grantAction),
       );
     }
   }
@@ -519,13 +509,11 @@ function addUnknownPolicyChange({
   changes,
   initial,
   current,
-  expirationEnabled,
   expiresInByPermission,
 }: {
   changes: Map<string, ChangedUserGrantPolicy>;
   initial: FirewallPolicies[ConnectorType] | undefined;
   current: FirewallPolicies[ConnectorType] | undefined;
-  expirationEnabled: boolean;
   expiresInByPermission: GrantExpirationSelections;
 }): void {
   const unknownPolicy = current?.unknownPolicy;
@@ -538,7 +526,6 @@ function addUnknownPolicyChange({
     UNKNOWN_PERMISSION_GRANT,
     grantAction,
     selectedGrantExpiresIn(
-      expirationEnabled,
       expiresInByPermission,
       UNKNOWN_PERMISSION_GRANT,
       grantAction,
@@ -637,14 +624,12 @@ function changedUserGrantPolicies({
   initialPolicies,
   initialGrants,
   policies,
-  expirationEnabled,
   expiresInByPermission,
 }: {
   connectorType: ConnectorType;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
   policies: FirewallPolicies;
-  expirationEnabled: boolean;
   expiresInByPermission: GrantExpirationSelections;
 }): ChangedUserGrantPolicy[] {
   const initial = resolveFirewallPolicies(initialPolicies, [connectorType])?.[
@@ -657,33 +642,29 @@ function changedUserGrantPolicies({
     changes,
     initial,
     current,
-    expirationEnabled,
     expiresInByPermission,
   });
   addUnknownPolicyChange({
     changes,
     initial,
     current,
-    expirationEnabled,
     expiresInByPermission,
   });
 
-  if (expirationEnabled) {
-    addExpirationOnlyChanges({
-      changes,
-      connectorType,
-      initialGrants,
-      current,
-      expiresInByPermission,
-    });
-    addDefaultAllowExpirationChanges({
-      changes,
-      connectorType,
-      initialGrants,
-      current,
-      expiresInByPermission,
-    });
-  }
+  addExpirationOnlyChanges({
+    changes,
+    connectorType,
+    initialGrants,
+    current,
+    expiresInByPermission,
+  });
+  addDefaultAllowExpirationChanges({
+    changes,
+    connectorType,
+    initialGrants,
+    current,
+    expiresInByPermission,
+  });
 
   return [...changes.values()];
 }
@@ -705,7 +686,6 @@ async function saveUserGrantPolicies({
   initialPolicies,
   initialGrants,
   policies,
-  expirationEnabled,
   expiresInByPermission,
   resetPending,
   pageSignal,
@@ -717,7 +697,6 @@ async function saveUserGrantPolicies({
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
   policies: FirewallPolicies;
-  expirationEnabled: boolean;
   expiresInByPermission: GrantExpirationSelections;
   resetPending: boolean;
   pageSignal: AbortSignal;
@@ -744,7 +723,6 @@ async function saveUserGrantPolicies({
     initialPolicies: basePolicies,
     initialGrants: baseGrants,
     policies,
-    expirationEnabled,
     expiresInByPermission,
   })) {
     await upsertGrant(
@@ -766,7 +744,6 @@ async function saveDrawerPolicies({
   initialPolicies,
   initialGrants,
   policies,
-  expirationEnabled,
   expiresInByPermission,
   resetPending,
   pageSignal,
@@ -778,7 +755,6 @@ async function saveDrawerPolicies({
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
   policies: FirewallPolicies;
-  expirationEnabled: boolean;
   expiresInByPermission: GrantExpirationSelections;
   resetPending: boolean;
   pageSignal: AbortSignal;
@@ -791,7 +767,6 @@ async function saveDrawerPolicies({
     initialPolicies,
     initialGrants,
     policies,
-    expirationEnabled,
     expiresInByPermission,
     resetPending,
     pageSignal,
@@ -989,7 +964,6 @@ function AgentPermissionsDrawer({
   displayName,
   initialPolicies,
   initialGrants,
-  expirationEnabled,
   resetEnabled,
   readOnly,
   onApply,
@@ -1000,7 +974,6 @@ function AgentPermissionsDrawer({
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
-  expirationEnabled: boolean;
   resetEnabled: boolean;
   readOnly: boolean;
   onApply: (
@@ -1020,7 +993,6 @@ function AgentPermissionsDrawer({
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
-      expirationEnabled={expirationEnabled}
       resetEnabled={resetEnabled}
       readOnly={readOnly}
       onApply={onApply}
@@ -1063,11 +1035,6 @@ function JobPermissionsTab({
       ? permissionGrantsToFirewallPolicies(userGrants)
       : null;
   const drawerInitialPolicies = userGrantPolicies ?? {};
-  const features = useLastResolved(featureSwitch$);
-  const expirationEnabled =
-    features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
-  const resetEnabled =
-    features?.[FeatureSwitchKey.ConnectorPermissionReset] ?? false;
   const [, upsertGrant] = useLoadableSet(upsertUserPermissionGrant$);
   const [, resetGrantPolicies] = useLoadableSet(resetUserPermissionGrants$);
   const connectorType = useGet(permConnectorType$);
@@ -1148,8 +1115,7 @@ function JobPermissionsTab({
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
             initialGrants={userGrants}
-            expirationEnabled={expirationEnabled}
-            resetEnabled={resetEnabled}
+            resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (
               policies,
@@ -1165,7 +1131,6 @@ function JobPermissionsTab({
                 initialPolicies: drawerInitialPolicies,
                 initialGrants: userGrants,
                 policies,
-                expirationEnabled,
                 expiresInByPermission,
                 resetPending: resetConnectorGrants,
                 pageSignal,
@@ -1481,7 +1446,9 @@ function useTabVisibility(agentId: string, ownerId: string) {
 export function ZeroJobDetailPage() {
   const detailLoadable = useLoadable(agentDetail$);
   const error = loadableErrorMessage(detailLoadable);
+  const currentAgentId = useGet(currentAgentId$);
   const fields = useAgentFields();
+  const errorAgentId = fields.agentId || currentAgentId || "";
   const {
     isDefaultAgent,
     hideProfileAndInstructions,
@@ -1495,7 +1462,7 @@ export function ZeroJobDetailPage() {
   }
 
   if (error) {
-    return <DetailError error={error} agentId={fields.agentId} />;
+    return <DetailError error={error} agentId={errorAgentId} />;
   }
 
   return (

@@ -34,7 +34,7 @@ with:
 pnpm desktop:dev
 ```
 
-This packages and runs `Zero Dev.app` with `VM0_DESKTOP_PLATFORM_URL` set to the
+This packages and runs `Zero CU Dev.app` with `VM0_DESKTOP_PLATFORM_URL` set to the
 local proxy. Use it for sign-in callback, URL scheme, and permission testing.
 Non-CI packaged desktop builds require the `Developer ID Application: Max &
 Zoe, Inc. (C5UWSXYB67)` signing identity in the local keychain. This keeps the

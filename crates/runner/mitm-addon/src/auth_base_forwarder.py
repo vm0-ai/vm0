@@ -6,12 +6,15 @@ the low-level HTTP details for that forward path.
 """
 
 import asyncio
+import contextvars
 import errno
 import http.client as http_client
 import ipaddress
 import socket
 import ssl
 import urllib.parse
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import suppress
 from typing import NamedTuple
 
 from mitmproxy import http
@@ -29,20 +32,47 @@ HOP_BY_HOP: frozenset[str] = frozenset(
         "upgrade",
     )
 )
+_RESOLVED_AUTH_HEADER_EXCLUDED: frozenset[str] = HOP_BY_HOP | frozenset(
+    ("host", "content-length", "transfer-encoding")
+)
+_HTTP_TOKEN_CHARS: frozenset[str] = frozenset(
+    "!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+)
+_ASCII_CONTROL_MAX = 0x1F
+_ASCII_DELETE = 0x7F
 DEFAULT_HTTPS_PORT = 443
 MAX_AUTH_BASE_REQUEST_BODY_BYTES = 32 * 1024 * 1024
 MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
 
-_forward_request_semaphore_state: tuple[asyncio.AbstractEventLoop, asyncio.Semaphore] | None = None
+_forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
+_forward_request_admission_state: (
+    tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
+) = None
+_forward_request_accepting = True
 
 
 def reset_forward_request_state_for_tests() -> None:
-    """Reset per-loop forwarder state between tests."""
-    global _forward_request_semaphore_state
+    """Reset forwarder worker state between tests."""
+    global _forward_request_accepting
 
-    _forward_request_semaphore_state = None
+    shutdown_forward_request_executor(wait=True)
+    _forward_request_accepting = True
+
+
+def shutdown_forward_request_executor(*, wait: bool) -> None:
+    """Shut down auth.base forwarding workers."""
+    global _forward_request_executor_state
+    global _forward_request_admission_state
+    global _forward_request_accepting
+
+    _forward_request_accepting = False
+    _forward_request_admission_state = None
+    state = _forward_request_executor_state
+    _forward_request_executor_state = None
+    if state is not None:
+        state[1].shutdown(wait=wait, cancel_futures=True)
 
 
 class ForwardedResponseTooLargeError(Exception):
@@ -55,6 +85,10 @@ class ForwardedRequestTooLargeError(Exception):
 
 class UnsafeAuthBaseDestinationError(Exception):
     """Raised when an auth.base upstream destination is not public internet."""
+
+
+class InvalidResolvedAuthHeaderError(Exception):
+    """Raised when resolved auth data contains an invalid HTTP header."""
 
 
 class _ValidatedAddress(NamedTuple):
@@ -182,11 +216,40 @@ def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
     )
 
 
+def _validate_resolved_auth_header_pair(header_name: str, header_value: str) -> None:
+    if (
+        not isinstance(header_name, str)
+        or not header_name
+        or any(char not in _HTTP_TOKEN_CHARS for char in header_name)
+    ):
+        raise InvalidResolvedAuthHeaderError("Resolved auth header name is invalid")
+    if (
+        not isinstance(header_value, str)
+        or any(ord(char) <= _ASCII_CONTROL_MAX and char != "\t" for char in header_value)
+        or chr(_ASCII_DELETE) in header_value
+    ):
+        raise InvalidResolvedAuthHeaderError(f"Resolved auth header {header_name} value is invalid")
+    try:
+        header_value.encode("latin-1")
+    except UnicodeEncodeError as exc:
+        raise InvalidResolvedAuthHeaderError(
+            f"Resolved auth header {header_name} value is invalid"
+        ) from exc
+
+
+def resolved_auth_header_pairs(headers) -> list[tuple[str, str]]:
+    """Return resolved auth headers safe to inject into an outbound request."""
+    pairs = header_pairs(headers)
+    for name, value in pairs:
+        _validate_resolved_auth_header_pair(name, value)
+    return [
+        (name, value) for name, value in pairs if name.lower() not in _RESOLVED_AUTH_HEADER_EXCLUDED
+    ]
+
+
 def trusted_request_header_pairs(headers) -> list[tuple[str, str]]:
     """Return trusted injected request headers safe to append after client filtering."""
-    excluded = set(HOP_BY_HOP)
-    excluded.update({"host", "content-length", "transfer-encoding"})
-    return [(name, value) for name, value in header_pairs(headers) if name.lower() not in excluded]
+    return resolved_auth_header_pairs(headers)
 
 
 def _headers_from_pairs(pairs: list[tuple[str, str]]) -> http.Headers:
@@ -343,16 +406,71 @@ def _forward_request_sync(
         conn.close()
 
 
-def _get_forward_request_semaphore() -> asyncio.Semaphore:
-    global _forward_request_semaphore_state
+def _get_forward_request_executor() -> ThreadPoolExecutor:
+    global _forward_request_executor_state
 
-    loop = asyncio.get_running_loop()
-    if _forward_request_semaphore_state is None or _forward_request_semaphore_state[0] is not loop:
-        _forward_request_semaphore_state = (
-            loop,
-            asyncio.Semaphore(MAX_CONCURRENT_AUTH_BASE_FORWARDS),
+    if not _forward_request_accepting:
+        raise RuntimeError("auth.base forwarding executor is shut down")
+    max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
+    if _forward_request_executor_state is None or _forward_request_executor_state[0] != max_workers:
+        state = _forward_request_executor_state
+        _forward_request_executor_state = (
+            max_workers,
+            ThreadPoolExecutor(
+                max_workers=max_workers,
+                thread_name_prefix="auth-base-forward",
+            ),
         )
-    return _forward_request_semaphore_state[1]
+        if state is not None:
+            state[1].shutdown(wait=True, cancel_futures=True)
+    return _forward_request_executor_state[1]
+
+
+def _get_forward_request_admission_semaphore() -> asyncio.Semaphore:
+    global _forward_request_admission_state
+
+    if not _forward_request_accepting:
+        raise RuntimeError("auth.base forwarding executor is shut down")
+    loop = asyncio.get_running_loop()
+    max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
+    if (
+        _forward_request_admission_state is None
+        or _forward_request_admission_state[0] is not loop
+        or _forward_request_admission_state[1] != max_workers
+    ):
+        _forward_request_admission_state = (
+            loop,
+            max_workers,
+            asyncio.Semaphore(max_workers),
+        )
+    return _forward_request_admission_state[2]
+
+
+def _can_submit_forward_request(semaphore: asyncio.Semaphore) -> bool:
+    return (
+        _forward_request_accepting
+        and _forward_request_admission_state is not None
+        and _forward_request_admission_state[2] is semaphore
+    )
+
+
+def _release_forward_request_slot(
+    loop: asyncio.AbstractEventLoop,
+    semaphore: asyncio.Semaphore,
+    _future: Future[tuple[int, bytes, http.Headers]],
+) -> None:
+    with suppress(RuntimeError):
+        loop.call_soon_threadsafe(semaphore.release)
+
+
+def _forward_request_sync_in_context(
+    context: contextvars.Context,
+    url: str,
+    method: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+) -> tuple[int, bytes, http.Headers]:
+    return context.run(_forward_request_sync, url, method, headers, body)
 
 
 async def forward_request(
@@ -363,5 +481,34 @@ async def forward_request(
 ) -> tuple[int, bytes, http.Headers]:
     """Async wrapper for _forward_request_sync."""
     _validate_request_body_size(body)
-    async with _get_forward_request_semaphore():
-        return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)
+    loop = asyncio.get_running_loop()
+    semaphore = _get_forward_request_admission_semaphore()
+    context = contextvars.copy_context()
+    await semaphore.acquire()
+    if not _can_submit_forward_request(semaphore):
+        semaphore.release()
+        raise RuntimeError("auth.base forwarding executor is shut down")
+    try:
+        future = _get_forward_request_executor().submit(
+            _forward_request_sync_in_context,
+            context,
+            url,
+            method,
+            headers,
+            body,
+        )
+    except Exception:
+        semaphore.release()
+        raise
+    future.add_done_callback(
+        lambda completed_future: _release_forward_request_slot(
+            loop,
+            semaphore,
+            completed_future,
+        )
+    )
+    try:
+        return await asyncio.wrap_future(future, loop=loop)
+    except asyncio.CancelledError:
+        future.cancel()
+        raise

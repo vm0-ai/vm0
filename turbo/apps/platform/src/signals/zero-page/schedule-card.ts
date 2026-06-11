@@ -34,10 +34,6 @@ export const { get$: scheduleViewMode$, set$: setScheduleViewMode$ } = cell<
   "list" | "calendar"
 >("list");
 
-export const { get$: internalScheduleList$, set$: setScheduleList$ } = cell<
-  ScheduleEntry[]
->([]);
-
 const addScheduleOpenState$ = state(false);
 export const addScheduleOpen$ = computed((get) => {
   return get(addScheduleOpenState$);

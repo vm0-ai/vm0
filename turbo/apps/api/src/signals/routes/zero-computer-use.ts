@@ -42,6 +42,16 @@ const computerUseDisabled = Object.freeze({
   }),
 });
 
+const computerUseHostNotAuthorized = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Computer-use host is not authorized for this run",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 const invalidComputerUseToken = Object.freeze({
   status: 401 as const,
   body: Object.freeze({
@@ -242,6 +252,12 @@ const commandCreateInner$ = command(
       return bodyResult.response;
     }
 
+    const targetHostId =
+      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "zero" && !targetHostId) {
+      return computerUseHostNotAuthorized;
+    }
+
     const result = await set(
       createComputerUseCommand$,
       {
@@ -251,7 +267,9 @@ const commandCreateInner$ = command(
         payload: bodyResult.data,
         timeoutMs: bodyResult.data.timeoutMs,
         requiresApproval: false,
-        ...(auth.tokenType === "zero" ? { runId: auth.runId } : {}),
+        ...(auth.tokenType === "zero"
+          ? { runId: auth.runId, targetHostId }
+          : {}),
       },
       signal,
     );
@@ -294,6 +312,12 @@ const writeCommandCreateInner$ = command(
       return bodyResult.response;
     }
 
+    const targetHostId =
+      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "zero" && !targetHostId) {
+      return computerUseHostNotAuthorized;
+    }
+
     const result = await set(
       createComputerUseCommand$,
       {
@@ -303,7 +327,9 @@ const writeCommandCreateInner$ = command(
         payload: bodyResult.data,
         timeoutMs: bodyResult.data.timeoutMs,
         requiresApproval: false,
-        ...(auth.tokenType === "zero" ? { runId: auth.runId } : {}),
+        ...(auth.tokenType === "zero"
+          ? { runId: auth.runId, targetHostId }
+          : {}),
       },
       signal,
     );
@@ -338,9 +364,18 @@ const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const params = get(commandGetParams$);
+  const hostId = auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
+  if (auth.tokenType === "zero" && !hostId) {
+    return computerUseHostNotAuthorized;
+  }
   const result = await set(
     getComputerUseCommand$,
-    { orgId: auth.orgId, userId: auth.userId, commandId: params.commandId },
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      commandId: params.commandId,
+      ...(hostId ? { hostId } : {}),
+    },
     signal,
   );
   signal.throwIfAborted();
@@ -363,9 +398,19 @@ const screenshotGetInner$ = command(
     signal.throwIfAborted();
 
     const params = get(screenshotGetParams$);
+    const hostId =
+      auth.tokenType === "zero" ? auth.computerUseHostId : undefined;
+    if (auth.tokenType === "zero" && !hostId) {
+      return computerUseHostNotAuthorized;
+    }
     const screenshot = await set(
       getComputerUseCommandScreenshot$,
-      { orgId: auth.orgId, userId: auth.userId, commandId: params.commandId },
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        commandId: params.commandId,
+        ...(hostId ? { hostId } : {}),
+      },
       signal,
     );
     signal.throwIfAborted();

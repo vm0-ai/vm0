@@ -36,7 +36,9 @@ import {
   connectorAuthMethodRefHasAccessKind,
   connectorAuthMethodRefHasGrantKind,
   connectorAuthMethodRefHasRevokeKind,
+  connectorAuthCodeCallbacksUseOnlyApiOrigin,
   getAvailableConnectorAuthMethodIds,
+  getConnectorAuthMethodAuthCodeCallbackOrigin,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
@@ -52,8 +54,8 @@ import {
   getConnectorAuthMethodDeviceAuthStartOptionsConfig,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodRuntimeMetadata,
-  getConnectorGrantOutputSecretName,
-  getConnectorRefreshOutputSecretName,
+  getConnectorGrantOutputTarget,
+  getConnectorRefreshOutputTarget,
   getConnectorStoredSecretDisplayInfo,
   getDiagnosticConnectorTypeForRuntimeEnvName,
   resolveConnectorAuthClientForMethod,
@@ -75,6 +77,7 @@ import {
   type ConnectorAuthClientForMethod,
   type ConnectorAuthMethodRef,
   type ConnectorEnvReader,
+  type ConnectorOutputTarget,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
@@ -119,6 +122,16 @@ function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
 }
 
 const server = setupServer();
+
+function connectorSecretTargetName(
+  target: ConnectorOutputTarget | undefined,
+): string | undefined {
+  return target?.kind === "connector-secret" ? target.name : undefined;
+}
+
+function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
+  return `${target.kind}:${target.name}`;
+}
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
 const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
 const STRIPE_CLI_BROWSER_URL =
@@ -180,6 +193,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   asana: "https://app.asana.com/-/oauth_authorize",
   canva: "https://www.canva.com/api/oauth/authorize",
   close: "https://app.close.com/oauth2/authorize/",
+  cloudflare: "https://dash.cloudflare.com/oauth2/auth",
   deel: "https://app.deel.com/oauth2/authorize",
   docusign: "https://account-d.docusign.com/oauth/auth",
   dropbox: "https://www.dropbox.com/oauth2/authorize",
@@ -188,10 +202,13 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   github: "https://github.com/login/oauth/authorize",
   gmail: "https://accounts.google.com/o/oauth2/v2/auth",
   "google-ads": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-analytics": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-calendar": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-cloud": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-docs": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-drive": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-meet": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-search-console": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-sheets": "https://accounts.google.com/o/oauth2/v2/auth",
   gumroad: "https://gumroad.com/oauth/authorize",
   hubspot: "https://app.hubspot.com/oauth/authorize",
@@ -200,6 +217,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   mailchimp: "https://login.mailchimp.com/oauth2/authorize",
   mercury: "https://oauth2.mercury.com/oauth2/auth",
   "meta-ads": "https://www.facebook.com/v22.0/dialog/oauth",
+  "tiktok-ads": "https://business-api.tiktok.com/portal/auth",
   monday: "https://auth.monday.com/oauth2/authorize",
   neon: "https://oauth2.neon.tech/oauth2/auth",
   notion: "https://api.notion.com/v1/oauth/authorize",
@@ -904,11 +922,19 @@ describe("connector selected auth method capability checks", () => {
       getConnectorAuthMethodEnvBindings("test-oauth", "api"),
     ).toStrictEqual({
       TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+      TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
+    });
+    expect(
+      getConnectorAuthMethodEnvBindings("test-oauth", "oauth"),
+    ).toStrictEqual({
+      TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+      TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
     });
     expect(
       getConnectorAuthMethodEnvBindings("test-oauth", "api-token"),
     ).toStrictEqual({
       TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+      TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
     });
 
     const authClient = resolveConnectorAuthClientForMethod(
@@ -1269,11 +1295,11 @@ describe("connector selected auth method capability checks", () => {
   it("keeps test OAuth device provider access secrets method-specific", () => {
     expect(
       getConnectorAuthMethodGrantMetadata("test-oauth-device", "oauth")?.outputs
-        .accessToken?.secretName,
+        .accessToken?.target.name,
     ).toBe(TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME);
     expect(
       getConnectorAuthMethodGrantMetadata("test-oauth-device", "api")?.outputs
-        .accessToken?.secretName,
+        .accessToken?.target.name,
     ).toBe(TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME);
   });
 
@@ -2455,6 +2481,72 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["api-token"]);
   });
 
+  it("exposes Meta Ads OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("meta-ads", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("meta-ads", {
+        [FeatureSwitchKey.MetaAdsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
+  it("exposes TikTok Ads OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("tiktok-ads", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("tiktok-ads", {
+        [FeatureSwitchKey.TikTokAdsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
+  it("exposes Google Search Console OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("google-search-console", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("google-search-console", {
+        [FeatureSwitchKey.GoogleSearchConsoleConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
+  it("exposes Cloudflare OAuth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+      "api-token",
+    ]);
+    expect(
+      getAvailableConnectorAuthMethodIds("cloudflare", {
+        [FeatureSwitchKey.CloudflareConnector]: true,
+      }),
+    ).toStrictEqual(["oauth", "api-token"]);
+  });
+
+  it("exposes Google Maps API-token auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("google-maps", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("google-maps", {
+        [FeatureSwitchKey.GoogleMapsConnector]: true,
+      }),
+    ).toStrictEqual(["api-token"]);
+  });
+
+  it("exposes Google Analytics OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("google-analytics", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("google-analytics", {
+        [FeatureSwitchKey.GoogleAnalyticsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
   it("exposes Ashby API-token auth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([
       "api-token",
@@ -2477,6 +2569,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     expect(getAvailableConnectorAuthMethodIds("lark", {})).toStrictEqual([
       "api-token",
     ]);
+  });
+
+  it("exposes Google Cloud OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("google-cloud", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("google-cloud", {
+        [FeatureSwitchKey.GoogleCloudConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
   });
 
   it("exposes Doubao API-token auth without a feature switch", () => {
@@ -2525,11 +2628,17 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       outputs: {
         accessToken: {
           valueRef: "$secrets.STRIPE_ACCESS_TOKEN",
-          secretName: "STRIPE_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "STRIPE_ACCESS_TOKEN",
+          },
         },
         refreshToken: {
           valueRef: "$secrets.STRIPE_REFRESH_TOKEN",
-          secretName: "STRIPE_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "STRIPE_REFRESH_TOKEN",
+          },
         },
       },
       refreshableSecrets: ["STRIPE_ACCESS_TOKEN"],
@@ -2583,9 +2692,9 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
           },
         },
         signinRegion: {
-          valueRef: "$secrets.AWS_SIGNIN_REGION",
+          valueRef: "$vars.AWS_SIGNIN_REGION",
           source: {
-            kind: "connector-secret",
+            kind: "connector-variable",
             name: "AWS_SIGNIN_REGION",
           },
         },
@@ -2593,19 +2702,31 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       outputs: {
         refreshToken: {
           valueRef: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
-          secretName: "AWS_LOGIN_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "AWS_LOGIN_REFRESH_TOKEN",
+          },
         },
         accessKeyId: {
           valueRef: "$secrets.AWS_ACCESS_KEY_ID",
-          secretName: "AWS_ACCESS_KEY_ID",
+          target: {
+            kind: "connector-secret",
+            name: "AWS_ACCESS_KEY_ID",
+          },
         },
         secretAccessKey: {
           valueRef: "$secrets.AWS_SECRET_ACCESS_KEY",
-          secretName: "AWS_SECRET_ACCESS_KEY",
+          target: {
+            kind: "connector-secret",
+            name: "AWS_SECRET_ACCESS_KEY",
+          },
         },
         sessionToken: {
           valueRef: "$secrets.AWS_SESSION_TOKEN",
-          secretName: "AWS_SESSION_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "AWS_SESSION_TOKEN",
+          },
         },
       },
       refreshableSecrets: [
@@ -2617,8 +2738,8 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
         AWS_ACCESS_KEY_ID: "$secrets.AWS_ACCESS_KEY_ID",
         AWS_SECRET_ACCESS_KEY: "$secrets.AWS_SECRET_ACCESS_KEY",
         AWS_SESSION_TOKEN: "$secrets.AWS_SESSION_TOKEN",
-        AWS_REGION: "$secrets.AWS_REGION",
-        AWS_DEFAULT_REGION: "$secrets.AWS_REGION",
+        AWS_REGION: "$vars.AWS_REGION",
+        AWS_DEFAULT_REGION: "$vars.AWS_REGION",
       },
       platformSecrets: [],
     });
@@ -2641,11 +2762,17 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       outputs: {
         accessToken: {
           valueRef: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
-          secretName: "GOOGLE_ADS_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "GOOGLE_ADS_ACCESS_TOKEN",
+          },
         },
         refreshToken: {
           valueRef: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
-          secretName: "GOOGLE_ADS_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "GOOGLE_ADS_REFRESH_TOKEN",
+          },
         },
       },
       refreshableSecrets: ["GOOGLE_ADS_ACCESS_TOKEN"],
@@ -2654,6 +2781,82 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
         GOOGLE_ADS_DEVELOPER_TOKEN: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
       },
       platformSecrets: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
+    });
+  });
+
+  it("returns long-lived access token refresh metadata for Meta Ads", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("meta-ads", "oauth"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        refreshToken: {
+          valueRef: "$secrets.META_ADS_REFRESH_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "META_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      outputs: {
+        accessToken: {
+          valueRef: "$secrets.META_ADS_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "META_ADS_ACCESS_TOKEN",
+          },
+        },
+        refreshToken: {
+          valueRef: "$secrets.META_ADS_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "META_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      refreshableSecrets: ["META_ADS_ACCESS_TOKEN"],
+      envBindings: {
+        META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
+    });
+  });
+
+  it("returns refresh metadata for TikTok Ads", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("tiktok-ads", "oauth"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        refreshToken: {
+          valueRef: "$secrets.TIKTOK_ADS_REFRESH_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      outputs: {
+        accessToken: {
+          valueRef: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_ACCESS_TOKEN",
+          },
+        },
+        refreshToken: {
+          valueRef: "$secrets.TIKTOK_ADS_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_REFRESH_TOKEN",
+          },
+        },
+      },
+      refreshableSecrets: ["TIKTOK_ADS_ACCESS_TOKEN"],
+      envBindings: {
+        TIKTOK_ADS_TOKEN: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
     });
   });
 
@@ -2681,20 +2884,37 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       outputs: {
         refreshedAccessToken: {
           valueRef: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
-          secretName: "TEST_OAUTH_API_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TEST_OAUTH_API_ACCESS_TOKEN",
+          },
         },
         refreshedRefreshToken: {
           valueRef: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
-          secretName: "TEST_OAUTH_API_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TEST_OAUTH_API_REFRESH_TOKEN",
+          },
         },
         secondaryToken: {
           valueRef: "$secrets.TEST_OAUTH_API_SECONDARY_TOKEN",
-          secretName: "TEST_OAUTH_API_SECONDARY_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TEST_OAUTH_API_SECONDARY_TOKEN",
+          },
+        },
+        refreshedTenantId: {
+          valueRef: "$vars.TEST_OAUTH_API_TENANT_ID",
+          target: {
+            kind: "connector-variable",
+            name: "TEST_OAUTH_API_TENANT_ID",
+          },
         },
       },
       refreshableSecrets: ["TEST_OAUTH_API_ACCESS_TOKEN"],
       envBindings: {
         TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+        TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
       },
       platformSecrets: [],
     });
@@ -2724,12 +2944,16 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       outputs: {
         accessToken: {
           valueRef: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
-          secretName: "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+          },
         },
       },
       refreshableSecrets: ["TEST_OAUTH_API_TOKEN_ACCESS_TOKEN"],
       envBindings: {
         TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+        TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
       },
       platformSecrets: [],
     });
@@ -2771,7 +2995,10 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       outputs: {
         accessToken: {
           valueRef: "$secrets.LARK_ACCESS_TOKEN",
-          secretName: "LARK_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "LARK_ACCESS_TOKEN",
+          },
         },
       },
       refreshableSecrets: ["LARK_ACCESS_TOKEN"],
@@ -2836,10 +3063,12 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
         }
         if (accessMetadata.kind === "refresh-token") {
           for (const output of Object.values(accessMetadata.outputs)) {
-            expect(
-              platformSecretNames.has(output.secretName),
-              `${type}/${authMethod}: refresh output storage must stay connector-owned`,
-            ).toBe(false);
+            if (output.target.kind === "connector-secret") {
+              expect(
+                platformSecretNames.has(output.target.name),
+                `${type}/${authMethod}: refresh output storage must stay connector-owned`,
+              ).toBe(false);
+            }
           }
         }
       }
@@ -2850,6 +3079,20 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     expect(getConnectorOwnedSecretNames("google-ads", "oauth")).toStrictEqual([
       "GOOGLE_ADS_ACCESS_TOKEN",
       "GOOGLE_ADS_REFRESH_TOKEN",
+    ]);
+  });
+
+  it("keeps Meta Ads runtime token connector-owned", () => {
+    expect(getConnectorOwnedSecretNames("meta-ads", "oauth")).toStrictEqual([
+      "META_ADS_ACCESS_TOKEN",
+      "META_ADS_REFRESH_TOKEN",
+    ]);
+  });
+
+  it("keeps TikTok Ads runtime token connector-owned", () => {
+    expect(getConnectorOwnedSecretNames("tiktok-ads", "oauth")).toStrictEqual([
+      "TIKTOK_ADS_ACCESS_TOKEN",
+      "TIKTOK_ADS_REFRESH_TOKEN",
     ]);
   });
 });
@@ -2996,6 +3239,50 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
     });
   });
 
+  it("returns Meta Ads runtime token binding metadata", () => {
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("meta-ads", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["META_ADS_ACCESS_TOKEN", "META_ADS_REFRESH_TOKEN"],
+        variables: [],
+      },
+      runtimeBindings: [
+        {
+          envName: "META_ADS_TOKEN",
+          valueRef: "$secrets.META_ADS_ACCESS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "META_ADS_ACCESS_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
+  it("returns TikTok Ads runtime token binding metadata", () => {
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("tiktok-ads", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["TIKTOK_ADS_ACCESS_TOKEN", "TIKTOK_ADS_REFRESH_TOKEN"],
+        variables: [],
+      },
+      runtimeBindings: [
+        {
+          envName: "TIKTOK_ADS_TOKEN",
+          valueRef: "$secrets.TIKTOK_ADS_ACCESS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "TIKTOK_ADS_ACCESS_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
   it("preserves optional env binding availability as optional runtime metadata", () => {
     expect(
       getConnectorAuthMethodRuntimeMetadata("agora", "api-token"),
@@ -3092,7 +3379,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
 });
 
 describe("getConnectorAuthMethodGrantMetadata", () => {
-  it("returns provider output secret mappings for OAuth grants", () => {
+  it("returns provider output target mappings for OAuth grants", () => {
     expect(
       getConnectorAuthMethodGrantMetadata("linear", "oauth"),
     ).toStrictEqual({
@@ -3100,14 +3387,87 @@ describe("getConnectorAuthMethodGrantMetadata", () => {
       outputs: {
         accessToken: {
           valueRef: "$secrets.LINEAR_ACCESS_TOKEN",
-          secretName: "LINEAR_ACCESS_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "LINEAR_ACCESS_TOKEN",
+          },
         },
         refreshToken: {
           valueRef: "$secrets.LINEAR_REFRESH_TOKEN",
-          secretName: "LINEAR_REFRESH_TOKEN",
+          target: {
+            kind: "connector-secret",
+            name: "LINEAR_REFRESH_TOKEN",
+          },
         },
       },
     });
+  });
+
+  it("initializes provider grant connector variables needed by runtime or refresh", () => {
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const method = getConnectorAuthMethod(type, authMethod);
+        if (
+          !method ||
+          !(
+            method.grant.kind === "auth-code" ||
+            method.grant.kind === "external-code" ||
+            method.grant.kind === "device-auth"
+          )
+        ) {
+          continue;
+        }
+
+        const grantMetadata = getConnectorAuthMethodGrantMetadata(
+          type,
+          authMethod,
+        );
+        const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
+          type,
+          authMethod,
+        );
+        if (!grantMetadata || !runtimeMetadata) {
+          throw new Error(`${type}/${authMethod}: missing connector metadata`);
+        }
+
+        const grantOutputTargetKeys = new Set(
+          Object.values(grantMetadata.outputs).map((output) => {
+            return connectorOutputTargetKey(output.target);
+          }),
+        );
+
+        for (const binding of runtimeMetadata.runtimeBindings) {
+          if (
+            binding.optional ||
+            binding.source.kind !== "connector-variable"
+          ) {
+            continue;
+          }
+          expect(
+            grantOutputTargetKeys,
+            `${type}/${authMethod}: required runtime variable ${binding.source.name} must be initialized by a grant output`,
+          ).toContain(connectorOutputTargetKey(binding.source));
+        }
+
+        const accessMetadata = getConnectorAuthMethodAccessMetadata(
+          type,
+          authMethod,
+        );
+        if (accessMetadata?.kind !== "refresh-token") {
+          continue;
+        }
+
+        for (const input of Object.values(accessMetadata.inputs)) {
+          if (input.source.kind !== "connector-variable") {
+            continue;
+          }
+          expect(
+            grantOutputTargetKeys,
+            `${type}/${authMethod}: refresh input variable ${input.source.name} must be initialized by a grant output`,
+          ).toContain(connectorOutputTargetKey(input.source));
+        }
+      }
+    }
   });
 });
 
@@ -3209,6 +3569,21 @@ describe("getConnectorEnvBindingEntries", () => {
     ]);
   });
 
+  it("preserves Cloudflare runtime env compatibility across auth methods", () => {
+    expect(getConnectorEnvBindingEntries("cloudflare")).toEqual([
+      {
+        authMethod: "oauth",
+        envName: "CLOUDFLARE_TOKEN",
+        valueRef: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+      },
+      {
+        authMethod: "api-token",
+        envName: "CLOUDFLARE_TOKEN",
+        valueRef: "$secrets.CLOUDFLARE_TOKEN",
+      },
+    ]);
+  });
+
   it("returns correct env binding entries for OAuth-only connector", () => {
     expect(envBindingsForSingleMethod("github", "oauth")).toEqual({
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
@@ -3270,9 +3645,8 @@ describe("getConnectorEnvBindingEntries", () => {
       if (!grantMetadata) {
         throw new Error(`${type}: missing OAuth grant metadata`);
       }
-      const accessSecretName = getConnectorGrantOutputSecretName(
-        grantMetadata,
-        "accessToken",
+      const accessSecretName = connectorSecretTargetName(
+        getConnectorGrantOutputTarget(grantMetadata, "accessToken"),
       );
       expect(
         accessSecretName,
@@ -3300,11 +3674,15 @@ describe("getConnectorEnvBindingEntries", () => {
           oauthAuthMethodRef.authMethod,
         );
         expect(
-          getConnectorGrantOutputSecretName(grantMetadata, "refreshToken"),
+          connectorSecretTargetName(
+            getConnectorGrantOutputTarget(grantMetadata, "refreshToken"),
+          ),
           `${type}: grant must declare refresh token storage`,
         ).toBe(refreshSecretName);
         expect(
-          getConnectorRefreshOutputSecretName(accessMetadata, "refreshToken"),
+          connectorSecretTargetName(
+            getConnectorRefreshOutputTarget(accessMetadata, "refreshToken"),
+          ),
           `${type}: refresh-token access must declare refresh token storage`,
         ).toBe(refreshSecretName);
         expect(
@@ -3591,10 +3969,12 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toEqual(
       expect.arrayContaining([
         "gmail",
+        "google-analytics",
         "google-calendar",
         "google-docs",
         "google-drive",
         "google-meet",
+        "google-search-console",
         "google-sheets",
       ]),
     );
@@ -3652,6 +4032,41 @@ describe("getConnectorAuthMethodGrantScopes - google-meet scopes", () => {
   });
 });
 
+describe("getConnectorAuthMethodGrantScopes - google-cloud scopes", () => {
+  it("uses gcloud auth login default scopes for google cloud oauth", () => {
+    const scopes = getConnectorAuthMethodGrantScopes("google-cloud", "oauth");
+
+    expect(scopes).toStrictEqual([
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/appengine.admin",
+      "https://www.googleapis.com/auth/sqlservice.login",
+      "https://www.googleapis.com/auth/compute",
+    ]);
+  });
+});
+
+describe("getConnectorAuthMethodGrantScopes - google-analytics scopes", () => {
+  it("uses Analytics Data readonly and Analytics Admin edit scopes", () => {
+    const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+      "google-analytics",
+      "oauth",
+    );
+    const scopes = getConnectorAuthMethodGrantScopes(
+      "google-analytics",
+      "oauth",
+    );
+
+    expect(scopes).toStrictEqual(grant?.scopes);
+    expect(scopes).toContain(
+      "https://www.googleapis.com/auth/analytics.readonly",
+    );
+    expect(scopes).toContain("https://www.googleapis.com/auth/analytics.edit");
+    expect(scopes).toContain("https://www.googleapis.com/auth/userinfo.email");
+  });
+});
+
 describe("connector OAuth lifecycle grant helpers", () => {
   it("returns auth-code grant config for GitHub", () => {
     const method = getConnectorAuthMethod("github", "oauth");
@@ -3673,6 +4088,89 @@ describe("connector OAuth lifecycle grant helpers", () => {
         clientType: "confidential",
         clientIdEnv: "GH_OAUTH_CLIENT_ID",
         clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
+      },
+    });
+  });
+
+  it("defaults auth-code callbacks to web origin unless configured", () => {
+    expect(
+      getConnectorAuthMethodAuthCodeCallbackOrigin("github", "oauth"),
+    ).toBe("web");
+    expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("github")).toBe(false);
+    expect(
+      getConnectorAuthMethodAuthCodeCallbackOrigin("cloudflare", "oauth"),
+    ).toBe("api");
+    expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("cloudflare")).toBe(true);
+  });
+
+  it("declares Cloudflare OAuth as a refreshable API-origin auth-code grant", () => {
+    const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+      "cloudflare",
+      "oauth",
+    );
+    expect(grant).toMatchObject({
+      kind: "auth-code",
+      callbackOrigin: "api",
+      outputs: {
+        accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+        refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+      },
+    });
+    expect(grant.scopes).toHaveLength(353);
+    expect(new Set(grant.scopes).size).toBe(grant.scopes.length);
+    expect(grant.scopes).toEqual(
+      expect.arrayContaining([
+        "user-details.read",
+        "memberships.read",
+        "zone.read",
+        "dns.write",
+        "workers-scripts.write",
+        "workers-kv-storage.write",
+        "page.write",
+        "d1.write",
+        "ai.write",
+        "queues.write",
+        "workers-r2.write",
+        "offline_access",
+      ]),
+    );
+    expect(grant.scopes).not.toEqual(
+      expect.arrayContaining([
+        "d1.metadata_read",
+        "images.metadata_read",
+        "queues.metadata_read",
+        "stream.metadata_read",
+        "workers-kv-storage.metadata_read",
+        "workers-r2.metadata_read",
+      ]),
+    );
+    expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
+      featureFlag: FeatureSwitchKey.CloudflareConnector,
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        clientIdEnv: "CLOUDFLARE_OAUTH_CLIENT_ID",
+        clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+      },
+      access: {
+        kind: "refresh-token",
+        inputs: {
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
+        outputs: {
+          accessToken: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
+        refreshableSecrets: ["CLOUDFLARE_ACCESS_TOKEN"],
+        envBindings: {
+          CLOUDFLARE_TOKEN: "$secrets.CLOUDFLARE_ACCESS_TOKEN",
+        },
+      },
+      revoke: {
+        kind: "token-revoke",
+        inputs: {
+          refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
+        },
       },
     });
   });
@@ -3748,8 +4246,8 @@ describe("connector OAuth lifecycle grant helpers", () => {
           accessKeyId: "$secrets.AWS_ACCESS_KEY_ID",
           secretAccessKey: "$secrets.AWS_SECRET_ACCESS_KEY",
           sessionToken: "$secrets.AWS_SESSION_TOKEN",
-          signinRegion: "$secrets.AWS_SIGNIN_REGION",
-          runtimeRegion: "$secrets.AWS_REGION",
+          signinRegion: "$vars.AWS_SIGNIN_REGION",
+          runtimeRegion: "$vars.AWS_REGION",
         },
       },
     );

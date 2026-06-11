@@ -158,6 +158,7 @@ async function readOrgMetadata(orgId: string) {
     .select({
       defaultAgentId: orgMetadata.defaultAgentId,
       onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      tier: orgMetadata.tier,
       credits: orgMetadata.credits,
     })
     .from(orgMetadata)
@@ -546,6 +547,45 @@ describe("POST /api/zero/onboarding/setup", () => {
     ]);
     await expect(readOrgMetadata(fixture.orgId)).resolves.toMatchObject({
       onboardingPaymentPending: true,
+    });
+  });
+
+  it("does not mark a paid org payment-pending on repeated setup", async () => {
+    const fixture = await track(createFixture());
+    mockAdminSession(fixture);
+
+    const first = await accept(
+      apiClient().setup({
+        headers: authHeaders(),
+        body: { displayName: "Zero" },
+      }),
+      [200],
+    );
+    const agentId = first.body.agentId;
+    const db = store.set(writeDb$);
+    await db
+      .update(orgMetadata)
+      .set({ tier: "pro", onboardingPaymentPending: false })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
+
+    const second = await accept(
+      apiClient().setup({
+        headers: authHeaders(),
+        body: {
+          displayName: "Zero",
+          selectedConnectors: ["slack"],
+        },
+      }),
+      [200],
+    );
+
+    expect(second.body.agentId).toBe(agentId);
+    await expect(
+      readConnectorTypes(fixture.orgId, fixture.userId, agentId),
+    ).resolves.toStrictEqual(["slack"]);
+    await expect(readOrgMetadata(fixture.orgId)).resolves.toMatchObject({
+      onboardingPaymentPending: false,
+      tier: "pro",
     });
   });
 

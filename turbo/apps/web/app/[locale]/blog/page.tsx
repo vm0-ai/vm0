@@ -11,6 +11,7 @@ import {
 import { BlogContent } from "../../components/blog";
 import { Footer } from "../../components/Footer";
 import { isBlogEnabled } from "../../../src/env";
+import { serializeJsonLd } from "../../../src/lib/json-ld";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 
@@ -97,7 +98,7 @@ export default async function BlogPage({ params }: BlogPageProps) {
       <script
         type="application/ld+json"
         suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
       <Suspense
         fallback={

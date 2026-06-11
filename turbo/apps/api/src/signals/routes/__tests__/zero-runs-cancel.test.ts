@@ -15,7 +15,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -153,7 +153,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     expect(row?.status).toBe("cancelled");
 
     // Settle the detached waitUntil work then assert Ably publish surface.
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "queue:changed",
       null,
@@ -204,7 +204,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     );
     expect(responses).toHaveLength(2);
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const cancelPublishes = context.mocks.ably.publish.mock.calls.filter(
       ([topic, payload]) => {
         const runIdValue =
@@ -400,7 +400,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     });
 
     // Idempotent path: NO Ably publishes scheduled.
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
@@ -453,7 +453,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     // Cancelled run reflects the cancel.
     const [cancelledRow] = await writeDb
@@ -538,7 +538,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     // Event marked processed with creditsCharged.
     const [eventRow] = await writeDb
@@ -620,7 +620,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     // Idempotent path returns early — usage_event still pending, balance untouched.
     const [eventRow] = await writeDb
@@ -685,7 +685,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     // Idempotent path skipped dispatchCancelSideEffects$ entirely; the
     // queue entry and queued run are untouched.
@@ -788,7 +788,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     // Stripe invoice created with the expected metadata.
     expect(context.mocks.stripe.invoices.create).toHaveBeenCalledWith(
@@ -890,7 +890,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     // Balance well above threshold → atomic claim returns no rows → no Stripe.
     expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
@@ -971,7 +971,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
 
@@ -1059,7 +1059,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       [200],
     );
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     // Already-pending → atomic claim returns no rows → no Stripe.
     expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();

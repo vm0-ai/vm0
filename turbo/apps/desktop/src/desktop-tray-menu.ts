@@ -7,10 +7,11 @@ import {
 } from "./computer-use-types";
 
 const HOST_STATUS_LABELS = {
-  idle: "Idle",
-  connecting: "Connecting",
+  idle: "Ready",
+  connecting: "Starting...",
   online: "Online",
-  unauthenticated: "Signed out",
+  recovering: "Recovering",
+  unauthenticated: "Sign in required",
   needs_organization: "Select workspace",
   disabled: "Disabled",
   error: "Error",
@@ -27,7 +28,8 @@ const MAX_COMMAND_LABEL_LENGTH = 90;
 
 export interface DesktopTrayMenuItem {
   readonly label?: string;
-  readonly type?: "separator";
+  readonly type?: "checkbox" | "separator";
+  readonly checked?: boolean;
   readonly enabled?: boolean;
   readonly submenu?: readonly DesktopTrayMenuItem[];
   readonly click?: () => void;
@@ -36,17 +38,23 @@ export interface DesktopTrayMenuItem {
 export interface DesktopTrayMenuActions {
   readonly showMainWindow: () => void;
   readonly startComputerUse: () => void;
+  readonly stopComputerUse: () => void;
   readonly refreshStatus: () => void;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => void;
+  readonly signOut: () => void;
+  readonly requestAccessibilityPermission: () => void;
+  readonly requestScreenRecordingPermission: () => void;
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
+  readonly setKeepAwakeEnabled: (enabled: boolean) => void;
   readonly quit: () => void;
 }
 
 interface DesktopTrayMenuState {
   readonly computerUse: DesktopComputerUseState;
   readonly auth: DesktopAuthState | null;
+  readonly authLoading?: boolean;
   readonly authError: string | null;
 }
 
@@ -58,27 +66,53 @@ function disabledLabel(label: string): DesktopTrayMenuItem {
   return { label, enabled: false };
 }
 
-function computerUseStatusLabel(state: DesktopComputerUseState): string {
-  if (!state.supported) {
+function computerUseStatusLabel(state: DesktopTrayMenuState): string {
+  if (!state.computerUse.supported) {
     return "Unsupported";
   }
-  if (!hasRequiredComputerUsePermissions(state.permissions)) {
+  if (!hasRequiredComputerUsePermissions(state.computerUse.permissions)) {
     return "Needs permissions";
   }
-  return HOST_STATUS_LABELS[state.host.status];
+  if (state.computerUse.host.status !== "idle") {
+    return HOST_STATUS_LABELS[state.computerUse.host.status];
+  }
+  if (isAuthLoading(state)) {
+    return "Signing in...";
+  }
+  if (state.auth?.status !== "signed_in") {
+    return "Sign in required";
+  }
+  if (!state.auth.organization) {
+    return "Select workspace";
+  }
+  return HOST_STATUS_LABELS[state.computerUse.host.status];
 }
 
 function isAuthReady(auth: DesktopAuthState | null): boolean {
   return auth?.status === "signed_in" && auth.organization !== null;
 }
 
+function isAuthLoading(state: DesktopTrayMenuState): boolean {
+  return state.authLoading === true || state.auth?.status === "signing_in";
+}
+
 function canStartComputerUse(state: DesktopTrayMenuState): boolean {
   return (
     state.computerUse.supported &&
     hasRequiredComputerUsePermissions(state.computerUse.permissions) &&
+    !isAuthLoading(state) &&
     isAuthReady(state.auth) &&
     state.computerUse.host.status !== "connecting" &&
-    state.computerUse.host.status !== "online"
+    state.computerUse.host.status !== "online" &&
+    state.computerUse.host.status !== "recovering"
+  );
+}
+
+function canStopComputerUse(state: DesktopTrayMenuState): boolean {
+  return (
+    state.computerUse.supported &&
+    (state.computerUse.host.status === "online" ||
+      state.computerUse.host.status === "recovering")
   );
 }
 
@@ -86,17 +120,20 @@ function authActionForComputerUse(
   state: DesktopTrayMenuState,
   actions: DesktopTrayMenuActions,
 ): DesktopTrayMenuItem | null {
-  if (state.computerUse.host.status === "online") {
+  if (
+    state.computerUse.host.status === "online" ||
+    state.computerUse.host.status === "recovering"
+  ) {
     return null;
+  }
+  if (isAuthLoading(state)) {
+    return disabledLabel("Signing in...");
   }
   if (state.auth?.status === "signed_in") {
     if (!state.auth.organization) {
       return { label: "Select Workspace", click: actions.switchWorkspace };
     }
     return null;
-  }
-  if (state.auth?.status === "signing_in") {
-    return disabledLabel("Signing in...");
   }
   return { label: "Sign in to Zero", click: actions.openSignIn };
 }
@@ -106,7 +143,7 @@ function buildComputerUseSubmenu(
   actions: DesktopTrayMenuActions,
 ): readonly DesktopTrayMenuItem[] {
   const items: DesktopTrayMenuItem[] = [
-    disabledLabel(`Status: ${computerUseStatusLabel(state.computerUse)}`),
+    disabledLabel(`Status: ${computerUseStatusLabel(state)}`),
   ];
 
   if (!state.computerUse.supported) {
@@ -117,18 +154,11 @@ function buildComputerUseSubmenu(
     ];
   }
 
+  items.push(separator(), ...buildPermissionItems(state, actions));
+
   if (!hasRequiredComputerUsePermissions(state.computerUse.permissions)) {
     return [
       ...items,
-      separator(),
-      {
-        label: "Accessibility Settings",
-        click: actions.openAccessibilitySettings,
-      },
-      {
-        label: "Screen Recording Settings",
-        click: actions.openScreenRecordingSettings,
-      },
       separator(),
       { label: "Refresh Status", click: actions.refreshStatus },
     ];
@@ -143,6 +173,11 @@ function buildComputerUseSubmenu(
       enabled: canStartComputerUse(state),
       click: actions.startComputerUse,
     },
+    {
+      label: "Stop Computer Use",
+      enabled: canStopComputerUse(state),
+      click: actions.stopComputerUse,
+    },
   ];
   if (authAction) {
     startItems.push(authAction);
@@ -151,15 +186,50 @@ function buildComputerUseSubmenu(
   return startItems;
 }
 
+function buildPermissionItems(
+  state: DesktopTrayMenuState,
+  actions: DesktopTrayMenuActions,
+): readonly DesktopTrayMenuItem[] {
+  const items: DesktopTrayMenuItem[] = [];
+
+  if (state.computerUse.permissions.accessibility) {
+    items.push(disabledLabel("Accessibility: Ready"));
+  } else {
+    items.push({
+      label: "Request Accessibility Permission",
+      click: actions.requestAccessibilityPermission,
+    });
+  }
+  items.push({
+    label: "Accessibility Settings",
+    click: actions.openAccessibilitySettings,
+  });
+
+  if (state.computerUse.permissions.screenRecording) {
+    items.push(disabledLabel("Screen Recording: Ready"));
+  } else {
+    items.push({
+      label: "Request Screen Recording Permission",
+      click: actions.requestScreenRecordingPermission,
+    });
+  }
+  items.push({
+    label: "Screen Recording Settings",
+    click: actions.openScreenRecordingSettings,
+  });
+
+  return items;
+}
+
 function authStatusLabel(state: DesktopTrayMenuState): string {
+  if (isAuthLoading(state)) {
+    return "Signing in to Zero...";
+  }
   if (state.authError) {
     return "Sign in to Zero";
   }
   if (!state.auth) {
     return "Sign in to Zero";
-  }
-  if (state.auth.status === "signing_in") {
-    return "Signing in to Zero...";
   }
   if (state.auth.status === "signed_out") {
     return "Sign in to Zero";
@@ -174,6 +244,10 @@ function buildAuthSubmenu(
   state: DesktopTrayMenuState,
   actions: DesktopTrayMenuActions,
 ): readonly DesktopTrayMenuItem[] {
+  if (isAuthLoading(state)) {
+    return [disabledLabel("Signing in...")];
+  }
+
   if (state.authError || !state.auth || state.auth.status === "signed_out") {
     return [
       disabledLabel("Not signed in"),
@@ -193,7 +267,7 @@ function buildAuthSubmenu(
     ),
     separator(),
     { label: "Switch Workspace", click: actions.switchWorkspace },
-    { label: "Sign in again", click: actions.openSignIn },
+    { label: "Sign out", click: actions.signOut },
   ];
 }
 
@@ -267,14 +341,22 @@ export function buildDesktopTrayMenuItems(
 ): readonly DesktopTrayMenuItem[] {
   return [
     { label: "Show Main Window", click: actions.showMainWindow },
-    separator(),
-    {
-      label: `Computer Use: ${computerUseStatusLabel(state.computerUse)}`,
-      submenu: buildComputerUseSubmenu(state, actions),
-    },
     {
       label: authStatusLabel(state),
       submenu: buildAuthSubmenu(state, actions),
+    },
+    separator(),
+    {
+      label: `Computer Use: ${computerUseStatusLabel(state)}`,
+      submenu: buildComputerUseSubmenu(state, actions),
+    },
+    {
+      label: "Keep Mac Awake",
+      type: "checkbox",
+      checked: state.computerUse.keepAwake.enabled,
+      click: () => {
+        actions.setKeepAwakeEnabled(!state.computerUse.keepAwake.enabled);
+      },
     },
     separator(),
     ...buildRecentCommandSection(state, actions),

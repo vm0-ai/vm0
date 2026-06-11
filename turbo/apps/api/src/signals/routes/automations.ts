@@ -54,8 +54,9 @@ function toAutomationMutation(response: {
 
 // The Automations API is gated behind the zeroAutomations switch. When off, the
 // surface is not reachable: handlers report not-found so the new paths are
-// indistinguishable from unmounted routes.
-const automationsEnabled$ = computed(async (get) => {
+// indistinguishable from unmounted routes. Shared by every automation surface
+// (this one, the webhook-automation management routes, and the v2 resource).
+export const automationsEnabled$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const overrides = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),

@@ -33,6 +33,20 @@ const squirrelMacReleasesSchema = z.object({
 export type SquirrelMacReleases = z.infer<typeof squirrelMacReleasesSchema>;
 
 export const desktopUpdatesContract = c.router({
+  releasePage: {
+    method: "GET",
+    path: "/api/zero/desktop/updates/:channel/:platform/:arch/release",
+    pathParams: z.object({
+      channel: desktopUpdateChannelSchema,
+      platform: desktopUpdatePlatformSchema,
+      arch: desktopUpdateArchitectureSchema,
+    }),
+    responses: {
+      302: c.noBody(),
+      404: apiErrorSchema,
+    },
+    summary: "Redirect to the current desktop release page",
+  },
   feed: {
     method: "GET",
     path: "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",

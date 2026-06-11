@@ -49,6 +49,7 @@ const clerkState = vi.hoisted(() => {
         vi.fn<(args: { readonly organization: string }) => Promise<void>>(),
       userMemberships: { data: [] },
     } as OrganizationListState,
+    searchParams: new URLSearchParams(),
   };
 });
 
@@ -62,6 +63,16 @@ vi.mock("@clerk/nextjs", () => {
     },
   };
 });
+
+vi.mock("next/navigation", () => {
+  return {
+    useSearchParams: () => {
+      return clerkState.searchParams;
+    },
+  };
+});
+
+const fetchMock = vi.fn<typeof fetch>();
 
 function installDesktopAuthBridge() {
   const completeSignIn =
@@ -106,6 +117,12 @@ describe("DesktopAuthSelectOrgClient", () => {
       },
     };
     Reflect.deleteProperty(window, "vm0DesktopAuth");
+    clerkState.searchParams = new URLSearchParams();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ status: "completed" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState(null, "", "/desktop-auth/select-org");
   });
 
@@ -129,6 +146,40 @@ describe("DesktopAuthSelectOrgClient", () => {
       expect(completeSignIn).toHaveBeenCalledWith({
         token: "fresh-desktop-token",
       });
+    });
+    expect(replace).toHaveBeenCalledWith("/");
+  });
+
+  it("marks the handoff complete after workspace selection", async () => {
+    const handoffId = "550e8400-e29b-41d4-a716-446655440000";
+    clerkState.searchParams = new URLSearchParams({ handoffId });
+    const completeSignIn = installDesktopAuthBridge();
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {
+        return undefined;
+      });
+
+    render(<DesktopAuthSelectOrgClient forceSelection={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Second Workspace" }));
+    await waitFor(() => {
+      expect(completeSignIn).toHaveBeenCalledWith({
+        token: "fresh-desktop-token",
+      });
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/desktop-auth/handoff/${handoffId}/complete`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer fresh-desktop-token",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        },
+      );
     });
     expect(replace).toHaveBeenCalledWith("/");
   });

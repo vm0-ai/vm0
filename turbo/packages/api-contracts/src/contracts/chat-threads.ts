@@ -167,14 +167,23 @@ const presentationGenerationTemplateRequestSchema = z.object({
   }),
 });
 
+const videoGenerationTemplateRequestSchema = z.object({
+  type: z.literal("video"),
+  selection: z.object({
+    stylePresetId: z.string().min(1),
+  }),
+});
+
 const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   presentationGenerationTemplateRequestSchema,
+  videoGenerationTemplateRequestSchema,
 ]);
 
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
   runId: z.string().optional(),
+  runEventId: z.string().optional(),
   revokesMessageId: z.string().optional(),
   interruptsRunId: z.string().optional(),
   error: z.string().optional(),
@@ -259,6 +268,7 @@ const chatThreadDetailSchema = z.object({
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
+  computerUseHostId: z.string().uuid().nullable().optional(),
   /**
    * Per-thread selected model pin. Provider route fields are retained for
    * backwards-compatible responses but model-first sends re-resolve provider
@@ -577,6 +587,7 @@ export const chatMessagesContract = c.router({
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
         generationTemplate: generationTemplateRequestSchema.optional(),
+        computerUseHostId: z.string().uuid().nullable().optional(),
         // Optional for backward compatibility: older clients that omit this field
         // still trigger title generation (server guards with !== false, not === true).
         hasTextContent: z.boolean().optional(),
@@ -605,6 +616,7 @@ export const chatMessagesContract = c.router({
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         debugNoMockClaude: z.undefined().optional(),
@@ -621,6 +633,7 @@ export const chatMessagesContract = c.router({
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         debugNoMockClaude: z.undefined().optional(),
@@ -833,6 +846,7 @@ export {
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
+  videoGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
@@ -851,6 +865,9 @@ export type GenerationTemplateRequest = z.infer<
 >;
 export type PresentationGenerationTemplateRequest = z.infer<
   typeof presentationGenerationTemplateRequestSchema
+>;
+export type VideoGenerationTemplateRequest = z.infer<
+  typeof videoGenerationTemplateRequestSchema
 >;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;

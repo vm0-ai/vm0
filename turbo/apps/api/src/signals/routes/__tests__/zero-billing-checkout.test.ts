@@ -1161,6 +1161,18 @@ describe("POST /api/zero/billing/credit-checkout", () => {
         mode: "payment",
         customer: customerId,
         line_items: [{ price: checkoutPriceId, quantity: 1 }],
+        invoice_creation: {
+          enabled: true,
+          invoice_data: {
+            metadata: {
+              type: "credit_purchase",
+              purpose: "credit_purchase",
+              orgId: fixture.orgId,
+              creditsAmountMode: "amount_subtotal",
+              requestedCreditsAmount: "20000",
+            },
+          },
+        },
         metadata: {
           purpose: "credit_purchase",
           orgId: fixture.orgId,
@@ -1269,6 +1281,18 @@ describe("POST /api/zero/billing/credit-checkout", () => {
         mode: "payment",
         customer: customerId,
         line_items: [{ price: checkoutPriceId, quantity: 1 }],
+        invoice_creation: {
+          enabled: true,
+          invoice_data: {
+            metadata: {
+              type: "credit_purchase",
+              purpose: "credit_purchase",
+              orgId: fixture.orgId,
+              creditsAmountMode: "amount_subtotal",
+              requestedCreditsAmount: "150000",
+            },
+          },
+        },
         metadata: {
           purpose: "credit_purchase",
           orgId: fixture.orgId,

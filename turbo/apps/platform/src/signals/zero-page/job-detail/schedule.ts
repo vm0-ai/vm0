@@ -1,11 +1,15 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
+
+import { now, nowDate } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { agentDetail$ } from "./detail.ts";
 import {
   buildCronExpression,
   buildAtTime,
   isAtTimePast,
+  cronUtcToLocalTime,
+  atTimeInTimezone,
   type ScheduleBody,
   type CronTimeOption,
 } from "../cron.ts";
@@ -41,12 +45,14 @@ interface ScheduleItem {
 // Schedule time string conversion
 // ---------------------------------------------------------------------------
 
-function cronToTimeString(cron: string): string {
+function cronToTimeString(cron: string, timezone = "UTC"): string {
   const parts = cron.split(" ");
-  const minute = Number(parts[0]);
-  const hour = Number(parts[1]);
+  const rawMinute = Number(parts[0]);
+  const rawHour = Number(parts[1]);
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
+
+  const { hour, minute } = cronUtcToLocalTime(rawHour, rawMinute, timezone);
 
   const ampm = hour >= 12 ? "PM" : "AM";
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
@@ -90,16 +96,16 @@ function scheduleToTimeString(s: ScheduleItem): string {
     return `Every ${s.intervalSeconds} seconds`;
   }
   if (s.triggerType === "once" && s.atTime) {
-    const at = new Date(s.atTime);
-    const date = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-    const hour = at.getHours();
-    const minute = at.getMinutes();
+    const { date, hour, minute } = atTimeInTimezone(
+      s.atTime,
+      s.timezone ?? "UTC",
+    );
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
   }
   if (s.cronExpression) {
-    return cronToTimeString(s.cronExpression);
+    return cronToTimeString(s.cronExpression, s.timezone);
   }
   return "Scheduled";
 }
@@ -157,7 +163,7 @@ export const agentScheduleEntries$ = computed(
 // Schedule CRUD
 // ---------------------------------------------------------------------------
 
-export interface AgentScheduleSaveParams {
+interface AgentScheduleSaveParams {
   prompt: string;
   description?: string;
   freq: string;
@@ -183,7 +189,7 @@ export const saveAgentSchedule$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
+    const scheduleName = params.editName ?? `zero-${now().toString(36)}`;
 
     const base = {
       agentId: detail.agentId,
@@ -211,7 +217,7 @@ export const saveAgentSchedule$ = command(
       );
       body = { ...base, atTime };
     } else if (params.freq === "now") {
-      body = { ...base, atTime: new Date().toISOString() };
+      body = { ...base, atTime: nowDate().toISOString() };
     } else {
       const freqMap: Record<string, CronTimeOption> = {
         every_weekday: "every-weekday",

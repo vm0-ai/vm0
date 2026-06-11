@@ -9,11 +9,13 @@ import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
+import { hostedDeployments } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { secrets } from "@vm0/db/schema/secret";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import archiver from "archiver";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -22,7 +24,11 @@ import {
   storageUserIdFromFileUrlSegment,
 } from "../../lib/file-url";
 import { db$, type ReadonlyDb } from "../external/db";
-import { downloadS3Buffer, s3ObjectExists } from "../external/s3";
+import {
+  downloadHostedSitesS3Buffer,
+  downloadS3Buffer,
+  s3ObjectExists,
+} from "../external/s3";
 import { safeSync, settle } from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
@@ -393,6 +399,90 @@ interface ArtifactS3Object {
   readonly key: string;
 }
 
+interface ResolvedArtifactContent {
+  readonly contentType: string;
+  readonly file: Buffer;
+  readonly filename: string;
+}
+
+interface HostedArtifactMetadata {
+  readonly artifactKind: "hosted-site" | "presentation-html";
+  readonly deploymentId: string;
+}
+
+interface ZipEntry {
+  readonly path: string;
+  readonly content: Buffer;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hostedArtifactMetadata(
+  metadata: unknown,
+): HostedArtifactMetadata | null {
+  if (!isRecord(metadata)) {
+    return null;
+  }
+  if (
+    metadata.artifactKind !== "hosted-site" &&
+    metadata.artifactKind !== "presentation-html"
+  ) {
+    return null;
+  }
+  return typeof metadata.deploymentId === "string"
+    ? {
+        artifactKind: metadata.artifactKind,
+        deploymentId: metadata.deploymentId,
+      }
+    : null;
+}
+
+function hostedSiteFileKey(prefix: string, path: string): string {
+  return `${prefix}${path}`;
+}
+
+function zipEntryPath(path: string): string {
+  const segments = path.split("/").filter((segment) => {
+    return segment.length > 0;
+  });
+  if (
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.includes("\\") ||
+    path.includes("\0") ||
+    segments.some((segment) => {
+      return segment === "." || segment === "..";
+    })
+  ) {
+    throw new Error(`Invalid hosted-site path: ${path}`);
+  }
+  return segments.join("/");
+}
+
+async function assembleZip(entries: readonly ZipEntry[]): Promise<Buffer> {
+  const archive = archiver("zip", { zlib: { level: 6 } });
+  const chunks: Buffer[] = [];
+
+  const done = new Promise<Buffer>((resolve, reject) => {
+    archive.on("data", (chunk: Buffer) => {
+      return chunks.push(chunk);
+    });
+    archive.on("end", () => {
+      return resolve(Buffer.concat(chunks));
+    });
+    archive.on("error", reject);
+  });
+
+  for (const entry of entries) {
+    archive.append(entry.content, { name: entry.path });
+  }
+
+  await archive.finalize();
+  return done;
+}
+
 async function loadArtifactFile(
   db: ReadonlyDb,
   args: {
@@ -576,6 +666,97 @@ function resolveArtifactS3Object(
     }
 
     return null;
+  });
+}
+
+function resolveHostedArtifactContent(
+  db: ReadonlyDb,
+  artifact: ArtifactFileRow,
+  userId: string,
+): Computed<Promise<ResolvedArtifactContent | null>> {
+  return computed(async (get): Promise<ResolvedArtifactContent | null> => {
+    const metadata = hostedArtifactMetadata(artifact.metadata);
+    if (!metadata) {
+      return null;
+    }
+
+    const bucket = optionalEnv("R2_HOSTED_SITES_BUCKET_NAME");
+    if (!bucket) {
+      return null;
+    }
+
+    const [deployment] = await db
+      .select({
+        entrypoint: hostedDeployments.entrypoint,
+        manifest: hostedDeployments.manifest,
+        r2Prefix: hostedDeployments.r2Prefix,
+      })
+      .from(hostedDeployments)
+      .where(
+        and(
+          eq(hostedDeployments.id, metadata.deploymentId),
+          eq(hostedDeployments.userId, userId),
+          eq(hostedDeployments.status, "ready"),
+        ),
+      )
+      .limit(1);
+
+    if (!deployment) {
+      return null;
+    }
+
+    if (metadata.artifactKind === "hosted-site") {
+      const entries: ZipEntry[] = [];
+      const files = Object.values(deployment.manifest.files).sort((a, b) => {
+        return a.path.localeCompare(b.path);
+      });
+      for (const file of files) {
+        const content = await get(
+          downloadHostedSitesS3Buffer(
+            bucket,
+            hostedSiteFileKey(deployment.r2Prefix, file.path),
+          ),
+        );
+        entries.push({ path: zipEntryPath(file.path), content });
+      }
+      return {
+        contentType: "application/zip",
+        file: await assembleZip(entries),
+        filename: `${deployment.manifest.publicSlug}.zip`,
+      };
+    }
+
+    const filename =
+      artifact.filename ?? `${deployment.manifest.publicSlug}.html`;
+    const manifestFile = deployment.manifest.files[deployment.entrypoint];
+    return {
+      contentType:
+        artifact.contentType ??
+        manifestFile?.contentType ??
+        inferMimetype(filename),
+      file: await get(
+        downloadHostedSitesS3Buffer(
+          bucket,
+          hostedSiteFileKey(deployment.r2Prefix, deployment.entrypoint),
+        ),
+      ),
+      filename,
+    };
+  });
+}
+
+function resolveS3ArtifactContent(
+  artifact: ArtifactFileRow,
+  s3Object: ArtifactS3Object,
+): Computed<Promise<ResolvedArtifactContent>> {
+  return computed(async (get): Promise<ResolvedArtifactContent> => {
+    const filename = artifact.filename ?? artifact.externalId;
+    const contentType = artifact.contentType ?? inferMimetype(filename);
+    return {
+      contentType,
+      file: await get(downloadS3Buffer(s3Object.bucketName, s3Object.key)),
+      filename,
+    };
   });
 }
 
@@ -853,27 +1034,34 @@ export const syncArtifactToGoogleDrive$ = command(
       return notFound("Artifact file not found");
     }
 
-    const s3Object = await get(resolveArtifactS3Object(artifact, args.userId));
+    const hostedContent = await get(
+      resolveHostedArtifactContent(db, artifact, args.userId),
+    );
     signal.throwIfAborted();
-    if (!s3Object) {
+    const s3Object = hostedContent
+      ? null
+      : await get(resolveArtifactS3Object(artifact, args.userId));
+    signal.throwIfAborted();
+    let content: ResolvedArtifactContent;
+    if (hostedContent) {
+      content = hostedContent;
+    } else if (s3Object) {
+      content = await get(resolveS3ArtifactContent(artifact, s3Object));
+      signal.throwIfAborted();
+    } else {
       return badRequestMessage(
         "This artifact file cannot be synced to Google Drive",
       );
     }
-
-    const filename = artifact.filename ?? artifact.externalId;
-    const contentType = artifact.contentType ?? inferMimetype(filename);
-    const file = await get(downloadS3Buffer(s3Object.bucketName, s3Object.key));
-    signal.throwIfAborted();
 
     let result = await uploadArtifactWithToken({
       accessToken: tokens.accessToken,
       threadId: args.threadId,
       runId: args.runId,
       fileId: args.fileId,
-      filename,
-      contentType,
-      file,
+      filename: content.filename,
+      contentType: content.contentType,
+      file: content.file,
     });
     signal.throwIfAborted();
 
@@ -886,9 +1074,9 @@ export const syncArtifactToGoogleDrive$ = command(
           threadId: args.threadId,
           runId: args.runId,
           fileId: args.fileId,
-          filename,
-          contentType,
-          file,
+          filename: content.filename,
+          contentType: content.contentType,
+          file: content.file,
         });
         signal.throwIfAborted();
       }

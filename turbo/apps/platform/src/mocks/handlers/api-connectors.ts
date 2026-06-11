@@ -148,18 +148,6 @@ function resetMockOauthDeviceAuth(): void {
   mockExternalCodeSessionStartResponse = undefined;
 }
 
-export function setMockOauthDeviceAuthSessionStartResponse(
-  response: MockOauthDeviceAuthSessionStartResponse,
-): void {
-  mockOauthDeviceAuthSessionStartResponse = response;
-}
-
-export function setMockOauthDeviceAuthSessionPollResponses(
-  responses: ConnectorOauthDeviceAuthSessionPollResponse[],
-): void {
-  mockOauthDeviceAuthSessionPollResponses = responses;
-}
-
 export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
     return respond(200, {

@@ -23,7 +23,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signPatJwtForTests, verifySandboxToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
@@ -771,7 +771,12 @@ describe("POST /api/runners/*", () => {
     const response = await accept(
       client.claim({
         params: { id: queued.runId },
-        body: {},
+        body: {
+          telemetry: {
+            jobDiscoveredToClaimRequestMs: 1234,
+            localAdmissionToClaimRequestMs: 56,
+          },
+        },
         headers: { authorization: `Bearer ${pat.token}` },
       }),
       [200],
@@ -815,7 +820,7 @@ describe("POST /api/runners/*", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, queued.runId));
     expect(remainingJobs).toHaveLength(0);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${queued.runId}`,
       { status: "running" },
@@ -858,6 +863,36 @@ describe("POST /api/runners/*", () => {
           sandbox_type: "runner",
           run_id: queued.runId,
           duration_ms: expect.any(Number),
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "job_discovered_to_claim_request",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: 1234,
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "local_admission_to_claim_request",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: 56,
           success: true,
           runner_group: "vm0/test",
           profile: "vm0/default",

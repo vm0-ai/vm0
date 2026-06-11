@@ -9,6 +9,7 @@ import {
   integer,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
@@ -39,6 +40,10 @@ export const automations = pgTable(
 
     // The user intent the interpreter turns into a run prompt.
     instruction: text("instruction").notNull(),
+
+    // Optional extra system-prompt context appended to the agent run (mirrors
+    // zero_agent_schedules.append_system_prompt; carried by the dual-write).
+    appendSystemPrompt: text("append_system_prompt"),
 
     agentId: uuid("agent_id")
       .notNull()
@@ -157,8 +162,6 @@ export const automationTriggers = pgTable(
     ),
     // Tracks consecutive failures for loop triggers (auto-disable after 3).
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
-    // Tracks when retry cycle started for concurrency failures (null = not retrying).
-    retryStartedAt: timestamp("retry_started_at"),
 
     // Whether this trigger is active (mirrors zero_agent_schedules.enabled;
     // consumed by the dormant time poller's partial index below).
@@ -178,6 +181,16 @@ export const automationTriggers = pgTable(
       index("idx_automation_triggers_next_run")
         .on(table.nextRunAt)
         .where(sql`enabled = true`),
+      // Each kind carries exactly its own config (B4 on #16847): one of
+      // cron_expression/at_time/interval_seconds for time kinds, the URL token
+      // for webhooks.
+      check(
+        "automation_triggers_kind_config_check",
+        sql`(kind = 'cron' AND cron_expression IS NOT NULL AND at_time IS NULL AND interval_seconds IS NULL)
+          OR (kind = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)
+          OR (kind = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)
+          OR (kind = 'webhook' AND webhook_token IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL AND interval_seconds IS NULL)`,
+      ),
     ];
   },
 );

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
 
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
@@ -10,6 +11,8 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
@@ -120,6 +123,18 @@ function mockUploadedKeys(keys: readonly string[]) {
     return Promise.resolve({});
   });
   return puts;
+}
+
+function mockSignedUrlFromKey() {
+  context.mocks.s3.getSignedUrl.mockImplementation(
+    (_client: unknown, command: unknown) => {
+      const input =
+        typeof command === "object" && command !== null && "input" in command
+          ? (command.input as { Key?: string })
+          : {};
+      return Promise.resolve(`https://r2.example.com/${input.Key}?sig=test`);
+    },
+  );
 }
 
 describe("POST /api/zero/host/deployments/prepare", () => {
@@ -573,6 +588,151 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
   });
 });
 
+describe("GET /api/zero/host/sites/:publicSlug/files", () => {
+  it("returns active file metadata for an owned hosted site", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "demo-site",
+          slugSuffix: "release-01",
+          spaFallback: true,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+
+    const prefix = `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}`;
+    mockUploadedKeys([
+      `${prefix}/index.html`,
+      `${prefix}/assets/index-a1b2c3d4.js`,
+    ]);
+    await accept(
+      client.complete({
+        params: { deploymentId: prepared.body.deploymentId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    context.mocks.s3.getSignedUrl.mockClear();
+    mockSignedUrlFromKey();
+
+    const response = await accept(
+      client.files({
+        params: { publicSlug: prepared.body.publicSlug },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      siteId: prepared.body.siteId,
+      deploymentId: prepared.body.deploymentId,
+      publicSlug: prepared.body.publicSlug,
+      url: prepared.body.url,
+      fileCount: 2,
+      size: 540,
+    });
+    expect(
+      response.body.files.map((file) => {
+        return {
+          path: file.path,
+          size: file.size,
+          contentType: file.contentType,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        path: "/assets/index-a1b2c3d4.js",
+        size: 420,
+        contentType: "application/javascript; charset=utf-8",
+      },
+      {
+        path: "/index.html",
+        size: 120,
+        contentType: "text/html; charset=utf-8",
+      },
+    ]);
+    expect(
+      response.body.files.map((file) => {
+        return file.downloadUrl;
+      }),
+    ).toStrictEqual([
+      `https://r2.example.com/${prefix}/assets/index-a1b2c3d4.js?sig=test`,
+      `https://r2.example.com/${prefix}/index.html?sig=test`,
+    ]);
+    expect(context.mocks.s3.getSignedUrl).toHaveBeenCalledTimes(2);
+    expect(context.mocks.s3.getSignedUrl.mock.calls[0]?.[1]).toHaveProperty(
+      "input.Bucket",
+      "test-hosted-sites",
+    );
+    expect(context.mocks.s3.getSignedUrl.mock.calls[0]?.[1]).toHaveProperty(
+      "input.Key",
+      `${prefix}/assets/index-a1b2c3d4.js`,
+    );
+  });
+
+  it("returns 404 for a hosted site owned by another org", async () => {
+    const owner = await seedHostedSiteFixture();
+    mocks.clerk.session(owner.userId, owner.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "private-site",
+          slugSuffix: "release-01",
+          spaFallback: false,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+
+    const prefix = `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}`;
+    mockUploadedKeys([
+      `${prefix}/index.html`,
+      `${prefix}/assets/index-a1b2c3d4.js`,
+    ]);
+    await accept(
+      client.complete({
+        params: { deploymentId: prepared.body.deploymentId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    context.mocks.s3.getSignedUrl.mockClear();
+    const other = await seedHostedSiteFixture();
+    mocks.clerk.session(other.userId, other.orgId);
+
+    const response = await accept(
+      client.files({
+        params: { publicSlug: prepared.body.publicSlug },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Hosted site not found",
+        code: "NOT_FOUND",
+      },
+    });
+    expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/zero/host/presentation-html/redeploy", () => {
   it("redeploys presentation HTML to the same hosted site URL", async () => {
     const fixture = await seedHostedSiteFixture();
@@ -721,6 +881,114 @@ describe("POST /api/zero/host/presentation-html/redeploy", () => {
 
     expect(redeployed.body.error.message).toBe(
       "Hosted site is not a presentation HTML artifact",
+    );
+  });
+});
+
+describe("POST /api/zero/host/presentation-html/speaker-notes", () => {
+  it("returns structured speaker notes patches from the configured model", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockOptionalEnv("OPENROUTER_API_KEY", "speaker-notes-api-key");
+    let upstreamAuthorization: string | null = null;
+    let upstreamPrompt: string | null = null;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          upstreamAuthorization = request.headers.get("authorization");
+          const body = (await request.json()) as {
+            readonly messages?: readonly { readonly content?: string }[];
+          };
+          upstreamPrompt = body.messages?.at(-1)?.content ?? null;
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify({
+                    kind: "presentation-speaker-notes-patch",
+                    version: 1,
+                    slides: [
+                      {
+                        slideId: "slide-2",
+                        speakerNotes: "Talk through the key transition.",
+                      },
+                      {
+                        slideId: "slide-3",
+                        speakerNotes: "Connect the examples back to the theme.",
+                      },
+                    ],
+                  }),
+                },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const client = setupApp({ context })(zeroHostContract);
+    const response = await accept(
+      client.generatePresentationSpeakerNotes({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          html: '<!doctype html><html><body><section data-slide-id="slide-2">Roadmap</section></body></html>',
+          mode: "fill-empty",
+        },
+      }),
+      [200],
+    );
+
+    expect(upstreamAuthorization).toBe("Bearer speaker-notes-api-key");
+    expect(upstreamPrompt).toContain("slide-2");
+    expect(response.body).toStrictEqual({
+      kind: "presentation-speaker-notes-patch",
+      version: 1,
+      slides: [
+        {
+          slideId: "slide-2",
+          speakerNotes: "Talk through the key transition.",
+        },
+        {
+          slideId: "slide-3",
+          speakerNotes: "Connect the examples back to the theme.",
+        },
+      ],
+    });
+  });
+
+  it("rejects invalid model output", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockOptionalEnv("OPENROUTER_API_KEY", "speaker-notes-api-key");
+    server.use(
+      http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: "not json" },
+            },
+          ],
+        });
+      }),
+    );
+
+    const client = setupApp({ context })(zeroHostContract);
+    const response = await accept(
+      client.generatePresentationSpeakerNotes({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          html: "<!doctype html><html><body><section>Roadmap</section></body></html>",
+          mode: "fill-empty",
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Speaker notes generation returned invalid JSON",
     );
   });
 });

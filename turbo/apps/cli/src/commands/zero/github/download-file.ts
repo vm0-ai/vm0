@@ -19,8 +19,19 @@ function filenameFromUrl(fileUrl: string): string {
   return basename(fileUrl) || "file";
 }
 
+function safeDefaultFilename(filename: string): string {
+  const component = basename(filename.replaceAll("\\", "/"));
+  if (!component || component === "." || component === "..") {
+    return "file";
+  }
+  return component;
+}
+
 function defaultOutPath(fileUrl: string, filename?: string): string {
-  return join(tmpdir(), `github-${filename || filenameFromUrl(fileUrl)}`);
+  return join(
+    tmpdir(),
+    `github-${safeDefaultFilename(filename || filenameFromUrl(fileUrl))}`,
+  );
 }
 
 export const downloadFileCommand = new Command()
@@ -45,9 +56,10 @@ Output:
 
 How to read the downloaded file:
   - Images (png/jpg/gif/webp/svg): open the file path with your image viewing tool
-  - Videos (mp4/mov/webm): extract frames first with
+  - Videos (mp4/mov/webm): transcribe audio first with
+      zero video transcribe --url <download-url>
+    or extract frames with
       ffmpeg -i <path> -vf "fps=1" -q:v 2 /tmp/github_frame_%03d.jpg
-    then view the extracted frames
   - PDF/text/csv/json/markdown: read the file directly
 
 Notes:

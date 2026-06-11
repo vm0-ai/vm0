@@ -6,6 +6,7 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
 function policyId(index: number): string {
@@ -55,6 +56,7 @@ export function setMockOrgModelPolicies(policies: OrgModelPolicy[]): void {
 }
 
 function applyUpdate(policy: UpdateOrgModelPolicy): OrgModelPolicy {
+  const now = nowDate().toISOString();
   const existing = mockOrgModelPolicies.find((item) => {
     return item.model === policy.model;
   });
@@ -68,8 +70,8 @@ function applyUpdate(policy: UpdateOrgModelPolicy): OrgModelPolicy {
     modelProviderId: policy.modelProviderId,
     routeStatus: "valid",
     routeStatusReason: null,
-    createdAt: existing?.createdAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
   };
 }
 

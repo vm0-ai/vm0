@@ -2,6 +2,7 @@ import {
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { nowDate } from "../../lib/time.ts";
 import { userPermissionGrantExpiresAt } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { mockApi } from "../msw-contract.ts";
 
@@ -38,35 +39,13 @@ function resolvedMockExpiresAt(
   return null;
 }
 
-export function createMockUserPermissionGrantResponse(
-  overrides: Partial<UserPermissionGrantResponse>,
-): UserPermissionGrantResponse {
-  const now = new Date().toISOString();
-  return {
-    agentId: "c0000000-0000-4000-a000-000000000001",
-    connectorRef: "slack",
-    permission: "channels:read",
-    action: "allow",
-    expiresAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
-export function setMockUserPermissionGrants(
-  grants: UserPermissionGrantResponse[],
-): void {
-  mockUserPermissionGrants = grants;
-}
-
 export function resetMockUserPermissionGrants(): void {
   mockUserPermissionGrants = [];
 }
 
 export const apiUserPermissionGrantsHandlers = [
   mockApi(zeroUserPermissionGrantsContract.list, ({ query, respond }) => {
-    const checkedAt = new Date();
+    const checkedAt = nowDate();
     return respond(
       200,
       mockUserPermissionGrants.filter((grant) => {
@@ -78,7 +57,7 @@ export const apiUserPermissionGrantsHandlers = [
   }),
 
   mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
-    const now = new Date();
+    const now = nowDate();
     const existing = mockUserPermissionGrants.find((grant) => {
       return grantKey(grant) === grantKey(body);
     });

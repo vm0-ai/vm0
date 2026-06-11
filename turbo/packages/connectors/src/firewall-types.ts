@@ -8,9 +8,6 @@ import { parseSegment, splitPathSegments } from "./segment-parser";
  *
  * All firewall zod schemas are defined here as the single source of truth.
  * Other modules (composes.ts, runners.ts) import from here.
- *
- * Firewall configs are hosted in GitHub: vm0-ai/vm0-firewalls
- * See resolveFirewallSelections() in firewall-expander.ts for resolution logic.
  */
 
 /**
@@ -23,16 +20,47 @@ export const firewallPermissionSchema = z.object({
   rules: z.array(z.string()),
 });
 
+export const firewallAwsSigv4AuthSchema = z
+  .object({
+    accessKeyId: z.string().min(1),
+    secretAccessKey: z.string().min(1),
+    sessionToken: z.string().min(1).optional(),
+  })
+  .strict();
+
+const firewallAuthSchema = z
+  .object({
+    headers: z.record(z.string(), z.string()).optional(),
+    base: z.string().optional(),
+    query: z.record(z.string(), z.string()).optional(),
+    awsSigv4: firewallAwsSigv4AuthSchema.optional(),
+  })
+  .superRefine((auth, ctx) => {
+    if (!auth.awsSigv4) {
+      return;
+    }
+    if (auth.headers && Object.keys(auth.headers).length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["headers"],
+        message: "auth.headers cannot be combined with auth.awsSigv4",
+      });
+    }
+    if (auth.query && Object.keys(auth.query).length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["query"],
+        message: "auth.query cannot be combined with auth.awsSigv4",
+      });
+    }
+  });
+
 /**
  * Firewall API entry — a base URL with optional auth headers/query/base and permissions.
  */
 export const firewallApiSchema = z.object({
   base: z.string(),
-  auth: z.object({
-    headers: z.record(z.string(), z.string()).optional(),
-    base: z.string().optional(),
-    query: z.record(z.string(), z.string()).optional(),
-  }),
+  auth: firewallAuthSchema,
   permissions: z.array(firewallPermissionSchema).optional(),
 });
 
@@ -57,9 +85,7 @@ export const firewallsSchema = z.array(firewallSchema);
  */
 export const UNKNOWN_PERMISSION_GRANT = "__unknown__";
 
-/**
- * Zod schema for validating firewall config (GitHub-hosted YAML).
- */
+/** Zod schema for validating firewall config definitions. */
 export const firewallConfigSchema = z.object({
   name: z.string().min(1, "Firewall name is required"),
   description: z.string().optional(),
@@ -523,6 +549,14 @@ export function extractSecretNamesFromApis(
         }
       }
     }
+    if (entry.auth.awsSigv4) {
+      for (const value of Object.values(entry.auth.awsSigv4)) {
+        if (!value) continue;
+        for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
+          names.add(match[1]!);
+        }
+      }
+    }
   }
   return [...names];
 }
@@ -568,6 +602,11 @@ export function extractFirewallTemplateReferences(
     }
     for (const value of Object.values(entry.auth.query ?? {})) {
       collectFirewallTemplateReferencesFromValue(value, references);
+    }
+    for (const value of Object.values(entry.auth.awsSigv4 ?? {})) {
+      if (value) {
+        collectFirewallTemplateReferencesFromValue(value, references);
+      }
     }
   }
 

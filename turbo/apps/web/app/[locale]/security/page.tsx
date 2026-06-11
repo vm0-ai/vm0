@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import Script from "next/script";
 import { SecurityPage } from "./SecurityPage";
 import type { Locale } from "../../../i18n";
+import { serializeJsonLd } from "../../../src/lib/json-ld";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 
 const BASE_URL = "https://www.vm0.ai";
@@ -75,7 +76,7 @@ export default async function SecurityPageServer({ params }: PageProps) {
       <Script
         id="json-ld-breadcrumb"
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
       <SecurityPage />
     </>

@@ -409,7 +409,7 @@ fn build_env_json_codex_keeps_shared_runner_env() {
     ctx.cli_agent_type = "codex".into();
     ctx.append_system_prompt = Some("Use terse answers.".into());
     ctx.resume_session = Some(ResumeSession {
-        session_id: "sess-123".into(),
+        session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
         session_history: "{}".into(),
     });
 
@@ -419,8 +419,30 @@ fn build_env_json_codex_keeps_shared_runner_env() {
         env.get("VM0_APPEND_SYSTEM_PROMPT").unwrap(),
         "Use terse answers."
     );
-    assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
+    assert_eq!(
+        env.get("VM0_RESUME_SESSION_ID").unwrap(),
+        "019e9154-c304-70f0-adde-36efb1be1701"
+    );
     assert!(!env.contains_key("VM0_WORKING_DIR"));
+}
+
+#[test]
+fn build_env_json_rejects_invalid_codex_resume_session_id() {
+    for session_id in ["abc", "urn:uuid:019e9154-c304-70f0-adde-36efb1be1701"] {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: session_id.into(),
+            session_history: "{}".into(),
+        });
+
+        let error = build_env_for_test_result(&ctx, "http://localhost").unwrap_err();
+
+        assert!(
+            error.to_string().contains("invalid codex session_id"),
+            "got: {error}"
+        );
+    }
 }
 
 #[test]

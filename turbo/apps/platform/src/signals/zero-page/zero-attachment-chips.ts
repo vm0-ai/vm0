@@ -164,15 +164,6 @@ export const openAudioLightbox$ = command(
   },
 );
 
-export const closeLightbox$ = command(({ set }) => {
-  set(internalLightboxDialogCloseToken$, (value) => {
-    return value + 1;
-  });
-  set(internalLightboxDialogVisible$, false);
-  set(internalLightboxDialogFullscreen$, false);
-  set(internalLightboxState$, null);
-});
-
 // ---------------------------------------------------------------------------
 // Escape-key handler for global attachment preview — closes on Escape
 // ---------------------------------------------------------------------------

@@ -61,8 +61,14 @@ import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
-import { shouldShowGoogleSecurityWarningNotice } from "../../../../lib/google-security-warning.ts";
-import { GoogleSecurityWarningNotice } from "../../zero-directed-shared.tsx";
+import {
+  shouldShowGoogleSecurityWarningNotice,
+  shouldShowMetaAdsReviewNotice,
+} from "../../../../lib/google-security-warning.ts";
+import {
+  GoogleSecurityWarningNotice,
+  MetaAdsReviewNotice,
+} from "../../zero-directed-shared.tsx";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 
 // ---------------------------------------------------------------------------
@@ -1052,10 +1058,18 @@ function StandardConnectMethodsContent({
         return entry.authMethod;
       }),
     ) && shouldShowGoogleSecurityWarningNotice(item.type);
+  const showMetaAdsReviewNotice =
+    hasAuthCodeGrant(
+      item.type,
+      entries.map((entry) => {
+        return entry.authMethod;
+      }),
+    ) && shouldShowMetaAdsReviewNotice(item.type);
 
   return (
     <div className="flex flex-col gap-4">
       {showGoogleSecurityWarningNotice && <GoogleSecurityWarningNotice />}
+      {showMetaAdsReviewNotice && <MetaAdsReviewNotice />}
 
       <ConnectMethodsContent
         entries={entries}

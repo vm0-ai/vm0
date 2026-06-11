@@ -17,7 +17,7 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { decryptSecretsMapForTests } from "./helpers/encrypt-secret";
 import {
@@ -25,6 +25,7 @@ import {
   countSlackWebhookConnections$,
   countSlackWebhookInstallations$,
   deleteSlackWebhookFixture$,
+  seedSlackWebhookAgent$,
   seedSlackWebhookOrphanCompose$,
   seedSlackWebhookFixture$,
   seedSlackThreadSession$,
@@ -217,6 +218,14 @@ function latestPostEphemeralCall(): {
   };
 }
 
+function latestViewPublishCall(): { readonly view?: unknown } {
+  const call = context.mocks.slack.views.publish.mock.calls.at(-1);
+  if (!call) {
+    throw new Error("Expected Slack views.publish to be called");
+  }
+  return call[0] as { readonly view?: unknown };
+}
+
 describe("POST /api/zero/slack/events", () => {
   const track = createFixtureTracker<SlackWebhookFixture>((fixture) => {
     return store.set(deleteSlackWebhookFixture$, fixture, context.signal);
@@ -305,7 +314,7 @@ describe("POST /api/zero/slack/events", () => {
       },
       { "x-slack-retry-num": "1" },
     );
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
@@ -327,7 +336,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "C-test",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(missingMention.status).toBe(200);
 
     const unboundFixture = await track(
@@ -353,7 +362,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-test",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(unboundDm.status).toBe(200);
     expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
@@ -382,7 +391,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "C-test",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(mention.status).toBe(200);
     expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
@@ -411,7 +420,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-test",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(dm.status).toBe(200);
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
@@ -441,7 +450,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "C-test",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(mention.status).toBe(200);
     expect(latestPostEphemeralCall().text).toContain("No agent is configured");
@@ -480,10 +489,55 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-test",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(dm.status).toBe(200);
     expect(latestPostMessageCall().text).toContain("could not be found");
+  });
+
+  it("does not run a private default agent owned by another user", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: false },
+        context.signal,
+      ),
+    );
+    const hiddenAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_other_${randomBytes(8).toString("hex")}`,
+        namePrefix: "hidden-default",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookDefaultAgent$,
+      { orgId: fixture.orgId, composeId: hiddenAgentId },
+      context.signal,
+    );
+
+    const dm = await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "message",
+        channel_type: "im",
+        user: fixture.slackUserId,
+        text: "hello in dm",
+        ts: "1710000003.100000",
+        channel: "D-test",
+      },
+    });
+    await flushWaitUntilForTest();
+
+    expect(dm.status).toBe(200);
+    expect(latestPostMessageCall().text).toContain("not available");
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).not.toHaveBeenCalled();
   });
 
   it("filters direct message events by channel type, bot marker, and subtype", async () => {
@@ -533,7 +587,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "C-test",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
 
@@ -550,7 +604,7 @@ describe("POST /api/zero/slack/events", () => {
         subtype: "file_share",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(fileShare.status).toBe(200);
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
@@ -578,7 +632,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-home",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.views.publish).toHaveBeenCalledOnce();
 
     await postEvent({
@@ -591,7 +645,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-home",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channel: "D-home" }),
     );
@@ -601,7 +655,7 @@ describe("POST /api/zero/slack/events", () => {
       team_id: fixture.slackWorkspaceId,
       event: { type: "app_uninstalled" },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await expect(
       store.set(
         countSlackWebhookConnections$,
@@ -609,6 +663,57 @@ describe("POST /api/zero/slack/events", () => {
         context.signal,
       ),
     ).resolves.toBe(0);
+  });
+
+  it("shows the App Home switch action when a visible agent exists without a visible default", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: false },
+        context.signal,
+      ),
+    );
+    const hiddenDefaultAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "home-hidden-default",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookDefaultAgent$,
+      { orgId: fixture.orgId, composeId: hiddenDefaultAgentId },
+      context.signal,
+    );
+    await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "home-visible-agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+
+    await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "app_home_opened",
+        user: fixture.slackUserId,
+        tab: "home",
+        channel: "D-home",
+      },
+    });
+    await flushWaitUntilForTest();
+
+    expect(JSON.stringify(latestViewPublishCall().view ?? "")).toContain(
+      "home_switch_agent",
+    );
   });
 
   it("handles App Home and Messages tab edge cases", async () => {
@@ -622,7 +727,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-home",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(missingHome.status).toBe(200);
     expect(context.mocks.slack.views.publish).not.toHaveBeenCalled();
 
@@ -643,7 +748,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-home",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.views.publish).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: disconnected.slackUserId }),
     );
@@ -658,7 +763,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-home",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.chat.postMessage).not.toHaveBeenCalled();
 
     const connected = await track(
@@ -678,7 +783,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-welcome",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
     expect(latestPostMessageCall().channel).toBe("D-welcome");
 
@@ -692,7 +797,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-welcome",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledOnce();
   });
 
@@ -702,7 +807,7 @@ describe("POST /api/zero/slack/events", () => {
       team_id: "T-missing-uninstall",
       event: { type: "app_uninstalled" },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(missingUninstall.status).toBe(200);
 
     const noConnections = await track(
@@ -721,7 +826,7 @@ describe("POST /api/zero/slack/events", () => {
       team_id: noConnections.slackWorkspaceId,
       event: { type: "app_uninstalled" },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await expect(
       store.set(
         countSlackWebhookInstallations$,
@@ -745,7 +850,7 @@ describe("POST /api/zero/slack/events", () => {
         tokens: { bot: ["xoxb-revoked"] },
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     await expect(
       store.set(
@@ -785,7 +890,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "C-test",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const db = store.set(writeDb$);
@@ -853,7 +958,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "C-override",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(overrideResponse.status).toBe(200);
     expect(JSON.stringify(latestPostMessageCall().blocks ?? "")).toContain(
@@ -888,7 +993,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "C-default",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(defaultResponse.status).toBe(200);
     expect(JSON.stringify(latestPostMessageCall().blocks ?? "")).not.toContain(
@@ -941,7 +1046,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "C-stale",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(staleResponse.status).toBe(200);
     expect(JSON.stringify(latestPostMessageCall().blocks ?? "")).not.toContain(
@@ -996,7 +1101,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: channelId,
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const db = store.set(writeDb$);
@@ -1071,7 +1176,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: channelId,
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const [run] = await db
@@ -1143,7 +1248,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: channelId,
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const [run] = await db
@@ -1218,7 +1323,7 @@ describe("POST /api/zero/slack/events", () => {
         channel: "D-gpt",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.status).toBe(200);
     const [run] = await db

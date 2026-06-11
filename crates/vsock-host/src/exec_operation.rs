@@ -536,6 +536,24 @@ enum ExecOperationTracking<'a> {
     Untracked,
 }
 
+struct ExecOperationRegistrationInput<'a> {
+    label: &'a str,
+    stdout: ExecOutputPolicy,
+    stderr: ExecOutputPolicy,
+    stream_queue_capacity: Option<usize>,
+    lifecycle: ExecOperationLifecycle,
+    tracking: ExecOperationTracking<'a>,
+}
+
+struct ExecOperationRegistration {
+    seq: u32,
+    diagnostic: ExecOperationDiagnostic,
+    result_rx: oneshot::Receiver<io::Result<ExecOperationResult>>,
+    stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
+    registration_guard: ExecOperationRegistrationGuard,
+    tracks_normal_operation: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExecTerminalLogLifecycle {
     OneShot,
@@ -790,16 +808,165 @@ impl ExecOperationDiagnostic {
 /// section in the [`crate`] docs for the cross-handle ownership contract.
 #[must_use = "dropping this handle does not cancel the guest; call wait or cancel_and_wait"]
 pub struct ExecOperationHandle {
+    wait_core: ExecWaitCore,
+    stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
+}
+
+struct ExecWaitCore {
     shared: Arc<Shared>,
     seq: Option<u32>,
     diagnostic: ExecOperationDiagnostic,
     result_rx: Option<oneshot::Receiver<io::Result<ExecOperationResult>>>,
-    stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
+}
+
+#[derive(Clone, Copy)]
+enum ExecWaitLifecycle {
+    OneShot,
+    Supervised,
 }
 
 struct ExecCancelWaitResult {
     result: ExecOperationResult,
     cancel_seq: Option<u32>,
+}
+
+impl ExecWaitCore {
+    fn operation_closed_message(lifecycle: ExecWaitLifecycle) -> &'static str {
+        match lifecycle {
+            ExecWaitLifecycle::OneShot => "exec operation closed",
+            ExecWaitLifecycle::Supervised => "supervised exec operation closed",
+        }
+    }
+
+    fn timeout_error_message(lifecycle: ExecWaitLifecycle) -> &'static str {
+        match lifecycle {
+            ExecWaitLifecycle::OneShot => "exec operation timeout",
+            ExecWaitLifecycle::Supervised => "supervised exec operation timeout",
+        }
+    }
+
+    fn log_timeout(&self, seq: u32, poison_on_timeout: bool, lifecycle: ExecWaitLifecycle) {
+        match lifecycle {
+            ExecWaitLifecycle::OneShot => {
+                tracing::warn!(
+                    seq = seq,
+                    label = %self.diagnostic.label_log,
+                    elapsed_ms = self.diagnostic.elapsed_ms(),
+                    poison_connection = poison_on_timeout,
+                    "exec operation wait timeout"
+                );
+            }
+            ExecWaitLifecycle::Supervised => {
+                tracing::warn!(
+                    seq = seq,
+                    label = %self.diagnostic.label_log,
+                    elapsed_ms = self.diagnostic.elapsed_ms(),
+                    poison_connection = poison_on_timeout,
+                    "supervised exec operation wait timeout"
+                );
+            }
+        }
+    }
+
+    fn new(
+        shared: Arc<Shared>,
+        seq: u32,
+        diagnostic: ExecOperationDiagnostic,
+        result_rx: oneshot::Receiver<io::Result<ExecOperationResult>>,
+    ) -> Self {
+        Self {
+            shared,
+            seq: Some(seq),
+            diagnostic,
+            result_rx: Some(result_rx),
+        }
+    }
+
+    fn shared(&self) -> &Arc<Shared> {
+        &self.shared
+    }
+
+    fn diagnostic(&self) -> &ExecOperationDiagnostic {
+        &self.diagnostic
+    }
+
+    fn active_seq(&self) -> Option<u32> {
+        self.seq
+    }
+
+    fn active_seq_or_closed(&self, message: &'static str) -> io::Result<u32> {
+        self.seq
+            .ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionReset, message))
+    }
+
+    fn remove_operation_if_active(&mut self) {
+        if let Some(seq) = self.seq.take() {
+            self.shared.remove_operation(seq);
+        }
+    }
+
+    fn try_take_ready_result(&mut self) -> io::Result<Option<ExecOperationResult>> {
+        let Some(rx) = self.result_rx.as_mut() else {
+            return Ok(None);
+        };
+
+        match rx.try_recv() {
+            Ok(result) => {
+                self.seq = None;
+                self.result_rx = None;
+                result.map(Some)
+            }
+            Err(oneshot::error::TryRecvError::Empty) => Ok(None),
+            Err(oneshot::error::TryRecvError::Closed) => {
+                self.seq = None;
+                self.result_rx = None;
+                Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ))
+            }
+        }
+    }
+
+    async fn wait_with_timeout(
+        &mut self,
+        timeout: Duration,
+        poison_on_timeout: bool,
+        lifecycle: ExecWaitLifecycle,
+    ) -> io::Result<ExecOperationResult> {
+        let seq = self.active_seq_or_closed(Self::operation_closed_message(lifecycle))?;
+        let rx = self.result_rx.as_mut().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                Self::operation_closed_message(lifecycle),
+            )
+        })?;
+
+        tokio::select! {
+            biased;
+            result = rx => {
+                self.seq = None;
+                self.result_rx = None;
+                result.map_err(|_| io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ))?
+            }
+            _ = tokio::time::sleep(timeout) => {
+                self.shared.remove_operation(seq);
+                self.seq = None;
+                self.result_rx = None;
+                self.log_timeout(seq, poison_on_timeout, lifecycle);
+                if poison_on_timeout {
+                    self.shared.poison_connection();
+                }
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    Self::timeout_error_message(lifecycle),
+                ))
+            }
+        }
+    }
 }
 
 impl ExecOperationHandle {
@@ -814,8 +981,10 @@ impl ExecOperationHandle {
     /// not cancel the guest-side exec operation. If the request may have
     /// reached the guest, normal operations can become unavailable on this
     /// connection even though the connection itself may still be open.
-    pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
-        self.wait_with_timeout(timeout, false).await
+    pub async fn wait(mut self, timeout: Duration) -> io::Result<ExecOperationResult> {
+        self.wait_core
+            .wait_with_timeout(timeout, false, ExecWaitLifecycle::OneShot)
+            .await
     }
 
     /// Send an explicit cancel request and wait for a cancelled terminal result.
@@ -825,8 +994,8 @@ impl ExecOperationHandle {
     /// is sent but the terminal result does not arrive before `timeout`, the
     /// connection is poisoned because guest process state is no longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
-        let cancel_label_log = self.diagnostic.label_log.clone();
-        let registered_at = self.diagnostic.registered_at;
+        let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
+        let registered_at = self.wait_core.diagnostic().registered_at;
         let wait_result = self.cancel_and_wait_for_terminal_status(timeout).await?;
         if wait_result.cancel_seq.is_none()
             || wait_result.result.termination == ExecTermination::Cancelled
@@ -861,111 +1030,50 @@ impl ExecOperationHandle {
         mut self,
         timeout: Duration,
     ) -> io::Result<ExecCancelWaitResult> {
-        if let Some(result) = self.try_take_ready_result()? {
+        if let Some(result) = self.wait_core.try_take_ready_result()? {
             return Ok(ExecCancelWaitResult {
                 result,
                 cancel_seq: None,
             });
         }
 
-        let seq = self.seq.ok_or_else(|| {
-            io::Error::new(io::ErrorKind::ConnectionReset, "exec operation closed")
-        })?;
+        let seq = self
+            .wait_core
+            .active_seq_or_closed(ExecWaitCore::operation_closed_message(
+                ExecWaitLifecycle::OneShot,
+            ))?;
         let payload = vsock_proto::encode_exec_cancel();
         write_frame(
-            &self.shared,
+            self.wait_core.shared(),
             MSG_EXEC_CANCEL,
             seq,
             &payload,
-            Some(self.diagnostic.frame("cancel")),
+            Some(self.wait_core.diagnostic().frame("cancel")),
             None,
-            exec_cancel_write_observer(&self.shared, seq),
+            exec_cancel_write_observer(self.wait_core.shared(), seq),
         )
         .await?;
         tracing::info!(
             seq = seq,
-            label = %self.diagnostic.label_log,
-            elapsed_ms = self.diagnostic.elapsed_ms(),
+            label = %self.wait_core.diagnostic().label_log,
+            elapsed_ms = self.wait_core.diagnostic().elapsed_ms(),
             "exec operation cancel sent"
         );
 
-        let result = self.wait_with_timeout(timeout, true).await?;
+        let result = self
+            .wait_core
+            .wait_with_timeout(timeout, true, ExecWaitLifecycle::OneShot)
+            .await?;
         Ok(ExecCancelWaitResult {
             result,
             cancel_seq: Some(seq),
         })
     }
-
-    fn try_take_ready_result(&mut self) -> io::Result<Option<ExecOperationResult>> {
-        let Some(rx) = self.result_rx.as_mut() else {
-            return Ok(None);
-        };
-
-        match rx.try_recv() {
-            Ok(result) => {
-                self.seq = None;
-                self.result_rx = None;
-                result.map(Some)
-            }
-            Err(oneshot::error::TryRecvError::Empty) => Ok(None),
-            Err(oneshot::error::TryRecvError::Closed) => {
-                self.seq = None;
-                self.result_rx = None;
-                Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ))
-            }
-        }
-    }
-
-    async fn wait_with_timeout(
-        mut self,
-        timeout: Duration,
-        poison_on_timeout: bool,
-    ) -> io::Result<ExecOperationResult> {
-        let seq = self.seq.ok_or_else(|| {
-            io::Error::new(io::ErrorKind::ConnectionReset, "exec operation closed")
-        })?;
-        let rx = self.result_rx.as_mut().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::ConnectionReset, "exec operation closed")
-        })?;
-
-        tokio::select! {
-            biased;
-            result = rx => {
-                self.seq = None;
-                self.result_rx = None;
-                result.map_err(|_| io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ))?
-            }
-            _ = tokio::time::sleep(timeout) => {
-                self.shared.remove_operation(seq);
-                self.seq = None;
-                self.result_rx = None;
-                tracing::warn!(
-                    seq = seq,
-                    label = %self.diagnostic.label_log,
-                    elapsed_ms = self.diagnostic.elapsed_ms(),
-                    poison_connection = poison_on_timeout,
-                    "exec operation wait timeout"
-                );
-                if poison_on_timeout {
-                    self.shared.poison_connection();
-                }
-                Err(io::Error::new(io::ErrorKind::TimedOut, "exec operation timeout"))
-            }
-        }
-    }
 }
 
 impl Drop for ExecOperationHandle {
     fn drop(&mut self) {
-        if let Some(seq) = self.seq.take() {
-            self.shared.remove_operation(seq);
-        }
+        self.wait_core.remove_operation_if_active();
     }
 }
 
@@ -979,12 +1087,9 @@ impl Drop for ExecOperationHandle {
 /// cancellation and terminal result ownership.
 #[must_use = "dropping this handle does not cancel the guest or remove lifecycle registration"]
 pub struct SupervisedExecHandle {
-    shared: Arc<Shared>,
-    seq: Option<u32>,
+    wait_core: ExecWaitCore,
     pid: u32,
-    diagnostic: ExecOperationDiagnostic,
     cancel_handle_taken: bool,
-    result_rx: Option<oneshot::Receiver<io::Result<ExecOperationResult>>>,
     stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
     control: Option<ExecControlHandle>,
 }
@@ -1046,12 +1151,12 @@ impl SupervisedExecHandle {
         if self.cancel_handle_taken {
             return None;
         }
-        let seq = self.seq?;
+        let seq = self.wait_core.active_seq()?;
         self.cancel_handle_taken = true;
         Some(SupervisedExecCancelHandle {
-            shared: Arc::clone(&self.shared),
+            shared: Arc::clone(self.wait_core.shared()),
             seq,
-            diagnostic: self.diagnostic.clone(),
+            diagnostic: self.wait_core.diagnostic().clone(),
         })
     }
 
@@ -1080,11 +1185,11 @@ impl SupervisedExecHandle {
     }
 
     fn clear_unclaimed_stream_sender(&mut self) {
-        let Some(seq) = self.seq else {
+        let Some(seq) = self.wait_core.active_seq() else {
             return;
         };
         if self.stream_rx.take().is_some() {
-            clear_exec_operation_stream_sender(&self.shared, seq);
+            clear_exec_operation_stream_sender(self.wait_core.shared(), seq);
         }
     }
 
@@ -1094,8 +1199,11 @@ impl SupervisedExecHandle {
     /// not send `MSG_EXEC_CANCEL`. Because the terminal proof is abandoned
     /// after a guest write, later normal operations become unavailable on this
     /// connection.
-    pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
-        self.wait_with_timeout(timeout, false).await
+    pub async fn wait(mut self, timeout: Duration) -> io::Result<ExecOperationResult> {
+        self.clear_unclaimed_stream_sender();
+        self.wait_core
+            .wait_with_timeout(timeout, false, ExecWaitLifecycle::Supervised)
+            .await
     }
 
     /// Send `MSG_EXEC_CANCEL` and wait for the terminal exec result.
@@ -1105,8 +1213,8 @@ impl SupervisedExecHandle {
     /// is sent but the terminal result does not arrive before `timeout`, the
     /// connection is poisoned because guest process state is no longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
-        let cancel_label_log = self.diagnostic.label_log.clone();
-        let registered_at = self.diagnostic.registered_at;
+        let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
+        let registered_at = self.wait_core.diagnostic().registered_at;
         let wait_result = self.cancel_and_wait_for_terminal_status(timeout).await?;
         if wait_result.cancel_seq.is_none()
             || wait_result.result.termination == ExecTermination::Cancelled
@@ -1132,97 +1240,34 @@ impl SupervisedExecHandle {
         mut self,
         timeout: Duration,
     ) -> io::Result<ExecCancelWaitResult> {
-        if let Some(result) = self.try_take_ready_result()? {
+        if let Some(result) = self.wait_core.try_take_ready_result()? {
             return Ok(ExecCancelWaitResult {
                 result,
                 cancel_seq: None,
             });
         }
 
-        let seq = self.seq.ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                "supervised exec operation closed",
-            )
-        })?;
-        send_supervised_exec_cancel_frame(&self.shared, seq, &self.diagnostic).await?;
+        let seq = self
+            .wait_core
+            .active_seq_or_closed(ExecWaitCore::operation_closed_message(
+                ExecWaitLifecycle::Supervised,
+            ))?;
+        send_supervised_exec_cancel_frame(
+            self.wait_core.shared(),
+            seq,
+            self.wait_core.diagnostic(),
+        )
+        .await?;
 
-        let result = self.wait_with_timeout(timeout, true).await?;
+        self.clear_unclaimed_stream_sender();
+        let result = self
+            .wait_core
+            .wait_with_timeout(timeout, true, ExecWaitLifecycle::Supervised)
+            .await?;
         Ok(ExecCancelWaitResult {
             result,
             cancel_seq: Some(seq),
         })
-    }
-
-    fn try_take_ready_result(&mut self) -> io::Result<Option<ExecOperationResult>> {
-        let Some(rx) = self.result_rx.as_mut() else {
-            return Ok(None);
-        };
-
-        match rx.try_recv() {
-            Ok(result) => {
-                self.seq = None;
-                self.result_rx = None;
-                result.map(Some)
-            }
-            Err(oneshot::error::TryRecvError::Empty) => Ok(None),
-            Err(oneshot::error::TryRecvError::Closed) => {
-                self.seq = None;
-                self.result_rx = None;
-                Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ))
-            }
-        }
-    }
-
-    async fn wait_with_timeout(
-        mut self,
-        timeout: Duration,
-        poison_on_timeout: bool,
-    ) -> io::Result<ExecOperationResult> {
-        let seq = self.seq.ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                "supervised exec operation closed",
-            )
-        })?;
-        self.clear_unclaimed_stream_sender();
-        let rx = self.result_rx.as_mut().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                "supervised exec operation closed",
-            )
-        })?;
-
-        tokio::select! {
-            biased;
-            result = rx => {
-                self.seq = None;
-                self.result_rx = None;
-                result.map_err(|_| io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ))?
-            }
-            _ = tokio::time::sleep(timeout) => {
-                self.shared.remove_operation(seq);
-                self.seq = None;
-                self.result_rx = None;
-                tracing::warn!(
-                    seq = seq,
-                    label = %self.diagnostic.label_log,
-                    elapsed_ms = self.diagnostic.elapsed_ms(),
-                    poison_connection = poison_on_timeout,
-                    "supervised exec operation wait timeout"
-                );
-                if poison_on_timeout {
-                    self.shared.poison_connection();
-                }
-                Err(io::Error::new(io::ErrorKind::TimedOut, "supervised exec operation timeout"))
-            }
-        }
     }
 }
 
@@ -1311,18 +1356,18 @@ impl ExecOperationCancelOnDropGuard {
 
     pub(crate) fn new(handle: &ExecOperationHandle) -> Option<Self> {
         Some(Self {
-            shared: Some(Arc::clone(&handle.shared)),
-            seq: handle.seq?,
-            diagnostic: handle.diagnostic.clone(),
+            shared: Some(Arc::clone(handle.wait_core.shared())),
+            seq: handle.wait_core.active_seq()?,
+            diagnostic: handle.wait_core.diagnostic().clone(),
         })
     }
 
     #[cfg(test)]
     pub(crate) fn new_supervised(handle: &SupervisedExecHandle) -> Option<Self> {
         Some(Self {
-            shared: Some(Arc::clone(&handle.shared)),
-            seq: handle.seq?,
-            diagnostic: handle.diagnostic.clone(),
+            shared: Some(Arc::clone(handle.wait_core.shared())),
+            seq: handle.wait_core.active_seq()?,
+            diagnostic: handle.wait_core.diagnostic().clone(),
         })
     }
 
@@ -1649,6 +1694,79 @@ fn stream_state(policy: ExecOutputPolicy) -> Option<ExecStreamState> {
         }),
         ExecOutputPolicy::Discard | ExecOutputPolicy::Capture { .. } => None,
     }
+}
+
+fn register_exec_operation_start(
+    shared: &Arc<Shared>,
+    input: ExecOperationRegistrationInput<'_>,
+) -> io::Result<ExecOperationRegistration> {
+    let ExecOperationRegistrationInput {
+        label,
+        stdout,
+        stderr,
+        stream_queue_capacity,
+        lifecycle,
+        tracking,
+    } = input;
+    let (stream_tx, stream_rx) = match stream_queue_capacity {
+        Some(capacity) => {
+            let (tx, rx) = mpsc::channel(capacity);
+            (Some(tx), Some(rx))
+        }
+        None => (None, None),
+    };
+    let (result_tx, result_rx) = oneshot::channel();
+    let seq = shared.next_seq();
+    let diagnostic = ExecOperationDiagnostic::new(seq, label);
+    let normal_operation = match tracking {
+        ExecOperationTracking::Tracked => Some(ExecOperationNormalTracking::Owned(
+            shared.reserve_normal_operation()?,
+        )),
+        ExecOperationTracking::Composite(normal_operation) => Some(
+            ExecOperationNormalTracking::Composite(normal_operation.transition_handle()?),
+        ),
+        ExecOperationTracking::Untracked => None,
+    };
+    let tracks_normal_operation = normal_operation.is_some();
+    let operation = ExecOperation {
+        normal_operation,
+        lifecycle,
+        diagnostic: diagnostic.clone(),
+        result_tx,
+        stream_tx,
+        stdout_capture: capture_state(stdout),
+        stderr_capture: capture_state(stderr),
+        stdout_stream: stream_state(stdout),
+        stderr_stream: stream_state(stderr),
+        expected_output_seq: 0,
+        stream_overflowed: false,
+        host_cancel_requested: false,
+        pending_controls: HashMap::new(),
+    };
+
+    {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Closed => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ));
+            }
+            ConnectionState::Connected { operations, .. } => {
+                operations.insert(seq, operation);
+            }
+        }
+    }
+
+    Ok(ExecOperationRegistration {
+        seq,
+        diagnostic,
+        result_rx,
+        stream_rx,
+        registration_guard: ExecOperationRegistrationGuard::new(Arc::clone(shared), seq),
+        tracks_normal_operation,
+    })
 }
 
 fn validate_output(
@@ -2168,6 +2286,26 @@ async fn write_frame(
     .await
 }
 
+async fn write_exec_start_frame(
+    shared: &Arc<Shared>,
+    seq: u32,
+    payload: &[u8],
+    diagnostic: &ExecOperationDiagnostic,
+    tracks_normal_operation: bool,
+    write_observer: FrameWriteObserver,
+) -> io::Result<()> {
+    write_frame(
+        shared,
+        MSG_EXEC_START,
+        seq,
+        payload,
+        Some(diagnostic.frame("start")),
+        tracks_normal_operation.then_some(seq),
+        write_observer,
+    )
+    .await
+}
+
 async fn write_frame_with_pre_write(
     shared: &Arc<Shared>,
     msg_type: u8,
@@ -2427,75 +2565,37 @@ async fn start_exec_operation_on_shared_with_tracking(
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-    let (stream_tx, stream_rx) = match stream_queue_capacity {
-        Some(capacity) => {
-            let (tx, rx) = mpsc::channel(capacity);
-            (Some(tx), Some(rx))
-        }
-        None => (None, None),
-    };
-    let (result_tx, result_rx) = oneshot::channel();
-    let seq = shared.next_seq();
-    let diagnostic = ExecOperationDiagnostic::new(seq, request.label);
-    let normal_operation = match tracking {
-        ExecOperationTracking::Tracked => Some(ExecOperationNormalTracking::Owned(
-            shared.reserve_normal_operation()?,
-        )),
-        ExecOperationTracking::Composite(normal_operation) => Some(
-            ExecOperationNormalTracking::Composite(normal_operation.transition_handle()?),
-        ),
-        ExecOperationTracking::Untracked => None,
-    };
-    let tracks_normal_operation = normal_operation.is_some();
-    let operation = ExecOperation {
-        normal_operation,
-        lifecycle: ExecOperationLifecycle::OneShot,
-        diagnostic: diagnostic.clone(),
-        result_tx,
-        stream_tx,
-        stdout_capture: capture_state(request.stdout),
-        stderr_capture: capture_state(request.stderr),
-        stdout_stream: stream_state(request.stdout),
-        stderr_stream: stream_state(request.stderr),
-        expected_output_seq: 0,
-        stream_overflowed: false,
-        host_cancel_requested: false,
-        pending_controls: HashMap::new(),
-    };
-
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { operations, .. } => {
-                operations.insert(seq, operation);
-            }
-        }
-    }
-
-    let mut registration_guard = ExecOperationRegistrationGuard::new(Arc::clone(shared), seq);
-    write_frame(
+    let ExecOperationRegistration {
+        seq,
+        diagnostic,
+        result_rx,
+        stream_rx,
+        mut registration_guard,
+        tracks_normal_operation,
+    } = register_exec_operation_start(
         shared,
-        MSG_EXEC_START,
+        ExecOperationRegistrationInput {
+            label: request.label,
+            stdout: request.stdout,
+            stderr: request.stderr,
+            stream_queue_capacity,
+            lifecycle: ExecOperationLifecycle::OneShot,
+            tracking,
+        },
+    )?;
+    write_exec_start_frame(
+        shared,
         seq,
         &payload,
-        Some(diagnostic.frame("start")),
-        tracks_normal_operation.then_some(seq),
+        &diagnostic,
+        tracks_normal_operation,
         write_observer,
     )
     .await?;
     registration_guard.disarm();
 
     Ok(ExecOperationHandle {
-        shared: Arc::clone(shared),
-        seq: Some(seq),
-        diagnostic,
-        result_rx: Some(result_rx),
+        wait_core: ExecWaitCore::new(Arc::clone(shared), seq, diagnostic, result_rx),
         stream_rx,
     })
 }
@@ -2568,63 +2668,36 @@ where
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-    let (stream_tx, stream_rx) = match stream_queue_capacity {
-        Some(capacity) => {
-            let (tx, rx) = mpsc::channel(capacity);
-            (Some(tx), Some(rx))
-        }
-        None => (None, None),
-    };
-    let (result_tx, result_rx) = oneshot::channel();
     let (start_tx, start_rx) = oneshot::channel();
-    let seq = shared.next_seq();
-    let diagnostic = ExecOperationDiagnostic::new(seq, request.label);
-    let operation = ExecOperation {
-        normal_operation: Some(ExecOperationNormalTracking::Owned(
-            shared.reserve_normal_operation()?,
-        )),
-        lifecycle: ExecOperationLifecycle::SupervisedAwaitingStart {
-            start_tx: Some(start_tx),
-            control_nonce,
+    let ExecOperationRegistration {
+        seq,
+        diagnostic,
+        result_rx,
+        stream_rx,
+        mut registration_guard,
+        tracks_normal_operation,
+    } = register_exec_operation_start(
+        shared,
+        ExecOperationRegistrationInput {
+            label: request.label,
+            stdout: request.stdout,
+            stderr: request.stderr,
+            stream_queue_capacity,
+            lifecycle: ExecOperationLifecycle::SupervisedAwaitingStart {
+                start_tx: Some(start_tx),
+                control_nonce,
+            },
+            tracking: ExecOperationTracking::Tracked,
         },
-        diagnostic: diagnostic.clone(),
-        result_tx,
-        stream_tx,
-        stdout_capture: capture_state(request.stdout),
-        stderr_capture: capture_state(request.stderr),
-        stdout_stream: stream_state(request.stdout),
-        stderr_stream: stream_state(request.stderr),
-        expected_output_seq: 0,
-        stream_overflowed: false,
-        host_cancel_requested: false,
-        pending_controls: HashMap::new(),
-    };
-
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { operations, .. } => {
-                operations.insert(seq, operation);
-            }
-        }
-    }
-
-    let mut registration_guard = ExecOperationRegistrationGuard::new(Arc::clone(shared), seq);
+    )?;
     let mut start_cancel_on_drop =
         ExecOperationCancelOnDropGuard::new_for_seq(Arc::clone(shared), seq, diagnostic.clone());
-    let start_write_result = write_frame(
+    let start_write_result = write_exec_start_frame(
         shared,
-        MSG_EXEC_START,
         seq,
         &payload,
-        Some(diagnostic.frame("start")),
-        Some(seq),
+        &diagnostic,
+        tracks_normal_operation,
         FrameWriteObserver::default(),
     )
     .await;
@@ -2694,12 +2767,9 @@ where
     registration_guard.disarm();
 
     Ok(SupervisedExecHandle {
-        shared: Arc::clone(shared),
-        seq: Some(seq),
+        wait_core: ExecWaitCore::new(Arc::clone(shared), seq, diagnostic, result_rx),
         pid,
-        diagnostic,
         cancel_handle_taken: false,
-        result_rx: Some(result_rx),
         stream_rx,
         control: control_nonce.map(|control_nonce| ExecControlHandle {
             shared: Arc::clone(shared),
@@ -2990,85 +3060,14 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
-    use std::fmt;
     use std::os::fd::AsRawFd;
+    use std::sync::Arc;
     use std::sync::atomic::AtomicU32;
-    use std::sync::{Arc, Mutex};
     use tokio::io::AsyncReadExt;
-    use tracing::field::{Field, Visit};
-    use tracing::{Event, Level, Subscriber};
-    use tracing_subscriber::layer::{Context, Layer};
+    use tracing::Level;
     use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
     use vsock_proto::RawMessage;
-
-    #[derive(Clone, Debug)]
-    struct CapturedEvent {
-        level: Level,
-        fields: BTreeMap<String, String>,
-    }
-
-    #[derive(Clone, Default)]
-    struct CapturedEvents {
-        events: Arc<Mutex<Vec<CapturedEvent>>>,
-    }
-
-    impl CapturedEvents {
-        fn events(&self) -> Vec<CapturedEvent> {
-            self.events.lock().unwrap().clone()
-        }
-    }
-
-    impl<S> Layer<S> for CapturedEvents
-    where
-        S: Subscriber,
-    {
-        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = CapturedFields::default();
-            event.record(&mut visitor);
-            self.events.lock().unwrap().push(CapturedEvent {
-                level: *event.metadata().level(),
-                fields: visitor.fields,
-            });
-        }
-    }
-
-    #[derive(Default)]
-    struct CapturedFields {
-        fields: BTreeMap<String, String>,
-    }
-
-    impl Visit for CapturedFields {
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_i128(&mut self, field: &Field, value: i128) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_u128(&mut self, field: &Field, value: u128) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_bool(&mut self, field: &Field, value: bool) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-            self.fields
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
 
     fn exec_operation_for_snapshot(seq: u32, label: &str) -> ExecOperation {
         let (result_tx, _result_rx) = oneshot::channel();
@@ -3140,7 +3139,7 @@ mod tests {
             tracing::callsite::rebuild_interest_cache();
             diagnostic.log_terminal(lifecycle, result, stream_overflowed, host_cancel_requested);
         });
-        captured.events()
+        captured.entries()
     }
 
     fn assert_terminal_log_field(event: &CapturedEvent, field: &str, expected: &str) {
@@ -3455,7 +3454,7 @@ mod tests {
             dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
-        let events = captured.events();
+        let events = captured.entries();
         let result = result_rx.try_recv().unwrap().unwrap();
         (events, result)
     }
@@ -3617,7 +3616,7 @@ mod tests {
             dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
-        let events = captured.events();
+        let events = captured.entries();
         assert_eq!(events.len(), 1, "captured events: {events:#?}");
         assert_eq!(events[0].level, Level::INFO);
         assert_terminal_log_field(&events[0], "termination", "Cancelled");
@@ -3638,10 +3637,7 @@ mod tests {
             false,
         );
         let handle = ExecOperationHandle {
-            shared: Arc::clone(&shared),
-            seq: Some(7),
-            diagnostic,
-            result_rx: Some(result_rx),
+            wait_core: ExecWaitCore::new(Arc::clone(&shared), 7, diagnostic, result_rx),
             stream_rx: None,
         };
 
@@ -3676,7 +3672,7 @@ mod tests {
             dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
-        let events = captured.events();
+        let events = captured.entries();
         assert_eq!(events.len(), 1, "captured events: {events:#?}");
         assert_eq!(events[0].level, Level::INFO);
         assert_terminal_log_field(&events[0], "termination", "Cancelled");

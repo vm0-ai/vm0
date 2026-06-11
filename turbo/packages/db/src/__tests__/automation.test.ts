@@ -97,7 +97,6 @@ describe("automations schema", () => {
     expect(automationTriggers.consecutiveFailures.name).toBe(
       "consecutive_failures",
     );
-    expect(automationTriggers.retryStartedAt.name).toBe("retry_started_at");
     expect(automationTriggers.enabled.name).toBe("enabled");
   });
 

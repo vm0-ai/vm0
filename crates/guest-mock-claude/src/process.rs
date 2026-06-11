@@ -58,9 +58,10 @@ pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
         MockScenario::ExitAfterResult => {
             if parsed.output_format == "stream-json" {
                 emit_post_result_pair();
-                // Exit immediately. Exercises the happy path: guest-agent's
-                // reap gets armed but `child.wait()` fires before any grace
-                // window elapses, so no signal is ever sent.
+                // Exit immediately. Exercises the happy path: guest-agent
+                // either arms post-result reap and observes `child.wait()`
+                // before the deadline, or observes `child.wait()` first and
+                // never arms reap. No signal should be sent.
             }
             ExitCode::SUCCESS
         }

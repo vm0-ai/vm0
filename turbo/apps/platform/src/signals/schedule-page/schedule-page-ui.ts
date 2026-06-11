@@ -1,4 +1,5 @@
 import { command, computed, state, type StateArg } from "ccstate";
+import { nowDate } from "../../lib/time.ts";
 import type { CombinedEntry } from "../../views/zero-page/zero-schedule-page.tsx";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { agents$ } from "../agent.ts";
@@ -116,10 +117,18 @@ export const { get$: pagePendingDelete$, set$: setPagePendingDelete$ } =
 // Calendar view state
 // ---------------------------------------------------------------------------
 
-const todayDayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+function todayDayIndex(): number {
+  const day = nowDate().getDay();
+  return day === 0 ? 6 : day - 1;
+}
 
-export const { get$: calendarSelectedDay$, set$: setCalendarSelectedDay$ } =
-  cell(todayDayIndex);
+const internalCalendarSelectedDay$ = state<number | null>(null);
+export const calendarSelectedDay$ = computed((get) => {
+  return get(internalCalendarSelectedDay$) ?? todayDayIndex();
+});
+export const setCalendarSelectedDay$ = command(({ set }, value: number) => {
+  set(internalCalendarSelectedDay$, value);
+});
 
 // ---------------------------------------------------------------------------
 // Calendar entry popover open state

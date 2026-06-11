@@ -30,6 +30,7 @@ import { zeroMapsCommand } from "./commands/zero/maps";
 import { zeroBankingCommand } from "./commands/zero/banking";
 import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
+import { zeroVideoCommand } from "./commands/zero/video";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -66,7 +67,8 @@ const COMMAND_CAPABILITY_MAP: Record<
   "computer-use": "computer-use:write",
   generate: null,
   web: null,
-  host: "host:write",
+  video: null,
+  host: ["host:read", "host:write"],
   maps: "maps:read",
   banking: "banking:read",
 };
@@ -96,6 +98,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroComputerUseCommand,
   generateCommand,
   zeroWebCommand,
+  zeroVideoCommand,
   zeroHostCommand,
   zeroMapsCommand,
   zeroBankingCommand,
@@ -120,6 +123,8 @@ function shouldHideCommand(
 export function buildZeroHelpText(
   payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
 ): string {
+  const canReadHost = !payload || payload.capabilities.includes("host:read");
+  const canWriteHost = !payload || payload.capabilities.includes("host:write");
   const examples = [
     "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
     ...(payload && !payload.capabilities.includes("billing:read")
@@ -147,9 +152,12 @@ export function buildZeroHelpText(
     '  Generate image?        zero generate image --prompt "..."',
     '  Generate website?      zero generate website --prompt "..."',
     '  Generate voice?        zero generate voice --prompt "..."',
-    ...(shouldHideCommand("host", payload)
-      ? []
-      : ["  Host a static site?    zero host ./dist --site my-site --spa"]),
+    ...(canWriteHost
+      ? ["  Host a static site?    zero host ./dist --site my-site --spa"]
+      : []),
+    ...(canReadHost
+      ? ["  Clone hosted site?     zero host clone <public-slug>"]
+      : []),
     ...(shouldHideCommand("maps", payload)
       ? []
       : [

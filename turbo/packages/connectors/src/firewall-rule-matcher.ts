@@ -223,14 +223,66 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   });
 }
 
+function hasEntries(value: Record<string, string> | undefined): boolean {
+  return value !== undefined && Object.keys(value).length > 0;
+}
+
+function isValidAwsSigv4AuthConfig(value: unknown): boolean {
+  if (!isObjectRecord(value)) return false;
+  const allowedKeys = new Set([
+    "accessKeyId",
+    "secretAccessKey",
+    "sessionToken",
+  ]);
+  if (
+    Object.keys(value).some((key) => {
+      return !allowedKeys.has(key);
+    })
+  ) {
+    return false;
+  }
+  if (typeof value.accessKeyId !== "string" || value.accessKeyId === "") {
+    return false;
+  }
+  if (
+    typeof value.secretAccessKey !== "string" ||
+    value.secretAccessKey === ""
+  ) {
+    return false;
+  }
+  const optionalValue = value.sessionToken;
+  if (
+    optionalValue !== undefined &&
+    (typeof optionalValue !== "string" || optionalValue === "")
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function isValidAuthConfig(auth: unknown, serviceName: string): boolean {
   if (!isObjectRecord(auth)) return false;
   if (auth.headers !== undefined && !isStringRecord(auth.headers)) return false;
+  if (auth.query !== undefined && !isStringRecord(auth.query)) return false;
+  if (
+    auth.awsSigv4 !== undefined &&
+    !isValidAwsSigv4AuthConfig(auth.awsSigv4)
+  ) {
+    return false;
+  }
+  if (auth.awsSigv4 !== undefined) {
+    if (hasEntries(auth.headers as Record<string, string> | undefined)) {
+      return false;
+    }
+    if (hasEntries(auth.query as Record<string, string> | undefined)) {
+      return false;
+    }
+  }
   if (auth.base !== undefined) {
     if (typeof auth.base !== "string") return false;
     validateAuthBaseUrl(auth.base, serviceName);
   }
-  return auth.query === undefined || isStringRecord(auth.query);
+  return true;
 }
 
 function isValidApiEntry(

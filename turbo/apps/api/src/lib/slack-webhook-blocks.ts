@@ -133,13 +133,20 @@ function buildAppHomeAgentBlocks(options: AppHomeOptions): SlackBlocks {
     },
   ];
 
+  const settingsButton = {
+    type: "button" as const,
+    text: { type: "plain_text" as const, text: "Settings" },
+    url: `${appUrl()}/works`,
+    action_id: "home_environment_setup",
+  };
+  const switchButton = {
+    type: "button" as const,
+    text: { type: "plain_text" as const, text: "Switch" },
+    action_id: "home_switch_agent",
+    style: "primary" as const,
+  };
+
   if (options.agentName) {
-    const settingsButton = {
-      type: "button" as const,
-      text: { type: "plain_text" as const, text: "Settings" },
-      url: `${appUrl()}/works`,
-      action_id: "home_environment_setup",
-    };
     blocks.push({
       type: "section",
       text: {
@@ -151,15 +158,7 @@ function buildAppHomeAgentBlocks(options: AppHomeOptions): SlackBlocks {
     if (options.canSwitch) {
       blocks.push({
         type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "Switch" },
-            action_id: "home_switch_agent",
-            style: "primary",
-          },
-          settingsButton,
-        ],
+        elements: [switchButton, settingsButton],
       });
     }
     return blocks;
@@ -169,6 +168,12 @@ function buildAppHomeAgentBlocks(options: AppHomeOptions): SlackBlocks {
     type: "section",
     text: { type: "mrkdwn", text: "_No agent configured yet._" },
   });
+  if (options.canSwitch) {
+    blocks.push({
+      type: "actions",
+      elements: [switchButton, settingsButton],
+    });
+  }
   return blocks;
 }
 
@@ -402,6 +407,7 @@ export function buildAgentResponseMessage(
 export function buildAgentPickerModal(args: {
   readonly options: readonly AgentPickerOption[];
   readonly currentSelectedId: string | null;
+  readonly includeOrgDefault: boolean;
   readonly orgDefaultName: string | null;
   readonly privateMetadata?: string;
 }): View {
@@ -409,10 +415,14 @@ export function buildAgentPickerModal(args: {
     ? `Use org default (${args.orgDefaultName})`
     : "Use org default";
   const selectOptions = [
-    {
-      text: { type: "plain_text" as const, text: orgDefaultLabel },
-      value: AGENT_PICKER_ORG_DEFAULT_VALUE,
-    },
+    ...(args.includeOrgDefault
+      ? [
+          {
+            text: { type: "plain_text" as const, text: orgDefaultLabel },
+            value: AGENT_PICKER_ORG_DEFAULT_VALUE,
+          },
+        ]
+      : []),
     ...args.options.map((option) => {
       return {
         text: {

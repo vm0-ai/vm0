@@ -3289,62 +3289,62 @@
       },
       "cold-outreach-pipeline": {
         "title": "Automate Cold Email from ICP to Inbox",
-        "description": "Zero searches Apollo for matching leads, enriches emails, scrapes company websites, generates personalized opening lines, and uploads to Instantly.",
+        "description": "Zero searches Apollo for ICP-matching leads, scores each one against your signals, tracks the pipeline in a Notion database, and drafts a personalized multi-touch sequence in Gmail.",
         "timeSaved": "~45 min saved",
-        "scenario": "It's Monday morning. You need 30 qualified leads for this week's campaign. That means an hour in Apollo tweaking filters, exporting CSVs, cross-referencing company websites to write opening lines that don't sound like a template, then uploading everything to Instantly. By the time the first email sends, half your morning is gone. With Zero, you describe your ICP in plain English and get a fully personalized, campaign-ready lead list in minutes.",
+        "scenario": "It's Monday morning. You need 30 qualified leads for this week's campaign. That means an hour in Apollo tweaking filters, exporting CSVs, reading company websites so the first line doesn't sound like a template, then logging everything in a spreadsheet and writing each email by hand. By the time the first draft is ready, half your morning is gone. With Zero, you describe your ICP in plain English and get a scored lead list in Notion plus personalized drafts waiting in Gmail.",
         "promptVariants": [
           {
             "label": "Detailed",
-            "prompt": "@Zero find 25 leads matching this ICP: executive assistants at 1–10 person law firms in the US. Enrich emails via Apollo, scrape each company website for context, generate a personalized opening line per lead, and upload them to Instantly campaign abc-123-def. My sender name is Ethan, Founder @ vm0."
+            "prompt": "@Zero build and run a cold outreach pipeline. Search Apollo for founders and engineering leads at seed to Series A dev tool startups, score each lead 0-18 across our 6 ICP signals, and qualify anything above 10. Add qualified leads to our Notion pipeline database, then draft a 3-touch Gmail sequence per lead: E1 today, E2 on day 4-5, E3 breakup on day 8-9. Stop the sequence the moment someone replies."
           },
           {
             "label": "Quick",
-            "prompt": "@Zero find 20 US-based startup CTOs, personalize, and upload to Instantly campaign abc-123-def."
+            "prompt": "@Zero find 20 ICP-matching leads in Apollo, add them to the Notion pipeline, and draft a personalized first email for each in Gmail."
           },
           {
             "label": "Scheduled",
-            "prompt": "@Zero every Monday at 9am, find 25 new leads matching our ICP (DevOps engineers at Series A startups), personalize, and upload to Instantly campaign abc-123-def."
+            "prompt": "@Zero every Monday at 9am, top up the Notion pipeline with 25 newly qualified leads and draft whatever follow-ups are due this week."
           }
         ],
         "slackPreview": [
           {
             "name": "Ethan",
-            "text": "@Zero find 25 executive assistants at small US law firms. Enrich via Apollo, personalize with company context, upload to Instantly campaign abc-123-def."
+            "text": "@Zero run the outreach pipeline: 25 founders at seed-stage dev tool startups, score them against our ICP, add qualified leads to Notion, drafts in Gmail."
           },
           {
             "name": "Zero",
-            "text": "Done. Pipeline complete for run 20260422-091530:\n\n• Apollo search: 38 candidates found\n• Email enrichment: 27 verified emails\n• Website personalization: 25/27 scraped\n• Instantly upload: 25 leads enrolled, 2 skipped (duplicates)\n\nSample opening line:\n\"Managing calendars and filings for a boutique litigation practice sounds like it demands serious coordination skills.\"\n\nCached to Google Drive — reuse with run ID 20260422-091530."
+            "text": "Pipeline run complete:\n\n• Apollo search: 38 candidates found\n• Email enrichment: 27 verified emails\n• Scoring: 14 leads at 10+ of 18, added to the Notion pipeline\n• Gmail: 14 personalized first-touch drafts ready for review\n• Follow-ups: E2 scheduled for day 4-5, E3 breakup for day 8-9\n\nNothing sends without your review. Reply detection is on, so a response from a prospect stops their sequence."
           }
         ],
         "steps": [
           {
-            "title": "Zero searches Apollo for ICP-matching prospects",
-            "description": "Zero translates your natural-language ICP into Apollo search filters — job titles, company size, location, and verified-email-only — then paginates through results to collect enough candidates. Emails are enriched via Apollo's bulk match API in small batches to maximize hit rate."
+            "title": "Zero searches Apollo and scores every lead",
+            "description": "Zero translates your plain-English ICP into Apollo search filters, enriches emails via the bulk match API, then scores each lead 0 to 18 across six signals like role, company stage, and product fit. Only leads above your qualification bar move forward."
           },
           {
-            "title": "Company websites scraped for personalization context",
-            "description": "For each unique company domain, Zero scrapes the website to understand what the company does, its positioning, and recent activity. This context feeds into the personalization engine so every opening line references something real about the prospect's company."
+            "title": "Qualified leads land in a Notion pipeline",
+            "description": "Every qualified lead gets a row in your Notion database with company, stage, website, and sequence status. The database is the shared source of truth, so anyone on the team can see who is in play and which touch went out last."
           },
           {
-            "title": "AI-personalized leads uploaded to Instantly",
-            "description": "Claude generates a unique, natural-sounding opening sentence for each lead — no templates, no product pitches in the opener. The full lead list (name, email, company, personalization line) is uploaded to your Instantly campaign, ready to send."
+            "title": "Personalized drafts queue up in Gmail",
+            "description": "Zero reads each company's website and recent activity, then writes an opening line that references something real. The first touch lands as a Gmail draft for your review, follow-ups go out on day 4-5, and a breakup note closes the loop on day 8-9. A reply stops the sequence."
           }
         ],
         "nextActions": [
           {
-            "title": "Review personalization quality",
-            "description": "Spot-check opening lines before launching the campaign",
-            "examplePrompt": "@Zero show me the personalization lines for run 20260422-091530. Flag any that sound generic or mention our product."
+            "title": "Review drafts before they send",
+            "description": "Spot-check opening lines while they are still drafts",
+            "examplePrompt": "@Zero show me today's first-touch drafts. Flag any opener that sounds templated or pitches the product too early."
           },
           {
             "title": "Expand to a new segment",
-            "description": "Target a different ICP without rebuilding the pipeline",
-            "examplePrompt": "@Zero same pipeline, but target HR managers at 50–200 person SaaS companies in the UK. Upload to Instantly campaign xyz-456-ghi."
+            "description": "Point the same pipeline at a different ICP",
+            "examplePrompt": "@Zero same pipeline, but target HR managers at 50-200 person SaaS companies in the UK. Add them to the Notion pipeline."
           },
           {
-            "title": "Schedule weekly lead generation",
-            "description": "Automate recurring prospecting on a fixed cadence",
-            "examplePrompt": "@Zero every Monday at 9am, find 25 new leads matching our ICP and upload to Instantly campaign abc-123-def."
+            "title": "Make it routine",
+            "description": "Keep the pipeline full without thinking about it",
+            "examplePrompt": "@Zero every Monday at 9am, refill the Notion pipeline with 25 newly qualified leads and draft the follow-ups that are due."
           }
         ],
         "integrations": [
@@ -3352,16 +3352,16 @@
             "description": "Apollo provides prospect search and verified email enrichment. Zero uses the People Search and Bulk Match APIs to find leads matching your ICP criteria."
           },
           {
-            "description": "Instantly receives the enriched, personalized lead list. Zero uploads directly to your specified campaign so leads are ready for automated email sequences."
+            "description": "Notion hosts the pipeline database. Zero creates a row per qualified lead with score, stage, and sequence status, and updates it as each touch goes out."
           },
           {
-            "description": "Optional — request pipeline runs and receive completion summaries directly in Slack."
+            "description": "Gmail is where drafts land and replies arrive. Zero writes every email as a draft in your own account, so you review before anything sends and threads stay in your inbox."
           }
         ],
         "tips": [
-          "Be specific with your ICP. Include job titles, company size range, and target geography — vague descriptions produce noisy results.",
-          "Start with a batch of 20 leads to validate personalization quality before scaling up to 50 per run.",
-          "Save your run ID. Zero caches Apollo and enrichment data to Google Drive, so you can re-personalize or re-upload without burning API credits."
+          "Give Zero context docs: your positioning, ICP definition, and pricing. The more it knows about who you sell to, the sharper the scoring and the opening lines.",
+          "Set an explicit qualification bar, like 10 of 18, and let everything below it stay in Apollo. A smaller, sharper pipeline outperforms a long noisy list.",
+          "Keep the sequence short and respectful: a first touch, one follow-up, one breakup. If a prospect replies, Zero stops the sequence and hands the thread to you."
         ]
       },
       "podcast-deep-research": {
@@ -4176,6 +4176,170 @@
     "generationAccessHeading": "Using {name} on VM0",
     "generationAccessBody": "VM0 agents can call {name} as part of an agent run, billed against your VM0 credits. The list price above is what the upstream provider charges; VM0 passes that through with the standard credit conversion.",
     "content": {
+      "claude-fable-5": {
+        "name": "Claude Fable 5",
+        "pageTitle": "Claude Fable 5",
+        "tagline": "Anthropic's most capable publicly available model. Released June 9, 2026 as the first general release of the Mythos class, with state-of-the-art coding, knowledge work, and vision, and hard safety limits that fall back to Opus 4.8 on high-risk requests.",
+        "cardIntro": "Anthropic's most powerful public model and the first general release of the Mythos class. State-of-the-art on nearly every benchmark, with built-in safety fallbacks to Opus 4.8.",
+        "metaTitle": "Claude Fable 5: Benchmarks, Pricing & Capabilities",
+        "metaDescription": "Claude Fable 5 review. Anthropic's June 9, 2026 flagship and first public Mythos-class model, with a 1M-token context window, vision, $10/$50 vendor pricing, a x3.3 VM0 multiplier, and safety fallbacks to Opus 4.8.",
+        "summary": "Claude Fable 5 is Anthropic's most capable generally available model, released June 9, 2026 as the first public version of its restricted Mythos line. Anthropic describes it as state-of-the-art on nearly all tested benchmarks for software engineering, knowledge work, vision, and scientific research, with the lead over its other models growing as tasks get longer and more complex.\n\nThe headline trade-off is price and safety posture. Fable 5 lists at $10 per 1M input tokens and $50 per 1M output tokens, double Opus 4.8, and carries a x3.3 VM0 multiplier. In high-risk domains such as cybersecurity, biology, and chemistry it declines and falls back to Opus 4.8, returning a refusal rather than an error and not charging Fable rates for the rerouted request. Anthropic reports at least 95% of Fable sessions run entirely on the model's own responses.",
+        "releaseDate": "June 9, 2026",
+        "familyPosition": "Anthropic's most capable publicly available model, positioned above the Opus 4 line. Ships on VM0 at a x3.3 multiplier; Opus 4.8 remains the recommended default for most agents.",
+        "background": [
+          "Claude Fable 5 was released on June 9, 2026 as the first generally available model from Anthropic's Mythos class, which the company had previously held back as too powerful for unrestricted release. Fable 5 is the safety-gated public version; Mythos 5 remains restricted to approved organizations.",
+          "Anthropic positions Fable 5 as state-of-the-art on nearly every capability benchmark it tested, with the largest gains on long, complex, multi-step work. Third-party evaluators echoed this: Hex reported Fable as the first model to reach 90% on its core analytics benchmark of long-running analytical tasks, and Genspark said it beat every other model in its evaluations, with notably strong UI design and game-coding results.",
+          "The model ships with hard safety limits. In high-risk areas it blocks the response and falls back to Opus 4.8; Anthropic ran a 1,000+ hour external bug-bounty and additional red-teaming that surfaced no universal jailbreaks. Fable 5 and Mythos 5 are designated Covered Models with 30-day data retention and are not available under zero-data-retention terms."
+        ],
+        "architecture": "Fable 5 keeps the 1M-token context window and up to 128K output tokens, billed at standard input pricing across the full window. It supports vision, tool use, memory, compaction, and adaptive thinking. High-risk requests are rerouted to Opus 4.8 and return `stop_reason: \"refusal\"` as a successful response rather than an API error, and rerouted requests are not billed at Fable rates.",
+        "specs": [
+          {
+            "label": "Family",
+            "value": "Claude Mythos class (public release)"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "English-first, multilingual"
+          },
+          {
+            "label": "Context window",
+            "value": "1M tokens"
+          },
+          {
+            "label": "Max output",
+            "value": "Up to 128K tokens"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported (Anthropic)"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$10 input / $50 output per 1M (double Opus 4.8)"
+          }
+        ],
+        "benchmarksNote": "Vendor and third-party reported signals for Fable 5. Anthropic reports state-of-the-art results on nearly all tested benchmarks, with bigger leads on longer tasks. Treat these as directional and validate against your own VM0 agent regression set.",
+        "benchmarks": [
+          {
+            "name": "Hex analytics benchmark",
+            "score": "90%",
+            "note": "first model to reach 90% on long-running analytical tasks (Hex, third-party)"
+          },
+          {
+            "name": "Genspark agent evaluations",
+            "score": "Top model",
+            "note": "beat every other model evaluated; strong on UI design and game coding (third-party)"
+          },
+          {
+            "name": "Anthropic capability suite",
+            "score": "State-of-the-art",
+            "note": "vendor-reported across software engineering, knowledge work, vision, and science"
+          },
+          {
+            "name": "Adversarial robustness",
+            "score": "0 universal jailbreaks",
+            "note": "1,000+ hours external bug bounty plus red-teaming"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Frontier capability on long, complex work",
+            "body": "Anthropic reports Fable's lead over its other models grows the longer and more involved the task. For multi-hour agent runs, deep research, and large analytical jobs, it is the strongest model Anthropic offers publicly."
+          },
+          {
+            "title": "Software engineering and analytics",
+            "body": "Third-party evaluators put Fable at the top of their charts: first to 90% on Hex's long-running analytics benchmark, and the leading model in Genspark's agent evaluations, with standout UI design and game-coding results."
+          },
+          {
+            "title": "Vision and knowledge work",
+            "body": "Native vision plus state-of-the-art knowledge-work scores make Fable a fit for workflows that mix documents, screenshots, and diagrams with high-stakes reasoning."
+          },
+          {
+            "title": "Safety fallback to Opus 4.8",
+            "body": "In high-risk domains (cyber, bio, chem) Fable declines and reroutes to Opus 4.8, returning a refusal rather than an error. Anthropic reports at least 95% of sessions stay entirely on Fable, and you are not charged Fable rates for rerouted requests."
+          },
+          {
+            "title": "Cost posture",
+            "body": "Fable lists at $10/$50 per 1M tokens, double Opus 4.8, and carries a x3.3 VM0 multiplier. It is a deliberate premium pick for the hardest work, not a default for routine agent loops."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The multi-hour agent run that has to finish correctly",
+            "body": "Long-horizon migrations, deep research, and multi-step analytical jobs where Fable's widening lead on complex tasks pays for the premium and a wrong answer is expensive."
+          },
+          {
+            "title": "The analytics workload at the edge of what models can do",
+            "body": "Complex, long-running analysis of the kind Hex benchmarks. Fable was the first model to clear 90% there, so it is the pick when cheaper models stall on the hard cases."
+          },
+          {
+            "title": "The high-stakes UI or product-build task",
+            "body": "Genspark singled out Fable for UI design and game coding. Reach for it when the build quality of the generated interface or app matters more than token cost."
+          }
+        ],
+        "avoidFor": "Skip Fable 5 for routine, high-volume agent loops where Opus 4.8 or Sonnet 4.6 already hit the quality bar at a fraction of the cost, for latency-sensitive chat where cheaper models are faster, and for cybersecurity, biology, or chemistry work that Fable will decline and reroute to Opus 4.8 anyway.",
+        "comparisons": [
+          {
+            "vs": "Claude Opus 4.8",
+            "body": "Opus 4.8 (x1.7) stays the recommended default for most agents and is what Fable falls back to on high-risk requests. Promote to Fable 5 (x3.3) for the hardest, longest tasks where its widening capability lead is worth double the vendor price; keep Opus 4.8 everywhere else."
+          },
+          {
+            "vs": "GPT-5.5",
+            "body": "Both are top-tier frontier models. Fable leads on Anthropic's and several third parties' long-task and analytics benchmarks, but at a higher price (x3.3 vs x2). Pick Fable for the most complex multi-step work; GPT-5.5 remains strong and cheaper for agentic terminal coding."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 (x1) is the workhorse default for most loops. The standard pattern is Fable 5 (or Opus 4.8) as the planner that delegates to Sonnet- or cost-saving workers, reserving Fable for the few steps that genuinely need frontier capability."
+          }
+        ],
+        "verdict": "The most capable model Anthropic offers publicly, and a deliberate premium pick. Reach for Fable 5 on the hardest, longest, highest-stakes work; keep Opus 4.8 as the default and Sonnet 4.6 as the cheaper workhorse beneath it.",
+        "faqs": [
+          {
+            "q": "When was Claude Fable 5 released?",
+            "a": "Anthropic released Fable 5 on June 9, 2026 as the first generally available model from its Mythos class. It is available on the Claude API (model id `claude-fable-5`), Amazon Bedrock, Vertex AI, Microsoft Foundry, and VM0."
+          },
+          {
+            "q": "How does Fable 5 pricing compare to Opus 4.8?",
+            "a": "Fable 5 lists at $10 per 1M input tokens and $50 per 1M output tokens, double Opus 4.8's $5/$25. Cached input bills at $1.00 per 1M (a 10x discount). On VM0 it carries a x3.3 credit multiplier."
+          },
+          {
+            "q": "What happens on high-risk requests?",
+            "a": "In high-risk domains such as cybersecurity, biology, and chemistry, Fable declines and reroutes to Opus 4.8. The API returns a refusal as a successful response, not an error, and you are not charged Fable rates for the rerouted request. Anthropic reports at least 95% of sessions run entirely on Fable."
+          },
+          {
+            "q": "How is Fable 5 different from Mythos 5?",
+            "a": "Fable 5 is the safety-gated public release of the Mythos class. Mythos 5 is the same underlying technology without the public safeguards and remains restricted to organizations Anthropic has approved."
+          },
+          {
+            "q": "Should I use Fable 5 as my default model?",
+            "a": "Usually no. Opus 4.8 is the recommended default for most agents; Fable 5 is a premium pick for the hardest, longest, highest-stakes tasks. Reserve it for steps that genuinely need frontier capability and let cheaper tiers handle the rest."
+          },
+          {
+            "q": "Does Fable 5 support prompt caching and vision?",
+            "a": "Yes. It supports prompt caching (cached input at $1.00 per 1M, a 10x discount), a 1M-token context window, vision, tool use, and memory."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-opus-4-8",
+            "reason": "Recommended default; what Fable falls back to on high-risk requests"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Cheaper workhorse for most agent loops"
+          },
+          {
+            "slug": "gpt-5-5",
+            "reason": "Frontier alternative, cheaper for agentic terminal coding"
+          }
+        ],
+        "routingNotes": "On VM0, Fable 5 is routed to Anthropic's Messages API and exposed two ways: through the VM0 Managed credit pool and through a direct Anthropic API key. High-risk requests are rerouted by Anthropic to Opus 4.8 and are not billed at Fable rates.",
+        "vm0Notes": "Prompt caching is enabled by default through VM0, which cuts the cost of repeated system prompts, tool definitions, and pasted reference material. Fable 5 carries the catalogue's highest multiplier (x3.3) to reflect its double vendor price, so the standard pattern is to keep Opus 4.8 or Sonnet 4.6 running everywhere and route only the hardest steps to Fable 5."
+      },
       "claude-opus-4-8": {
         "name": "Claude Opus 4.8",
         "pageTitle": "Claude Opus 4.8",

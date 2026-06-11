@@ -35,7 +35,7 @@ import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   decryptSecretForTests,
@@ -1245,7 +1245,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("OK");
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const run = await latestRunForFixture(fixture);
     expect(run).toMatchObject({ status: "pending", error: null });
@@ -1309,7 +1309,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const run = await latestRunForFixture(fixture);
     const db = store.set(writeDb$);
@@ -1351,7 +1351,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(webhookResponse.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const run = await latestRunForFixture(fixture);
     expect(run?.id).toBeDefined();
@@ -1392,7 +1392,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages.at(-1)?.text).toContain(
       "Oops, something went wrong. Please try again later.",
     );
@@ -1418,7 +1418,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const db = store.set(writeDb$);
     const runs = await db
@@ -1466,7 +1466,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
     const db = store.set(writeDb$);
@@ -1509,7 +1509,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const run = await latestRunForFixture(fixture);
     expect(run?.prompt).toBe("summarize this thread");
@@ -1547,7 +1547,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const run = await latestRunForFixture(fixture);
     expect(run?.prompt).toBe("run through official bot");
@@ -1594,7 +1594,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const run = await latestRunForFixture(fixture);
     expect(run?.prompt).toBe("help from a group");
@@ -1625,7 +1625,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(ignored.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
     const routed = await postWebhook({
@@ -1643,7 +1643,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(routed.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(1);
     expect(telegramMocks.sentMessages[0]?.text).toContain(
       "please connect your account first",
@@ -1681,7 +1681,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(connected.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[0]?.text).toContain("already connected");
     expect(telegramMocks.sentMessages[0]?.text).toContain("Telegram Agent");
 
@@ -1699,7 +1699,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(unlinked.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[1]?.text).toContain(
       "To use Telegram Agent in Telegram",
     );
@@ -1727,7 +1727,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(help.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[2]?.text).toContain(
       "Telegram Agent Telegram Bot Help",
     );
@@ -1764,7 +1764,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const db = store.set(writeDb$);
     const links = await db
@@ -1806,7 +1806,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const links = await db
       .select({
@@ -1856,7 +1856,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(group.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(0);
     await expect(
       hasTelegramThreadSession({
@@ -1884,7 +1884,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(dm.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[0]?.text).toContain(
       "New session started",
     );
@@ -1929,7 +1929,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(list.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[0]?.text).toContain("Available models");
     expect(telegramMocks.sentMessages[0]?.text).toContain(
       "/model claude-sonnet-4-6",
@@ -1957,7 +1957,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(switchModel.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-4-6");
 
     const defaultModel = await postWebhook({
@@ -1978,7 +1978,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(defaultModel.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[2]?.text).toContain(
       "Unknown model &quot;default&quot;.",
     );
@@ -2013,7 +2013,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(accepted.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(acceptedTelegramMocks.chatActions).toHaveLength(1);
     expect(acceptedTelegramMocks.sentMessages).toHaveLength(0);
 
@@ -2045,7 +2045,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(queued.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(queuedTelegramMocks.chatActions).toHaveLength(1);
     expect(queuedTelegramMocks.sentMessages[0]?.text).toContain("Run queued");
     expect(queuedTelegramMocks.sentMessages[0]?.text).toContain(
@@ -2077,7 +2077,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(otherBotReply.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
     const zeroReply = await postWebhook({
@@ -2104,7 +2104,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       },
     });
     expect(zeroReply.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(1);
     expect(telegramMocks.sentMessages[0]?.text).toContain(
       "connect your account",
@@ -2158,7 +2158,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toStrictEqual([]);
 
     const run = await runForFixturePrompt(
@@ -2220,7 +2220,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toStrictEqual([]);
 
     const run = await runForFixturePrompt(
@@ -2283,7 +2283,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
 
     expect(response.status).toBe(200);
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toStrictEqual([]);
 
     const run = await runForFixturePrompt(

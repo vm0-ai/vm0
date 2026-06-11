@@ -1,4 +1,5 @@
 import { openDB, type IDBPDatabase } from "idb";
+import { nowDate } from "../../lib/time.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatIdbThreadMeta");
@@ -126,7 +127,7 @@ export async function patchThreadMeta$(
     threadId,
     agentId: patch.agentId ?? current?.agentId,
     startMessageId: patch.startMessageId ?? current?.startMessageId,
-    updatedAt: new Date().toISOString(),
+    updatedAt: nowDate().toISOString(),
   };
   await tx.store.put(next);
   await tx.done;

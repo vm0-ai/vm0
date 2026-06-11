@@ -13,6 +13,7 @@ import {
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 import { type Locale } from "../../../i18n";
 import { Link } from "../../../navigation";
+import { serializeJsonLd } from "../../../src/lib/json-ld";
 
 const BASE_URL = "https://www.vm0.ai";
 
@@ -100,7 +101,7 @@ export default async function DocsIndexPage({
       <script
         type="application/ld+json"
         suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
       <Particles />
       <DocsShell navigation={navigation} homeLabel={t("home")} draft={draft}>

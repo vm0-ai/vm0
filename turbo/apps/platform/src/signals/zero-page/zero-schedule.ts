@@ -8,11 +8,12 @@ import { createElement } from "react";
 import { Link } from "../../views/router/link.tsx";
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import { zeroClient$ } from "../api-client.ts";
-import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
   buildCronExpression,
   buildAtTime,
   isAtTimePast,
+  cronUtcToLocalTime,
+  atTimeInTimezone,
   type ScheduleBody,
   type CronTimeOption,
 } from "./cron.ts";
@@ -25,16 +26,14 @@ import {
   runScheduleNowVia,
 } from "./automations-mode.ts";
 import { ApiError } from "../../lib/accept.ts";
+import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
-import { defaultAgentId$ } from "../agent.ts";
 
 const SCHEDULE_TIME_PAST_MESSAGE = "Scheduled time must be in the future";
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-
-const internalSchedules$ = state<ScheduleResponse[]>([]);
 
 // Schedule tab saving state (used by ZeroScheduleTab to show loading during save)
 const internalScheduleTabSaving$ = state(false);
@@ -61,28 +60,30 @@ function scheduleToTimeString(s: ScheduleResponse): string {
   }
 
   if (s.triggerType === "once" && s.atTime) {
-    const at = new Date(s.atTime);
-    const date = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-    const hour = at.getHours();
-    const minute = at.getMinutes();
+    const { date, hour, minute } = atTimeInTimezone(
+      s.atTime,
+      s.timezone ?? "UTC",
+    );
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
   }
 
   if (s.cronExpression) {
-    return cronToTimeString(s.cronExpression);
+    return cronToTimeString(s.cronExpression, s.timezone ?? "UTC");
   }
 
   return "Scheduled";
 }
 
-function cronToTimeString(cron: string): string {
+function cronToTimeString(cron: string, timezone = "UTC"): string {
   const parts = cron.split(" ");
-  const minute = Number(parts[0]);
-  const hour = Number(parts[1]);
+  const rawMinute = Number(parts[0]);
+  const rawHour = Number(parts[1]);
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
+
+  const { hour, minute } = cronUtcToLocalTime(rawHour, rawMinute, timezone);
 
   const ampm = hour >= 12 ? "PM" : "AM";
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
@@ -118,85 +119,11 @@ function cronToTimeString(cron: string): string {
   return `Every day at ${timeStr}`;
 }
 
-// ---------------------------------------------------------------------------
-// Exported schedule entries (display format)
-// ---------------------------------------------------------------------------
-
-interface ZeroScheduleEntry {
-  id: string;
-  time: string;
-  prompt: string;
-  description: string | null;
-  enabled: boolean;
-  /** Original schedule name for API operations */
-  name: string;
-  /** IANA timezone stored on the server */
-  timezone: string;
-  /** Raw interval in seconds for loop schedules */
-  intervalSeconds: number | null;
-  /** Linked chat thread. Every schedule is linked to a chat thread. */
-  chatThreadId: string;
-}
-
-export const zeroScheduleEntries$ = computed((get) => {
-  const schedules = get(internalSchedules$);
-  return [...schedules]
-    .sort((a, b) => {
-      return b.createdAt.localeCompare(a.createdAt);
-    })
-    .map((s): ZeroScheduleEntry => {
-      return {
-        id: s.id,
-        time: scheduleToTimeString(s),
-        prompt: s.prompt,
-        description: s.description,
-        enabled: s.enabled,
-        name: s.name,
-        timezone: s.timezone,
-        intervalSeconds: s.intervalSeconds,
-        chatThreadId: s.chatThreadId,
-      };
-    });
-});
-
-// ---------------------------------------------------------------------------
-// Fetch schedules for the default agent
-// ---------------------------------------------------------------------------
-
-export const fetchZeroSchedules$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const status = await get(zeroOnboardingStatus$);
-    signal.throwIfAborted();
-    const composeId = status.defaultAgentId;
-    if (!composeId) {
-      set(internalSchedules$, []);
-      return;
-    }
-
-    const schedules = await listSchedulesVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      { signal },
-    );
-    signal.throwIfAborted();
-
-    // Filter schedules for this agent's composeId
-    const agentSchedules = schedules.filter((s) => {
-      return s.agentId === composeId;
-    });
-    set(internalSchedules$, agentSchedules);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Save schedule (create or update)
-// ---------------------------------------------------------------------------
-
 function buildScheduleBody(
   agentId: string,
   params: ZeroScheduleSaveParams,
 ): ScheduleBody {
-  const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
+  const scheduleName = params.editName ?? `zero-${now().toString(36)}`;
 
   const base = {
     agentId,
@@ -224,7 +151,7 @@ function buildScheduleBody(
   }
 
   if (params.freq === "now") {
-    return { ...base, atTime: new Date().toISOString() };
+    return { ...base, atTime: nowDate().toISOString() };
   }
 
   const freqMap: Record<string, CronTimeOption> = {
@@ -261,92 +188,6 @@ export interface ZeroScheduleSaveParams {
   /** Schedule name when editing an existing schedule */
   editName?: string;
 }
-
-export const saveZeroSchedule$ = command(
-  async ({ get, set }, params: ZeroScheduleSaveParams, signal: AbortSignal) => {
-    const defaultAgentId = await get(defaultAgentId$);
-    signal.throwIfAborted();
-    if (!defaultAgentId) {
-      throw new Error("No default agent configured");
-    }
-
-    const body = buildScheduleBody(defaultAgentId, params);
-
-    await deployScheduleVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      body,
-      params.editName !== undefined,
-    );
-    signal.throwIfAborted();
-
-    toast.success(params.editName ? "Schedule updated" : "Schedule created");
-    await set(fetchZeroSchedules$, signal);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Toggle schedule enabled/disabled
-// ---------------------------------------------------------------------------
-
-export const toggleZeroScheduleEnabled$ = command(
-  async (
-    { get, set },
-    params: { name: string; enabled: boolean },
-    signal: AbortSignal,
-  ) => {
-    const status = await get(zeroOnboardingStatus$);
-    signal.throwIfAborted();
-    const composeId = status.defaultAgentId;
-    if (!composeId) {
-      throw new Error("No default agent configured");
-    }
-
-    await setScheduleEnabledVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      {
-        name: params.name,
-        agentId: composeId,
-        enabled: params.enabled,
-      },
-    );
-    signal.throwIfAborted();
-
-    // Optimistic update: patch the local schedule state instead of refetching
-    const current = get(internalSchedules$);
-    set(
-      internalSchedules$,
-      current.map((s) => {
-        return s.name === params.name ? { ...s, enabled: params.enabled } : s;
-      }),
-    );
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Delete schedule
-// ---------------------------------------------------------------------------
-
-export const deleteZeroSchedule$ = command(
-  async ({ get, set }, scheduleName: string, signal: AbortSignal) => {
-    const status = await get(zeroOnboardingStatus$);
-    signal.throwIfAborted();
-    const composeId = status.defaultAgentId;
-    if (!composeId) {
-      throw new Error("No default agent configured");
-    }
-
-    await deleteScheduleVia(get(zeroClient$), get(automationsModeEnabled$), {
-      name: scheduleName,
-      agentId: composeId,
-    });
-    signal.throwIfAborted();
-
-    toast.success("Schedule deleted");
-    await set(fetchZeroSchedules$, signal);
-  },
-);
 
 // ---------------------------------------------------------------------------
 // All-org schedule entries (for schedule page — no agent filter)

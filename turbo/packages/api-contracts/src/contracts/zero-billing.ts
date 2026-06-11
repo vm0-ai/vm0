@@ -49,6 +49,7 @@ const scheduledBillingChangeSchema = z.object({
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   credits: z.number(),
+  onboardingPaymentPending: z.boolean(),
   subscriptionStatus: z.string().nullable(),
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),

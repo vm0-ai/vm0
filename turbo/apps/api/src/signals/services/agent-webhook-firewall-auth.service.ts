@@ -21,6 +21,7 @@ import {
   type ConnectorRefreshTokenInputMetadata,
   type ConnectorAuthMethodRuntimeMetadata,
   type ConnectorAuthClientForMethod,
+  type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-utils";
 import {
   type ConnectorAuthClientConfigForMethod,
@@ -110,11 +111,18 @@ interface FirewallAuthBody {
   readonly authHeaders: Record<string, string>;
   readonly authBase?: string;
   readonly authQuery?: Record<string, string>;
+  readonly authAwsSigv4?: FirewallAwsSigv4AuthConfig;
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly vars?: Record<string, string>;
   readonly firewallBillable?: boolean;
   readonly forceRefresh?: boolean;
+}
+
+interface FirewallAwsSigv4AuthConfig {
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly sessionToken?: string;
 }
 
 interface RefreshResult {
@@ -149,6 +157,7 @@ interface ResolveResult {
     readonly headers: Record<string, string>;
     readonly base?: string;
     readonly query?: Record<string, string>;
+    readonly awsSigv4?: FirewallAwsSigv4AuthConfig;
     readonly expiresAt: number | null;
     readonly resolvedSecrets: readonly string[];
     readonly refreshedConnectors: readonly string[];
@@ -329,7 +338,7 @@ type RefreshInputSource =
 
 interface RefreshTokenContext {
   readonly inputSources: Readonly<Record<string, RefreshInputSource>>;
-  readonly outputSecrets: Readonly<Record<string, string>>;
+  readonly outputTargets: Readonly<Record<string, RefreshOutputTarget>>;
   readonly runtimeOutputSecrets: Readonly<Record<string, string>>;
   readonly secretUserId: string;
 }
@@ -351,9 +360,19 @@ interface RefreshStateRow {
 }
 
 interface ValidatedRefreshOutput {
-  readonly secretName: string;
+  readonly target: RefreshOutputTarget;
   readonly value: string;
 }
+
+type RefreshOutputTarget =
+  | {
+      readonly kind: "secret";
+      readonly name: string;
+    }
+  | {
+      readonly kind: "connector-variable";
+      readonly name: string;
+    };
 
 type PreparedRefreshTokenContext =
   | ConnectorPreparedRefreshTokenContext
@@ -847,6 +866,40 @@ async function upsertSecretValue(
     });
 }
 
+async function upsertConnectorVariableValue(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly name: string;
+    readonly value: string;
+  },
+): Promise<void> {
+  await db
+    .insert(variablesTable)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      name: args.name,
+      value: args.value,
+      description: null,
+      type: "connector",
+    })
+    .onConflictDoUpdate({
+      target: [
+        variablesTable.orgId,
+        variablesTable.userId,
+        variablesTable.type,
+        variablesTable.name,
+      ],
+      set: {
+        value: args.value,
+        description: null,
+        updatedAt: nowDate(),
+      },
+    });
+}
+
 function modelProviderRuntimeSecretName(args: {
   readonly key: string;
   readonly connectorType: string;
@@ -1072,15 +1125,36 @@ function connectorRefreshInputSources(
   );
 }
 
-function connectorRefreshOutputSecrets(
+function connectorRefreshOutputTargets(
   accessMetadata: Extract<
     ConnectorAuthMethodAccessMetadata,
     { readonly kind: "refresh-token" }
   >,
-): Record<string, string> {
+): Record<string, RefreshOutputTarget> {
   return Object.fromEntries(
     Object.entries(accessMetadata.outputs).map(([outputName, metadata]) => {
-      return [outputName, metadata.secretName];
+      return [
+        outputName,
+        refreshOutputTargetFromConnectorTarget(metadata.target),
+      ];
+    }),
+  );
+}
+
+function refreshOutputTargetFromConnectorTarget(
+  target: ConnectorOutputTarget,
+): RefreshOutputTarget {
+  return target.kind === "connector-secret"
+    ? { kind: "secret", name: target.name }
+    : target;
+}
+
+function modelProviderRefreshOutputTargets(
+  outputs: Readonly<Record<string, string>>,
+): Record<string, RefreshOutputTarget> {
+  return Object.fromEntries(
+    Object.entries(outputs).map(([outputName, secretName]) => {
+      return [outputName, { kind: "secret" as const, name: secretName }];
     }),
   );
 }
@@ -1286,7 +1360,7 @@ function prepareRefreshTokenContext(
           return [inputName, { kind: "secret" as const, name: secretName }];
         }),
       ),
-      outputSecrets: secretMetadata.outputs,
+      outputTargets: modelProviderRefreshOutputTargets(secretMetadata.outputs),
       runtimeOutputSecrets,
       secretUserId: resolveSecretUserId(
         args.sourceType,
@@ -1334,7 +1408,7 @@ function prepareRefreshTokenContext(
 
   const context: RefreshTokenContext = {
     inputSources: connectorRefreshInputSources(accessMetadata),
-    outputSecrets: connectorRefreshOutputSecrets(accessMetadata),
+    outputTargets: connectorRefreshOutputTargets(accessMetadata),
     runtimeOutputSecrets,
     secretUserId: resolveSecretUserId(
       args.sourceType,
@@ -1736,16 +1810,35 @@ async function markRefreshSuccess(
   expiresIn: number | undefined,
 ): Promise<Record<string, string>> {
   const returnedSecretValues = new Map<string, string>();
-  for (const { secretName, value } of outputs) {
-    await upsertSecretValue(args.db, {
-      orgId: args.orgId,
-      userId: context.secretUserId,
-      name: secretName,
-      value,
-      type: args.sourceType,
-      featureSwitchContext: args.featureSwitchContext,
-    });
-    returnedSecretValues.set(secretName, value);
+  for (const { target, value } of outputs) {
+    switch (target.kind) {
+      case "secret": {
+        await upsertSecretValue(args.db, {
+          orgId: args.orgId,
+          userId: context.secretUserId,
+          name: target.name,
+          value,
+          type: args.sourceType,
+          featureSwitchContext: args.featureSwitchContext,
+        });
+        returnedSecretValues.set(target.name, value);
+        break;
+      }
+      case "connector-variable": {
+        if (args.sourceType !== "connector") {
+          throw new Error(
+            "Model provider refresh cannot write connector variables",
+          );
+        }
+        await upsertConnectorVariableValue(args.db, {
+          orgId: args.orgId,
+          userId: context.secretUserId,
+          name: target.name,
+          value,
+        });
+        break;
+      }
+    }
   }
 
   const expiresAt = new Date(
@@ -2004,15 +2097,17 @@ function validateRefreshResultOutputs(args: {
     if (value === undefined) {
       continue;
     }
-    const secretName = args.context.outputSecrets[outputName];
-    if (!secretName) {
+    const target = args.context.outputTargets[outputName];
+    if (!target) {
       return {
         ok: false,
         message: `${args.connectorType} token refresh returned undeclared output ${outputName}`,
       };
     }
-    returnedSecretValues.add(secretName);
-    outputs.push({ secretName, value });
+    if (target.kind === "secret") {
+      returnedSecretValues.add(target.name);
+    }
+    outputs.push({ target, value });
   }
 
   for (const secretName of requiredRuntimeOutputSecretNames(args.context)) {
@@ -2667,6 +2762,7 @@ async function prepareFirewallAuthResolutionContext(args: {
     args.body.authHeaders,
     args.body.authBase,
     args.body.authQuery,
+    args.body.authAwsSigv4,
   );
   const vars = args.body.vars ?? {};
   if (
@@ -3217,6 +3313,7 @@ function collectReferencedKeys(
   authHeaders: Record<string, string>,
   authBase?: string,
   authQuery?: Record<string, string>,
+  authAwsSigv4?: FirewallAwsSigv4AuthConfig,
 ): ReferencedAuthKeys {
   const secretKeys = new Set<string>();
   const varKeys = new Set<string>();
@@ -3239,6 +3336,13 @@ function collectReferencedKeys(
   if (authQuery) {
     for (const template of Object.values(authQuery)) {
       collectSimpleReferencedKeys(template, addKey);
+    }
+  }
+  if (authAwsSigv4) {
+    for (const template of Object.values(authAwsSigv4)) {
+      if (template) {
+        collectSimpleReferencedKeys(template, addKey);
+      }
     }
   }
 
@@ -3322,17 +3426,21 @@ function getOwnValue(
   return Object.hasOwn(values, key) ? values[key] : undefined;
 }
 
-function resolveTemplates(
-  authHeaders: Record<string, string>,
-  secrets: Record<string, string>,
-  vars: Record<string, string>,
-  authBase?: string,
-  authQuery?: Record<string, string>,
-): {
+interface ResolveTemplatesArgs {
+  readonly authHeaders: Record<string, string>;
+  readonly secrets: Record<string, string>;
+  readonly vars: Record<string, string>;
+  readonly authBase?: string;
+  readonly authQuery?: Record<string, string>;
+  readonly authAwsSigv4?: FirewallAwsSigv4AuthConfig;
+}
+
+function resolveTemplates(args: ResolveTemplatesArgs): {
   readonly headers: Record<string, string>;
   readonly resolvedSecrets: readonly string[];
   readonly base?: string;
   readonly query?: Record<string, string>;
+  readonly awsSigv4?: FirewallAwsSigv4AuthConfig;
 } {
   const resolvedKeys = new Set<string>();
 
@@ -3342,26 +3450,26 @@ function resolveTemplates(
       (_match, namespace: string, key: string) => {
         if (namespace === "secrets") {
           resolvedKeys.add(key);
-          return getOwnValue(secrets, key) ?? "";
+          return getOwnValue(args.secrets, key) ?? "";
         }
-        return getOwnValue(vars, key) ?? "";
+        return getOwnValue(args.vars, key) ?? "";
       },
     );
   };
 
   const headers: Record<string, string> = {};
-  for (const [name, template] of Object.entries(authHeaders)) {
+  for (const [name, template] of Object.entries(args.authHeaders)) {
     let resolved = replaceBasicAuthTemplates(template, (match) => {
       const user = resolveBasicArg({
         ...match.first,
-        secrets,
-        vars,
+        secrets: args.secrets,
+        vars: args.vars,
         resolvedKeys,
       });
       const pass = resolveBasicArg({
         ...match.second,
-        secrets,
-        vars,
+        secrets: args.secrets,
+        vars: args.vars,
         resolvedKeys,
       });
       return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
@@ -3370,13 +3478,22 @@ function resolveTemplates(
     headers[name] = resolved;
   }
 
-  const base = authBase ? resolveSimple(authBase) : undefined;
-  const query = authQuery
+  const base = args.authBase ? resolveSimple(args.authBase) : undefined;
+  const query = args.authQuery
     ? Object.fromEntries(
-        Object.entries(authQuery).map(([key, value]) => {
+        Object.entries(args.authQuery).map(([key, value]) => {
           return [key, resolveSimple(value)];
         }),
       )
+    : undefined;
+  const awsSigv4 = args.authAwsSigv4
+    ? ({
+        accessKeyId: resolveSimple(args.authAwsSigv4.accessKeyId),
+        secretAccessKey: resolveSimple(args.authAwsSigv4.secretAccessKey),
+        ...(args.authAwsSigv4.sessionToken
+          ? { sessionToken: resolveSimple(args.authAwsSigv4.sessionToken) }
+          : {}),
+      } satisfies FirewallAwsSigv4AuthConfig)
     : undefined;
 
   return {
@@ -3384,7 +3501,19 @@ function resolveTemplates(
     resolvedSecrets: [...resolvedKeys].sort(),
     base,
     query,
+    awsSigv4,
   };
+}
+
+function hasEmptyAwsSigv4Credential(
+  credentials: FirewallAwsSigv4AuthConfig | undefined,
+): boolean {
+  return (
+    credentials !== undefined &&
+    (credentials.accessKeyId === "" ||
+      credentials.secretAccessKey === "" ||
+      credentials.sessionToken === "")
+  );
 }
 
 export async function resolveFirewallAuth(
@@ -3479,13 +3608,17 @@ export async function resolveFirewallAuth(
     );
   }
 
-  const resolved = resolveTemplates(
-    body.authHeaders,
-    decryptedSecrets,
+  const resolved = resolveTemplates({
+    authHeaders: body.authHeaders,
+    secrets: decryptedSecrets,
     vars,
-    body.authBase,
-    body.authQuery,
-  );
+    authBase: body.authBase,
+    authQuery: body.authQuery,
+    authAwsSigv4: body.authAwsSigv4,
+  });
+  if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {
+    return connectorNotConfigured();
+  }
 
   return {
     status: 200,
@@ -3493,6 +3626,7 @@ export async function resolveFirewallAuth(
       headers: resolved.headers,
       base: resolved.base,
       query: resolved.query,
+      awsSigv4: resolved.awsSigv4,
       expiresAt: mergeExpiresAt(expiresAt, billableCacheExpiry.expiresAt),
       resolvedSecrets: resolved.resolvedSecrets,
       refreshedConnectors,

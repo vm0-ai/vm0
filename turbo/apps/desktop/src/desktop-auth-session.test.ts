@@ -34,8 +34,14 @@ function createSession() {
     cookieUrls: [new URL("https://www.vm0.ai"), new URL("https://app.vm0.ai")],
     cookieSource,
     tokenUrl: TOKEN_URL,
-    consumeUrl: (code) =>
-      `https://www.vm0.ai/desktop-auth/consume?code=${code}`,
+    consumeUrl: (code, handoffId) => {
+      const url = new URL("https://www.vm0.ai/desktop-auth/consume");
+      url.searchParams.set("code", code);
+      if (handoffId) {
+        url.searchParams.set("handoffId", handoffId);
+      }
+      return url.toString();
+    },
     selectOrgUrl: SELECT_ORG_URL,
     runAuthWindow,
     onChange,
@@ -74,6 +80,38 @@ describe("DesktopAuthSession", () => {
 
     expect(onChange).toHaveBeenCalledOnce();
     expect(await session.getToken()).toBe("tok");
+  });
+
+  it("clears cached auth and suppresses hidden refresh after sign out", async () => {
+    const { session, runAuthWindow, onChange } = createSession();
+    session.completeSignIn("cached");
+    session.signOut();
+    session.completeSignIn("late");
+    const fetch = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetch);
+
+    expect(session.getCachedToken()).toBeNull();
+    expect(await session.getToken({ forceRefresh: true })).toBeNull();
+    expect(await session.getAuthState()).toEqual({
+      status: "signed_out",
+      user: null,
+      organization: null,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(runAuthWindow).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts sign-in completions after a new consume flow starts", async () => {
+    const { session, runAuthWindow } = createSession();
+    session.signOut();
+    runAuthWindow.mockImplementation(async () => {
+      session.completeSignIn("fresh");
+    });
+
+    await session.consumeCode("code-123");
+
+    expect(session.getCachedToken()).toBe("fresh");
   });
 
   it("returns the freshly delivered token on a forced refresh", async () => {
@@ -157,6 +195,19 @@ describe("DesktopAuthSession", () => {
     expect(runAuthWindow.mock.invocationCallOrder[0]).toBeLessThan(
       onAuthCompleted.mock.invocationCallOrder[0] ?? Infinity,
     );
+  });
+
+  it("carries handoff id into the consume flow", async () => {
+    const { session, runAuthWindow } = createSession();
+    const handoffId = "550e8400-e29b-41d4-a716-446655440000";
+
+    await session.consumeCode("code-123", handoffId);
+
+    expect(runAuthWindow).toHaveBeenCalledWith({
+      url: `https://www.vm0.ai/desktop-auth/consume?code=code-123&handoffId=${handoffId}`,
+      visible: false,
+      allowInteractiveFallbacks: true,
+    });
   });
 
   it("reports signing-in state while a consume flow is pending", async () => {

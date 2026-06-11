@@ -60,6 +60,7 @@ import { awsProvider } from "./connectors/aws/provider";
 import { base44Provider } from "./connectors/base44/provider";
 import { canvaProvider } from "./connectors/canva/provider";
 import { closeProvider } from "./connectors/close/provider";
+import { cloudflareProvider } from "./connectors/cloudflare/provider";
 import { deelProvider } from "./connectors/deel/provider";
 import { docusignProvider } from "./connectors/docusign/provider";
 import { dropboxProvider } from "./connectors/dropbox/provider";
@@ -70,10 +71,13 @@ import { githubProvider } from "./connectors/github/provider";
 import { gmailProvider } from "./connectors/gmail/provider";
 import { hubspotProvider } from "./connectors/hubspot/provider";
 import { googleAdsProvider } from "./connectors/google-ads/provider";
+import { googleAnalyticsProvider } from "./connectors/google-analytics/provider";
 import { googleCalendarProvider } from "./connectors/google-calendar/provider";
+import { googleCloudProvider } from "./connectors/google-cloud/provider";
 import { googleDocsProvider } from "./connectors/google-docs/provider";
 import { googleDriveProvider } from "./connectors/google-drive/provider";
 import { googleMeetProvider } from "./connectors/google-meet/provider";
+import { googleSearchConsoleProvider } from "./connectors/google-search-console/provider";
 import { googleSheetsProvider } from "./connectors/google-sheets/provider";
 import { larkProvider } from "./connectors/lark/provider";
 import { linearProvider } from "./connectors/linear/provider";
@@ -101,6 +105,7 @@ import { supabaseProvider } from "./connectors/supabase/provider";
 import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
+import { tiktokAdsProvider } from "./connectors/tiktok-ads/provider";
 import { xProvider } from "./connectors/x/provider";
 import { xeroProvider } from "./connectors/xero/provider";
 import { zoomProvider } from "./connectors/zoom/provider";
@@ -437,6 +442,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   base44: { oauth: deviceAuthRefreshProviderEntry(base44Provider) },
   canva: { oauth: authCodeRefreshProviderEntry(canvaProvider) },
   close: { oauth: authCodeRefreshProviderEntry(closeProvider) },
+  cloudflare: {
+    oauth: authCodeRefreshTokenRevokeProviderEntry(cloudflareProvider),
+  },
   deel: { oauth: authCodeRefreshProviderEntry(deelProvider) },
   docusign: { oauth: authCodeRefreshProviderEntry(docusignProvider) },
   dropbox: { oauth: authCodeRefreshProviderEntry(dropboxProvider) },
@@ -447,8 +455,14 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   github: { oauth: authCodeTokenRevokeProviderEntry(githubProvider) },
   gmail: { oauth: authCodeRefreshProviderEntry(gmailProvider) },
   "google-ads": { oauth: authCodeRefreshProviderEntry(googleAdsProvider) },
+  "google-analytics": {
+    oauth: authCodeRefreshProviderEntry(googleAnalyticsProvider),
+  },
   "google-calendar": {
     oauth: authCodeRefreshProviderEntry(googleCalendarProvider),
+  },
+  "google-cloud": {
+    oauth: authCodeRefreshProviderEntry(googleCloudProvider),
   },
   "google-docs": {
     oauth: authCodeRefreshProviderEntry(googleDocsProvider),
@@ -458,6 +472,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   },
   "google-meet": {
     oauth: authCodeRefreshProviderEntry(googleMeetProvider),
+  },
+  "google-search-console": {
+    oauth: authCodeRefreshProviderEntry(googleSearchConsoleProvider),
   },
   "google-sheets": {
     oauth: authCodeRefreshProviderEntry(googleSheetsProvider),
@@ -504,7 +521,8 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   todoist: { oauth: authCodeProviderEntry(todoistProvider) },
   vercel: { oauth: authCodeProviderEntry(vercelProvider) },
   webflow: { oauth: authCodeProviderEntry(webflowProvider) },
-  "meta-ads": { oauth: authCodeProviderEntry(metaAdsProvider) },
+  "meta-ads": { oauth: authCodeRefreshProviderEntry(metaAdsProvider) },
+  "tiktok-ads": { oauth: authCodeRefreshProviderEntry(tiktokAdsProvider) },
   x: { oauth: authCodeRefreshProviderEntry(xProvider) },
   xero: { oauth: authCodeRefreshProviderEntry(xeroProvider) },
   zoom: { oauth: authCodeRefreshProviderEntry(zoomProvider) },

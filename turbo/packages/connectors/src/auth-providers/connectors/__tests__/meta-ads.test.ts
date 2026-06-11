@@ -10,6 +10,7 @@ import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
   getMetaAdsSecretName,
+  refreshMetaAdsLongLivedToken,
 } from "../meta-ads/oauth";
 import { metaAdsProvider } from "../meta-ads/provider";
 import { server } from "../../__tests__/test-server";
@@ -45,6 +46,21 @@ describe("connector/providers/meta-ads", () => {
       expect(url).toContain("response_type=code");
       expect(url).toContain("scope=");
       expect(url).toContain("facebook.com/v22.0/dialog/oauth");
+      const scopes = new Set(
+        new URL(url).searchParams.get("scope")?.split(",") ?? [],
+      );
+      expect(scopes).toStrictEqual(
+        new Set([
+          "ads_management",
+          "ads_read",
+          "business_management",
+          "pages_manage_ads",
+          "pages_read_engagement",
+          "pages_show_list",
+          "public_profile",
+        ]),
+      );
+      expect(scopes.has("email")).toBe(false);
     });
   });
 
@@ -149,6 +165,38 @@ describe("connector/providers/meta-ads", () => {
     });
   });
 
+  describe("refreshMetaAdsLongLivedToken", () => {
+    it("refreshes a long-lived access token through fb_exchange_token", async () => {
+      const handler = http.get(TOKEN_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("grant_type")).toBe("fb_exchange_token");
+        expect(url.searchParams.get("client_id")).toBe("client-id");
+        expect(url.searchParams.get("client_secret")).toBe("client-secret");
+        expect(url.searchParams.get("fb_exchange_token")).toBe(
+          "current-long-lived-token",
+        );
+        return HttpResponse.json({
+          access_token: "refreshed-long-lived-token",
+          token_type: "bearer",
+          expires_in: 5184000,
+        });
+      });
+      server.use(handler);
+
+      await expect(
+        refreshMetaAdsLongLivedToken(
+          "client-id",
+          "client-secret",
+          "current-long-lived-token",
+          new AbortController().signal,
+        ),
+      ).resolves.toStrictEqual({
+        accessToken: "refreshed-long-lived-token",
+        expiresIn: 5184000,
+      });
+    });
+  });
+
   describe("getMetaAdsSecretName", () => {
     it("returns the expected secret name", () => {
       expect(getMetaAdsSecretName()).toBe("META_ADS_ACCESS_TOKEN");
@@ -187,8 +235,31 @@ describe("connector/providers/meta-ads", () => {
       });
     });
 
-    it("refreshToken is not registered (Meta uses long-lived token exchange)", () => {
-      expect(metaAdsProvider.access.kind).toBe("none");
+    it("refreshes the stored long-lived access token", async () => {
+      const handler = http.get(TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "provider-refreshed-token",
+          token_type: "bearer",
+          expires_in: 5184000,
+        });
+      });
+      server.use(handler);
+
+      await expect(
+        metaAdsProvider.access.refresh({
+          authClient: testAuthClient,
+          inputs: {
+            refreshToken: "current-long-lived-token",
+          },
+          signal: new AbortController().signal,
+        }),
+      ).resolves.toStrictEqual({
+        outputs: {
+          accessToken: "provider-refreshed-token",
+          refreshToken: "provider-refreshed-token",
+        },
+        expiresIn: 5184000,
+      });
     });
   });
 });

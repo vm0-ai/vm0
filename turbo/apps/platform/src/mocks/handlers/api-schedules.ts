@@ -5,6 +5,7 @@ import {
   zeroScheduleRunContract,
   type ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 import {
   getMockSchedules,
@@ -12,6 +13,20 @@ import {
 } from "./schedules-store.ts";
 
 const DEFAULT_CHAT_THREAD_ID = "d0000000-0000-4000-a000-000000000001";
+
+interface MockScheduleDeployBody {
+  agentId: string;
+  name: string;
+  cronExpression?: string | null;
+  atTime?: string | null;
+  intervalSeconds?: number | null;
+  timezone?: string | null;
+  prompt: string;
+  description?: string | null;
+  appendSystemPrompt?: string | null;
+  enabled?: boolean;
+  chatThreadId?: string | null;
+}
 
 export function createMockScheduleResponse(
   overrides?: Partial<ScheduleResponse>,
@@ -42,7 +57,50 @@ export function createMockScheduleResponse(
   };
 }
 
-export { setMockSchedules, resetMockSchedules } from "./schedules-store.ts";
+function getMockScheduleTriggerType(
+  body: MockScheduleDeployBody,
+): ScheduleResponse["triggerType"] {
+  if (body.cronExpression) {
+    return "cron";
+  }
+  if (body.atTime) {
+    return "once";
+  }
+  return "loop";
+}
+
+function createStoredSchedule(
+  body: MockScheduleDeployBody,
+  existing: ScheduleResponse | undefined,
+  now: string,
+): ScheduleResponse {
+  return {
+    id: existing?.id ?? crypto.randomUUID(),
+    agentId: body.agentId,
+    displayName: existing?.displayName ?? null,
+    userId: existing?.userId ?? "test-user-123",
+    name: body.name,
+    triggerType: getMockScheduleTriggerType(body),
+    cronExpression: body.cronExpression ?? null,
+    atTime: body.atTime ?? null,
+    intervalSeconds: body.intervalSeconds ?? null,
+    timezone: body.timezone ?? "UTC",
+    prompt: body.prompt,
+    description: body.description ?? null,
+    appendSystemPrompt: body.appendSystemPrompt ?? null,
+    enabled: body.enabled ?? true,
+    nextRunAt: null,
+    lastRunAt: null,
+    retryStartedAt: null,
+    consecutiveFailures: 0,
+    chatThreadId:
+      body.chatThreadId ?? existing?.chatThreadId ?? crypto.randomUUID(),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+}
+
+export { resetMockSchedules } from "./schedules-store.ts";
 
 export const apiSchedulesHandlers = [
   // GET /api/zero/schedules
@@ -52,32 +110,10 @@ export const apiSchedulesHandlers = [
 
   // POST /api/zero/schedules
   mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-    const now = new Date().toISOString();
-    const schedule: ScheduleResponse = {
-      id: crypto.randomUUID(),
-      agentId: body.agentId,
-      displayName: null,
-      userId: "test-user-123",
-      name: body.name,
-      triggerType: body.cronExpression ? "cron" : body.atTime ? "once" : "loop",
-      cronExpression: body.cronExpression ?? null,
-      atTime: body.atTime ?? null,
-      intervalSeconds: body.intervalSeconds ?? null,
-      timezone: body.timezone ?? "UTC",
-      prompt: body.prompt,
-      description: body.description ?? null,
-      appendSystemPrompt: body.appendSystemPrompt ?? null,
-      enabled: body.enabled ?? true,
-      nextRunAt: null,
-      lastRunAt: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-      chatThreadId: body.chatThreadId ?? crypto.randomUUID(),
-      createdAt: now,
-      updatedAt: now,
-    };
+    const now = nowDate().toISOString();
     const schedules = getMockSchedules();
     const existing = schedules.find((s) => s.name === body.name);
+    const schedule = createStoredSchedule(body, existing, now);
     if (existing) {
       setStore(schedules.map((s) => (s.name === body.name ? schedule : s)));
       return respond(200, { schedule, created: false });

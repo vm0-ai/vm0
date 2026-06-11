@@ -4,9 +4,11 @@ import { callZeroMaps, type ZeroMapsResponse } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 const TRAVEL_MODES = ["driving", "walking", "bicycling", "transit"] as const;
-const PLACE_DETAIL_FIELDSETS = ["essentials", "pro"] as const;
+const PLACE_SEARCH_FIELDSETS = ["pro", "enterprise"] as const;
+const PLACE_DETAIL_FIELDSETS = ["essentials", "pro", "enterprise"] as const;
 
 type TravelMode = (typeof TRAVEL_MODES)[number];
+type PlaceSearchFieldset = (typeof PLACE_SEARCH_FIELDSETS)[number];
 type PlaceDetailFieldset = (typeof PLACE_DETAIL_FIELDSETS)[number];
 
 interface JsonOption {
@@ -36,6 +38,7 @@ interface PlacesSearchOptions extends JsonOption {
   radius?: number;
   limit: number;
   region?: string;
+  fields: PlaceSearchFieldset;
 }
 
 interface PlacesDetailsOptions extends JsonOption {
@@ -83,6 +86,15 @@ function parseTravelMode(value: string): TravelMode {
   }
   throw new InvalidArgumentError(
     `mode must be one of: ${TRAVEL_MODES.join(", ")}`,
+  );
+}
+
+function parsePlaceSearchFields(value: string): PlaceSearchFieldset {
+  if (PLACE_SEARCH_FIELDSETS.includes(value as PlaceSearchFieldset)) {
+    return value as PlaceSearchFieldset;
+  }
+  throw new InvalidArgumentError(
+    `fields must be one of: ${PLACE_SEARCH_FIELDSETS.join(", ")}`,
   );
 }
 
@@ -221,6 +233,12 @@ const placesSearchCommand = new Command()
     5,
   )
   .option("--region <code>", "Optional region bias, such as US or CN")
+  .option(
+    "--fields <fields>",
+    "Field set: pro or enterprise",
+    parsePlaceSearchFields,
+    "pro",
+  )
   .option("--json", "Print the raw maps response as JSON")
   .action(
     withErrorHandler(async (options: PlacesSearchOptions) => {
@@ -233,6 +251,7 @@ const placesSearchCommand = new Command()
           radius: options.radius,
           limit: options.limit,
           region: options.region,
+          fields: options.fields,
         },
         options,
       );
@@ -245,7 +264,7 @@ const placesDetailsCommand = new Command()
   .requiredOption("--place-id <id>", "Provider place ID")
   .option(
     "--fields <fields>",
-    "Field set: essentials or pro",
+    "Field set: essentials, pro, or enterprise",
     parsePlaceDetailFields,
     "essentials",
   )
@@ -281,10 +300,12 @@ Examples:
   Geocode address:     zero maps geocode --address "1 Infinite Loop, Cupertino" --json
   Get route:           zero maps directions --origin "SFO" --destination "Mountain View" --mode driving --json
   Search places:       zero maps places search --query "coffee near Union Square SF" --limit 5 --json
+  Enterprise search:   zero maps places search --query "restaurants in SoMa" --fields enterprise --json
   Place details:       zero maps places details --place-id <id> --fields essentials --json
+  Enterprise details:  zero maps places details --place-id <id> --fields enterprise --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires maps:read capability) or a CLI token
   - Google Maps calls and credit billing happen on the vm0 API server
-  - Use --fields essentials for place details unless pro fields are required`,
+  - Use --fields essentials for place details unless paid fields are required`,
   );

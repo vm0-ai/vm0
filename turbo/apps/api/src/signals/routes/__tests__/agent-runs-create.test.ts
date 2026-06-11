@@ -11,6 +11,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
   agentComposes,
   agentComposeVersions,
@@ -73,6 +74,20 @@ function modelProviderSecretPlaceholder(
     getModelProviderFirewall(type)?.placeholders?.[secretName];
   if (!placeholder) {
     throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
+
+function connectorFirewallPlaceholder(
+  connectorType: "aws",
+  secretName: string,
+): string {
+  const placeholder =
+    getConnectorFirewall(connectorType).placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(
+      `Missing connector firewall placeholder for ${connectorType}.${secretName}`,
+    );
   }
   return placeholder;
 }
@@ -1357,6 +1372,84 @@ describe("POST /api/agent/runs", () => {
     });
   });
 
+  it("loads connector token output variables into runtime environment", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      switches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "test-oauth",
+      authMethod: "api",
+    });
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "TEST_OAUTH_API_ACCESS_TOKEN",
+      encryptedValue: encryptSecretForTests("test-oauth-api-token"),
+      type: "connector",
+    });
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "TEST_OAUTH_API_TENANT_ID",
+      value: "tenant-from-token-output",
+      type: "connector",
+    });
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use test OAuth",
+        },
+      }),
+      [201],
+    );
+
+    const [run] = await db
+      .select({ vars: agentRuns.vars })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId));
+    expect(run?.vars ?? {}).not.toHaveProperty("TEST_OAUTH_API_TENANT_ID");
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly { readonly base: string }[];
+      }[];
+    };
+    expect(executionContext.environment.TEST_OAUTH_TENANT_ID).toBe(
+      "tenant-from-token-output",
+    );
+    expect(executionContext.environment.TEST_OAUTH_TOKEN).toBe(
+      "testoauth_placeholder_token",
+    );
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      TEST_OAUTH_TOKEN: "test-oauth-api-token",
+    });
+    const firewall = executionContext.firewalls.find((entry) => {
+      return entry.name === "test-oauth";
+    });
+    expect(firewall?.apis[0]?.base).toBe(
+      "https://tenant-from-token-output.{pr}.vm6.ai/api/test/oauth-provider",
+    );
+  });
+
   it("maps non-refreshable runtime secret aliases for refresh-token connectors", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
@@ -1389,11 +1482,13 @@ describe("POST /api/agent/runs", () => {
         encryptedValue: encryptSecretForTests("aws-session-token"),
         type: "connector",
       },
+    ]);
+    await db.insert(variables).values([
       {
         orgId: fx.orgId,
         userId: fx.userId,
         name: "AWS_REGION",
-        encryptedValue: encryptSecretForTests("us-west-2"),
+        value: "us-west-2",
         type: "connector",
       },
     ]);
@@ -1418,22 +1513,116 @@ describe("POST /api/agent/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly base: string;
+          readonly auth: {
+            readonly awsSigv4?: {
+              readonly accessKeyId: string;
+              readonly secretAccessKey: string;
+              readonly sessionToken?: string;
+            };
+          };
+          readonly permissions: readonly unknown[];
+        }[];
+      }[];
+      readonly networkPolicies: Record<
+        string,
+        {
+          readonly allow: readonly string[];
+          readonly deny: readonly string[];
+          readonly ask: readonly string[];
+          readonly unknownPolicy: string;
+        }
+      >;
     };
+    expect(executionContext.firewalls).toContainEqual({
+      name: "aws",
+      apis: [
+        {
+          base: "https://{awsHost+}.amazonaws.com",
+          auth: {
+            awsSigv4: {
+              accessKeyId: vm0Template("{{ secrets.AWS_ACCESS_KEY_ID }}"),
+              secretAccessKey: vm0Template(
+                "{{ secrets.AWS_SECRET_ACCESS_KEY }}",
+              ),
+              sessionToken: vm0Template("{{ secrets.AWS_SESSION_TOKEN }}"),
+            },
+          },
+          permissions: [],
+        },
+        {
+          base: "https://{awsHost+}.amazonaws.com.cn",
+          auth: {
+            awsSigv4: {
+              accessKeyId: vm0Template("{{ secrets.AWS_ACCESS_KEY_ID }}"),
+              secretAccessKey: vm0Template(
+                "{{ secrets.AWS_SECRET_ACCESS_KEY }}",
+              ),
+              sessionToken: vm0Template("{{ secrets.AWS_SESSION_TOKEN }}"),
+            },
+          },
+          permissions: [],
+        },
+        {
+          base: "https://{awsHost+}.api.aws",
+          auth: {
+            awsSigv4: {
+              accessKeyId: vm0Template("{{ secrets.AWS_ACCESS_KEY_ID }}"),
+              secretAccessKey: vm0Template(
+                "{{ secrets.AWS_SECRET_ACCESS_KEY }}",
+              ),
+              sessionToken: vm0Template("{{ secrets.AWS_SESSION_TOKEN }}"),
+            },
+          },
+          permissions: [],
+        },
+      ],
+    });
+    expect(executionContext.networkPolicies.aws).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
+    });
     expect(executionContext.environment).toHaveProperty("AWS_REGION");
     expect(executionContext.environment).toHaveProperty("AWS_DEFAULT_REGION");
     expect(executionContext.secretConnectorMap).toMatchObject({
       AWS_ACCESS_KEY_ID: "aws",
       AWS_SECRET_ACCESS_KEY: "aws",
       AWS_SESSION_TOKEN: "aws",
-      AWS_REGION: "aws",
-      AWS_DEFAULT_REGION: "aws",
     });
-    expect(
-      decryptSecretsMapForTests(executionContext.encryptedSecrets),
-    ).toMatchObject({
+    expect(executionContext.secretConnectorMap).not.toHaveProperty(
+      "AWS_REGION",
+    );
+    expect(executionContext.secretConnectorMap).not.toHaveProperty(
+      "AWS_DEFAULT_REGION",
+    );
+    const decryptedSecrets = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    expect(decryptedSecrets).toMatchObject({
       AWS_ACCESS_KEY_ID: "aws-access-key-id",
       AWS_SECRET_ACCESS_KEY: "aws-secret-access-key",
       AWS_SESSION_TOKEN: "aws-session-token",
+    });
+    expect(decryptedSecrets).not.toHaveProperty("AWS_REGION");
+    expect(decryptedSecrets).not.toHaveProperty("AWS_DEFAULT_REGION");
+    expect(executionContext.environment).toMatchObject({
+      AWS_ACCESS_KEY_ID: connectorFirewallPlaceholder(
+        "aws",
+        "AWS_ACCESS_KEY_ID",
+      ),
+      AWS_SECRET_ACCESS_KEY: connectorFirewallPlaceholder(
+        "aws",
+        "AWS_SECRET_ACCESS_KEY",
+      ),
+      AWS_SESSION_TOKEN: connectorFirewallPlaceholder(
+        "aws",
+        "AWS_SESSION_TOKEN",
+      ),
       AWS_REGION: "us-west-2",
       AWS_DEFAULT_REGION: "us-west-2",
     });

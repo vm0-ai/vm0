@@ -1,11 +1,12 @@
 [package]
 name = "guest-mock-codex"
-version = "0.2.2"
+version = "0.2.5"
 edition.workspace = true
 
 [dependencies]
 chrono = { workspace = true, features = ["clock"] }
 clap = { workspace = true, features = ["derive"] }
+libc.workspace = true
 serde_json.workspace = true
 uuid = { workspace = true, features = ["v7"] }
 

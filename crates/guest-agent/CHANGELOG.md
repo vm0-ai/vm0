@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.34.27](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.26...guest-agent-v0.34.27) (2026-06-11)
+
+## [0.34.26](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.25...guest-agent-v0.34.26) (2026-06-10)
+
+## [0.34.25](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.24...guest-agent-v0.34.25) (2026-06-10)
+
+
+### Bug Fixes
+
+* harden mock codex session persistence ([#16940](https://github.com/vm0-ai/vm0/issues/16940)) ([39374df](https://github.com/vm0-ai/vm0/commit/39374df46e1f7e42e51cc00cab388c10d39107c4))
+
 ## [0.34.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.23...guest-agent-v0.34.24) (2026-06-09)
 
 

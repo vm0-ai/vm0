@@ -26,6 +26,7 @@ export default async function DesktopAuthConsumePage({
 }: DesktopAuthConsumePageProps) {
   const params = (await searchParams) ?? {};
   const code = firstSearchParam(params.code);
+  const handoffId = firstSearchParam(params.handoffId);
 
   if (!code) {
     return (
@@ -33,5 +34,5 @@ export default async function DesktopAuthConsumePage({
     );
   }
 
-  return <DesktopAuthConsumeClient code={code} />;
+  return <DesktopAuthConsumeClient code={code} handoffId={handoffId} />;
 }

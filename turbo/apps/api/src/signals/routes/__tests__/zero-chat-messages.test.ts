@@ -7,7 +7,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import {
   agentComposes,
   agentComposeVersions,
@@ -18,6 +18,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -41,7 +42,7 @@ import { generateZeroToken, verifyZeroToken } from "../../auth/tokens";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -174,6 +175,30 @@ async function seedFixture(): Promise<ChatMessageFixture> {
   return { userId, orgId, agentId, versionId };
 }
 
+async function seedOnlineComputerUseHost(
+  fixture: ChatMessageFixture,
+): Promise<string> {
+  const writeDb = store.set(writeDb$);
+  const [host] = await writeDb
+    .insert(computerUseHosts)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      displayName: "Zero Desktop",
+      tokenHash: `host_${randomUUID()}`,
+      appVersion: "0.1.0",
+      osVersion: "macOS 15",
+      supportedCapabilities: ["apps.list"],
+      permissions: { accessibility: true, screenRecording: true },
+      lastSeenAt: nowDate(),
+    })
+    .returning({ id: computerUseHosts.id });
+  if (!host) {
+    throw new Error("Failed to seed computer-use host");
+  }
+  return host.id;
+}
+
 async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
   const writeDb = store.set(writeDb$);
   const threadRows = await writeDb
@@ -217,6 +242,14 @@ async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
   if (threadIds.length > 0) {
     await writeDb.delete(chatThreads).where(inArray(chatThreads.id, threadIds));
   }
+  await writeDb
+    .delete(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.orgId, fixture.orgId),
+        eq(computerUseHosts.userId, fixture.userId),
+      ),
+    );
   await writeDb
     .delete(userFeatureSwitches)
     .where(
@@ -489,7 +522,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "hello from api chat",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.runId).toStrictEqual(expect.any(String));
     expect(response.body.threadId).toStrictEqual(expect.any(String));
@@ -573,7 +606,7 @@ describe("POST /api/zero/chat/messages", () => {
         },
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -604,6 +637,51 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run?.appendSystemPrompt).toContain(
       "--artifact-kind presentation-html",
     );
+  });
+
+  it("adds video generation template guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const item = VIDEO_STYLE_PRESETS.find((preset) => {
+      return preset.id === "tech-minimalist-reveal";
+    })!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a product video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: item.id,
+        },
+      },
+    });
+    await flushWaitUntilForTest();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.prompt).toBe("make a product video");
+    expect(run?.appendSystemPrompt).toContain(`## Video Style: ${item.nameEn}`);
+    expect(run?.appendSystemPrompt).toContain(
+      `- Visual Tone: ${item.dimensions.visualTone}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Camera Style: ${item.dimensions.cameraStyle}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Style Reference: ${item.dimensions.styleReference}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+    );
+    expect(run?.appendSystemPrompt).not.toContain(item.scene);
   });
 
   it("rejects unknown generation template resources", async () => {
@@ -651,6 +729,26 @@ describe("POST /api/zero/chat/messages", () => {
     expect(unknownDesignSystem.body.error.message).toBe(
       "Unknown generation template design system",
     );
+
+    const unknownVideoStyle = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a product video",
+          generationTemplate: {
+            type: "video",
+            selection: {
+              stylePresetId: "video-style:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownVideoStyle.body.error.message).toBe(
+      "Unknown video style preset",
+    );
   });
 
   it("rejects generation templates that do not support presentation", async () => {
@@ -680,6 +778,63 @@ describe("POST /api/zero/chat/messages", () => {
     );
   });
 
+  it("adds video style preset guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const preset = VIDEO_STYLE_PRESETS[0]!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a cinematic video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: preset.id,
+        },
+      },
+    });
+    await flushWaitUntilForTest();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.appendSystemPrompt).toContain(
+      `## Video Style: ${preset.nameEn}`,
+    );
+    expect(run?.appendSystemPrompt).toContain("- Visual Tone:");
+    expect(run?.appendSystemPrompt).toContain("- Style Reference:");
+    expect(run?.appendSystemPrompt).toContain(
+      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+    );
+  });
+
+  it("rejects unknown video style preset", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a video",
+          generationTemplate: {
+            type: "video",
+            selection: {
+              stylePresetId: "preset:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(response.body.error.message).toBe("Unknown video style preset");
+  });
+
   it("queues generation template when the thread has an active run", async () => {
     const fixture = await track(seedFixture());
     const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
@@ -694,7 +849,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "active deck run",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const response = await send({
       agentId: fixture.agentId,
@@ -733,14 +888,14 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "occupy org concurrency",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(active.body.status).toBe("pending");
 
     const queued = await send({
       agentId: fixture.agentId,
       prompt: "wait behind active run",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     expect(queued.body.status).toBe("queued");
 
     const writeDb = store.set(writeDb$);
@@ -827,7 +982,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "fail before worker start",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.status).toBe("failed");
     expect(response.body.runId).toStrictEqual(expect.any(String));
@@ -914,7 +1069,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "use the default zero agent",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.status).toBe("pending");
     const [run] = await store
@@ -935,7 +1090,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "client thread",
       clientThreadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(response.body.threadId).toBe(clientThreadId);
     const [thread] = await store
@@ -966,7 +1121,7 @@ describe("POST /api/zero/chat/messages", () => {
       clientThreadId,
       clientMessageId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const retry = await send({
       agentId: fixture.agentId,
@@ -974,7 +1129,7 @@ describe("POST /api/zero/chat/messages", () => {
       clientThreadId,
       clientMessageId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(retry.body).toStrictEqual(first.body);
 
@@ -1020,7 +1175,7 @@ describe("POST /api/zero/chat/messages", () => {
       clientThreadId,
       clientMessageId: randomUUID(),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const caller = await track(seedFixture());
     const response = await accept(
@@ -1052,7 +1207,7 @@ describe("POST /api/zero/chat/messages", () => {
       clientThreadId,
       clientMessageId: randomUUID(),
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const otherAgent = await track(seedFixture());
     const writeDb = store.set(writeDb$);
@@ -1085,7 +1240,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
-  it("passes enabled feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
+  it("does not grant computer-use capability without a selected host", async () => {
     const fixture = await track(seedFixture());
     await store
       .set(writeDb$)
@@ -1103,13 +1258,51 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "open remote browser",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const secrets = await runExecutionSecrets(response.body.runId!);
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
-    expect(zeroAuth?.capabilities).toContain("computer-use:write");
+    expect(zeroAuth?.capabilities).not.toContain("computer-use:write");
     expect(zeroAuth?.capabilities).toContain("host:read");
     expect(zeroAuth?.capabilities).toContain("host:write");
+  });
+
+  it("grants computer-use capability to the selected online host", async () => {
+    const fixture = await track(seedFixture());
+    await store
+      .set(writeDb$)
+      .insert(userFeatureSwitches)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        switches: {
+          [FeatureSwitchKey.ComputerUse]: true,
+        },
+        updatedAt: nowDate(),
+      });
+    const hostId = await seedOnlineComputerUseHost(fixture);
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "open remote browser",
+      computerUseHostId: hostId,
+    });
+    await flushWaitUntilForTest();
+
+    const secrets = await runExecutionSecrets(response.body.runId!);
+    const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
+    expect(zeroAuth).toMatchObject({
+      computerUseHostId: hostId,
+      capabilities: expect.arrayContaining(["computer-use:write"]),
+    });
+
+    const [thread] = await store
+      .set(writeDb$)
+      .select({ computerUseHostId: chatThreads.computerUseHostId })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, response.body.threadId))
+      .limit(1);
+    expect(thread?.computerUseHostId).toBe(hostId);
   });
 
   it("persists attachments on the user message and injects them into the run prompt", async () => {
@@ -1129,7 +1322,7 @@ describe("POST /api/zero/chat/messages", () => {
         },
       ],
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -1179,7 +1372,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "plan the API migration",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(upstreamAuthorization).toBe("Bearer title-api-key");
     const [thread] = await store
@@ -1191,10 +1384,111 @@ describe("POST /api/zero/chat/messages", () => {
     expect(thread?.title).toBe("Migration Plan");
   });
 
+  it("does not regenerate a chat thread title once one exists", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const threadId = randomUUID();
+    await writeDb.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.agentId,
+      title: "Existing Title",
+    });
+    mockOptionalEnv("OPENROUTER_API_KEY", "title-api-key");
+    let titleRequestCount = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            readonly messages?: readonly { readonly content?: string }[];
+          };
+          if (
+            body.messages?.[0]?.content?.includes(
+              "Generate a short, descriptive title",
+            )
+          ) {
+            titleRequestCount += 1;
+          }
+          return HttpResponse.json({
+            choices: [{ message: { content: "Replacement Title" } }],
+          });
+        },
+      ),
+    );
+
+    await send({
+      agentId: fixture.agentId,
+      prompt: "rename this thread automatically",
+      threadId,
+    });
+    await flushWaitUntilForTest();
+
+    const [thread] = await writeDb
+      .select({ title: chatThreads.title })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, threadId))
+      .limit(1);
+    expect(titleRequestCount).toBe(0);
+    expect(thread?.title).toBe("Existing Title");
+  });
+
+  it("does not auto-name a manually renamed chat thread", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const threadId = randomUUID();
+    const renamedAt = new Date("2026-01-01T00:00:00.000Z");
+    await writeDb.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.agentId,
+      title: "Manual Name",
+      renamedAt,
+    });
+    mockOptionalEnv("OPENROUTER_API_KEY", "title-api-key");
+    let titleRequestCount = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            readonly messages?: readonly { readonly content?: string }[];
+          };
+          if (
+            body.messages?.[0]?.content?.includes(
+              "Generate a short, descriptive title",
+            )
+          ) {
+            titleRequestCount += 1;
+          }
+          return HttpResponse.json({
+            choices: [{ message: { content: "Replacement Title" } }],
+          });
+        },
+      ),
+    );
+
+    await send({
+      agentId: fixture.agentId,
+      prompt: "rename this thread automatically",
+      threadId,
+    });
+    await flushWaitUntilForTest();
+
+    const [thread] = await writeDb
+      .select({ title: chatThreads.title, renamedAt: chatThreads.renamedAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, threadId))
+      .limit(1);
+    expect(titleRequestCount).toBe(0);
+    expect(thread?.title).toBe("Manual Name");
+    expect(thread?.renamedAt?.toISOString()).toBe(renamedAt.toISOString());
+  });
+
   it("queues an unassociated user message when the thread has an active run", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const second = await send({
       agentId: fixture.agentId,
@@ -1228,7 +1522,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("returns the existing queued user message for duplicate clientMessageId retries", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const clientMessageId = randomUUID();
     const queued = await send({
@@ -1272,7 +1566,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "first with client id",
       clientMessageId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const activeRetry = await send({
       agentId: fixture.agentId,
@@ -1326,14 +1620,14 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "owned message",
       clientMessageId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const otherFixture = await track(seedFixture());
     const active = await send({
       agentId: otherFixture.agentId,
       prompt: "other active run",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const response = await accept(
       client().send({
@@ -1368,7 +1662,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("rejects clientMessageId reuse from a queued recall message", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await send({
       agentId: fixture.agentId,
       prompt: "queued for recall",
@@ -1417,7 +1711,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("creates a follow-up run on an existing thread and continues the last session", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [firstRun] = await store
       .set(writeDb$)
@@ -1434,7 +1728,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "follow up",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(second.body.runId).toStrictEqual(expect.any(String));
     expect(second.body.runId).not.toBe(first.body.runId);
@@ -1456,7 +1750,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("recalls only queued user messages", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await send({
       agentId: fixture.agentId,
       prompt: "queued for recall",
@@ -1524,7 +1818,7 @@ describe("POST /api/zero/chat/messages", () => {
     const fixture = await track(seedFixture());
     proxyChatCallbackToApp();
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const interruptId = randomUUID();
     const interrupt = await send({
@@ -1567,7 +1861,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "first web context",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
     await store.set(writeDb$).insert(chatMessages).values({
       chatThreadId: first.body.threadId,
@@ -1582,7 +1876,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "follow-up web context",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -1605,7 +1899,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("injects incomplete cancelled rounds into the next run prompt", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "cancel me" });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "cancelled");
 
     const second = await send({
@@ -1613,7 +1907,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "retry",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -1633,7 +1927,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "first incomplete",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "failed");
 
     const secondPrompt = `second ${"x".repeat(4100)}`;
@@ -1642,7 +1936,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: secondPrompt,
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(second.body.runId!, "timeout");
 
     const third = await send({
@@ -1650,7 +1944,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "retry after two failures",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -1702,7 +1996,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "first on opus",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     const [firstRun] = await writeDb
       .select({ sessionId: agentRuns.sessionId })
       .from(agentRuns)
@@ -1721,7 +2015,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [thread] = await writeDb
       .select({ selectedModel: chatThreads.selectedModel })
@@ -1765,7 +2059,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [policy] = await writeDb
       .select({
@@ -2042,7 +2336,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "deepseek-v4-pro",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [job] = await writeDb
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -2100,7 +2394,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "deepseek-v4-pro",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await writeDb
       .select({ additionalVolumes: agentRuns.additionalVolumes })
@@ -2156,7 +2450,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "deepseek-v4-pro",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [job] = await writeDb
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -2209,7 +2503,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
 
     const byokProviderId = await seedModelProvider(
@@ -2243,7 +2537,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "continue same model after provider switch",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [thread] = await writeDb
       .select({
@@ -2329,7 +2623,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "gpt-5.5",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [job] = await writeDb
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -2580,7 +2874,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
 
     const second = await send({
@@ -2592,7 +2886,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-opus-4-7",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     expect(second.body.runId).toStrictEqual(expect.any(String));
     const [thread] = await writeDb
@@ -2626,7 +2920,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "first on built-in",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
 
     await writeDb
@@ -2653,7 +2947,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "follow up on legacy thread",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [thread] = await writeDb
       .select({
@@ -2682,7 +2976,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
     await setRunStatus(first.body.runId!, "completed");
     const replacementProviderId = await seedModelProvider(
       fixture,
@@ -2713,7 +3007,7 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "follow up",
       threadId: first.body.threadId,
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [run] = await store
       .set(writeDb$)
@@ -2756,7 +3050,7 @@ describe("POST /api/zero/chat/messages", () => {
       agentId: fixture.agentId,
       prompt: "run codex",
     });
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     const [job] = await store
       .set(writeDb$)

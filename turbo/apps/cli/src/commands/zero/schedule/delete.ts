@@ -5,12 +5,14 @@ import {
   resolveZeroScheduleByAgent,
 } from "../../../lib/api";
 import { isInteractive, promptConfirm } from "../../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../../lib/command";
+import { printDeprecationNotice, withErrorHandler } from "../../../lib/command";
 
 export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
-  .description("Delete a zero schedule")
+  .description(
+    "(deprecated: use `zero automation delete`) Delete a zero schedule",
+  )
   .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <schedule-name>",
@@ -30,6 +32,8 @@ Notes:
   .action(
     withErrorHandler(
       async (agentName: string, options: { name?: string; yes?: boolean }) => {
+        printDeprecationNotice("zero automation delete <automation>");
+
         const resolved = await resolveZeroScheduleByAgent(
           agentName,
           options.name,

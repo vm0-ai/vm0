@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.4...guest-mock-codex-v0.2.5) (2026-06-11)
+
+
+### Performance Improvements
+
+* avoid cloning mock codex prompt parts ([#17210](https://github.com/vm0-ai/vm0/issues/17210)) ([3251264](https://github.com/vm0-ai/vm0/commit/3251264313c7a0562285cbf1d4b2f291d5bfe997))
+
+## [0.2.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.3...guest-mock-codex-v0.2.4) (2026-06-10)
+
+
+### Bug Fixes
+
+* harden mock codex session persistence ([#16940](https://github.com/vm0-ai/vm0/issues/16940)) ([39374df](https://github.com/vm0-ai/vm0/commit/39374df46e1f7e42e51cc00cab388c10d39107c4))
+
+## [0.2.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.2...guest-mock-codex-v0.2.3) (2026-06-09)
+
+
+### Refactoring
+
+* move guest mock codex contract to library ([#16864](https://github.com/vm0-ai/vm0/issues/16864)) ([1f046d9](https://github.com/vm0-ai/vm0/commit/1f046d9ec6f5d30e51ec6a4a5b8fe938578d7c38)), closes [#16782](https://github.com/vm0-ai/vm0/issues/16782)
+
 ## [0.2.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.1...guest-mock-codex-v0.2.2) (2026-06-02)
 
 

@@ -21,7 +21,6 @@ import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
-import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "../settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
@@ -32,7 +31,6 @@ export function PersonalProvidersTab() {
   return (
     <div className="flex flex-col gap-8">
       <OAuthCredentialsSection />
-      <PersonalProviderDialog />
       <PersonalClaudeCodeDeviceAuthDialog />
       <PersonalCodexDeviceAuthDialog />
     </div>

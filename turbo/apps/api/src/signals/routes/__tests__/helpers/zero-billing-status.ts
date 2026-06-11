@@ -39,6 +39,7 @@ interface ExpiresRecordSeed {
 
 interface BillingStatusSeedValues {
   readonly credits?: number;
+  readonly onboardingPaymentPending?: boolean;
   readonly subscription?: SubscriptionSeed;
   readonly expiresRecords?: readonly ExpiresRecordSeed[];
   readonly extraGrantedCredits?: number;
@@ -52,6 +53,7 @@ function orgMetadataSeedValues(
   return {
     orgId,
     credits: values.credits ?? 0,
+    onboardingPaymentPending: Boolean(values.onboardingPaymentPending),
     tier: sub?.tier ?? "free",
     stripeCustomerId: sub?.stripeCustomerId ?? null,
     stripeSubscriptionId: sub?.stripeSubscriptionId ?? null,

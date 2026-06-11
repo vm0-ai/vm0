@@ -20,11 +20,16 @@ interface DesktopTrayControllerOptions {
   readonly getAuthState: () => Promise<DesktopAuthState>;
   readonly showMainWindow: () => Promise<void>;
   readonly startComputerUse: () => Promise<void>;
+  readonly stopComputerUse: () => Promise<void>;
   readonly refreshStatus: () => Promise<void>;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => Promise<void>;
+  readonly signOut: () => Promise<void>;
+  readonly requestAccessibilityPermission: () => Promise<void>;
+  readonly requestScreenRecordingPermission: () => Promise<void>;
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
+  readonly setKeepAwakeEnabled: (enabled: boolean) => Promise<void>;
   readonly quit: () => void;
 }
 
@@ -49,6 +54,9 @@ function electronMenuItem(
   if (item.enabled !== undefined) {
     template.enabled = item.enabled;
   }
+  if (item.checked !== undefined) {
+    template.checked = item.checked;
+  }
   if (item.click) {
     template.click = item.click;
   }
@@ -68,6 +76,7 @@ export class DesktopTrayController {
   private readonly options: DesktopTrayControllerOptions;
   private tray: Tray | null = null;
   private authState: DesktopAuthState | null = null;
+  private authLoading = true;
   private authError: string | null = null;
   private authRefreshVersion = 0;
   private menuSignature: string | null = null;
@@ -98,6 +107,7 @@ export class DesktopTrayController {
       {
         computerUse: this.options.getComputerUseState(),
         auth: this.authState,
+        authLoading: this.authLoading,
         authError: this.authError,
       },
       actions,
@@ -115,6 +125,8 @@ export class DesktopTrayController {
   refreshAuth(): void {
     const version = this.authRefreshVersion + 1;
     this.authRefreshVersion = version;
+    this.authLoading = true;
+    this.refresh();
     void this.options
       .getAuthState()
       .then((authState) => {
@@ -122,6 +134,7 @@ export class DesktopTrayController {
           return;
         }
         this.authState = authState;
+        this.authLoading = false;
         this.authError = null;
         this.refresh();
       })
@@ -131,6 +144,7 @@ export class DesktopTrayController {
         }
         this.authError = error instanceof Error ? error.message : String(error);
         this.authState = null;
+        this.authLoading = false;
         this.refresh();
       });
   }
@@ -142,6 +156,9 @@ export class DesktopTrayController {
       }),
       startComputerUse: this.runAction("start Computer Use", () => {
         return this.options.startComputerUse();
+      }),
+      stopComputerUse: this.runAction("stop Computer Use", () => {
+        return this.options.stopComputerUse();
       }),
       refreshStatus: this.runAction(
         "refresh status",
@@ -164,6 +181,25 @@ export class DesktopTrayController {
         },
         { refreshAuth: true },
       ),
+      signOut: this.runAction(
+        "sign out",
+        () => {
+          return this.options.signOut();
+        },
+        { refreshAuth: true },
+      ),
+      requestAccessibilityPermission: this.runAction(
+        "request Accessibility permission",
+        () => {
+          return this.options.requestAccessibilityPermission();
+        },
+      ),
+      requestScreenRecordingPermission: this.runAction(
+        "request Screen Recording permission",
+        () => {
+          return this.options.requestScreenRecordingPermission();
+        },
+      ),
       openAccessibilitySettings: this.runAction(
         "open Accessibility Settings",
         () => {
@@ -176,6 +212,11 @@ export class DesktopTrayController {
           this.options.openScreenRecordingSettings();
         },
       ),
+      setKeepAwakeEnabled: (enabled) => {
+        this.runAction("set keep-awake enabled", () => {
+          return this.options.setKeepAwakeEnabled(enabled);
+        })();
+      },
       quit: () => {
         this.options.quit();
       },

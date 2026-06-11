@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { clearAllDetached } from "../../utils";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
@@ -248,7 +248,7 @@ describe("POST /api/generate-image", () => {
       contents: [{ role: "user", parts: [{ text: "a cat" }] }],
     });
 
-    await clearAllDetached();
+    await flushWaitUntilForTest();
 
     await expect(orgCredits(fixture.orgId)).resolves.toBe(961);
   });

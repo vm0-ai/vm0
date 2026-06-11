@@ -6,8 +6,6 @@ import { useGet, useSet } from "ccstate-react";
 import {
   scheduleViewMode$,
   setScheduleViewMode$,
-  internalScheduleList$,
-  setScheduleList$,
   addScheduleOpen$,
   setAddScheduleOpen$,
   editingScheduleId$,
@@ -37,6 +35,7 @@ import {
   onDomEventFn,
   Reason,
 } from "../../signals/utils.ts";
+import { nowDate } from "../../lib/time.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   ScheduleFormDialog,
@@ -56,53 +55,6 @@ import {
 import type { ScheduleEntry } from "./schedule-utils";
 
 export { WEEKDAY_LABELS, type ScheduleEntry } from "./schedule-utils";
-
-function formatTimeOfDay(hour: number, minute: number): string {
-  if (hour === 0 && minute === 0) {
-    return "12:00 AM";
-  }
-  if (hour < 12) {
-    return `${hour}:${minute.toString().padStart(2, "0")} AM`;
-  }
-  if (hour === 12) {
-    return `12:${minute.toString().padStart(2, "0")} PM`;
-  }
-  return `${hour - 12}:${minute.toString().padStart(2, "0")} PM`;
-}
-
-function buildScheduleTimeString(params: {
-  freq: string;
-  date?: string;
-  hour: number;
-  minute: number;
-  timezone: string;
-  loopMinutes?: number;
-}): string {
-  const { freq, date, hour, minute, loopMinutes } = params;
-  const timeStr = formatTimeOfDay(hour, minute);
-  if (freq === "now") {
-    return "Now";
-  }
-  if (freq === "once" && date) {
-    return `Once on ${date} at ${timeStr}`;
-  }
-  if (freq === "every_weekday") {
-    return `Every weekday at ${timeStr}`;
-  }
-  if (freq === "every_day") {
-    return `Every day at ${timeStr}`;
-  }
-  if (freq === "every_week") {
-    return `Every week at ${timeStr}`;
-  }
-  if (freq === "every_month") {
-    return `Every month at ${timeStr}`;
-  }
-  if (freq === "every_n_minutes" && loopMinutes) {
-    return `Every ${loopMinutes} minutes`;
-  }
-  return `Every day at ${timeStr}`;
-}
 
 interface ParsedScheduleTime {
   freq: string;
@@ -131,7 +83,7 @@ function defaultParsed(
 ): ParsedScheduleTime {
   return {
     freq: "every_day",
-    date: new Date().toISOString().slice(0, 10),
+    date: nowDate().toISOString().slice(0, 10),
     hour: 9,
     minute: 0,
     timezone: "UTC",
@@ -225,8 +177,7 @@ interface ZeroScheduleCardProps {
   title: string;
   subtitle: string;
   initialSchedule: readonly Readonly<ScheduleEntry>[];
-  /** When provided, called on save instead of local state mutation. */
-  onSave?: (params: {
+  onSave: (params: {
     prompt: string;
     description?: string;
     freq: string;
@@ -270,10 +221,7 @@ export function ZeroScheduleCard({
   const signal = useGet(pageSignal$);
   const scheduleViewMode = useGet(scheduleViewMode$);
   const setScheduleViewMode = useSet(setScheduleViewMode$);
-  const internalScheduleList = useGet(internalScheduleList$);
-  const setScheduleList = useSet(setScheduleList$);
-  // In API mode (onSave provided), use prop directly; otherwise use internal state
-  const scheduleList = onSave ? [...initialSchedule] : internalScheduleList;
+  const scheduleList = [...initialSchedule];
   const addScheduleOpen = useGet(addScheduleOpen$);
   const setAddScheduleOpen = useSet(setAddScheduleOpen$);
   const editingScheduleId = useGet(editingScheduleId$);
@@ -382,97 +330,50 @@ export function ZeroScheduleCard({
   });
 
   const handleCreateSave = (values: ScheduleFormValues) => {
-    if (onSave) {
-      detach(
-        (async () => {
-          await onSave({
-            prompt: values.prompt.trim(),
-            description: values.description.trim() || undefined,
-            freq: values.freq,
-            date: values.date,
-            hour: values.hour,
-            minute: values.minute,
-            timezone: values.timezone,
-            intervalSeconds: values.loopMinutes * 60,
-            dayOfWeek:
-              values.freq === "every_week" ? values.dayOfWeek : undefined,
-            dayOfMonth:
-              values.freq === "every_month" ? values.dayOfMonth : undefined,
-          });
-          await setAddScheduleOpen(false, signal);
-        })(),
-        Reason.DomCallback,
-      );
-      return;
-    }
-
-    const timeStr = buildScheduleTimeString({
-      freq: values.freq,
-      date: values.freq === "once" ? values.date : undefined,
-      hour: values.hour,
-      minute: values.minute,
-      timezone: values.timezone,
-      loopMinutes:
-        values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
-    });
-    setScheduleList((prev) => {
-      return [
-        ...prev,
-        {
-          id: String(Date.now()),
-          time: timeStr,
+    detach(
+      (async () => {
+        await onSave({
           prompt: values.prompt.trim(),
-        },
-      ];
-    });
-    detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
+          description: values.description.trim() || undefined,
+          freq: values.freq,
+          date: values.date,
+          hour: values.hour,
+          minute: values.minute,
+          timezone: values.timezone,
+          intervalSeconds: values.loopMinutes * 60,
+          dayOfWeek:
+            values.freq === "every_week" ? values.dayOfWeek : undefined,
+          dayOfMonth:
+            values.freq === "every_month" ? values.dayOfMonth : undefined,
+        });
+        await setAddScheduleOpen(false, signal);
+      })(),
+      Reason.DomCallback,
+    );
   };
 
   const handleEditSave = (values: ScheduleFormValues) => {
-    if (onSave) {
-      detach(
-        (async () => {
-          await onSave({
-            prompt: values.prompt.trim(),
-            description: values.description.trim() || undefined,
-            freq: values.freq,
-            date: values.date,
-            hour: values.hour,
-            minute: values.minute,
-            timezone: values.timezone,
-            intervalSeconds: values.loopMinutes * 60,
-            dayOfWeek:
-              values.freq === "every_week" ? values.dayOfWeek : undefined,
-            dayOfMonth:
-              values.freq === "every_month" ? values.dayOfMonth : undefined,
-            editName: editingEntry?.name,
-          });
-          await setEditingScheduleId(null, signal);
-        })(),
-        Reason.DomCallback,
-      );
-      return;
-    }
-
-    if (editingScheduleId) {
-      const timeStr = buildScheduleTimeString({
-        freq: values.freq,
-        date: values.freq === "once" ? values.date : undefined,
-        hour: values.hour,
-        minute: values.minute,
-        timezone: values.timezone,
-        loopMinutes:
-          values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
-      });
-      setScheduleList((prev) => {
-        return prev.map((e) => {
-          return e.id === editingScheduleId
-            ? { ...e, time: timeStr, prompt: values.prompt.trim() }
-            : e;
+    detach(
+      (async () => {
+        await onSave({
+          prompt: values.prompt.trim(),
+          description: values.description.trim() || undefined,
+          freq: values.freq,
+          date: values.date,
+          hour: values.hour,
+          minute: values.minute,
+          timezone: values.timezone,
+          intervalSeconds: values.loopMinutes * 60,
+          dayOfWeek:
+            values.freq === "every_week" ? values.dayOfWeek : undefined,
+          dayOfMonth:
+            values.freq === "every_month" ? values.dayOfMonth : undefined,
+          editName: editingEntry?.name,
         });
-      });
-      detach(setEditingScheduleId(null, signal), Reason.DomCallback);
-    }
+        await setEditingScheduleId(null, signal);
+      })(),
+      Reason.DomCallback,
+    );
   };
 
   return (

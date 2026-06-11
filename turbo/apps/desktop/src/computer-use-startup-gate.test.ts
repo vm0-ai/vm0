@@ -51,6 +51,8 @@ describe("resolveComputerUseStartupGate", () => {
         lastHeartbeatAt: null,
         lastCommandAt: null,
         lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
+        recovery: null,
+        errorLog: [],
         recentAuditEvents: [],
         localCommandLog: [],
       },

@@ -5,6 +5,7 @@ import {
   automationRunContract,
 } from "@vm0/api-contracts/contracts/automations";
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 import { getMockSchedules, setMockSchedules } from "./schedules-store.ts";
 
@@ -29,7 +30,7 @@ function upsert(
   },
   name: string,
 ): { automation: ScheduleResponse; created: boolean; status: 200 | 201 } {
-  const now = new Date().toISOString();
+  const now = nowDate().toISOString();
   const automation: ScheduleResponse = {
     id: crypto.randomUUID(),
     agentId: body.agentId,

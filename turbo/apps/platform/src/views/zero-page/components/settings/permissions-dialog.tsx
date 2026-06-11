@@ -91,7 +91,6 @@ interface PermissionsDrawerProps {
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
-  expirationEnabled: boolean;
   resetEnabled?: boolean;
   readOnly?: boolean;
   onApply: (
@@ -397,21 +396,16 @@ function hasPermissionPolicyChanges({
 }
 
 function hasGrantExpirationChanges({
-  expirationEnabled,
   explicitGrants,
   policies,
   unknownPolicy,
   selections,
 }: {
-  expirationEnabled: boolean;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
   policies: Record<string, PermissionPolicy>;
   unknownPolicy: FirewallPolicyValue;
   selections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
 }): boolean {
-  if (!expirationEnabled) {
-    return false;
-  }
   for (const permission of Object.keys(selections)) {
     const grant = explicitGrants.get(permission);
     const selected = selections[permission];
@@ -430,17 +424,15 @@ function hasGrantExpirationChanges({
 }
 
 function hasPendingGrantExpirationChange({
-  expirationEnabled,
   grant,
   policy,
   selected,
 }: {
-  expirationEnabled: boolean;
   grant: UserPermissionGrantResponse | undefined;
   policy: FirewallPolicyValue;
   selected: UserPermissionGrantExpiresIn | undefined;
 }): boolean {
-  if (!expirationEnabled || selected === undefined || policy !== "allow") {
+  if (selected === undefined || policy !== "allow") {
     return false;
   }
   if (grant?.action === "allow") {
@@ -450,13 +442,11 @@ function hasPendingGrantExpirationChange({
 }
 
 function hasPendingPermissionControlChange({
-  expirationEnabled,
   grant,
   initialPolicy,
   policy,
   selected,
 }: {
-  expirationEnabled: boolean;
   grant: UserPermissionGrantResponse | undefined;
   initialPolicy: PermissionPolicy;
   policy: FirewallPolicyValue;
@@ -465,7 +455,6 @@ function hasPendingPermissionControlChange({
   return (
     policy !== initialPolicy ||
     hasPendingGrantExpirationChange({
-      expirationEnabled,
       grant,
       policy,
       selected,
@@ -663,7 +652,6 @@ function PermissionGrantPolicyControl({
   grant,
   selected,
   hasPendingChange,
-  expirationEnabled,
   allowAlwaysActive,
   expirationStatusExpiresAt,
   readOnly,
@@ -679,7 +667,6 @@ function PermissionGrantPolicyControl({
   grant: UserPermissionGrantResponse | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
   hasPendingChange: boolean;
-  expirationEnabled: boolean;
   allowAlwaysActive: boolean;
   expirationStatusExpiresAt?: string | null;
   readOnly?: boolean;
@@ -692,10 +679,10 @@ function PermissionGrantPolicyControl({
 }) {
   const allowGrant = grant?.action === "allow" ? grant : undefined;
   const showExpirationStatus =
-    showCurrentExpirationStatus && expirationEnabled && policy === "allow";
+    showCurrentExpirationStatus && policy === "allow";
   const expirationStatusValue =
     expirationStatusExpiresAt ?? allowGrant?.expiresAt ?? null;
-  const showSplitPolicy = expirationEnabled && !readOnly;
+  const showSplitPolicy = !readOnly;
 
   return (
     <div className="flex shrink-0 items-center gap-2">
@@ -823,14 +810,12 @@ function groupExpirationSelection(
 }
 
 function hasPendingGroupControlChange({
-  expirationEnabled,
   explicitGrants,
   initialPolicies,
   permissions,
   policies,
   selections,
 }: {
-  expirationEnabled: boolean;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
   initialPolicies: Record<string, PermissionPolicy>;
   permissions: readonly ConnectorPermission[];
@@ -840,7 +825,6 @@ function hasPendingGroupControlChange({
   return permissions.some((permission) => {
     const name = permission.name;
     return hasPendingPermissionControlChange({
-      expirationEnabled,
       grant: explicitGrants.get(name),
       initialPolicy: initialPolicies[name] ?? "allow",
       policy: policies[name] ?? "allow",
@@ -917,7 +901,6 @@ function PermissionRows({
   expandedGroups,
   explicitGrants,
   expirationSelections,
-  expirationEnabled,
   readOnly,
   saving,
   onToggleGroup,
@@ -933,7 +916,6 @@ function PermissionRows({
   expandedGroups: Set<string>;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
   expirationSelections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
-  expirationEnabled: boolean;
   readOnly?: boolean;
   saving: boolean;
   onToggleGroup: (category: string) => void;
@@ -957,7 +939,6 @@ function PermissionRows({
         expirationSelections,
       );
       const groupHasPendingChange = hasPendingGroupControlChange({
-        expirationEnabled,
         explicitGrants,
         initialPolicies,
         permissions: group.permissions,
@@ -1000,7 +981,6 @@ function PermissionRows({
               grant={undefined}
               selected={groupSelectedExpiration}
               hasPendingChange={groupHasPendingChange}
-              expirationEnabled={expirationEnabled}
               allowAlwaysActive={groupAllowAlwaysActive}
               expirationStatusExpiresAt={groupExpirationStatus ?? null}
               readOnly={readOnly}
@@ -1045,7 +1025,6 @@ function PermissionRows({
                   policies={policies}
                   explicitGrants={explicitGrants}
                   expirationSelections={expirationSelections}
-                  expirationEnabled={expirationEnabled}
                   readOnly={readOnly}
                   saving={saving}
                   onPolicyChange={onPolicyChange}
@@ -1069,7 +1048,6 @@ function PermissionRows({
         policies={policies}
         explicitGrants={explicitGrants}
         expirationSelections={expirationSelections}
-        expirationEnabled={expirationEnabled}
         readOnly={readOnly}
         saving={saving}
         onPolicyChange={onPolicyChange}
@@ -1088,7 +1066,6 @@ function PermissionRow({
   policies,
   explicitGrants,
   expirationSelections,
-  expirationEnabled,
   readOnly,
   saving,
   onPolicyChange,
@@ -1102,7 +1079,6 @@ function PermissionRow({
   policies: Record<string, PermissionPolicy>;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
   expirationSelections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
-  expirationEnabled: boolean;
   readOnly?: boolean;
   saving: boolean;
   onPolicyChange: (name: string, policy: PermissionPolicy) => void;
@@ -1116,7 +1092,6 @@ function PermissionRow({
   const grant = explicitGrants.get(permission.name);
   const selected = expirationSelections[permission.name];
   const hasPendingChange = hasPendingPermissionControlChange({
-    expirationEnabled,
     grant,
     initialPolicy,
     policy,
@@ -1144,7 +1119,6 @@ function PermissionRow({
           grant={grant}
           selected={selected}
           hasPendingChange={hasPendingChange}
-          expirationEnabled={expirationEnabled}
           allowAlwaysActive={hasAllowAlwaysPolicy(grant, policy)}
           readOnly={readOnly}
           saving={saving}
@@ -1231,7 +1205,6 @@ export function PermissionsDrawer({
   displayName,
   initialPolicies,
   initialGrants,
-  expirationEnabled,
   resetEnabled,
   readOnly,
   onApply,
@@ -1294,7 +1267,6 @@ export function PermissionsDrawer({
     defaultUnknownPolicy: defaultPolicyState.unknownPolicy,
   });
   const hasExpirationChanges = hasGrantExpirationChanges({
-    expirationEnabled,
     explicitGrants: effectiveExplicitGrants,
     policies,
     unknownPolicy,
@@ -1312,7 +1284,6 @@ export function PermissionsDrawer({
     unknownPolicy,
     defaultPolicies: defaultPolicyState.policies,
     defaultUnknownPolicy: defaultPolicyState.unknownPolicy,
-    expirationEnabled,
     selections: expirationSelections,
   });
   const resetAvailable =
@@ -1478,7 +1449,6 @@ export function PermissionsDrawer({
                 expandedGroups={expandedGroups}
                 explicitGrants={effectiveExplicitGrants}
                 expirationSelections={expirationSelections}
-                expirationEnabled={expirationEnabled}
                 readOnly={readOnly}
                 saving={saving}
                 onToggleGroup={toggleGroup}
@@ -1497,13 +1467,11 @@ export function PermissionsDrawer({
                   grant={unknownGrant}
                   selected={unknownSelectedExpiration}
                   hasPendingChange={hasPendingPermissionControlChange({
-                    expirationEnabled,
                     grant: unknownGrant,
                     initialPolicy: initialUnknownPolicy,
                     policy: unknownPolicy,
                     selected: unknownSelectedExpiration,
                   })}
-                  expirationEnabled={expirationEnabled}
                   allowAlwaysActive={hasAllowAlwaysPolicy(
                     unknownGrant,
                     unknownPolicy,

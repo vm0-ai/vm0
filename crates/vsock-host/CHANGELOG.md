@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.26](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.25...vsock-host-v0.17.26) (2026-06-10)
+
+
+### Refactoring
+
+* consolidate exec operation registration ([#17112](https://github.com/vm0-ai/vm0/issues/17112)) ([4baf698](https://github.com/vm0-ai/vm0/commit/4baf698b32362c421cd32cd1b6d1d1bb757ea1b1))
+* **vsock-host:** share exec wait lifecycle state ([#17113](https://github.com/vm0-ai/vm0/issues/17113)) ([7211d08](https://github.com/vm0-ai/vm0/commit/7211d084eafa377cbcd1d86717ab9771045fb498))
+
 ## [0.17.25](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.24...vsock-host-v0.17.25) (2026-06-09)
 
 

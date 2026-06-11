@@ -22,7 +22,7 @@ import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session"
 import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import type { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -75,7 +75,6 @@ import {
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
-import { zeroComposeList } from "./zero-compose-data.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
   updateUserModelPreference$,
@@ -224,6 +223,22 @@ interface RunAgentParams {
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
 
+interface WorkspaceAgentSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly displayName: string | null;
+}
+
+type EffectiveComposeResolution =
+  | {
+      readonly status: "resolved";
+      readonly composeId: string;
+      readonly agent: WorkspaceAgentSummary;
+    }
+  | {
+      readonly status: "not_configured" | "not_found" | "not_accessible";
+    };
+
 interface SlackAgentMessageArgs {
   readonly db: Db;
   readonly workspaceId: string;
@@ -254,11 +269,7 @@ interface ResolvedSlackAgentMessage {
   readonly client: ReturnType<typeof createSlackClient>;
   readonly threadTs: string;
   readonly composeId: string;
-  readonly agent: {
-    readonly id: string;
-    readonly name: string;
-    readonly displayName: string | null;
-  };
+  readonly agent: WorkspaceAgentSummary;
 }
 
 interface CommandModelResponseArgs {
@@ -528,14 +539,7 @@ async function getWorkspaceAgent(
   db: Db,
   composeId: string,
   orgId?: string,
-): Promise<
-  | {
-      readonly id: string;
-      readonly name: string;
-      readonly displayName: string | null;
-    }
-  | undefined
-> {
+): Promise<WorkspaceAgentSummary | undefined> {
   const [agent] = await db
     .select({
       id: zeroAgents.id,
@@ -552,23 +556,110 @@ async function getWorkspaceAgent(
   return agent;
 }
 
-async function resolveEffectiveComposeId(
+async function getVisibleWorkspaceAgent(
+  db: Db,
+  composeId: string,
+  orgId: string,
+  userId: string,
+): Promise<WorkspaceAgentSummary | undefined> {
+  const [agent] = await db
+    .select({
+      id: zeroAgents.id,
+      name: zeroAgents.name,
+      displayName: zeroAgents.displayName,
+    })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.id, composeId),
+        eq(zeroAgents.orgId, orgId),
+        or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId)),
+      ),
+    )
+    .limit(1);
+  return agent;
+}
+
+async function getVisibleAgentPickerOptions(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly defaultComposeId: string | null;
+}): Promise<
+  readonly {
+    readonly composeId: string;
+    readonly name: string;
+    readonly displayName: string | null;
+  }[]
+> {
+  const rows = await args.db
+    .select({
+      composeId: zeroAgents.id,
+      name: zeroAgents.name,
+      displayName: zeroAgents.displayName,
+    })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.orgId, args.orgId),
+        or(
+          eq(zeroAgents.visibility, "public"),
+          eq(zeroAgents.owner, args.userId),
+        ),
+      ),
+    )
+    .orderBy(desc(zeroAgents.updatedAt));
+
+  return rows
+    .filter((agent) => {
+      return agent.composeId !== args.defaultComposeId;
+    })
+    .slice(0, AGENT_PICKER_MAX_OPTIONS);
+}
+
+async function resolveEffectiveCompose(
   db: Db,
   vm0UserId: string,
   orgId: string,
-): Promise<string | null> {
+): Promise<EffectiveComposeResolution> {
   const override = await getUserAgentPreference(db, vm0UserId, orgId);
   if (override) {
-    const [row] = await db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
-      .limit(1);
-    if (row?.id) {
-      return override;
+    const agent = await getVisibleWorkspaceAgent(
+      db,
+      override,
+      orgId,
+      vm0UserId,
+    );
+    if (agent) {
+      return { status: "resolved", composeId: override, agent };
     }
   }
-  return resolveDefaultComposeId(db, orgId);
+  const defaultComposeId = await resolveDefaultComposeId(db, orgId);
+  if (!defaultComposeId) {
+    return { status: "not_configured" };
+  }
+  const configuredDefaultAgent = await getWorkspaceAgent(
+    db,
+    defaultComposeId,
+    orgId,
+  );
+  if (!configuredDefaultAgent) {
+    return { status: "not_found" };
+  }
+  const visibleDefaultAgent = await getVisibleWorkspaceAgent(
+    db,
+    defaultComposeId,
+    orgId,
+    vm0UserId,
+  );
+  if (!visibleDefaultAgent) {
+    return { status: "not_accessible" };
+  }
+  return {
+    status: "resolved",
+    composeId: defaultComposeId,
+    agent: visibleDefaultAgent,
+  };
 }
 
 async function disconnect(db: Db, connectionId: string): Promise<void> {
@@ -707,20 +798,42 @@ const refreshOrgAppHome$ = command(
     let canSwitch = false;
     if (installation.orgId) {
       const orgId = installation.orgId;
-      const [effectiveComposeId, overrideComposeId, defaultComposeId] =
+      const [effectiveCompose, overrideComposeId, defaultComposeId] =
         await Promise.all([
-          resolveEffectiveComposeId(db, connection.vm0UserId, orgId),
+          resolveEffectiveCompose(db, connection.vm0UserId, orgId),
           getUserAgentPreference(db, connection.vm0UserId, orgId),
           resolveDefaultComposeId(db, orgId),
         ]);
-      if (effectiveComposeId) {
-        const agent = await getWorkspaceAgent(db, effectiveComposeId);
-        agentName = agent?.displayName ?? agent?.name;
+      const visibleOverrideAgent = overrideComposeId
+        ? await getVisibleWorkspaceAgent(
+            db,
+            overrideComposeId,
+            orgId,
+            connection.vm0UserId,
+          )
+        : undefined;
+      const visibleDefaultAgent = defaultComposeId
+        ? await getVisibleWorkspaceAgent(
+            db,
+            defaultComposeId,
+            orgId,
+            connection.vm0UserId,
+          )
+        : undefined;
+      const visibleOptions = await getVisibleAgentPickerOptions({
+        db,
+        orgId,
+        userId: connection.vm0UserId,
+        defaultComposeId,
+      });
+      if (effectiveCompose.status === "resolved") {
+        agentName =
+          effectiveCompose.agent.displayName ?? effectiveCompose.agent.name;
       }
       isOverrideActive = Boolean(
-        overrideComposeId && overrideComposeId !== defaultComposeId,
+        visibleOverrideAgent && overrideComposeId !== defaultComposeId,
       );
-      canSwitch = Boolean(defaultComposeId);
+      canSwitch = Boolean(visibleDefaultAgent || visibleOptions.length > 0);
     }
 
     const [metadata] = await db
@@ -766,27 +879,31 @@ const commandSwitchResponse$ = command(
         ),
       );
     }
-    const { composes } = await get(zeroComposeList(installation.orgId));
     const defaultComposeId = await resolveDefaultComposeId(
       db,
       installation.orgId,
     );
-    const options = composes
-      .filter((compose) => {
-        return compose.id !== defaultComposeId;
-      })
-      .slice(0, AGENT_PICKER_MAX_OPTIONS)
-      .map((compose) => {
-        return {
-          composeId: compose.id,
-          name: compose.name,
-          displayName: compose.displayName,
-        };
-      });
-    const orgDefaultName = defaultComposeId
-      ? ((await getWorkspaceAgent(db, defaultComposeId))?.displayName ??
-        (await getWorkspaceAgent(db, defaultComposeId))?.name ??
-        null)
+    const options = await getVisibleAgentPickerOptions({
+      db,
+      orgId: installation.orgId,
+      userId: connection.vm0UserId,
+      defaultComposeId,
+    });
+    const visibleDefaultAgent = defaultComposeId
+      ? await getVisibleWorkspaceAgent(
+          db,
+          defaultComposeId,
+          installation.orgId,
+          connection.vm0UserId,
+        )
+      : undefined;
+    if (!visibleDefaultAgent && options.length === 0) {
+      return ephemeral(
+        buildErrorMessage("No agents are available to your Slack account."),
+      );
+    }
+    const orgDefaultName = visibleDefaultAgent
+      ? (visibleDefaultAgent.displayName ?? visibleDefaultAgent.name)
       : null;
     const currentOverride = await getUserAgentPreference(
       db,
@@ -808,6 +925,7 @@ const commandSwitchResponse$ = command(
         buildAgentPickerModal({
           options,
           currentSelectedId: currentOverride,
+          includeOrgDefault: Boolean(visibleDefaultAgent),
           orgDefaultName,
           privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
         }),
@@ -1274,40 +1392,50 @@ const resolveSlackAgentMessage$ = command(
       return null;
     }
 
-    const composeId = await resolveEffectiveComposeId(
+    const effectiveCompose = await resolveEffectiveCompose(
       args.db,
       connection.vm0UserId,
       boundInstallation.orgId,
     );
-    if (!composeId) {
-      await postSlackUserNotice({
-        client,
-        channelId: args.channelId,
-        channelType: args.channelType,
-        slackUserId: args.slackUserId,
-        threadTs,
-        ephemeralThreadTs: args.threadTs ? threadTs : undefined,
-        text: "No agent is configured for this org. Please ask your org admin to set a default agent.",
-      });
-      return null;
-    }
-
-    const agent = await getWorkspaceAgent(
-      args.db,
-      composeId,
-      boundInstallation.orgId,
-    );
-    if (!agent) {
-      await postSlackUserNotice({
-        client,
-        channelId: args.channelId,
-        channelType: args.channelType,
-        slackUserId: args.slackUserId,
-        threadTs,
-        ephemeralThreadTs: args.threadTs ? threadTs : undefined,
-        text: "The configured agent could not be found. Please contact your org admin.",
-      });
-      return null;
+    if (effectiveCompose.status !== "resolved") {
+      switch (effectiveCompose.status) {
+        case "not_configured": {
+          await postSlackUserNotice({
+            client,
+            channelId: args.channelId,
+            channelType: args.channelType,
+            slackUserId: args.slackUserId,
+            threadTs,
+            ephemeralThreadTs: args.threadTs ? threadTs : undefined,
+            text: "No agent is configured for this org. Please ask your org admin to set a default agent.",
+          });
+          return null;
+        }
+        case "not_found": {
+          await postSlackUserNotice({
+            client,
+            channelId: args.channelId,
+            channelType: args.channelType,
+            slackUserId: args.slackUserId,
+            threadTs,
+            ephemeralThreadTs: args.threadTs ? threadTs : undefined,
+            text: "The configured agent could not be found. Please contact your org admin.",
+          });
+          return null;
+        }
+        case "not_accessible": {
+          await postSlackUserNotice({
+            client,
+            channelId: args.channelId,
+            channelType: args.channelType,
+            slackUserId: args.slackUserId,
+            threadTs,
+            ephemeralThreadTs: args.threadTs ? threadTs : undefined,
+            text: "The configured agent is not available to your Slack account. Use `/zero switch` to choose an accessible agent.",
+          });
+          return null;
+        }
+      }
     }
 
     return {
@@ -1315,8 +1443,8 @@ const resolveSlackAgentMessage$ = command(
       connection,
       client,
       threadTs,
-      composeId,
-      agent,
+      composeId: effectiveCompose.composeId,
+      agent: effectiveCompose.agent,
     };
   },
 );
@@ -1771,15 +1899,6 @@ async function postEphemeralMessage(args: {
   }
 }
 
-async function resolveOrgDefaultName(db: Db, orgId: string): Promise<string> {
-  const defaultComposeId = await resolveDefaultComposeId(db, orgId);
-  if (!defaultComposeId) {
-    return "the org default agent";
-  }
-  const agent = await getWorkspaceAgent(db, defaultComposeId);
-  return agent?.displayName ?? agent?.name ?? "the org default agent";
-}
-
 const handleAgentPickerSubmit$ = command(
   async (
     { get, set },
@@ -1812,7 +1931,25 @@ const handleAgentPickerSubmit$ = command(
     );
     const channelId = parseViewChannelId(payload.view?.private_metadata);
     if (selected === AGENT_PICKER_ORG_DEFAULT_VALUE) {
-      const defaultName = await resolveOrgDefaultName(db, ctx.orgId);
+      const defaultComposeId = await resolveDefaultComposeId(db, ctx.orgId);
+      const visibleDefaultAgent = defaultComposeId
+        ? await getVisibleWorkspaceAgent(
+            db,
+            defaultComposeId,
+            ctx.orgId,
+            ctx.connection.vm0UserId,
+          )
+        : undefined;
+      if (!visibleDefaultAgent) {
+        return jsonResponse({
+          response_action: "errors",
+          errors: {
+            [AGENT_PICKER_BLOCK_ID]: "You don't have access to that agent.",
+          },
+        });
+      }
+      const defaultName =
+        visibleDefaultAgent.displayName ?? visibleDefaultAgent.name;
       await setUserAgentPreference({
         db,
         vm0UserId: ctx.connection.vm0UserId,
@@ -1831,7 +1968,12 @@ const handleAgentPickerSubmit$ = command(
       return emptyResponse();
     }
 
-    const agent = await getWorkspaceAgent(db, selected, ctx.orgId);
+    const agent = await getVisibleWorkspaceAgent(
+      db,
+      selected,
+      ctx.orgId,
+      ctx.connection.vm0UserId,
+    );
     if (!agent || agent.id !== selected) {
       return jsonResponse({
         response_action: "errors",
@@ -1943,24 +2085,26 @@ const handleHomeSwitchAgent$ = command(
     if (!ctx) {
       return;
     }
-    const { composes } = await get(zeroComposeList(ctx.orgId));
     const defaultComposeId = await resolveDefaultComposeId(db, ctx.orgId);
-    const options = composes
-      .filter((compose) => {
-        return compose.id !== defaultComposeId;
-      })
-      .slice(0, AGENT_PICKER_MAX_OPTIONS)
-      .map((compose) => {
-        return {
-          composeId: compose.id,
-          name: compose.name,
-          displayName: compose.displayName,
-        };
-      });
-    const orgDefaultName = defaultComposeId
-      ? ((await getWorkspaceAgent(db, defaultComposeId))?.displayName ??
-        (await getWorkspaceAgent(db, defaultComposeId))?.name ??
-        null)
+    const options = await getVisibleAgentPickerOptions({
+      db,
+      orgId: ctx.orgId,
+      userId: ctx.connection.vm0UserId,
+      defaultComposeId,
+    });
+    const visibleDefaultAgent = defaultComposeId
+      ? await getVisibleWorkspaceAgent(
+          db,
+          defaultComposeId,
+          ctx.orgId,
+          ctx.connection.vm0UserId,
+        )
+      : undefined;
+    if (!visibleDefaultAgent && options.length === 0) {
+      return;
+    }
+    const orgDefaultName = visibleDefaultAgent
+      ? (visibleDefaultAgent.displayName ?? visibleDefaultAgent.name)
       : null;
     const currentOverride = await getUserAgentPreference(
       db,
@@ -1981,6 +2125,7 @@ const handleHomeSwitchAgent$ = command(
         buildAgentPickerModal({
           options,
           currentSelectedId: currentOverride,
+          includeOrgDefault: Boolean(visibleDefaultAgent),
           orgDefaultName,
         }),
       ),

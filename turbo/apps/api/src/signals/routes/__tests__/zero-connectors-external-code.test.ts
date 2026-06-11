@@ -11,6 +11,7 @@ import { zeroConnectorExternalCodeSessionContract } from "@vm0/api-contracts/con
 import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
+import { variables } from "@vm0/db/schema/variable";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -103,6 +104,9 @@ async function cleanupUser(userId: string, orgId: string) {
   await db
     .delete(secrets)
     .where(and(eq(secrets.userId, userId), eq(secrets.orgId, orgId)));
+  await db
+    .delete(variables)
+    .where(and(eq(variables.userId, userId), eq(variables.orgId, orgId)));
 }
 
 async function storedSecret(args: {
@@ -122,6 +126,26 @@ async function storedSecret(args: {
       ),
     );
   return secret ? await decryptStoredSecretValue(secret.encryptedValue) : null;
+}
+
+async function storedVariable(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}): Promise<string | null> {
+  const [variable] = await store
+    .set(writeDb$)
+    .select({ value: variables.value })
+    .from(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        eq(variables.name, args.name),
+        eq(variables.type, "connector"),
+      ),
+    );
+  return variable?.value ?? null;
 }
 
 function awsTokenEndpointResponseBody() {
@@ -491,11 +515,17 @@ describe("external-code connector routes", () => {
       storedSecret({ orgId, userId, name: "AWS_SESSION_TOKEN" }),
     ).resolves.toBe("aws-session-token");
     await expect(
-      storedSecret({ orgId, userId, name: "AWS_SIGNIN_REGION" }),
+      storedVariable({ orgId, userId, name: "AWS_SIGNIN_REGION" }),
     ).resolves.toBe("us-east-1");
     await expect(
-      storedSecret({ orgId, userId, name: "AWS_REGION" }),
+      storedVariable({ orgId, userId, name: "AWS_REGION" }),
     ).resolves.toBe("us-east-1");
+    await expect(
+      storedSecret({ orgId, userId, name: "AWS_SIGNIN_REGION" }),
+    ).resolves.toBeNull();
+    await expect(
+      storedSecret({ orgId, userId, name: "AWS_REGION" }),
+    ).resolves.toBeNull();
 
     const replay = await accept(
       client.complete({

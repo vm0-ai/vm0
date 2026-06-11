@@ -78,6 +78,9 @@ describe("zero schedule status command", () => {
       expect(logCalls).toContain("enabled");
       expect(logCalls).toContain("0 9 * * *");
       expect(logCalls).toContain("run daily check");
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("deprecated: use"),
+      );
     });
 
     it("should display schedule with --name option", async () => {

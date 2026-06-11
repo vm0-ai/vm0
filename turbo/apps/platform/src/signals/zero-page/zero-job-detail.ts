@@ -10,10 +10,8 @@ export {
   buildAgentInstructions$,
   updateAgentSettings$,
   agentAuthorizedConnectors$,
-  agentConnectorsDirty$,
   authorizeAgentConnector$,
   deauthorizeAgentConnector$,
-  discardAgentConnectorsDraft$,
   saveAgentConnectors$,
   agentScheduleEntries$,
   saveAgentSchedule$,
@@ -21,5 +19,4 @@ export {
   deleteAgentSchedule$,
   deleteAgent$,
   setActiveAgent$,
-  type AgentScheduleSaveParams,
 } from "./job-detail/index.ts";

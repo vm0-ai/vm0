@@ -1094,11 +1094,7 @@ export function OrgBillingTab() {
       )}
 
       {status && (
-        <AutoRechargeSection
-          currentTier={currentTier}
-          loading={loading}
-          variant="settings"
-        />
+        <AutoRechargeSection currentTier={currentTier} loading={loading} />
       )}
 
       <DowngradeConfirmDialog currentTier={currentTier} />

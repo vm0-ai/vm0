@@ -74,6 +74,21 @@ export default [
     },
   },
   {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/lib/time.ts"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "Date",
+          property: "now",
+          message:
+            "Use now() from src/lib/time instead of Date.now() so tests can control the platform clock.",
+        },
+      ],
+    },
+  },
+  {
     files: ["**/__tests__/**/*.{ts,tsx}"],
     rules: {
       "ccstate/no-test-delay": "error",
@@ -101,6 +116,24 @@ export default [
             "CallExpression[callee.name='waitFor'] > ObjectExpression > Property[key.name='timeout']",
           message:
             "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Polling intervals are reduced to 10ms in tests, so do not rely on extending timeout to fix flaky tests. Find and fix the underlying timing issue instead.",
+        },
+        {
+          selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+          message:
+            "Use nowDate() from src/lib/time instead of new Date() so tests can control the platform clock.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/mocks/**/*.{ts,tsx}", "src/test/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+          message:
+            "Use nowDate() from src/lib/time instead of new Date() so tests can control the platform clock.",
         },
       ],
     },
@@ -147,14 +180,6 @@ export default [
     files: ["src/signals/__tests__/fetch.test.ts"],
     rules: {
       "ccstate/no-raw-msw-http": "off",
-    },
-  },
-  // Allow /api/ path prefix in browser test setup. The string literal is used
-  // as an unhandled-request matcher, not as an actual API call target.
-  {
-    files: ["src/test/browser-setup.ts"],
-    rules: {
-      "ccstate/no-non-zero-api": "off",
     },
   },
   // Allow direct localStorage in the abstraction layer only
@@ -224,6 +249,11 @@ export default [
           message:
             "Promise.catch is not allowed. Use the helpers in signals/utils.ts (bestEffort, tapError, onRejection, settle).",
         },
+        {
+          selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+          message:
+            "Use nowDate() from src/lib/time instead of new Date() so tests can control the platform clock.",
+        },
       ],
     },
   },
@@ -239,6 +269,11 @@ export default [
           selector: "TryStatement",
           message:
             "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states.",
+        },
+        {
+          selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+          message:
+            "Use nowDate() from src/lib/time instead of new Date() so tests can control the platform clock.",
         },
       ],
     },

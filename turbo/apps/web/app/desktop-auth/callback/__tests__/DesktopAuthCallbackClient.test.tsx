@@ -37,7 +37,16 @@ vi.mock("next/navigation", () => {
   };
 });
 
+vi.mock("next/image", () => {
+  return {
+    default: ({ alt, src }: { alt: string; src: string }) => {
+      return <span data-alt={alt} data-src={src} />;
+    },
+  };
+});
+
 const fetchMock = vi.fn<typeof fetch>();
+const handoffId = "550e8400-e29b-41d4-a716-446655440000";
 
 describe("DesktopAuthCallbackClient", () => {
   beforeEach(() => {
@@ -55,14 +64,14 @@ describe("DesktopAuthCallbackClient", () => {
   });
 
   it("creates a desktop handoff and navigates to the callback URL", async () => {
-    const callbackUrl =
-      "ai.vm0.zero.desktop://auth/callback?code=abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ callbackUrl }), {
+    const callbackUrl = `ai.vm0.zero.desktop://auth/callback?code=abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-&handoffId=${handoffId}`;
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ callbackUrl, handoffId }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
     );
+    fetchMock.mockReturnValueOnce(new Promise<Response>(() => {}));
 
     render(<DesktopAuthCallbackClient />);
 
@@ -80,20 +89,58 @@ describe("DesktopAuthCallbackClient", () => {
     await waitFor(() => {
       expect(window.location.href).toBe(callbackUrl);
     });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/desktop-auth/handoff/${handoffId}`,
+        {
+          headers: {
+            Authorization: "Bearer browser-session-token",
+          },
+        },
+      );
+    });
+    expect(screen.getByText("Waiting for Zero Computer Use")).toBeTruthy();
   });
 
-  it("preserves the requested desktop callback scheme", async () => {
-    const callbackUrl =
-      "ai.vm0.zero.desktop.dev://auth/callback?code=abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
-    clerkState.searchParams = new URLSearchParams({
-      callbackScheme: "ai.vm0.zero.desktop.dev",
-    });
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ callbackUrl }), {
+  it("renders success after the desktop handoff is completed", async () => {
+    const callbackUrl = `ai.vm0.zero.desktop://auth/callback?code=abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-&handoffId=${handoffId}`;
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ callbackUrl, handoffId }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
     );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "completed" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    render(<DesktopAuthCallbackClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Zero Computer Use is signed in.")).toBeTruthy();
+    });
+    expect(
+      screen.getByText(
+        "You can close this browser window and return to the app.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("preserves the requested desktop callback scheme", async () => {
+    const callbackUrl = `ai.vm0.zero.desktop.dev://auth/callback?code=abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-&handoffId=${handoffId}`;
+    clerkState.searchParams = new URLSearchParams({
+      callbackScheme: "ai.vm0.zero.desktop.dev",
+    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ callbackUrl, handoffId }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    fetchMock.mockReturnValueOnce(new Promise<Response>(() => {}));
 
     render(<DesktopAuthCallbackClient />);
 

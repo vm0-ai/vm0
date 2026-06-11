@@ -11,9 +11,7 @@ pub(super) use self::config::{
     assert_proxy_registry_empty, default_params, make_reusable_idle_sandbox, test_budget_lease,
     test_device_rate_limits, test_executor_config, test_telemetry,
 };
-pub(super) use self::context::{
-    context_with_env, minimal_context, set_session_workspace_image_cache_flag,
-};
+pub(super) use self::context::{context_with_env, minimal_context};
 pub(super) use self::env::{
     build_env_for_test, build_env_for_test_result, build_env_for_test_with_host_env,
 };

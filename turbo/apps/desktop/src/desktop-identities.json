@@ -6,9 +6,9 @@
     "authScheme": "ai.vm0.zero.desktop"
   },
   "development": {
-    "displayName": "Zero Dev",
+    "displayName": "Zero CU Dev",
     "bundleId": "ai.vm0.zero.desktop.dev",
-    "authProtocolName": "Zero Dev Desktop Auth",
+    "authProtocolName": "Zero CU Dev Desktop Auth",
     "authScheme": "ai.vm0.zero.desktop.dev"
   }
 }

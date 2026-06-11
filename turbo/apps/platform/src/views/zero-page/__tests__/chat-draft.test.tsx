@@ -1,427 +1,554 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { server } from "../../../mocks/server.ts";
+import { describe, expect, it } from "vitest";
+import {
+  chatThreadByIdContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
-import { PLACEHOLDER } from "./chat-test-helpers.ts";
-import { createMockApi, createMockHttp } from "../../../mocks/msw-contract.ts";
-import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { setMockUserModelPreference } from "../../../mocks/handlers/api-user-model-preference.ts";
-
-vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
-  const actual =
-    (await importOriginal()) as typeof import("@vm0/ui/components/ui/sonner");
-  return {
-    ...actual,
-    toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
-  };
-});
-
-beforeEach(() => {
-  vi.mocked(toast.error).mockClear();
-  // Pin a vision-capable model — the workspace default model does not accept
-  // image/video attachments, which the composer silently drops.
-  setMockUserModelPreference({
-    selectedModel: "claude-sonnet-4-6",
-    updatedAt: "2026-03-10T00:00:00Z",
-  });
-});
+import {
+  click,
+  detachedSetupPage,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
-const mockHttp = createMockHttp(context);
 
-function mockThreads() {
-  server.use(
-    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
-      return respond(200, {
-        id: params.id,
-        title: null,
-        agentId: "c0000000-0000-4000-a000-000000000001",
-        latestSessionId: null,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      });
-    }),
-  );
+function mockThreadDetails(): void {
+  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+    return respond(200, {
+      pinned: [],
+      threads: [
+        {
+          id: "thread-1",
+          title: "Thread 1",
+          agent: {
+            id: "c0000000-0000-4000-a000-000000000001",
+            avatarUrl: null,
+          },
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+          isRead: true,
+          running: false,
+        },
+        {
+          id: "thread-2",
+          title: "Thread 2",
+          agent: {
+            id: "c0000000-0000-4000-a000-000000000001",
+            avatarUrl: null,
+          },
+          createdAt: "2026-03-10T00:01:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+          isRead: true,
+          running: false,
+        },
+        {
+          id: "thread-uploads",
+          title: "Uploads",
+          agent: {
+            id: "c0000000-0000-4000-a000-000000000001",
+            avatarUrl: null,
+          },
+          createdAt: "2026-03-10T00:02:00Z",
+          updatedAt: "2026-03-10T00:02:00Z",
+          isRead: true,
+          running: false,
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+      totalCount: 3,
+    });
+  });
+  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    return respond(200, {
+      id: params.id,
+      title: null,
+      agentId: "c0000000-0000-4000-a000-000000000001",
+      latestSessionId: null,
+      activeRunIds: [],
+      draftContent: null,
+      draftAttachments: null,
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+  });
 }
 
-function getTextarea(): HTMLTextAreaElement {
+function textarea(): HTMLTextAreaElement {
   return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
 }
 
-describe("chat draft persistence across thread navigation", () => {
-  it("should preserve input text when switching between threads", async () => {
-    mockThreads();
+function chatClipboardHtml(payload: {
+  text: string;
+  attachments: {
+    id: string | null;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[];
+}): string {
+  return `<div data-vm0-chat-message="${encodeURIComponent(
+    JSON.stringify(payload),
+  )}"></div>`;
+}
+
+async function navigateToThread(threadId: string): Promise<void> {
+  const link = await waitFor(() => {
+    return queryAllByRoleFast("link").find((element) => {
+      return element.getAttribute("href") === `/chats/${threadId}`;
+    });
+  });
+  if (!link) {
+    throw new Error(`Thread link not found: ${threadId}`);
+  }
+  click(link);
+}
+
+describe("chat drafts", () => {
+  it("preserves per-thread text drafts while navigating", async () => {
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+
     detachedSetupPage({ context, path: "/chats/thread-1" });
 
     await waitFor(() => {
-      expect(getTextarea()).toBeInTheDocument();
+      expect(textarea()).toBeInTheDocument();
     });
+    await fill(textarea(), "draft for thread 1");
 
-    // Type on thread-1
-    await fill(getTextarea(), "draft for thread 1");
-    expect(getTextarea().value).toBe("draft for thread 1");
-
-    // Navigate to thread-2
-    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: "thread-2" },
-    });
-
-    // thread-2 textarea should be empty
+    await navigateToThread("thread-2");
     await waitFor(() => {
-      expect(getTextarea().value).toBe("");
+      expect(textarea()).toHaveValue("");
     });
+    await fill(textarea(), "draft for thread 2");
 
-    // Type on thread-2
-    await fill(getTextarea(), "draft for thread 2");
-
-    // Navigate back to thread-1 — draft restored from per-thread cache
-    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: "thread-1" },
-    });
-
+    await navigateToThread("thread-1");
     await waitFor(() => {
-      expect(getTextarea().value).toBe("draft for thread 1");
+      expect(textarea()).toHaveValue("draft for thread 1");
     });
 
-    // Navigate back to thread-2 — draft restored
-    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: "thread-2" },
-    });
-
+    await navigateToThread("thread-2");
     await waitFor(() => {
-      expect(getTextarea().value).toBe("draft for thread 2");
+      expect(textarea()).toHaveValue("draft for thread 2");
     });
   });
 
-  it("should not leak thread draft into a different thread", async () => {
-    mockThreads();
-    detachedSetupPage({ context, path: "/chats/thread-a" });
-
-    await waitFor(() => {
-      expect(getTextarea()).toBeInTheDocument();
+  it("restores a saved server draft with attachments on first thread open", async () => {
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        id: params.id,
+        title: "Saved draft",
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        latestSessionId: null,
+        activeRunIds: [],
+        draftContent: "Review the saved launch brief",
+        draftAttachments: [
+          {
+            id: "draft-brief",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+          },
+        ],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
     });
 
-    await fill(getTextarea(), "only for thread-a");
-
-    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: "thread-b" },
-    });
+    detachedSetupPage({ context, path: "/chats/thread-server-draft" });
 
     await waitFor(() => {
-      expect(getTextarea().value).toBe("");
+      expect(textarea()).toHaveValue("Review the saved launch brief");
+      expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
     });
   });
 
-  it("should complete upload after switching away and show it on return", async () => {
-    const user = userEvent.setup();
-    // Deferred upload handler — resolve manually
-    const uploadStarted = createDeferredPromise<void>(context.signal);
-    let uploadRequestDeferred: ReturnType<
-      typeof createDeferredPromise<Response>
-    > | null = null;
+  it("persists edited draft attachments and clears the server draft after sending", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-draft-sync";
+    const draftPatches: Record<string, unknown>[] = [];
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        id: threadId,
+        title: "Draft sync",
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        latestSessionId: null,
+        activeRunIds: [],
+        draftContent: "Review the saved launch brief",
+        draftAttachments: [
+          {
+            id: "draft-brief",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+          },
+        ],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+    context.mocks.upload.success({
+      id: "fresh-launch-note",
+      filename: "fresh.txt",
+      contentType: "text/plain",
+      size: 5,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/fresh.txt",
+    });
 
-    server.use(
-      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
-        return respond(200, {
-          id: params.id,
-          title: null,
-          agentId: "c0000000-0000-4000-a000-000000000001",
-          latestSessionId: null,
-          activeRunIds: [],
-          draftContent: null,
-          draftAttachments: null,
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-        });
-      }),
-      // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
-      // helper endpoint whose response shape is owned by the route; we want to
-      // defer the PUT to R2 so tests that need a deferred upload can resolve
-      // it manually.
-      mockHttp.post("*/api/zero/uploads/prepare", () => {
-        return HttpResponse.json({
-          id: "upload-1",
-          filename: "photo.png",
-          contentType: "image/png",
-          size: 1024,
-          uploadUrl: "https://mock-upload.example.com/photo.png",
-          url: "https://example.com/photo.png",
-        });
-      }),
-      mockHttp.put(
-        "https://mock-upload.example.com/photo.png",
-        ({ signal }) => {
-          uploadStarted.resolve();
-          uploadRequestDeferred = createDeferredPromise<Response>(signal);
-          return uploadRequestDeferred.promise;
-        },
-      ),
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveValue("Review the saved launch brief");
+      expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["fresh"], "fresh.txt", { type: "text/plain" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove fresh.txt")).toBeInTheDocument();
+    });
+
+    await fill(textarea(), "Review the updated launch brief");
+
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "Review the updated launch brief",
+        draftAttachments: [
+          {
+            id: "draft-brief",
+            url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 64,
+          },
+          {
+            id: "fresh-launch-note",
+            url: "https://cdn.vm7.io/artifacts/test/drafts/fresh.txt",
+            filename: "fresh.txt",
+            contentType: "text/plain",
+            size: 5,
+          },
+        ],
+      });
+    });
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Review the updated launch brief"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
+        "",
+      );
+      expect(draftPatches).toContainEqual({
+        draftContent: null,
+        draftAttachments: null,
+      });
+    });
+  });
+
+  it("keeps upload drafts scoped to their thread while navigating", async () => {
+    const user = userEvent.setup({ delay: null });
+    const uploadStarted = context.mocks.deferred<void>();
+    let uploadRequest: {
+      promise: Promise<Response>;
+      resolve: (value: Response) => void;
+    } | null = null;
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
+      return HttpResponse.json({
+        id: "upload-photo",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 1024,
+        uploadUrl: "https://mock-upload.example.com/photo.png",
+        url: "https://example.com/photo.png",
+      });
+    });
+    context.mocks.http.put(
+      "https://mock-upload.example.com/photo.png",
+      ({ deferred }) => {
+        uploadStarted.resolve();
+        const request = deferred<Response>();
+        uploadRequest = {
+          promise: request.promise,
+          resolve: request.resolve,
+        };
+        return request.promise;
+      },
     );
 
     detachedSetupPage({ context, path: "/chats/thread-1" });
 
     await waitFor(() => {
-      expect(getTextarea()).toBeInTheDocument();
+      expect(textarea()).toBeInTheDocument();
     });
 
-    // Trigger file upload via the hidden file input
-    const fileInput = document.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
-    const file = new File(["img-data"], "photo.png", { type: "image/png" });
-    await user.upload(fileInput, file);
-
-    // Wait for upload request to arrive at MSW
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["img-data"], "photo.png", { type: "image/png" }),
+    );
     await uploadStarted.promise;
 
-    // Attachment chip should be visible with uploading state
     await waitFor(() => {
       expect(
         screen.getByLabelText("Cancel upload photo.png"),
       ).toBeInTheDocument();
     });
 
-    // Navigate to thread-2 while upload is in-flight
-    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: "thread-2" },
-    });
-
-    // thread-2 should have no attachment chips
+    await navigateToThread("thread-2");
     await waitFor(() => {
-      expect(screen.queryByLabelText(/photo\.png/)).toBeNull();
+      expect(textarea()).toHaveValue("");
+      expect(screen.queryByLabelText(/photo\.png/)).not.toBeInTheDocument();
     });
 
-    // Now resolve the deferred PUT to R2
-    uploadRequestDeferred!.resolve(new HttpResponse(null, { status: 200 }));
+    uploadRequest!.resolve(new HttpResponse(null, { status: 200 }));
 
-    // Navigate back to thread-1 — draft restored from per-thread cache,
-    // upload should now be complete
-    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: "thread-1" },
-    });
-
+    await navigateToThread("thread-1");
     await waitFor(() => {
       expect(screen.getByLabelText("Remove photo.png")).toBeInTheDocument();
     });
   });
 
-  it("should toast and remove the chip when prepare returns an error", async () => {
-    const user = userEvent.setup();
-    mockThreads();
-    server.use(
-      // mockApi cannot be used here: we want to assert UI behavior when the
-      // server returns an error shape directly without going through the
-      // typed happy path.
-      mockHttp.post("*/api/zero/uploads/prepare", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "File too large (max 1 GB)",
-              code: "BAD_REQUEST",
-            },
-          },
-          { status: 400 },
-        );
-      }),
-    );
+  it("removes failed upload chips and leaves remaining draft attachments sendable", async () => {
+    const user = userEvent.setup({ delay: null });
 
-    detachedSetupPage({ context, path: "/chats/thread-err-1" });
-
-    await waitFor(() => {
-      expect(getTextarea()).toBeInTheDocument();
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
     });
-
-    const fileInput = document.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
-    const file = new File(["bad"], "huge.png", { type: "image/png" });
-    await user.upload(fileInput, file);
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to upload huge.png");
-    });
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("Remove huge.png"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("should infer office content type when the browser file type is empty", async () => {
-    const user = userEvent.setup();
-    mockThreads();
-    const expectedContentType =
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    let prepareBody: { filename: string; contentType: string } | null = null;
-    let putContentType: string | null = null;
-
-    server.use(
-      mockHttp.post("*/api/zero/uploads/prepare", async ({ request }) => {
-        const body = (await request.json()) as {
-          filename: string;
-          contentType: string;
-          size: number;
-        };
-        prepareBody = {
-          filename: body.filename,
-          contentType: body.contentType,
-        };
-        return HttpResponse.json({
-          id: "upload-xlsx",
-          filename: body.filename,
-          contentType: body.contentType,
-          size: body.size,
-          uploadUrl: "https://mock-upload.example.com/budget.xlsx",
-          url: "https://example.com/budget.xlsx",
-        });
-      }),
-      mockHttp.put(
-        "https://mock-upload.example.com/budget.xlsx",
-        ({ request }) => {
-          putContentType = request.headers.get("content-type");
-          return new HttpResponse(null, { status: 200 });
-        },
-      ),
-    );
-
-    detachedSetupPage({ context, path: "/chats/thread-office-1" });
-
-    await waitFor(() => {
-      expect(getTextarea()).toBeInTheDocument();
-    });
-
-    const fileInput = document.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
-    const file = new File(["sheet"], "budget.xlsx");
-    await user.upload(fileInput, file);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove budget.xlsx")).toBeInTheDocument();
-    });
-    expect(prepareBody).toStrictEqual({
-      filename: "budget.xlsx",
-      contentType: expectedContentType,
-    });
-    expect(putContentType).toBe(expectedContentType);
-  });
-
-  it.each([
-    ["archive.zip", "application/zip"],
-    ["document.pages", "application/vnd.apple.pages"],
-    ["photo.heic", "image/heic"],
-    ["events.parquet", "application/vnd.apache.parquet"],
-    ["design.psd", "image/vnd.adobe.photoshop"],
-  ])(
-    "should infer %s content type when the browser file type is empty",
-    async (filename, expectedContentType) => {
-      const user = userEvent.setup();
-      mockThreads();
-      let prepareBody: { filename: string; contentType: string } | null = null;
-      let putContentType: string | null = null;
-
-      server.use(
-        mockHttp.post("*/api/zero/uploads/prepare", async ({ request }) => {
-          const body = (await request.json()) as {
-            filename: string;
-            contentType: string;
-            size: number;
-          };
-          prepareBody = {
-            filename: body.filename,
-            contentType: body.contentType,
-          };
+    mockThreadDetails();
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        const body = (await request.json()) as { filename: string };
+        if (body.filename === "ok.txt") {
           return HttpResponse.json({
-            id: `upload-${filename}`,
-            filename: body.filename,
-            contentType: body.contentType,
-            size: body.size,
-            uploadUrl: `https://mock-upload.example.com/${filename}`,
-            url: `https://example.com/${filename}`,
+            id: "upload-ok",
+            filename: "ok.txt",
+            contentType: "text/plain",
+            size: 2,
+            uploadUrl: "https://mock-upload.example.com/ok.txt",
+            url: "https://example.com/ok.txt",
           });
-        }),
-        mockHttp.put(
-          `https://mock-upload.example.com/${filename}`,
-          ({ request }) => {
-            putContentType = request.headers.get("content-type");
-            return new HttpResponse(null, { status: 200 });
-          },
-        ),
-      );
-
-      detachedSetupPage({ context, path: `/chats/thread-${filename}` });
-
-      await waitFor(() => {
-        expect(getTextarea()).toBeInTheDocument();
-      });
-
-      const fileInput = document.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement;
-      const file = new File(["data"], filename);
-      await user.upload(fileInput, file);
-
-      await waitFor(() => {
-        expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
-      });
-      expect(prepareBody).toStrictEqual({
-        filename,
-        contentType: expectedContentType,
-      });
-      expect(putContentType).toBe(expectedContentType);
-    },
-  );
-
-  it("should toast and remove the chip when the R2 put fails", async () => {
-    const user = userEvent.setup();
-    mockThreads();
-    server.use(
-      // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
-      // helper endpoint with no ts-rest contract.
-      mockHttp.post("*/api/zero/uploads/prepare", () => {
+        }
         return HttpResponse.json({
-          id: "upload-err",
-          filename: "fail.png",
-          contentType: "image/png",
-          size: 1024,
-          uploadUrl: "https://mock-upload.example.com/fail.png",
-          url: "https://example.com/fail.png",
+          id: "upload-failed",
+          filename: "failed.txt",
+          contentType: "text/plain",
+          size: 6,
+          uploadUrl: "https://mock-upload.example.com/failed.txt",
+          url: "https://example.com/failed.txt",
         });
-      }),
-      mockHttp.put("https://mock-upload.example.com/fail.png", () => {
-        return new HttpResponse(null, { status: 500 });
+      },
+    );
+    context.mocks.http.put("https://mock-upload.example.com/ok.txt", () => {
+      return new HttpResponse(null, { status: 200 });
+    });
+    context.mocks.http.put("https://mock-upload.example.com/failed.txt", () => {
+      return new HttpResponse(null, { status: 500 });
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-uploads" });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(fileInput, [
+      new File(["ok"], "ok.txt", { type: "text/plain" }),
+      new File(["failed"], "failed.txt", { type: "text/plain" }),
+    ]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to upload failed.txt"),
+      ).toBeInTheDocument();
+      expect(screen.queryByTitle("failed.txt")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Remove ok.txt")).toBeInTheDocument();
+    });
+  });
+
+  it("infers attachment content type when the browser reports a generic file type", async () => {
+    const user = userEvent.setup({ delay: null });
+    let capturedPrepareBody: unknown = null;
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        capturedPrepareBody = await request.json();
+        return HttpResponse.json({
+          id: "upload-launch-plan",
+          filename: "launch-plan.pdf",
+          contentType: "application/pdf",
+          size: 11,
+          uploadUrl: "https://mock-upload.example.com/launch-plan.pdf",
+          url: "https://example.com/launch-plan.pdf",
+        });
+      },
+    );
+    context.mocks.http.put(
+      "https://mock-upload.example.com/launch-plan.pdf",
+      () => {
+        return new HttpResponse(null, { status: 200 });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-uploads" });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["release pdf"], "launch-plan.pdf", {
+        type: "application/octet-stream",
       }),
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-err-2" });
-
-    await waitFor(() => {
-      expect(getTextarea()).toBeInTheDocument();
-    });
-
-    const fileInput = document.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
-    const file = new File(["x"], "fail.png", { type: "image/png" });
-    await user.upload(fileInput, file);
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to upload fail.png");
-    });
     await waitFor(() => {
       expect(
-        screen.queryByLabelText("Remove fail.png"),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText("Remove launch-plan.pdf"),
+      ).toBeInTheDocument();
+      expect(capturedPrepareBody).toMatchObject({
+        filename: "launch-plan.pdf",
+        contentType: "application/pdf",
+      });
+    });
+  });
+
+  it("uploads dropped files and reports oversized drops", async () => {
+    const threadId = "thread-uploads";
+    const oversizedFile = new File(["video"], "launch-recording.mov", {
+      type: "video/quicktime",
+    });
+    Object.defineProperty(oversizedFile, "size", {
+      value: 1024 * 1024 * 1024 + 1,
+    });
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.upload.success({
+      id: "drop-notes-upload",
+      filename: "drop-notes.txt",
+      contentType: "text/plain",
+      size: 10,
+      url: "https://example.com/drop-notes.txt",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const input = await waitFor(() => {
+      return textarea();
+    });
+
+    fireEvent.drop(input, {
+      dataTransfer: {
+        files: [
+          new File(["drop notes"], "drop-notes.txt", { type: "text/plain" }),
+          oversizedFile,
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Remove drop-notes.txt"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("launch-recording.mov exceeds the 1 GB limit"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("restores copied chat text and attachments from the clipboard", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-copied-attachment";
+    const pastedText = "Please use the copied brief";
+    const filename = "product-brief.md";
+
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const input = await waitFor(() => {
+      return textarea();
+    });
+    await user.click(input);
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return chatClipboardHtml({
+              text: pastedText,
+              attachments: [
+                {
+                  id: "copied-brief",
+                  url: "https://cdn.vm7.io/artifacts/test/copied-brief/product-brief.md",
+                  filename,
+                  contentType: "text/markdown",
+                  size: 42,
+                },
+              ],
+            });
+          }
+          return "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(input).toHaveValue(pastedText);
+      expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
     });
   });
 });

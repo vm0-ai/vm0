@@ -111,6 +111,22 @@ describe("DesktopAuthConsumeClient", () => {
     expect(window.location.pathname).toBe("/desktop-auth/token");
   });
 
+  it("carries handoff id to the token page", async () => {
+    const handoffId = "550e8400-e29b-41d4-a716-446655440000";
+
+    render(
+      <DesktopAuthConsumeClient code="desktop-code" handoffId={handoffId} />,
+    );
+
+    await waitFor(() => {
+      expect(clerkState.signIn.setActive).toHaveBeenCalledWith({
+        session: "session_desktop",
+      });
+    });
+    expect(window.location.pathname).toBe("/desktop-auth/token");
+    expect(window.location.search).toBe(`?handoffId=${handoffId}`);
+  });
+
   it("renders the provided error instead of consuming a code", () => {
     render(
       <DesktopAuthConsumeClient

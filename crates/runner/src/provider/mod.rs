@@ -16,6 +16,7 @@ pub use local::LocalProvider;
 
 use sandbox::SandboxId;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
@@ -26,6 +27,8 @@ pub struct JobCandidate {
     run_id: RunId,
     profile_name: String,
     local_job_path: Option<PathBuf>,
+    discovered_at: Instant,
+    local_admission_started_at: Option<Instant>,
 }
 
 impl JobCandidate {
@@ -34,6 +37,8 @@ impl JobCandidate {
             run_id,
             profile_name,
             local_job_path: None,
+            discovered_at: Instant::now(),
+            local_admission_started_at: None,
         }
     }
 
@@ -42,6 +47,8 @@ impl JobCandidate {
             run_id,
             profile_name,
             local_job_path: Some(job_path),
+            discovered_at: Instant::now(),
+            local_admission_started_at: None,
         }
     }
 
@@ -55,6 +62,35 @@ impl JobCandidate {
 
     pub(crate) fn local_job_path(&self) -> Option<&Path> {
         self.local_job_path.as_deref()
+    }
+
+    pub(crate) fn mark_local_admission_started(&mut self) {
+        self.local_admission_started_at = Some(Instant::now());
+    }
+
+    pub(crate) fn job_discovered_elapsed(&self) -> Duration {
+        self.discovered_at.elapsed()
+    }
+
+    pub(crate) fn local_admission_elapsed(&self) -> Option<Duration> {
+        self.local_admission_started_at
+            .map(|started| started.elapsed())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_timing_for_test(
+        run_id: RunId,
+        profile_name: String,
+        discovered_at: Instant,
+        local_admission_started_at: Option<Instant>,
+    ) -> Self {
+        Self {
+            run_id,
+            profile_name,
+            local_job_path: None,
+            discovered_at,
+            local_admission_started_at,
+        }
     }
 }
 

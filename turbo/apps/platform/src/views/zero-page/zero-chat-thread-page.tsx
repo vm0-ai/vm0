@@ -61,7 +61,7 @@ import type {
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -176,11 +176,19 @@ import {
   ZeroChatComposer,
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
-import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
+import {
+  ChatFeedbackSelection,
+  ChatFeedbackTray,
+} from "./zero-chat-feedback-selection.tsx";
 import {
   setThreadGenerationTemplate$,
   threadGenerationTemplate$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
+import {
+  onlineComputerUseHosts$,
+  selectedOnlineComputerUseHostId,
+  ZERO_DESKTOP_DOWNLOAD_URL,
+} from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import {
@@ -223,7 +231,6 @@ import {
   setChatKeyboardScrollRoot$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
@@ -2396,15 +2403,16 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
             />
           </div>
 
+          {inlineFeedbackEnabled && (
+            <ChatFeedbackTray onSubmit={onSubmitFeedback} />
+          )}
           <ChatThreadComposer thread={thread} />
         </div>
 
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
 
-      {inlineFeedbackEnabled && (
-        <ChatFeedbackSelection onSubmit={onSubmitFeedback} />
-      )}
+      {inlineFeedbackEnabled && <ChatFeedbackSelection />}
     </>
   );
 }
@@ -2780,10 +2788,12 @@ function useChatComposerModel(
 function useChatThreadComposerSendState({
   thread,
   modelSelection,
+  computerUseHostId,
   setInput,
 }: {
   thread: ChatThreadSignals;
   modelSelection: ModelProviderSelection | null;
+  computerUseHostId: string | null;
   setInput: (text: string) => void;
 }) {
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
@@ -2810,9 +2820,12 @@ function useChatThreadComposerSendState({
         await send(
           text,
           modelSelection,
-          selectedGenerationTemplate
-            ? { generationTemplate: selectedGenerationTemplate }
-            : undefined,
+          {
+            ...(selectedGenerationTemplate
+              ? { generationTemplate: selectedGenerationTemplate }
+              : {}),
+            computerUseHostId,
+          },
           rootSignal,
         );
       })(),
@@ -2828,7 +2841,12 @@ function useChatThreadComposerSendState({
     clearGenerationTemplate();
     detach(
       (async () => {
-        await queueMessage(text, selectedGenerationTemplate, rootSignal);
+        await queueMessage(
+          text,
+          selectedGenerationTemplate,
+          computerUseHostId,
+          rootSignal,
+        );
       })(),
       Reason.DomCallback,
     );
@@ -2844,6 +2862,40 @@ function useChatThreadComposerSendState({
         setGenerationTemplate(thread.threadId, value);
       },
     },
+  };
+}
+
+function useChatThreadComputerUse(thread: ChatThreadSignals) {
+  const features = useLastResolved(featureSwitch$);
+  const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
+  const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
+  const computerUseHosts =
+    computerUseHostsLoadable.state === "hasData"
+      ? computerUseHostsLoadable.data
+      : [];
+  const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
+  const selectedComputerUseHostId =
+    computerUseHostsLoadable.state === "hasData"
+      ? selectedOnlineComputerUseHostId(
+          computerUseHosts,
+          storedComputerUseHostId,
+        )
+      : (storedComputerUseHostId ?? null);
+  const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
+
+  return {
+    selectedComputerUseHostId: computerUseEnabled
+      ? selectedComputerUseHostId
+      : null,
+    computerUse: computerUseEnabled
+      ? {
+          hosts: computerUseHosts,
+          loading: computerUseHostsLoadable.state === "loading",
+          selectedHostId: selectedComputerUseHostId,
+          onChange: setComputerUseHostId,
+          downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+        }
+      : undefined,
   };
 }
 
@@ -2872,6 +2924,8 @@ function ChatThreadComposer({
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
+  const { selectedComputerUseHostId, computerUse } =
+    useChatThreadComputerUse(thread);
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
@@ -2887,6 +2941,7 @@ function ChatThreadComposer({
     useChatThreadComposerSendState({
       thread,
       modelSelection,
+      computerUseHostId: selectedComputerUseHostId,
       setInput,
     });
   const sending = (allFinishedResolved && !allFinished) || sendLoading;
@@ -2950,12 +3005,12 @@ function ChatThreadComposer({
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
             templatePicker={templatePicker}
+            computerUse={computerUse}
             modelPickerLoading={modelPickerLoading || !messagesResolved}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}
           />
-          <PersonalProviderDialog />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
         </div>
@@ -3829,10 +3884,7 @@ function PermissionActionCardContent({
 function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
-  const features = useLastResolved(featureSwitch$);
-  const expirationEnabled =
-    features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
-  const expirationAvailable = expirationEnabled && block.action === "allow";
+  const expirationAvailable = block.action === "allow";
   const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
@@ -4662,6 +4714,12 @@ function generationTemplateLabel(
   if (!value) {
     return null;
   }
+  if (value.type === "video") {
+    const item = VIDEO_STYLE_PRESETS.find((candidate) => {
+      return candidate.id === value.selection.stylePresetId;
+    });
+    return item?.nameEn ?? formatTemplateIdLabel(value.selection.stylePresetId);
+  }
   const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
     return (
       candidate.designSystemId === value.selection.designSystemId &&
@@ -4677,6 +4735,9 @@ function generationTemplateTypeLabel(
   if (!value) {
     return null;
   }
+  if (value.type === "video") {
+    return "Video";
+  }
   return "Slides";
 }
 
@@ -4687,7 +4748,9 @@ function UserMessageGenerationTemplate({
 }) {
   const features = useLastResolved(featureSwitch$);
   const templateLabelEnabled =
-    features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false;
+    generationTemplate?.type === "video"
+      ? (features?.[FeatureSwitchKey.VideoTemplatePicker] ?? false)
+      : (features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false);
   if (!templateLabelEnabled) {
     return null;
   }
@@ -4702,7 +4765,11 @@ function UserMessageGenerationTemplate({
       className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
       title={`${typeLabel} · ${label}`}
     >
-      <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      {generationTemplate?.type === "video" ? (
+        <IconVideo size={15} stroke={1.8} className="shrink-0" />
+      ) : (
+        <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      )}
       <span className="shrink-0">{typeLabel}</span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">{label}</span>

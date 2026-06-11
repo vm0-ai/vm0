@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.27](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.26...vsock-guest-v0.18.27) (2026-06-11)
+
+
+### Refactoring
+
+* **vsock-guest:** reuse error response helper in quiesce tests ([#17211](https://github.com/vm0-ai/vm0/issues/17211)) ([dffb510](https://github.com/vm0-ai/vm0/commit/dffb510c78312551d81e5b4d675853dc53d3f71d))
+
 ## [0.18.26](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.25...vsock-guest-v0.18.26) (2026-06-09)
 
 

@@ -5,6 +5,7 @@ import {
   IconRobot,
   IconTerminal,
 } from "@tabler/icons-react";
+import { nowDate } from "../../../../lib/time.ts";
 import { Markdown } from "../../../components/markdown.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
 
@@ -62,7 +63,7 @@ export interface EventData {
 // Exported for reuse
 export function formatEventTime(isoString: string): string {
   const date = new Date(isoString);
-  const now = new Date();
+  const now = nowDate();
   const isToday = date.toDateString() === now.toDateString();
 
   if (isToday) {

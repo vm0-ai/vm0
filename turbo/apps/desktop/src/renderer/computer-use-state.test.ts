@@ -14,12 +14,18 @@ function computerUseState(
     platform: "darwin",
     supported: true,
     permissions: { accessibility: true, screenRecording: true },
+    keepAwake: {
+      enabled: false,
+      active: false,
+    },
     host: {
       status: "idle",
       hostId: null,
       lastHeartbeatAt: null,
       lastCommandAt: null,
       lastError: null,
+      recovery: null,
+      errorLog: [],
       recentAuditEvents: [],
       localCommandLog: [],
     },
@@ -94,6 +100,9 @@ describe("shouldAutoStartComputerUse", () => {
         signedInAuth,
       ),
     ).toBe(false);
+    expect(
+      shouldAutoStartComputerUse(computerUseState(), signedInAuth, true),
+    ).toBe(false);
   });
 
   it("does not restart active or terminal runtime states", () => {
@@ -109,6 +118,14 @@ describe("shouldAutoStartComputerUse", () => {
       shouldAutoStartComputerUse(
         computerUseState({
           host: { ...computerUseState().host, status: "connecting" },
+        }),
+        signedInAuth,
+      ),
+    ).toBe(false);
+    expect(
+      shouldAutoStartComputerUse(
+        computerUseState({
+          host: { ...computerUseState().host, status: "recovering" },
         }),
         signedInAuth,
       ),

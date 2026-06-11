@@ -17,13 +17,13 @@ use tracing::debug;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::idle_pool::StorageFingerprints;
 use crate::ids::RunId;
 #[cfg(test)]
 use crate::paths::session_workspace_cache_key;
 use crate::paths::{
     HomePaths, RunnerPaths, scoped_session_workspace_cache_key, workspace_image_cache_lock_path,
 };
+use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES};
 
 const CACHE_FORMAT_VERSION: u32 = 1;
@@ -855,79 +855,6 @@ impl SessionWorkspaceCache {
                 true,
             ),
         }
-    }
-
-    pub(crate) async fn invalidate_current_images_for_session(
-        &self,
-        run_id: RunId,
-        session_id: Option<&str>,
-        reason: &str,
-    ) -> RunnerResult<usize> {
-        let Some(session_id) = session_id else {
-            return Ok(0);
-        };
-
-        let root = self.workspace_image_cache_dir().to_path_buf();
-        let mut entries = match fs::read_dir(&root).await {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-            Err(e) => return Err(e.into()),
-        };
-        let mut invalidated = 0;
-        loop {
-            let entry = match entries.next_entry().await {
-                Ok(Some(entry)) => entry,
-                Ok(None) => break,
-                Err(e) => return Err(e.into()),
-            };
-            let path = entry.path();
-            let Ok(file_type) = entry.file_type().await else {
-                continue;
-            };
-            if !file_type.is_dir() {
-                continue;
-            }
-            let Some(cache_key) = path.file_name().and_then(|name| name.to_str()) else {
-                continue;
-            };
-            if !is_cache_key_name(cache_key) {
-                continue;
-            }
-            let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(cache_key)).await else {
-                continue;
-            };
-            let metadata_path = self.session_workspace_cache_metadata(cache_key);
-            let metadata = match self.read_metadata_file(&metadata_path).await {
-                Ok(metadata) => metadata,
-                Err(_) => {
-                    drop(lock);
-                    continue;
-                }
-            };
-            if metadata.session_id == session_id
-                && self
-                    .metadata_is_publishable_held_session_state(cache_key, &metadata)
-                    .await
-            {
-                let current = self.session_workspace_cache_current_image(cache_key);
-                match self
-                    .invalidate_current_image(run_id, cache_key, &current, reason)
-                    .await
-                {
-                    Ok(true) => invalidated += 1,
-                    Ok(false) => {}
-                    Err(e) => warn!(
-                        run_id = %run_id,
-                        cache_key,
-                        reason,
-                        error = %e,
-                        "failed to invalidate workspace image cache baseline for disabled session"
-                    ),
-                }
-            }
-            drop(lock);
-        }
-        Ok(invalidated)
     }
 
     pub(crate) async fn held_session_states(&self) -> Vec<HeldSessionState> {
@@ -2870,6 +2797,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::storage_fingerprints::StorageFingerprint;
 
     const TEST_PROFILE_NAME: &str = "vm0/default";
 
@@ -3271,12 +3199,15 @@ mod tests {
                     drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
                     storage_fingerprints: StorageFingerprints {
                         storages: HashMap::from([
-                            ("/workspace".into(), ("repo".into(), "v1".into())),
-                            ("/workspace/cache".into(), ("cache".into(), "v2".into())),
+                            ("/workspace".into(), StorageFingerprint::new("repo", "v1")),
+                            (
+                                "/workspace/cache".into(),
+                                StorageFingerprint::new("cache", "v2"),
+                            ),
                         ]),
                         artifacts: HashMap::from([(
                             "/workspace/artifact".into(),
-                            ("artifact".into(), "v1".into()),
+                            StorageFingerprint::new("artifact", "v1"),
                         )]),
                     },
                     state: WorkspaceCacheState::Current,
@@ -3842,19 +3773,31 @@ mod tests {
     fn workspace_scoped_fingerprints_do_not_match_prefix_traps() {
         let fingerprints = StorageFingerprints {
             storages: HashMap::from([
-                ("/workspace".into(), ("repo".into(), "v1".into())),
-                ("/workspace/sub".into(), ("sub".into(), "v1".into())),
-                ("/workspace//sub2".into(), ("sub2".into(), "v1".into())),
-                ("/workspace2".into(), ("trap".into(), "v1".into())),
+                ("/workspace".into(), StorageFingerprint::new("repo", "v1")),
+                (
+                    "/workspace/sub".into(),
+                    StorageFingerprint::new("sub", "v1"),
+                ),
+                (
+                    "/workspace//sub2".into(),
+                    StorageFingerprint::new("sub2", "v1"),
+                ),
+                ("/workspace2".into(), StorageFingerprint::new("trap", "v1")),
                 (
                     "/workspace/../outside".into(),
-                    ("escape".into(), "v1".into()),
+                    StorageFingerprint::new("escape", "v1"),
                 ),
-                ("/tmp/cache".into(), ("tmp".into(), "v1".into())),
+                ("/tmp/cache".into(), StorageFingerprint::new("tmp", "v1")),
             ]),
             artifacts: HashMap::from([
-                ("/workspace/art".into(), ("art".into(), "v1".into())),
-                ("/home/user/.codex".into(), ("codex".into(), "v1".into())),
+                (
+                    "/workspace/art".into(),
+                    StorageFingerprint::new("art", "v1"),
+                ),
+                (
+                    "/home/user/.codex".into(),
+                    StorageFingerprint::new("codex", "v1"),
+                ),
             ]),
         };
 

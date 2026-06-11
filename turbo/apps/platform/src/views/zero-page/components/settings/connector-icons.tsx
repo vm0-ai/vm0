@@ -10,42 +10,38 @@ const CONNECTOR_ICON_ALIASES = {
   "test-oauth-device": "test-oauth",
 } as const satisfies Partial<Record<ConnectorType, ConnectorType>>;
 
-export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
-  Object.freeze(
-    (() => {
-      const allIcons = Object.fromEntries(
-        Object.entries(
-          import.meta.glob<string>("./icons/*.{svg,png}", {
-            eager: true,
-            import: "default",
-          }),
-        ).map(([path, url]) => {
-          return [
-            path.replace("./icons/", "").replace(/\.(svg|png)$/, ""),
-            url,
-          ];
+const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze(
+  (() => {
+    const allIcons = Object.fromEntries(
+      Object.entries(
+        import.meta.glob<string>("./icons/*.{svg,png}", {
+          eager: true,
+          import: "default",
         }),
-      );
+      ).map(([path, url]) => {
+        return [path.replace("./icons/", "").replace(/\.(svg|png)$/, ""), url];
+      }),
+    );
 
-      const connectorKeys = CONNECTOR_TYPE_KEYS;
-      const filtered: Record<string, string> = {};
-      for (const key of connectorKeys) {
-        const iconKey =
-          key in CONNECTOR_ICON_ALIASES
-            ? CONNECTOR_ICON_ALIASES[key as keyof typeof CONNECTOR_ICON_ALIASES]
-            : key;
-        const icon = allIcons[iconKey];
-        if (typeof icon !== "string") {
-          throw new Error(
-            `Missing SVG icon for connector type "${key}". Add icons/${iconKey}.svg.`,
-          );
-        }
-        filtered[key] = icon;
+    const connectorKeys = CONNECTOR_TYPE_KEYS;
+    const filtered: Record<string, string> = {};
+    for (const key of connectorKeys) {
+      const iconKey =
+        key in CONNECTOR_ICON_ALIASES
+          ? CONNECTOR_ICON_ALIASES[key as keyof typeof CONNECTOR_ICON_ALIASES]
+          : key;
+      const icon = allIcons[iconKey];
+      if (typeof icon !== "string") {
+        throw new Error(
+          `Missing SVG icon for connector type "${key}". Add icons/${iconKey}.svg.`,
+        );
       }
+      filtered[key] = icon;
+    }
 
-      return filtered as Record<ConnectorType, string>;
-    })(),
-  );
+    return filtered as Record<ConnectorType, string>;
+  })(),
+);
 
 /** Official Slack Mark ships with a 270×270 viewBox whose artwork only fills the central ~45%.
  *  Callers render it inside an `overflow-hidden` box at layout size, and we scale the `<img>` up
@@ -138,11 +134,14 @@ const CONNECTOR_ICON_COLORFUL = {
   gmail: true,
   gong: true,
   "google-ads": true,
+  "google-analytics": true,
   "google-calendar": true,
+  "google-cloud": true,
   "google-docs": true,
   "google-drive": true,
   "google-maps": true,
   "google-meet": true,
+  "google-search-console": true,
   "google-sheets": true,
   granola: true,
   greenhouse: true,
@@ -154,6 +153,7 @@ const CONNECTOR_ICON_COLORFUL = {
   honcho: true,
   hubspot: true,
   "hugging-face": true,
+  hume: true,
   hunter: true,
   imgur: true,
   instagram: true,
@@ -173,8 +173,10 @@ const CONNECTOR_ICON_COLORFUL = {
   mailchimp: true,
   mailsac: true,
   manus: true,
+  massive: true,
   meshy: true,
   "meta-ads": true,
+  "tiktok-ads": true,
   metabase: true,
   minimax: true,
   minio: true,
@@ -196,6 +198,7 @@ const CONNECTOR_ICON_COLORFUL = {
   pdforge: true,
   "people-data-labs": true,
   perplexity: true,
+  pika: true,
   pipedrive: true,
   pipedream: true,
   plain: true,
@@ -217,6 +220,7 @@ const CONNECTOR_ICON_COLORFUL = {
   salesforce: true,
   scrapeninja: true,
   segment: true,
+  semrush: true,
   sendgrid: true,
   serpapi: true,
   servicenow: true,
@@ -236,11 +240,14 @@ const CONNECTOR_ICON_COLORFUL = {
   streak: true,
   stripe: true,
   supabase: true,
+  supadata: true,
+  testrail: true,
   ticketmaster: true,
   tldv: true,
   todoist: true,
   together: true,
   tripo: true,
+  twenty: true,
   twilio: true,
   wandb: true,
   webflow: true,

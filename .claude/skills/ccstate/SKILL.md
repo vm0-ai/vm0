@@ -445,6 +445,13 @@ set(startLoop$, { runId }, resumeSignal);
 
 ## Detach, Floating Promises, and Test Cleanup
 
+In tests, do not manually `await clearAllDetached()` to make assertions pass.
+`clearAllDetached()` belongs to teardown, where it prevents one test's detached
+work from leaking into the next test. If a test is flaky while it is still
+running, treat that as a floating-promise bug: find the missing `await`, parent
+signal, or explicit domain-level test synchronization point instead of adding
+waits, manual clears, or extra `detach()` calls.
+
 ### Never use `.catch(() => {})` to silence floating promises
 
 **Enforced by ESLint rule: `ccstate/no-empty-promise-catch`**

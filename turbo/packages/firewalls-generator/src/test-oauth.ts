@@ -11,6 +11,10 @@
  * resolve to). Production `vm0.ai` is intentionally NOT matched — there is
  * no test-oauth upstream to hit in production, and the isTestEndpointAllowed
  * guard on the echo route would 404 regardless.
+ *
+ * Keep the tenant-scoped entry first for connector variable output coverage.
+ * The plain preview-host entry is what runner E2E uses because vm6 preview TLS
+ * is only valid for the concrete preview API host, not nested tenant hosts.
  */
 
 import { writeOutput } from "./codegen";
@@ -31,6 +35,21 @@ function generateTypeScript(): string {
     `    TEST_OAUTH_TOKEN: "${PLACEHOLDER_VALUE}",`,
     "  },",
     "  apis: [",
+    "    {",
+    '      base: "https://${{ vars.TEST_OAUTH_TENANT_ID }}.{pr}.vm6.ai/api/test/oauth-provider",',
+    "      auth: {",
+    "        headers: {",
+    '          Authorization: "Bearer ${{ secrets.TEST_OAUTH_TOKEN }}",',
+    "        },",
+    "      },",
+    "      permissions: [",
+    "        {",
+    '          name: "echo",',
+    '          description: "Test echo endpoint used to verify token injection",',
+    '          rules: ["GET /echo"],',
+    "        },",
+    "      ],",
+    "    },",
     "    {",
     '      base: "https://{pr}.vm6.ai/api/test/oauth-provider",',
     "      auth: {",

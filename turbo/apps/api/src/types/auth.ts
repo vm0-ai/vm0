@@ -46,6 +46,7 @@ export type ZeroAuthContext =
       readonly orgRole?: ApiOrgRole;
       readonly runId: string;
       readonly capabilities: readonly ZeroCapability[];
+      readonly computerUseHostId?: string;
     }
   | {
       readonly tokenType: "zero";
@@ -80,6 +81,7 @@ export interface ZeroAuth {
   readonly runId: string;
   readonly orgId: string;
   readonly capabilities: readonly ZeroCapability[];
+  readonly computerUseHostId?: string;
 }
 
 export interface CliAuth {

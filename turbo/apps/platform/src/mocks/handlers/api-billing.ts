@@ -16,14 +16,11 @@ import { mockApi } from "../msw-contract.ts";
 
 let mockBillingInvoices: BillingInvoice[] = [];
 
-export function setMockBillingInvoices(invoices: BillingInvoice[]): void {
-  mockBillingInvoices = invoices;
-}
-
 function defaultBillingStatus(): BillingStatusResponse {
   return {
     tier: "pro-suspend",
     credits: 0,
+    onboardingPaymentPending: true,
     subscriptionStatus: null,
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
@@ -41,12 +38,6 @@ function defaultBillingStatus(): BillingStatusResponse {
 
 let mockBillingStatus: BillingStatusResponse = defaultBillingStatus();
 
-export function setMockBillingStatus(
-  status: Partial<BillingStatusResponse>,
-): void {
-  mockBillingStatus = { ...mockBillingStatus, ...status };
-}
-
 function defaultRedeemResponse(): RedeemResponse {
   return {
     status: "ready",
@@ -59,12 +50,6 @@ let mockRedeemCodeHandler: ((code: string) => void) | null = null;
 
 export function setMockRedeemResponse(response: RedeemResponse): void {
   mockRedeemResponse = response;
-}
-
-export function setMockRedeemCodeHandler(
-  handler: (code: string) => void,
-): void {
-  mockRedeemCodeHandler = handler;
 }
 
 export function resetMockBilling(): void {
