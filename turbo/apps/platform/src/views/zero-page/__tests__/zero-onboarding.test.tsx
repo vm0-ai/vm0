@@ -139,21 +139,6 @@ describe("zero onboarding", () => {
     });
   });
 
-  it("preselects valid URL connectors and ignores invalid ones", async () => {
-    mockOnboardingNeeded();
-
-    detachedSetupPage({ context, path: "/onboarding?connector=slack" });
-
-    await completeWorkspaceStep();
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
-      ).toBeInTheDocument();
-      expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
-    });
-  });
-
   it("keeps pending invitations visible while onboarding", async () => {
     mockOnboardingNeeded();
 

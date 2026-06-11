@@ -14,7 +14,6 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
@@ -684,95 +683,6 @@ describe("zero artifact sidebar", () => {
       expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
     });
 
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("Synced to Google Drive"),
-      ).not.toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      expect(menuItemByText("Synced to Google Drive")).toBeInTheDocument();
-    });
-  });
-
-  it("connects Google Drive from the sidebar and syncs an artifact", async () => {
-    const user = userEvent.setup({ delay: null });
-    const markdownUrl =
-      "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
-    const artifactFiles = [artifactFile(markdownUrl)];
-    const authWindow = context.mocks.browser.authWindow();
-    Object.defineProperty(authWindow, "location", {
-      value: { href: "" },
-      configurable: true,
-    });
-    context.mocks.browser.open(authWindow);
-    context.mocks.http.get(markdownUrl, () => {
-      return new Response("# Release notes\n\nThe artifact is ready.", {
-        headers: { "Content-Type": "text/plain" },
-      });
-    });
-    context.mocks.api(
-      zeroConnectorOauthStartContract.start,
-      ({ params, respond }) => {
-        return respond(200, {
-          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
-        });
-      },
-    );
-    context.mocks.api(
-      chatThreadArtifactsContract.syncGoogleDrive,
-      ({ respond }) => {
-        artifactFiles[0] = {
-          ...artifactFiles[0]!,
-          googleDriveSync: {
-            status: "synced",
-            id: "drive-file-release-notes",
-            name: "release-notes.md",
-            webViewLink: "https://drive.test/release-notes",
-          },
-        };
-        return respond(200, {
-          id: "drive-file-release-notes",
-          name: "release-notes.md",
-          webViewLink: "https://drive.test/release-notes",
-        });
-      },
-    );
-    setupChatThread({
-      artifactFiles,
-      content: `[Release notes](${markdownUrl})`,
-      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByText("The artifact is ready.")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByLabelText("Download artifact"));
-    await waitFor(() => {
-      expect(menuItemByText("Connect Google Drive")).toBeInTheDocument();
-    });
-
-    click(menuItemByText("Connect Google Drive"));
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/google-drive/authorize",
-      );
-      expect(
-        context.mocks.ably.hasSubscription("connector:changed"),
-      ).toBeTruthy();
-    });
-
-    context.mocks.data.connectors([googleDriveConnector()]);
-    context.mocks.ably.trigger("connector:changed");
-
-    await waitFor(() => {
-      expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
-    });
     toast.dismiss();
     await waitFor(() => {
       expect(

@@ -1363,10 +1363,24 @@ describe("POST /api/zero/slack/events", () => {
       ),
       OPENAI_MODEL: "gpt-5.5",
     });
-    expect(
-      decryptSecretsMapForTests(executionContext.encryptedSecrets),
-    ).toMatchObject({
-      OPENAI_API_KEY: "vm0-key-gpt-5.5",
-    });
+    const openAiApiKey = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    )?.OPENAI_API_KEY;
+    expect(typeof openAiApiKey).toBe("string");
+    if (typeof openAiApiKey !== "string") {
+      throw new Error("Expected decrypted OPENAI_API_KEY");
+    }
+    const matchingKeyRows = await db
+      .select({ id: vm0ApiKeys.id })
+      .from(vm0ApiKeys)
+      .where(
+        and(
+          eq(vm0ApiKeys.vendor, "openai"),
+          eq(vm0ApiKeys.model, "gpt-5.5"),
+          eq(vm0ApiKeys.apiKey, openAiApiKey),
+        ),
+      )
+      .limit(1);
+    expect(matchingKeyRows).toHaveLength(1);
   });
 });

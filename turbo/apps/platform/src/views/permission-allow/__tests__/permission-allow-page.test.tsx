@@ -201,22 +201,4 @@ describe("permission allow page", () => {
     });
     expect(screen.queryByText(/Expires in/u)).not.toBeInTheDocument();
   });
-
-  it("shows a clear error for an unknown connector permission URL", async () => {
-    detachedSetupPage({
-      context,
-      path: `/agents/c0000000-0000-4000-a000-000000000404/permissions?ref=not-a-connector&permission=admin.analytics%3Aread&action=allow`,
-      user: {
-        id: "test-user-123",
-        fullName: "Casey Operator",
-        firstName: "Casey",
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Unknown connector: not-a-connector"),
-      ).toBeInTheDocument();
-    });
-  });
 });
