@@ -496,11 +496,13 @@ def match_host(host: str, pattern: str) -> dict | None:
     ({name+}, {name*}) must appear in the first (leftmost) position.
 
     - Literal segments must match exactly (case-insensitive).
-    - {name} matches a single host segment.
+    - {name} matches a single host segment, captured in lowercase.
     - prefix{name}suffix matches a host segment case-insensitively, with
-      the non-empty middle captured into `name` (case preserved from host).
+      the non-empty middle captured into `name` in lowercase.
     - {name+} matches one or more leading host segments. Must be first.
+      Captures preserve the input case supplied to match_host().
     - {name*} matches zero or more leading host segments. Must be first.
+      Non-empty captures preserve the input case supplied to match_host().
     """
     pattern_segs = _compile_segments(tuple(reversed(pattern.split("."))))
     if pattern_segs is None:
