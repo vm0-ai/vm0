@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.330.0](https://github.com/vm0-ai/vm0/compare/core-v8.329.1...core-v8.330.0) (2026-06-11)
+
+
+### Features
+
+* **api:** gate webhook triggers behind a feature switch ([#17315](https://github.com/vm0-ai/vm0/issues/17315)) ([3264d05](https://github.com/vm0-ai/vm0/commit/3264d05970511eaa7a493d97fe6cf44c46540aad))
+* **api:** record automation as the trigger source for automation runs ([#17334](https://github.com/vm0-ai/vm0/issues/17334)) ([cb7a907](https://github.com/vm0-ai/vm0/commit/cb7a907086418ad90941aeff5ff554526a6df184))
+* collapse completed chat work history ([#17327](https://github.com/vm0-ai/vm0/issues/17327)) ([e61d31c](https://github.com/vm0-ai/vm0/commit/e61d31c6eba09fabc120d60bef8b6021d651108a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.85.0
+    * @vm0/connectors bumped to 1.68.0
+
 ## [8.329.1](https://github.com/vm0-ai/vm0/compare/core-v8.329.0...core-v8.329.1) (2026-06-11)
 
 

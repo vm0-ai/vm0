@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.21](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.20...ably-subscriber-v0.7.21) (2026-06-11)
+
+
+### Refactoring
+
+* **ably-subscriber:** share example token request signing ([#17314](https://github.com/vm0-ai/vm0/issues/17314)) ([49c0088](https://github.com/vm0-ai/vm0/commit/49c00889cf49a052d7f08532e5476ae870b34e77))
+
 ## [0.7.20](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.19...ably-subscriber-v0.7.20) (2026-06-11)
 
 

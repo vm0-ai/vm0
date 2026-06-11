@@ -1,57 +1,45 @@
 #![cfg(test)]
 
-//! Integration tests for the nbd-cow crate.
+//! Root-required NBD device integration tests for the nbd-cow crate.
 //!
-//! Tests marked `#[ignore]` require root privileges and the `nbd` kernel module.
+//! These tests are marked `#[ignore]` and require root privileges plus the
+//! `nbd` kernel module.
 //! Run with:
 //!
 //! ```sh
-//! sudo modprobe nbd nbds_max=256
-//! cargo test -p nbd-cow -- --ignored
+//! sudo modprobe nbd nbds_max=4096
+//! cargo test -p nbd-cow --test integration -- --ignored --test-threads=1
 //! ```
-//!
-//! Non-ignored tests run unprivileged and exercise the protocol, COW layer,
-//! and server dispatch over socketpairs (no real block device needed).
 
 use std::fs;
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
 
-/// Skip the test early if not running as root.
-macro_rules! require_root {
-    () => {
-        if !nix::unistd::getuid().is_root() {
-            eprintln!("skipping: requires root");
-            return;
-        }
-    };
-}
+#[path = "support/nbd_fixture.rs"]
+mod nbd_fixture;
 
-/// Skip if the nbd kernel module is not loaded.
-macro_rules! require_nbd {
-    () => {
-        let modules = std::fs::read_to_string("/proc/modules").unwrap_or_default();
-        if !modules.lines().any(|l| l.starts_with("nbd ")) {
-            eprintln!("skipping: nbd kernel module not loaded");
-            return;
-        }
-    };
-}
+use nbd_fixture::{NbdTestFixture, default_device_pool};
 
-fn create_test_base_image(path: &Path) {
-    let f = fs::File::create(path).expect("create base image");
-    f.set_len(64 * 1024 * 1024).expect("truncate base image");
-}
+fn nbd_test_available() -> bool {
+    if !nix::unistd::getuid().is_root() {
+        eprintln!("skipping: requires root");
+        return false;
+    }
 
-fn test_device_pool() -> nbd_cow::pool::DevicePoolHandle {
-    nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default())
+    let modules = std::fs::read_to_string("/proc/modules").unwrap_or_default();
+    if !modules.lines().any(|l| l.starts_with("nbd ")) {
+        eprintln!("skipping: nbd kernel module not loaded");
+        return false;
+    }
+
+    true
 }
 
 fn destroy_policy() -> nbd_cow::DestroyRetryPolicy {
     nbd_cow::DestroyRetryPolicy {
         attempts: 1,
-        delay: std::time::Duration::ZERO,
+        delay: Duration::ZERO,
     }
 }
 
@@ -89,18 +77,16 @@ fn nbd_pid(device_index: u32) -> Option<u32> {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn create_and_destroy() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow = fixture.cow_path("cow.img");
 
-    let pool = test_device_pool();
+    let pool = default_device_pool();
     let device = pool
-        .create_cow_device(&base, &cow, size)
+        .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
 
@@ -122,18 +108,16 @@ async fn create_and_destroy() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn destroy_keep_cow_preserves_file() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow = fixture.cow_path("cow.img");
 
-    let pool = test_device_pool();
+    let pool = default_device_pool();
     let device = pool
-        .create_cow_device(&base, &cow, size)
+        .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
 
@@ -166,18 +150,16 @@ async fn destroy_keep_cow_preserves_file() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn write_and_read_back_via_block_device() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow = fixture.cow_path("cow.img");
 
-    let pool = test_device_pool();
+    let pool = default_device_pool();
     let device = pool
-        .create_cow_device(&base, &cow, size)
+        .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
     let dev_path = device.device_path().to_owned();
@@ -235,18 +217,16 @@ async fn write_and_read_back_via_block_device() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn cow_file_is_sparse() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow = fixture.cow_path("cow.img");
 
-    let pool = test_device_pool();
+    let pool = default_device_pool();
     let device = pool
-        .create_cow_device(&base, &cow, size)
+        .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
 
@@ -288,18 +268,16 @@ async fn cow_file_is_sparse() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn device_path_format() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow = fixture.cow_path("cow.img");
 
-    let pool = test_device_pool();
+    let pool = default_device_pool();
     let device = pool
-        .create_cow_device(&base, &cow, size)
+        .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
 
@@ -318,24 +296,21 @@ async fn device_path_format() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn multiple_devices_from_same_base() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow1 = fixture.cow_path("cow1.img");
+    let cow2 = fixture.cow_path("cow2.img");
 
-    let cow1 = tmp.path().join("cow1.img");
-    let cow2 = tmp.path().join("cow2.img");
-
-    let pool = test_device_pool();
+    let pool = default_device_pool();
     let dev1 = pool
-        .create_cow_device(&base, &cow1, size)
+        .create_cow_device(fixture.base(), &cow1, fixture.size())
         .await
         .expect("create 1");
     let dev2 = pool
-        .create_cow_device(&base, &cow2, size)
+        .create_cow_device(fixture.base(), &cow2, fixture.size())
         .await
         .expect("create 2");
 
@@ -354,23 +329,21 @@ async fn multiple_devices_from_same_base() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn snapshot_restore_round_trip() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow = fixture.cow_path("cow.img");
 
     let marker = b"NBD_SNAPSHOT_RESTORE_TEST_1234";
 
-    let pool = test_device_pool();
+    let pool = default_device_pool();
 
     // Phase 1: create device, write data, destroy_keep_cow
     {
         let device = pool
-            .create_cow_device(&base, &cow, size)
+            .create_cow_device(fixture.base(), &cow, fixture.size())
             .await
             .expect("create");
 
@@ -436,7 +409,7 @@ async fn snapshot_restore_round_trip() {
     // Phase 2: create new device with same base + COW — data should persist
     {
         let device = pool
-            .create_cow_device(&base, &cow, size)
+            .create_cow_device(fixture.base(), &cow, fixture.size())
             .await
             .expect("restore create");
 
@@ -491,14 +464,13 @@ async fn snapshot_restore_round_trip() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn connect_device_specific_index() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let size: u64 = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow = fixture.cow_path("cow.img");
+    let size = fixture.size();
 
     let claim = claim_free_device_for_direct_connect();
     let device_index = claim.index();
@@ -508,7 +480,7 @@ async fn connect_device_specific_index() {
     let shutdown = tokio_util::sync::CancellationToken::new();
 
     let cow_layer = nbd_cow::cow::CowLayer::new(
-        &base,
+        fixture.base(),
         &cow,
         size,
         nbd_cow::BLOCK_SIZE,
@@ -571,22 +543,20 @@ async fn connect_device_specific_index() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn pool_cooldown_prevents_immediate_reuse() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
 
     // Use a long cooldown so the released device can't be reused
     let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig {
         cooldown: std::time::Duration::from_secs(60),
     });
 
-    let cow1 = tmp.path().join("cow1.img");
+    let cow1 = fixture.cow_path("cow1.img");
     let dev1 = pool
-        .create_cow_device(&base, &cow1, size)
+        .create_cow_device(fixture.base(), &cow1, fixture.size())
         .await
         .expect("create 1");
     let idx1 = dev1.device_index();
@@ -597,9 +567,9 @@ async fn pool_cooldown_prevents_immediate_reuse() {
 
     // Immediately create another device — should get a DIFFERENT index
     // because idx1 is still in cooldown (60s)
-    let cow2 = tmp.path().join("cow2.img");
+    let cow2 = fixture.cow_path("cow2.img");
     let dev2 = pool
-        .create_cow_device(&base, &cow2, size)
+        .create_cow_device(fixture.base(), &cow2, fixture.size())
         .await
         .expect("create 2");
     let idx2 = dev2.device_index();
@@ -619,22 +589,20 @@ async fn pool_cooldown_prevents_immediate_reuse() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn pool_release_and_reacquire_after_cooldown() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let size = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
 
     // Very short cooldown so we can test re-acquisition
     let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig {
         cooldown: std::time::Duration::from_millis(50),
     });
 
-    let cow = tmp.path().join("cow.img");
+    let cow = fixture.cow_path("cow.img");
     let dev = pool
-        .create_cow_device(&base, &cow, size)
+        .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
 
@@ -645,9 +613,9 @@ async fn pool_release_and_reacquire_after_cooldown() {
     // Wait for cooldown to expire
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    let cow2 = tmp.path().join("cow2.img");
+    let cow2 = fixture.cow_path("cow2.img");
     let dev2 = pool
-        .create_cow_device(&base, &cow2, size)
+        .create_cow_device(fixture.base(), &cow2, fixture.size())
         .await
         .expect("create after cooldown");
     dev2.destroy_with_retries(destroy_policy())
@@ -656,57 +624,21 @@ async fn pool_release_and_reacquire_after_cooldown() {
     pool.cleanup().await;
 }
 
-/// After cleanup(), acquire must return NoFreeDevice immediately.
-/// This is a pure-logic test — no root or nbd module required.
-#[tokio::test(flavor = "multi_thread")]
-async fn pool_cleanup_rejects_acquire() {
-    let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
-    pool.cleanup().await;
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let result = pool.create_cow_device(&base, &cow, 64 * 1024 * 1024).await;
-    assert!(result.is_err(), "acquire after cleanup should fail");
-}
-
-/// Calling cleanup() twice should be a no-op (not panic or corrupt state).
-/// This is a pure-logic test — no root or nbd module required.
-#[tokio::test(flavor = "multi_thread")]
-async fn pool_cleanup_is_idempotent() {
-    let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
-    pool.cleanup().await;
-    pool.cleanup().await;
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let result = pool.create_cow_device(&base, &cow, 64 * 1024 * 1024).await;
-    assert!(
-        result.is_err(),
-        "create should still fail after repeated cleanup"
-    );
-}
-
 /// Dropping an NbdCowDevice without calling destroy() should still
 /// disconnect the kernel device (best-effort cleanup via Drop).
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn drop_without_destroy_disconnects() {
-    require_root!();
-    require_nbd!();
+    if !nbd_test_available() {
+        return;
+    }
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let base = tmp.path().join("base.img");
-    create_test_base_image(&base);
-    let cow = tmp.path().join("cow.img");
-    let size: u64 = 64 * 1024 * 1024;
+    let fixture = NbdTestFixture::new();
+    let cow = fixture.cow_path("cow.img");
 
-    let pool = test_device_pool();
+    let pool = default_device_pool();
     let device = pool
-        .create_cow_device(&base, &cow, size)
+        .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
 

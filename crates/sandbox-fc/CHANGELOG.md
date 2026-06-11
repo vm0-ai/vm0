@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.22](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.21...sandbox-fc-v0.37.22) (2026-06-11)
+
+
+### Documentation
+
+* document firecracker sandbox lifecycle ([#17335](https://github.com/vm0-ai/vm0/issues/17335)) ([cecf295](https://github.com/vm0-ai/vm0/commit/cecf2959a38c95bf301634ff97a3deecbda33c9a))
+
 ## [0.37.21](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.20...sandbox-fc-v0.37.21) (2026-06-11)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.30](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.29...vsock-guest-v0.18.30) (2026-06-11)
+
+
+### Bug Fixes
+
+* **vsock-guest:** reject zero-sequence write_file requests ([#17312](https://github.com/vm0-ai/vm0/issues/17312)) ([2a6e915](https://github.com/vm0-ai/vm0/commit/2a6e915de25051dbaec6e07fa6e996e96a608947))
+
 ## [0.18.29](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.28...vsock-guest-v0.18.29) (2026-06-11)
 
 ## [0.18.28](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.27...vsock-guest-v0.18.28) (2026-06-11)
