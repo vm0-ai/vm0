@@ -151,60 +151,85 @@ async fn remove_stale_records(home: &HomePaths) {
                 break;
             }
         };
-        if !is_stable_record_file_name(&entry.file_name()) {
-            continue;
-        }
+        let file_name = entry.file_name();
         let path = entry.path();
-        if read_valid_record(&path).await.is_some() {
+        if stable_record_identity_from_file_name(&file_name).is_some()
+            && read_valid_record(&path).await.is_none()
+        {
+            remove_stale_file(&path, "stale live runner registry record").await;
             continue;
         }
-        match tokio::fs::remove_file(&path).await {
-            Ok(()) => {
-                tracing::debug!(path = %path.display(), "removed stale live runner registry record");
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => {
-                tracing::debug!(path = %path.display(), error = %e, "cannot remove stale live runner registry record");
-            }
+        let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
+            continue;
+        };
+        if !process_identity_is_live(identity).await {
+            remove_stale_file(&path, "stale live runner registry tmp file").await;
         }
     }
 }
 
-fn is_stable_record_file_name(name: &OsStr) -> bool {
-    let Some(name) = name.to_str() else {
-        return false;
-    };
-    let Some(stem) = name.strip_suffix(".json") else {
-        return false;
-    };
-    let Some((pid, starttime)) = stem.split_once('-') else {
-        return false;
-    };
-    [pid, starttime]
-        .into_iter()
-        .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+async fn remove_stale_file(path: &Path, reason: &'static str) {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => {
+            tracing::debug!(path = %path.display(), reason, "removed stale live runner registry file");
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            tracing::debug!(path = %path.display(), reason, error = %e, "cannot remove stale live runner registry file");
+        }
+    }
+}
+
+fn stable_record_identity_from_file_name(name: &OsStr) -> Option<ProcessIdentity> {
+    stable_record_identity_from_str(name.to_str()?)
+}
+
+fn stable_record_identity_from_str(name: &str) -> Option<ProcessIdentity> {
+    let stem = name.strip_suffix(".json")?;
+    let (pid, starttime) = stem.split_once('-')?;
+    Some(ProcessIdentity {
+        pid: pid.parse().ok()?,
+        starttime: starttime.parse().ok()?,
+        euid: current_euid(),
+    })
+}
+
+fn atomic_tmp_record_identity_from_file_name(name: &OsStr) -> Option<ProcessIdentity> {
+    let name = name.to_str()?;
+    let tmp_body = name.strip_prefix('.')?.strip_suffix(".tmp")?;
+    let (stable_name, _tmp_id) = tmp_body.rsplit_once('.')?;
+    stable_record_identity_from_str(stable_name)
 }
 
 async fn record_is_live(record: &LiveRunnerRegistryRecord) -> bool {
-    if record.euid != current_euid() {
+    process_identity_is_live(ProcessIdentity {
+        pid: record.pid,
+        starttime: record.starttime,
+        euid: record.euid,
+    })
+    .await
+}
+
+async fn process_identity_is_live(identity: ProcessIdentity) -> bool {
+    if identity.euid != current_euid() {
         return false;
     }
-    let Some(before) = process::read_process_stat(record.pid).await else {
+    let Some(before) = process::read_process_stat(identity.pid).await else {
         return false;
     };
-    if !process::process_stat_is_live(&before) || before.starttime != record.starttime {
+    if !process::process_stat_is_live(&before) || before.starttime != identity.starttime {
         return false;
     }
-    let Some(euid) = read_process_euid(record.pid).await else {
+    let Some(euid) = read_process_euid(identity.pid).await else {
         return false;
     };
-    if euid != record.euid {
+    if euid != identity.euid {
         return false;
     }
-    let Some(after) = process::read_process_stat(record.pid).await else {
+    let Some(after) = process::read_process_stat(identity.pid).await else {
         return false;
     };
-    process::process_stat_is_live(&after) && after.starttime == record.starttime
+    process::process_stat_is_live(&after) && after.starttime == identity.starttime
 }
 
 async fn current_process_identity() -> RunnerResult<ProcessIdentity> {
@@ -421,10 +446,13 @@ mod tests {
         };
         let stale_path = home.live_runner_record_path(stale_record.pid, stale_record.starttime);
         write_record(&stale_path, &stale_record).await;
+        let stale_tmp_path = home.live_runners_dir().join(".4294967295-1.json.test.tmp");
+        tokio::fs::write(&stale_tmp_path, b"partial").await.unwrap();
 
         let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
 
         assert!(!stale_path.exists());
+        assert!(!stale_tmp_path.exists());
     }
 
     #[cfg(unix)]
@@ -466,11 +494,17 @@ mod tests {
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         let live_path = home.live_runner_record_path(live_record.pid, live_record.starttime);
+        let live_tmp_path = home.live_runners_dir().join(format!(
+            ".{}-{}.json.test.tmp",
+            child_pid, child_stat.starttime
+        ));
         write_record(&live_path, &live_record).await;
+        tokio::fs::write(&live_tmp_path, b"partial").await.unwrap();
 
         let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
 
         assert!(live_path.exists());
+        assert!(live_tmp_path.exists());
     }
 
     #[tokio::test]
