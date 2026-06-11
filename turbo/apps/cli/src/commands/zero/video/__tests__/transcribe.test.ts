@@ -64,7 +64,7 @@ describe("zero video transcribe command", () => {
     vi.unstubAllEnvs();
   });
 
-  describe("with timestamps (verbose mode)", () => {
+  describe("with --url", () => {
     it("outputs structured Markdown with timestamp blocks", async () => {
       server.use(
         http.post(STT_URL, () => {
@@ -87,27 +87,6 @@ describe("zero video transcribe command", () => {
       expect(output).toContain("## Transcript");
       expect(output).toContain("[00:02-00:05] Hello world.");
       expect(output).toContain("[00:06-00:07] Second sentence.");
-    });
-  });
-
-  describe("without timestamps (--no-timestamps)", () => {
-    it("outputs plain text transcript", async () => {
-      server.use(
-        http.post(STT_URL, ({ request }) => {
-          expect(new URL(request.url).searchParams.get("verbose")).toBeNull();
-          return HttpResponse.json({ text: "Hello world. Second sentence." });
-        }),
-      );
-
-      await transcribeCommand.parseAsync(
-        ["--url", "https://example.com/video.mp4", "--no-timestamps"],
-        { from: "user" },
-      );
-
-      const output = readStdout();
-      expect(output).toContain("## Transcript");
-      expect(output).toContain("Hello world. Second sentence.");
-      expect(output).not.toMatch(/\[\d{2}:\d{2}-\d{2}:\d{2}\]/);
     });
   });
 
