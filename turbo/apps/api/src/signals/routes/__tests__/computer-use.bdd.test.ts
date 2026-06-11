@@ -15,8 +15,8 @@ import { mockClerkMembership } from "./helpers/api-bdd-github";
  * FILE-03 timing notes:
  * - Hosts count as online for COMPUTER_USE_HOST_CLOSED_AFTER_MS (90s) after
  *   their last heartbeat/claim. The offline/ambiguous constructions below
- *   move mocked time forward (+91s/+120s) and rely on host claim polls
- *   refreshing lastSeenAt (#15750) to bring a stale host back online.
+ *   move mocked time forward (+91s/+120s) and rely on host heartbeat/claim
+ *   calls refreshing lastSeenAt (#15750) to bring a stale host back online.
  * - The screenshot retention chain builds >30-day-old rows by running the
  *   full command flow under mockNow(now - 40d), then clears the mock before
  *   invoking the cleanup cron so the retention cutoff is computed at real
@@ -119,10 +119,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
       permissions: { accessibility: true, screenRecording: true },
     });
 
-    const duplicateHost = await api.requestStartComputerUseHost(actor, [409]);
-    expectApiError(duplicateHost.body);
-    expect(duplicateHost.body.error.code).toBe("CONFLICT");
-
     const createdCommand = await api.createComputerUseWriteCommand(actor);
     expect(createdCommand).toMatchObject({ status: "queued" });
 
@@ -184,46 +180,50 @@ describe("FILE-03 desktop computer-use runtime", () => {
     ).toBeFalsy();
   });
 
-  it("supersedes a stale heartbeating host once a newer host is active", async () => {
+  it("keeps multiple active hosts and lets stale heartbeats recover", async () => {
     const actor = bdd.user();
     await api.enableComputerUse(actor);
     const base = now();
     mockNow(base);
 
-    const first = await api.startComputerUseHost(actor);
+    const first = await api.startComputerUseHost(actor, {
+      hostName: "Zero Desktop",
+    });
     const heartbeat = await api.heartbeatComputerUseHost(first.hostToken);
     expect(heartbeat).toStrictEqual({ ok: true, hostId: first.hostId });
 
     mockNow(base + 120_000);
-    const second = await api.startComputerUseHost(actor);
+    const second = await api.startComputerUseHost(actor, {
+      hostName: "Studio Mac",
+    });
     expect(second.hostId).not.toBe(first.hostId);
 
-    const superseded = await api.requestComputerUseHeartbeat(
-      first.hostToken,
-      [409],
-    );
-    expectApiError(superseded.body);
-    expect(superseded.body.error.message).toBe(
-      "A Desktop Computer Use host is already active",
-    );
+    const staleHeartbeat = await api.heartbeatComputerUseHost(first.hostToken);
+    expect(staleHeartbeat).toStrictEqual({ ok: true, hostId: first.hostId });
 
     const visibleHosts = await api.listComputerUseHosts(actor);
-    expect(
-      visibleHosts.hosts.map((item) => {
-        return item.id;
-      }),
-    ).toStrictEqual([second.hostId]);
-
-    const conflicted = await api.requestStartComputerUseHost(actor, [409]);
-    expectApiError(conflicted.body);
-    expect(conflicted.body.error.message).toBe(
-      "A Desktop Computer Use host is already active",
+    expect(visibleHosts.hosts).toHaveLength(2);
+    expect(visibleHosts.hosts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.hostId,
+          hostName: "Zero Desktop",
+          status: "online",
+        }),
+        expect.objectContaining({
+          id: second.hostId,
+          hostName: "Studio Mac",
+          status: "online",
+        }),
+      ]),
     );
 
     const stopped = await api.stopComputerUseHost(second.hostToken);
     expect(stopped).toStrictEqual({ ok: true, hostId: second.hostId });
 
-    const restarted = await api.startComputerUseHost(actor);
+    const restarted = await api.startComputerUseHost(actor, {
+      hostName: "Recovered Desktop",
+    });
     expect(restarted.hostId).not.toBe(second.hostId);
 
     const missingDelete = await api.requestDeleteComputerUseHost(
@@ -238,7 +238,11 @@ describe("FILE-03 desktop computer-use runtime", () => {
 
     await api.deleteComputerUseHost(actor, restarted.hostId);
     const afterDelete = await api.listComputerUseHosts(actor);
-    expect(afterDelete.hosts).toStrictEqual([]);
+    expect(
+      afterDelete.hosts.map((item) => {
+        return item.id;
+      }),
+    ).toStrictEqual([first.hostId]);
   });
 
   it("rejects host-token routes with missing or invalid host tokens", async () => {

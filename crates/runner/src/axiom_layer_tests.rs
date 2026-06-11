@@ -1,25 +1,19 @@
-//! Integration tests for the Axiom tracing layer.
+//! Tests for the Axiom tracing layer.
 //!
 //! The layer + its dispatcher run for real; only the network boundary is
 //! mocked (`httpmock` stands in for `https://api.axiom.co`). Tests verify
 //! that events flow through the layer → channel → dispatcher → POST
 //! endpoint with the TS-compatible payload shape.
 //!
-//! Env vars are process-global, so tests serialize on `ENV_LOCK`.
-
-#[path = "../src/axiom_layer.rs"]
-mod axiom_layer;
 
 use std::sync::{Arc, Mutex};
 
+use super::{INTERNAL_TARGET, init_from_env_values, init_with_base_url, with_ingest_filter};
 use httpmock::Method::POST;
 use httpmock::MockServer;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
-
-static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 #[derive(Clone, Debug)]
 struct RecordedEvent {
@@ -80,28 +74,6 @@ where
     }
 }
 
-fn clear_axiom_env() {
-    // SAFETY: setenv is not thread-safe, but we hold ENV_LOCK for the
-    // duration of every test that touches these vars.
-    unsafe {
-        std::env::remove_var("AXIOM_TOKEN_TELEMETRY");
-        std::env::remove_var("AXIOM_DATASET_SUFFIX");
-    }
-}
-
-/// Acquire `ENV_LOCK`, run `f` with env state captured, then drop the lock.
-/// `f` does the env setup and returns anything cheap (e.g. a layer + guard).
-/// The lock never spans an `.await` — `axiom_layer::init` owns its env reads
-/// synchronously, and the returned dispatcher holds owned strings.
-fn with_env<T>(f: impl FnOnce() -> T) -> T {
-    // `unwrap_or_else` handles poison by reusing the inner guard — poisoning
-    // only means a previous test panicked while holding it, which doesn't
-    // corrupt the `()` payload.
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    clear_axiom_env();
-    f()
-}
-
 #[tokio::test]
 async fn warn_and_error_events_are_ingested_with_ts_shape() {
     let server = MockServer::start_async().await;
@@ -140,12 +112,12 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         })
         .await;
 
-    // Use the test-only `init_with_base_url` to redirect at the mock server.
+    // Use the internal `init_with_base_url` to redirect at the mock server.
     // `init()` always targets api.axiom.co and can't be pointed elsewhere.
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "test-token", "test")
+    let (layer, guard) = init_with_base_url(&server.base_url(), "test-token", "test")
         .expect("init_with_base_url must succeed");
 
-    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::warn!(foo = "bar", "a warning");
@@ -200,12 +172,12 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
     let recording = RecordingLayer::default();
     let subscriber = tracing_subscriber::registry()
         .with(recording.clone())
-        .with(axiom_layer::with_ingest_filter(layer));
+        .with(with_ingest_filter(layer));
 
     {
         let _sub = tracing::subscriber::set_default(subscriber);
@@ -253,21 +225,19 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
     internal_mock.assert_calls_async(0).await;
 }
 
-#[tokio::test]
-async fn init_returns_none_when_env_missing() {
-    let result = with_env(axiom_layer::init);
+#[test]
+fn init_returns_none_when_env_missing() {
+    let result = init_from_env_values("https://example.invalid", None, None);
     assert!(result.is_none());
 }
 
-#[tokio::test]
-async fn init_returns_none_when_token_empty() {
-    let result = with_env(|| {
-        unsafe {
-            std::env::set_var("AXIOM_TOKEN_TELEMETRY", "");
-            std::env::set_var("AXIOM_DATASET_SUFFIX", "dev");
-        }
-        axiom_layer::init()
-    });
+#[test]
+fn init_returns_none_when_token_empty() {
+    let result = init_from_env_values(
+        "https://example.invalid",
+        Some(String::new()),
+        Some("dev".to_string()),
+    );
     assert!(result.is_none());
 }
 
@@ -308,9 +278,9 @@ async fn error_field_serializes_with_message_and_source_chain() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         let err = ChainErr {
@@ -357,9 +327,9 @@ async fn u128_fields_serialize_as_numbers_when_in_u64_range() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::error!(
@@ -403,9 +373,9 @@ async fn none_option_fields_are_omitted_from_axiom_payload() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::error!(
@@ -444,9 +414,9 @@ async fn burst_past_channel_cap_drops_without_blocking_or_feeding_back() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
 
     // 3000 > CHANNEL_CAP (1024) + 1000 so we both overflow the channel and
     // cross the drop counter's multiple-of-1000 branch at least twice
@@ -510,12 +480,12 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
     let recording = RecordingLayer::default();
     let subscriber = tracing_subscriber::registry()
         .with(recording.clone())
-        .with(axiom_layer::with_ingest_filter(layer));
+        .with(with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::error!("trigger ingest failure");
@@ -563,9 +533,9 @@ async fn debug_field_over_limit_is_truncated_with_marker() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         // 5000 A's → sentinel → 3000 A's. Debug form: `"` + 5000 + sentinel
@@ -596,9 +566,9 @@ async fn debug_field_truncation_walks_to_utf8_char_boundary() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         // 2500 × 2-byte `ñ` = 5000 bytes; Debug adds surrounding quotes →
@@ -639,9 +609,9 @@ async fn debug_field_at_exact_limit_passes_through_unmodified() {
         })
         .await;
 
-    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
-        .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         // Debug form of a &str is `"<contents>"` — surrounding quotes cost

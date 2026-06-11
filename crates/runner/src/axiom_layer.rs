@@ -62,6 +62,8 @@ const _: () = assert!(
 const DEBUG_FIELD_MAX_BYTES: usize = 4 * 1024;
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
+const AXIOM_TOKEN_ENV: &str = "AXIOM_TOKEN_TELEMETRY";
+const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
 /// Target used for this layer's own diagnostics. Dispatcher diagnostics
 /// (non-success ingest responses, HTTP errors) remain visible to local
 /// logging, while the Axiom per-layer filter keeps any observed diagnostics
@@ -102,20 +104,28 @@ impl AxiomGuard {
 /// caller should install a `None` layer in that case (no-op). Production
 /// entry point; always targets `DEFAULT_AXIOM_URL`.
 pub(crate) fn init() -> Option<(AxiomLayer, AxiomGuard)> {
-    let token = std::env::var("AXIOM_TOKEN_TELEMETRY")
-        .ok()
-        .filter(|s| !s.is_empty())?;
-    let suffix = std::env::var("AXIOM_DATASET_SUFFIX")
-        .ok()
-        .filter(|s| !s.is_empty())?;
-    init_with_base_url(DEFAULT_AXIOM_URL, &token, &suffix)
+    init_from_env_values(
+        DEFAULT_AXIOM_URL,
+        std::env::var(AXIOM_TOKEN_ENV).ok(),
+        std::env::var(AXIOM_SUFFIX_ENV).ok(),
+    )
 }
 
-/// Core init with an explicit base URL. Exists so integration tests can point
+fn init_from_env_values(
+    base_url: &str,
+    token: Option<String>,
+    suffix: Option<String>,
+) -> Option<(AxiomLayer, AxiomGuard)> {
+    let token = token.filter(|s| !s.is_empty())?;
+    let suffix = suffix.filter(|s| !s.is_empty())?;
+    init_with_base_url(base_url, &token, &suffix)
+}
+
+/// Core init with an explicit base URL. Exists so module tests can point
 /// at an `httpmock` server without leaking an `AXIOM_URL` override into the
 /// runner's production env surface — production code should always call
 /// [`init`], which hard-codes [`DEFAULT_AXIOM_URL`].
-pub(crate) fn init_with_base_url(
+fn init_with_base_url(
     base_url: &str,
     token: &str,
     suffix: &str,
@@ -356,3 +366,7 @@ fn serialize_event(event: &Event<'_>) -> Value {
     out.insert("service".into(), Value::String(SERVICE_NAME.into()));
     Value::Object(out)
 }
+
+#[cfg(test)]
+#[path = "axiom_layer_tests.rs"]
+mod tests;

@@ -1,17 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  inArray,
-  isNull,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
 import {
   isExpiredScreenshotPointer,
   isStoredScreenshotPointer,
@@ -106,18 +96,15 @@ type ResolveComputerUseCommandTargetsResult =
   | { readonly status: "host_offline" }
   | { readonly status: "host_unsupported" };
 
-type StartComputerUseHostResult =
-  | {
-      readonly status: "started";
-      readonly hostId: string;
-      readonly hostToken: string;
-    }
-  | { readonly status: "active_host_exists"; readonly hostId: string };
+type StartComputerUseHostResult = {
+  readonly status: "started";
+  readonly hostId: string;
+  readonly hostToken: string;
+};
 
 type HeartbeatComputerUseHostResult =
   | { readonly status: "ok"; readonly hostId: string }
-  | { readonly status: "invalid_token" }
-  | { readonly status: "active_host_exists"; readonly hostId: string };
+  | { readonly status: "invalid_token" };
 
 type StopComputerUseHostResult =
   | { readonly status: "stopped"; readonly hostId: string }
@@ -674,31 +661,6 @@ async function hostFromToken(
   return host ?? null;
 }
 
-async function hostIdentityFromToken(
-  tx: ComputerUseTx,
-  hostToken: string,
-  signal: AbortSignal,
-): Promise<{
-  readonly orgId: string;
-  readonly userId: string;
-} | null> {
-  const [host] = await tx
-    .select({
-      orgId: computerUseHosts.orgId,
-      userId: computerUseHosts.userId,
-    })
-    .from(computerUseHosts)
-    .where(
-      and(
-        eq(computerUseHosts.tokenHash, hashSecret(hostToken)),
-        isNull(computerUseHosts.revokedAt),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  return host ?? null;
-}
-
 export const startComputerUseHost$ = command(
   async (
     { set },
@@ -720,33 +682,6 @@ export const startComputerUseHost$ = command(
     const hostToken = generateOpaqueToken("vm0_computer_use_host");
     const now = nowDate();
     const result = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext('computer_use_host:' || ${params.orgId} || ':' || ${params.userId}))`,
-      );
-
-      const existingHosts = await tx
-        .select()
-        .from(computerUseHosts)
-        .where(
-          and(
-            eq(computerUseHosts.orgId, params.orgId),
-            eq(computerUseHosts.userId, params.userId),
-            isNull(computerUseHosts.revokedAt),
-          ),
-        )
-        .for("update");
-      signal.throwIfAborted();
-
-      const activeHost = existingHosts.find((host) => {
-        return hostIsOnline(host, now);
-      });
-      if (activeHost) {
-        return {
-          status: "active_host_exists" as const,
-          hostId: activeHost.id,
-        };
-      }
-
       const [host] = await tx
         .insert(computerUseHosts)
         .values({
@@ -798,50 +733,9 @@ export const heartbeatComputerUseHost$ = command(
     const db = set(writeDb$);
     const now = nowDate();
     const result = await db.transaction(async (tx) => {
-      const hostIdentity = await hostIdentityFromToken(
-        tx,
-        params.hostToken,
-        signal,
-      );
-      if (!hostIdentity) {
-        return { status: "invalid_token" as const };
-      }
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext('computer_use_host:' || ${hostIdentity.orgId} || ':' || ${hostIdentity.userId}))`,
-      );
-      signal.throwIfAborted();
-
       const lockedHost = await hostFromToken(tx, params.hostToken, signal);
       if (!lockedHost) {
         return { status: "invalid_token" as const };
-      }
-
-      const existingHosts = await tx
-        .select()
-        .from(computerUseHosts)
-        .where(
-          and(
-            eq(computerUseHosts.orgId, lockedHost.orgId),
-            eq(computerUseHosts.userId, lockedHost.userId),
-            isNull(computerUseHosts.revokedAt),
-          ),
-        )
-        .for("update");
-      signal.throwIfAborted();
-
-      const activeHost = existingHosts.find((candidate) => {
-        return candidate.id !== lockedHost.id && hostIsOnline(candidate, now);
-      });
-      if (activeHost) {
-        await tx
-          .update(computerUseHosts)
-          .set({ status: "offline", revokedAt: now, updatedAt: now })
-          .where(eq(computerUseHosts.id, lockedHost.id));
-        signal.throwIfAborted();
-        return {
-          status: "active_host_exists" as const,
-          hostId: activeHost.id,
-        };
       }
 
       await tx
