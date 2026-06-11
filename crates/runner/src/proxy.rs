@@ -581,6 +581,14 @@ impl MitmProxy {
         let Some(ref mut child) = self.child else {
             return Ok(());
         };
+        if child
+            .try_wait()
+            .map_err(|e| RunnerError::Internal(format!("check mitmdump process: {e}")))?
+            .is_some()
+        {
+            self.child = None;
+            return Ok(());
+        }
         child.kill().await.map_err(|e| {
             RunnerError::Internal(format!("kill mitmdump process after startup failure: {e}"))
         })?;
@@ -2526,6 +2534,23 @@ PY
         proxy.child = Some(child);
 
         assert!(proxy.usage_flush_target().is_none());
+        assert!(proxy.child.is_none());
+    }
+
+    #[tokio::test]
+    async fn kill_now_reaps_exited_child() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let mut child = tokio::process::Command::new("true")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        child.wait().await.unwrap();
+        proxy.child = Some(child);
+
+        proxy.kill_now().await.unwrap();
+
         assert!(proxy.child.is_none());
     }
 
