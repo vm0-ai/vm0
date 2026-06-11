@@ -223,6 +223,15 @@ impl HomePaths {
         self.root.join("logs")
     }
 
+    pub fn live_runners_dir(&self) -> PathBuf {
+        self.root.join("live-runners")
+    }
+
+    pub fn live_runner_record_path(&self, pid: u32, starttime: u64) -> PathBuf {
+        self.live_runners_dir()
+            .join(format!("{pid}-{starttime}.json"))
+    }
+
     pub fn runners_dir(&self) -> PathBuf {
         self.root.join("runners")
     }

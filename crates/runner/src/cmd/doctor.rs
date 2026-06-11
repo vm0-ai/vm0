@@ -572,7 +572,9 @@ async fn build_runner_report(
 // ---------------------------------------------------------------------------
 
 async fn load_config_lenient(path: &Path) -> Option<RunnerConfig> {
-    let content = tokio::fs::read_to_string(path).await.ok()?;
+    let content = crate::config::read_diagnostic_config_to_string(path)
+        .await
+        .ok()??;
     let mut config: RunnerConfig = serde_yaml_ng::from_str(&content).ok()?;
     if let Some(config_dir) = path.parent() {
         config.resolve_relative_paths(config_dir);

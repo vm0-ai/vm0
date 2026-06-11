@@ -492,6 +492,13 @@ pub async fn run_start(
         )),
     });
 
+    let live_runner_metadata = crate::live_runner_registry::LiveRunnerRegistryMetadata {
+        config_path: args.config.clone(),
+        base_dir: base_dir_canonical.clone(),
+        runner_name: name.clone(),
+        runner_group: group_name.clone(),
+    };
+
     let config = RunConfig {
         runner: RunnerInfo {
             id: runner_id,
@@ -548,7 +555,13 @@ pub async fn run_start(
         },
     };
 
-    run(config).await
+    let live_runner_handle =
+        crate::live_runner_registry::publish(&config.paths.home, live_runner_metadata).await?;
+    let run_result = run(config).await;
+    if let Err(e) = live_runner_handle.remove_if_current().await {
+        tracing::warn!(error = %e, "failed to remove live runner registry record");
+    }
+    run_result
 }
 
 struct RunConfig {
