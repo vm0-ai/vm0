@@ -4,6 +4,12 @@ import type { NetworkPolicies } from "@vm0/connectors/firewall-types";
 type UnknownRecord = Record<string, unknown>;
 type NetworkPolicy = NetworkPolicies[string];
 type NetworkPolicyValue = "allow" | "deny" | "ask";
+type RunContextFirewall = RunContextResponse["firewalls"][number];
+type RunContextFirewallApi = RunContextFirewall["apis"][number];
+type RunContextFirewallPermission = NonNullable<
+  RunContextFirewallApi["permissions"]
+>[number];
+type RunContextVolume = RunContextResponse["volumes"][number];
 
 export interface RunContextEnvironmentEntry {
   readonly name: string;
@@ -174,6 +180,104 @@ function networkPoliciesFromEntries(
   return Object.keys(policies).length > 0 ? policies : null;
 }
 
+function firewallPermissionFromUnknown(
+  value: unknown,
+): RunContextFirewallPermission | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const name = stringValue(value.name);
+  const rules = stringArrayValue(value.rules);
+  if (!name || !rules) {
+    return undefined;
+  }
+  const description = stringValue(value.description);
+  return description === undefined
+    ? { name, rules }
+    : { name, description, rules };
+}
+
+function firewallApiFromUnknown(
+  value: unknown,
+): RunContextFirewallApi | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const base = stringValue(value.base);
+  if (!base) {
+    return undefined;
+  }
+  if (!Array.isArray(value.permissions)) {
+    return { base };
+  }
+  return {
+    base,
+    permissions: value.permissions.flatMap((permission) => {
+      const normalized = firewallPermissionFromUnknown(permission);
+      return normalized ? [normalized] : [];
+    }),
+  };
+}
+
+function firewallsFromUnknown(value: unknown): RunContextResponse["firewalls"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const name = stringValue(item.name);
+    if (!name || !Array.isArray(item.apis)) {
+      return [];
+    }
+    return [
+      {
+        name,
+        apis: item.apis.flatMap((api) => {
+          const normalized = firewallApiFromUnknown(api);
+          return normalized ? [normalized] : [];
+        }),
+      },
+    ];
+  });
+}
+
+function volumeFromUnknown(value: unknown): RunContextVolume | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const name = stringValue(value.name);
+  const mountPath = stringValue(value.mountPath);
+  const vasStorageName = stringValue(value.vasStorageName);
+  const vasVersionId = stringValue(value.vasVersionId);
+  return name && mountPath && vasStorageName && vasVersionId
+    ? { name, mountPath, vasStorageName, vasVersionId }
+    : undefined;
+}
+
+function volumesFromUnknown(value: unknown): RunContextResponse["volumes"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    const normalized = volumeFromUnknown(item);
+    return normalized ? [normalized] : [];
+  });
+}
+
+function artifactFromUnknown(value: unknown): RunContextResponse["artifact"] {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const mountPath = stringValue(value.mountPath);
+  const vasStorageName = stringValue(value.vasStorageName);
+  const vasVersionId = stringValue(value.vasVersionId);
+  return mountPath && vasStorageName && vasVersionId
+    ? { mountPath, vasStorageName, vasVersionId }
+    : null;
+}
+
 function featureFlagsFromEntries(
   value: unknown,
 ): Record<string, boolean> | null {
@@ -253,16 +357,10 @@ export function normalizeRunContextSnapshot(
     sessionId: stringValue(snapshot.sessionId) ?? null,
     secretNames: stringArrayFromUnknown(snapshot.secretNames),
     environment,
-    firewalls: Array.isArray(snapshot.firewalls)
-      ? (snapshot.firewalls as RunContextResponse["firewalls"])
-      : [],
+    firewalls: firewallsFromUnknown(snapshot.firewalls),
     networkPolicies,
-    volumes: Array.isArray(snapshot.volumes)
-      ? (snapshot.volumes as RunContextResponse["volumes"])
-      : [],
-    artifact: isRecord(snapshot.artifact)
-      ? (snapshot.artifact as RunContextResponse["artifact"])
-      : null,
+    volumes: volumesFromUnknown(snapshot.volumes),
+    artifact: artifactFromUnknown(snapshot.artifact),
     featureFlags,
   };
 }

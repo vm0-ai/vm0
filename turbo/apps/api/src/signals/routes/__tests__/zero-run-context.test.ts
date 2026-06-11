@@ -313,6 +313,109 @@ describe("GET /api/zero/runs/:id/context", () => {
     });
   });
 
+  it("omits malformed collection fields before response validation", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: compose.composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        ...makeEntriesSnapshot(runId),
+        firewalls: [
+          {
+            name: "valid-fw",
+            apis: [
+              {
+                base: "https://api.example.com",
+                permissions: [
+                  {
+                    name: "read",
+                    description: "Read records",
+                    rules: ["GET /records/*"],
+                  },
+                  { name: "bad-permission", rules: [null] },
+                ],
+              },
+              { base: null, permissions: [] },
+            ],
+          },
+          { name: "bad-fw", apis: null },
+        ],
+        volumes: [
+          {
+            name: "data",
+            mountPath: "/data",
+            vasStorageName: "vol-1",
+            vasVersionId: "ver-1",
+          },
+          {
+            name: "broken",
+            mountPath: "/broken",
+            vasStorageName: null,
+            vasVersionId: "ver-broken",
+          },
+        ],
+        artifact: {
+          mountPath: "/artifacts",
+          vasStorageName: null,
+          vasVersionId: "art-ver-1",
+        },
+      },
+    ]);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunContextContract);
+
+    const response = await accept(
+      client.getContext({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.firewalls).toStrictEqual([
+      {
+        name: "valid-fw",
+        apis: [
+          {
+            base: "https://api.example.com",
+            permissions: [
+              {
+                name: "read",
+                description: "Read records",
+                rules: ["GET /records/*"],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(response.body.volumes).toStrictEqual([
+      {
+        name: "data",
+        mountPath: "/data",
+        vasStorageName: "vol-1",
+        vasVersionId: "ver-1",
+      },
+    ]);
+    expect(response.body.artifact).toBeNull();
+  });
+
   it("prefers entries over legacy map fields", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
