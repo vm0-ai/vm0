@@ -68,7 +68,11 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_auth_query_injection.py` | Firewall auth query injection and query rewrite behavior |
 | `test_url_utils.py` | URL reconstruction and rewrite utility cases |
 | `test_auth_cache.py` | Firewall auth cache behavior |
-| `test_anthropic_messages.py` | Anthropic Messages usage extraction |
+| `test_body_capture.py` | Body capture helpers, capture fields, and capture-level decompression integration |
+| `test_body_decoding.py` | Shared body decoding, streaming decode, codec limits, and decompression errors |
+| `test_anthropic_messages.py` | Anthropic Messages SSE and JSON usage extraction |
+| `test_openai_responses_event_json.py` | OpenAI Responses event JSON usage extraction and merge behavior |
+| `test_openai_responses_json.py` | OpenAI Responses non-SSE JSON usage extraction |
 | `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |
 | `test_response_streaming.py` | Response streaming parser setup |
 | `test_model_provider_response_usage.py` | Model provider JSON response usage pipeline |
