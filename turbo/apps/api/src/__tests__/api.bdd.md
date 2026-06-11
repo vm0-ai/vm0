@@ -1706,3 +1706,28 @@ changed: false }`, no Ably publish).
   GET) needs a seeded compose and stays in the kept legacy.
 - Reduced `zero-default-agent.test.ts` (14 -> 10).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 86 — ZERO MEMORY REJECTIONS (CHAIN-MEMORY-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `memory` client (`/api/zero/memory`, get).
+- Added `zero-memory-rejections.bdd.test.ts`: get rejects unauthenticated and
+  org-less callers (401) and reports `exists:false` for a fresh user (`size: 0`,
+  `fileCount: 0`, null `updatedAt`, empty `files`/`fileContents`).
+- A populated / empty-but-present memory artifact needs a seeded memory volume
+  and stays in the kept legacy.
+- Reduced `zero-memory.test.ts` (8 -> 5).
+- Coverage verified (source-only): no regressions vs `main`.
+
+### Round 87 — ZERO MEMORY ACTIVITY REJECTIONS (CHAIN-MEMORY-ACTIVITY-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `memoryActivity` client
+  (`/api/zero/memory/activity`, get).
+- Added `zero-memory-activity-rejections.bdd.test.ts`: get rejects
+  unauthenticated and org-less callers (401) and returns an empty timeline
+  (`entries: []`, null `nextCursor`) for a fresh user.
+- Populated entries (most-recent-day ordering, date-cursor pagination,
+  no-item-day omission, item ordering by file path, cross-user/org scoping) need
+  seeded activity summaries (GAP-MEMORY-ACTIVITY-SEED) and stay in the kept
+  legacy.
+- Reduced `zero-memory-activity.test.ts` (8 -> 5).
+- Coverage verified (source-only): no regressions vs `main`.

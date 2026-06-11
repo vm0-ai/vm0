@@ -71,46 +71,6 @@ describe("GET /api/zero/memory", () => {
     return store.set(deleteMemoryForFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(memoryClient().get({ headers: {} }), [401]);
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      memoryClient().get({ headers: authHeaders() }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns exists:false when the user has no memory artifact", async () => {
-    const fixture = await track(
-      store.set(seedMemoryFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      memoryClient().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      exists: false,
-      name: MEMORY_ARTIFACT_NAME,
-      size: 0,
-      fileCount: 0,
-      updatedAt: null,
-      files: [],
-      fileContents: [],
-    });
-  });
-
   it("returns an empty file list when the artifact exists but is empty", async () => {
     const fixture = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),

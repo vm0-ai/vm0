@@ -66,6 +66,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
+import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
+import { zeroMemoryActivityContract } from "@vm0/api-contracts/contracts/zero-memory-activity";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import {
   zeroOrgContract,
@@ -486,6 +488,14 @@ export function createBddApi(context: TestContext) {
      * Setting a real agent needs a seeded compose; the auth, admin-only and
      * agent-not-found cases are reachable directly. */
     orgDefaultAgent: setupApp({ context })(orgDefaultAgentContract),
+    /** ts-rest client for `/api/zero/memory` (the user's memory artifact). A
+     * populated artifact needs a seeded memory volume; the auth and
+     * no-artifact (exists:false) cases are reachable directly. */
+    memory: setupApp({ context })(zeroMemoryContract),
+    /** ts-rest client for `/api/zero/memory/activity` (daily memory-change
+     * timeline). Populated entries need seeded activity summaries; the auth and
+     * empty-timeline cases are reachable directly. */
+    memoryActivity: setupApp({ context })(zeroMemoryActivityContract),
     /** ts-rest client for `/api/zero/org/leave`. */
     orgLeave: setupApp({ context })(zeroOrgLeaveContract),
     /** ts-rest client for `/api/zero/runs` (create a run). The funded happy path
