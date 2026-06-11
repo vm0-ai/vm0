@@ -323,6 +323,28 @@ function assetBackedPresentationHtml(assetUrl: string): string {
 </html>`;
 }
 
+function fallbackEditablePresentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Legacy launch plan</title>
+    <meta http-equiv="refresh" content="0;url=https://example.com/redirect">
+  </head>
+  <body onclick="window.evil = true">
+    <h1>Legacy launch plan</h1>
+    <p>Review the older deck format before launch.</p>
+    <div>
+      <span>Nested fallback copy</span>
+    </div>
+    <a href="j a v a s c r i p t:alert(1)">Unsafe action</a>
+    <a href="http://[invalid">Broken action</a>
+    <a href="https://example.com/safe">Safe action</a>
+    <img src="data:text/html,blocked" alt="Blocked inline asset">
+    <iframe src="https://example.com/embed"></iframe>
+  </body>
+</html>`;
+}
+
 function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
   const tab = queryAllByRoleFast("tab", container).find((element) => {
     return element.textContent?.trim() === label;
@@ -361,6 +383,100 @@ function menuItemByText(text: string): HTMLElement {
     );
   }
   return item;
+}
+
+function mockIntersectionObserver(): { triggerAll: () => void } {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "IntersectionObserver",
+  );
+  const observers: { trigger: () => void }[] = [];
+
+  class TestIntersectionObserver implements IntersectionObserver {
+    readonly root: Element | Document | null;
+    readonly rootMargin: string;
+    readonly scrollMargin: string;
+    readonly thresholds: readonly number[];
+    private observedTargets: Element[] = [];
+
+    constructor(
+      private readonly callback: IntersectionObserverCallback,
+      options?: IntersectionObserverInit,
+    ) {
+      this.root = options?.root ?? null;
+      this.rootMargin = options?.rootMargin ?? "0px";
+      this.scrollMargin = "0px";
+      this.thresholds = Array.isArray(options?.threshold)
+        ? options.threshold
+        : [options?.threshold ?? 0];
+      observers.push(this);
+    }
+
+    observe(target: Element): void {
+      if (!this.observedTargets.includes(target)) {
+        this.observedTargets = [...this.observedTargets, target];
+      }
+    }
+
+    unobserve(target: Element): void {
+      this.observedTargets = this.observedTargets.filter((observed) => {
+        return observed !== target;
+      });
+    }
+
+    disconnect(): void {
+      this.observedTargets = [];
+    }
+
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+
+    trigger(): void {
+      const entries = this.observedTargets.map((target) => {
+        return {
+          boundingClientRect: target.getBoundingClientRect(),
+          intersectionRatio: 1,
+          intersectionRect: target.getBoundingClientRect(),
+          isIntersecting: true,
+          rootBounds: null,
+          target,
+          time: performance.now(),
+        } as IntersectionObserverEntry;
+      });
+      if (entries.length > 0) {
+        this.callback(entries, this);
+      }
+    }
+  }
+
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    configurable: true,
+    value: TestIntersectionObserver,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (originalDescriptor) {
+        Object.defineProperty(
+          globalThis,
+          "IntersectionObserver",
+          originalDescriptor,
+        );
+        return;
+      }
+      Reflect.deleteProperty(globalThis, "IntersectionObserver");
+    },
+    { once: true },
+  );
+
+  return {
+    triggerAll: () => {
+      for (const observer of observers) {
+        observer.trigger();
+      }
+    },
+  };
 }
 
 describe("zero artifact sidebar", () => {
@@ -854,7 +970,68 @@ Download the archive here: ${fileUrl}.`,
     });
   });
 
+  it("edits a fallback presentation deck without embedded metadata", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/legacy-launch-plan.html";
+    const html = fallbackEditablePresentationHtml();
+    let redeployedHtml: string | null = null;
+
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ body, respond }) => {
+        redeployedHtml = body.html;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "legacy-launch-plan",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, html);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Edit presentation"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+      expect(screen.getByLabelText("Open slide 1")).toBeInTheDocument();
+      expect(screen.getByLabelText("Speaker notes")).toHaveValue("");
+    });
+
+    await fill(
+      screen.getByLabelText("Speaker notes"),
+      "Use cleaned launch narrative.",
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+    });
+    expect(redeployedHtml).toContain("vm0-deck-metadata");
+    expect(redeployedHtml).toContain(
+      '"speakerNotes": "Use cleaned launch narrative."',
+    );
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Presentation updated"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("edits and downloads a presentation artifact from the editor", async () => {
+    const thumbnailObserver = mockIntersectionObserver();
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     const downloads = captureDownloads(context.signal);
     let generatedSlides: { slideId: string; speakerNotes: string }[] = [
@@ -901,6 +1078,13 @@ Download the archive here: ${fileUrl}.`,
       );
       expect(screen.getByLabelText("Open slide 2")).toBeInTheDocument();
     });
+
+    thumbnailObserver.triggerAll();
+    const slidePlanThumbnail = document.querySelector(
+      'iframe[data-slide-thumbnail-frame="slide-plan"]',
+    );
+    expect(slidePlanThumbnail).toBeInstanceOf(HTMLIFrameElement);
+    expect((slidePlanThumbnail as HTMLIFrameElement).src).toMatch(/^blob:/u);
 
     click(screen.getByLabelText("Open slide 2"));
     await waitFor(() => {

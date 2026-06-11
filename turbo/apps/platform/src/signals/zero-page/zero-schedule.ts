@@ -26,6 +26,7 @@ import {
   runScheduleNowVia,
 } from "./automations-mode.ts";
 import { ApiError } from "../../lib/accept.ts";
+import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
 
 const SCHEDULE_TIME_PAST_MESSAGE = "Scheduled time must be in the future";
@@ -122,7 +123,7 @@ function buildScheduleBody(
   agentId: string,
   params: ZeroScheduleSaveParams,
 ): ScheduleBody {
-  const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
+  const scheduleName = params.editName ?? `zero-${now().toString(36)}`;
 
   const base = {
     agentId,
@@ -150,7 +151,7 @@ function buildScheduleBody(
   }
 
   if (params.freq === "now") {
-    return { ...base, atTime: new Date().toISOString() };
+    return { ...base, atTime: nowDate().toISOString() };
   }
 
   const freqMap: Record<string, CronTimeOption> = {

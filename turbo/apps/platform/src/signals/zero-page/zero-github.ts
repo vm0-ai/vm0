@@ -8,6 +8,8 @@ import {
   type UpdateGithubLabelListenerBody,
 } from "@vm0/api-contracts/contracts/integrations-github";
 import { toast } from "@vm0/ui/components/ui/sonner";
+
+import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -250,7 +252,7 @@ export const connectGithubInstallation$ = command(
     signal.throwIfAborted();
     const authWindow = openGithubOAuthWindow();
     const fresh = new URL(connectUrl, window.location.origin);
-    fresh.searchParams.set("_t", String(Date.now()));
+    fresh.searchParams.set("_t", String(now()));
     authWindow.location.href = fresh.toString();
   },
 );

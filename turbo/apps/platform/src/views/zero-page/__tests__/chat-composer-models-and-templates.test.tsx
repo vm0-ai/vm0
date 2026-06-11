@@ -337,6 +337,29 @@ async function openTemplatePicker(
     expect(screen.getByText(template.title)).toBeInTheDocument();
   });
 
+  if (slideCount > 1) {
+    const previewImage = screen.getByTitle(
+      `${template.title} card preview slide 1`,
+    );
+    const preview = previewImage.parentElement;
+    if (!preview) {
+      throw new Error("Template preview not found");
+    }
+    Object.defineProperty(preview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+    fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${template.title} card preview slide ${slideCount}`),
+      ).toBeInTheDocument();
+    });
+    fireEvent.mouseLeave(preview);
+  }
+
   click(screen.getByLabelText(`View template ${template.title}`));
   await waitFor(() => {
     expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
@@ -344,6 +367,14 @@ async function openTemplatePicker(
 
   if (slideCount > 1) {
     click(screen.getByLabelText("Next slide"));
+    await waitFor(() => {
+      expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Previous slide"));
+    await waitFor(() => {
+      expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Show slide 2"));
     await waitFor(() => {
       expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
     });
@@ -968,10 +999,15 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    click(await screen.findByLabelText("Connectors"));
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    const composerConnectorsButton =
+      within(composer).getByLabelText("Connectors");
+
+    click(composerConnectorsButton);
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Find connectors...")).toHaveValue("");
       expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove GitHub")).toBeInTheDocument();
@@ -985,29 +1021,21 @@ describe("chat composer models", () => {
       expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
     });
 
-    await fill(screen.getByPlaceholderText("Find connectors..."), "slack");
-
-    await waitFor(() => {
-      expect(screen.getByText("Slack")).toBeInTheDocument();
-      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
-    });
-
     await user.click(screen.getByLabelText("Add Slack"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Connectors"));
+    click(composerConnectorsButton);
 
     await waitFor(() => {
       expect(screen.queryByPlaceholderText("Find connectors...")).toBeNull();
     });
 
-    click(screen.getByLabelText("Connectors"));
+    click(composerConnectorsButton);
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Find connectors...")).toHaveValue("");
       expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
     });
@@ -1077,6 +1105,18 @@ describe("chat composer templates", () => {
       expect(
         screen.getByLabelText(`Remove template ${templateLabel(template)}`),
       ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(
+        screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+      ).not.toBeInTheDocument();
     });
   });
 

@@ -7,6 +7,7 @@ import {
   chatMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
+import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { logger } from "../log.ts";
@@ -104,7 +105,7 @@ const appendQueuedMessage$ = command(
       content,
       attachFiles: attachments ?? undefined,
       generationTemplate,
-      createdAt: result.body.createdAt ?? new Date().toISOString(),
+      createdAt: result.body.createdAt ?? nowDate().toISOString(),
     };
   },
 );
@@ -134,7 +135,7 @@ const recallMessage$ = command(
       role: "user" as const,
       content: null,
       revokesMessageId,
-      createdAt: result.body.createdAt ?? new Date().toISOString(),
+      createdAt: result.body.createdAt ?? nowDate().toISOString(),
     };
   },
 );

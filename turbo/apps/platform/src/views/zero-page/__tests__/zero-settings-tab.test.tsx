@@ -75,6 +75,59 @@ function prepareAgentProfile(): void {
 }
 
 describe("zero settings tab", () => {
+  it("creates and saves a custom avatar from the profile page", async () => {
+    prepareAgentProfile();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+    click(await screen.findByLabelText("Create custom avatar"));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Give your agent a face").length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByText("Angle")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Randomize avatar"));
+    click(screen.getByLabelText("Next step"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Skin")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Next step"));
+    click(screen.getByLabelText("Next step"));
+    click(screen.getByLabelText("Next step"));
+    click(screen.getByLabelText("Next step"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Mood")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Chill"));
+    click(screen.getByText("Use this avatar"));
+
+    await waitFor(() => {
+      expect(screen.queryAllByText("Give your agent a face")).toHaveLength(0);
+      expect(screen.getByText("Profile saved")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Create custom avatar"));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Give your agent a face").length,
+      ).toBeGreaterThan(0);
+    });
+
+    click(screen.getByText("Cancel"));
+
+    await waitFor(() => {
+      expect(screen.queryAllByText("Give your agent a face")).toHaveLength(0);
+    });
+  });
+
   it("saves, discards, and confirms visible agent profile edits", async () => {
     prepareAgentProfile();
 

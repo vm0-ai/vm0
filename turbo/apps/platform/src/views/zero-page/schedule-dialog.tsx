@@ -25,6 +25,7 @@ import {
   getTodayDateLocal,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
+import { nowDate } from "../../lib/time.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import {
   dialogForm$,
@@ -484,7 +485,7 @@ function buildDefaults(
     description: "",
     agentId: agents?.[0]?.id ?? "",
     freq: "every_day",
-    date: new Date().toISOString().slice(0, 10),
+    date: nowDate().toISOString().slice(0, 10),
     hour: 9,
     minute: 0,
     timezone:

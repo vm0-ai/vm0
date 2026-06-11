@@ -326,7 +326,167 @@ function mockScheduleThread(): void {
       triggerType: "cron",
       nextRunAt: "2026-06-10T15:30:00.000Z",
     }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000702",
+      agentId: AGENT_ID,
+      chatThreadId: SCHEDULE_THREAD_ID,
+      name: "paused-launch-audit",
+      description: "Paused launch audit",
+      prompt: "Audit launch readiness",
+      cronExpression: "0 12 * * 1",
+      triggerType: "cron",
+      enabled: false,
+      nextRunAt: null,
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000703",
+      agentId: AGENT_ID,
+      chatThreadId: SCHEDULE_THREAD_ID,
+      name: "manual-launch-reminder",
+      description: "Manual launch reminder",
+      prompt: "Remind the team about launch blockers",
+      cronExpression: "0 18 * * 5",
+      triggerType: "cron",
+      nextRunAt: null,
+    }),
   ]);
+}
+
+function mockServerQueuedThreadStories(): void {
+  const threads = [
+    {
+      id: "thread-server-queued-visible",
+      title: "Server queued run",
+      messages: [
+        {
+          id: "msg-server-queued-visible-user",
+          role: "user" as const,
+          content: "Start queued deployment",
+          runId: "run-server-queued-visible",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-server-queued-visible-marker",
+          role: "assistant" as const,
+          content: null,
+          runId: "run-server-queued-visible",
+          runEventId: "queue:queued",
+          status: "queued" as const,
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ] satisfies PagedChatMessage[],
+      activeRunIds: ["run-server-queued-visible"],
+    },
+    {
+      id: "thread-server-queued-resolved",
+      title: "Resolved server queue",
+      messages: [
+        {
+          id: "msg-server-queued-resolved-user",
+          role: "user" as const,
+          content: "Watch queued deployment resolve",
+          runId: "run-server-queued-resolved",
+          createdAt: "2026-06-09T10:05:00Z",
+        },
+        {
+          id: "msg-server-queued-resolved-marker",
+          role: "assistant" as const,
+          content: null,
+          runId: "run-server-queued-resolved",
+          runEventId: "queue:queued",
+          status: "queued" as const,
+          createdAt: "2026-06-09T10:05:01Z",
+        },
+        {
+          id: "msg-server-queued-resolved-assistant",
+          role: "assistant" as const,
+          content: "Queued deployment is running now.",
+          runId: "run-server-queued-resolved",
+          status: "completed" as const,
+          createdAt: "2026-06-09T10:05:02Z",
+        },
+        {
+          id: "msg-server-queued-resolved-completed",
+          role: "assistant" as const,
+          content: null,
+          runId: "run-server-queued-resolved",
+          runLifecycleEvent: "completed" as const,
+          createdAt: "2026-06-09T10:05:03Z",
+        },
+      ] satisfies PagedChatMessage[],
+      activeRunIds: [],
+    },
+  ];
+  const byId = new Map(
+    threads.map((thread) => {
+      return [thread.id, thread];
+    }),
+  );
+
+  context.mocks.data.team([
+    {
+      id: AGENT_ID,
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
+  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+    return respond(
+      200,
+      splitChatThreadListResponse(
+        threads.map((thread, index) => {
+          return {
+            id: thread.id,
+            title: thread.title,
+            agent: { id: AGENT_ID, avatarUrl: null },
+            createdAt: "2026-06-09T10:00:00Z",
+            updatedAt: `2026-06-09T10:0${index}:00Z`,
+            isRead: true,
+            running: thread.activeRunIds.length > 0,
+            pinnedAt: null,
+          };
+        }),
+      ),
+    );
+  });
+  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    const thread = byId.get(params.id);
+    if (!thread) {
+      return respond(404, {
+        error: { message: "Thread not found", code: "NOT_FOUND" },
+      });
+    }
+    return respond(200, {
+      id: thread.id,
+      title: thread.title,
+      agentId: AGENT_ID,
+      latestSessionId: null,
+      activeRunIds: thread.activeRunIds,
+      createdAt: "2026-06-09T10:00:00Z",
+      updatedAt: "2026-06-09T10:00:00Z",
+      draftContent: null,
+      draftAttachments: null,
+    });
+  });
+  context.mocks.api(
+    chatThreadMessagesContract.list,
+    ({ params, query, respond }) => {
+      if (query.sinceId || query.beforeId) {
+        return respond(200, { messages: [] });
+      }
+      return respond(200, {
+        messages: byId.get(params.threadId)?.messages ?? [],
+        hasHistoryBefore: false,
+      });
+    },
+  );
+  context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+    return respond(200, { lastReadMessageId: null, changed: false });
+  });
 }
 
 function mockGithubPrTrackingThread(): void {
@@ -558,6 +718,78 @@ function setScrollMetrics(
   });
 }
 
+function mockResizeObserver(): { triggerAll: () => void } {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "ResizeObserver",
+  );
+  const observers: TestResizeObserver[] = [];
+
+  class TestResizeObserver implements ResizeObserver {
+    private observedTarget: Element | null = null;
+
+    constructor(private readonly callback: ResizeObserverCallback) {
+      observers.push(this);
+    }
+
+    observe(target: Element): void {
+      this.observedTarget = target;
+    }
+
+    unobserve(target: Element): void {
+      if (this.observedTarget === target) {
+        this.observedTarget = null;
+      }
+    }
+
+    disconnect(): void {
+      this.observedTarget = null;
+    }
+
+    trigger(): void {
+      if (!this.observedTarget) {
+        return;
+      }
+      this.callback(
+        [
+          {
+            target: this.observedTarget,
+            contentRect: this.observedTarget.getBoundingClientRect(),
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          } as unknown as ResizeObserverEntry,
+        ],
+        this,
+      );
+    }
+  }
+
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: TestResizeObserver,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (originalDescriptor) {
+        Object.defineProperty(globalThis, "ResizeObserver", originalDescriptor);
+        return;
+      }
+      Reflect.deleteProperty(globalThis, "ResizeObserver");
+    },
+    { once: true },
+  );
+
+  return {
+    triggerAll: () => {
+      for (const observer of observers) {
+        observer.trigger();
+      }
+    },
+  };
+}
+
 function mockFailedAssistantThread({
   threadId,
   error,
@@ -750,6 +982,87 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("First new-thread message")).toBeInTheDocument();
     });
+  });
+
+  it("keeps optimistic new-thread follow-ups queued after the first send resolves", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sendGate = context.mocks.deferred<void>();
+    const queuedBodies: QueuedMessageCapture[] = [];
+    mockChatLifecycle(context, {
+      sendGate: sendGate.promise,
+      onQueuedMessageAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-optimistic-notes",
+      filename: "notes.txt",
+      contentType: "text/plain",
+      size: 12,
+      url: "https://cdn.vm7.io/artifacts/test/upload-optimistic-notes/notes.txt",
+    });
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Start the optimistic thread");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Start the optimistic thread"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    await sendQueuedMessage(user, "Add the launch checklist");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["launch notes"], "notes.txt", { type: "text/plain" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove notes.txt")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Send"));
+
+    await expectQueuedMessages([
+      "Add the launch checklist",
+      "(see attached files)",
+    ]);
+
+    sendGate.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Start the optimistic thread"),
+      ).toBeInTheDocument();
+      expect(queuedBodies).toHaveLength(2);
+      expect(queuedBodies[1]).toMatchObject({
+        content: "(see attached files)",
+        hasTextContent: false,
+        attachments: [
+          {
+            id: "upload-optimistic-notes",
+            filename: "notes.txt",
+            contentType: "text/plain",
+            size: 12,
+            url: "https://cdn.vm7.io/artifacts/test/upload-optimistic-notes/notes.txt",
+          },
+        ],
+      });
+    });
+    await expectQueuedMessages([
+      "Add the launch checklist",
+      "(see attached files)",
+    ]);
   });
 
   it("replays recalled queued content during an active run", async () => {
@@ -957,6 +1270,131 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows server queue state only while the queue marker is unresolved", async () => {
+    mockServerQueuedThreadStories();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-server-queued-visible",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Start queued deployment")).toBeInTheDocument();
+      expect(screen.getByText("queue...")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Resolved server queue"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Queued deployment is running now."),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("queue...")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders a server-corrected assistant message without the stale answer", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-corrected-answer",
+      threadTitle: "Corrected answer",
+      chatMessages: [
+        {
+          id: "msg-corrected-user",
+          role: "user",
+          content: "Summarize the launch plan",
+          runId: "run-corrected-answer",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-answer",
+          role: "assistant",
+          content: "Use the old launch plan.",
+          runId: "run-corrected-answer",
+          status: "completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-new-answer",
+          role: "assistant",
+          content: "Use the revised launch plan with updated owners.",
+          runId: "run-corrected-answer",
+          revokesMessageId: "msg-stale-answer",
+          status: "completed",
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-corrected-answer",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Use the revised launch plan with updated owners."),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText("Use the old launch plan."),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("restores an interrupted run without duplicate cancellation rows", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-restored-interrupt",
+      threadTitle: "Restored interrupt",
+      chatMessages: [
+        {
+          id: "msg-interrupted-user",
+          role: "user",
+          content: "Start a long task",
+          runId: "run-restored-interrupt",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-interrupted-assistant",
+          role: "assistant",
+          content: null,
+          runId: "run-restored-interrupt",
+          status: "running",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-interrupt-control",
+          role: "user",
+          content: null,
+          interruptsRunId: "run-restored-interrupt",
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-server-cancelled",
+          role: "assistant",
+          content: "Run cancelled",
+          runId: "run-restored-interrupt",
+          error: "Run cancelled",
+          status: "cancelled",
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-06-09T10:03:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-restored-interrupt",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Paused mid-thought — pick it back up whenever."),
+      ).toHaveLength(1);
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    });
+  });
+
   it("catches up after realtime bursts and keeps the latest burst message visible", async () => {
     const threadId = "catchup-thread";
     const baselineMessages = Array.from({ length: 5 }, (_, index) => {
@@ -1055,6 +1493,7 @@ describe("chat lifecycle", () => {
   });
 
   it("keeps chat scroll controls visible while browsing older messages", async () => {
+    const resizeObserver = mockResizeObserver();
     const olderReply = "Scroll back to the planning notes.";
     mockChatLifecycle(context, {
       threadId: "scroll-history-thread",
@@ -1110,6 +1549,12 @@ describe("chat lifecycle", () => {
       expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
     });
 
+    scrollContainer.scrollTop = 420;
+    const composer = screen.getByPlaceholderText(PLACEHOLDER);
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "ArrowUp" });
+    expect(scrollContainer.scrollTop).toBe(420);
+
     click(buttonByText("Load history"));
     await waitFor(() => {
       expect(screen.getByText(olderReply)).toBeInTheDocument();
@@ -1119,11 +1564,15 @@ describe("chat lifecycle", () => {
       scrollHeight: 1500,
       clientHeight: 300,
     });
+    resizeObserver.triggerAll();
+    expect(scrollContainer.scrollTop).toBe(720);
+
     fireEvent.keyDown(threadRegion, { key: "ArrowDown", ctrlKey: true });
     expect(scrollContainer.scrollTop).toBe(1500);
   });
 
   it("moves between chat threads with keyboard shortcuts", async () => {
+    const resizeObserver = mockResizeObserver();
     mockKeyboardNavigationThreads();
 
     detachedSetupPage({
@@ -1140,6 +1589,20 @@ describe("chat lifecycle", () => {
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
+    const initialScrollContainer = chatScrollContainer();
+    setScrollMetrics(initialScrollContainer, {
+      scrollHeight: 1200,
+      clientHeight: 300,
+    });
+    initialScrollContainer.scrollTop = 900;
+    fireEvent.scroll(initialScrollContainer);
+    fireEvent.wheel(initialScrollContainer);
+    initialScrollContainer.scrollTop = 480;
+    fireEvent.scroll(initialScrollContainer);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
+    });
+
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
       key: "ArrowUp",
@@ -1166,6 +1629,15 @@ describe("chat lifecycle", () => {
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
     });
+
+    const restoredScrollContainer = chatScrollContainer();
+    setScrollMetrics(restoredScrollContainer, {
+      scrollHeight: 1200,
+      clientHeight: 300,
+    });
+    resizeObserver.triggerAll();
+    expect(restoredScrollContainer.scrollTop).toBe(480);
+    expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
 
     const currentThreadRegion = screen.getByLabelText("Chat thread");
     currentThreadRegion.focus();
@@ -1281,6 +1753,10 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(screen.getByText(/Next run/u)).toBeInTheDocument();
+      expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
+      expect(screen.getByText("Schedule inactive")).toBeInTheDocument();
+      expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
+      expect(screen.getByText("No upcoming run")).toBeInTheDocument();
     });
   });
 
@@ -1969,6 +2445,56 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("sends the selected Computer Use host with the chat request", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-send";
+    let sentComputerUseHostId: string | null | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        sentComputerUseHostId = body.computerUseHostId;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: "host-online",
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+    await user.click(await screen.findByLabelText("Enable Studio Mac"));
+
+    const textarea = (await screen.findByPlaceholderText(
+      PLACEHOLDER,
+    )) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Open the app on my computer");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Open the app on my computer"),
+      ).toBeInTheDocument();
+      expect(sentComputerUseHostId).toBe("host-online");
+    });
+  });
+
   it("shows and clears a saved Computer Use host selection", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "computer-use-saved-selection";
@@ -2073,6 +2599,46 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(textarea).toHaveValue("Summarize the standup");
+    });
+  });
+
+  it("opens billing recovery when voice input quota is depleted", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-quota-thread";
+    context.mocks.browser.voiceInput();
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "AUDIO_INPUT_QUOTA_EXCEEDED",
+            message: "Audio input quota exceeded",
+          },
+        }),
+        { status: 402, headers: { "Content-Type": "application/json" } },
+      );
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Stop recording"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Compare plans" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Upgrade or downgrade anytime."),
+      ).toBeInTheDocument();
     });
   });
 

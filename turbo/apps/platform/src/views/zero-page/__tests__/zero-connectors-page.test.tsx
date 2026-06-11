@@ -18,7 +18,7 @@ import type {
   ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,6 +27,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -202,17 +203,28 @@ function mockCustomConnectorStory(): void {
 
 describe("connectors page", () => {
   it("shows connected and expiring connector statuses", async () => {
+    mockNow();
     mockConnectors([
       { type: "github", externalUsername: "octocat" },
       {
         type: "openai",
         authMethod: "api-token",
-        tokenExpiresAt: new Date(Date.now() + 26 * HOURS_MS).toISOString(),
+        tokenExpiresAt: isoFromNowMs(26 * HOURS_MS),
+      },
+      {
+        type: "deepseek",
+        authMethod: "api-token",
+        tokenExpiresAt: isoFromNowMs(30 * 60 * 1000),
       },
       {
         type: "axiom",
         authMethod: "api-token",
-        tokenExpiresAt: new Date(Date.now() - HOURS_MS).toISOString(),
+        tokenExpiresAt: isoFromNowMs(-HOURS_MS),
+      },
+      {
+        type: "base44",
+        authMethod: "oauth",
+        tokenExpiresAt: isoFromNowMs(-HOURS_MS),
       },
     ]);
 
@@ -224,6 +236,17 @@ describe("connectors page", () => {
     expect(
       within(connectorCardByLabel("OpenAI")).getByText("Expires in 2 days"),
     ).toBeInTheDocument();
+    expect(
+      within(connectorCardByLabel("DeepSeek")).getByText(
+        "Expires in less than 1 hour",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(connectorCardByLabel("Base44")).queryByText("Connection expired"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(connectorCardByLabel("Base44")).queryByText("Reconnect"),
+    ).not.toBeInTheDocument();
     const expiredAxiomCard = connectorCardByLabel("Axiom");
     expect(
       within(expiredAxiomCard).getByText("Connection expired"),
@@ -272,6 +295,32 @@ describe("connectors page", () => {
     ).toBeTruthy();
   });
 
+  it("navigates connector categories and opens a connector from the keyboard", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-category-menu-ai"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByTestId("connector-category-menu-ai"));
+    click(screen.getByTestId("connector-category-menu-ai-general-models"));
+    click(
+      screen.getByTestId("connector-category-menu-engineering-team-execution"),
+    );
+
+    const axiomCard = await screen.findByLabelText("Connect Axiom");
+    fireEvent.keyDown(axiomCard, { key: " ", code: "Space" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Axiom" })).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
+    });
+  });
+
   it("filters connectors by integration keywords", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
@@ -292,7 +341,7 @@ describe("connectors page", () => {
       {
         type: "axiom",
         authMethod: "api-token",
-        tokenExpiresAt: new Date(Date.now() - HOURS_MS).toISOString(),
+        tokenExpiresAt: isoFromNowMs(-HOURS_MS),
       },
     ]);
 
@@ -398,6 +447,44 @@ describe("connectors page", () => {
       expect(
         within(gmailDialog).getByText("Connecting..."),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("shows Meta Ads review guidance before OAuth", async () => {
+    mockConnectors([]);
+    mockConnectorOauthStart();
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+    });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "meta");
+    click(await screen.findByLabelText("Connect Meta Ads"));
+
+    const metaAdsDialog = await screen.findByRole("dialog", {
+      name: "Meta Ads",
+    });
+    await waitFor(() => {
+      expect(
+        within(metaAdsDialog).getByText(/Meta Ads is currently in Meta/),
+      ).toBeInTheDocument();
+      expect(
+        within(metaAdsDialog).getByText(
+          /We only request the permissions needed for ads workflows/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Connect", metaAdsDialog));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/meta-ads/authorize",
+      );
     });
   });
 
@@ -716,6 +803,52 @@ describe("connectors page", () => {
     });
   });
 
+  it("starts Stripe device authorization with live mode", async () => {
+    mockConnectors([]);
+    let capturedStartBody: unknown = null;
+    context.mocks.api(
+      zeroConnectorOauthDeviceAuthSessionContract.create,
+      ({ body, params, respond }) => {
+        capturedStartBody = body;
+        return respond(200, {
+          sessionId: "00000000-0000-4000-8000-000000000124",
+          sessionToken: "mock-stripe-live-device-session-token",
+          type: params.type,
+          status: "pending",
+          userCode: "STRIPE-LIVE",
+          verificationUri: "https://oauth.test/stripe/device",
+          verificationUriComplete:
+            "https://oauth.test/stripe/device?user_code=STRIPE-LIVE",
+          expiresIn: 300,
+          interval: 1,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+    });
+
+    click(await screen.findByLabelText("Connect Stripe"));
+
+    const stripeDialog = await screen.findByRole("dialog", { name: "Stripe" });
+    click(within(stripeDialog).getByText("Test"));
+    click(await screen.findByText("Live"));
+    click(buttonByText("Connect Stripe", stripeDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("STRIPE-LIVE");
+      expect(capturedStartBody).toMatchObject({
+        authMethod: "cli",
+        options: { mode: "live" },
+      });
+    });
+  });
+
   it("shows a retryable error when a device-auth verification page is blocked", async () => {
     mockConnectors([]);
     context.mocks.browser.open(null);
@@ -945,6 +1078,16 @@ describe("connectors page", () => {
       expect(
         within(connectorCardByLabel("Axiom")).getByText("Connected"),
       ).toBeInTheDocument();
+    });
+
+    click(within(connectorCardByLabel("Axiom")).getByLabelText("More options"));
+    click(await screen.findByText("Disconnect"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Axiom")).queryByText("Connected"),
+      ).not.toBeInTheDocument();
     });
   });
 

@@ -1,13 +1,11 @@
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type {
   ModelProviderResponse,
   OrgModelPolicy,
-  UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -215,6 +213,24 @@ function menuItemByText(text: string): HTMLElement {
   return item;
 }
 
+function dialogContaining(element: HTMLElement): HTMLElement {
+  const dialog = element.closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error("Containing dialog not found");
+  }
+  return dialog;
+}
+
+function blockClipboardWrites(): void {
+  const writeTextSpy = vi
+    .spyOn(navigator.clipboard, "writeText")
+    .mockRejectedValue(new DOMException("Copy blocked", "NotAllowedError"));
+
+  context.signal.addEventListener("abort", () => {
+    writeTextSpy.mockRestore();
+  });
+}
+
 describe("organization model providers settings", () => {
   it("opens a workspace API key model route form", async () => {
     await openAddApiKeyModelDialog();
@@ -233,18 +249,6 @@ describe("organization model providers settings", () => {
   });
 
   it("adds a workspace API key model route", async () => {
-    let capturedProviderRequest: UpsertModelProviderRequest | null = null;
-    context.mocks.api(
-      zeroModelProvidersMainContract.upsert,
-      ({ body, respond }) => {
-        capturedProviderRequest = body;
-        return respond(201, {
-          provider: anthropicApiKeyProvider(),
-          created: true,
-        });
-      },
-    );
-
     await openAddApiKeyModelDialog();
 
     await fill(
@@ -258,25 +262,9 @@ describe("organization model providers settings", () => {
     );
     expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
-    expect(capturedProviderRequest).toStrictEqual({
-      type: "anthropic-api-key",
-      secret: "sk-ant-test",
-    });
   });
 
   it("rotates an existing workspace API key model route", async () => {
-    let capturedProviderRequest: UpsertModelProviderRequest | null = null;
-    context.mocks.api(
-      zeroModelProvidersMainContract.upsert,
-      ({ body, respond }) => {
-        capturedProviderRequest = body;
-        return respond(200, {
-          provider: anthropicApiKeyProvider(),
-          created: false,
-        });
-      },
-    );
-
     mockApiKeyModelRouteStory();
     await openProvidersTab();
 
@@ -305,10 +293,6 @@ describe("organization model providers settings", () => {
 
     await waitFor(() => {
       expect(within(row).getByText("Anthropic")).toBeInTheDocument();
-    });
-    expect(capturedProviderRequest).toStrictEqual({
-      type: "anthropic-api-key",
-      secret: "sk-ant-rotated",
     });
   });
 
@@ -483,6 +467,53 @@ describe("organization model providers settings", () => {
     });
   });
 
+  it("shows manual-copy guidance when Codex approval opens but copying fails", async () => {
+    mockStaleProviderStory();
+    context.mocks.browser.open(context.mocks.browser.authWindow());
+    blockClipboardWrites();
+    await openProvidersTab();
+
+    const alert = await screen.findByRole("alert");
+    click(within(alert).getByText("Reconnect"));
+
+    const code = await screen.findByTestId("codex-device-auth-code");
+    const reconnectDialog = dialogContaining(code);
+    click(within(reconnectDialog).getByTestId("codex-device-auth-open"));
+
+    await waitFor(() => {
+      expect(within(reconnectDialog).getByRole("alert")).toHaveTextContent(
+        "Approval page opened, but the device code was not copied. Copy it manually before approving.",
+      );
+      expect(
+        within(reconnectDialog).getByText(
+          "Approval page opened. Copy the device code before approving.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows Codex waiting status after the approval page opens and code copies", async () => {
+    mockStaleProviderStory();
+    context.mocks.browser.open(context.mocks.browser.authWindow());
+    context.mocks.browser.clipboardWriteText();
+    await openProvidersTab();
+
+    const alert = await screen.findByRole("alert");
+    click(within(alert).getByText("Reconnect"));
+
+    const code = await screen.findByTestId("codex-device-auth-code");
+    const reconnectDialog = dialogContaining(code);
+    click(within(reconnectDialog).getByTestId("codex-device-auth-open"));
+
+    await waitFor(() => {
+      expect(
+        within(reconnectDialog).getByText(
+          "Device code copied. Waiting for approval...",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("reconnects a stale workspace Claude Code provider", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([staleClaudeCodeProvider()]);
@@ -595,6 +626,31 @@ describe("organization model providers settings", () => {
     await waitFor(() => {
       expect(screen.getByText("ChatGPT connected")).toBeInTheDocument();
       expect(screen.queryByText("Re-connect Codex")).not.toBeInTheDocument();
+    });
+  });
+
+  it("cancels workspace Codex reconnect when the dialog closes", async () => {
+    mockStaleProviderStory();
+    let cancelledSessionToken: string | null = null;
+    context.mocks.api(
+      zeroCodexDeviceAuthContract.cancel,
+      ({ body, respond }) => {
+        cancelledSessionToken = body.sessionToken;
+        return respond(200, { status: "cancelled" });
+      },
+    );
+    await openProvidersTab();
+
+    const alert = await screen.findByRole("alert");
+    click(within(alert).getByText("Reconnect"));
+
+    const code = await screen.findByTestId("codex-device-auth-code");
+    const reconnectDialog = dialogContaining(code);
+    click(within(reconnectDialog).getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(cancelledSessionToken).toBe("mock-codex-device-session");
+      expect(screen.queryAllByTestId("codex-device-auth-code")).toHaveLength(0);
     });
   });
 

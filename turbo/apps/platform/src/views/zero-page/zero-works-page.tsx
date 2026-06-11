@@ -35,6 +35,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { now } from "../../lib/time.ts";
 import { AgentPhoneCard } from "./agentphone-card.tsx";
 import { GithubCard } from "./github-card.tsx";
 import slackIconImg from "./components/settings/icons/slack.svg";
@@ -48,7 +49,7 @@ function openFreshOAuth(url: string) {
   if (prompt) {
     fresh.searchParams.set("prompt", prompt);
   }
-  fresh.searchParams.set("_t", String(Date.now()));
+  fresh.searchParams.set("_t", String(now()));
   window.open(fresh.toString(), "_blank");
 }
 

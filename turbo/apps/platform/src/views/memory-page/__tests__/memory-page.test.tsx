@@ -16,12 +16,13 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { nowDate } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
 function localDateDaysAgo(daysAgo: number): string {
-  const date = new Date();
+  const date = nowDate();
   date.setDate(date.getDate() - daysAgo);
   return [
     date.getFullYear(),

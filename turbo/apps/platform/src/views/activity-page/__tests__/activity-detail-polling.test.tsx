@@ -438,6 +438,195 @@ function complexGroupedActivityEvents(): AgentEvent[] {
   ];
 }
 
+function edgeGroupedActivityEvents(): AgentEvent[] {
+  return [
+    {
+      sequenceNumber: 0,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-web-fetch",
+              name: "WebFetch",
+              input: { url: "https://docs.example.test/runbook" },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:01Z",
+    },
+    {
+      sequenceNumber: 1,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-web-fetch",
+              content: "Runbook section loaded",
+              is_error: false,
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:02Z",
+    },
+    {
+      sequenceNumber: 2,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-web-search",
+              name: "WebSearch",
+              input: { query: "release rollback status page" },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:03Z",
+    },
+    {
+      sequenceNumber: 3,
+      eventType: "system",
+      eventData: {
+        subtype: "task_notification",
+        task_id: "orphan-release-task",
+        description: "Orphan release notification",
+        status: "completed",
+        summary: "Orphan release notification",
+      },
+      createdAt: "2026-03-10T17:00:04Z",
+    },
+    {
+      sequenceNumber: 4,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-task-prompt",
+              name: "Task",
+              input: {
+                prompt:
+                  "Ask release assistant to verify the deployment rollback checklist before continuing",
+              },
+            },
+            {
+              type: "tool_use",
+              id: "tool-custom-prompt",
+              name: "CustomTool",
+              input: {
+                prompt:
+                  "Collect incident channel status and deployment owner notes",
+              },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:05Z",
+    },
+    {
+      sequenceNumber: 5,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-empty-todos",
+              name: "TodoWrite",
+              input: { todos: "not an array" },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:06Z",
+    },
+    {
+      sequenceNumber: 6,
+      eventType: "system",
+      eventData: {
+        subtype: "task_started",
+        task_id: "child-release-task",
+        tool_use_id: "tool-child-task",
+        description: "Inspect release child task",
+      },
+      createdAt: "2026-03-10T17:00:07Z",
+    },
+    {
+      sequenceNumber: 7,
+      eventType: "assistant",
+      eventData: {
+        parent_tool_use_id: "tool-child-task",
+        message: {
+          content: [
+            {
+              type: "text",
+              text: "Child task found one risky deployment.",
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:08Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "assistant",
+      eventData: {
+        parent_tool_use_id: "tool-child-task",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-child-bash",
+              name: "Bash",
+              input: { command: "zero deploy status --json" },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:09Z",
+    },
+    {
+      sequenceNumber: 9,
+      eventType: "user",
+      eventData: {
+        parent_tool_use_id: "tool-child-task",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-child-bash",
+              content: "rollback is ready",
+              is_error: false,
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:10Z",
+    },
+    {
+      sequenceNumber: 10,
+      eventType: "result",
+      eventData: {
+        type: "result",
+        is_error: false,
+        result: "Release edge inspection complete.",
+        num_turns: 1,
+        duration_ms: 1000,
+      },
+      createdAt: "2026-03-10T17:00:11Z",
+    },
+  ];
+}
+
 function checkoutNetworkLogs(): NetworkLogEntry[] {
   return [
     {
@@ -697,6 +886,115 @@ function codexActivityEvents(): AgentEvent[] {
         },
       },
       createdAt: "2026-03-10T15:00:13Z",
+    },
+  ];
+}
+
+function codexFallbackActivityEvents(): AgentEvent[] {
+  return [
+    {
+      sequenceNumber: 0,
+      eventType: "item.completed",
+      eventData: { type: "item.completed" },
+      createdAt: "2026-03-10T15:30:01Z",
+    },
+    {
+      sequenceNumber: 1,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "agent-message-empty",
+          type: "agent_message",
+          status: "completed",
+        },
+      },
+      createdAt: "2026-03-10T15:30:02Z",
+    },
+    {
+      sequenceNumber: 2,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "files-empty",
+          type: "file_change",
+          changes: [],
+        },
+      },
+      createdAt: "2026-03-10T15:30:03Z",
+    },
+    {
+      sequenceNumber: 3,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        item: {
+          id: "write-fallback",
+          type: "file_write",
+          path: "src/generated.ts",
+        },
+      },
+      createdAt: "2026-03-10T15:30:04Z",
+    },
+    {
+      sequenceNumber: 4,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "write-fallback",
+          type: "file_write",
+        },
+      },
+      createdAt: "2026-03-10T15:30:05Z",
+    },
+    {
+      sequenceNumber: 5,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        item: {
+          id: "read-fallback",
+          type: "file_read",
+          path: "src/edge.ts",
+        },
+      },
+      createdAt: "2026-03-10T15:30:06Z",
+    },
+    {
+      sequenceNumber: 6,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "read-fallback",
+          type: "file_read",
+        },
+      },
+      createdAt: "2026-03-10T15:30:07Z",
+    },
+    {
+      sequenceNumber: 7,
+      eventType: "turn.failed",
+      eventData: {
+        type: "turn.failed",
+        error: "Codex build failed before retry.",
+        usage: {
+          input_tokens: 10,
+          output_tokens: 2,
+        },
+      },
+      createdAt: "2026-03-10T15:30:08Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        message: "Codex stream disconnected.",
+      },
+      createdAt: "2026-03-10T15:30:09Z",
     },
   ];
 }
@@ -1144,6 +1442,73 @@ describe("activity detail polling", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows edge-shaped grouped steps", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000501";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Release Edge Run",
+          status: "completed",
+          prompt: "Inspect release edge cases",
+          startedAt: "2026-03-10T17:00:01Z",
+          completedAt: "2026-03-10T17:00:12Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: edgeGroupedActivityEvents(),
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Release Edge Run" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("https://docs.example.test/runbook"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Runbook section loaded")).toBeInTheDocument();
+    expect(
+      screen.getByText("release rollback status page"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Orphan release notification")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Ask release assistant to verify the deployment/u),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getByText(
+        "Collect incident channel status and deployment owner notes",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Inspect release child task")).toBeInTheDocument();
+    expect(
+      screen.getByText("Child task found one risky deployment."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("zero deploy status --json")).not.toHaveLength(
+      0,
+    );
+    expect(screen.getByText("rollback is ready")).toBeInTheDocument();
+    expect(
+      screen.getByText("Release edge inspection complete."),
+    ).toBeInTheDocument();
+  });
+
   it("filters network logs by type and expands non-HTTP details", async () => {
     const runId = "a0000000-0000-4000-a000-000000000299";
 
@@ -1503,6 +1868,64 @@ describe("activity detail polling", () => {
     });
     expect(screen.getByText("403")).toBeInTheDocument();
     expect(screen.getByText("1.0s")).toBeInTheDocument();
+  });
+
+  it("shows codex fallback event rows for failed activity details", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000300";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Codex Edge Cases",
+          framework: "codex",
+          status: "failed",
+          prompt: "Exercise Codex edge event rows",
+          error: "Codex stream disconnected.",
+          startedAt: "2026-03-10T15:30:01Z",
+          completedAt: "2026-03-10T15:30:09Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: codexFallbackActivityEvents(),
+          hasMore: false,
+          framework: "codex",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Codex Edge Cases" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Codex item.completed")).toBeInTheDocument();
+    expect(screen.getByText(/Codex agent_message/u)).toBeInTheDocument();
+    expect(screen.getByText("[files] Files changed")).toBeInTheDocument();
+    expect(screen.getAllByText("Write")).not.toHaveLength(0);
+    expect(screen.getByText("src/generated.ts")).toBeInTheDocument();
+    expect(screen.getByText("File operation completed")).toBeInTheDocument();
+    expect(screen.getAllByText("Read")).not.toHaveLength(0);
+    expect(screen.getByText("src/edge.ts")).toBeInTheDocument();
+    expect(screen.getByText("File read completed")).toBeInTheDocument();
+    expect(
+      screen.getByText("Codex build failed before retry."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Codex stream disconnected.")).not.toHaveLength(
+      0,
+    );
   });
 
   it("shows a not-found state for an inaccessible activity", async () => {

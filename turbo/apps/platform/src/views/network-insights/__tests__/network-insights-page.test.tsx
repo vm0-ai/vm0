@@ -8,21 +8,26 @@ import {
   zeroUsageInsightContract,
   type UsageInsightResponse,
 } from "@vm0/api-contracts/contracts/zero-usage-insight";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { dateFromIso, mockNow, nowDate } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type { NetworkInsightsData } from "../../../signals/network-insights/network-insights-signals.ts";
 
 const context = testContext();
 const user = userEvent.setup();
 
+beforeEach(() => {
+  mockNow();
+});
+
 function localDateDaysAgo(daysAgo: number): string {
-  const date = new Date();
+  const date = nowDate();
   date.setDate(date.getDate() - daysAgo);
   return [
     date.getFullYear(),
@@ -32,22 +37,22 @@ function localDateDaysAgo(daysAgo: number): string {
 }
 
 function monthYearLabel(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
+  return dateFromIso(`${iso}T00:00:00`).toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
   });
 }
 
 function shortDateLabel(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
+  return dateFromIso(`${iso}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
 }
 
 function monthsBetweenTodayAnd(iso: string): number {
-  const today = new Date();
-  const target = new Date(`${iso}T00:00:00`);
+  const today = nowDate();
+  const target = dateFromIso(`${iso}T00:00:00`);
   return (
     (today.getFullYear() - target.getFullYear()) * 12 +
     today.getMonth() -
@@ -339,6 +344,114 @@ function usageInsightResponse(): UsageInsightResponse {
   };
 }
 
+function quoteVariantsInsightsResponse(): InsightsResponse &
+  NetworkInsightsData {
+  return {
+    days: [
+      {
+        date: localDateDaysAgo(0),
+        agents: [
+          {
+            agentName: "Busy Bot",
+            agentId: "c0000000-0000-4000-a000-000000000010",
+            runs: 9,
+            credits: 900,
+          },
+        ],
+        creditsUsed: 900,
+        creditBalance: 9000,
+        teamUsage: [],
+        topTask: { name: "release prep", count: 9 },
+        services: [{ domain: "github", calls: 20, agentNames: ["Busy Bot"] }],
+        permissions: [],
+        schedules: [],
+        chats: [],
+      },
+      {
+        date: localDateDaysAgo(1),
+        agents: [
+          {
+            agentName: "Traffic Bot",
+            agentId: "c0000000-0000-4000-a000-000000000011",
+            runs: 3,
+            credits: 1300,
+          },
+        ],
+        creditsUsed: 1300,
+        creditBalance: 7700,
+        teamUsage: [],
+        topTask: { name: "log review", count: 3 },
+        services: [
+          { domain: "slack", calls: 80, agentNames: ["Traffic Bot"] },
+          { domain: "github", calls: 45, agentNames: ["Traffic Bot"] },
+        ],
+        permissions: [],
+        schedules: [],
+        chats: [],
+      },
+      {
+        date: localDateDaysAgo(2),
+        agents: [
+          {
+            agentName: "Alpha",
+            agentId: "c0000000-0000-4000-a000-000000000012",
+            runs: 1,
+            credits: 100,
+          },
+          {
+            agentName: "Bravo",
+            agentId: "c0000000-0000-4000-a000-000000000013",
+            runs: 1,
+            credits: 100,
+          },
+          {
+            agentName: "Charlie",
+            agentId: "c0000000-0000-4000-a000-000000000014",
+            runs: 1,
+            credits: 100,
+          },
+          {
+            agentName: "Delta",
+            agentId: "c0000000-0000-4000-a000-000000000015",
+            runs: 1,
+            credits: 100,
+          },
+        ],
+        creditsUsed: 400,
+        creditBalance: 7300,
+        teamUsage: [],
+        topTask: { name: "shared support", count: 4 },
+        services: [{ domain: "gmail", calls: 35, agentNames: ["Alpha"] }],
+        permissions: [],
+        schedules: [],
+        chats: [],
+      },
+      {
+        date: localDateDaysAgo(3),
+        agents: [
+          {
+            agentName: "Steady Bot",
+            agentId: "c0000000-0000-4000-a000-000000000016",
+            runs: 3,
+            credits: 450,
+          },
+        ],
+        creditsUsed: 450,
+        creditBalance: 6850,
+        teamUsage: [],
+        topTask: { name: "triage", count: 3 },
+        services: [{ domain: "notion", calls: 40, agentNames: ["Steady Bot"] }],
+        permissions: [],
+        schedules: [],
+        chats: [],
+      },
+    ],
+    totalCredits: 3050,
+    totalRuns: 19,
+    lastUpdated: `${localDateDaysAgo(0)}T12:00:00Z`,
+  };
+}
+
 describe("network insights page", () => {
   it("shows an empty daily insights state", async () => {
     context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
@@ -475,7 +588,7 @@ describe("network insights page", () => {
 
     const monthsBack = monthsBetweenTodayAnd(customDate);
     for (let i = 0; i < monthsBack; i++) {
-      const currentMonth = new Date();
+      const currentMonth = nowDate();
       currentMonth.setMonth(currentMonth.getMonth() - i);
       const currentLabel = currentMonth.toLocaleDateString("en-US", {
         month: "long",
@@ -525,5 +638,29 @@ describe("network insights page", () => {
     expect(screen.getByText("Mira")).toBeInTheDocument();
     expect(screen.queryByText("Research Bot")).not.toBeInTheDocument();
     expect(screen.queryByText("Morning Briefing")).not.toBeInTheDocument();
+  });
+
+  it("summarizes different daily activity patterns", async () => {
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, quoteVariantsInsightsResponse());
+    });
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Today")).toBeInTheDocument();
+      expect(
+        screen.getByText(/1 agents completed 9 runs/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/125 service calls across 2 services/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/4 agents active, using 400 credits total/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/3 runs and 40 service calls today/u),
+      ).toBeInTheDocument();
+    });
   });
 });

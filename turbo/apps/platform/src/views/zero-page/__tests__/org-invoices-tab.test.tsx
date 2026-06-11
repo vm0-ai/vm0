@@ -3,6 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { unixSecondsFromIso } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -20,7 +21,7 @@ function mockInvoicesStory(): void {
         {
           id: "in_2026_0001",
           number: "INV-2026-0001",
-          date: Date.UTC(2026, 2, 15) / 1000,
+          date: unixSecondsFromIso("2026-03-15T00:00:00.000Z"),
           amount: 2000,
           status: "paid",
           hostedInvoiceUrl: "https://billing.stripe.com/invoice/test",

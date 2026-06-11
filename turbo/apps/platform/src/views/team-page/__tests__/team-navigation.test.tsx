@@ -28,6 +28,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -623,6 +624,7 @@ describe("team page navigation", () => {
   });
 
   it("saves permission duration changes from an agent page", async () => {
+    mockNow();
     mockTeamAPIs();
     const capturedUpserts: UpsertUserPermissionGrantRequest[] = [];
     let grants: UserPermissionGrantResponse[] = [
@@ -631,7 +633,7 @@ describe("team page navigation", () => {
         connectorRef: "axiom",
         permission: "annotations|create",
         action: "allow",
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        expiresAt: isoFromNowMs(30 * 60 * 1000),
         createdAt: "2026-03-01T00:00:00.000Z",
         updatedAt: "2026-03-01T00:00:00.000Z",
       },
@@ -650,7 +652,7 @@ describe("team page navigation", () => {
           action: body.action,
           expiresAt:
             body.action === "allow" && body.expiresIn !== "always"
-              ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+              ? isoFromNowMs(60 * 60 * 1000)
               : null,
           createdAt: "2026-03-01T00:00:00.000Z",
           updatedAt: "2026-03-01T00:30:00.000Z",

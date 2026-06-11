@@ -1,10 +1,11 @@
 import type { UsageInsightResponse } from "@vm0/core";
 
+import { isoFromNowMs } from "../../../__tests__/time.ts";
+
 const DAY_MS = 86_400_000;
 
 function bucketTs(daysAgo: number): string {
-  const date = new Date(Date.now() - daysAgo * DAY_MS);
-  return `${date.toISOString().slice(0, 10)} 00:00:00`;
+  return `${isoFromNowMs(-daysAgo * DAY_MS).slice(0, 10)} 00:00:00`;
 }
 
 export const usageInsightTodayFixture: Readonly<UsageInsightResponse> = {

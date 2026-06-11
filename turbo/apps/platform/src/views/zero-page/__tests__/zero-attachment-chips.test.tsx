@@ -1,3 +1,8 @@
+import {
+  chatThreadArtifactsContract,
+  type ChatThreadArtifactFile,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -8,6 +13,47 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
+
+function artifactFile(
+  url: string,
+  overrides: Partial<ChatThreadArtifactFile> = {},
+): ChatThreadArtifactFile {
+  return {
+    id: "artifact-quarterly-roadmap",
+    filename: "quarterly-roadmap.html",
+    contentType: "text/html",
+    artifactKind: "presentation-html",
+    size: 1024,
+    url,
+    createdAt: "2026-03-10T00:00:01Z",
+    googleDriveSync: { status: "not_synced" },
+    ...overrides,
+  };
+}
+
+function presentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Quarterly roadmap</title>
+    <script id="vm0-deck-metadata" type="application/json">
+      {
+        "kind": "presentation-html",
+        "editProtocolVersion": 1,
+        "slides": {
+          "slide-intro": { "speakerNotes": "Open with launch metrics." }
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <section data-vm0-slide data-slide-id="slide-intro">
+      <h1 data-vm0-editable="text" data-vm0-edit-id="title">Quarterly roadmap</h1>
+      <p data-vm0-editable="text" data-vm0-edit-id="summary">Launch metrics are ahead of plan.</p>
+    </section>
+  </body>
+</html>`;
+}
 
 beforeEach(() => {
   context.mocks.data.userModelPreference({
@@ -437,6 +483,101 @@ describe("zero attachment chips", () => {
       expect(
         screen.getByTestId("artifact-dialog-body-html"),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("opens presentation artifact controls from chat message links", async () => {
+    const presentationUrl =
+      "https://cdn.vm7.io/artifacts/test/body-presentation/quarterly-roadmap.html";
+    const html = presentationHtml();
+    context.mocks.http.get(presentationUrl, () => {
+      return new Response(html, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(html, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-presentation",
+            files: [artifactFile(presentationUrl)],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-presentation-artifact",
+          role: "assistant",
+          content: `[Quarterly roadmap](${presentationUrl})`,
+          runId: "run-presentation",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open html preview for Quarterly roadmap"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for Quarterly roadmap"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+      expect(screen.getByLabelText("Open in split view")).toBeInTheDocument();
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Enter fullscreen"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Exit fullscreen"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close artifact"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for Quarterly roadmap"));
+    click(await screen.findByLabelText("Edit presentation"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
     });
   });
 

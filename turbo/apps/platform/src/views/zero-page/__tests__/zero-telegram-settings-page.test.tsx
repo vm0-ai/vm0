@@ -71,6 +71,19 @@ function setupTelegramPage(): void {
   });
 }
 
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((element) => {
+    return element.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
 describe("telegram settings page", () => {
   it("sets up a Telegram bot and redirects to the connect route", async () => {
     context.mocks.browser.clipboardWriteText();
@@ -324,6 +337,85 @@ describe("telegram settings page", () => {
     await waitFor(() => {
       expect(screen.queryByText("@alpha_bot")).not.toBeInTheDocument();
       expect(screen.getByText("@beta_bot")).toBeInTheDocument();
+    });
+  });
+
+  it("shows connected identities and keeps bot dialogs cancelable", async () => {
+    const alphaAvatarUrl = "/telegram/alpha/avatar.png";
+
+    context.mocks.data.telegramIntegration({
+      statuses: [
+        telegramStatus("alpha", {
+          username: "alpha_bot",
+          avatarUrl: alphaAvatarUrl,
+          tokenStatus: "invalid",
+        }),
+        telegramStatus("beta", {
+          username: "beta_bot",
+          isConnected: true,
+          connectedUser: {
+            telegramUserId: "tg_beta",
+            telegramUsername: null,
+            telegramDisplayName: "Beta User",
+          },
+        }),
+        telegramStatus("gamma", {
+          username: "gamma_bot",
+          isConnected: true,
+          connectedUser: {
+            telegramUserId: "tg_gamma",
+            telegramUsername: null,
+            telegramDisplayName: "   ",
+          },
+        }),
+      ],
+    });
+
+    setupTelegramPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected (Beta User)")).toBeInTheDocument();
+      expect(screen.getByText("Connected (tg_gamma)")).toBeInTheDocument();
+    });
+
+    const alphaAvatar = screen.getByTestId(
+      "telegram-bot-avatar-alpha",
+    ) as HTMLImageElement;
+    expect(alphaAvatar.src).toContain(alphaAvatarUrl);
+    fireEvent.error(alphaAvatar);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("telegram-bot-avatar-fallback-alpha"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Add bot"));
+    let dialog = await screen.findByRole("dialog");
+    click(buttonByText("Cancel", dialog));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByText("Reinstall"));
+    dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/fresh BotFather token for @alpha_bot/u),
+    ).toBeInTheDocument();
+    click(buttonByText("Cancel", dialog));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("More options for @alpha_bot"));
+    click(await screen.findByLabelText("Uninstall @alpha_bot"));
+    dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/This removes @alpha_bot/u),
+    ).toBeInTheDocument();
+    click(buttonByText("Cancel", dialog));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByText("@alpha_bot")).toBeInTheDocument();
     });
   });
 

@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { now } from "../../lib/time.ts";
 import {
   connectGithubInstallation$,
   disconnectGithubInstallation$,
@@ -31,7 +32,7 @@ const GITHUB_ADMIN_INSTALL_TOOLTIP = "Ask an org admin to install GitHub.";
 
 function openFreshOAuth(url: string) {
   const fresh = new URL(url, window.location.origin);
-  fresh.searchParams.set("_t", String(Date.now()));
+  fresh.searchParams.set("_t", String(now()));
   window.open(fresh.toString(), "_blank");
 }
 

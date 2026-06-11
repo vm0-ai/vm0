@@ -35,6 +35,7 @@ import {
   onDomEventFn,
   Reason,
 } from "../../signals/utils.ts";
+import { nowDate } from "../../lib/time.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   ScheduleFormDialog,
@@ -82,7 +83,7 @@ function defaultParsed(
 ): ParsedScheduleTime {
   return {
     freq: "every_day",
-    date: new Date().toISOString().slice(0, 10),
+    date: nowDate().toISOString().slice(0, 10),
     hour: 9,
     minute: 0,
     timezone: "UTC",

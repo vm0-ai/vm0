@@ -6,6 +6,7 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { accept } from "../../lib/accept.ts";
+import { now } from "../../lib/time.ts";
 
 // --- Chart tooltip / width state (used by UsageInsightBarChart) ---
 
@@ -236,7 +237,7 @@ function densifyBuckets(
     range === "today" || range === "yesterday" || range === "day";
   const count = isHourly ? 24 : range === "7d" ? 7 : range === "28d" ? 28 : 30;
   const stepMs = isHourly ? HOUR_MS : DAY_MS;
-  const nowParts = bucketPartsInTz(Date.now(), tz);
+  const nowParts = bucketPartsInTz(now(), tz);
   const todayStartMs = Date.UTC(
     nowParts.year,
     nowParts.month - 1,

@@ -6,6 +6,7 @@ import {
   setRangeWithDate$,
   type InsightRange,
 } from "../usage-page/usage-insight-signals.ts";
+import { nowDate } from "../../lib/time.ts";
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -150,15 +151,15 @@ export const setInsightsCalendarOpen$ = command(({ set }, open: boolean) => {
   set(internalCalendarOpen$, open);
 });
 
-const internalCalendarYear$ = state(new Date().getFullYear());
-const internalCalendarMonth$ = state(new Date().getMonth());
+const internalCalendarYear$ = state<number | null>(null);
+const internalCalendarMonth$ = state<number | null>(null);
 
 export const insightsCalendarYear$ = computed((get) => {
-  return get(internalCalendarYear$);
+  return get(internalCalendarYear$) ?? nowDate().getFullYear();
 });
 
 export const insightsCalendarMonth$ = computed((get) => {
-  return get(internalCalendarMonth$);
+  return get(internalCalendarMonth$) ?? nowDate().getMonth();
 });
 
 export const setInsightsCalendarYear$ = command(({ set }, year: number) => {

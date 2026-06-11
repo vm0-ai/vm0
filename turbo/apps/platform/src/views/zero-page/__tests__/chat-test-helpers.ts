@@ -26,6 +26,7 @@ import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents
 import type { RunStatus } from "@vm0/api-contracts/contracts/runs";
 
 import { fill } from "../../../__tests__/page-helper.ts";
+import { nowIso } from "../../../__tests__/time.ts";
 import type { TestContext } from "../../../signals/__tests__/test-helpers.ts";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
@@ -353,7 +354,11 @@ export function mockChatLifecycle(
      * keep the new-thread optimistic view mounted while interacting with it.
      */
     sendGate?: Promise<void>;
-    onRunCreate?: (body: { prompt?: string; clientMessageId?: string }) => void;
+    onRunCreate?: (body: {
+      prompt?: string;
+      clientMessageId?: string;
+      computerUseHostId?: string | null;
+    }) => void;
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -400,7 +405,7 @@ export function mockChatLifecycle(
     clientMessageId?: string;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
-    const now = new Date().toISOString();
+    const now = nowIso();
     options?.onRecallMessageAppend?.({
       revokesMessageId: body.revokesMessageId,
       clientMessageId,
@@ -421,7 +426,7 @@ export function mockChatLifecycle(
     clientMessageId?: string;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
-    const now = new Date().toISOString();
+    const now = nowIso();
     options?.onInterruptMessageAppend?.({
       interruptsRunId: body.interruptsRunId,
       clientMessageId,
@@ -478,7 +483,7 @@ export function mockChatLifecycle(
     if (options?.appendGate) {
       await options.appendGate;
     }
-    const now = new Date().toISOString();
+    const now = nowIso();
     queuedMessages.push({
       id: clientMessageId,
       role: "user" as const,
@@ -493,6 +498,7 @@ export function mockChatLifecycle(
   const startRunFromUserMessage = async (body: {
     prompt?: string;
     clientMessageId?: string;
+    computerUseHostId?: string | null;
   }) => {
     if (options?.sendGate) {
       await options.sendGate;

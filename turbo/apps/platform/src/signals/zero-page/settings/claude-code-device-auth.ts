@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 
 import { ApiError, accept } from "../../../lib/accept.ts";
+import { now } from "../../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
@@ -101,7 +102,7 @@ export const setClaudeCodeDeviceAuthDialogStatePersonal$ = command(
 );
 
 function createRequestId(scope: ClaudeCodeDeviceAuthScope): string {
-  return `${scope}-claude-code-device-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${scope}-claude-code-device-auth-${now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function secondsToMilliseconds(seconds: number): number {
@@ -240,7 +241,7 @@ async function runClaudeCodeDeviceAuthFlow(args: {
     requestId,
     sessionToken: started.value.sessionToken,
     browserUrl: started.value.browserUrl,
-    expiresAtMs: Date.now() + secondsToMilliseconds(started.value.expiresIn),
+    expiresAtMs: now() + secondsToMilliseconds(started.value.expiresIn),
     authorizationCode: "",
     approvalOpened: false,
     errorMessage: null,
@@ -301,7 +302,7 @@ async function submitClaudeCodeDeviceAuth(args: {
   if (!isActive(current)) {
     return false;
   }
-  if (current.expiresAtMs <= Date.now()) {
+  if (current.expiresAtMs <= now()) {
     args.setFlow({
       status: "expired",
       message: "Claude Code connection session expired. Start again to retry.",

@@ -5,6 +5,7 @@ import {
   zeroScheduleRunContract,
   type ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 import {
   getMockSchedules,
@@ -109,7 +110,7 @@ export const apiSchedulesHandlers = [
 
   // POST /api/zero/schedules
   mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-    const now = new Date().toISOString();
+    const now = nowDate().toISOString();
     const schedules = getMockSchedules();
     const existing = schedules.find((s) => s.name === body.name);
     const schedule = createStoredSchedule(body, existing, now);

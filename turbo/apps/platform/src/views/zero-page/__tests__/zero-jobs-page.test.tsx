@@ -442,7 +442,7 @@ describe("zero jobs page", () => {
     selectOptionByLabel("Minute", "45", editScheduleDialog);
     selectOptionByLabel(
       "Timezone",
-      /^\(GMT[+-]\d{2}:\d{2}\) Eastern Time \(ET\)$/u,
+      /^\(GMT[+-]\d{2}:\d{2}\) India Standard Time \(IST\)$/u,
       editScheduleDialog,
     );
     await fill(
@@ -453,13 +453,13 @@ describe("zero jobs page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByText("Every week on Wednesday at 4:45 PM")[0],
+        screen.getAllByText("Every week on Wednesday at 10:15 PM")[0],
       ).toBeInTheDocument();
       expect(capturedDeployBody).toMatchObject({
         name: "monday-risk-review",
         agentId,
         cronExpression: "45 16 * * 3",
-        timezone: "America/New_York",
+        timezone: "Asia/Kolkata",
         prompt: "Summarize launch risks",
       });
     });
