@@ -1,6 +1,4 @@
-use std::io::Write;
-
-use vsock_proto::{self, MSG_WRITE_FILE};
+use vsock_proto::MSG_WRITE_FILE;
 
 use super::support::{
     assert_ping_pong, finish_guest_connection, read_error_response, send_control_payload,
@@ -11,12 +9,7 @@ use super::support::{
 fn write_file_seq_zero_returns_error() {
     let (handle, mut host_stream) = start_guest_connection();
 
-    let payload =
-        vsock_proto::encode_write_file("/tmp/write-file-seq-zero.txt", b"ok", false, false)
-            .unwrap();
-    let msg = vsock_proto::encode(MSG_WRITE_FILE, 0, &payload).unwrap();
-    host_stream.write_all(&msg).unwrap();
-
+    send_control_payload(&mut host_stream, MSG_WRITE_FILE, 0, b"bad");
     let error = read_error_response(&mut host_stream, 0);
     assert_eq!(error, "write_file requires non-zero sequence");
 
