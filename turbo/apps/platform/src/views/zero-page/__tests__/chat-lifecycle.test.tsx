@@ -2178,6 +2178,9 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
+    // Clicking into a note collapses the text selection in a real browser;
+    // mirror that so later clicks do not re-open the selection toolbar.
+    window.getSelection()?.removeAllRanges();
 
     const firstComment = await screen.findByPlaceholderText(
       "What should change about this?",
@@ -2189,6 +2192,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
+    window.getSelection()?.removeAllRanges();
 
     const comments = screen.getAllByPlaceholderText(
       "What should change about this?",
@@ -2262,6 +2266,9 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
+    // Clicking into a note collapses the text selection in a real browser;
+    // mirror that so later clicks do not re-open the selection toolbar.
+    window.getSelection()?.removeAllRanges();
 
     await fill(
       await screen.findByPlaceholderText("What should change about this?"),
@@ -2273,6 +2280,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
+    window.getSelection()?.removeAllRanges();
 
     await fill(
       screen.getAllByPlaceholderText("What should change about this?")[0],
