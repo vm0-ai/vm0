@@ -188,8 +188,8 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
             resources.memory_prefetch.cancel();
             resources.provider.shutdown().await;
             resources.runtime.shutdown().await;
-            if let Err(stop_error) = resources.mitm.stop().await {
-                warn!(error = %stop_error, "failed to stop proxy after live runner instance publish failed");
+            if let Err(kill_error) = resources.mitm.kill_now().await {
+                warn!(error = %kill_error, "failed to kill proxy after live runner instance publish failed");
             }
             resources.kmsg_handle.stop().await;
             resources.dns_handle.stop().await;

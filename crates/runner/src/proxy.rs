@@ -574,6 +574,19 @@ impl MitmProxy {
         self.child = None;
         Ok(())
     }
+
+    /// Immediately kill and reap mitmdump without the graceful SIGTERM window.
+    pub async fn kill_now(&mut self) -> RunnerResult<()> {
+        self.stopping.store(true, Ordering::Release);
+        let Some(ref mut child) = self.child else {
+            return Ok(());
+        };
+        child.kill().await.map_err(|e| {
+            RunnerError::Internal(format!("kill mitmdump process after startup failure: {e}"))
+        })?;
+        self.child = None;
+        Ok(())
+    }
 }
 
 fn now_millis() -> u64 {

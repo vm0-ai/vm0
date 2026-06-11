@@ -105,6 +105,8 @@ fn write_usage_pending_state(
 
 #[tokio::test]
 async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
+    use tokio::io::AsyncBufReadExt;
+
     let dir = tempfile::tempdir().unwrap();
     let home = crate::paths::HomePaths::with_root(dir.path().join("vm0-runner"));
     std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
@@ -119,6 +121,33 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
         shutdowns: Arc::clone(&runtime_shutdowns),
     };
     let (mut mitm, _mitm_crash_rx) = crate::proxy::MitmProxy::noop();
+    let mut ignore_term_child = tokio::process::Command::new("python3")
+        .arg("-c")
+        .arg(
+            r#"
+import os
+import signal
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+os.write(1, b"ready\n")
+while True:
+    signal.pause()
+"#,
+        )
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let stdout = ignore_term_child.stdout.take().unwrap();
+    let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
+    let ready = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
+        .await
+        .expect("ignore-term child did not become ready")
+        .unwrap();
+    assert_eq!(ready.as_deref(), Some("ready"));
+    mitm.set_child_for_test(ignore_term_child);
     let prefetch_cancel = CancellationToken::new();
     let task_cancel = prefetch_cancel.clone();
     let (cancelled_tx, cancelled_rx) = tokio::sync::oneshot::channel();
@@ -135,19 +164,23 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
         runner_group: "vm0/test".into(),
     };
 
-    let error = match publish_live_runner_instance_or_shutdown_startup_resources(
-        &home,
-        metadata,
-        LiveRunnerPublishResources {
-            provider: &provider,
-            runtime: &mut runtime,
-            mitm: &mut mitm,
-            kmsg_handle: crate::kmsg_log::KmsgHandle::noop(),
-            dns_handle: crate::dns::DnsProxy::noop(),
-            memory_prefetch: &mut memory_prefetch,
-        },
+    let error = match tokio::time::timeout(
+        Duration::from_secs(2),
+        publish_live_runner_instance_or_shutdown_startup_resources(
+            &home,
+            metadata,
+            LiveRunnerPublishResources {
+                provider: &provider,
+                runtime: &mut runtime,
+                mitm: &mut mitm,
+                kmsg_handle: crate::kmsg_log::KmsgHandle::noop(),
+                dns_handle: crate::dns::DnsProxy::noop(),
+                memory_prefetch: &mut memory_prefetch,
+            },
+        ),
     )
     .await
+    .expect("publish failure cleanup should not wait for graceful proxy stop")
     {
         Ok(_) => panic!("live runner instance publish should fail"),
         Err(error) => error,
