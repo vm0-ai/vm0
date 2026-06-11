@@ -15,8 +15,6 @@ describe("builtin firewall catalog", () => {
     expect(
       catalog.firewalls["model-provider:openai-api-key"]?.apis[0]?.base,
     ).toBe("https://api.openai.com/v1/responses");
-    expect(catalog.connectorCount).toBeGreaterThan(0);
-    expect(catalog.modelProviderCount).toBeGreaterThan(0);
   });
 
   it("renders deterministic multiline Python JSON", () => {

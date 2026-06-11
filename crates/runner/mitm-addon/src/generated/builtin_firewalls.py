@@ -5,17 +5,6 @@
 
 import json
 
-BUILTIN_FIREWALL_CATALOG_VERSION = 1
-BUILTIN_FIREWALL_CATALOG_METADATA = json.loads(
-    r"""
-{
-  "connectorCount": 256,
-  "firewallCount": 268,
-  "modelProviderCount": 12,
-  "version": 1
-}
-"""
-)
 BUILTIN_FIREWALLS = json.loads(
     r"""
 {
