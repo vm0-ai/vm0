@@ -64,7 +64,9 @@ describe("allOrgScheduleEntries$", () => {
     await ctx.store.set(fetchAllOrgSchedules$, ctx.signal);
     const entries = await ctx.store.get(allOrgScheduleEntries$);
 
-    const timezones = entries.map((e) => e.timezone);
+    const timezones = entries.map((e) => {
+      return e.timezone;
+    });
     expect(new Set(timezones).size).toBe(1);
     expect(timezones[0]).toBe("Asia/Shanghai");
   });
