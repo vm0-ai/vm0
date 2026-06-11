@@ -744,11 +744,13 @@ fn rewrite_entry_url(
 mod tests {
     use super::*;
 
+    use async_trait::async_trait;
     use httpmock::Method::{GET, HEAD};
     use httpmock::prelude::*;
     use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
     use sandbox_mock::{MockLifecycleGate, MockSandbox};
-    use std::sync::Arc;
+    use std::collections::HashSet;
+    use std::sync::{Arc, Mutex};
     use tokio::io::AsyncWriteExt as _;
     use tokio::net::TcpListener;
 
@@ -795,6 +797,123 @@ mod tests {
         let cache_dir = home.storage_cache_dir(name, version);
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(cache_dir.join("archive.tar.gz"), bytes).unwrap();
+    }
+
+    struct SamePathConcurrentWriteDetectingSandbox {
+        inner: MockSandbox,
+        gate: MockLifecycleGate,
+        active_paths: Mutex<HashSet<String>>,
+    }
+
+    impl SamePathConcurrentWriteDetectingSandbox {
+        fn new(id: impl Into<String>) -> Self {
+            let inner = MockSandbox::new(id);
+            let gate = MockLifecycleGate::new();
+            inner.set_write_file_lifecycle_gate(gate.clone());
+            Self {
+                inner,
+                gate,
+                active_paths: Mutex::new(HashSet::new()),
+            }
+        }
+
+        fn gate(&self) -> MockLifecycleGate {
+            self.gate.clone()
+        }
+
+        fn write_file_calls(&self) -> Vec<sandbox_mock::WriteFileCall> {
+            self.inner.write_file_calls()
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for SamePathConcurrentWriteDetectingSandbox {
+        fn id(&self) -> &str {
+            self.inner.id()
+        }
+
+        fn source_ip(&self) -> &str {
+            self.inner.source_ip()
+        }
+
+        fn process_pid(&self) -> Option<u32> {
+            self.inner.process_pid()
+        }
+
+        async fn start(&mut self) -> sandbox::Result<()> {
+            self.inner.start().await
+        }
+
+        async fn stop(&mut self) -> sandbox::Result<()> {
+            self.inner.stop().await
+        }
+
+        async fn kill(&mut self) -> sandbox::Result<()> {
+            self.inner.kill().await
+        }
+
+        async fn park(&mut self) -> sandbox::Result<()> {
+            self.inner.park().await
+        }
+
+        async fn unpark(&mut self) -> sandbox::Result<()> {
+            self.inner.unpark().await
+        }
+
+        async fn exec(
+            &self,
+            request: &sandbox::ExecRequest<'_>,
+        ) -> sandbox::Result<sandbox::ExecResult> {
+            self.inner.exec(request).await
+        }
+
+        async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+            self.inner.read_file(path, max_bytes).await
+        }
+
+        async fn copy_file(
+            &self,
+            path: &str,
+            host_path: &Path,
+            options: sandbox::CopyFileOptions,
+        ) -> sandbox::Result<sandbox::CopyFileResult> {
+            self.inner.copy_file(path, host_path, options).await
+        }
+
+        async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+            {
+                let mut active_paths = self.active_paths.lock().unwrap_or_else(|e| e.into_inner());
+                if !active_paths.insert(path.to_string()) {
+                    return Err(SandboxError::Operation {
+                        operation: SandboxOperation::WriteFile,
+                        reason: SandboxOperationReason::Other,
+                        message: format!("concurrent write_file to {path}"),
+                    });
+                }
+            }
+
+            let result = self.inner.write_file(path, content).await;
+            self.active_paths
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(path);
+            result
+        }
+
+        async fn start_process(
+            &self,
+            request: &sandbox::StartProcessRequest<'_>,
+        ) -> sandbox::Result<sandbox::GuestProcessHandle> {
+            self.inner.start_process(request).await
+        }
+
+        async fn wait_process(
+            &self,
+            handle: sandbox::GuestProcessHandle,
+            timeout: Duration,
+        ) -> sandbox::Result<sandbox::ProcessExit> {
+            self.inner.wait_process(handle, timeout).await
+        }
     }
 
     fn sandbox_write_file_error(message: impl Into<String>) -> SandboxError {
@@ -1567,9 +1686,8 @@ mod tests {
         let version = "v1";
         write_cached_archive(&home, name, version, &tarball_bytes());
 
-        let sandbox = Arc::new(MockSandbox::new("test"));
-        let gate = MockLifecycleGate::new();
-        sandbox.set_write_file_lifecycle_gate(gate.clone());
+        let sandbox = Arc::new(SamePathConcurrentWriteDetectingSandbox::new("test"));
+        let gate = sandbox.gate();
 
         let task = {
             let home = home.clone();
@@ -1598,27 +1716,27 @@ mod tests {
                     cleanup_paths: Vec::new(),
                 };
                 let mut telemetry = new_telemetry();
-                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
-                    .await
-                    .unwrap();
-                manifest
+                populate_cache(&mut manifest, sandbox.as_ref(), &home, &mut telemetry).await?;
+                Ok::<GuestDownloadManifest, RunnerError>(manifest)
             })
         };
 
         gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
-        for _ in 0..10 {
-            tokio::task::yield_now().await;
-        }
         assert_eq!(
             sandbox.write_file_calls().len(),
             1,
-            "duplicate guest path writes must be serialized"
+            "first duplicate guest path write should be blocked in the sandbox"
         );
 
         gate.release_one();
         gate.wait_entered(2, Duration::from_secs(5)).await.unwrap();
         gate.release_one();
-        let manifest = task.await.unwrap();
+        let manifest = task.await.unwrap().unwrap();
+        assert_eq!(
+            sandbox.write_file_calls().len(),
+            2,
+            "second duplicate guest path write should start after the first is released"
+        );
 
         let expected = format!("file://{}", guest_archive_path(name, version));
         assert_eq!(
