@@ -39,7 +39,7 @@ const generatedModPath = fileURLToPath(
 );
 const generatedBuiltinFirewallCatalogPath = fileURLToPath(
   new URL(
-    "../../../../../crates/runner/mitm-addon/src/generated_builtin_firewalls.py",
+    "../../../../../crates/runner/mitm-addon/src/generated/builtin_firewalls.py",
     import.meta.url,
   ),
 );

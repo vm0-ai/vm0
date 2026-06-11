@@ -12,7 +12,7 @@ from mitmproxy import ctx
 
 import matching
 from auth import evict_all_cache_keys, evict_stale_cache_keys
-from generated_builtin_firewalls import BUILTIN_FIREWALLS
+from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
 VmContext = tuple[
     dict,
