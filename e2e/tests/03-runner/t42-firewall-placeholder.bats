@@ -99,7 +99,62 @@ setup_test_connector() {
     fi
 }
 
-@test "firewall: placeholder env vars and slack default write deny" {
+enable_slack_for_compose() {
+    local compose_id="$1"
+    zero_curl "/api/zero/agents/${compose_id}/user-connectors" \
+        -X PUT \
+        -d '{"enabledTypes":["slack"]}' \
+        >/dev/null
+}
+
+run_zero_agent_via_api() {
+    local agent_id="$1"
+    local prompt="$2"
+    local expected_log="${3:-}"
+    local payload body run_id logs status_value start timeout
+
+    payload=$(jq -nc \
+        --arg agentId "$agent_id" \
+        --arg prompt "$prompt" \
+        '{agentId: $agentId, prompt: $prompt}')
+
+    body=$(zero_curl "/api/zero/runs" -X POST -d "$payload") || {
+        echo "# Failed to create zero run"
+        return 1
+    }
+
+    run_id=$(printf '%s' "$body" | jq -r '.runId // ""')
+    [ -n "$run_id" ] || {
+        echo "# Failed to extract runId from zero run response"
+        echo "# Response: $body"
+        return 1
+    }
+
+    echo "Run ID:   $run_id"
+    wait_for_zero_run_completed "$run_id" || return 1
+    echo "Run completed successfully"
+
+    timeout="${ZERO_RUN_LOG_TIMEOUT:-30}"
+    start=$SECONDS
+    logs=""
+    status_value=1
+    while (( SECONDS - start < timeout )); do
+        logs="$($VM0_CLI logs "$run_id" --all 2>&1)"
+        status_value=$?
+        if [[ "$status_value" -eq 0 && ( -z "$expected_log" || "$logs" == *"$expected_log"* ) ]]; then
+            echo "$logs"
+            return 0
+        fi
+        sleep 2
+    done
+
+    echo "# Timed out (${timeout}s) waiting for run logs containing: $expected_log"
+    echo "# Last logs command status: $status_value"
+    echo "$logs"
+    return 1
+}
+
+@test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     # No firewalls needed — connector auto-add provides firewalls.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -122,7 +177,7 @@ EOF
     # Verify env vars from both firewall configs are set to placeholder values.
     run $VM0_CLI run "${AGENT_NAME}-multi" \
         --artifact "$ARTIFACT_NAME-multi:/home/user/workspace" \
-        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\" && BODY_FILE=\$(mktemp) && SLACK_STATUS=\$(curl -sS -o \"\$BODY_FILE\" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H \"Authorization: Bearer \$SLACK_TOKEN\" -H 'Content-Type: application/json' --data '{\"channel\":\"C0000000000\",\"text\":\"e2e\"}') && echo \"SLACK_WRITE_STATUS=\$SLACK_STATUS\" && echo \"SLACK_WRITE_BODY=\$(cat \"\$BODY_FILE\")\""
+        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\""
 
     echo "$output"
     assert_success
@@ -130,6 +185,44 @@ EOF
 
     assert_output --partial "GITHUB_TOKEN=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"
     assert_output --partial "SLACK_TOKEN=xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf"
+}
+
+@test "firewall: slack default write permission deny in zero run" {
+    cat > "$TEST_DIR/vm0-slack-deny.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${AGENT_NAME}-slack-deny:
+    description: "Slack default write permission deny test"
+    framework: claude-code
+    environment:
+      SLACK_TOKEN: \${{ secrets.SLACK_TOKEN }}
+EOF
+
+    create_artifact "$ARTIFACT_NAME-slack-deny"
+
+    run $VM0_CLI compose --yes --json "$TEST_DIR/vm0-slack-deny.yaml"
+    echo "$output"
+    assert_success
+
+    local COMPOSE_ID
+    COMPOSE_ID=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['composeId'])")
+    [ -n "$COMPOSE_ID" ] || {
+        echo "# Failed to extract composeId from compose output"
+        return 1
+    }
+
+    run enable_slack_for_compose "$COMPOSE_ID"
+    echo "$output"
+    assert_success
+
+    run run_zero_agent_via_api "$COMPOSE_ID" \
+        "BODY_FILE=\$(mktemp) && SLACK_STATUS=\$(curl -sS -o \"\$BODY_FILE\" -w '%{http_code}' -X POST https://slack.com/api/chat.postMessage -H \"Authorization: Bearer \$SLACK_TOKEN\" -H 'Content-Type: application/json' --data '{\"channel\":\"C0000000000\",\"text\":\"e2e\"}') && echo \"SLACK_WRITE_STATUS=\$SLACK_STATUS\" && echo \"SLACK_WRITE_BODY=\$(cat \"\$BODY_FILE\")\"" \
+        "SLACK_WRITE_STATUS=403"
+
+    echo "$output"
+    assert_success
+    assert_output --partial "Run completed successfully"
     assert_output --partial "SLACK_WRITE_STATUS=403"
     assert_output --partial '"error": "permission_denied"'
     assert_output --partial '"permissions": ["chat:write"]'
