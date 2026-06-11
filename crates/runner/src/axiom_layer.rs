@@ -111,11 +111,11 @@ pub(crate) fn init() -> Option<(AxiomLayer, AxiomGuard)> {
     init_with_base_url(DEFAULT_AXIOM_URL, &token, &suffix)
 }
 
-/// Core init with an explicit base URL. Exists so integration tests can point
+/// Core init with an explicit base URL. Exists so module tests can point
 /// at an `httpmock` server without leaking an `AXIOM_URL` override into the
 /// runner's production env surface — production code should always call
 /// [`init`], which hard-codes [`DEFAULT_AXIOM_URL`].
-pub(crate) fn init_with_base_url(
+fn init_with_base_url(
     base_url: &str,
     token: &str,
     suffix: &str,
@@ -356,3 +356,7 @@ fn serialize_event(event: &Event<'_>) -> Value {
     out.insert("service".into(), Value::String(SERVICE_NAME.into()));
     Value::Object(out)
 }
+
+#[cfg(test)]
+#[path = "axiom_layer_tests.rs"]
+mod tests;
