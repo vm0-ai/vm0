@@ -54,7 +54,12 @@ import {
   zeroRunsMainContract,
   zeroLogsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
-import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
+import {
+  logsSearchContract,
+  runsMainContract,
+  runsByIdContract,
+  runsQueueContract,
+} from "@vm0/api-contracts/contracts/runs";
 import {
   storagesListContract,
   storagesDownloadContract,
@@ -323,6 +328,12 @@ export function createBddApi(context: TestContext) {
      * not-found cases are reachable directly. */
     storagesList: setupApp({ context })(storagesListContract),
     storagesDownload: setupApp({ context })(storagesDownloadContract),
+    /** ts-rest clients for the CLI-facing `/api/agent/runs` family (list,
+     * get-by-id, queue). Rows need funded runs (GAP-RUN-CREDITS); the auth,
+     * validation, not-found and empty-queue cases are reachable directly. */
+    runsList: setupApp({ context })(runsMainContract),
+    runsById: setupApp({ context })(runsByIdContract),
+    runsQueue: setupApp({ context })(runsQueueContract),
     logsList: setupApp({ context })(logsListContract),
     /** ts-rest client for `/api/zero/logs/:id` (single run-log detail). The 200
      * detail needs a funded run (GAP-RUN-CREDITS); the auth, capability and

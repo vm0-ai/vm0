@@ -1452,3 +1452,18 @@ First USAGE-family reduce.
   state (GAP-STRIPE-SUBSCRIPTION / GAP-RUN-CREDITS) and stay in the kept legacy.
 - Reduced `zero-billing-status.test.ts` (23 -> 20).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 68 — AGENT RUNS READ REJECTIONS (CHAIN-AGENT-RUNS-READ-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `runsList` (`/api/agent/runs`), `runsById`
+  (`/api/agent/runs/:id`) and `runsQueue` (`/api/agent/runs/queue`) clients.
+- Added `agent-runs-read-rejections.bdd.test.ts`: list rejects unauthenticated
+  callers (401) and invalid status / since / until filters (400); get-by-id
+  rejects an invalid uuid (400) and 404s an unknown run; queue rejects
+  unauthenticated callers (401) and returns an empty queue (empty `queue` +
+  `runningTasks`, `concurrency.active === 0`) for a fresh org.
+- Listing/reading real runs, the seeded other-user/other-org 404 variants and the
+  free-tier concurrency shape need funded runs / seeded tier (GAP-RUN-CREDITS) and
+  stay in the kept legacy.
+- Reduced `agent-runs-read.test.ts` (13 -> 9).
+- Coverage verified (source-only): no regressions vs `main`.

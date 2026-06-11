@@ -94,20 +94,6 @@ function queueClient() {
 }
 
 describe("GET /api/agent/runs", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await accept(
-      runsClient().list({ query: {}, headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
   it("uses queued, pending, and running as the default status filter", async () => {
     const fixture = await createFixture();
     const compose = await createCompose({ fixture });
@@ -168,44 +154,6 @@ describe("GET /api/agent/runs", () => {
       expect.arrayContaining(["queued run", "pending run", "running run"]),
     );
     expect(prompts).not.toContain("completed run");
-  });
-
-  it("returns 400 for invalid status and invalid date filters", async () => {
-    const fixture = await createFixture();
-
-    const invalidStatus = await accept(
-      runsClient().list({
-        query: { status: "running,invalid" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(invalidStatus.body.error.message).toContain(
-      "Invalid status: invalid",
-    );
-
-    const invalidSince = await accept(
-      runsClient().list({
-        query: { since: "not-a-date" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(invalidSince.body.error.message).toBe(
-      "Invalid since timestamp format",
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const invalidUntil = await accept(
-      runsClient().list({
-        query: { until: "not-a-date" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(invalidUntil.body.error.message).toBe(
-      "Invalid until timestamp format",
-    );
   });
 
   it("filters by agent name, active org, date range, and limit", async () => {
@@ -329,21 +277,6 @@ describe("GET /api/agent/runs", () => {
 });
 
 describe("GET /api/agent/runs/:id", () => {
-  it("returns 400 when id is not a valid UUID", async () => {
-    const fixture = await createFixture();
-
-    const response = await accept(
-      runByIdClient().getById({
-        params: { id: "2b9b2303" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-  });
-
   it("returns 404 when the run is missing, owned by another user, or in another org", async () => {
     const fixture = await createFixture();
     const compose = await createCompose({ fixture });
@@ -453,20 +386,6 @@ describe("GET /api/agent/runs/:id", () => {
 });
 
 describe("GET /api/agent/runs/queue", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await accept(
-      queueClient().getQueue({ headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
   it("returns an empty queue with concurrency context", async () => {
     const fixture = await createFixture();
 
