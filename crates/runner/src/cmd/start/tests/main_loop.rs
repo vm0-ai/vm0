@@ -140,6 +140,7 @@ while True:
         .kill_on_drop(true)
         .spawn()
         .unwrap();
+    let proxy_child_pid = ignore_term_child.id().expect("proxy child should have pid");
     let stdout = ignore_term_child.stdout.take().unwrap();
     let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
     let ready = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
@@ -197,6 +198,10 @@ while True:
         .expect("prefetch task should observe cleanup cancellation")
         .expect("prefetch task should report cancellation");
     assert_eq!(memory_prefetch.task_count(), 0);
+    assert!(
+        !std::path::Path::new(&format!("/proc/{proxy_child_pid}")).exists(),
+        "proxy child should be killed and reaped during cleanup"
+    );
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {
