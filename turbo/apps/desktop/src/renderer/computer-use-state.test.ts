@@ -19,7 +19,7 @@ function computerUseState(
       active: false,
     },
     host: {
-      status: "idle",
+      status: "offline",
       hostId: null,
       lastHeartbeatAt: null,
       lastCommandAt: null,

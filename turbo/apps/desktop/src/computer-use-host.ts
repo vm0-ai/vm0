@@ -212,7 +212,7 @@ export class ComputerUseHostRuntime {
   private hostToken: string | null = null;
   private nextErrorLogId = 0;
   private state: ComputerUseHostRuntimeState = {
-    status: "idle",
+    status: "offline",
     hostId: null,
     lastHeartbeatAt: null,
     lastCommandAt: null,
@@ -261,7 +261,7 @@ export class ComputerUseHostRuntime {
     this.clearRecoveryTimer();
     const hostToken = this.hostToken;
     this.setState({
-      status: "idle",
+      status: "offline",
       hostId: null,
       lastError: null,
       recovery: null,

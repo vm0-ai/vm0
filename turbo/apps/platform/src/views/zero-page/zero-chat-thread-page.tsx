@@ -109,6 +109,10 @@ import {
   completeChatConnectorActionConnect$,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
+import {
+  completedWorkExpandedThreadIds$,
+  toggleCompletedWorkExpanded$,
+} from "../../signals/chat-page/completed-work-folding.ts";
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -2191,6 +2195,23 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
+  const features = useLastResolved(featureSwitch$);
+  const completedWorkFoldingEnabled =
+    features?.[FeatureSwitchKey.ChatCompletedWorkFolding] ?? false;
+  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
+  const allFinished =
+    allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
+  const completedWorkExpandedThreadIds = useGet(
+    completedWorkExpandedThreadIds$,
+  );
+  const workExpanded = completedWorkExpandedThreadIds.has(thread.threadId);
+  const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
+  const shouldFoldCompletedWork =
+    completedWorkFoldingEnabled && allFinished && activeGroups.length > 1;
+  const hiddenGroups = shouldFoldCompletedWork ? activeGroups.slice(0, -1) : [];
+  const visibleGroups = shouldFoldCompletedWork
+    ? activeGroups.slice(-1)
+    : activeGroups;
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -2233,7 +2254,26 @@ function ChatThreadMessagesMain({
             </p>
           </div>
         )}
-        {activeGroups.map((group) => {
+        {shouldFoldCompletedWork && (
+          <CompletedWorkFoldRow
+            groups={activeGroups}
+            expanded={workExpanded}
+            onToggle={() => {
+              toggleCompletedWorkExpanded(thread.threadId);
+            }}
+          />
+        )}
+        {workExpanded &&
+          hiddenGroups.map((group) => {
+            return (
+              <PagedGroupRow
+                key={group.beginMessageId}
+                group={group}
+                thread={thread}
+              />
+            );
+          })}
+        {visibleGroups.map((group) => {
           return (
             <PagedGroupRow
               key={group.beginMessageId}
@@ -2245,6 +2285,80 @@ function ChatThreadMessagesMain({
         <ThinkingIndicator thread={thread} groups={activeGroups} />
       </div>
     </main>
+  );
+}
+
+function parseMessageTime(value: string): number | null {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function formatCompactDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+  const totalHours = Math.round(totalMinutes / 60);
+  return `${totalHours}h`;
+}
+
+function completedWorkLabel(
+  groups: readonly GroupedChatMessageGroup[],
+): string {
+  const timestamps = groups.flatMap((group) => {
+    return group.messages.flatMap((message) => {
+      const timestamp = parseMessageTime(message.createdAt);
+      return timestamp === null ? [] : [timestamp];
+    });
+  });
+  if (timestamps.length < 2) {
+    return "Worked";
+  }
+  const elapsedSeconds = Math.max(
+    1,
+    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 1000),
+  );
+  return `Worked for ${formatCompactDuration(elapsedSeconds)}`;
+}
+
+function CompletedWorkFoldRow({
+  groups,
+  expanded,
+  onToggle,
+}: {
+  groups: readonly GroupedChatMessageGroup[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const label = completedWorkLabel(groups);
+  return (
+    <div
+      data-chat-completed-work-fold
+      className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+    >
+      <div className="hidden @[900px]:block" />
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={expanded ? "Collapse work history" : "Expand work history"}
+        onClick={onToggle}
+        className="group flex h-9 w-full items-center gap-2 rounded-lg px-1 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+      >
+        <span className="min-w-0 shrink-0">{label}</span>
+        <IconChevronRight
+          size={17}
+          stroke={1.7}
+          className={cn(
+            "shrink-0 transition-transform duration-150",
+            expanded && "rotate-90",
+          )}
+        />
+        <span className="h-px min-w-8 flex-1 bg-border/50 transition-colors group-hover:bg-border" />
+      </button>
+    </div>
   );
 }
 

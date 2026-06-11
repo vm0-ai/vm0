@@ -295,6 +295,9 @@ impl ConnectionDispatcher {
     }
 
     fn handle_write_file(&self, msg: &RawMessage) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "write_file", &self.writer)? {
+            return Ok(());
+        }
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
