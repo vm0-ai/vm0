@@ -104,11 +104,11 @@ fn write_usage_pending_state(
 }
 
 #[tokio::test]
-async fn live_registry_publish_failure_shuts_down_startup_resources() {
+async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
     let dir = tempfile::tempdir().unwrap();
     let home = crate::paths::HomePaths::with_root(dir.path().join("vm0-runner"));
     std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
-    std::fs::write(home.live_runners_dir(), b"not a directory").unwrap();
+    std::fs::write(home.live_runner_instances_dir(), b"not a directory").unwrap();
 
     let provider_shutdowns = Arc::new(AtomicUsize::new(0));
     let provider = ShutdownRecordingProvider {
@@ -118,20 +118,24 @@ async fn live_registry_publish_failure_shuts_down_startup_resources() {
     let mut runtime = ShutdownRecordingRuntime {
         shutdowns: Arc::clone(&runtime_shutdowns),
     };
-    let metadata = crate::live_runner_registry::LiveRunnerRegistryMetadata {
+    let metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
         config_path: dir.path().join("runner.yaml"),
         base_dir: dir.path().join("base"),
         runner_name: "test-runner".into(),
         runner_group: "vm0/test".into(),
     };
 
-    let error =
-        publish_live_runner_or_shutdown_startup_resources(&home, metadata, &provider, &mut runtime)
-            .await
-            .unwrap_err();
+    let error = publish_live_runner_instance_or_shutdown_startup_resources(
+        &home,
+        metadata,
+        &provider,
+        &mut runtime,
+    )
+    .await
+    .unwrap_err();
 
     assert!(
-        error.to_string().contains("ensure live runner registry"),
+        error.to_string().contains("ensure live runner instances"),
         "unexpected error: {error}"
     );
     assert_eq!(provider_shutdowns.load(Ordering::SeqCst), 1);

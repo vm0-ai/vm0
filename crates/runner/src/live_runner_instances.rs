@@ -9,10 +9,10 @@ use crate::paths::HomePaths;
 use crate::process;
 use crate::state_file::OwnerCheck;
 
-const LIVE_RUNNER_RECORD_MAX_BYTES: u64 = 64 * 1024;
+const LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug)]
-pub(crate) struct LiveRunnerRegistryMetadata {
+pub(crate) struct LiveRunnerInstanceMetadata {
     pub config_path: PathBuf,
     pub base_dir: PathBuf,
     pub runner_name: String,
@@ -20,7 +20,7 @@ pub(crate) struct LiveRunnerRegistryMetadata {
 }
 
 #[derive(Debug)]
-pub(crate) struct LiveRunnerRegistryHandle {
+pub(crate) struct LiveRunnerInstanceHandle {
     path: PathBuf,
     identity: ProcessIdentity,
 }
@@ -33,7 +33,7 @@ struct ProcessIdentity {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-struct LiveRunnerRegistryRecord {
+struct LiveRunnerInstanceRecord {
     pid: u32,
     starttime: u64,
     euid: u32,
@@ -46,11 +46,11 @@ struct LiveRunnerRegistryRecord {
 
 pub(crate) async fn publish(
     home: &HomePaths,
-    metadata: LiveRunnerRegistryMetadata,
-) -> RunnerResult<LiveRunnerRegistryHandle> {
+    metadata: LiveRunnerInstanceMetadata,
+) -> RunnerResult<LiveRunnerInstanceHandle> {
     let identity = current_process_identity().await?;
-    let path = home.live_runner_record_path(identity.pid, identity.starttime);
-    let record = LiveRunnerRegistryRecord {
+    let path = home.live_runner_instance_record_path(identity.pid, identity.starttime);
+    let record = LiveRunnerInstanceRecord {
         pid: identity.pid,
         starttime: identity.starttime,
         euid: identity.euid,
@@ -61,26 +61,26 @@ pub(crate) async fn publish(
         started_at: chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
     };
     let content = serde_json::to_vec_pretty(&record)
-        .map_err(|e| RunnerError::Internal(format!("serialize live runner registry: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("serialize live runner instance: {e}")))?;
 
     crate::host_file::ensure_dir(
-        &home.live_runners_dir(),
+        &home.live_runner_instances_dir(),
         crate::host_file::DirMode::Private,
-        "live runner registry",
+        "live runner instances",
     )
     .map_err(|e| {
         RunnerError::Internal(format!(
-            "ensure live runner registry {}: {e}",
-            home.live_runners_dir().display()
+            "ensure live runner instances {}: {e}",
+            home.live_runner_instances_dir().display()
         ))
     })?;
     remove_stale_records(home).await;
     crate::state_file::write_private_atomic(&path, &content).await?;
 
-    Ok(LiveRunnerRegistryHandle { path, identity })
+    Ok(LiveRunnerInstanceHandle { path, identity })
 }
 
-impl LiveRunnerRegistryHandle {
+impl LiveRunnerInstanceHandle {
     pub(crate) async fn remove_if_current(&self) -> RunnerResult<bool> {
         let Some(record) = read_valid_record(&self.path).await else {
             return Ok(false);
@@ -96,17 +96,17 @@ impl LiveRunnerRegistryHandle {
             Ok(()) => Ok(true),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(RunnerError::Internal(format!(
-                "remove live runner registry record {}: {e}",
+                "remove live runner instance record {}: {e}",
                 self.path.display()
             ))),
         }
     }
 }
 
-async fn read_valid_record(path: &Path) -> Option<LiveRunnerRegistryRecord> {
+async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
     let content = match crate::state_file::read_to_string(
         path,
-        LIVE_RUNNER_RECORD_MAX_BYTES,
+        LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES,
         OwnerCheck::CurrentEuid,
     )
     .await
@@ -114,14 +114,14 @@ async fn read_valid_record(path: &Path) -> Option<LiveRunnerRegistryRecord> {
         Ok(Some(content)) => content,
         Ok(None) => return None,
         Err(e) => {
-            tracing::debug!(path = %path.display(), error = %e, "ignoring unreadable live runner registry record");
+            tracing::debug!(path = %path.display(), error = %e, "ignoring unreadable live runner instance record");
             return None;
         }
     };
-    let record: LiveRunnerRegistryRecord = match serde_json::from_str(&content) {
+    let record: LiveRunnerInstanceRecord = match serde_json::from_str(&content) {
         Ok(record) => record,
         Err(e) => {
-            tracing::debug!(path = %path.display(), error = %e, "ignoring malformed live runner registry record");
+            tracing::debug!(path = %path.display(), error = %e, "ignoring malformed live runner instance record");
             return None;
         }
     };
@@ -133,11 +133,11 @@ async fn read_valid_record(path: &Path) -> Option<LiveRunnerRegistryRecord> {
 }
 
 async fn remove_stale_records(home: &HomePaths) {
-    let dir = home.live_runners_dir();
+    let dir = home.live_runner_instances_dir();
     let mut entries = match tokio::fs::read_dir(&dir).await {
         Ok(entries) => entries,
         Err(e) => {
-            tracing::debug!(path = %dir.display(), error = %e, "cannot scan live runner registry");
+            tracing::debug!(path = %dir.display(), error = %e, "cannot scan live runner instances");
             return;
         }
     };
@@ -147,7 +147,7 @@ async fn remove_stale_records(home: &HomePaths) {
             Ok(Some(entry)) => entry,
             Ok(None) => break,
             Err(e) => {
-                tracing::debug!(path = %dir.display(), error = %e, "cannot read live runner registry entry");
+                tracing::debug!(path = %dir.display(), error = %e, "cannot read live runner instance entry");
                 break;
             }
         };
@@ -156,14 +156,14 @@ async fn remove_stale_records(home: &HomePaths) {
         if stable_record_identity_from_file_name(&file_name).is_some()
             && read_valid_record(&path).await.is_none()
         {
-            remove_stale_file(&path, "stale live runner registry record").await;
+            remove_stale_file(&path, "stale live runner instance record").await;
             continue;
         }
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
         if !process_identity_is_live(identity).await {
-            remove_stale_file(&path, "stale live runner registry tmp file").await;
+            remove_stale_file(&path, "stale live runner instance tmp file").await;
         }
     }
 }
@@ -171,11 +171,11 @@ async fn remove_stale_records(home: &HomePaths) {
 async fn remove_stale_file(path: &Path, reason: &'static str) {
     match tokio::fs::remove_file(path).await {
         Ok(()) => {
-            tracing::debug!(path = %path.display(), reason, "removed stale live runner registry file");
+            tracing::debug!(path = %path.display(), reason, "removed stale live runner instance file");
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            tracing::debug!(path = %path.display(), reason, error = %e, "cannot remove stale live runner registry file");
+            tracing::debug!(path = %path.display(), reason, error = %e, "cannot remove stale live runner instance file");
         }
     }
 }
@@ -201,7 +201,7 @@ fn atomic_tmp_record_identity_from_file_name(name: &OsStr) -> Option<ProcessIden
     stable_record_identity_from_str(stable_name)
 }
 
-async fn record_is_live(record: &LiveRunnerRegistryRecord) -> bool {
+async fn record_is_live(record: &LiveRunnerInstanceRecord) -> bool {
     process_identity_is_live(ProcessIdentity {
         pid: record.pid,
         starttime: record.starttime,
@@ -276,8 +276,8 @@ fn current_euid() -> u32 {
 mod tests {
     use super::*;
 
-    fn test_metadata(root: &Path) -> LiveRunnerRegistryMetadata {
-        LiveRunnerRegistryMetadata {
+    fn test_metadata(root: &Path) -> LiveRunnerInstanceMetadata {
+        LiveRunnerInstanceMetadata {
             config_path: root.join("runner.yaml"),
             base_dir: root.join("base"),
             runner_name: "test-runner".into(),
@@ -285,7 +285,7 @@ mod tests {
         }
     }
 
-    async fn write_record(path: &Path, record: &LiveRunnerRegistryRecord) {
+    async fn write_record(path: &Path, record: &LiveRunnerInstanceRecord) {
         let content = serde_json::to_vec_pretty(record).unwrap();
         crate::state_file::write_private_atomic(path, &content)
             .await
@@ -303,7 +303,7 @@ mod tests {
         assert!(!content.contains("server"));
         assert!(!content.contains("token"));
         assert!(!content.contains("api_url"));
-        let record: LiveRunnerRegistryRecord = serde_json::from_str(&content).unwrap();
+        let record: LiveRunnerInstanceRecord = serde_json::from_str(&content).unwrap();
         assert_eq!(record.pid, std::process::id());
         assert_eq!(record.euid, current_euid());
         assert_eq!(record.base_dir, dir.path().join("base"));
@@ -317,7 +317,7 @@ mod tests {
             assert!(!metadata.file_type().is_symlink());
             assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
             assert_eq!(
-                std::fs::metadata(home.live_runners_dir())
+                std::fs::metadata(home.live_runner_instances_dir())
                     .unwrap()
                     .permissions()
                     .mode()
@@ -344,12 +344,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
-            &home.live_runners_dir(),
+            &home.live_runner_instances_dir(),
             crate::host_file::DirMode::Private,
-            "live runner registry",
+            "live runner instances",
         )
         .unwrap();
-        let record = LiveRunnerRegistryRecord {
+        let record = LiveRunnerInstanceRecord {
             pid: u32::MAX,
             starttime: 1,
             euid: current_euid(),
@@ -359,7 +359,7 @@ mod tests {
             runner_group: "vm0/test".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
-        let path = home.live_runner_record_path(record.pid, record.starttime);
+        let path = home.live_runner_instance_record_path(record.pid, record.starttime);
         write_record(&path, &record).await;
 
         let result = read_valid_record(&path).await;
@@ -386,12 +386,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
-            &home.live_runners_dir(),
+            &home.live_runner_instances_dir(),
             crate::host_file::DirMode::Private,
-            "live runner registry",
+            "live runner instances",
         )
         .unwrap();
-        let path = home.live_runners_dir().join("malformed.json");
+        let path = home.live_runner_instances_dir().join("malformed.json");
         crate::state_file::write_private_atomic(&path, b"{")
             .await
             .unwrap();
@@ -406,15 +406,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
-            &home.live_runners_dir(),
+            &home.live_runner_instances_dir(),
             crate::host_file::DirMode::Private,
-            "live runner registry",
+            "live runner instances",
         )
         .unwrap();
-        let path = home.live_runners_dir().join("oversized.json");
+        let path = home.live_runner_instances_dir().join("oversized.json");
         crate::state_file::write_private_atomic(
             &path,
-            &vec![b'a'; (LIVE_RUNNER_RECORD_MAX_BYTES + 1) as usize],
+            &vec![b'a'; (LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES + 1) as usize],
         )
         .await
         .unwrap();
@@ -429,12 +429,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
-            &home.live_runners_dir(),
+            &home.live_runner_instances_dir(),
             crate::host_file::DirMode::Private,
-            "live runner registry",
+            "live runner instances",
         )
         .unwrap();
-        let stale_record = LiveRunnerRegistryRecord {
+        let stale_record = LiveRunnerInstanceRecord {
             pid: u32::MAX,
             starttime: 1,
             euid: current_euid(),
@@ -444,9 +444,12 @@ mod tests {
             runner_group: "vm0/test".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
-        let stale_path = home.live_runner_record_path(stale_record.pid, stale_record.starttime);
+        let stale_path =
+            home.live_runner_instance_record_path(stale_record.pid, stale_record.starttime);
         write_record(&stale_path, &stale_record).await;
-        let stale_tmp_path = home.live_runners_dir().join(".4294967295-1.json.test.tmp");
+        let stale_tmp_path = home
+            .live_runner_instances_dir()
+            .join(".4294967295-1.json.test.tmp");
         tokio::fs::write(&stale_tmp_path, b"partial").await.unwrap();
 
         let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
@@ -457,7 +460,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn publish_keeps_other_live_runner_records() {
+    async fn publish_keeps_other_live_runner_instance_records() {
         struct ChildGuard(std::process::Child);
 
         impl Drop for ChildGuard {
@@ -477,13 +480,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
-            &home.live_runners_dir(),
+            &home.live_runner_instances_dir(),
             crate::host_file::DirMode::Private,
-            "live runner registry",
+            "live runner instances",
         )
         .unwrap();
         let child_stat = process::read_process_stat(child_pid).await.unwrap();
-        let live_record = LiveRunnerRegistryRecord {
+        let live_record = LiveRunnerInstanceRecord {
             pid: child_pid,
             starttime: child_stat.starttime,
             euid: current_euid(),
@@ -493,8 +496,9 @@ mod tests {
             runner_group: "vm0/test".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
-        let live_path = home.live_runner_record_path(live_record.pid, live_record.starttime);
-        let live_tmp_path = home.live_runners_dir().join(format!(
+        let live_path =
+            home.live_runner_instance_record_path(live_record.pid, live_record.starttime);
+        let live_tmp_path = home.live_runner_instances_dir().join(format!(
             ".{}-{}.json.test.tmp",
             child_pid, child_stat.starttime
         ));

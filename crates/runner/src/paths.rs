@@ -223,12 +223,12 @@ impl HomePaths {
         self.root.join("logs")
     }
 
-    pub fn live_runners_dir(&self) -> PathBuf {
-        self.root.join("live-runners")
+    pub fn live_runner_instances_dir(&self) -> PathBuf {
+        self.root.join("live-runner-instances")
     }
 
-    pub fn live_runner_record_path(&self, pid: u32, starttime: u64) -> PathBuf {
-        self.live_runners_dir()
+    pub fn live_runner_instance_record_path(&self, pid: u32, starttime: u64) -> PathBuf {
+        self.live_runner_instances_dir()
             .join(format!("{pid}-{starttime}.json"))
     }
 
@@ -544,10 +544,13 @@ mod tests {
         assert_eq!(home.bin_dir(), PathBuf::from("/test/bin"));
         assert_eq!(home.images_dir(), PathBuf::from("/test/images"));
         assert_eq!(home.logs_dir(), PathBuf::from("/test/logs"));
-        assert_eq!(home.live_runners_dir(), PathBuf::from("/test/live-runners"));
         assert_eq!(
-            home.live_runner_record_path(123, 456),
-            PathBuf::from("/test/live-runners/123-456.json")
+            home.live_runner_instances_dir(),
+            PathBuf::from("/test/live-runner-instances")
+        );
+        assert_eq!(
+            home.live_runner_instance_record_path(123, 456),
+            PathBuf::from("/test/live-runner-instances/123-456.json")
         );
         assert_eq!(home.runners_dir(), PathBuf::from("/test/runners"));
         assert_eq!(home.groups_dir(), PathBuf::from("/test/groups"));
