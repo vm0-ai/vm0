@@ -16,7 +16,6 @@ import {
 import type { RouteEntry } from "../route";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
-import { syncScheduleToAutomationSafely } from "../services/automations/schedule-dual-write";
 import { TimeTrigger } from "../services/automations/time-trigger";
 
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -95,7 +94,13 @@ function createScheduleCallbackHandler(
       shouldDisable,
     });
 
-    const [advanced] = await writeDb
+    // Phase 3 of #16847: the schedules surface lives on the events-first
+    // tables. This route only serves runs dispatched before the cutover whose
+    // callbacks still carry schedule ids — it advances the orphaned
+    // zero_agent_schedules row for bookkeeping and deliberately does NOT touch
+    // the live automation tables (the old row is stale; syncing it would
+    // clobber live trigger state). Dropped entirely with the old table.
+    await writeDb
       .update(zeroAgentSchedules)
       .set({
         consecutiveFailures,
@@ -103,16 +108,8 @@ function createScheduleCallbackHandler(
         nextRunAt,
         updatedAt: completedAt,
       })
-      .where(eq(zeroAgentSchedules.id, payload.data.scheduleId))
-      .returning();
+      .where(eq(zeroAgentSchedules.id, payload.data.scheduleId));
     signal.throwIfAborted();
-    if (advanced) {
-      // Mirror the completion advance (next run, failure counter, possible
-      // auto-disable) onto the events-first tables so the dormant trigger
-      // mirror tracks every fire, not just CRUD-time snapshots.
-      await syncScheduleToAutomationSafely(writeDb, advanced);
-      signal.throwIfAborted();
-    }
 
     // The run summary is owned by the chat callback (triggerSource "chat"); this
     // reschedule callback only advances next_run_at / consecutive-failure

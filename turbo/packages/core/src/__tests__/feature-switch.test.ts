@@ -101,7 +101,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       true,
     );
@@ -111,6 +111,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       true,
     );

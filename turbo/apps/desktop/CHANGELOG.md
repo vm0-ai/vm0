@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.10.0...desktop-v0.10.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* use system hostname for computer use hosts ([#17193](https://github.com/vm0-ai/vm0/issues/17193)) ([c17abcc](https://github.com/vm0-ai/vm0/commit/c17abcc586e83e26d7b4476ca36ca4550c2a261c))
+
 ## [0.10.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.9.0...desktop-v0.10.0) (2026-06-11)
 
 

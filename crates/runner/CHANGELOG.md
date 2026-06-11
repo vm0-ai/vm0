@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.111.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.0...runner-rs-v0.111.1) (2026-06-11)
+
+
+### Documentation
+
+* **mitm-addon:** clarify x request metadata docs ([#17207](https://github.com/vm0-ai/vm0/issues/17207)) ([111072a](https://github.com/vm0-ai/vm0/commit/111072a5f907e794dc7c53f4f04bf4b79552db79))
+
+
+### Performance Improvements
+
+* **mitm-addon:** cache unsafe path scans ([#17212](https://github.com/vm0-ai/vm0/issues/17212)) ([f3c78e6](https://github.com/vm0-ai/vm0/commit/f3c78e62d88d827e278cbdc156f445ac6d3d2e4f))
+
 ## [0.111.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.4...runner-rs-v0.111.0) (2026-06-11)
 
 

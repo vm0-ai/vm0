@@ -757,6 +757,9 @@ export class ComputerUseHostRuntime {
     }
     const body = (await next.json()) as ComputerUseHostNextResponse;
     if (body.status === "idle") {
+      if (!this.running || !this.hostToken) {
+        return;
+      }
       this.clearRecoveryState("command_poll");
       return;
     }

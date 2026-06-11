@@ -9,7 +9,7 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -188,11 +188,14 @@ describe("POST /api/zero/schedules/run", () => {
     const body = runResponseSchema.parse(response.body);
 
     const db = store.set(writeDb$);
-    const [schedule] = await db
-      .select({ lastRunId: zeroAgentSchedules.lastRunId })
-      .from(zeroAgentSchedules)
-      .where(eq(zeroAgentSchedules.id, scheduleId));
-    expect(schedule?.lastRunId).toBe(body.runId);
+    const [trigger] = await db
+      .select({
+        id: automationTriggers.id,
+        lastRunId: automationTriggers.lastRunId,
+      })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, scheduleId));
+    expect(trigger?.lastRunId).toBe(body.runId);
 
     const [run] = await db
       .select({
@@ -210,16 +213,19 @@ describe("POST /api/zero/schedules/run", () => {
       "Use the schedule-specific context.",
     );
 
+    // Run provenance: the automation + firing trigger (phase 3 of #16847).
     const [zeroRun] = await db
       .select({
         triggerSource: zeroRuns.triggerSource,
-        scheduleId: zeroRuns.scheduleId,
+        automationId: zeroRuns.automationId,
+        triggerId: zeroRuns.triggerId,
       })
       .from(zeroRuns)
       .where(eq(zeroRuns.id, body.runId));
     expect(zeroRun).toStrictEqual({
       triggerSource: "schedule",
-      scheduleId,
+      automationId: scheduleId,
+      triggerId: trigger?.id,
     });
 
     const callbacks = await db
@@ -230,10 +236,10 @@ describe("POST /api/zero/schedules/run", () => {
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, body.runId));
     const cronCallback = callbacks.find((callback) => {
-      return callback.url.endsWith("/api/internal/callbacks/schedule/cron");
+      return callback.url.endsWith("/api/internal/callbacks/trigger/cron");
     });
     expect(cronCallback).toBeDefined();
-    expect(cronCallback?.payload).toMatchObject({ scheduleId });
+    expect(cronCallback?.payload).toMatchObject({ triggerId: trigger?.id });
   });
 
   it("runs in chat mode: posts a user message + adds the chat callback", async () => {
@@ -251,9 +257,9 @@ describe("POST /api/zero/schedules/run", () => {
       title: "linked thread",
     });
     await db
-      .update(zeroAgentSchedules)
+      .update(automations)
       .set({ chatThreadId: threadId })
-      .where(eq(zeroAgentSchedules.id, scheduleId));
+      .where(eq(automations.id, scheduleId));
 
     const response = await rawPostRun({ scheduleId });
     expect(response.status).toBe(201);
@@ -289,7 +295,9 @@ describe("POST /api/zero/schedules/run", () => {
         return (
           message.role === "user" &&
           message.content === "Manual run test" &&
-          message.scheduleId === scheduleId &&
+          // A natively-created automation has no source schedule, so the
+          // chip's FK link is null; the snapshot labels the bubble.
+          message.scheduleId === null &&
           message.scheduleTitle === "run-test" &&
           message.scheduleSnapshot?.id === scheduleId &&
           message.scheduleSnapshot.title === "run-test" &&
@@ -308,7 +316,7 @@ describe("POST /api/zero/schedules/run", () => {
     });
     expect(
       urls.some((url) => {
-        return url.endsWith("/callbacks/schedule/cron");
+        return url.endsWith("/callbacks/trigger/cron");
       }),
     ).toBeTruthy();
     expect(

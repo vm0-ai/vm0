@@ -404,12 +404,15 @@ def _empty_request_query_fallback_hints() -> dict:
 
 
 def _parse_request_metadata(original_url: str) -> dict:
-    """Extract billing-relevant query params from an X API request.
+    """Extract path-level request metadata from an X API request.
 
     Returns a dict with:
-      - ``is_count_endpoint``: bool — True when the request path is an X Post
+      - ``is_count_endpoint``: bool - True when the request path is an X Post
         Counts endpoint whose ``data`` array contains time buckets instead of
         returned posts.
+
+    Query-derived fallback hints are handled separately by
+    :func:`_parse_request_query_fallback_hints`.
 
     Parses the dispatcher-required original URL rather than ``pretty_url`` to
     stay consistent with the rest of the addon.
@@ -467,14 +470,17 @@ def _get_bounded_original_request_query(original_url: str) -> str | None:
 
 
 def _parse_request_query_fallback_hints(original_url: str) -> dict:
-    """Extract request-side count hints only for unparseable GET responses.
+    """Extract request-side count hints for unparseable non-count GET responses.
 
     This intentionally does not call ``parse_qs``.  Successful X responses
     normally bill from the parsed response body, so query hints are only a
-    fallback for lost response visibility.  The scanner therefore looks only
-    for the small key set that can affect billing, preserves ``parse_qs``'
-    blank-value and ``+`` behavior for those keys, and caps work on hostile
-    query strings instead of materializing every parameter.
+    fallback for lost response visibility.  ``report_usage`` merges these
+    fields only when a non-count GET response was not parsed.  The scanner
+    therefore looks only for the small key set that can affect fallback billing,
+    preserves ``parse_qs``' blank-value and ``+`` behavior for those keys, and
+    caps work on hostile query strings instead of materializing every parameter.
+
+    Returns ``request_ids_count`` and ``max_results``.
     """
     query = _get_bounded_original_request_query(original_url)
     if query is None:
@@ -628,7 +634,7 @@ def _compute_billable_counts(
       no ``data``) and zero-result searches yield primary 0, which is skipped
       from the returned dict so no empty ``usage_event`` row is created.
     - **Body NOT parsed**: fall back to request-side hints
-      ``max(ids_count, max_results, 1)``.  When the URL also carries
+      ``max(request_ids_count, max_results, 1)``.  When the URL also carries
       no hints we emit no ``usage_event`` row; :func:`report_usage`
       detects that state and writes an error log so ops can audit.
     - **Includes**: each ``includes.<key>`` is normalized to a billing
@@ -784,6 +790,8 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
 
     req_meta = _parse_request_metadata(original_url)
     resp_meta = _parse_response_metadata(flow)
+    # Query-derived request hints are not general request metadata.  They are
+    # merged only when billing lost response visibility for a non-count GET.
     req_meta.update(
         _parse_request_query_fallback_hints(original_url)
         if (

@@ -1,11 +1,9 @@
 import { automationTriggers } from "@vm0/db/schema/automation";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { Cron } from "croner";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../../external/db";
 
-type ScheduleRow = typeof zeroAgentSchedules.$inferSelect;
 type TriggerRow = typeof automationTriggers.$inferSelect;
 
 /**
@@ -45,8 +43,8 @@ interface ResolvedTrigger {
 
 /**
  * Time-based trigger: owns the scheduling math (next-run calculation and the
- * optimistic-lock claim) for `zero_agent_schedules` rows. The interpreter is
- * keyed off the Automation; this trigger is keyed off time and is the only
+ * optimistic-lock claim) for `automation_triggers` time rows. The interpreter
+ * is keyed off the Automation; this trigger is keyed off time and is the only
  * trigger implementation today (YAGNI — no registry).
  */
 export class TimeTrigger {
@@ -73,65 +71,6 @@ export class TimeTrigger {
       triggerType: "loop",
       nextRunAt: spec.enabled ? currentTime : null,
     };
-  }
-
-  /**
-   * Claim a due schedule row via an optimistic lock on `nextRunAt`: clear the
-   * next run, stamp `lastRunAt`, reset any retry marker, and disable one-time
-   * schedules. Returns the claimed row, or null when another invocation won the
-   * race (the row's `nextRunAt` already moved).
-   */
-  async evaluate(args: {
-    readonly db: Db;
-    readonly schedule: ScheduleRow;
-    readonly currentTime: Date;
-  }): Promise<ScheduleRow | null> {
-    const [claimed] = await args.db
-      .update(zeroAgentSchedules)
-      .set({
-        nextRunAt: null,
-        lastRunAt: args.currentTime,
-        retryStartedAt: null,
-        updatedAt: args.currentTime,
-        ...(args.schedule.triggerType === "once" ? { enabled: false } : {}),
-      })
-      .where(
-        and(
-          eq(zeroAgentSchedules.id, args.schedule.id),
-          eq(zeroAgentSchedules.nextRunAt, args.schedule.nextRunAt!),
-        ),
-      )
-      .returning();
-    return claimed ?? null;
-  }
-
-  /**
-   * Next run after a pre-run failure in the poller (the run was never created).
-   * Cron advances to the next occurrence; a loop advances by its interval when
-   * one is set; one-time and interval-less loops do not reschedule. Disabling
-   * collapses the next run to null.
-   */
-  advanceAfterPreRunFailure(args: {
-    readonly schedule: ScheduleRow;
-    readonly failureTime: Date;
-    readonly shouldDisable: boolean;
-  }): Date | null {
-    if (args.shouldDisable) {
-      return null;
-    }
-    if (args.schedule.triggerType === "cron" && args.schedule.cronExpression) {
-      return calculateNextRun(
-        args.schedule.cronExpression,
-        args.schedule.timezone,
-        args.failureTime,
-      );
-    }
-    if (args.schedule.triggerType === "loop" && args.schedule.intervalSeconds) {
-      return new Date(
-        args.failureTime.getTime() + args.schedule.intervalSeconds * 1000,
-      );
-    }
-    return null;
   }
 
   /**

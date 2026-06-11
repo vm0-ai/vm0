@@ -6,6 +6,7 @@ import type {
 export const GOOGLE_OAUTH_CONNECTOR_TYPES = [
   "gmail",
   "google-ads",
+  "google-analytics",
   "google-calendar",
   "google-cloud",
   "google-docs",

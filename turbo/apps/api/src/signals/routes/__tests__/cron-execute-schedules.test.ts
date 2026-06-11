@@ -7,7 +7,6 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatMessages } from "@vm0/db/schema/chat-message";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, desc, eq } from "drizzle-orm";
@@ -17,8 +16,6 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import { syncScheduleToAutomationSafely } from "../../services/automations/schedule-dual-write";
-import { executeDueSchedules$ } from "../../services/zero-schedules.service";
 import {
   deleteSchedulesScenario$,
   seedSchedulesScenario$,
@@ -66,30 +63,8 @@ async function seedFixture(
   );
 }
 
-// Mirror a seeded schedule into the events-first tables, as the dual-write
-// would have on deploy. Post-cutover the cron route polls the trigger table,
-// so a schedule only fires through its mirror.
-async function mirrorSchedule(scheduleId: string): Promise<void> {
-  const db = store.set(writeDb$);
-  const [schedule] = await db
-    .select()
-    .from(zeroAgentSchedules)
-    .where(eq(zeroAgentSchedules.id, scheduleId));
-  if (!schedule) {
-    throw new Error("mirrorSchedule: schedule not found");
-  }
-  await syncScheduleToAutomationSafely(db, schedule);
-}
-
-async function findSchedule(scheduleId: string) {
-  const db = store.set(writeDb$);
-  const [schedule] = await db
-    .select()
-    .from(zeroAgentSchedules)
-    .where(eq(zeroAgentSchedules.id, scheduleId));
-  return schedule;
-}
-
+// Schedule ids are automation ids (phase 3 of #16847); the trigger row is the
+// automation's single time trigger.
 async function findMirrorTrigger(scheduleId: string) {
   const db = store.set(writeDb$);
   const [row] = await db
@@ -99,12 +74,11 @@ async function findMirrorTrigger(scheduleId: string) {
       automationTriggers,
       eq(automationTriggers.automationId, automations.id),
     )
-    .where(eq(automations.sourceScheduleId, scheduleId));
+    .where(eq(automations.id, scheduleId));
   return row;
 }
 
-// Runs created post-cutover carry automation/trigger provenance (not
-// scheduleId), so look them up through the schedule's mirror.
+// Runs carry automation/trigger provenance.
 async function findMirrorRuns(scheduleId: string) {
   const db = store.set(writeDb$);
   return await db
@@ -119,8 +93,7 @@ async function findMirrorRuns(scheduleId: string) {
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-    .innerJoin(automations, eq(zeroRuns.automationId, automations.id))
-    .where(eq(automations.sourceScheduleId, scheduleId))
+    .where(eq(zeroRuns.automationId, scheduleId))
     .orderBy(desc(agentRuns.createdAt));
 }
 
@@ -230,7 +203,7 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
   });
 
   it("returns execution counts when no triggers are due", async () => {
-    const fixture = await seedFixture([
+    await seedFixture([
       {
         name: "future-cron",
         prompt: "Future task",
@@ -238,7 +211,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
         nextRunAt: new Date("2000-01-02T09:00:00.000Z"),
       },
     ]);
-    await mirrorSchedule(fixture.scheduleIds[0]!);
     mockNow(DUE_TIME);
 
     const response = await accept(
@@ -253,30 +225,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
     });
   });
 
-  it("does not fire a schedule that has no mirror", async () => {
-    // The cutover dependency: the route polls automation_triggers, so a
-    // schedule the backfill/dual-write missed cannot fire. The reconciliation
-    // query is the pre-flip gate for exactly this.
-    const fixture = await seedFixture([
-      {
-        name: "unmirrored-cron",
-        prompt: "Unmirrored task",
-        cronExpression: "0 9 * * *",
-        nextRunAt: dueDate(),
-      },
-    ]);
-    mockNow(DUE_TIME);
-
-    const response = await accept(
-      apiClient().execute({ headers: cronHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({ executed: 0, skipped: 0 });
-    const runs = await findMirrorRuns(fixture.scheduleIds[0]!);
-    expect(runs).toHaveLength(0);
-  });
-
   it("executes a due cron trigger and leaves advancement to the callback", async () => {
     const fixture = await seedFixture([
       {
@@ -287,7 +235,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     mockNow(DUE_TIME);
 
     const response = await accept(
@@ -309,11 +256,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
     expect(runs[0]?.automationId).toBe(mirror?.automationId);
     expect(runs[0]?.triggerId).toBe(mirror?.trigger.id);
 
-    // The old table is no longer written by the poller; its runtime state
-    // stays as-was until the compat reads cut over (phase 3).
-    const schedule = await findSchedule(scheduleId);
-    expect(schedule?.nextRunAt).toStrictEqual(dueDate());
-
     // The run carries the trigger-keyed reschedule callback + the chat
     // callback, and its chat bubble keeps the schedule chip: scheduleId links
     // the mirrored source schedule, the snapshot labels the message.
@@ -334,7 +276,9 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       }),
     ).toBeTruthy();
     const message = await findUserMessage(runId);
-    expect(message?.scheduleId).toBe(scheduleId);
+    // A natively-created automation has no source schedule, so the chip's FK
+    // link is null; the snapshot labels the bubble with the automation id.
+    expect(message?.scheduleId).toBeNull();
     expect(message?.scheduleTitle).toBe("due-cron");
     expect(message?.scheduleSnapshot).toStrictEqual({
       id: scheduleId,
@@ -353,7 +297,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     mockNow(DUE_TIME);
 
     const [first, second] = await Promise.all([
@@ -376,7 +319,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     mockNow(DUE_TIME);
 
     const response = await accept(
@@ -404,7 +346,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     mockNow(DUE_TIME);
 
     await accept(apiClient().execute({ headers: cronHeaders() }), [200]);
@@ -430,7 +371,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     mockNow(DUE_TIME);
 
     const response = await accept(
@@ -468,14 +408,13 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     // A disabled automation suspends all its triggers without touching their
     // own enabled flag (mirrors the webhook dispatch's automation gate).
     const db = store.set(writeDb$);
     await db
       .update(automations)
       .set({ enabled: false })
-      .where(eq(automations.sourceScheduleId, scheduleId));
+      .where(eq(automations.id, scheduleId));
     mockNow(DUE_TIME);
 
     const response = await accept(
@@ -500,7 +439,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     mockNow(DUE_TIME - 5 * 60 * 1000);
     await insertBlockingRun(fixture);
     mockNow(DUE_TIME);
@@ -529,7 +467,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     mockNow(DUE_TIME - 5 * 60 * 1000);
     await insertBlockingRun(fixture);
     mockNow(DUE_TIME);
@@ -561,11 +498,11 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
     const scheduleId = fixture.scheduleIds[0]!;
     const activeRunId = await insertBlockingRun(fixture);
     const db = store.set(writeDb$);
+    const seeded = await findMirrorTrigger(scheduleId);
     await db
-      .update(zeroAgentSchedules)
+      .update(automationTriggers)
       .set({ lastRunId: activeRunId })
-      .where(eq(zeroAgentSchedules.id, scheduleId));
-    await mirrorSchedule(scheduleId);
+      .where(eq(automationTriggers.id, seeded!.trigger.id));
     mockNow(DUE_TIME);
 
     const response = await accept(
@@ -591,7 +528,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     await clearComposeHeadVersion(fixture.composeId);
     mockNow(DUE_TIME);
 
@@ -617,7 +553,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     await clearComposeHeadVersion(fixture.composeId);
     mockNow(DUE_TIME);
 
@@ -642,7 +577,6 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
     await clearComposeHeadVersion(fixture.composeId);
     mockNow(DUE_TIME);
 
@@ -652,72 +586,5 @@ describe("GET /api/cron/execute-schedules (trigger-table poller)", () => {
     expect(mirror?.trigger.consecutiveFailures).toBe(3);
     expect(mirror?.trigger.enabled).toBeFalsy();
     expect(mirror?.trigger.nextRunAt).toBeNull();
-  });
-});
-
-// The schedule-table poller is dormant after the cutover (the cron route above
-// polls automation_triggers); it stays in place as the revert path until the
-// old table is dropped (phase 3). Direct coverage keeps its claim semantics
-// and runtime mirror-sync honest in the meantime. Lives in this file so the
-// two pollers' full-table scans never race across parallel test files.
-describe("executeDueSchedules$ (dormant schedule-table poller)", () => {
-  beforeEach(() => {
-    mockEnv("VM0_API_URL", "https://api.example.test");
-    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-    context.mocks.s3.send.mockResolvedValue({});
-    mockNow(BASE_TIME);
-  });
-
-  afterEach(() => {
-    clearMockNow();
-  });
-
-  it("executes a due cron schedule and leaves advancement to the callback", async () => {
-    const fixture = await seedFixture([
-      {
-        name: "dormant-due-cron",
-        prompt: "Dormant daily task",
-        cronExpression: "0 9 * * *",
-        nextRunAt: dueDate(),
-      },
-    ]);
-    const scheduleId = fixture.scheduleIds[0]!;
-    mockNow(DUE_TIME);
-
-    const result = await store.set(executeDueSchedules$, context.signal);
-
-    expect(result.executed).toBe(1);
-    const schedule = await findSchedule(scheduleId);
-    expect(schedule?.enabled).toBeTruthy();
-    expect(schedule?.lastRunAt).not.toBeNull();
-    expect(schedule?.nextRunAt).toBeNull();
-    expect(schedule?.lastRunId).not.toBeNull();
-  });
-
-  it("mirrors the claim and lastRunId onto the schedule's automation trigger", async () => {
-    const fixture = await seedFixture([
-      {
-        name: "dormant-mirrored-cron",
-        prompt: "Dormant mirrored task",
-        cronExpression: "0 9 * * *",
-        nextRunAt: dueDate(),
-      },
-    ]);
-    const scheduleId = fixture.scheduleIds[0]!;
-    await mirrorSchedule(scheduleId);
-    mockNow(DUE_TIME);
-
-    const result = await store.set(executeDueSchedules$, context.signal);
-
-    expect(result.executed).toBe(1);
-    const schedule = await findSchedule(scheduleId);
-    const mirror = await findMirrorTrigger(scheduleId);
-    expect(mirror?.trigger.nextRunAt).toBeNull();
-    expect(mirror?.trigger.lastRunAt?.getTime()).toBe(
-      schedule?.lastRunAt?.getTime(),
-    );
-    expect(schedule?.lastRunId).not.toBeNull();
-    expect(mirror?.trigger.lastRunId).toBe(schedule?.lastRunId);
   });
 });

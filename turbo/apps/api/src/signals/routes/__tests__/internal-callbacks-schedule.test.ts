@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -13,7 +12,6 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import { syncScheduleToAutomationSafely } from "../../services/automations/schedule-dual-write";
 import { calculateNextRun } from "../../services/zero-schedules.service";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -197,34 +195,6 @@ async function deleteSchedule(scheduleId: string): Promise<void> {
   await writeDb
     .delete(zeroAgentSchedules)
     .where(eq(zeroAgentSchedules.id, scheduleId));
-}
-
-// Mirror a seeded schedule into the events-first tables, as the dual-write
-// would have on deploy.
-async function mirrorSchedule(scheduleId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  const [schedule] = await writeDb
-    .select()
-    .from(zeroAgentSchedules)
-    .where(eq(zeroAgentSchedules.id, scheduleId))
-    .limit(1);
-  if (!schedule) {
-    throw new Error("mirrorSchedule: schedule not found");
-  }
-  await syncScheduleToAutomationSafely(writeDb, schedule);
-}
-
-async function findMirrorTrigger(scheduleId: string) {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({ trigger: automationTriggers })
-    .from(automations)
-    .innerJoin(
-      automationTriggers,
-      eq(automationTriggers.automationId, automations.id),
-    )
-    .where(eq(automations.sourceScheduleId, scheduleId));
-  return row?.trigger;
 }
 
 async function runSummary(runId: string): Promise<string | null> {
@@ -476,37 +446,6 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     // The chat callback owns the run summary; the reschedule callback must not
     // write one.
     await expect(runSummary(runId)).resolves.toBeNull();
-  });
-
-  it("mirrors the completion advance onto the schedule's automation trigger", async () => {
-    mockNow(new Date("2026-05-13T04:00:00.000Z"));
-    const fixture = await track(seedFixture());
-    const scheduleId = await seedSchedule(fixture, {
-      kind: "loop",
-      consecutiveFailures: 2,
-      intervalSeconds: 600,
-    });
-    await mirrorSchedule(scheduleId);
-    const { runId, callbackId } = await seedRunAndCallback(fixture, {
-      path: LOOP_PATH,
-      scheduleId,
-      payload: { scheduleId },
-    });
-
-    const response = await postSignedCallback(LOOP_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: { scheduleId },
-    });
-
-    expect(response.status).toBe(200);
-    // The completion advance re-syncs the mirror: next run + counter reset
-    // land on the trigger row too.
-    const trigger = await findMirrorTrigger(scheduleId);
-    expect(trigger?.consecutiveFailures).toBe(0);
-    expect(trigger?.enabled).toBeTruthy();
-    expect(trigger?.nextRunAt?.toISOString()).toBe("2026-05-13T04:10:00.000Z");
   });
 
   it("increments loop failure counters before the auto-disable threshold", async () => {

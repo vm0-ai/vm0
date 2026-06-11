@@ -165,6 +165,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
+  [FeatureSwitchKey.GoogleMapsConnector]: {
+    maintainer: "linghan@vm0.ai",
+    description: "Enable the Google Maps connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleAnalyticsConnector]: {
+    maintainer: "linghan@vm0.ai",
+    description: "Enable the Google Analytics connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
     maintainer: "linghan@vm0.ai",
     description: "Enable the Google Search Console connector",
@@ -243,7 +253,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",

@@ -16,6 +16,7 @@ export const SEED_SKILLS: readonly string[] = [
   "audit-readiness",
   "brand-guidelines",
   "campaign-strategy",
+  "computer-use",
   "competitor-matrix",
   "contract-redline",
   "copywriting",

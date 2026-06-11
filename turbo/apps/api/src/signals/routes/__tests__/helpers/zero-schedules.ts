@@ -8,6 +8,7 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -21,7 +22,6 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -40,7 +40,6 @@ export interface ScheduleSeed {
   readonly lastRunId?: string | null;
   readonly appendSystemPrompt?: string | null;
   readonly timezone?: string;
-  readonly retryStartedAt?: Date | null;
   readonly consecutiveFailures?: number;
 }
 
@@ -82,6 +81,9 @@ function agentEnvironment(
     : { ANTHROPIC_API_KEY: "test-key" };
 }
 
+// Schedules live on the events-first tables (phase 3 of #16847): seed an
+// automation (identity + intent) plus its single time trigger (recurrence +
+// runtime state). The returned id is the automation id.
 async function seedSchedule(
   writeDb: Db,
   args: {
@@ -91,7 +93,6 @@ async function seedSchedule(
     readonly orgId: string;
   },
 ): Promise<string> {
-  const scheduleId = randomUUID();
   const [thread] = await writeDb
     .insert(chatThreads)
     .values({ userId: args.userId, agentComposeId: args.composeId })
@@ -99,28 +100,38 @@ async function seedSchedule(
   if (!thread) {
     throw new Error("seedSchedule: chat thread insert returned no row");
   }
-  await writeDb.insert(zeroAgentSchedules).values({
-    id: scheduleId,
-    agentId: args.composeId,
-    userId: args.userId,
-    orgId: args.orgId,
-    name: args.seed.name,
-    chatThreadId: thread.id,
-    triggerType: resolveTriggerType(args.seed),
+  const enabled = args.seed.enabled ?? true;
+  const [automation] = await writeDb
+    .insert(automations)
+    .values({
+      agentId: args.composeId,
+      userId: args.userId,
+      orgId: args.orgId,
+      name: args.seed.name,
+      chatThreadId: thread.id,
+      instruction: args.seed.prompt,
+      description: args.seed.description ?? null,
+      appendSystemPrompt: args.seed.appendSystemPrompt ?? null,
+      interpreterKind: "time",
+      enabled,
+    })
+    .returning({ id: automations.id });
+  if (!automation) {
+    throw new Error("seedSchedule: automation insert returned no row");
+  }
+  await writeDb.insert(automationTriggers).values({
+    automationId: automation.id,
+    kind: resolveTriggerType(args.seed),
     cronExpression: args.seed.cronExpression ?? null,
     atTime: args.seed.atTime ?? null,
     intervalSeconds: args.seed.intervalSeconds ?? null,
-    prompt: args.seed.prompt,
-    description: args.seed.description ?? null,
     timezone: args.seed.timezone ?? "UTC",
     nextRunAt: args.seed.nextRunAt ?? null,
     lastRunId: args.seed.lastRunId ?? null,
-    appendSystemPrompt: args.seed.appendSystemPrompt ?? null,
-    enabled: args.seed.enabled ?? true,
-    retryStartedAt: args.seed.retryStartedAt ?? null,
+    enabled,
     consecutiveFailures: args.seed.consecutiveFailures ?? 0,
   });
-  return scheduleId;
+  return automation.id;
 }
 
 export const seedSchedulesScenario$ = command(
@@ -249,9 +260,10 @@ export const deleteSchedulesScenario$ = command(
     }
 
     if (fixture.scheduleIds.length > 0) {
+      // Trigger rows are removed by the FK cascade.
       await writeDb
-        .delete(zeroAgentSchedules)
-        .where(inArray(zeroAgentSchedules.id, [...fixture.scheduleIds]));
+        .delete(automations)
+        .where(inArray(automations.id, [...fixture.scheduleIds]));
       signal.throwIfAborted();
     }
     if (runIds.length > 0) {
