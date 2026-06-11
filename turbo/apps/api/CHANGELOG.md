@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.130.1](https://github.com/vm0-ai/vm0/compare/api-v1.130.0...api-v1.130.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* aggregate team credit usage by member ([#17287](https://github.com/vm0-ai/vm0/issues/17287)) ([542d7eb](https://github.com/vm0-ai/vm0/commit/542d7eb85ecdbc188f85df346cce14c877d8e4d8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.84.1
+    * @vm0/core bumped to 8.329.1
+    * @vm0/db bumped to 1.44.2
+
 ## [1.130.0](https://github.com/vm0-ai/vm0/compare/api-v1.129.0...api-v1.130.0) (2026-06-11)
 
 

@@ -1,29 +1,34 @@
-use std::io::Write;
+use std::path::Path;
 
-use vsock_proto::{self, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT};
+use vsock_proto::{self, MSG_WRITE_FILE};
 
 use super::support::{
-    assert_ping_pong, finish_guest_connection, read_error_response, read_message,
-    send_control_payload, start_guest_connection, unique_tmp_path,
+    assert_ping_pong, finish_guest_connection, read_error_response, send_control_payload,
+    start_guest_connection, unique_tmp_path,
 };
 
 #[test]
-fn write_file_seq_zero_is_not_rejected_as_invalid_sequence() {
+fn write_file_seq_zero_returns_error() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_control_payload(&mut host_stream, MSG_WRITE_FILE, 0, b"bad");
+    let error = read_error_response(&mut host_stream, 0);
+    assert_eq!(error, "write_file requires non-zero sequence");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn write_file_seq_zero_does_not_write_valid_payload() {
     let (handle, mut host_stream) = start_guest_connection();
     let path = unique_tmp_path("write-file-seq-zero", ".txt");
+    let payload = vsock_proto::encode_write_file(path.as_str(), b"should-not-write", false, false)
+        .expect("encode write_file");
 
-    let payload = vsock_proto::encode_write_file(path.as_str(), b"ok", false, false).unwrap();
-    let msg = vsock_proto::encode(MSG_WRITE_FILE, 0, &payload).unwrap();
-    host_stream.write_all(&msg).unwrap();
-
-    let response = read_message(&mut host_stream);
-    assert_eq!(response.msg_type, MSG_WRITE_FILE_RESULT);
-    assert_eq!(response.seq, 0);
-    let (_success, error) = vsock_proto::decode_write_file_result(&response.payload).unwrap();
-    assert!(
-        !error.contains("non-zero sequence"),
-        "write_file seq=0 should reach the write_file handler, got: {error}"
-    );
+    send_control_payload(&mut host_stream, MSG_WRITE_FILE, 0, &payload);
+    let error = read_error_response(&mut host_stream, 0);
+    assert_eq!(error, "write_file requires non-zero sequence");
+    assert!(!Path::new(path.as_str()).exists());
 
     finish_guest_connection(handle, host_stream);
 }

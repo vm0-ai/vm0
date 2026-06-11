@@ -126,8 +126,7 @@ function completedRunIdsFromMessages(
     if (
       message.role === "assistant" &&
       message.runId !== undefined &&
-      (message.runLifecycleEvent === "completed" ||
-        message.status === "completed")
+      message.runLifecycleEvent === "completed"
     ) {
       ids.add(message.runId);
     }
@@ -159,7 +158,6 @@ function createInterruptedAssistantMessage(
     runId,
     interruptsRunId: runId,
     error: "Run cancelled",
-    status: "cancelled",
     runLifecycleEvent: "cancelled",
     blocks: enrichBlocksWithTextPreviews(blocks),
     isQueued: false,
@@ -1323,6 +1321,7 @@ function createPagedMessages(
     latestChatMessageId$,
     allMessages$,
     groupedChatMessages$,
+    rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
@@ -1514,6 +1513,7 @@ interface RunTrackingDeps {
   threadData$: Computed<Promise<ChatThread | null>>;
   allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   backfillHistoryBoundary$: Command<Promise<void>, [AbortSignal]>;
@@ -1573,6 +1573,7 @@ function createRunTracking({
   threadData$,
   allMessages$,
   latestChatMessageId$,
+  rawMessages$,
   initialPage$,
   fetchNextPage$,
   backfillHistoryBoundary$,
@@ -1583,18 +1584,12 @@ function createRunTracking({
   const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
 
   const allFinished$ = computed(async (get) => {
-    const messages = await get(allMessages$);
-    const state = deriveRunIndicatorState(messages);
-    if (state !== null) {
+    if (hasUnresolvedQueueMarker(await get(rawMessages$))) {
       return false;
     }
-    const thread = await get(threadData$);
-    const terminatedRunIds = terminatedRunIdsFromMessages(messages);
-    return (
-      thread?.activeRunIds.every((runId) => {
-        return terminatedRunIds.has(runId);
-      }) ?? true
-    );
+    const messages = await get(allMessages$);
+    const state = deriveRunIndicatorState(messages);
+    return state === null;
   });
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
@@ -2264,6 +2259,7 @@ export function createChatThreadSignals(
     latestChatMessageId$,
     allMessages$,
     groupedChatMessages$,
+    rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
@@ -2285,6 +2281,7 @@ export function createChatThreadSignals(
     threadData$,
     allMessages$,
     latestChatMessageId$,
+    rawMessages$,
     initialPage$,
     fetchNextPage$,
     backfillHistoryBoundary$,

@@ -1,6 +1,6 @@
 import type { DesktopAuthState } from "./desktop-bridge";
 import {
-  IDLE_COMPUTER_USE_HOST_STATE,
+  OFFLINE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
   type ComputerUseHostRuntimeState,
   type ComputerUsePermissionState,
@@ -42,7 +42,7 @@ export function resolveComputerUseStartupGate(args: {
     return {
       status: "blocked",
       host: {
-        ...IDLE_COMPUTER_USE_HOST_STATE,
+        ...OFFLINE_COMPUTER_USE_HOST_STATE,
         status: "unauthenticated",
         lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
       },
@@ -53,7 +53,7 @@ export function resolveComputerUseStartupGate(args: {
     return {
       status: "blocked",
       host: {
-        ...IDLE_COMPUTER_USE_HOST_STATE,
+        ...OFFLINE_COMPUTER_USE_HOST_STATE,
         status: "needs_organization",
         lastError: COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
       },

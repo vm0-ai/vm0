@@ -121,6 +121,34 @@ function formatFeedbackPrompt(comments: readonly FeedbackComment[]): string {
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
+function withCommittedDraft(args: {
+  readonly comments: readonly FeedbackComment[];
+  readonly draft: FeedbackDraft | null;
+  readonly editingId: number | null;
+  readonly nextId: number;
+}): readonly FeedbackComment[] {
+  const draft = args.draft;
+  if (!draft || draft.note.trim().length === 0) {
+    return args.comments;
+  }
+  const note = draft.note.trim();
+  if (args.editingId !== null) {
+    return args.comments.map((comment) => {
+      return comment.id === args.editingId
+        ? { ...comment, quote: draft.quote, note }
+        : comment;
+    });
+  }
+  return [
+    ...args.comments,
+    {
+      id: args.nextId,
+      quote: draft.quote,
+      note,
+    },
+  ];
+}
+
 // Commit the draft: update the comment being edited in place, or append a new
 // one. A blank note is a no-op so empty cards never appear.
 const commitDraft$ = command(({ get, set }) => {
@@ -128,25 +156,20 @@ const commitDraft$ = command(({ get, set }) => {
   if (!draft || draft.note.trim().length === 0) {
     return;
   }
-  const note = draft.note.trim();
   const editingId = get(feedbackEditingId$);
-  if (editingId !== null) {
-    set(
-      feedbackComments$,
-      get(feedbackComments$).map((comment) => {
-        return comment.id === editingId
-          ? { ...comment, quote: draft.quote, note }
-          : comment;
-      }),
-    );
-  } else {
-    const id = get(feedbackNextId$);
-    set(feedbackNextId$, id + 1);
-    set(feedbackComments$, [
-      ...get(feedbackComments$),
-      { id, quote: draft.quote, note },
-    ]);
+  const nextId = get(feedbackNextId$);
+  if (editingId === null) {
+    set(feedbackNextId$, nextId + 1);
   }
+  set(
+    feedbackComments$,
+    withCommittedDraft({
+      comments: get(feedbackComments$),
+      draft,
+      editingId,
+      nextId,
+    }),
+  );
   set(feedbackDraft$, null);
   set(feedbackEditingId$, null);
 });
@@ -231,12 +254,27 @@ export const removeFeedbackComment$ = command(({ get, set }, id: number) => {
 // Flush a non-empty draft, then compose every comment into one prompt. Returns
 // null when there is nothing to send.
 export const submitFeedback$ = command(({ get, set }): string | null => {
+  const comments = withCommittedDraft({
+    comments: get(feedbackComments$),
+    draft: get(feedbackDraft$),
+    editingId: get(feedbackEditingId$),
+    nextId: get(feedbackNextId$),
+  });
   set(commitDraft$);
-  const comments = get(feedbackComments$);
   if (comments.length === 0) {
     return null;
   }
   return formatFeedbackPrompt(comments);
+});
+
+export const dismissFeedbackSelection$ = command(({ get, set }) => {
+  const timerId = get(feedbackCopiedTimerId$);
+  if (timerId !== null) {
+    window.clearTimeout(timerId);
+    set(feedbackCopiedTimerId$, null);
+  }
+  set(feedbackSelection$, null);
+  set(feedbackCopied$, false);
 });
 
 export const dismissFeedback$ = command(({ get, set }) => {
