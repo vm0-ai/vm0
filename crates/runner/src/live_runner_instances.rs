@@ -120,10 +120,10 @@ pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
                 break;
             }
         };
-        if stable_record_identity_from_file_name(&entry.file_name()).is_none() {
+        let Some(identity) = stable_record_identity_from_file_name(&entry.file_name()) else {
             continue;
-        }
-        let Some(record) = read_valid_record(&entry.path()).await else {
+        };
+        let Some(record) = read_valid_record_for_identity(&entry.path(), identity).await else {
             continue;
         };
         instances.push(LiveRunnerInstance {
@@ -219,10 +219,13 @@ async fn remove_stale_records(home: &HomePaths) {
         };
         let file_name = entry.file_name();
         let path = entry.path();
-        if stable_record_identity_from_file_name(&file_name).is_some()
-            && read_valid_record(&path).await.is_none()
-        {
-            remove_stale_file(&path, "stale live runner instance record").await;
+        if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
+            if read_valid_record_for_identity(&path, identity)
+                .await
+                .is_none()
+            {
+                remove_stale_file(&path, "stale live runner instance record").await;
+            }
             continue;
         }
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
@@ -231,6 +234,26 @@ async fn remove_stale_records(home: &HomePaths) {
         if !file_process_identity_is_live(identity).await {
             remove_stale_file(&path, "stale live runner instance tmp file").await;
         }
+    }
+}
+
+async fn read_valid_record_for_identity(
+    path: &Path,
+    identity: FileProcessIdentity,
+) -> Option<LiveRunnerInstanceRecord> {
+    let record = read_valid_record(path).await?;
+    if record.pid == identity.pid && record.starttime == identity.starttime {
+        Some(record)
+    } else {
+        tracing::debug!(
+            path = %path.display(),
+            record_pid = record.pid,
+            record_starttime = record.starttime,
+            file_pid = identity.pid,
+            file_starttime = identity.starttime,
+            "ignoring live runner instance record whose contents do not match file name"
+        );
+        None
     }
 }
 
@@ -517,6 +540,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_ignores_records_with_mismatched_file_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let record = read_valid_record(&handle.path).await.unwrap();
+        tokio::fs::remove_file(&handle.path).await.unwrap();
+        write_record(
+            &home.live_runner_instance_record_path(record.pid, record.starttime + 1),
+            &record,
+        )
+        .await;
+
+        let instances = list(&home).await;
+
+        assert!(instances.is_empty());
+    }
+
+    #[tokio::test]
     async fn read_valid_record_ignores_stale_pid() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
@@ -649,6 +690,22 @@ mod tests {
 
         assert!(!stale_path.exists());
         assert!(!stale_tmp_path.exists());
+    }
+
+    #[tokio::test]
+    async fn publish_removes_records_with_mismatched_file_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let record = read_valid_record(&handle.path).await.unwrap();
+        tokio::fs::remove_file(&handle.path).await.unwrap();
+        let mismatched_path =
+            home.live_runner_instance_record_path(record.pid, record.starttime + 1);
+        write_record(&mismatched_path, &record).await;
+
+        let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+
+        assert!(!mismatched_path.exists());
     }
 
     #[cfg(unix)]
