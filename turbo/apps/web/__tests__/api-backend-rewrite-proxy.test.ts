@@ -623,34 +623,15 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
 
-  it("matches the internal cron schedule callback rewrite path exactly", () => {
+  it("rejects the retired schedule callback rewrite paths", () => {
+    // The schedule completion-callback routes were retired with the
+    // zero_agent_schedules drop (#16847); the trigger callbacks replaced them.
     expect(
       matchesApiBackendRewritePath("/api/internal/callbacks/schedule/cron"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath(
-        "/api/internal/callbacks/schedule/cron/extra",
-      ),
     ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/schedule"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
-  });
-
-  it("matches the internal loop schedule callback rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/internal/callbacks/schedule/loop"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath(
-        "/api/internal/callbacks/schedule/loop/extra",
-      ),
     ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/internal/callbacks/schedule"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
 
   it("matches the internal Slack org callback rewrite path exactly", () => {
