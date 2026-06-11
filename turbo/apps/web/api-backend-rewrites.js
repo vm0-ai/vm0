@@ -663,14 +663,6 @@ export const API_BACKEND_REWRITES = [
     "/api/internal/callbacks/github/issues",
   ],
   [
-    "/api/internal/callbacks/schedule/cron",
-    "/api/internal/callbacks/schedule/cron",
-  ],
-  [
-    "/api/internal/callbacks/schedule/loop",
-    "/api/internal/callbacks/schedule/loop",
-  ],
-  [
     "/api/internal/callbacks/trigger/cron",
     "/api/internal/callbacks/trigger/cron",
   ],

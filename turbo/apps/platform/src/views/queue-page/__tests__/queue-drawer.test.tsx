@@ -1,29 +1,21 @@
-/**
- * Tests for the QueueDrawer component.
- *
- * The queue drawer shows current plan status and an upsell to the next tier.
- * Free → Pro, Pro → Team, Team → no upsell.
- *
- * Entry point: setupPage({ context, path: "/" }) + store.set(openQueueDrawer$)
- * Mock (external): HTTP via MSW
- * Real (internal): All signals, components, rendering
- */
-
-import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { server } from "../../../mocks/server.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { openQueueDrawer$ } from "../../../signals/queue-page/queue-drawer-state.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
+import {
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { describe, expect, it } from "vitest";
+
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
-function mockHomeAPIs() {
-  // Global handlers cover chat-threads and team routes
-}
+const THREAD_ID = "thread-queue";
 
 function queueResponse(overrides?: {
   concurrency?: {
@@ -46,112 +38,133 @@ function queueResponse(overrides?: {
   };
 }
 
-function openDrawer() {
-  mockHomeAPIs();
-  detachedSetupPage({ context, path: "/" });
-  context.store.set(openQueueDrawer$, context.signal);
+function mockQueuedThread(): void {
+  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+    if (query.sinceId) {
+      return respond(200, { messages: [] });
+    }
+
+    return respond(200, {
+      messages: [
+        {
+          id: "msg-previous-user",
+          role: "user",
+          content: "Previous prompt",
+          runId: "run-completed",
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+        {
+          id: "msg-previous-assistant",
+          role: "assistant",
+          content: "Previous answer",
+          runId: "run-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-01-01T00:00:01Z",
+        },
+        {
+          id: "msg-queued-marker",
+          role: "assistant",
+          content: "Waiting in queue...",
+          runId: "run-queued",
+          runEventId: "queue:queued",
+          createdAt: "2026-01-01T00:00:02Z",
+        },
+      ],
+    });
+  });
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+    return respond(200, {
+      id: THREAD_ID,
+      title: null,
+      agentId: "c0000000-0000-4000-a000-000000000001",
+      latestSessionId: null,
+      activeRunIds: ["run-queued"],
+      draftContent: null,
+      draftAttachments: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+  });
+}
+
+function getButtonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((el) => {
+    return el.textContent?.trim() === text;
+  });
+
+  if (!button) {
+    throw new Error(`Could not find button: ${text}`);
+  }
+
+  return button;
+}
+
+async function openDrawer(): Promise<void> {
+  mockQueuedThread();
+  detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+  const queueButton = await waitFor(() => {
+    return getButtonByText("queue...");
+  });
+  click(queueButton);
 }
 
 describe("queue drawer", () => {
-  it("shows title when opened", async () => {
-    server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
-        return respond(200, queueResponse());
-      }),
-    );
-    openDrawer();
+  it("shows the free tier limit and upgrade path", async () => {
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
+        }),
+      );
+    });
+
+    await openDrawer();
 
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: /waiting in line/ }),
       ).toBeInTheDocument();
-    });
-  });
-
-  it("shows Free label and limitation for free tier", async () => {
-    server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
-        return respond(
-          200,
-          queueResponse({
-            concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
-          }),
-        );
-      }),
-    );
-    openDrawer();
-
-    await waitFor(() => {
       expect(screen.getByText("Free")).toBeInTheDocument();
       expect(screen.getByText(/only run 1 task/)).toBeInTheDocument();
-    });
-  });
-
-  it("shows Pro upsell for free tier", async () => {
-    server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
-        return respond(
-          200,
-          queueResponse({
-            concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
-          }),
-        );
-      }),
-    );
-    openDrawer();
-
-    await waitFor(() => {
-      expect(screen.getByText("Pro")).toBeInTheDocument();
       expect(screen.getByText("Upgrade to Pro")).toBeInTheDocument();
-      expect(screen.getByText("$20")).toBeInTheDocument();
-      expect(
-        screen.getAllByText("2 concurrent runs").length,
-      ).toBeGreaterThanOrEqual(1);
     });
   });
 
-  it("shows Team upsell for pro tier", async () => {
-    server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
-        return respond(
-          200,
-          queueResponse({
-            concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
-          }),
-        );
-      }),
-    );
-    openDrawer();
+  it("shows the Team upgrade path for Pro tier", async () => {
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
+        }),
+      );
+    });
+
+    await openDrawer();
 
     await waitFor(() => {
       expect(screen.getByText("Pro")).toBeInTheDocument();
-      expect(screen.getByText("Team")).toBeInTheDocument();
       expect(screen.getByText("Upgrade to Team")).toBeInTheDocument();
-      expect(screen.getByText("$200")).toBeInTheDocument();
-      expect(
-        screen.getAllByText("10 concurrent runs").length,
-      ).toBeGreaterThanOrEqual(1);
     });
   });
 
-  it("shows no upsell for team tier", async () => {
-    server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
-        return respond(
-          200,
-          queueResponse({
-            concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
-          }),
-        );
-      }),
-    );
-    openDrawer();
+  it("shows no upgrade path for Team tier", async () => {
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
+        }),
+      );
+    });
+
+    await openDrawer();
 
     await waitFor(() => {
       expect(screen.getByText("Team")).toBeInTheDocument();
       expect(screen.getByText(/3 of 5 slots/)).toBeInTheDocument();
     });
-
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
   });
 });

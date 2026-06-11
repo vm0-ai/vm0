@@ -80,7 +80,7 @@ import {
 } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
-import { currentAgent$ } from "../../signals/agent.ts";
+import { currentAgent$, currentAgentId$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
@@ -1446,7 +1446,9 @@ function useTabVisibility(agentId: string, ownerId: string) {
 export function ZeroJobDetailPage() {
   const detailLoadable = useLoadable(agentDetail$);
   const error = loadableErrorMessage(detailLoadable);
+  const currentAgentId = useGet(currentAgentId$);
   const fields = useAgentFields();
+  const errorAgentId = fields.agentId || currentAgentId || "";
   const {
     isDefaultAgent,
     hideProfileAndInstructions,
@@ -1460,7 +1462,7 @@ export function ZeroJobDetailPage() {
   }
 
   if (error) {
-    return <DetailError error={error} agentId={fields.agentId} />;
+    return <DetailError error={error} agentId={errorAgentId} />;
   }
 
   return (

@@ -2258,7 +2258,6 @@ export async function postAutomationUserMessage(params: {
   readonly runId: string;
   readonly prompt: string;
   readonly appendQueueMarker: boolean;
-  readonly scheduleId?: string;
   readonly scheduleTitle?: string;
   readonly scheduleSnapshot?: ChatMessageScheduleSnapshot;
 }): Promise<void> {
@@ -2274,7 +2273,6 @@ export async function postAutomationUserMessage(params: {
     generationTemplate: undefined,
     appendQueueMarker: params.appendQueueMarker,
     clearDraft: false,
-    scheduleId: params.scheduleId,
     scheduleTitle: params.scheduleTitle,
     scheduleSnapshot: params.scheduleSnapshot,
   });

@@ -262,7 +262,9 @@ describe("GET /api/public/model-rankings", () => {
     const modelAlias = "anthropic/claude-sonnet-4.6";
     const unsupportedModel = `unsupported-model-${randomUUID()}`;
     const daySeed = Number.parseInt(randomUUID().slice(0, 8), 16);
-    const windowStart = new Date(Date.UTC(2200, 0, 1 + (daySeed % 90), 0));
+    const windowStart = new Date(
+      Date.UTC(2400, 0, 1 + (daySeed % 1_000_000), 0),
+    );
     const windowEnd = new Date(windowStart.getTime() + 12 * HOUR_MS);
     const currentHour = new Date(windowEnd.getTime() - HOUR_MS);
     const previousHour = new Date(windowStart.getTime() - HOUR_MS);

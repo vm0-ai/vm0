@@ -3,6 +3,7 @@ import {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
 // Mock org model providers data — empty by default
@@ -29,7 +30,7 @@ export const apiOrgModelProvidersHandlers = [
 
   // POST /api/zero/model-providers - Create or update org model provider
   mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
-    const now = new Date().toISOString();
+    const now = nowDate().toISOString();
     const existing = mockOrgModelProviders.find((p) => {
       return p.type === body.type;
     });

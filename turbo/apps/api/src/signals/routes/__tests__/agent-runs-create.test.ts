@@ -548,6 +548,7 @@ describe("POST /api/agent/runs", () => {
           ANTHROPIC_API_KEY: "test-key",
           MY_VAR: vm0Template("{{ vars.MY_VAR }}"),
           API_KEY: vm0Template("{{ secrets.API_KEY }}"),
+          USER_DEFINED_DYNAMIC_ENV_17220: "visible",
         },
       },
     });
@@ -599,6 +600,7 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.environment).toMatchObject({
       MY_VAR: "value",
       API_KEY: "secret-value",
+      USER_DEFINED_DYNAMIC_ENV_17220: "visible",
     });
     expect(
       decryptSecretsMapForTests(executionContext.encryptedSecrets),
@@ -608,16 +610,28 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.storageManifest.storages).toMatchObject([
       { name: "docs", mountPath: "/mnt/docs", vasVersionId: docsVersion },
     ]);
-    expect(runContextSnapshot(response.body.runId)).toMatchObject({
+    const snapshot = runContextSnapshot(response.body.runId);
+    if (!snapshot) {
+      throw new Error("expected run context snapshot");
+    }
+    expect(snapshot).toMatchObject({
       secretNames: ["API_KEY"],
-      environment: {
-        MY_VAR: "value",
-        API_KEY: "***",
-      },
       volumes: [
         { name: "docs", mountPath: "/mnt/docs", vasVersionId: docsVersion },
       ],
     });
+    expect(snapshot).not.toHaveProperty("environment");
+    expect(snapshot).not.toHaveProperty("networkPolicies");
+    expect(snapshot).not.toHaveProperty("featureFlags");
+    expect(snapshot.environmentEntries).toStrictEqual(
+      expect.arrayContaining([
+        { name: "MY_VAR", value: "value" },
+        { name: "API_KEY", value: "***" },
+        { name: "USER_DEFINED_DYNAMIC_ENV_17220", value: "visible" },
+      ]),
+    );
+    expect(snapshot.networkPolicyEntries).toStrictEqual(expect.any(Array));
+    expect(snapshot.featureFlagEntries).toStrictEqual(expect.any(Array));
   });
 
   it("does not load unreferenced persisted secrets into runner secrets", async () => {
@@ -1626,6 +1640,24 @@ describe("POST /api/agent/runs", () => {
       AWS_REGION: "us-west-2",
       AWS_DEFAULT_REGION: "us-west-2",
     });
+    const snapshot = runContextSnapshot(response.body.runId);
+    if (!snapshot) {
+      throw new Error("expected run context snapshot");
+    }
+    expect(snapshot).not.toHaveProperty("networkPolicies");
+    expect(snapshot.networkPolicyEntries).toStrictEqual(
+      expect.arrayContaining([
+        {
+          name: "aws",
+          policy: {
+            allow: [],
+            deny: [],
+            ask: [],
+            unknownPolicy: "allow",
+          },
+        },
+      ]),
+    );
   });
 
   it("injects an org model provider when the compose omits a framework API key", async () => {

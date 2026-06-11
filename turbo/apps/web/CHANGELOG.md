@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.422.0](https://github.com/vm0-ai/vm0/compare/web-v12.421.4...web-v12.422.0) (2026-06-11)
+
+
+### Features
+
+* **db:** drop zero_agent_schedules and retire the legacy schedule paths ([#17258](https://github.com/vm0-ai/vm0/issues/17258)) ([8f89943](https://github.com/vm0-ai/vm0/commit/8f89943a31309f02c35a1c58e1d1cabfc5cfa8ba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.83.0
+    * @vm0/core bumped to 8.328.1
+
 ## [12.421.4](https://github.com/vm0-ai/vm0/compare/web-v12.421.3...web-v12.421.4) (2026-06-11)
 
 

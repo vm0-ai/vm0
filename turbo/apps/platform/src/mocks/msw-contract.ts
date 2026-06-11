@@ -107,7 +107,7 @@ function neverWithSignal(signal: AbortSignal): Promise<never> {
   });
 }
 
-type MockHandler<R extends AppRoute> = (ctx: {
+export type MockHandler<R extends AppRoute> = (ctx: {
   params: InferParams<R>;
   query: InferQuery<R>;
   body: InferBody<R>;
@@ -220,7 +220,7 @@ export const createMockApi = createBoundMockApi;
 
 type HttpResolverArgs = Parameters<Parameters<typeof http.get>[1]>[0];
 type HttpResolverResult = ReturnType<Parameters<typeof http.get>[1]>;
-type HttpResolverWithContext = (
+export type HttpResolverWithContext = (
   args: HttpResolverArgs & ReturnType<typeof createHelpers>,
 ) => HttpResolverResult;
 

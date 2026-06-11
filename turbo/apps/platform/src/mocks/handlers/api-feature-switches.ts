@@ -6,8 +6,7 @@
  * Stateless: defaults return empty switches. Tests override the GET response
  * via `setMockFeatureSwitches` from `./api-feature-switches.helpers.ts` —
  * that file imports `server` (msw/node) and is intentionally separate so
- * browser tests, which transitively import `handlers/index.ts` to wire up
- * `mocks/browser.ts`, do not pull in `node:http` through this module.
+ * default handlers stay free of test override side effects.
  */
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";

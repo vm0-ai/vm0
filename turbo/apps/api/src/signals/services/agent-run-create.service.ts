@@ -119,6 +119,12 @@ import { now, nowDate } from "../external/time";
 import { generateZeroToken } from "../auth/tokens";
 import { settle, tapError } from "../utils";
 import {
+  environmentRecordToEntries,
+  featureFlagsRecordToEntries,
+  networkPoliciesRecordToEntries,
+  type RunContextAxiomSnapshot,
+} from "./run-context-snapshot.service";
+import {
   decryptStoredSecretValue,
   encryptPersistentSecretValue,
   encryptPersistentSecretsMap,
@@ -310,10 +316,6 @@ interface BuiltStoredExecutionContext {
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
 }
-
-type RunContextSnapshot = Omit<RunContextResponse, "vars"> & {
-  readonly userId: string;
-};
 
 type ApiErrorResponse<Status extends number, Code extends string> = {
   readonly status: Status;
@@ -3086,7 +3088,11 @@ function ingestRunContextSnapshot(args: {
 }): void {
   const storedContext = args.builtContext.context;
   const manifest = storedContext.storageManifest;
-  const snapshot: RunContextSnapshot & { readonly _time: string } = {
+  const sanitizedEnvironment = sanitizeEnvironment(
+    storedContext.environment,
+    args.builtContext.secretValues,
+  );
+  const snapshot: RunContextAxiomSnapshot = {
     _time: nowDate().toISOString(),
     runId: args.runId,
     userId: args.userId,
@@ -3094,12 +3100,11 @@ function ingestRunContextSnapshot(args: {
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     sessionId: storedContext.resumeSession?.sessionId ?? null,
     secretNames: [...args.builtContext.secretNames],
-    environment: sanitizeEnvironment(
-      storedContext.environment,
-      args.builtContext.secretValues,
-    ),
+    environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
     firewalls: sanitizeFirewalls(storedContext.firewalls),
-    networkPolicies: storedContext.networkPolicies ?? null,
+    networkPolicyEntries: networkPoliciesRecordToEntries(
+      storedContext.networkPolicies,
+    ),
     volumes: (manifest?.storages ?? []).map((storage) => {
       return {
         name: storage.name,
@@ -3116,7 +3121,7 @@ function ingestRunContextSnapshot(args: {
             vasVersionId: manifest.artifacts[0]!.vasVersionId,
           }
         : null,
-    featureFlags: storedContext.featureFlags ?? null,
+    featureFlagEntries: featureFlagsRecordToEntries(storedContext.featureFlags),
   };
 
   ingestToAxiom(getDatasetName("run-context"), [snapshot]);

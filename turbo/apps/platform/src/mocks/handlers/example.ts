@@ -7,13 +7,13 @@
 
 import { http, HttpResponse } from "msw";
 
-export interface User {
+interface User {
   id: string;
   name: string;
   email: string;
 }
 
-export interface ApiError {
+interface ApiError {
   error: string;
   message: string;
 }

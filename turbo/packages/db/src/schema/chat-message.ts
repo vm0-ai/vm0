@@ -12,7 +12,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 import { agentRuns } from "./agent-run";
-import { zeroAgentSchedules } from "./zero-agent-schedule";
 
 /** attach_files stores legacy file IDs. */
 export type ChatMessageAttachFiles = string[];
@@ -121,17 +120,11 @@ export const chatMessages = pgTable(
       { onDelete: "set null" },
     ),
     // Set when this user message was posted by a firing schedule rather than
-    // typed by a human. `schedule_id` links to the schedule for navigation.
-    // `schedule_snapshot` preserves the basic schedule details at send time so
-    // the message keeps rendering its label even if the schedule is later
-    // renamed, edited, or deleted (FK is set null on delete). `schedule_title`
-    // is retained for legacy rows and fallback display.
-    scheduleId: uuid("schedule_id").references(
-      (): AnyPgColumn => {
-        return zeroAgentSchedules.id;
-      },
-      { onDelete: "set null" },
-    ),
+    // typed by a human. Historical rows reference the dropped
+    // zero_agent_schedules ids; `schedule_snapshot` preserves the basic
+    // schedule details at send time so the message keeps rendering its label.
+    // `schedule_title` is retained for legacy rows and fallback display.
+    scheduleId: uuid("schedule_id"),
     scheduleTitle: text("schedule_title"),
     scheduleSnapshot:
       jsonb("schedule_snapshot").$type<ChatMessageScheduleSnapshot>(),

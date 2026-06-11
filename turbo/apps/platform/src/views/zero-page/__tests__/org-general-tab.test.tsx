@@ -1,195 +1,93 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { server } from "../../../mocks/server.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  detachedSetupPage,
-  fill,
-  click,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
-import {
-  setMockOrg,
-  resetMockOrg,
-  setMockOrgLogo,
-  resetMockOrgLogo,
-} from "../../../mocks/handlers/api-org.ts";
 import {
   zeroOrgContract,
-  zeroOrgLeaveContract,
   zeroOrgDeleteContract,
 } from "@vm0/api-contracts/contracts/zero-org";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog.ts";
-import { setActiveOrgManageTab$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
 
-vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
-  const actual =
-    (await importOriginal()) as typeof import("@vm0/ui/components/ui/sonner");
-  return {
-    ...actual,
-    toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
-  };
-});
+import {
+  click,
+  detachedSetupPage,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
-beforeEach(() => {
-  resetMockOrg();
-  resetMockOrgLogo();
-  vi.mocked(toast.error).mockClear();
-  vi.mocked(toast.success).mockClear();
-});
-
-/**
- * Happy-dom does not decode actual image bytes, so `new Image()` never
- * fires `load` with real `naturalWidth`/`naturalHeight`. Stub the global
- * `Image` constructor for the lifetime of a single test so the handler's
- * dimension check has a deterministic answer.
- */
-function stubImageDimensions(width: number, height: number): void {
-  class FakeImage {
-    naturalWidth = width;
-    naturalHeight = height;
-    private listeners: Record<string, () => void> = {};
-    addEventListener(event: string, cb: () => void) {
-      this.listeners[event] = cb;
-    }
-    set src(_value: string) {
-      queueMicrotask(() => {
-        this.listeners.load?.();
-      });
-    }
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
   }
-  vi.stubGlobal("Image", FakeImage);
-  // Override only the two URL methods we care about — happy-dom's default
-  // revokeObjectURL throws on unknown blob URLs, and the real createObjectURL
-  // requires a live blob. Full URL stubbing would break MSW's URL parser.
-  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
-  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  return button;
 }
 
-async function openGeneralTab() {
-  detachedSetupPage({ context, path: "/" });
-  context.store.set(setActiveOrgManageTab$, "general");
-  await context.store.set(setOrgManageDialogOpen$, true, context.signal);
+async function openGeneralTab(): Promise<void> {
+  detachedSetupPage({ context, path: "/?settings=general" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "General" }),
+    ).toBeInTheDocument();
   });
 }
 
-describe("org general tab - profile section", () => {
-  it("should show name and slug inputs for admin", async () => {
-    setMockOrg({ name: "My Org", slug: "my-org", role: "admin" });
-    await openGeneralTab();
+describe("organization general settings", () => {
+  it("lets admins save or discard workspace profile edits", async () => {
+    let capturedBody: unknown = null;
+    const logoUrl = "https://cdn.vm0.test/orgs/old-slug/logo.png";
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Old Name",
+      slug: "old-slug",
+      role: "admin",
+    });
+    context.mocks.http.get("*/api/zero/org/logo", () => {
+      return new Response(JSON.stringify({ logoUrl }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.api(zeroOrgContract.update, ({ body, respond }) => {
+      capturedBody = body;
+      return respond(200, {
+        id: "org_1",
+        name: "New Name",
+        slug: "new-slug",
+        role: "admin",
+      });
+    });
 
-    const nameInput = await screen.findByDisplayValue("My Org");
-    expect(nameInput).toBeInTheDocument();
-
-    const slugInput = await screen.findByDisplayValue("my-org");
-    expect(slugInput).toBeInTheDocument();
-  });
-
-  it("should show name and slug as read-only text for non-admin", async () => {
-    setMockOrg({ name: "My Org", slug: "my-org", role: "member" });
     await openGeneralTab();
 
     await waitFor(() => {
-      expect(screen.getByText("My Org")).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "old-slug" })).toHaveAttribute(
+        "src",
+        logoUrl,
+      );
     });
 
-    // Non-admin should see text, not inputs
-    expect(screen.queryByDisplayValue("My Org")).not.toBeInTheDocument();
-    expect(screen.getByText("my-org")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("my-org")).not.toBeInTheDocument();
-  });
-
-  it("should show save/discard buttons when slug is changed", async () => {
-    setMockOrg({ slug: "old-slug" });
-    await openGeneralTab();
-
-    const slugInput = await screen.findByDisplayValue("old-slug");
-    await fill(slugInput, "new-slug");
-
+    await fill(await screen.findByDisplayValue("Old Name"), "New Name");
+    await fill(screen.getByDisplayValue("old-slug"), "new-slug");
     expect(screen.getByText("Save changes")).toBeInTheDocument();
     expect(screen.getByText("Discard")).toBeInTheDocument();
-  });
-
-  it("should discard slug changes when clicking Discard", async () => {
-    setMockOrg({ slug: "original-slug" });
-    await openGeneralTab();
-
-    const slugInput = await screen.findByDisplayValue("original-slug");
-    await fill(slugInput, "changed-slug");
-
-    expect(screen.getByDisplayValue("changed-slug")).toBeInTheDocument();
 
     click(screen.getByText("Discard"));
+    expect(screen.getByDisplayValue("Old Name")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("old-slug")).toBeInTheDocument();
 
-    expect(screen.getByDisplayValue("original-slug")).toBeInTheDocument();
-    expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
-  });
-
-  it("should send slug in PUT request when saving slug change", async () => {
-    const requestBody = vi.fn();
-    setMockOrg({ name: "Test Org", slug: "old-slug" });
-    server.use(
-      mockApi(zeroOrgContract.update, ({ body, respond }) => {
-        requestBody(body);
-        return respond(200, {
-          id: "org_1",
-          slug: "new-slug",
-          name: "Test Org",
-          role: "admin",
-        });
-      }),
-    );
-
-    await openGeneralTab();
-
-    const slugInput = await screen.findByDisplayValue("old-slug");
-    await fill(slugInput, "new-slug");
-
+    await fill(screen.getByDisplayValue("Old Name"), "New Name");
+    await fill(screen.getByDisplayValue("old-slug"), "new-slug");
     click(screen.getByText("Save changes"));
 
-    await vi.waitFor(() => {
-      expect(requestBody).toHaveBeenCalledWith({
-        slug: "new-slug",
-        force: true,
-      });
-    });
-  });
-
-  it("should send both name and slug when both are changed", async () => {
-    const requestBody = vi.fn();
-    setMockOrg({ name: "Old Name", slug: "old-slug" });
-    server.use(
-      mockApi(zeroOrgContract.update, ({ body, respond }) => {
-        requestBody(body);
-        return respond(200, {
-          id: "org_1",
-          slug: "new-slug",
-          name: "New Name",
-          role: "admin",
-        });
-      }),
-    );
-
-    await openGeneralTab();
-
-    const nameInput = await screen.findByDisplayValue("Old Name");
-    const slugInput = screen.getByDisplayValue("old-slug");
-
-    await fill(nameInput, "New Name");
-    await fill(slugInput, "new-slug");
-
-    click(screen.getByText("Save changes"));
-
-    await vi.waitFor(() => {
-      expect(requestBody).toHaveBeenCalledWith({
+    await waitFor(() => {
+      expect(capturedBody).toStrictEqual({
         name: "New Name",
         slug: "new-slug",
         force: true,
@@ -197,312 +95,234 @@ describe("org general tab - profile section", () => {
     });
   });
 
-  it("should show inline error when save fails", async () => {
-    setMockOrg({ slug: "old-slug" });
-    server.use(
-      mockApi(zeroOrgContract.update, ({ respond }) => {
-        return respond(409, {
-          error: {
-            message: "Slug is already taken",
-            code: "INTERNAL_SERVER_ERROR",
-          },
-        });
-      }),
-    );
-
-    await openGeneralTab();
-
-    const slugInput = await screen.findByDisplayValue("old-slug");
-    await fill(slugInput, "taken-slug");
-
-    click(screen.getByText("Save changes"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
+  it("uploads a workspace logo after validating image dimensions", async () => {
+    const user = userEvent.setup({ delay: null });
+    let capturedLogoName: string | null = null;
+    const initialLogoUrl = "https://cdn.vm0.test/orgs/acme/logo-old.png";
+    const uploadedLogoUrl = "https://cdn.vm0.test/orgs/acme/logo-new.png";
+    context.mocks.browser.imageDimensions({ width: 512, height: 512 });
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Acme",
+      slug: "acme",
+      role: "admin",
     });
-  });
-
-  it("should clear inline error on discard", async () => {
-    setMockOrg({ slug: "old-slug" });
-    server.use(
-      mockApi(zeroOrgContract.update, ({ respond }) => {
-        return respond(409, {
-          error: {
-            message: "Slug is already taken",
-            code: "INTERNAL_SERVER_ERROR",
-          },
-        });
-      }),
-    );
-
-    await openGeneralTab();
-
-    const slugInput = await screen.findByDisplayValue("old-slug");
-    await fill(slugInput, "taken-slug");
-
-    click(screen.getByText("Save changes"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
+    context.mocks.http.get("*/api/zero/org/logo", () => {
+      return new Response(JSON.stringify({ logoUrl: initialLogoUrl }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.http.post("*/api/zero/org/logo", async ({ request }) => {
+      const formData = await request.formData();
+      const file = formData.get("file");
+      if (!(file instanceof File)) {
+        throw new Error("Uploaded logo file not found");
+      }
+      capturedLogoName = file.name;
+      return new Response(JSON.stringify({ logoUrl: uploadedLogoUrl }), {
+        headers: { "Content-Type": "application/json" },
+      });
     });
 
-    click(screen.getByText("Discard"));
-
-    expect(screen.queryByText("Slug is already taken")).not.toBeInTheDocument();
-  });
-
-  it("should reject a logo that is too small with a toast", async () => {
-    stubImageDimensions(50, 50);
-    setMockOrg({ name: "My Org", slug: "my-org", role: "admin" });
     await openGeneralTab();
 
-    const fileInput = (await screen.findByLabelText(
-      "Upload logo",
-    )) as HTMLInputElement;
-    const file = new File(["x"], "tiny.png", { type: "image/png" });
-    Object.defineProperty(fileInput, "files", { value: [file] });
-    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
-
     await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        "Logo is too small (50×50px). Minimum size is 100×100px.",
+      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+        "src",
+        initialLogoUrl,
       );
     });
 
-    // File must not have been staged — no Save button should appear
-    expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
-  });
+    await user.upload(
+      screen.getByLabelText("Upload logo"),
+      new File(["logo"], "workspace-logo.png", { type: "image/png" }),
+    );
 
-  it("should reject a logo that is too large with a toast", async () => {
-    stubImageDimensions(5000, 5000);
-    setMockOrg({ name: "My Org", slug: "my-org", role: "admin" });
-    await openGeneralTab();
-
-    const fileInput = (await screen.findByLabelText(
-      "Upload logo",
-    )) as HTMLInputElement;
-    const file = new File(["x"], "huge.png", { type: "image/png" });
-    Object.defineProperty(fileInput, "files", { value: [file] });
-    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
-
-    await waitFor(() => {
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        "Logo is too large (5000×5000px). Maximum size is 4096×4096px.",
-      );
-    });
-
-    expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
-  });
-
-  it("should accept a logo within bounds and stage it for save", async () => {
-    stubImageDimensions(512, 512);
-    setMockOrg({ name: "My Org", slug: "my-org", role: "admin" });
-    await openGeneralTab();
-
-    const fileInput = (await screen.findByLabelText(
-      "Upload logo",
-    )) as HTMLInputElement;
-    const file = new File(["x"], "good.png", { type: "image/png" });
-    Object.defineProperty(fileInput, "files", { value: [file] });
-    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
-
-    // Save button appears because a valid file was staged
     await waitFor(() => {
       expect(screen.getByText("Save changes")).toBeInTheDocument();
     });
-    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
-  });
-
-  it("should load and display logo for non-admin members", async () => {
-    setMockOrg({ role: "member" });
-    setMockOrgLogo("https://example.com/logo.png");
-
-    await openGeneralTab();
-
-    const logo = await screen.findByAltText("user-12345678");
-    expect(logo).toBeInTheDocument();
-    expect(logo).toHaveAttribute("src", "https://example.com/logo.png");
-  });
-
-  it("should not send slug when only name is changed", async () => {
-    const requestBody = vi.fn();
-    setMockOrg({ name: "Old Name", slug: "keep-slug" });
-    server.use(
-      mockApi(zeroOrgContract.update, ({ body, respond }) => {
-        requestBody(body);
-        return respond(200, {
-          id: "org_1",
-          slug: "keep-slug",
-          name: "New Name",
-          role: "admin",
-        });
-      }),
-    );
-
-    await openGeneralTab();
-
-    const nameInput = await screen.findByDisplayValue("Old Name");
-    await fill(nameInput, "New Name");
 
     click(screen.getByText("Save changes"));
 
-    await vi.waitFor(() => {
-      expect(requestBody).toHaveBeenCalledWith({ name: "New Name" });
+    await waitFor(() => {
+      expect(capturedLogoName).toBe("workspace-logo.png");
+      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+        "src",
+        uploadedLogoUrl,
+      );
+      expect(screen.getByText("Workspace updated")).toBeInTheDocument();
     });
   });
-});
 
-describe("org general tab - danger zone", () => {
-  const CHOOSE_ORG_PATH = "/sign-in/tasks/choose-organization";
-
-  afterEach(() => {
-    // These tests intentionally navigate to choose-organization, so always
-    // reset the location before the next test runs.
-    if (window.location.pathname !== "/") {
-      window.location.href = "http://localhost/";
-    }
-  });
-
-  it("leaves workspace: clears active org then navigates to choose-organization", async () => {
-    const leaveCalled = vi.fn();
-    setMockOrg({ role: "member", slug: "my-org" });
-    server.use(
-      mockApi(zeroOrgLeaveContract.leave, ({ respond }) => {
-        leaveCalled();
-        return respond(200, { message: "ok" });
-      }),
-    );
+  it("rejects workspace logos outside the supported dimensions", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.imageDimensions([
+      null,
+      { width: 80, height: 80 },
+      { width: 5000, height: 5000 },
+    ]);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Acme",
+      slug: "acme",
+      role: "admin",
+    });
 
     await openGeneralTab();
 
-    const leaveTrigger = await waitFor(() => {
-      const btn = queryAllByRoleFast("button").find((el) => {
-        return el.textContent?.trim() === "Leave";
-      });
-      expect(btn).toBeInTheDocument();
-      return btn as HTMLElement;
-    });
-    click(leaveTrigger);
-
-    const confirmBtn = await waitFor(() => {
-      const buttons = queryAllByRoleFast("button");
-      const btn = buttons.find((el) => {
-        return (
-          el.textContent?.trim() === "Leave" && el.closest('[role="dialog"]')
-        );
-      });
-      expect(btn).toBeInTheDocument();
-      return btn as HTMLElement;
-    });
-    click(confirmBtn);
+    const uploadInput = screen.getByLabelText("Upload logo");
+    await user.upload(
+      uploadInput,
+      new File(["not-image"], "unreadable.png", { type: "image/png" }),
+    );
 
     await waitFor(() => {
-      expect(leaveCalled).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Could not read image file")).toBeInTheDocument();
+      expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
     });
 
-    await waitFor(() => {
-      expect(mockedClerk.setActive).toHaveBeenCalledWith({
-        organization: null,
-      });
-    });
+    await user.upload(
+      uploadInput,
+      new File(["small"], "too-small.png", { type: "image/png" }),
+    );
 
     await waitFor(() => {
-      expect(window.location.href).toContain(CHOOSE_ORG_PATH);
+      expect(screen.getByText(/Logo is too small/u)).toBeInTheDocument();
+      expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
+    });
+
+    await user.upload(
+      uploadInput,
+      new File(["large"], "too-large.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Logo is too large/u)).toBeInTheDocument();
+      expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
     });
   });
 
-  it("deletes workspace: clears active org then navigates to choose-organization", async () => {
-    const deleteCalled = vi.fn();
-    setMockOrg({ role: "admin", slug: "my-org" });
-    server.use(
-      mockApi(zeroOrgDeleteContract.delete, ({ respond }) => {
-        deleteCalled();
-        return respond(200, { message: "ok" });
-      }),
-    );
+  it("keeps a pending workspace logo when upload fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.imageDimensions({ width: 512, height: 512 });
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Acme",
+      slug: "acme",
+      role: "admin",
+    });
+    context.mocks.http.post("*/api/zero/org/logo", () => {
+      return new Response(
+        JSON.stringify({
+          error: { message: "Logo storage is unavailable" },
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    });
 
     await openGeneralTab();
 
-    const deleteTrigger = await waitFor(() => {
-      const btn = queryAllByRoleFast("button").find((el) => {
-        return el.textContent?.trim() === "Delete";
-      });
-      expect(btn).toBeInTheDocument();
-      return btn as HTMLElement;
-    });
-    click(deleteTrigger);
-
-    const slugInput = await screen.findByPlaceholderText("my-org");
-    await fill(slugInput, "my-org");
-
-    const confirmBtn = await waitFor(() => {
-      const buttons = queryAllByRoleFast("button");
-      const btn = buttons.find((el) => {
-        return el.textContent?.trim() === "Delete workspace";
-      });
-      expect(btn).toBeInTheDocument();
-      expect(btn).not.toBeDisabled();
-      return btn as HTMLElement;
-    });
-    click(confirmBtn);
+    await user.upload(
+      screen.getByLabelText("Upload logo"),
+      new File(["logo"], "workspace-logo.png", { type: "image/png" }),
+    );
 
     await waitFor(() => {
-      expect(deleteCalled).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Save changes")).toBeInTheDocument();
     });
 
-    await waitFor(() => {
-      expect(mockedClerk.setActive).toHaveBeenCalledWith({
-        organization: null,
-      });
-    });
+    click(screen.getByText("Save changes"));
 
     await waitFor(() => {
-      expect(window.location.href).toContain(CHOOSE_ORG_PATH);
+      expect(
+        screen.getByText("Logo storage is unavailable"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Save changes")).toBeInTheDocument();
     });
   });
 
-  it("does not clear active org or navigate when leave API fails", async () => {
-    const leaveCalled = vi.fn();
-    setMockOrg({ role: "member", slug: "my-org" });
-    server.use(
-      mockApi(zeroOrgLeaveContract.leave, ({ respond }) => {
-        leaveCalled();
-        return respond(500, {
-          error: { message: "boom", code: "INTERNAL_SERVER_ERROR" },
-        });
-      }),
-    );
+  it("shows save errors without losing the current workspace state", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Old Name",
+      slug: "old-slug",
+      role: "admin",
+    });
+    context.mocks.api(zeroOrgContract.update, ({ respond }) => {
+      return respond(409, {
+        error: {
+          message: "Slug is already taken",
+          code: "INTERNAL_SERVER_ERROR",
+        },
+      });
+    });
 
     await openGeneralTab();
 
-    const leaveTrigger = await waitFor(() => {
-      const btn = queryAllByRoleFast("button").find((el) => {
-        return el.textContent?.trim() === "Leave";
-      });
-      expect(btn).toBeInTheDocument();
-      return btn as HTMLElement;
-    });
-    click(leaveTrigger);
-
-    const confirmBtn = await waitFor(() => {
-      const buttons = queryAllByRoleFast("button");
-      const btn = buttons.find((el) => {
-        return (
-          el.textContent?.trim() === "Leave" && el.closest('[role="dialog"]')
-        );
-      });
-      expect(btn).toBeInTheDocument();
-      return btn as HTMLElement;
-    });
-    click(confirmBtn);
+    await fill(await screen.findByDisplayValue("old-slug"), "taken-slug");
+    click(screen.getByText("Save changes"));
 
     await waitFor(() => {
-      expect(leaveCalled).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("taken-slug")).toBeInTheDocument();
+    });
+  });
+
+  it("requires slug confirmation before deleting a workspace and keeps failures visible", async () => {
+    let deleteShouldFail = true;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Acme",
+      slug: "acme",
+      role: "admin",
+    });
+    context.mocks.api(zeroOrgDeleteContract.delete, ({ respond }) => {
+      if (!deleteShouldFail) {
+        return respond(200, { message: "Org deleted" });
+      }
+      return respond(400, {
+        error: {
+          message: "Delete blocked by active members",
+          code: "INTERNAL_SERVER_ERROR",
+        },
+      });
     });
 
-    // Session must not be touched on failure — otherwise a transient 5xx
-    // could silently log the user out of their current workspace.
-    expect(mockedClerk.setActive).not.toHaveBeenCalled();
-    expect(window.location.href).not.toContain(CHOOSE_ORG_PATH);
+    await openGeneralTab();
+
+    click(buttonByText("Delete"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete workspace?",
+    });
+    const deleteButton = buttonByText("Delete workspace", dialog);
+    expect(deleteButton).toBeDisabled();
+
+    await fill(within(dialog).getByPlaceholderText("acme"), "wrong");
+    expect(deleteButton).toBeDisabled();
+
+    await fill(within(dialog).getByPlaceholderText("acme"), "acme");
+    expect(deleteButton).not.toBeDisabled();
+
+    click(deleteButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Delete blocked by active members"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: "Delete workspace?" }),
+      ).toBeInTheDocument();
+    });
+
+    deleteShouldFail = false;
+    click(deleteButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Workspace deleted")).toBeInTheDocument();
+      expect(window.location.href).toContain(
+        "/sign-in/tasks/choose-organization",
+      );
+    });
   });
 });

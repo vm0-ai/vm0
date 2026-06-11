@@ -3,10 +3,7 @@ import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import type {
-  ModelProviderType,
-  UpsertModelProviderRequest,
-} from "@vm0/api-contracts/contracts/model-providers";
+import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -26,33 +23,6 @@ export const personalModelProviders$ = computed(async (get) => {
   const result = await accept(client.list(), [200]);
   return result.body;
 });
-
-/**
- * Create or update a personal model provider for the requesting user.
- */
-export const createPersonalModelProvider$ = command(
-  async (
-    { get, set },
-    request: UpsertModelProviderRequest,
-    _signal: AbortSignal,
-  ) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroPersonalModelProvidersMainContract);
-    const result = await accept(
-      client.upsert({
-        body: request,
-        fetchOptions: { signal: _signal },
-      }),
-      [200, 201],
-    );
-
-    set(internalReloadPersonalModelProviders$, (x) => {
-      return x + 1;
-    });
-
-    return result.body;
-  },
-);
 
 /**
  * Delete a personal model provider by type.

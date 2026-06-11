@@ -71,7 +71,7 @@ const fetchOrgAgents$ = command(async ({ get, set }, _signal: AbortSignal) => {
 /** Agent ID from onboarding (cached so pagination factory can read it). */
 const internalAgentId$ = state<string | null>(null);
 
-export const initZeroActivityAgentId$ = command(
+const initZeroActivityAgentId$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const status = await get(zeroOnboardingStatus$);
     set(internalAgentId$, status.defaultAgentId);

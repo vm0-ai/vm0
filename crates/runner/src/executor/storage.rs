@@ -8,7 +8,7 @@ use super::{
     guest_runtime_dir,
 };
 use crate::paths::guest;
-use crate::storage_fingerprints::StorageFingerprints;
+use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
 };
@@ -25,9 +25,7 @@ pub(super) fn filter_unchanged_storages(
         .iter()
         .map(|s| {
             let unchanged = prev.storages.get(&s.mount_path).is_some_and(|fingerprint| {
-                !StorageFingerprints::fingerprint_is_tainted(fingerprint)
-                    && fingerprint.0.as_str() == s.vas_storage_name.as_str()
-                    && fingerprint.1.as_str() == s.vas_version_id.as_str()
+                fingerprint.matches(&s.vas_storage_name, &s.vas_version_id)
             });
             if unchanged {
                 skipped += 1;
@@ -60,14 +58,11 @@ pub(super) fn filter_unchanged_storages(
     }
 
     let filter_artifact = |a: &GuestDownloadArtifactEntry,
-                           prev_ver: Option<&(String, String)>,
+                           prev_ver: Option<&StorageFingerprint>,
                            skipped: &mut usize,
                            cleanup: &mut Vec<String>| {
-        let same = prev_ver.is_some_and(|fingerprint| {
-            !StorageFingerprints::fingerprint_is_tainted(fingerprint)
-                && fingerprint.0.as_str() == a.vas_storage_name.as_str()
-                && fingerprint.1.as_str() == a.vas_version_id.as_str()
-        });
+        let same = prev_ver
+            .is_some_and(|fingerprint| fingerprint.matches(&a.vas_storage_name, &a.vas_version_id));
         if same {
             *skipped += 1;
         } else {

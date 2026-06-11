@@ -1,5 +1,4 @@
 import { command, state, type Command } from "ccstate";
-import type { CSSProperties } from "react";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
@@ -289,7 +288,7 @@ const FIB_DELAYS_MS = [
   1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
 ] as const;
 
-export const MAX_LOOP_COUNT_IN_TEST = 100;
+const MAX_LOOP_COUNT_IN_TEST = 100;
 /**
  * Run `loopBody` in a loop with `interval` between iterations.
  * Transient (non-abort) errors trigger fibonacci backoff retries.
@@ -424,74 +423,4 @@ export function createDeferredPromise<T>(signal: AbortSignal): {
       return settled;
     },
   };
-}
-
-type GeometryStyle = Pick<
-  CSSProperties,
-  | "width"
-  | "height"
-  | "left"
-  | "top"
-  | "right"
-  | "bottom"
-  | "maxWidth"
-  | "maxHeight"
-  | "minWidth"
-  | "minHeight"
-  | "transform"
->;
-
-/**
- * Convert numeric geometry values to CSS style object.
- */
-export function geometryStyle(geometry: {
-  width?: number;
-  height?: number;
-  left?: number;
-  top?: number;
-  right?: number;
-  bottom?: number;
-  maxWidth?: number;
-  maxHeight?: number;
-  minWidth?: number;
-  minHeight?: number;
-  scale?: number;
-}): GeometryStyle {
-  const ret: GeometryStyle = {};
-
-  if (geometry.width !== undefined) {
-    ret.width = `${String(geometry.width)}px`;
-  }
-  if (geometry.height !== undefined) {
-    ret.height = `${String(geometry.height)}px`;
-  }
-  if (geometry.left !== undefined) {
-    ret.left = `${String(geometry.left)}px`;
-  }
-  if (geometry.top !== undefined) {
-    ret.top = `${String(geometry.top)}px`;
-  }
-  if (geometry.right !== undefined) {
-    ret.right = `${String(geometry.right)}px`;
-  }
-  if (geometry.bottom !== undefined) {
-    ret.bottom = `${String(geometry.bottom)}px`;
-  }
-  if (geometry.maxWidth !== undefined) {
-    ret.maxWidth = `${String(geometry.maxWidth)}px`;
-  }
-  if (geometry.maxHeight !== undefined) {
-    ret.maxHeight = `${String(geometry.maxHeight)}px`;
-  }
-  if (geometry.minWidth !== undefined) {
-    ret.minWidth = `${String(geometry.minWidth)}px`;
-  }
-  if (geometry.minHeight !== undefined) {
-    ret.minHeight = `${String(geometry.minHeight)}px`;
-  }
-  if (geometry.scale !== undefined) {
-    ret.transform = `scale(${String(geometry.scale)})`;
-  }
-
-  return ret;
 }

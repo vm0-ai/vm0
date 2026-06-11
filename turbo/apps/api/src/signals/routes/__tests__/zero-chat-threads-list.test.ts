@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { automations } from "@vm0/db/schema/automation";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -681,16 +681,14 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
       ),
     );
     const writeDb = store.set(writeDb$);
-    await writeDb.insert(zeroAgentSchedules).values([
+    await writeDb.insert(automations).values([
       {
         agentId: fixture.composeId,
         userId: fixture.userId,
         orgId: fixture.orgId,
         name: "morning",
-        triggerType: "cron",
-        cronExpression: "0 9 * * *",
-        prompt: "Morning update",
-        timezone: "UTC",
+        instruction: "Morning update",
+        interpreterKind: "default",
         chatThreadId: fixture.threadId,
       },
       {
@@ -698,10 +696,8 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
         userId: fixture.userId,
         orgId: fixture.orgId,
         name: "evening",
-        triggerType: "cron",
-        cronExpression: "0 18 * * *",
-        prompt: "Evening update",
-        timezone: "UTC",
+        instruction: "Evening update",
+        interpreterKind: "default",
         chatThreadId: fixture.threadId,
       },
     ]);

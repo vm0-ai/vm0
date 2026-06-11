@@ -1,12 +1,6 @@
 import { command, computed, state } from "ccstate";
-import {
-  zeroModelProvidersMainContract,
-  zeroModelProvidersByTypeContract,
-} from "@vm0/api-contracts/contracts/zero-model-providers";
-import type {
-  UpsertModelProviderRequest,
-  ModelProviderType,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import type { UpsertModelProviderRequest } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -64,24 +58,3 @@ export const reloadOrgModelProviders$ = command(({ set }) => {
     return x + 1;
   });
 });
-
-/**
- * Delete an org model provider by type (admin only).
- */
-export const deleteOrgModelProvider$ = command(
-  async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroModelProvidersByTypeContract);
-    await accept(
-      client.delete({
-        params: { type },
-        fetchOptions: { signal: _signal },
-      }),
-      [204],
-    );
-
-    set(internalReloadOrgModelProviders$, (x) => {
-      return x + 1;
-    });
-  },
-);

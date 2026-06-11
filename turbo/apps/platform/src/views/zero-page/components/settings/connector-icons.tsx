@@ -10,42 +10,38 @@ const CONNECTOR_ICON_ALIASES = {
   "test-oauth-device": "test-oauth",
 } as const satisfies Partial<Record<ConnectorType, ConnectorType>>;
 
-export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
-  Object.freeze(
-    (() => {
-      const allIcons = Object.fromEntries(
-        Object.entries(
-          import.meta.glob<string>("./icons/*.{svg,png}", {
-            eager: true,
-            import: "default",
-          }),
-        ).map(([path, url]) => {
-          return [
-            path.replace("./icons/", "").replace(/\.(svg|png)$/, ""),
-            url,
-          ];
+const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze(
+  (() => {
+    const allIcons = Object.fromEntries(
+      Object.entries(
+        import.meta.glob<string>("./icons/*.{svg,png}", {
+          eager: true,
+          import: "default",
         }),
-      );
+      ).map(([path, url]) => {
+        return [path.replace("./icons/", "").replace(/\.(svg|png)$/, ""), url];
+      }),
+    );
 
-      const connectorKeys = CONNECTOR_TYPE_KEYS;
-      const filtered: Record<string, string> = {};
-      for (const key of connectorKeys) {
-        const iconKey =
-          key in CONNECTOR_ICON_ALIASES
-            ? CONNECTOR_ICON_ALIASES[key as keyof typeof CONNECTOR_ICON_ALIASES]
-            : key;
-        const icon = allIcons[iconKey];
-        if (typeof icon !== "string") {
-          throw new Error(
-            `Missing SVG icon for connector type "${key}". Add icons/${iconKey}.svg.`,
-          );
-        }
-        filtered[key] = icon;
+    const connectorKeys = CONNECTOR_TYPE_KEYS;
+    const filtered: Record<string, string> = {};
+    for (const key of connectorKeys) {
+      const iconKey =
+        key in CONNECTOR_ICON_ALIASES
+          ? CONNECTOR_ICON_ALIASES[key as keyof typeof CONNECTOR_ICON_ALIASES]
+          : key;
+      const icon = allIcons[iconKey];
+      if (typeof icon !== "string") {
+        throw new Error(
+          `Missing SVG icon for connector type "${key}". Add icons/${iconKey}.svg.`,
+        );
       }
+      filtered[key] = icon;
+    }
 
-      return filtered as Record<ConnectorType, string>;
-    })(),
-  );
+    return filtered as Record<ConnectorType, string>;
+  })(),
+);
 
 /** Official Slack Mark ships with a 270×270 viewBox whose artwork only fills the central ~45%.
  *  Callers render it inside an `overflow-hidden` box at layout size, and we scale the `<img>` up

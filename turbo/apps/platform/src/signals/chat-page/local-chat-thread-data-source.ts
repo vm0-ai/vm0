@@ -1,5 +1,6 @@
 import { command, computed } from "ccstate";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import { nowDate } from "../../lib/time.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
   AppendQueuedMessageArgs,
@@ -80,7 +81,7 @@ export function createLocalChatThreadDataSource(input: {
         role: "user",
         content: args.content,
         attachFiles: args.attachments ? [...args.attachments] : undefined,
-        createdAt: new Date().toISOString(),
+        createdAt: nowDate().toISOString(),
       });
     },
   );
@@ -96,7 +97,7 @@ export function createLocalChatThreadDataSource(input: {
         role: "user",
         content: null,
         revokesMessageId: args.revokesMessageId,
-        createdAt: new Date().toISOString(),
+        createdAt: nowDate().toISOString(),
       });
     },
   );

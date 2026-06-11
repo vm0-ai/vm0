@@ -9,9 +9,9 @@ from mitmproxy import http
 from mitmproxy.test import tutils
 
 import auth
-import body_utils
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_state_helpers import (
     cached_headers,
     force_refresh_pending,
@@ -231,7 +231,7 @@ class TestResponseHandler:
         """response_size should ignore Content-Length when stream metadata exists."""
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
-        body = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096)
+        body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
 
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
@@ -246,7 +246,7 @@ class TestResponseHandler:
         response_stream(flow)(body[:123])
         response_stream(flow)(body[123:])
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -449,7 +449,7 @@ class TestResponseHandler:
         """response_size should not become 0 for chunked large streamed responses."""
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
-        body = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096)
+        body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
 
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path

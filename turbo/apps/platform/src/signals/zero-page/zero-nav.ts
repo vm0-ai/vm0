@@ -25,16 +25,6 @@ export const navigateToNewChat$ = command(
   },
 );
 
-const internalShowAboutPage$ = state(false);
-
-export const zeroShowAboutPage$ = computed((get) => {
-  return get(internalShowAboutPage$);
-});
-
-export const setZeroShowAboutPage$ = command(({ set }, show: boolean) => {
-  set(internalShowAboutPage$, show);
-});
-
 const {
   get$: sidebarOffRaw$,
   set$: setSidebarOffRaw$,
@@ -123,7 +113,6 @@ export const handleZeroNavSelect$ = command(
       >;
       set(detachedNavigateTo$, navRoutes[id]);
     }
-    set(internalShowAboutPage$, false);
   },
 );
 

@@ -1,180 +1,86 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { server } from "../../../mocks/server.ts";
+import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
-import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
-const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
-
-function mockChatAPI() {
-  let messageSent = false;
-
-  server.use(
-    mockApi(chatMessagesContract.send, ({ respond }) => {
-      messageSent = true;
-      return respond(201, {
-        runId: "run-test-1",
-        threadId: "thread-test-1",
-        status: "pending",
-        createdAt: "2026-03-10T00:00:00Z",
-      });
-    }),
-  );
-
-  return {
-    wasMessageSent: () => {
-      return messageSent;
-    },
-    reset: () => {
-      messageSent = false;
-    },
-  };
-}
-
-function mockSendMode(mode: "enter" | "cmd-enter") {
-  setMockUserPreferences({ sendMode: mode });
-}
-
-function renderChatPage(sendMode: "enter" | "cmd-enter" = "enter") {
-  const api = mockChatAPI();
-  mockSendMode(sendMode);
+async function openComposer(sendMode: "enter" | "cmd-enter") {
+  context.mocks.data.userPreferences({ sendMode });
+  mockChatLifecycle(context);
   detachedSetupPage({ context, path: "/" });
-  return api;
-}
 
-function getTextarea(): Promise<HTMLTextAreaElement> {
-  return waitFor(() => {
+  return await waitFor(() => {
     return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
   });
 }
 
-describe("send-key behavior — enter mode", () => {
-  it("should send when Enter is pressed", async () => {
-    const user = userEvent.setup();
-    const api = await renderChatPage("enter");
+describe("zero send key", () => {
+  it("sends with Enter mode while Shift+Enter keeps the draft editable", async () => {
+    const user = userEvent.setup({ delay: null });
+    const enterTextarea = await openComposer("enter");
 
-    const textarea = await getTextarea();
-    await fill(textarea, "Hello");
-
+    await fill(enterTextarea, "Send with Enter");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(api.wasMessageSent()).toBeTruthy();
+      expect(screen.getByText("Send with Enter")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
   });
 
-  it("should not send when Shift+Enter is pressed", async () => {
-    const user = userEvent.setup();
-    const api = await renderChatPage("enter");
+  it("does not send Shift+Enter in Enter mode", async () => {
+    const user = userEvent.setup({ delay: null });
+    const textarea = await openComposer("enter");
 
-    const textarea = await getTextarea();
-    await fill(textarea, "Hello");
-
+    await fill(textarea, "Keep this draft");
     await user.keyboard("{Shift>}{Enter}{/Shift}");
 
-    expect(api.wasMessageSent()).toBeFalsy();
+    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    expect(textarea.value).toContain("Keep this draft");
   });
-});
 
-describe("send-key behavior — cmd-enter mode", () => {
-  it("should send when Cmd+Enter is pressed", async () => {
-    const user = userEvent.setup();
-    const api = await renderChatPage("cmd-enter");
+  it("sends with Cmd+Enter mode while plain Enter keeps the draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    const textarea = await openComposer("cmd-enter");
 
-    const textarea = await getTextarea();
-    await fill(textarea, "Hello");
+    await fill(textarea, "Keep until command enter");
+    await user.keyboard("{Enter}");
 
-    // In test env (Linux), mod maps to Ctrl, not Meta
+    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    expect(textarea.value).toContain("Keep until command enter");
+
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     await waitFor(() => {
-      expect(api.wasMessageSent()).toBeTruthy();
+      expect(screen.getByText("Keep until command enter")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
   });
 
-  it("should not send when plain Enter is pressed", async () => {
-    const user = userEvent.setup();
-    const api = await renderChatPage("cmd-enter");
+  it("avoids accidental sends during IME composition", async () => {
+    const textarea = await openComposer("enter");
 
-    const textarea = await getTextarea();
-    await fill(textarea, "Hello");
-
-    await user.keyboard("{Enter}");
-
-    expect(api.wasMessageSent()).toBeFalsy();
-  });
-});
-
-describe("send-key behavior — IME composition", () => {
-  it("should not send during IME composition even when Enter is pressed", async () => {
-    const api = await renderChatPage("enter");
-
-    const textarea = await getTextarea();
-    await fill(textarea, "Hello");
-
-    // Simulate an Enter keydown during IME composition (keyCode 229).
-    // jsdom does not link compositionStart to KeyboardEvent.isComposing,
-    // so we fire a raw keydown with the IME keyCode directly.
+    await fill(textarea, "Composing text");
     fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
 
-    expect(api.wasMessageSent()).toBeFalsy();
+    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    expect(textarea.value).toContain("Composing text");
   });
-});
 
-describe("send-key behavior — mobile (pointer: coarse)", () => {
-  beforeEach(() => {
-    vi.spyOn(window, "matchMedia").mockImplementation((query: string) => {
-      return {
-        matches: query === "(pointer: coarse)",
-        media: query,
-        onchange: null,
-        addListener: () => {
-          return undefined;
-        },
-        removeListener: () => {
-          return undefined;
-        },
-        addEventListener: () => {
-          return undefined;
-        },
-        removeEventListener: () => {
-          return undefined;
-        },
-        dispatchEvent: () => {
-          return false;
-        },
-      } as MediaQueryList;
+  it("avoids accidental sends on touch devices", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)";
     });
-  });
-
-  it("should not send when Enter is pressed on a touch device (enter mode)", async () => {
-    const user = userEvent.setup();
-    const api = await renderChatPage("enter");
-
-    const textarea = await getTextarea();
-    await fill(textarea, "Hello");
-
+    const touchTextarea = await openComposer("enter");
+    await fill(touchTextarea, "Touch device draft");
     await user.keyboard("{Enter}");
-
-    expect(api.wasMessageSent()).toBeFalsy();
-  });
-
-  it("should not send when Cmd+Enter is pressed on a touch device (enter mode)", async () => {
-    const user = userEvent.setup();
-    const api = await renderChatPage("enter");
-
-    const textarea = await getTextarea();
-    await fill(textarea, "Hello");
-
     await user.keyboard("{Control>}{Enter}{/Control}");
 
-    expect(api.wasMessageSent()).toBeFalsy();
+    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    expect(touchTextarea.value).toContain("Touch device draft");
   });
 });

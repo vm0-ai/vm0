@@ -18,12 +18,6 @@ let mockData: MockSlackConnectData = {
   postError: null,
 };
 
-export function setMockSlackConnectData(
-  data: Partial<MockSlackConnectData>,
-): void {
-  mockData = { ...mockData, ...data };
-}
-
 export function resetMockSlackConnect(): void {
   mockData = {
     isConnected: false,

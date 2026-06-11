@@ -1,81 +1,67 @@
-import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers";
+import { screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  detachedSetupPage,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
+function featureSwitchControl(feature: FeatureSwitchKey): HTMLElement {
+  const label = screen.getByText(feature).closest("label");
+  if (!(label instanceof HTMLElement)) {
+    throw new Error(`${feature} feature row not found`);
+  }
+  return within(label).getByRole("switch");
+}
+
 describe("lab page", () => {
-  it("should render lab page with feature switches list", async () => {
-    setMockFeatureSwitches({});
+  it("lets users toggle and reset feature switches", async () => {
+    let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
+      [FeatureSwitchKey.Lab]: true,
+      [FeatureSwitchKey.AwsConnector]: false,
+    };
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, { switches });
+    });
+    context.mocks.api(
+      zeroFeatureSwitchesContract.update,
+      ({ body, respond }) => {
+        switches = { ...switches, ...body.switches };
+        return respond(200, { switches: body.switches });
+      },
+    );
+    context.mocks.api(zeroFeatureSwitchesContract.delete, ({ respond }) => {
+      switches = {};
+      return respond(200, { deleted: true });
+    });
 
     detachedSetupPage({ context, path: "/_/lab" });
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
+      expect(screen.getByText("Other")).toBeInTheDocument();
+      expect(screen.getAllByText("Connectors").length).toBeGreaterThan(0);
     });
 
-    expect(
-      screen.getByText("Toggle experimental features on or off."),
-    ).toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("button").find((btn) => {
-        return btn.textContent === "Reset all";
-      }),
-    ).toBeInTheDocument();
-  });
+    const awsSwitch = featureSwitchControl(FeatureSwitchKey.AwsConnector);
+    expect(awsSwitch).toHaveAttribute("aria-checked", "false");
 
-  it("should show feature switches sorted alphabetically", async () => {
-    setMockFeatureSwitches({
-      [FeatureSwitchKey.Dummy]: true,
-    });
-
-    detachedSetupPage({ context, path: "/_/lab" });
+    click(awsSwitch);
 
     await waitFor(() => {
-      return screen.getByText("dummy");
+      expect(
+        featureSwitchControl(FeatureSwitchKey.AwsConnector),
+      ).toHaveAttribute("aria-checked", "true");
     });
 
-    // Should contain switch elements for feature switches
-    const switchElements = screen.getAllByRole("switch");
-
-    expect(switchElements.length).toBeGreaterThan(0);
-  });
-
-  it("should toggle feature switch on click", async () => {
-    setMockFeatureSwitches({});
-
-    detachedSetupPage({ context, path: "/_/lab" });
+    click(screen.getByText("Reset all"));
 
     await waitFor(() => {
-      return screen.getByText("dummy");
+      expect(
+        featureSwitchControl(FeatureSwitchKey.AwsConnector),
+      ).toHaveAttribute("aria-checked", "false");
     });
-
-    const switchElements = screen.getAllByRole("switch");
-
-    expect(switchElements.length).toBeGreaterThan(0);
-  });
-
-  it("should disable switches while resetting", async () => {
-    setMockFeatureSwitches({});
-
-    detachedSetupPage({ context, path: "/_/lab" });
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
-    });
-
-    const switches = screen.getAllByRole("switch");
-
-    expect(
-      switches.every((sw) => {
-        return sw.getAttribute("disabled") === null;
-      }),
-    ).toBeTruthy();
   });
 });

@@ -3,6 +3,7 @@ import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
 // Mock personal model providers data — empty by default
@@ -31,7 +32,7 @@ export const apiPersonalModelProvidersHandlers = [
   mockApi(
     zeroPersonalModelProvidersMainContract.upsert,
     ({ body, respond }) => {
-      const now = new Date().toISOString();
+      const now = nowDate().toISOString();
       const existing = mockPersonalModelProviders.find((p) => {
         return p.type === body.type;
       });

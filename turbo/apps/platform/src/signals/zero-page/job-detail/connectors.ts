@@ -45,22 +45,6 @@ export const agentAuthorizedConnectors$ = computed(
   },
 );
 
-export const agentConnectorsDirty$ = computed(async (get) => {
-  const local = get(internalAuthorizedConnectors$);
-  if (local === null) {
-    return false;
-  }
-  const seeded = await get(authorizedConnectors$);
-  if (local.length !== seeded.length) {
-    return true;
-  }
-  const sorted = [...local].sort();
-  const seededSorted = [...seeded].sort();
-  return sorted.some((s, i) => {
-    return s !== seededSorted[i];
-  });
-});
-
 export const authorizeAgentConnector$ = command(
   async ({ get, set }, name: string, _signal: AbortSignal) => {
     if (get(internalAuthorizedConnectors$) === null) {

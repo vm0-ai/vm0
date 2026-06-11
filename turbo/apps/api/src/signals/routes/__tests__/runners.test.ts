@@ -775,6 +775,7 @@ describe("POST /api/runners/*", () => {
           telemetry: {
             jobDiscoveredToClaimRequestMs: 1234,
             localAdmissionToClaimRequestMs: 56,
+            pollReason: "deferred",
           },
         },
         headers: { authorization: `Bearer ${pat.token}` },
@@ -829,6 +830,38 @@ describe("POST /api/runners/*", () => {
       "vm0-sandbox-op-log-dev",
       [
         expect.objectContaining({
+          op_type: "api_to_runner_queue",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+          poll_reason: "deferred",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "runner_queue_to_claim_request",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+          poll_reason: "deferred",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
           op_type: "api_to_claim_request",
           sandbox_type: "runner",
           run_id: queued.runId,
@@ -837,6 +870,7 @@ describe("POST /api/runners/*", () => {
           runner_group: "vm0/test",
           profile: "vm0/default",
           auth_type: "user",
+          poll_reason: "deferred",
         }),
       ],
     );

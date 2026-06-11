@@ -11,6 +11,7 @@ use super::super::storage::{
     format_guest_download_failure, guest_download_command, guest_download_env,
 };
 use super::support::{minimal_context, sandbox_write_file_error};
+use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry};
 
 #[tokio::test]
@@ -217,9 +218,13 @@ fn guest_storage(
     }
 }
 
-fn art_fp(mount: &str, name: &str, ver: &str) -> HashMap<String, (String, String)> {
+fn fp(name: &str, ver: &str) -> StorageFingerprint {
+    StorageFingerprint::new(name, ver)
+}
+
+fn art_fp(mount: &str, name: &str, ver: &str) -> HashMap<String, StorageFingerprint> {
     let mut m = HashMap::new();
-    m.insert(mount.into(), (name.into(), ver.into()));
+    m.insert(mount.into(), fp(name, ver));
     m
 }
 
@@ -230,7 +235,7 @@ fn filter_same_artifact_version_keeps_url_for_mount_repair() {
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    let prev = StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -250,7 +255,7 @@ fn filter_different_artifact_version_keeps_url() {
         artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    let prev = StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -268,7 +273,7 @@ fn filter_different_artifact_name_keeps_url() {
         artifacts: vec![guest_art("other-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    let prev = StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -283,7 +288,7 @@ fn filter_new_artifact_not_in_prev_keeps_url() {
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints::default();
+    let prev = StorageFingerprints::default();
     let result = filter_unchanged_storages(&manifest, &prev);
     assert!(result.artifacts[0].archive_url.is_some());
 }
@@ -300,7 +305,7 @@ fn filter_empty_prev_downloads_everything() {
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints::default();
+    let prev = StorageFingerprints::default();
     let result = filter_unchanged_storages(&manifest, &prev);
     assert!(result.storages[0].archive_url.is_some());
     assert!(result.artifacts[0].archive_url.is_some());
@@ -319,8 +324,8 @@ fn filter_all_unchanged_nulls_storage_urls_and_keeps_artifact_urls() {
         cleanup_paths: vec![],
     };
     let mut storages = HashMap::new();
-    storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    storages.insert("/data".into(), fp("vol-1", "v1"));
+    let prev = StorageFingerprints {
         storages,
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -361,9 +366,9 @@ fn filter_two_artifacts_at_different_mount_paths() {
     };
     // Previous fingerprints: art-a was v1 (changed), art-b was v1 (unchanged).
     let mut artifacts = HashMap::new();
-    artifacts.insert("/workspace".into(), ("art-a".into(), "v1".into()));
-    artifacts.insert("/data".into(), ("art-b".into(), "v1".into()));
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    artifacts.insert("/workspace".into(), fp("art-a", "v1"));
+    artifacts.insert("/data".into(), fp("art-b", "v1"));
+    let prev = StorageFingerprints {
         storages: HashMap::new(),
         artifacts,
     };
@@ -390,9 +395,9 @@ fn filter_detects_removed_artifacts() {
         cleanup_paths: vec![],
     };
     let mut artifacts = HashMap::new();
-    artifacts.insert("/workspace".into(), ("kept".into(), "v1".into()));
-    artifacts.insert("/old".into(), ("removed".into(), "v1".into()));
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    artifacts.insert("/workspace".into(), fp("kept", "v1"));
+    artifacts.insert("/old".into(), fp("removed", "v1"));
+    let prev = StorageFingerprints {
         storages: HashMap::new(),
         artifacts,
     };
@@ -422,15 +427,12 @@ fn filter_computes_cleanup_for_changed_storages() {
         cleanup_paths: vec![],
     };
     let mut storages = HashMap::new();
-    storages.insert(
-        "/home/user/.claude".into(),
-        ("instructions".into(), "v1".into()),
-    );
+    storages.insert("/home/user/.claude".into(), fp("instructions", "v1"));
     storages.insert(
         "/home/user/.claude/skills/foo".into(),
-        ("skill-foo".into(), "v1".into()),
+        fp("skill-foo", "v1"),
     );
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    let prev = StorageFingerprints {
         storages,
         artifacts: HashMap::new(),
     };
@@ -457,15 +459,12 @@ fn filter_detects_removed_storages() {
         cleanup_paths: vec![],
     };
     let mut storages = HashMap::new();
-    storages.insert(
-        "/home/user/.claude".into(),
-        ("instructions".into(), "v1".into()),
-    );
+    storages.insert("/home/user/.claude".into(), fp("instructions", "v1"));
     storages.insert(
         "/home/user/.claude/skills/old-skill".into(),
-        ("old-skill".into(), "v1".into()),
+        fp("old-skill", "v1"),
     );
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    let prev = StorageFingerprints {
         storages,
         artifacts: HashMap::new(),
     };
@@ -486,7 +485,7 @@ fn filter_changed_artifact_adds_cleanup_path() {
         artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    let prev = StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -506,7 +505,7 @@ fn filter_changed_artifact_with_null_url_adds_cleanup_path() {
         artifacts: vec![guest_art("my-art", "v2", None)],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    let prev = StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -528,7 +527,7 @@ fn filter_unchanged_artifact_policy_does_not_force_redownload() {
         )],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    let prev = StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "memory", "v1"),
     };
@@ -551,8 +550,8 @@ fn filter_changed_storage_with_null_url_adds_cleanup_path() {
         cleanup_paths: vec![],
     };
     let mut storages = HashMap::new();
-    storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    storages.insert("/data".into(), fp("vol-1", "v1"));
+    let prev = StorageFingerprints {
         storages,
         artifacts: HashMap::new(),
     };
@@ -575,8 +574,8 @@ fn filter_unchanged_storage_sets_cached_true() {
         cleanup_paths: vec![],
     };
     let mut storages = HashMap::new();
-    storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
-    let prev = crate::storage_fingerprints::StorageFingerprints {
+    storages.insert("/data".into(), fp("vol-1", "v1"));
+    let prev = StorageFingerprints {
         storages,
         artifacts: HashMap::new(),
     };
@@ -605,12 +604,9 @@ fn filter_tainted_paths_force_download_even_when_versions_match() {
         }],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints {
-        storages: HashMap::from([("/workspace/repo".into(), ("repo".into(), "v1".into()))]),
-        artifacts: HashMap::from([(
-            "/workspace/artifact".into(),
-            ("artifact".into(), "v1".into()),
-        )]),
+    let prev = StorageFingerprints {
+        storages: HashMap::from([("/workspace/repo".into(), fp("repo", "v1"))]),
+        artifacts: HashMap::from([("/workspace/artifact".into(), fp("artifact", "v1"))]),
     }
     .tainted_paths();
 
@@ -645,15 +641,9 @@ fn filter_tainted_removed_paths_are_cleaned() {
         artifacts: vec![],
         cleanup_paths: vec![],
     };
-    let prev = crate::storage_fingerprints::StorageFingerprints {
-        storages: HashMap::from([(
-            "/workspace/removed-storage".into(),
-            ("repo".into(), "v1".into()),
-        )]),
-        artifacts: HashMap::from([(
-            "/workspace/removed-artifact".into(),
-            ("artifact".into(), "v1".into()),
-        )]),
+    let prev = StorageFingerprints {
+        storages: HashMap::from([("/workspace/removed-storage".into(), fp("repo", "v1"))]),
+        artifacts: HashMap::from([("/workspace/removed-artifact".into(), fp("artifact", "v1"))]),
     }
     .tainted_paths();
 

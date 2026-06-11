@@ -2797,6 +2797,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::storage_fingerprints::StorageFingerprint;
 
     const TEST_PROFILE_NAME: &str = "vm0/default";
 
@@ -3198,12 +3199,15 @@ mod tests {
                     drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
                     storage_fingerprints: StorageFingerprints {
                         storages: HashMap::from([
-                            ("/workspace".into(), ("repo".into(), "v1".into())),
-                            ("/workspace/cache".into(), ("cache".into(), "v2".into())),
+                            ("/workspace".into(), StorageFingerprint::new("repo", "v1")),
+                            (
+                                "/workspace/cache".into(),
+                                StorageFingerprint::new("cache", "v2"),
+                            ),
                         ]),
                         artifacts: HashMap::from([(
                             "/workspace/artifact".into(),
-                            ("artifact".into(), "v1".into()),
+                            StorageFingerprint::new("artifact", "v1"),
                         )]),
                     },
                     state: WorkspaceCacheState::Current,
@@ -3769,19 +3773,31 @@ mod tests {
     fn workspace_scoped_fingerprints_do_not_match_prefix_traps() {
         let fingerprints = StorageFingerprints {
             storages: HashMap::from([
-                ("/workspace".into(), ("repo".into(), "v1".into())),
-                ("/workspace/sub".into(), ("sub".into(), "v1".into())),
-                ("/workspace//sub2".into(), ("sub2".into(), "v1".into())),
-                ("/workspace2".into(), ("trap".into(), "v1".into())),
+                ("/workspace".into(), StorageFingerprint::new("repo", "v1")),
+                (
+                    "/workspace/sub".into(),
+                    StorageFingerprint::new("sub", "v1"),
+                ),
+                (
+                    "/workspace//sub2".into(),
+                    StorageFingerprint::new("sub2", "v1"),
+                ),
+                ("/workspace2".into(), StorageFingerprint::new("trap", "v1")),
                 (
                     "/workspace/../outside".into(),
-                    ("escape".into(), "v1".into()),
+                    StorageFingerprint::new("escape", "v1"),
                 ),
-                ("/tmp/cache".into(), ("tmp".into(), "v1".into())),
+                ("/tmp/cache".into(), StorageFingerprint::new("tmp", "v1")),
             ]),
             artifacts: HashMap::from([
-                ("/workspace/art".into(), ("art".into(), "v1".into())),
-                ("/home/user/.codex".into(), ("codex".into(), "v1".into())),
+                (
+                    "/workspace/art".into(),
+                    StorageFingerprint::new("art", "v1"),
+                ),
+                (
+                    "/home/user/.codex".into(),
+                    StorageFingerprint::new("codex", "v1"),
+                ),
             ]),
         };
 

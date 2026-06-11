@@ -24,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { Link } from "../router/link.tsx";
+import { nowDate } from "../../lib/time.ts";
 import {
   networkInsightsData$,
   insightsDateRange$,
@@ -70,7 +71,7 @@ type DateRange = "last7" | "last28" | "last30" | (string & {});
 
 /** Get yesterday's date string (YYYY-MM-DD) in the given IANA timezone. */
 function yesterdayIso(tz: string): string {
-  const d = new Date();
+  const d = nowDate();
   d.setDate(d.getDate() - 1);
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
@@ -82,7 +83,7 @@ function yesterdayIso(tz: string): string {
 
 /** Get a date string N days ago (YYYY-MM-DD) in the given IANA timezone. */
 function daysAgoIso(n: number, tz: string): string {
-  const d = new Date();
+  const d = nowDate();
   d.setDate(d.getDate() - n);
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
@@ -112,7 +113,7 @@ function dateRangeLabel(range: DateRange): string {
 /** Short date label for dropdown items, e.g. "Apr 3" or "Today". */
 function formatDateShort(iso: string): string {
   const d = new Date(iso + "T00:00:00");
-  const now = new Date();
+  const now = nowDate();
   now.setHours(0, 0, 0, 0);
   const diff = now.getTime() - d.getTime();
   const dayMs = 86_400_000;
@@ -973,7 +974,7 @@ function PermissionsBlockedCard({
 
 function formatDate(iso: string): string {
   const d = new Date(iso + "T00:00:00");
-  const today = new Date();
+  const today = nowDate();
   today.setHours(0, 0, 0, 0);
   const diff = today.getTime() - d.getTime();
   const dayMs = 86_400_000;

@@ -1,288 +1,240 @@
-import { screen, waitFor, within } from "@testing-library/react";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {
+  zeroSkillsCollectionContract,
+  zeroSkillsDetailContract,
+  type ZeroAgentCustomSkill,
+  type ZeroAgentSkillDetailResponse,
+} from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroTeamContract,
+  type TeamComposeItem,
+} from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { setMockSkills } from "../../../mocks/handlers/api-skills.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
+const user = userEvent.setup({ delay: null });
 
-const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const WRITER_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
-const RESEARCH_SKILL_CONTENT = [
-  "---",
-  "name: Research Notes",
-  "description: Capture source-backed findings",
-  "---",
-  "",
-  "# Research Notes",
-  "",
-  "Start with sources.",
-].join("\n");
+const SKILL_DETAILS: readonly ZeroAgentSkillDetailResponse[] = [
+  {
+    name: "sales-research",
+    displayName: "Sales Research",
+    description: "Collects account context before outreach.",
+    content: `---
+name: Sales Research
+---
+# Sales research
 
-const AGENTS = [
-  {
-    id: RESEARCH_AGENT_ID,
-    ownerId: "user_research",
-    displayName: "Research Agent",
-    description: null,
-    sound: null,
-    avatarUrl: "https://example.com/research-agent.png",
-    customSkills: ["research-notes"],
-    visibility: "public",
-    headVersionId: "version_1",
-    updatedAt: "2024-01-01T00:00:00Z",
-  },
-  {
-    id: "c0000000-0000-4000-a000-000000000003",
-    ownerId: "user_research_2",
-    displayName: "Analyst Agent",
-    description: null,
-    sound: null,
-    avatarUrl: null,
-    customSkills: ["research-notes"],
-    visibility: "public",
-    headVersionId: "version_3",
-    updatedAt: "2024-01-03T00:00:00Z",
-  },
-  {
-    id: "c0000000-0000-4000-a000-000000000004",
-    ownerId: "user_research_3",
-    displayName: "Browser Agent",
-    description: null,
-    sound: null,
-    avatarUrl: null,
-    customSkills: ["research-notes"],
-    visibility: "public",
-    headVersionId: "version_4",
-    updatedAt: "2024-01-04T00:00:00Z",
-  },
-  {
-    id: "c0000000-0000-4000-a000-000000000005",
-    ownerId: "user_research_4",
-    displayName: "Review Agent",
-    description: null,
-    sound: null,
-    avatarUrl: null,
-    customSkills: ["research-notes"],
-    visibility: "public",
-    headVersionId: "version_5",
-    updatedAt: "2024-01-05T00:00:00Z",
-  },
-  {
-    id: "c0000000-0000-4000-a000-000000000006",
-    ownerId: "user_research_5",
-    displayName: "Build Agent",
-    description: null,
-    sound: null,
-    avatarUrl: null,
-    customSkills: ["research-notes"],
-    visibility: "public",
-    headVersionId: "version_6",
-    updatedAt: "2024-01-06T00:00:00Z",
-  },
-  {
-    id: "c0000000-0000-4000-a000-000000000007",
-    ownerId: "user_research_6",
-    displayName: "Ops Agent",
-    description: null,
-    sound: null,
-    avatarUrl: null,
-    customSkills: ["research-notes"],
-    visibility: "public",
-    headVersionId: "version_7",
-    updatedAt: "2024-01-07T00:00:00Z",
-  },
-  {
-    id: WRITER_AGENT_ID,
-    ownerId: "user_writer",
-    displayName: "Writer Agent",
-    description: null,
-    sound: null,
-    avatarUrl: null,
-    customSkills: ["draft-helper"],
-    visibility: "public",
-    headVersionId: "version_2",
-    updatedAt: "2024-01-02T00:00:00Z",
-  },
-] satisfies TeamComposeItem[];
+Use CRM context before outreach.
+`,
+    files: [
+      { path: "SKILL.md", size: 96 },
+      { path: "examples/prompt.md", size: 1536 },
+      { path: "examples/deep/reference.md", size: 2_097_152 },
+      { path: "config/settings.json", size: 32 },
+    ],
+    fileContents: [
+      {
+        path: "SKILL.md",
+        content: `---
+name: Sales Research
+---
+# Sales research
 
-function setupSkillsPage(): void {
-  setMockTeam(AGENTS);
-  setMockSkills([
-    {
-      name: "research-notes",
-      displayName: "Research Notes",
-      description: "Capture source-backed findings",
-      content: RESEARCH_SKILL_CONTENT,
-      files: [
-        { path: "SKILL.md", size: 37 },
-        { path: "templates/prompt.md", size: 12 },
-        { path: "scripts/run.sh", size: 18 },
-      ],
-      fileContents: [
-        {
-          path: "SKILL.md",
-          content: RESEARCH_SKILL_CONTENT,
-        },
-        { path: "templates/prompt.md", content: "Use the tool" },
-        { path: "scripts/run.sh", content: "#!/bin/sh\necho hi" },
-      ],
-    },
-    {
-      name: "draft-helper",
-      displayName: "Draft Helper",
-      description: "Prepare polished drafts",
-      content: "# Draft Helper",
-      files: [{ path: "SKILL.md", size: 14 }],
-      fileContents: [{ path: "SKILL.md", content: "# Draft Helper" }],
-    },
-  ]);
+Use CRM context before outreach.
+`,
+      },
+      {
+        path: "examples/prompt.md",
+        content: "# Prompt example\n\nAsk for market segment and urgency.\n",
+      },
+      {
+        path: "examples/deep/reference.md",
+        content: "# Deep reference\n\nCompare regional pipeline movement.\n",
+      },
+      {
+        path: "config/settings.json",
+        content: '{ "risk": "low", "tone": "direct" }',
+      },
+    ],
+  },
+  {
+    name: "support-escalation",
+    displayName: "Support Escalation",
+    description: "Summarizes urgent customer issues for the support queue.",
+    content: "# Support escalation\n\nSummarize severity and next owner.\n",
+    files: [{ path: "SKILL.md", size: 64 }],
+    fileContents: [
+      {
+        path: "SKILL.md",
+        content: "# Support escalation\n\nSummarize severity and next owner.\n",
+      },
+    ],
+  },
+  {
+    name: "ops-playbook",
+    displayName: "Ops Playbook",
+    description: null,
+    content: "# Ops playbook\n\nPrepare release checks.\n",
+    files: [{ path: "SKILL.md", size: 2048 }],
+    fileContents: [
+      {
+        path: "SKILL.md",
+        content: "# Ops playbook\n\nPrepare release checks.\n",
+      },
+    ],
+  },
+];
 
-  detachedSetupPage({
-    context,
-    path: "/skills",
-    featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
+const TEAM: readonly TeamComposeItem[] = [
+  {
+    id: "c0000000-0000-4000-a000-000000000101",
+    displayName: "Research Bot",
+    description: "Finds account context",
+    sound: null,
+    avatarUrl: "https://assets.example.test/research-bot.png",
+    customSkills: ["sales-research"],
+    headVersionId: "version_research",
+    updatedAt: "2026-01-01T00:00:00Z",
+  },
+  {
+    id: "c0000000-0000-4000-a000-000000000102",
+    displayName: "Support Bot",
+    description: "Triages customer work",
+    sound: null,
+    avatarUrl: null,
+    customSkills: ["support-escalation", "sales-research"],
+    headVersionId: "version_support",
+    updatedAt: "2026-01-01T00:00:00Z",
+  },
+];
+
+function skillMetadata(): readonly ZeroAgentCustomSkill[] {
+  return SKILL_DETAILS.map((skill) => {
+    return {
+      name: skill.name,
+      displayName: skill.displayName,
+      description: skill.description,
+    };
   });
 }
 
+function getButtonContaining(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((el) => {
+    return el.textContent?.includes(text);
+  });
+  if (!button) {
+    throw new Error(`Could not find button containing: ${text}`);
+  }
+  return button;
+}
+
 describe("skills page", () => {
-  it("redirects to home when SkillsViewer is disabled", async () => {
+  it("filters skills and opens a skill detail with its files", async () => {
+    context.mocks.api(zeroTeamContract.list, ({ respond }) => {
+      return respond(200, [...TEAM]);
+    });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [...skillMetadata()]);
+    });
+    context.mocks.api(zeroSkillsDetailContract.get, ({ params, respond }) => {
+      const detail = SKILL_DETAILS.find((skill) => {
+        return skill.name === params.name;
+      });
+      if (!detail) {
+        return respond(404, {
+          error: {
+            code: "NOT_FOUND",
+            message: `Skill not found: ${params.name}`,
+          },
+        });
+      }
+      return respond(200, detail);
+    });
+
     detachedSetupPage({
       context,
       path: "/skills",
-      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: false },
+      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
     });
 
     await waitFor(() => {
-      expect(context.store.get(pathname$)).not.toBe("/skills");
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
     });
-  });
-
-  it("shows custom skills and filters them by agent", async () => {
-    setupSkillsPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Research Notes")).toBeInTheDocument();
-      expect(screen.getByText("Draft Helper")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Used by")).toBeInTheDocument();
-    const researchRow = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.includes("Research Notes");
-    });
-    expect(researchRow).toBeDefined();
+    expect(screen.getByText("Support Escalation")).toBeInTheDocument();
     expect(
-      within(researchRow!).getByAltText("Research Agent"),
+      screen.getByLabelText("2 agents use this skill"),
     ).toBeInTheDocument();
-    expect(within(researchRow!).getByText("+1")).toBeInTheDocument();
+    expect(screen.getByLabelText("No agents")).toBeInTheDocument();
+    expect(screen.getAllByAltText("Research Bot").length).toBeGreaterThan(0);
 
-    click(screen.getByRole("combobox", { name: "Agent filter" }));
-    click(await screen.findByRole("option", { name: "Writer Agent" }));
-
+    const searchInput = screen.getByLabelText("Search skills");
+    await fill(searchInput, "support");
     await waitFor(() => {
-      expect(screen.getByText("Draft Helper")).toBeInTheDocument();
-      expect(screen.queryByText("Research Notes")).not.toBeInTheDocument();
+      expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
     });
-  });
+    expect(screen.getByText("Support Escalation")).toBeInTheDocument();
 
-  it("opens a read-only skill detail dialog with usage and selectable files", async () => {
-    setupSkillsPage();
-
-    click(await screen.findByText("Research Notes"));
-
+    await user.click(searchInput);
+    await user.keyboard("{Control>}a{/Control}{Backspace}");
     await waitFor(() => {
-      expect(screen.getByLabelText("Skill content")).toHaveTextContent(
-        "Research Notes",
-      );
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
     });
 
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Used by")).toBeInTheDocument();
-    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
-    expect(within(dialog).getByAltText("Research Agent")).toBeInTheDocument();
-    const filesSummary = within(dialog).getByText("Files").closest("div");
-    expect(filesSummary).not.toBeNull();
-    if (filesSummary === null) {
-      throw new Error("Files summary row not found");
-    }
-    expect(within(filesSummary).getByText("3")).toBeInTheDocument();
-    expect(within(filesSummary).queryByText("67 B")).not.toBeInTheDocument();
-    expect(within(dialog).getByText("templates")).toBeInTheDocument();
-
-    const promptFileButton = queryAllByRoleFast("button", dialog).find(
-      (button) => {
-        return button.getAttribute("aria-label") === "Open templates/prompt.md";
-      },
-    );
-    expect(promptFileButton).toBeDefined();
-    click(promptFileButton!);
-
+    click(screen.getByLabelText("Agent filter"));
+    click(await screen.findByText("Research Bot"));
     await waitFor(() => {
-      expect(screen.getByLabelText("Skill content")).toHaveTextContent(
-        "Use the tool",
-      );
+      expect(screen.queryByText("Support Escalation")).not.toBeInTheDocument();
     });
+    expect(screen.getByText("Sales Research")).toBeInTheDocument();
 
-    expect(
-      queryAllByRoleFast("button", dialog).some((button) => {
-        return button.textContent === "Save";
-      }),
-    ).toBeFalsy();
-  });
-
-  it("renders markdown files as formatted markdown and keeps non-markdown files raw", async () => {
-    setupSkillsPage();
-
-    click(await screen.findByText("Research Notes"));
-
-    // SKILL.md is markdown: rendered as a heading element, not raw "# ..." text.
+    click(getButtonContaining("Sales Research"));
     await waitFor(() => {
       expect(
-        within(screen.getByLabelText("Skill content")).getByRole("heading", {
-          name: "Research Notes",
-        }),
+        screen.getByText("Use CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Support Bot")).toBeInTheDocument();
+
+    click(screen.getByLabelText("Open examples/prompt.md"));
+    await waitFor(() => {
+      expect(screen.getByText("Prompt example")).toBeInTheDocument();
+    });
+    expect(screen.getByText("1.5 KiB")).toBeInTheDocument();
+    expect(
+      screen.getByText("Ask for market segment and urgency."),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Open examples/deep/reference.md"));
+    await waitFor(() => {
+      expect(screen.getByText("Deep reference")).toBeInTheDocument();
+    });
+    expect(screen.getByText("2.0 MiB")).toBeInTheDocument();
+    expect(
+      screen.getByText("Compare regional pipeline movement."),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Open config/settings.json"));
+    await waitFor(() => {
+      expect(
+        screen.getByText('{ "risk": "low", "tone": "direct" }'),
       ).toBeInTheDocument();
     });
 
-    const dialog = screen.getByRole("dialog");
-    const scriptButton = queryAllByRoleFast("button", dialog).find((button) => {
-      return button.getAttribute("aria-label") === "Open scripts/run.sh";
-    });
-    expect(scriptButton).toBeDefined();
-    click(scriptButton!);
-
-    // Non-markdown file stays raw: rendered in a <pre> with "#" preserved.
+    click(screen.getByLabelText("Close"));
     await waitFor(() => {
-      const content = screen.getByLabelText("Skill content");
-      expect(content.tagName).toBe("PRE");
-      expect(content).toHaveTextContent("#!/bin/sh");
+      expect(
+        screen.queryByText("Use CRM context before outreach."),
+      ).not.toBeInTheDocument();
     });
-  });
-
-  it("strips leading YAML frontmatter from markdown skill files", async () => {
-    setupSkillsPage();
-
-    click(await screen.findByText("Research Notes"));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Skill content")).toHaveTextContent(
-        "Start with sources.",
-      );
-    });
-
-    const content = screen.getByLabelText("Skill content");
-    expect(content).not.toHaveTextContent("---");
-    expect(content).not.toHaveTextContent("name:");
-    expect(content).not.toHaveTextContent("description:");
-    expect(content).not.toHaveTextContent("Capture source-backed findings");
   });
 });

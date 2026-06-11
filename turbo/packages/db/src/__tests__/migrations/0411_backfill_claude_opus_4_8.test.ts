@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { asc, inArray, sql } from "drizzle-orm";
+import { and, asc, inArray, sql } from "drizzle-orm";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { db, uniqueId } from "../test-db";
@@ -156,14 +156,21 @@ describe("migration 0411 backfill Claude Opus 4.8 policies", () => {
       })
       .from(orgModelPolicies)
       .where(
-        inArray(orgModelPolicies.orgId, [
-          selected47OrgId,
-          non47DefaultOrgId,
-          no47OrgId,
-          byokAnthropicOrgId,
-          byokOpenrouterOrgId,
-          existing48OrgId,
-        ]),
+        and(
+          inArray(orgModelPolicies.orgId, [
+            selected47OrgId,
+            non47DefaultOrgId,
+            no47OrgId,
+            byokAnthropicOrgId,
+            byokOpenrouterOrgId,
+            existing48OrgId,
+          ]),
+          inArray(orgModelPolicies.model, [
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-sonnet-4-6",
+          ]),
+        ),
       )
       .orderBy(asc(orgModelPolicies.orgId), asc(orgModelPolicies.model));
 

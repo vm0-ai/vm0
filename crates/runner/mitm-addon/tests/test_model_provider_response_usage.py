@@ -7,13 +7,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import brotli
 import pytest
 import zstandard
 from mitmproxy.test import tutils
 
-import body_utils
 import mitm_addon
 import usage
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
 from tests.usage_helpers import set_stream_buffer
 
@@ -109,7 +110,7 @@ def _empty_deflate_stream_before_garbage(_payload: bytes) -> bytes:
 
 
 def _truncated_brotli_prefix(payload: bytes) -> bytes:
-    return body_utils.brotli.compress(payload)[:2]
+    return brotli.compress(payload)[:2]
 
 
 def _truncated_zstd_prefix(payload: bytes) -> bytes:
@@ -607,7 +608,7 @@ class TestModelProviderResponseUsage:
         payload = _standard_success_payload(provider_case)
 
         if encoding_case == "br":
-            body = body_utils.brotli.compress(payload)
+            body = brotli.compress(payload)
         else:
             body = zstandard.ZstdCompressor().compress(payload)
 
@@ -713,7 +714,7 @@ class TestModelProviderResponseUsage:
         elif encoding_case == "deflate":
             body = zlib.compress(b"")
         elif encoding_case == "br":
-            body = body_utils.brotli.compress(b"")
+            body = brotli.compress(b"")
         elif encoding_case == "zstd":
             body = zstandard.ZstdCompressor().compress(b"")
         elif encoding_case == "zstd-no-size":
@@ -885,9 +886,9 @@ class TestModelProviderResponseUsage:
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
         callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
-        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096))
+        callback(b"x" * (STREAM_BUFFER_LIMIT + 4096))
         callback(b'"}],"usage":{"input_tokens":50,"output_tokens":200}}')
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
         webhook = self._run_response(flow)
@@ -990,7 +991,7 @@ class TestModelProviderResponseUsage:
             proxy_log_path=tmp_path / "proxy.jsonl",
         )
         payload = _standard_success_payload(provider_case)
-        compressed = body_utils.brotli.compress(payload)
+        compressed = brotli.compress(payload)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json", "content-encoding": "br"}),

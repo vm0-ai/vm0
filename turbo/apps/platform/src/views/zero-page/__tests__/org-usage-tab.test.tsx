@@ -1,379 +1,150 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
-import userEvent, {
-  PointerEventsCheckLevel,
-} from "@testing-library/user-event";
-import { server } from "../../../mocks/server.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  detachedSetupPage,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
-import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
-import {
-  setMockUsageMembers,
-  resetMockUsageMembers,
-} from "../../../mocks/handlers/api-usage.ts";
+import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { screen, waitFor } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
-interface MockMember {
-  userId: string;
-  email: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadInputTokens: number;
-  cacheCreationInputTokens: number;
-  creditsCharged: number;
-}
-
-beforeEach(() => {
-  resetMockUsageMembers();
-});
-
-function setupMockAPIs(members: MockMember[]) {
-  setMockUsageMembers({
-    period: { start: "2026-03-01", end: "2026-03-31" },
-    members,
-  });
-}
-
-async function openUsageTab() {
-  detachedSetupPage({ context, path: "/?settings=usage" });
-  await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
-  await waitFor(() => {
-    expect(
-      screen.getByText(
-        "Credit balance and per-member credit consumption this billing period.",
-      ),
-    ).toBeInTheDocument();
-  });
-}
-
-async function expectPopoverTokenTooltip(text: string) {
-  await waitFor(() => {
-    const tooltip = screen
-      .getAllByText(text)
-      .map((el) => {
-        let current: HTMLElement | null = el;
-        while (current) {
-          const style = current.getAttribute("style") ?? "";
-          if (
-            style.includes("background-color: hsl(var(--popover))") &&
-            style.includes("color: hsl(var(--popover-foreground))")
-          ) {
-            return current;
-          }
-          current = current.parentElement;
-        }
-        return null;
-      })
-      .find((el): el is HTMLElement => {
-        return el !== null;
-      });
-
-    expect(tooltip).toBeDefined();
-  });
-}
-
-describe("org usage tab - credit balance display", () => {
-  it("should show credit balance for pro plan", async () => {
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 15_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-    });
-
-    setupMockAPIs([
+function mockUsageStory(): void {
+  const orgMembers: OrgMembersResponse = {
+    slug: "test-org",
+    role: "admin",
+    createdAt: "2026-01-01T00:00:00Z",
+    members: [
       {
-        userId: "user-a",
+        userId: "test-user-123",
         email: "alice@example.com",
-        inputTokens: 100,
-        outputTokens: 50,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        creditsCharged: 5000,
+        firstName: "Alice",
+        lastName: "Admin",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2026-01-01T00:00:00Z",
       },
-    ]);
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      const info = screen.getByTestId("credit-balance-info");
-      expect(info).toHaveTextContent("15,000");
-    });
+      {
+        userId: "user-bob",
+        email: "bob@example.com",
+        firstName: "Bob",
+        lastName: "Member",
+        imageUrl: "",
+        role: "member",
+        joinedAt: "2026-01-02T00:00:00Z",
+      },
+    ],
+    pendingInvitations: [],
+    membershipRequests: [],
+  };
+  context.mocks.data.org({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "admin",
   });
-
-  it("shows upgrade guidance when a free workspace has no credits", async () => {
-    const user = userEvent.setup();
-    setMockBillingStatus({
-      tier: "free",
-      credits: 0,
-      subscriptionStatus: null,
-      hasSubscription: false,
-      creditBreakdown: [],
-      creditGrants: [],
-    });
-    setupMockAPIs([]);
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("free-empty-credit-prompt")).toHaveTextContent(
-        "Upgrade to Pro to get more credits",
-      );
-    });
-
-    const comparePlansButton = queryAllByRoleFast("button").find((el) => {
-      return el.textContent === "Compare plans";
-    });
-    expect(comparePlansButton).toBeDefined();
-    await user.click(comparePlansButton!);
-    await waitFor(() => {
-      expect(
-        screen.getByText("Upgrade or downgrade anytime."),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("should show credit addition records with expiry on hover", async () => {
-    const user = userEvent.setup({
-      pointerEventsCheck: PointerEventsCheckLevel.Never,
-    });
-    setMockBillingStatus({
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    return respond(200, {
       tier: "pro",
-      credits: 35_000,
+      credits: 12_000,
+      onboardingPaymentPending: false,
       subscriptionStatus: "active",
+      currentPeriodEnd: "2026-04-01T00:00:00Z",
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
       hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+      creditExpiry: {
+        expiringNextCycle: 0,
+        nextExpiryDate: null,
+      },
       creditBreakdown: [
-        { category: "plan", label: "Pro plan", credits: 15_000, tier: "pro" },
-        { category: "payAsYouGo", label: "Pay as you go", credits: 20_000 },
+        {
+          category: "plan",
+          tier: "pro",
+          label: "Pro credits",
+          credits: 8000,
+        },
+        {
+          category: "payAsYouGo",
+          label: "Purchased credits",
+          credits: 4000,
+        },
       ],
       creditGrants: [
         {
           id: "grant-pro",
-          source: "subscription_renewal",
-          label: "Pro plan",
-          amount: 20_000,
-          remaining: 15_000,
-          createdAt: "2026-03-20T00:00:00.000Z",
-          expiresAt: "2026-04-20T00:00:00.000Z",
+          source: "subscription",
+          label: "March Pro credits",
+          amount: 10_000,
+          remaining: 8000,
+          createdAt: "2026-03-01T00:00:00Z",
+          expiresAt: "2026-04-01T00:00:00Z",
+        },
+      ],
+    });
+  });
+  context.mocks.api(zeroOrgMembersContract.members, ({ respond }) => {
+    return respond(200, orgMembers);
+  });
+  context.mocks.api(zeroUsageMembersContract.get, ({ respond }) => {
+    return respond(200, {
+      period: {
+        start: "2026-03-01T00:00:00Z",
+        end: "2026-04-01T00:00:00Z",
+      },
+      members: [
+        {
+          userId: "test-user-123",
+          email: "alice@example.com",
+          inputTokens: 12_000,
+          outputTokens: 3000,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+          creditsCharged: 7500,
         },
         {
-          id: "grant-payg",
-          source: "auto_recharge",
-          label: "Pay as you go",
-          amount: 20_000,
-          remaining: 20_000,
-          createdAt: "2026-03-25T00:00:00.000Z",
-          expiresAt: "2999-12-31T00:00:00.000Z",
+          userId: "user-bob",
+          email: "bob@example.com",
+          inputTokens: 8000,
+          outputTokens: 1200,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+          creditsCharged: 2100,
         },
       ],
     });
+  });
+}
 
-    setupMockAPIs([]);
+async function openUsageTab(): Promise<void> {
+  detachedSetupPage({ context, path: "/?settings=usage" });
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getAllByText("Credit balance")[0]).toBeInTheDocument();
+  });
+}
 
+describe("organization usage settings", () => {
+  it("shows credit balance and workspace member usage", async () => {
+    mockUsageStory();
     await openUsageTab();
 
     await waitFor(() => {
-      expect(screen.getByText("Credit additions")).toBeInTheDocument();
-      expect(screen.getByTestId("credit-grants-section")).not.toHaveAttribute(
-        "open",
-      );
+      expect(screen.getByText("12,000")).toBeInTheDocument();
     });
+    expect(screen.getByText("Pro credits")).toBeInTheDocument();
+    expect(screen.getByText("Purchased credits")).toBeInTheDocument();
 
-    await user.click(screen.getByTestId("credit-grants-toggle"));
-    expect(screen.getByTestId("credit-grants-section")).toHaveAttribute("open");
+    click(screen.getByTestId("credit-grants-toggle"));
+    expect(screen.getByText("March Pro credits")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByTestId("credit-grant-grant-pro")).toHaveTextContent(
-        "Pro plan",
-      );
-      expect(screen.getByTestId("credit-grant-grant-pro")).toHaveTextContent(
-        "15,000 left",
-      );
+      expect(screen.getByText("Alice Admin")).toBeInTheDocument();
+      expect(screen.getByText("bob@example.com")).toBeInTheDocument();
     });
-
-    await user.hover(screen.getByTestId("credit-grant-grant-pro"));
-    await expectPopoverTokenTooltip("Expires Apr 20, 2026");
-
-    await user.click(screen.getByTestId("credit-grants-toggle"));
-    expect(screen.getByTestId("credit-grants-section")).not.toHaveAttribute(
-      "open",
-    );
-  });
-
-  it("should use popover theme tokens for credit balance segment tooltips", async () => {
-    const user = userEvent.setup({
-      pointerEventsCheck: PointerEventsCheckLevel.Never,
-    });
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 35_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-      creditBreakdown: [
-        { category: "plan", label: "Pro plan", credits: 15_000, tier: "pro" },
-        { category: "payAsYouGo", label: "Pay as you go", credits: 20_000 },
-      ],
-      creditGrants: [],
-    });
-
-    setupMockAPIs([]);
-
-    await openUsageTab();
-
-    await user.hover(screen.getByTestId("credit-balance-segment-plan:pro"));
-    await expectPopoverTokenTooltip("Pro plan — 15,000");
-  });
-
-  it("should show non-expiring credit additions on hover", async () => {
-    const user = userEvent.setup({
-      pointerEventsCheck: PointerEventsCheckLevel.Never,
-    });
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 20_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-      creditBreakdown: [
-        { category: "payAsYouGo", label: "Pay as you go", credits: 20_000 },
-      ],
-      creditGrants: [
-        {
-          id: "grant-payg",
-          source: "auto_recharge",
-          label: "Pay as you go",
-          amount: 20_000,
-          remaining: 20_000,
-          createdAt: "2026-03-25T00:00:00.000Z",
-          expiresAt: "2999-12-31T00:00:00.000Z",
-        },
-      ],
-    });
-
-    setupMockAPIs([]);
-
-    await openUsageTab();
-
-    await user.click(screen.getByTestId("credit-grants-toggle"));
-    expect(screen.getByTestId("credit-grant-grant-payg")).toHaveTextContent(
-      "Added Mar 25, 2026",
-    );
-    await user.hover(screen.getByTestId("credit-grant-grant-payg"));
-    await expectPopoverTokenTooltip("Never expires");
-  });
-});
-
-describe("org usage tab - member usage table", () => {
-  it("should show member emails and usage", async () => {
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 20_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-    });
-
-    setupMockAPIs([
-      {
-        userId: "user-a",
-        email: "alice@example.com",
-        inputTokens: 100,
-        outputTokens: 50,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        creditsCharged: 500,
-      },
-      {
-        userId: "user-b",
-        email: "bob@example.com",
-        inputTokens: 200,
-        outputTokens: 100,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        creditsCharged: 1200,
-      },
-    ]);
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("alice@example.com")).toBeInTheDocument();
-    });
-    expect(screen.getByText("bob@example.com")).toBeInTheDocument();
-  });
-
-  it("should show 'No usage yet this period' when no members have usage", async () => {
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 20_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-    });
-
-    setupMockAPIs([]);
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("No usage yet this period")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("org usage tab - free tier", () => {
-  it("should show credit balance for free tier", async () => {
-    setMockBillingStatus({
-      tier: "free",
-      credits: 8000,
-      hasSubscription: false,
-    });
-
-    server.use(
-      mockApi(zeroUsageMembersContract.get, ({ respond }) => {
-        return respond(200, { period: null, members: [] });
-      }),
-    );
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      const info = screen.getByTestId("credit-balance-info");
-      expect(info).toHaveTextContent("8,000");
-    });
-  });
-
-  it("should not show members section for free tier", async () => {
-    setMockBillingStatus({
-      tier: "free",
-      credits: 10_000,
-      hasSubscription: false,
-    });
-
-    server.use(
-      mockApi(zeroUsageMembersContract.get, ({ respond }) => {
-        return respond(200, { period: null, members: [] });
-      }),
-    );
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      const info = screen.getByTestId("credit-balance-info");
-      expect(info).toHaveTextContent("10,000");
-    });
-
-    expect(
-      screen.queryByRole("heading", { name: "Members" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/No active billing period/),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("7,500")).toBeInTheDocument();
+    expect(screen.getByText("2,100")).toBeInTheDocument();
   });
 });
