@@ -131,6 +131,7 @@ _REQUEST_FALLBACK_HINT_POLICY_SPECS: tuple[tuple[str, _RequestFallbackHintPolicy
     ("/2/tweets/search/recent", _RequestFallbackHintPolicy(None, None, 10, 100)),
     ("/2/users/search", _RequestFallbackHintPolicy(None, None, 1, 1000)),
     ("/2/users/{id}/followers", _RequestFallbackHintPolicy(None, None, 1, 1000)),
+    ("/2/users/{id}/following", _RequestFallbackHintPolicy(None, None, 1, 1000)),
 )
 
 

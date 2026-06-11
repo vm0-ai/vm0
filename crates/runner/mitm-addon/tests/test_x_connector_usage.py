@@ -1313,6 +1313,14 @@ class TestXConnectorUsage:
                 "following_followers.read",
                 1000,
             ),
+            (
+                "/2/users/123/following",
+                "max_results=1000",
+                "follows.read",
+                "GET /2/users/{id}/following",
+                "following_followers.read",
+                1000,
+            ),
         ],
     )
     def test_x_json_parse_error_with_request_hints_uses_fallback_without_error_log(
