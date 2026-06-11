@@ -1,5 +1,32 @@
 # Changelog
 
+## [8.331.0](https://github.com/vm0-ai/vm0/compare/core-v8.330.0...core-v8.331.0) (2026-06-11)
+
+
+### Features
+
+* **api:** delete the legacy schedule and flat automation surfaces ([#17358](https://github.com/vm0-ai/vm0/issues/17358)) ([e25c44c](https://github.com/vm0-ai/vm0/commit/e25c44c01b57e8858ecb687b977ee3c14012700b))
+* enable zero automations for all users ([#17340](https://github.com/vm0-ai/vm0/issues/17340)) ([f864dca](https://github.com/vm0-ai/vm0/commit/f864dcab9cf5292a8513e18801657a63e16d10d6))
+* remove the zero automations feature switch ([#17354](https://github.com/vm0-ai/vm0/issues/17354)) ([c2c8d98](https://github.com/vm0-ai/vm0/commit/c2c8d983449a0deb69c3f836f684239ede16f5cd))
+
+
+### Bug Fixes
+
+* update chat feature switch defaults ([#17355](https://github.com/vm0-ai/vm0/issues/17355)) ([f36ac02](https://github.com/vm0-ai/vm0/commit/f36ac021dfa037a892454e710c9cea4e0b76cabd))
+
+
+### Refactoring
+
+* remove legacy execution firewall compatibility ([#17349](https://github.com/vm0-ai/vm0/issues/17349)) ([385ea93](https://github.com/vm0-ai/vm0/commit/385ea9345fb9613b0041eefb2ed7557f2af62beb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.86.0
+    * @vm0/connectors bumped to 1.69.0
+
 ## [8.330.0](https://github.com/vm0-ai/vm0/compare/core-v8.329.1...core-v8.330.0) (2026-06-11)
 
 

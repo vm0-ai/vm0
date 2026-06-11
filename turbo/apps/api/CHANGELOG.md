@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.132.0](https://github.com/vm0-ai/vm0/compare/api-v1.131.0...api-v1.132.0) (2026-06-11)
+
+
+### Features
+
+* **api:** delete the legacy schedule and flat automation surfaces ([#17358](https://github.com/vm0-ai/vm0/issues/17358)) ([e25c44c](https://github.com/vm0-ai/vm0/commit/e25c44c01b57e8858ecb687b977ee3c14012700b))
+* **api:** move the automation resource api to /api/automations ([#17362](https://github.com/vm0-ai/vm0/issues/17362)) ([c4ab2d8](https://github.com/vm0-ai/vm0/commit/c4ab2d82a84a4bb083c6755e0b027401cb997626))
+* **api:** replace schedule capabilities with automation capabilities ([#17356](https://github.com/vm0-ai/vm0/issues/17356)) ([5e4d31c](https://github.com/vm0-ai/vm0/commit/5e4d31ca8a4293985d8707f226a0699d68a5a8f9))
+* enable zero automations for all users ([#17340](https://github.com/vm0-ai/vm0/issues/17340)) ([f864dca](https://github.com/vm0-ai/vm0/commit/f864dcab9cf5292a8513e18801657a63e16d10d6))
+* **platform:** manage schedules through the automation resource api ([#17352](https://github.com/vm0-ai/vm0/issues/17352)) ([a3c6583](https://github.com/vm0-ai/vm0/commit/a3c658320786cff32a60d2da2014be6820b75b6d))
+* remove the zero automations feature switch ([#17354](https://github.com/vm0-ai/vm0/issues/17354)) ([c2c8d98](https://github.com/vm0-ai/vm0/commit/c2c8d983449a0deb69c3f836f684239ede16f5cd))
+* rename the cron tick and platform routes to automations ([#17363](https://github.com/vm0-ai/vm0/issues/17363)) ([8ddb863](https://github.com/vm0-ai/vm0/commit/8ddb863ee22c268d3905a1255d3cdfac905e1ff5))
+
+
+### Refactoring
+
+* remove legacy execution firewall compatibility ([#17349](https://github.com/vm0-ai/vm0/issues/17349)) ([385ea93](https://github.com/vm0-ai/vm0/commit/385ea9345fb9613b0041eefb2ed7557f2af62beb))
+
+
+### Performance Improvements
+
+* store compact run context firewalls ([#17350](https://github.com/vm0-ai/vm0/issues/17350)) ([4979488](https://github.com/vm0-ai/vm0/commit/4979488ffd3af48f248b1824dd9190d6650d13ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.86.0
+    * @vm0/connectors bumped to 1.69.0
+    * @vm0/core bumped to 8.331.0
+    * @vm0/db bumped to 1.45.1
+
 ## [1.131.0](https://github.com/vm0-ai/vm0/compare/api-v1.130.1...api-v1.131.0) (2026-06-11)
 
 

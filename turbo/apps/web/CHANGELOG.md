@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.423.0](https://github.com/vm0-ai/vm0/compare/web-v12.422.3...web-v12.423.0) (2026-06-11)
+
+
+### Features
+
+* **api:** delete the legacy schedule and flat automation surfaces ([#17358](https://github.com/vm0-ai/vm0/issues/17358)) ([e25c44c](https://github.com/vm0-ai/vm0/commit/e25c44c01b57e8858ecb687b977ee3c14012700b))
+* **api:** move the automation resource api to /api/automations ([#17362](https://github.com/vm0-ai/vm0/issues/17362)) ([c4ab2d8](https://github.com/vm0-ai/vm0/commit/c4ab2d82a84a4bb083c6755e0b027401cb997626))
+* rename the cron tick and platform routes to automations ([#17363](https://github.com/vm0-ai/vm0/issues/17363)) ([8ddb863](https://github.com/vm0-ai/vm0/commit/8ddb863ee22c268d3905a1255d3cdfac905e1ff5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.86.0
+    * @vm0/core bumped to 8.331.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.69.0
+
 ## [12.422.3](https://github.com/vm0-ai/vm0/compare/web-v12.422.2...web-v12.422.3) (2026-06-11)
 
 

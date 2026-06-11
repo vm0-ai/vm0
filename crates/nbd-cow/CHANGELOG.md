@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.36](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.35...nbd-cow-v0.4.36) (2026-06-11)
+
+
+### Refactoring
+
+* split nbd cow integration fixtures ([#17332](https://github.com/vm0-ai/vm0/issues/17332)) ([f175775](https://github.com/vm0-ai/vm0/commit/f1757750f1b3bb9962dfcac767793325fcb8f278))
+
 ## [0.4.35](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.34...nbd-cow-v0.4.35) (2026-06-07)
 
 

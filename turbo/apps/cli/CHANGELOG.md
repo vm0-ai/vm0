@@ -1,5 +1,28 @@
 # Changelog
 
+## [9.190.0](https://github.com/vm0-ai/vm0/compare/cli-v9.189.4...cli-v9.190.0) (2026-06-11)
+
+
+### Features
+
+* **api:** move the automation resource api to /api/automations ([#17362](https://github.com/vm0-ai/vm0/issues/17362)) ([c4ab2d8](https://github.com/vm0-ai/vm0/commit/c4ab2d82a84a4bb083c6755e0b027401cb997626))
+* **api:** replace schedule capabilities with automation capabilities ([#17356](https://github.com/vm0-ai/vm0/issues/17356)) ([5e4d31c](https://github.com/vm0-ai/vm0/commit/5e4d31ca8a4293985d8707f226a0699d68a5a8f9))
+* **cli:** remove the zero schedule commands ([#17357](https://github.com/vm0-ai/vm0/issues/17357)) ([3c38cdd](https://github.com/vm0-ai/vm0/commit/3c38cdd180be06a6c208e691255001e6ce04d96d))
+
+
+### Performance Improvements
+
+* store compact run context firewalls ([#17350](https://github.com/vm0-ai/vm0/issues/17350)) ([4979488](https://github.com/vm0-ai/vm0/commit/4979488ffd3af48f248b1824dd9190d6650d13ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.86.0
+    * @vm0/connectors bumped to 1.69.0
+    * @vm0/core bumped to 8.331.0
+
 ## [9.189.4](https://github.com/vm0-ai/vm0/compare/cli-v9.189.3...cli-v9.189.4) (2026-06-11)
 
 
