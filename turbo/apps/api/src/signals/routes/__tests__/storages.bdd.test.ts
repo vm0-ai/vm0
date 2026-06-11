@@ -17,8 +17,8 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
  *
  * - Version ids are server-computed SHA-256 content hashes, so version
  *   downloads always derive prefixes from real prepare responses; the
- *   ambiguous-prefix 400 is not API-constructible and stays in the trimmed
- *   legacy `storages.test.ts` remnant.
+ *   ambiguous-prefix 400 is not API-constructible and is documented in the BDD
+ *   exception list instead of DB-seeding a route test.
  * - STOR-01 advances mockNow between the v1 and v2 commits so the
  *   newest-first list ordering cannot tie on `updatedAt`; no run-queue
  *   state is asserted under the mocked clock.
