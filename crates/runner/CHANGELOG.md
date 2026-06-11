@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.111.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.2...runner-rs-v0.111.3) (2026-06-11)
+
+
+### Bug Fixes
+
+* **mitm-addon:** block runner usage flush ownership ([#17230](https://github.com/vm0-ai/vm0/issues/17230)) ([53e5555](https://github.com/vm0-ai/vm0/commit/53e55556d580a7afdc20a665b202746b0d97cd55))
+
+
+### Refactoring
+
+* **runner:** name storage fingerprint entries ([#17231](https://github.com/vm0-ai/vm0/issues/17231)) ([d2ead29](https://github.com/vm0-ai/vm0/commit/d2ead29d04278670853472900735a8a254143cfb))
+
 ## [0.111.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.1...runner-rs-v0.111.2) (2026-06-11)
 
 
