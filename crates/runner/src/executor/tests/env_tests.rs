@@ -833,9 +833,7 @@ fn execution_context_deserializes_with_firewalls() {
     let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
     let svcs = ctx.firewalls.unwrap();
     assert_eq!(svcs.len(), 1);
-    let crate::types::FirewallEntry::Tagged(crate::types::TaggedFirewallEntry::Inline { firewall }) =
-        &svcs[0]
-    else {
+    let crate::types::FirewallEntry::Inline { firewall } = &svcs[0] else {
         panic!("expected inline firewall entry");
     };
     assert_eq!(firewall.name, "github");

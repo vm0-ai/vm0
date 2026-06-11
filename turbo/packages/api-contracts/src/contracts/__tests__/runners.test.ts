@@ -202,7 +202,7 @@ describe("runner firewall entry contract", () => {
     ).toBe(true);
   });
 
-  it("accepts legacy expanded firewall entries in execution contexts temporarily", () => {
+  it("rejects legacy expanded firewall entries in execution contexts", () => {
     const firewalls = [
       {
         name: "github",
@@ -212,10 +212,10 @@ describe("runner firewall entry contract", () => {
 
     expect(
       storedExecutionContextSchema.shape.firewalls.safeParse(firewalls).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       executionContextSchema.shape.firewalls.safeParse(firewalls).success,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("rejects unsupported execution firewall kinds", () => {

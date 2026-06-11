@@ -48,7 +48,6 @@ import {
   resolveFirewallBaseUrlVars,
   type ExecutionFirewallEntry,
   type ExecutionFirewalls,
-  type ExecutionFirewallLegacyEntry,
   type ExpandedFirewallConfig,
   type Firewall,
   type FirewallPolicies,
@@ -3126,9 +3125,6 @@ function builtinFirewallByName(
 function fullFirewallsForEntry(
   entry: ExecutionFirewallEntry,
 ): readonly Firewall[] {
-  if (isExecutionFirewallLegacyEntry(entry)) {
-    return [entry];
-  }
   if (entry.kind === "inline") {
     return [entry.firewall];
   }
@@ -3140,19 +3136,6 @@ function fullFirewallsForEntry(
     [runtimeFirewall(firewall)],
     entry.baseUrlVars,
   );
-}
-
-function isExecutionFirewallLegacyEntry(
-  entry: ExecutionFirewallEntry,
-): entry is ExecutionFirewallLegacyEntry {
-  return entry.kind === undefined;
-}
-
-function executionFirewallEntryName(entry: ExecutionFirewallEntry): string {
-  if (isExecutionFirewallLegacyEntry(entry)) {
-    return entry.name;
-  }
-  return entry.kind === "builtin" ? entry.name : entry.firewall.name;
 }
 
 function sanitizeFirewalls(
@@ -3278,7 +3261,7 @@ function billableFirewallsForPermissions(args: {
   const billableConnectorSet = new Set<string>(BILLABLE_CONNECTORS);
   const firewalls = args.permissions?.firewalls ?? [];
   const firewallNames = firewalls.map((firewall) => {
-    return executionFirewallEntryName(firewall);
+    return firewall.kind === "builtin" ? firewall.name : firewall.firewall.name;
   });
   const modelFirewalls =
     args.modelProvider?.type === "vm0"
