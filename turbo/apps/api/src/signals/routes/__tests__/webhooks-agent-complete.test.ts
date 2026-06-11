@@ -1,3 +1,11 @@
+// Remnant legacy file, kept per api.bdd.md "Open Helper Gaps" (firewall-auth
+// precedent): the priced usage-settlement path (zero-credit-usage charge,
+// expire, deduct, and the auto-recharge trigger evaluation) requires a
+// `usage_pricing` row, and no public API writes usage pricing; the
+// tier-less queue-drain arm requires an org without org_metadata, which no
+// public write path produces. Route-level completion coverage lives in
+// run-lifecycle.bdd.test.ts (CHAIN-RUN/RUN-03) and
+// webhooks-callbacks.bdd.test.ts (WHCB-05/06).
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
@@ -45,14 +53,6 @@ const TEST_CALLBACK_SECRET = "test-callback-secret";
 interface CompleteWebhookFixture extends UsageInsightFixture {
   readonly composeId: string;
   readonly runId: string;
-}
-
-interface CheckpointFixture {
-  readonly checkpointId: string;
-  readonly conversationId: string;
-  readonly sessionId: string;
-  readonly artifactVersion: string;
-  readonly volumeVersion: string;
 }
 
 function currentSecond(): number {
@@ -115,9 +115,7 @@ async function seedFixture(
   return { ...base, composeId, runId };
 }
 
-async function seedCheckpoint(
-  fixture: CompleteWebhookFixture,
-): Promise<CheckpointFixture> {
+async function seedCheckpoint(fixture: CompleteWebhookFixture): Promise<void> {
   const db = store.set(writeDb$);
   const [run] = await db
     .select({ sessionId: agentRuns.sessionId })
@@ -147,8 +145,6 @@ async function seedCheckpoint(
     .set({ conversationId: conversation.id })
     .where(eq(agentSessions.id, run.sessionId));
 
-  const artifactVersion = `artifact-${randomUUID()}`;
-  const volumeVersion = `volume-${randomUUID()}`;
   const [checkpoint] = await db
     .insert(checkpoints)
     .values({
@@ -157,31 +153,11 @@ async function seedCheckpoint(
       agentComposeSnapshot: {
         agentComposeVersionId: fixture.composeId,
       },
-      artifactSnapshots: [
-        {
-          name: "workspace",
-          version: artifactVersion,
-          mountPath: "/workspace",
-        },
-      ],
-      volumeVersionsSnapshot: {
-        versions: {
-          cache: volumeVersion,
-        },
-      },
     })
     .returning({ id: checkpoints.id });
   if (!checkpoint) {
     throw new Error("seedCheckpoint: checkpoint insert returned no row");
   }
-
-  return {
-    checkpointId: checkpoint.id,
-    conversationId: conversation.id,
-    sessionId: run.sessionId,
-    artifactVersion,
-    volumeVersion,
-  };
 }
 
 async function runById(runId: string) {
@@ -200,394 +176,12 @@ const track = createFixtureTracker<CompleteWebhookFixture>(async (fixture) => {
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
 
-describe("POST /api/webhooks/agent/complete", () => {
-  it("rejects missing sandbox auth", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 0 },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Not authenticated or runId mismatch",
-        code: "UNAUTHORIZED",
-      },
-    });
-  });
-
-  it("rejects a body runId that does not match the sandbox token", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: randomUUID(), exitCode: 0 },
-        headers: authHeaders(fixture),
-      }),
-      [401],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Not authenticated or runId mismatch",
-    );
-  });
-
-  it("rejects missing runId", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: { exitCode: 0 } as never,
-        headers: authHeaders(fixture),
-      }),
-      [400],
-    );
-
-    expect(response.body.error.message).toContain("runId");
-  });
-
-  it("rejects missing exitCode", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId } as never,
-        headers: authHeaders(fixture),
-      }),
-      [400],
-    );
-
-    expect(response.body.error.message).toContain("exitCode");
-  });
-
-  it("rejects negative lastEventSequence", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 0, lastEventSequence: -1 },
-        headers: authHeaders(fixture),
-      }),
-      [400],
-    );
-
-    expect(response.body.error.message).toContain("lastEventSequence");
-  });
-
-  it("rejects lastEventSequence outside the database integer range", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: {
-          runId: fixture.runId,
-          exitCode: 0,
-          lastEventSequence: 2_147_483_648,
-        },
-        headers: authHeaders(fixture),
-      }),
-      [400],
-    );
-
-    expect(response.body.error.message).toContain("lastEventSequence");
-  });
-
-  it("rejects an invalid sandboxReuseResult value", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: {
-          runId: fixture.runId,
-          exitCode: 1,
-          sandboxReuseResult: "someInvalidValue",
-        } as never,
-        headers: authHeaders(fixture),
-      }),
-      [400],
-    );
-
-    expect(response.body.error.message).toContain("sandboxReuseResult");
-  });
-
-  it("returns not found for a missing run", async () => {
-    const fixture = await track(seedFixture());
-    const missingRunId = randomUUID();
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: missingRunId, exitCode: 0 },
-        headers: {
-          authorization: `Bearer ${sandboxToken({
-            runId: missingRunId,
-            userId: fixture.userId,
-            orgId: fixture.orgId,
-          })}`,
-        },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Agent run not found",
-        code: "NOT_FOUND",
-      },
-    });
-  });
-
-  it("returns not found when the sandbox user does not own the run", async () => {
-    const fixture = await track(seedFixture());
-    const otherFixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: otherFixture.runId, exitCode: 0 },
-        headers: {
-          authorization: `Bearer ${sandboxToken({
-            runId: otherFixture.runId,
-            userId: fixture.userId,
-            orgId: fixture.orgId,
-          })}`,
-        },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Agent run not found");
-  });
-
-  it("completes a successful run from its checkpoint", async () => {
-    const fixture = await track(seedFixture());
-    const checkpoint = await seedCheckpoint(fixture);
-
-    const response = await accept(
-      completeClient().complete({
-        body: {
-          runId: fixture.runId,
-          exitCode: 0,
-          lastEventSequence: 7,
-          sandboxId: "sandbox-success",
-          sandboxReuseResult: "reused",
-        },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      success: true,
-      status: "completed",
-    });
-
-    const run = await runById(fixture.runId);
-    expect(run).toMatchObject({
-      status: "completed",
-      lastEventSequence: 7,
-      sandboxId: "sandbox-success",
-      sandboxReuseResult: "reused",
-      error: null,
-    });
-    expect(run?.completedAt).toBeInstanceOf(Date);
-    expect(run?.result).toStrictEqual({
-      checkpointId: checkpoint.checkpointId,
-      agentSessionId: checkpoint.sessionId,
-      conversationId: checkpoint.conversationId,
-      artifact: {
-        workspace: checkpoint.artifactVersion,
-      },
-      volumes: {
-        cache: checkpoint.volumeVersion,
-      },
-    });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `run:changed:${fixture.runId}`,
-      { status: "completed" },
-    );
-  });
-
-  it("upgrades a timed-out run to completed when the checkpoint exists", async () => {
-    const fixture = await track(seedFixture("timeout"));
-    await seedCheckpoint(fixture);
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 0 },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      success: true,
-      status: "completed",
-    });
-
-    const run = await runById(fixture.runId);
-    expect(run?.status).toBe("completed");
-    expect(run?.error).toBeNull();
-  });
-
-  it("fails a successful completion when the checkpoint is missing", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 0 },
-        headers: authHeaders(fixture),
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Checkpoint for run not found",
-        code: "NOT_FOUND",
-      },
-    });
-
-    const run = await runById(fixture.runId);
-    expect(run).toMatchObject({
-      status: "failed",
-      error: "Checkpoint for run not found",
-      lastEventSequence: null,
-    });
-  });
-
-  it("persists lastEventSequence when the checkpoint is missing", async () => {
-    const fixture = await track(seedFixture());
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 0, lastEventSequence: 4 },
-        headers: authHeaders(fixture),
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Checkpoint for run not found");
-    const run = await runById(fixture.runId);
-    expect(run).toMatchObject({
-      status: "failed",
-      lastEventSequence: 4,
-    });
-  });
-
-  it("records runner failure output and device limiter mismatch reuse outcome", async () => {
-    const fixture = await track(seedFixture("timeout"));
-
-    const response = await accept(
-      completeClient().complete({
-        body: {
-          runId: fixture.runId,
-          exitCode: 1,
-          error: "codex exited with status 1",
-          sandboxId: "sandbox-failure",
-          sandboxReuseResult: "deviceLimitMismatch",
-        },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      success: true,
-      status: "failed",
-    });
-
-    const run = await runById(fixture.runId);
-    expect(run).toMatchObject({
-      status: "failed",
-      error: "codex exited with status 1",
-      sandboxId: "sandbox-failure",
-      sandboxReuseResult: "deviceLimitMismatch",
-    });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `run:changed:${fixture.runId}`,
-      { status: "failed" },
-    );
-  });
-
-  it("returns idempotent success for duplicate terminal completions", async () => {
-    const fixture = await track(seedFixture("completed"));
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 1, lastEventSequence: 12 },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      success: true,
-      status: "completed",
-    });
-
-    const run = await runById(fixture.runId);
-    expect(run?.status).toBe("completed");
-    expect(run?.lastEventSequence).toBe(12);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
-  });
-
-  it("returns idempotent success for duplicate failed completions", async () => {
-    const fixture = await track(seedFixture("failed"));
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 1, lastEventSequence: 12 },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      success: true,
-      status: "failed",
-    });
-
-    const run = await runById(fixture.runId);
-    expect(run?.status).toBe("failed");
-    expect(run?.lastEventSequence).toBe(12);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
-  });
-
-  it("does not lower an existing lastEventSequence on duplicate completion", async () => {
-    const fixture = await track(seedFixture("completed"));
-
-    await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 0, lastEventSequence: 7 },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    const response = await accept(
-      completeClient().complete({
-        body: { runId: fixture.runId, exitCode: 0, lastEventSequence: 3 },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(response.body.status).toBe("completed");
-    const run = await runById(fixture.runId);
-    expect(run?.lastEventSequence).toBe(7);
-  });
-
-  it("returns failed when completion loses the transition race to cancellation", async () => {
+describe("POST /api/webhooks/agent/complete (remnant: priced usage settlement)", () => {
+  it("drains completion side effects for orgs without org metadata", async () => {
     const fixture = await track(seedFixture());
     await seedCheckpoint(fixture);
     const db = store.set(writeDb$);
-    await db
-      .update(agentRuns)
-      .set({ status: "cancelled", completedAt: nowDate() })
-      .where(eq(agentRuns.id, fixture.runId));
+    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
 
     const response = await accept(
       completeClient().complete({
@@ -596,13 +190,16 @@ describe("POST /api/webhooks/agent/complete", () => {
       }),
       [200],
     );
-
     expect(response.body).toStrictEqual({
       success: true,
-      status: "failed",
+      status: "completed",
     });
+
+    // The detached drain treats the metadata-less org as suspended (zero
+    // concurrency) and settles without promoting anything.
+    await clearAllDetached();
     const run = await runById(fixture.runId);
-    expect(run?.status).toBe("cancelled");
+    expect(run?.status).toBe("completed");
   });
 
   it("dispatches callbacks, drains the queue, and settles usage after completion", async () => {

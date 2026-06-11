@@ -29,6 +29,7 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import {
   callbackDeliveryWithStatus,
   createWebhookCallbackApi,
@@ -2518,6 +2519,401 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     await clearAllDetached();
     const settled = await api.readRunQueue(actor);
     expect(settled.body.concurrency.active).toBe(0);
+  });
+});
+
+describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhooks", () => {
+  it("reports artifacts, volumes, model usage, and telemetry through sandbox webhooks", async () => {
+    const api = createRunsSchedulesApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    // A committed volume version backs the versioned additional volume; the
+    // scratch volume stays versionless and storage-less on purpose.
+    const cacheVolume = `bdd-cache-${randomUUID().slice(0, 8)}`;
+    const scratchVolume = `bdd-scratch-${randomUUID().slice(0, 8)}`;
+    const cacheFile = {
+      path: "cache.txt",
+      hash: createHash("sha256")
+        .update(`bdd cache ${cacheVolume}`)
+        .digest("hex"),
+      size: 9,
+    };
+    const cachePrepared = await storages.prepareStorage(actor, {
+      storageName: cacheVolume,
+      storageType: "volume",
+      files: [cacheFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: cacheVolume,
+      storageType: "volume",
+      versionId: cachePrepared.versionId,
+      files: [cacheFile],
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "report snapshots and telemetry",
+      modelProvider: "anthropic-api-key",
+      additionalVolumes: [
+        {
+          name: cacheVolume,
+          version: cachePrepared.versionId,
+          mountPath: "/cache",
+        },
+        { name: scratchVolume, mountPath: "/scratch" },
+      ],
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(created.runId);
+    const mountPaths =
+      claim.storageManifest?.storages.map((storage) => {
+        return storage.mountPath;
+      }) ?? [];
+    expect(mountPaths).toContain("/cache");
+    const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+
+    await webhooks.requestAgentTelemetry(
+      {
+        runId: created.runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            host: "api.example.test",
+            port: 443,
+            method: "GET",
+            url: "https://api.example.test/v1/status",
+            status: 200,
+            latency_ms: 12,
+            request_size: 100,
+            response_size: 256,
+          },
+        ],
+        sandboxOperations: [
+          {
+            ts: nowDate().toISOString(),
+            action_type: "volume_mount",
+            duration_ms: 8,
+            success: false,
+            error: "mount timed out",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
+      "sandbox-telemetry-network",
+      [
+        expect.objectContaining({
+          runId: created.runId,
+          host: "api.example.test",
+          status: 200,
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "volume_mount",
+          run_id: created.runId,
+          success: false,
+          error: "mount timed out",
+          source: "sandbox",
+        }),
+      ],
+    );
+
+    const observed = await webhooks.requestAgentModelUsageObservation(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 120,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(observed.body).toStrictEqual({ success: true });
+
+    const artifactSnapshots = [
+      {
+        name: "workspace",
+        version: "a".repeat(64),
+        mountPath: "/workspace",
+      },
+      {
+        name: "site",
+        version: "b".repeat(64),
+        mountPath: "/site",
+        missingRootPolicy: "preserveParentVersion" as const,
+      },
+    ];
+    const historyHash = createHash("sha256")
+      .update(`bdd snapshot history ${created.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: created.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-snapshot-cli-${created.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+        artifactSnapshots,
+        volumeVersionsSnapshot: {
+          versions: { [cacheVolume]: cachePrepared.versionId },
+        },
+      },
+      sandboxHeaders,
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the snapshot checkpoint to succeed");
+    }
+    expect(checkpoint.body.artifacts).toStrictEqual(artifactSnapshots);
+    expect(checkpoint.body.volumes).toStrictEqual({
+      [cacheVolume]: cachePrepared.versionId,
+    });
+
+    await webhooks.requestAgentComplete(
+      { runId: created.runId, exitCode: 0, lastEventSequence: 3 },
+      sandboxHeaders,
+      [200],
+    );
+    await clearAllDetached();
+
+    const completed = await api.readRun(actor, created.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.result?.artifact).toStrictEqual({
+      workspace: "a".repeat(64),
+      site: "b".repeat(64),
+    });
+    expect(completed.result?.volumes).toStrictEqual({
+      [cacheVolume]: cachePrepared.versionId,
+    });
+
+    // A late duplicate report cannot flip the settled run.
+    const duplicate = await webhooks.requestAgentComplete(
+      {
+        runId: created.runId,
+        exitCode: 1,
+        error: "late crash report",
+        lastEventSequence: 9,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    if (duplicate.status !== 200) {
+      throw new Error("Expected the duplicate completion to be accepted");
+    }
+    expect(duplicate.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await clearAllDetached();
+    const settled = await api.readRun(actor, created.runId);
+    expect(settled.status).toBe("completed");
+    expect(settled.error ?? null).toBeNull();
+  });
+});
+
+describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
+  it("fails a clean exit whose run never reported a checkpoint", async () => {
+    const api = createRunsSchedulesApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "complete without a checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+    };
+
+    const missing = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [404],
+    );
+    expectApiError(missing.body);
+    expect(missing.body.error.message).toBe("Checkpoint for run not found");
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${run.runId}`,
+      { status: "failed" },
+    );
+
+    await clearAllDetached();
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("Checkpoint for run not found");
+  });
+
+  it("reports the settled status when a checkpoint-less completion races a cancellation", async () => {
+    const api = createRunsSchedulesApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel before the completion report",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+
+    const late = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}` },
+      [200],
+    );
+    if (late.status !== 200) {
+      throw new Error("Expected the late completion to be acknowledged");
+    }
+    expect(late.body).toStrictEqual({ success: true, status: "failed" });
+
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("keeps a cancelled run settled when its checkpointed completion arrives late", async () => {
+    const api = createRunsSchedulesApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "checkpoint, cancel, then complete",
+      modelProvider: "anthropic-api-key",
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+    };
+    const historyHash = createHash("sha256")
+      .update(`bdd cancelled checkpoint ${run.runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cancelled-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+
+    const late = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    if (late.status !== 200) {
+      throw new Error(
+        "Expected the checkpointed completion to be acknowledged",
+      );
+    }
+    expect(late.body).toStrictEqual({ success: true, status: "failed" });
+
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("checkpoints direct compose runs without vars and canonicalizes usage by event model", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    // Direct compose runs created without vars leave the stored vars null,
+    // and their zero-run rows carry no model provider or pinned model.
+    const composeName = `bdd-null-vars-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "checkpoint without vars",
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+    };
+
+    // With no pinned model the event model drives canonicalization: the
+    // unsupported event is skipped while the supported one is recorded.
+    const observed = await webhooks.requestAgentModelUsageObservation(
+      {
+        runId: run.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 50,
+          },
+          {
+            idempotencyKey: randomUUID(),
+            model: "custom-bdd-model",
+            category: "tokens.output",
+            quantity: 7,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(observed.body).toStrictEqual({ success: true });
+
+    const historyHash = createHash("sha256")
+      .update(`bdd null vars checkpoint ${run.runId}`)
+      .digest("hex");
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-null-vars-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the null-vars checkpoint to succeed");
+    }
+    expect(checkpoint.body.artifacts).toBeUndefined();
+    expect(checkpoint.body.volumes).toBeUndefined();
+
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    await clearAllDetached();
+    const completed = await api.readRun(actor, run.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.result?.checkpointId).toBeDefined();
   });
 });
 

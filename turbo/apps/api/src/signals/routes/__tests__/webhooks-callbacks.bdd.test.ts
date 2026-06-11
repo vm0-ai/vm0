@@ -1,5 +1,6 @@
-import { randomInt, randomUUID } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 
+import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -20,6 +21,7 @@ import {
   createRunsSchedulesApi,
   uniqueScheduleName,
 } from "./helpers/api-bdd-runs-schedules";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -1052,6 +1054,33 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(missingHeartbeatRun.body);
     expect(missingHeartbeatRun.body.error.code).toBe("NOT_FOUND");
 
+    const mismatchedUsageEvent = await api.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: "github",
+            category: "api_request",
+            quantity: 1,
+          },
+        ],
+      },
+      mismatchedHeaders,
+      [401],
+    );
+    expectApiError(mismatchedUsageEvent.body);
+    expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
+
+    const malformedTelemetry = await api.requestAgentTelemetryUnchecked(
+      {},
+      headers,
+      [400],
+    );
+    expectApiError(malformedTelemetry.body);
+    expect(malformedTelemetry.body.error.code).toBe("BAD_REQUEST");
+
     const malformedUsageEvent = await api.requestAgentUsageEventUnchecked(
       {
         runId,
@@ -1200,6 +1229,14 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     expectApiError(malformedComplete.body);
     expect(malformedComplete.body.error.code).toBe("BAD_REQUEST");
 
+    const mismatchedComplete = await api.requestAgentComplete(
+      { runId, exitCode: 0, lastEventSequence: 0 },
+      mismatchedHeaders,
+      [401],
+    );
+    expectApiError(mismatchedComplete.body);
+    expect(mismatchedComplete.body.error.code).toBe("UNAUTHORIZED");
+
     const missingCompleteRun = await api.requestAgentComplete(
       {
         runId,
@@ -1239,6 +1276,28 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     );
     expectApiError(missingCheckpointRun.body);
     expect(missingCheckpointRun.body.error.code).toBe("NOT_FOUND");
+
+    const mismatchedCheckpoint = await api.requestAgentCheckpoint(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: "session-bdd",
+        cliAgentSessionHistoryHash: hash,
+      },
+      mismatchedHeaders,
+      [401],
+    );
+    expectApiError(mismatchedCheckpoint.body);
+    expect(mismatchedCheckpoint.body.error.code).toBe("UNAUTHORIZED");
+
+    const mismatchedHistoryPrepare =
+      await api.requestAgentCheckpointPrepareHistory(
+        { runId, hash, size: 128 },
+        mismatchedHeaders,
+        [401],
+      );
+    expectApiError(mismatchedHistoryPrepare.body);
+    expect(mismatchedHistoryPrepare.body.error.code).toBe("UNAUTHORIZED");
 
     const malformedHistoryPrepare =
       await api.requestAgentCheckpointPrepareHistoryUnchecked(
@@ -1303,6 +1362,198 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     );
     expectApiError(malformedStorageCommit.body);
     expect(malformedStorageCommit.body.error.code).toBe("BAD_REQUEST");
+  });
+});
+
+describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in the run organization", () => {
+  it("prepares, commits, dedups, and bounds sandbox storage writes for the run org", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsSchedulesApi(context);
+    const storages = createStoragesBddApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD sandbox storage agent",
+      visibility: "private",
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "write artifacts from the sandbox",
+      modelProvider: "anthropic-api-key",
+    });
+    const headers = {
+      authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}`,
+    };
+
+    // Checkpoint history blobs: first prepare issues an upload URL, the
+    // second sees the registered blob and skips the upload.
+    const historyHash = createHash("sha256")
+      .update(`bdd history blob ${run.runId}`)
+      .digest("hex");
+    const firstHistory = await api.requestAgentCheckpointPrepareHistory(
+      { runId: run.runId, hash: historyHash, size: 456 },
+      headers,
+      [200],
+    );
+    if (firstHistory.status !== 200) {
+      throw new Error("Expected the first history prepare to succeed");
+    }
+    expect(firstHistory.body.existing).toBeFalsy();
+    expect(firstHistory.body.presignedUrl).toMatch(/^https/);
+
+    const repeatedHistory = await api.requestAgentCheckpointPrepareHistory(
+      { runId: run.runId, hash: historyHash, size: 456 },
+      headers,
+      [200],
+    );
+    if (repeatedHistory.status !== 200) {
+      throw new Error("Expected the repeated history prepare to succeed");
+    }
+    expect(repeatedHistory.body).toStrictEqual({ existing: true });
+
+    const ghostRunId = randomUUID();
+    const missingHistoryRun = await api.requestAgentCheckpointPrepareHistory(
+      { runId: ghostRunId, hash: historyHash, size: 456 },
+      {
+        authorization: `Bearer ${runs.sandboxTokenForRun(actor, ghostRunId)}`,
+      },
+      [404],
+    );
+    expectApiError(missingHistoryRun.body);
+    expect(missingHistoryRun.body.error.message).toBe("Agent run not found");
+
+    // Artifact writes land under the run organization's storage prefix.
+    const storageName = `bdd-sandbox-artifact-${randomUUID().slice(0, 8)}`;
+    const files = [
+      {
+        path: "index.html",
+        hash: createHash("sha256")
+          .update(`bdd artifact ${storageName}`)
+          .digest("hex"),
+        size: 2048,
+      },
+    ];
+    const prepared = await api.requestAgentStoragePrepare(
+      { runId: run.runId, storageName, storageType: "artifact", files },
+      headers,
+      [200],
+    );
+    if (prepared.status !== 200) {
+      throw new Error("Expected the sandbox storage prepare to succeed");
+    }
+    expect(prepared.body.existing).toBeFalsy();
+    expect(prepared.body.uploads?.archive.key).toBe(
+      `${orgOf(actor)}/artifact/${storageName}/${prepared.body.versionId}/archive.tar.gz`,
+    );
+    expect(prepared.body.uploads?.archive.presignedUrl).toMatch(/^https/);
+    expect(prepared.body.uploads?.manifest.presignedUrl).toMatch(/^https/);
+
+    const committed = await api.requestAgentStorageCommit(
+      {
+        runId: run.runId,
+        storageName,
+        storageType: "artifact",
+        versionId: prepared.body.versionId,
+        parentVersionId: "b".repeat(64),
+        files,
+        message: "bdd sandbox commit",
+      },
+      headers,
+      [200],
+    );
+    if (committed.status !== 200) {
+      throw new Error("Expected the sandbox storage commit to succeed");
+    }
+    expect(committed.body).toStrictEqual({
+      success: true,
+      versionId: prepared.body.versionId,
+      storageName,
+      size: 2048,
+      fileCount: 1,
+    });
+
+    // Re-preparing identical content reuses the committed version without
+    // new upload URLs.
+    const reprepared = await api.requestAgentStoragePrepare(
+      { runId: run.runId, storageName, storageType: "artifact", files },
+      headers,
+      [200],
+    );
+    if (reprepared.status !== 200) {
+      throw new Error("Expected the duplicate prepare to succeed");
+    }
+    expect(reprepared.body).toStrictEqual({
+      versionId: prepared.body.versionId,
+      existing: true,
+    });
+
+    const mismatchedCommit = await api.requestAgentStorageCommit(
+      {
+        runId: run.runId,
+        storageName,
+        storageType: "artifact",
+        versionId: "f".repeat(64),
+        files,
+      },
+      headers,
+      [400],
+    );
+    expectApiError(mismatchedCommit.body);
+    expect(mismatchedCommit.body.error.message).toBe(
+      "Version ID mismatch - files may have changed",
+    );
+
+    const oversized = await api.requestAgentStoragePrepare(
+      {
+        runId: run.runId,
+        storageName: `bdd-oversized-${randomUUID().slice(0, 8)}`,
+        storageType: "artifact",
+        files: [
+          {
+            path: "a.bin",
+            hash: "1".repeat(64),
+            size: MAX_FILE_SIZE_BYTES,
+          },
+          { path: "b.bin", hash: "2".repeat(64), size: 1 },
+        ],
+      },
+      headers,
+      [413],
+    );
+    expectApiError(oversized.body);
+    expect(oversized.body.error.code).toBe("PAYLOAD_TOO_LARGE");
+
+    // The committed artifact is visible to the run owner through the public
+    // storage reads.
+    const listed = await storages.listStorages(actor, "artifact");
+    expect(listed).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: storageName,
+          size: 2048,
+          fileCount: 1,
+        }),
+      ]),
+    );
+    const downloaded = await storages.downloadStorage(actor, {
+      name: storageName,
+      type: "artifact",
+    });
+    expect(downloaded).toMatchObject({
+      versionId: prepared.body.versionId,
+      size: 2048,
+      fileCount: 1,
+    });
+
+    await runs.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await runs.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
   });
 });
 
