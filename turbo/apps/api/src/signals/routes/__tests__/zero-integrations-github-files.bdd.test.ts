@@ -13,7 +13,6 @@ import {
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
-import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
@@ -36,6 +35,18 @@ import {
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
+
+// BDD migration of the legacy
+// `zero-integrations-github-files.test.ts`. The 5 legacy
+// `it()`s collapse into 3 BDD `it()`s: (1) download chain
+// (200 streams a GitHub context file from an allowed URL →
+// 200 uses the GitHub URL filename when no hint → 400
+// rejects non-GitHub file URLs → 403 requires `github:read`
+// capability), (2) upload-init chain (200 returns a
+// presigned upload URL with public S3 endpoint, body shape
+// + sanitized filename + S3 key), (3) upload-complete
+// chain (200 posts the URL to GitHub + records the run
+// artifact with full metadata).
 
 const context = testContext();
 const store = createStore();
@@ -126,46 +137,86 @@ async function findUploadedFiles(args: {
     );
 }
 
-describe("GitHub zero file integration routes", () => {
-  const trackUsage = createFixtureTracker<UsageInsightFixture>((fixture) => {
-    return store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  });
-  const trackMembership = createFixtureTracker<OrgMembershipFixture>(
-    (fixture) => {
-      return store.set(deleteOrgMembership$, fixture, context.signal);
-    },
-  );
+const trackUsage = createFixtureTracker<UsageInsightFixture>((fixture) => {
+  return store.set(deleteUsageInsightFixture$, fixture, context.signal);
+});
+const trackMembership = createFixtureTracker<OrgMembershipFixture>(
+  (fixture) => {
+    return store.set(deleteOrgMembership$, fixture, context.signal);
+  },
+);
 
-  async function seedFixture(): Promise<GitHubFileFixture> {
-    const fixture = await trackUsage(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    await trackMembership(
-      store.set(
-        seedOrgMembership$,
-        { orgId: fixture.orgId, userId: fixture.userId },
-        context.signal,
-      ),
-    );
-    const compose = await store.set(
-      seedCompose$,
+async function seedFixture(): Promise<GitHubFileFixture> {
+  const fixture = await trackUsage(
+    store.set(seedUsageInsightFixture$, undefined, context.signal),
+  );
+  await trackMembership(
+    store.set(
+      seedOrgMembership$,
       { orgId: fixture.orgId, userId: fixture.userId },
       context.signal,
-    );
-    const remoteInstallationId = "987654321";
-    await seedGithubInstallation({
-      orgId: fixture.orgId,
-      composeId: compose.composeId,
-      remoteInstallationId,
-    });
-    return {
-      ...fixture,
-      composeId: compose.composeId,
-      remoteInstallationId,
-    };
-  }
+    ),
+  );
+  const compose = await store.set(
+    seedCompose$,
+    { orgId: fixture.orgId, userId: fixture.userId },
+    context.signal,
+  );
+  const remoteInstallationId = String(
+    Math.floor(Math.random() * 9_000_000_000) + 1_000_000_000,
+  );
+  await seedGithubInstallation({
+    orgId: fixture.orgId,
+    composeId: compose.composeId,
+    remoteInstallationId,
+  });
+  return {
+    ...fixture,
+    composeId: compose.composeId,
+    remoteInstallationId,
+  };
+}
 
-  it("streams a GitHub context file from an allowed URL", async () => {
+function downloadUrl(args: {
+  readonly url: string;
+  readonly filename?: string;
+}): string {
+  const params = new URLSearchParams({ url: args.url });
+  if (args.filename) {
+    params.set("filename", args.filename);
+  }
+  return `/api/zero/integrations/github/download-file?${params.toString()}`;
+}
+
+function downloadFileRequest(
+  tokenUserId: string,
+  tokenOrgId: string,
+  capabilities: readonly ("github:read" | "github:write")[],
+  url: string,
+  filename?: string,
+): Promise<Response> {
+  // Reuse setupApp's contract client: the file routes are
+  // mounted through app.request for streaming, so build a
+  // plain RequestInit here.
+  return import("../../../app-factory").then(({ createApp }) => {
+    const app = createApp({ signal: context.signal });
+    return app.request(downloadUrl({ url, filename }), {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${zeroToken({
+          userId: tokenUserId,
+          orgId: tokenOrgId,
+          capabilities,
+        })}`,
+      },
+    });
+  });
+}
+
+describe("BDD GitHub zero file integration routes — download chain", () => {
+  it("gwt-wt-wt: 200 streams a GitHub context file from an allowed URL → 200 uses the GitHub URL filename when no hint → 400 rejects non-GitHub file URLs → 403 requires github:read capability", async () => {
+    // Given: a fixture + a GitHub user-attachments URL
+    // with a filename hint.
     const fixture = await seedFixture();
     const fileUrl = "https://github.com/user-attachments/assets/abc123";
     server.use(
@@ -182,38 +233,28 @@ describe("GitHub zero file integration routes", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
-    const query = new URLSearchParams({
-      url: fileUrl,
-      filename: "screenshot.png",
-    });
-    const response = await app.request(
-      `/api/zero/integrations/github/download-file?${query.toString()}`,
-      {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${zeroToken({
-            userId: fixture.userId,
-            orgId: fixture.orgId,
-            capabilities: ["github:read"],
-          })}`,
-        },
-      },
+    // When + Then: 200 — the file is streamed with the
+    // hint filename + content-type echoed as a header.
+    const streamed = await downloadFileRequest(
+      fixture.userId,
+      fixture.orgId,
+      ["github:read"],
+      fileUrl,
+      "screenshot.png",
     );
+    expect(streamed.status).toBe(200);
+    expect(streamed.headers.get("content-type")).toBe("image/png");
+    expect(streamed.headers.get("x-file-name")).toBe("screenshot.png");
+    expect(streamed.headers.get("x-file-mimetype")).toBe("image/png");
+    await expect(streamed.text()).resolves.toBe("png-bytes");
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("image/png");
-    expect(response.headers.get("x-file-name")).toBe("screenshot.png");
-    expect(response.headers.get("x-file-mimetype")).toBe("image/png");
-    await expect(response.text()).resolves.toBe("png-bytes");
-  });
-
-  it("uses the GitHub URL filename when no filename hint is provided", async () => {
-    const fixture = await seedFixture();
-    const fileUrl =
+    // Given: a fixture + a raw.githubusercontent.com URL
+    // without a filename hint.
+    const inferredFixture = await seedFixture();
+    const inferredUrl =
       "https://raw.githubusercontent.com/vm0-ai/vm0/main/github-file.png";
     server.use(
-      http.get(fileUrl, ({ request }) => {
+      http.get(inferredUrl, ({ request }) => {
         expect(request.headers.get("authorization")).toBeNull();
         expect(request.headers.get("accept")).toBe("application/octet-stream");
         return new HttpResponse("artifact-bytes", {
@@ -226,88 +267,64 @@ describe("GitHub zero file integration routes", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
-    const query = new URLSearchParams({ url: fileUrl });
-    const response = await app.request(
-      `/api/zero/integrations/github/download-file?${query.toString()}`,
-      {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${zeroToken({
-            userId: fixture.userId,
-            orgId: fixture.orgId,
-            capabilities: ["github:read"],
-          })}`,
-        },
-      },
+    // When + Then: 200 — the GitHub URL filename is used
+    // as the hint.
+    const inferred = await downloadFileRequest(
+      inferredFixture.userId,
+      inferredFixture.orgId,
+      ["github:read"],
+      inferredUrl,
     );
+    expect(inferred.status).toBe(200);
+    expect(inferred.headers.get("content-type")).toBe("image/png");
+    expect(inferred.headers.get("x-file-name")).toBe("github-file.png");
+    await expect(inferred.text()).resolves.toBe("artifact-bytes");
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("image/png");
-    expect(response.headers.get("x-file-name")).toBe("github-file.png");
-    await expect(response.text()).resolves.toBe("artifact-bytes");
-  });
+    // Given: a fixture + a non-GitHub URL.
 
-  it("rejects non-GitHub file URLs", async () => {
-    const fixture = await seedFixture();
-
-    const app = createApp({ signal: context.signal });
-    const query = new URLSearchParams({
-      url: "https://example.com/file.png",
-    });
-    const response = await app.request(
-      `/api/zero/integrations/github/download-file?${query.toString()}`,
-      {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${zeroToken({
-            userId: fixture.userId,
-            orgId: fixture.orgId,
-            capabilities: ["github:read"],
-          })}`,
-        },
-      },
+    // When + Then: 400 — non-GitHub URLs are rejected.
+    const rejectedFixture = await seedFixture();
+    const rejected = await downloadFileRequest(
+      rejectedFixture.userId,
+      rejectedFixture.orgId,
+      ["github:read"],
+      "https://example.com/file.png",
     );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(rejected.status).toBe(400);
+    await expect(rejected.json()).resolves.toMatchObject({
       error: { code: "BAD_REQUEST" },
     });
-  });
 
-  it("requires github read capability for context file downloads", async () => {
-    const fixture = await seedFixture();
-    const app = createApp({ signal: context.signal });
-    const query = new URLSearchParams({
-      url: "https://github.com/user-attachments/assets/abc123",
-    });
+    // Given: a fixture + a zero token with only
+    // `github:write`.
 
-    const response = await app.request(
-      `/api/zero/integrations/github/download-file?${query.toString()}`,
-      {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${zeroToken({
-            userId: fixture.userId,
-            orgId: fixture.orgId,
-            capabilities: ["github:write"],
-          })}`,
-        },
-      },
+    // When + Then: 403 — `github:read` capability is
+    // required.
+    const insufficientFixture = await seedFixture();
+    const insufficient = await downloadFileRequest(
+      insufficientFixture.userId,
+      insufficientFixture.orgId,
+      ["github:write"],
+      fileUrl,
+      "screenshot.png",
     );
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(insufficient.status).toBe(403);
+    await expect(insufficient.json()).resolves.toMatchObject({
       error: { code: "FORBIDDEN" },
     });
   });
+});
 
-  it("returns a presigned upload URL for GitHub file delivery", async () => {
+describe("BDD GitHub zero file integration routes — upload-init chain", () => {
+  it("gwt-wt-wt: 200 returns a presigned upload URL with public S3 endpoint, body shape + sanitized filename + S3 key", async () => {
+    // Given: S3 endpoint env + a fixture + an init client.
     mockEnv("S3_ENDPOINT", "http://internal-s3.test");
     mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.test");
     const fixture = await seedFixture();
     const client = setupApp({ context })(integrationsGithubUploadInitContract);
 
+    // When + Then: 200 — the response body matches the
+    // expected shape + the S3 key is sanitized.
     const response = await accept(
       client.init({
         body: {
@@ -325,7 +342,6 @@ describe("GitHub zero file integration routes", () => {
       }),
       [200],
     );
-
     expect(response.body).toMatchObject({
       uploadUrl: "https://r2.example.com/upload?sig=test",
       filename: "daily_report.pdf",
@@ -346,8 +362,12 @@ describe("GitHub zero file integration routes", () => {
       `artifacts/${fixture.userId}/${response.body.uploadId}/daily_report.pdf`,
     );
   });
+});
 
-  it("posts an uploaded file URL to GitHub and records the run artifact", async () => {
+describe("BDD GitHub zero file integration routes — upload-complete chain", () => {
+  it("gwt-wt-wt: 200 posts the URL to GitHub + records the run artifact with full metadata", async () => {
+    // Given: a fixture + a run + mocked GitHub credentials
+    // + a token mock + an S3 list of one uploaded object.
     const fixture = await seedFixture();
     const run = await store.set(
       seedRun$,
@@ -391,6 +411,10 @@ describe("GitHub zero file integration routes", () => {
     const client = setupApp({ context })(
       integrationsGithubUploadCompleteContract,
     );
+
+    // When + Then: 200 — the URL is posted to GitHub as a
+    // comment with the caption + the response body matches
+    // the expected shape.
     const response = await accept(
       client.complete({
         body: {
@@ -425,6 +449,8 @@ describe("GitHub zero file integration routes", () => {
       url: fileUrl,
     });
 
+    // Then: the run artifact row is recorded with the
+    // full metadata.
     const rows = await findUploadedFiles({
       runId: run.runId,
       externalId: "98765",
