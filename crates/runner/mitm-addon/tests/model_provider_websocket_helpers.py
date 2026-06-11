@@ -10,7 +10,6 @@ from mitmproxy.test import tutils
 from wsproto.frame_protocol import Opcode
 
 import mitm_addon
-from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
 _WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
 _ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
@@ -36,44 +35,6 @@ def _openai_model_websocket_flow(
 
     mitm_addon.responseheaders(flow)
     return flow
-
-
-def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
-    firewall_name = "model-provider:openai-api-key"
-    return _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-abc-123",
-            sandbox_marker="tok-xyz",
-            firewall_name=firewall_name,
-            api_entry={
-                "base": "https://api.openai.com",
-                "auth": {"headers": {"Authorization": "Bearer token"}},
-                "permissions": [{"name": "responses", "rules": ["POST /v1/responses"]}],
-            },
-            network_policy={
-                "allow": ["responses"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=[firewall_name],
-            vm_fields={"cliAgentType": "codex"},
-        ),
-    )
-
-
-def _openai_model_websocket_request_flow(
-    real_flow: Callable[..., http.HTTPFlow],
-) -> http.HTTPFlow:
-    return real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="api.openai.com",
-        path="/v1/responses",
-        method="POST",
-    )
 
 
 def _capture_deferred_websocket_trims(
