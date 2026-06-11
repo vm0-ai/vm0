@@ -2502,6 +2502,17 @@ describe("chat lifecycle", () => {
             createdAt: "2026-06-10T11:00:00Z",
           },
           {
+            id: "host-online-2",
+            displayName: "Office Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "online",
+            lastSeenAt: "2026-06-10T12:01:00Z",
+            createdAt: "2026-06-10T11:01:00Z",
+          },
+          {
             id: "host-offline",
             displayName: "Offline Desktop",
             appVersion: "1.0.0",
@@ -2526,9 +2537,70 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Studio Mac")).toBeInTheDocument();
+      expect(screen.getByText("Office Mac")).toBeInTheDocument();
       expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
       expect(screen.getByText("Connect my computer")).toBeInTheDocument();
-      expect(screen.getByLabelText("Enable Studio Mac")).toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "Studio Mac" })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+      expect(screen.getByRole("radio", { name: "Office Mac" })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+    });
+  });
+
+  it("does not auto-select the only online Computer Use host", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-manual-selection";
+    let sentComputerUseHostId: string | null | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        sentComputerUseHostId = body.computerUseHostId;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: "host-online",
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+    expect(screen.getByRole("radio", { name: "Studio Mac" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+
+    const textarea = (await screen.findByPlaceholderText(
+      PLACEHOLDER,
+    )) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Open the app on my computer");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Open the app on my computer"),
+      ).toBeInTheDocument();
+      expect(sentComputerUseHostId).toBeNull();
     });
   });
 
@@ -2567,7 +2639,7 @@ describe("chat lifecycle", () => {
     });
 
     await user.click(await screen.findByLabelText("Computer Use"));
-    await user.click(await screen.findByLabelText("Enable Studio Mac"));
+    await user.click(await screen.findByRole("radio", { name: "Studio Mac" }));
 
     const textarea = (await screen.findByPlaceholderText(
       PLACEHOLDER,
@@ -2617,18 +2689,14 @@ describe("chat lifecycle", () => {
 
     await user.click(await screen.findByLabelText("Computer Use"));
 
-    const disableSwitch = await screen.findByLabelText("Disable Studio Mac");
-    expect(disableSwitch).toBeInTheDocument();
-    await user.click(disableSwitch);
+    const selectedComputer = await screen.findByRole("radio", {
+      name: "Studio Mac",
+    });
+    expect(selectedComputer).toHaveAttribute("aria-checked", "true");
+    await user.click(selectedComputer);
 
     await waitFor(() => {
-      expect(
-        screen.queryByLabelText("Disable Studio Mac"),
-      ).not.toBeInTheDocument();
-    });
-    await user.click(await screen.findByLabelText("Computer Use"));
-    await waitFor(() => {
-      expect(screen.getByLabelText("Enable Studio Mac")).toBeInTheDocument();
+      expect(selectedComputer).toHaveAttribute("aria-checked", "false");
     });
   });
 

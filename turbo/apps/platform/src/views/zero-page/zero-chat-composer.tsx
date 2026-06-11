@@ -18,6 +18,7 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
+  IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
@@ -2200,13 +2201,26 @@ function ComputerUsePopoverButton({
               })}
             </div>
           ) : computerUse.hosts.length > 0 ? (
-            <div className="flex max-h-72 flex-col overflow-y-auto">
+            <div
+              className="flex max-h-72 flex-col overflow-y-auto"
+              role="radiogroup"
+              aria-label="Computer Use host"
+            >
               {computerUse.hosts.map((host) => {
                 const checked = computerUse.selectedHostId === host.id;
                 return (
-                  <div
+                  <button
                     key={host.id}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                    type="button"
+                    role="radio"
+                    aria-checked={checked}
+                    onClick={() => {
+                      computerUse.onChange(checked ? null : host.id);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
+                      checked ? "bg-primary/5" : "hover:bg-muted/50",
+                    )}
                   >
                     <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                       <IconDeviceDesktop size={16} stroke={1.5} />
@@ -2214,16 +2228,18 @@ function ComputerUsePopoverButton({
                     <span className="text-sm flex-1 truncate text-foreground">
                       {host.hostName}
                     </span>
-                    <LoadingSwitch
-                      checked={checked}
-                      onCheckedChange={(nextChecked) => {
-                        computerUse.onChange(nextChecked ? host.id : null);
-                      }}
-                      loading={false}
-                      ariaLabel={`${checked ? "Disable" : "Enable"} ${host.hostName}`}
-                      size="sm"
-                    />
-                  </div>
+                    <span
+                      className={cn(
+                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                        checked
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border text-transparent",
+                      )}
+                      aria-hidden="true"
+                    >
+                      {checked && <IconCheck size={11} stroke={3} />}
+                    </span>
+                  </button>
                 );
               })}
             </div>
