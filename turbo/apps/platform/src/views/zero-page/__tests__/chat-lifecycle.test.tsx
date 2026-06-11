@@ -2314,14 +2314,22 @@ describe("chat lifecycle", () => {
           id: "msg-followup-user",
           role: "user",
           content: "Package this launch plan",
-          runId: undefined,
+          runId: "run-followup",
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
           id: "msg-followup-assistant",
           role: "assistant",
           content: assistantReply,
-          runId: undefined,
+          runId: "run-followup",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-followup-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-followup",
+          runLifecycleEvent: "completed",
           recommendedFollowups: [
             {
               prompt: followupPrompt,
@@ -2352,7 +2360,7 @@ describe("chat lifecycle", () => {
               kind: "talk",
             },
           ],
-          createdAt: "2026-06-09T10:01:00Z",
+          createdAt: "2026-06-09T10:01:01Z",
         },
       ],
     });

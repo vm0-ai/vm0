@@ -1321,6 +1321,7 @@ function createPagedMessages(
     latestChatMessageId$,
     allMessages$,
     groupedChatMessages$,
+    rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
@@ -1512,6 +1513,7 @@ interface RunTrackingDeps {
   threadData$: Computed<Promise<ChatThread | null>>;
   allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
+  rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   backfillHistoryBoundary$: Command<Promise<void>, [AbortSignal]>;
@@ -1571,6 +1573,7 @@ function createRunTracking({
   threadData$,
   allMessages$,
   latestChatMessageId$,
+  rawMessages$,
   initialPage$,
   fetchNextPage$,
   backfillHistoryBoundary$,
@@ -1581,6 +1584,9 @@ function createRunTracking({
   const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
 
   const allFinished$ = computed(async (get) => {
+    if (hasUnresolvedQueueMarker(await get(rawMessages$))) {
+      return false;
+    }
     const messages = await get(allMessages$);
     const state = deriveRunIndicatorState(messages);
     return state === null;
@@ -2253,6 +2259,7 @@ export function createChatThreadSignals(
     latestChatMessageId$,
     allMessages$,
     groupedChatMessages$,
+    rawMessages$,
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
@@ -2274,6 +2281,7 @@ export function createChatThreadSignals(
     threadData$,
     allMessages$,
     latestChatMessageId$,
+    rawMessages$,
     initialPage$,
     fetchNextPage$,
     backfillHistoryBoundary$,
