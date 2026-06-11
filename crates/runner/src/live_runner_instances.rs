@@ -28,6 +28,7 @@ pub(crate) struct LiveRunnerInstanceHandle {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct LiveRunnerInstance {
     pub pid: u32,
+    pub starttime: u64,
     pub config_path: PathBuf,
     pub base_dir: PathBuf,
     pub runner_name: String,
@@ -128,6 +129,7 @@ pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
         };
         instances.push(LiveRunnerInstance {
             pid: record.pid,
+            starttime: record.starttime,
             config_path: record.config_path,
             base_dir: record.base_dir,
             runner_name: record.runner_name,
@@ -143,6 +145,22 @@ pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
             .then_with(|| left.config_path.cmp(&right.config_path))
     });
     instances
+}
+
+pub(crate) async fn is_current(home: &HomePaths, instance: &LiveRunnerInstance) -> bool {
+    let identity = FileProcessIdentity {
+        pid: instance.pid,
+        starttime: instance.starttime,
+    };
+    let path = home.live_runner_instance_record_path(identity.pid, identity.starttime);
+    let Some(record) = read_valid_record_for_identity(&path, identity).await else {
+        return false;
+    };
+    record.config_path == instance.config_path
+        && record.base_dir == instance.base_dir
+        && record.runner_name == instance.runner_name
+        && record.runner_group == instance.runner_group
+        && record.started_at == instance.started_at
 }
 
 impl LiveRunnerInstanceHandle {
@@ -485,6 +503,7 @@ mod tests {
         assert_eq!(instances.len(), 1);
         let instance = &instances[0];
         assert_eq!(instance.pid, handle.identity.pid);
+        assert_eq!(instance.starttime, handle.identity.starttime);
         assert_eq!(instance.config_path, dir.path().join("runner.yaml"));
         assert_eq!(instance.base_dir, dir.path().join("base"));
         assert_eq!(instance.runner_name, "test-runner");
@@ -555,6 +574,20 @@ mod tests {
         let instances = list(&home).await;
 
         assert!(instances.is_empty());
+    }
+
+    #[tokio::test]
+    async fn is_current_tracks_the_exact_registry_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let instance = list(&home).await.into_iter().next().unwrap();
+
+        assert!(is_current(&home, &instance).await);
+
+        tokio::fs::remove_file(&handle.path).await.unwrap();
+
+        assert!(!is_current(&home, &instance).await);
     }
 
     #[tokio::test]

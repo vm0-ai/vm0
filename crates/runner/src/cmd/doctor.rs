@@ -281,6 +281,7 @@ fn pid_exists(pid: u32) -> bool {
 // ---------------------------------------------------------------------------
 
 struct RunnerReport {
+    live_runner: LiveRunnerInstance,
     name: Option<String>,
     base_dir: Option<PathBuf>,
     pid: u32,
@@ -421,15 +422,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         // Single /proc scan shared across all warning rechecks.
         let fresh = process::discover_all().await;
 
-        for report in &mut reports {
-            let mut rechecked = Vec::new();
-            for warning in report.warnings.drain(..) {
-                if warning.persists(&fresh).await {
-                    rechecked.push(warning);
-                }
-            }
-            report.warnings = rechecked;
-        }
+        recheck_per_runner_warnings(&home, &fresh, &mut reports).await;
 
         let mut rechecked_global = Vec::new();
         for warning in global_warnings.drain(..) {
@@ -447,6 +440,30 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         Ok(ExitCode::FAILURE)
     } else {
         Ok(ExitCode::SUCCESS)
+    }
+}
+
+async fn recheck_per_runner_warnings(
+    home: &HomePaths,
+    fresh: &process::DiscoveredProcesses,
+    reports: &mut [RunnerReport],
+) {
+    for report in reports {
+        if report.warnings.is_empty() {
+            continue;
+        }
+        if !crate::live_runner_instances::is_current(home, &report.live_runner).await {
+            report.warnings.clear();
+            continue;
+        }
+
+        let mut rechecked = Vec::new();
+        for warning in report.warnings.drain(..) {
+            if warning.persists(fresh).await {
+                rechecked.push(warning);
+            }
+        }
+        report.warnings = rechecked;
     }
 }
 
@@ -565,6 +582,7 @@ async fn build_runner_report(
     };
 
     RunnerReport {
+        live_runner: runner.clone(),
         name,
         base_dir: Some(runner.base_dir.clone()),
         pid: runner.pid,
@@ -1631,6 +1649,11 @@ mod tests {
             },
         ];
         let reports = vec![RunnerReport {
+            live_runner: live_runner_instance(
+                1,
+                PathBuf::from("/data/active.yaml"),
+                PathBuf::from("/data/active"),
+            ),
             name: None,
             base_dir: None,
             pid: 1,
@@ -1652,6 +1675,11 @@ mod tests {
 
     fn make_report(name: Option<&str>) -> RunnerReport {
         RunnerReport {
+            live_runner: live_runner_instance(
+                1,
+                PathBuf::from("/data/test.yaml"),
+                PathBuf::from("/data/test"),
+            ),
             name: name.map(String::from),
             base_dir: None,
             pid: 1,
@@ -1834,6 +1862,7 @@ mod tests {
     ) -> LiveRunnerInstance {
         LiveRunnerInstance {
             pid,
+            starttime: 0,
             config_path,
             base_dir,
             runner_name: "test-runner".into(),
@@ -1896,6 +1925,96 @@ mod tests {
             .warnings
             .iter()
             .any(|w| matches!(w, Warning::NoDnsmasq { .. }))
+    }
+
+    #[tokio::test]
+    async fn recheck_clears_runner_warnings_when_registry_entry_disappears() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let base_dir = dir.path().join("runner");
+        let runner = live_runner_instance(
+            std::process::id(),
+            dir.path().join("runner.yaml"),
+            base_dir.clone(),
+        );
+        let mut reports = vec![RunnerReport {
+            live_runner: runner.clone(),
+            name: Some(runner.runner_name.clone()),
+            base_dir: Some(base_dir.clone()),
+            pid: runner.pid,
+            config_path: runner.config_path.clone(),
+            subcommand: "start".into(),
+            service_type: ServiceType::Bare,
+            status: None,
+            api_ok: None,
+            proxy_pid: None,
+            dns_pid: None,
+            jobs: vec![],
+            warnings: vec![Warning::NoMitmproxy {
+                port: 32821,
+                base_dir,
+            }],
+        }];
+
+        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await;
+
+        assert!(reports[0].warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn recheck_keeps_runner_warnings_while_registry_entry_is_current() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let base_dir = dir.path().join("runner");
+        std::fs::create_dir_all(&base_dir).unwrap();
+        std::fs::write(
+            base_dir.join("status.json"),
+            r#"{
+                "mode": "running",
+                "active_runs": [],
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "proxy_port": 32821
+            }"#,
+        )
+        .unwrap();
+        let _handle = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: dir.path().join("runner.yaml"),
+                base_dir: base_dir.clone(),
+                runner_name: "test-runner".into(),
+                runner_group: "vm0/test".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let runner = crate::live_runner_instances::list(&home)
+            .await
+            .into_iter()
+            .next()
+            .unwrap();
+        let mut reports = vec![RunnerReport {
+            live_runner: runner.clone(),
+            name: Some(runner.runner_name.clone()),
+            base_dir: Some(base_dir.clone()),
+            pid: runner.pid,
+            config_path: runner.config_path.clone(),
+            subcommand: "start".into(),
+            service_type: ServiceType::Bare,
+            status: None,
+            api_ok: None,
+            proxy_pid: None,
+            dns_pid: None,
+            jobs: vec![],
+            warnings: vec![Warning::NoMitmproxy {
+                port: 32821,
+                base_dir,
+            }],
+        }];
+
+        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await;
+
+        assert_eq!(reports[0].warnings.len(), 1);
     }
 
     #[tokio::test]
