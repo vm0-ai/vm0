@@ -202,9 +202,26 @@ describe("runner firewall entry contract", () => {
     ).toBe(true);
   });
 
-  it("rejects legacy expanded firewall entries in execution contexts", () => {
+  it("accepts legacy expanded firewall entries in execution contexts temporarily", () => {
     const firewalls = [
       {
+        name: "github",
+        apis: [{ base: "https://api.github.com", auth: { headers: {} } }],
+      },
+    ];
+
+    expect(
+      storedExecutionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(true);
+  });
+
+  it("rejects unsupported execution firewall kinds", () => {
+    const firewalls = [
+      {
+        kind: "unknown",
         name: "github",
         apis: [{ base: "https://api.github.com", auth: { headers: {} } }],
       },

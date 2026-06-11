@@ -90,9 +90,18 @@ export const executionFirewallInlineEntrySchema = z.object({
   firewall: firewallSchema,
 });
 
-export const executionFirewallEntrySchema = z.discriminatedUnion("kind", [
+const executionFirewallTaggedEntrySchema = z.discriminatedUnion("kind", [
   executionFirewallBuiltinEntrySchema,
   executionFirewallInlineEntrySchema,
+]);
+
+export const executionFirewallLegacyEntrySchema = firewallSchema.extend({
+  kind: z.never().optional(),
+});
+
+export const executionFirewallEntrySchema = z.union([
+  executionFirewallTaggedEntrySchema,
+  executionFirewallLegacyEntrySchema,
 ]);
 
 export const executionFirewallsSchema = z.array(executionFirewallEntrySchema);
@@ -170,6 +179,9 @@ export type ExecutionFirewallBuiltinEntry = z.infer<
 >;
 export type ExecutionFirewallInlineEntry = z.infer<
   typeof executionFirewallInlineEntrySchema
+>;
+export type ExecutionFirewallLegacyEntry = z.infer<
+  typeof executionFirewallLegacyEntrySchema
 >;
 export type ExecutionFirewallEntry = z.infer<
   typeof executionFirewallEntrySchema

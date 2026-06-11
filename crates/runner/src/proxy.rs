@@ -1398,7 +1398,9 @@ fn send_usage_flush_signal(child: &tokio::process::Child) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission};
+    use crate::types::{
+        Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission, TaggedFirewallEntry,
+    };
     use std::os::unix::fs::PermissionsExt;
 
     fn write_fake_listening_mitmdump(path: &Path) {
@@ -2021,7 +2023,7 @@ PY
             lock_path,
         };
 
-        let firewall_entries = vec![FirewallEntry::Inline {
+        let firewall_entries = vec![FirewallEntry::Tagged(TaggedFirewallEntry::Inline {
             firewall: Firewall {
                 name: "gmail".to_string(),
                 apis: vec![FirewallApi {
@@ -2045,7 +2047,7 @@ PY
                     }]),
                 }],
             },
-        }];
+        })];
 
         let registration = VmRegistration {
             run_id: "run-fw",
@@ -2073,7 +2075,7 @@ PY
         let vm = loaded.vms.get("10.200.0.5").unwrap();
         let stored = vm.firewalls.as_ref().unwrap();
         assert_eq!(stored.len(), 1);
-        let FirewallEntry::Inline { firewall } = &stored[0] else {
+        let FirewallEntry::Tagged(TaggedFirewallEntry::Inline { firewall }) = &stored[0] else {
             panic!("expected inline firewall entry");
         };
         assert_eq!(firewall.apis.len(), 1);
@@ -2247,7 +2249,7 @@ PY
             lock_path,
         };
 
-        let firewall_entries = vec![FirewallEntry::Inline {
+        let firewall_entries = vec![FirewallEntry::Tagged(TaggedFirewallEntry::Inline {
             firewall: Firewall {
                 name: "discord-webhook".to_string(),
                 apis: vec![FirewallApi {
@@ -2261,7 +2263,7 @@ PY
                     permissions: None,
                 }],
             },
-        }];
+        })];
 
         let registration = VmRegistration {
             run_id: "run-webhook",
@@ -2309,7 +2311,7 @@ PY
             lock_path,
         };
 
-        let firewall_entries = vec![FirewallEntry::Inline {
+        let firewall_entries = vec![FirewallEntry::Tagged(TaggedFirewallEntry::Inline {
             firewall: Firewall {
                 name: "serpapi".to_string(),
                 apis: vec![FirewallApi {
@@ -2330,7 +2332,7 @@ PY
                     permissions: None,
                 }],
             },
-        }];
+        })];
 
         let registration = VmRegistration {
             run_id: "run-query-auth",

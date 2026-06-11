@@ -99,6 +99,56 @@ class TestGetVmContext:
         assert isinstance(result, matching.FirewallAllow)
         assert result.api_entry is vm_info["firewalls"][0]["apis"][0]
 
+    def test_legacy_expanded_firewall_entry_still_loads_temporarily(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {
+                            "runId": "run-legacy",
+                            "firewalls": [
+                                {
+                                    "name": "example",
+                                    "apis": [
+                                        {
+                                            "base": "https://api.example.com",
+                                            "auth": {"headers": {"Authorization": "Bearer token"}},
+                                            "permissions": [
+                                                {"name": "read", "rules": ["GET /items"]},
+                                            ],
+                                        }
+                                    ],
+                                }
+                            ],
+                            "networkPolicies": {
+                                "example": {
+                                    "allow": ["read"],
+                                    "deny": [],
+                                    "unknownPolicy": "deny",
+                                }
+                            },
+                        }
+                    },
+                    "updatedAt": 1700000000000,
+                }
+            )
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, compiled_network_policies = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["id"] == "run-legacy:0"
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            compiled_firewalls,
+            compiled_network_policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+
     def test_builtin_firewall_entry_resolves_from_catalog(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
@@ -465,6 +515,7 @@ class TestGetVmContext:
             [{"kind": "builtin", "name": "zendesk", "baseUrlVars": []}],
             [{"kind": "builtin", "name": "zendesk", "baseUrlVars": {"ZENDESK_SUBDOMAIN": 1}}],
             [{"kind": "unknown", "name": "github"}],
+            [{"kind": "unknown", "name": "github", "apis": []}],
         ],
     )
     def test_malformed_firewall_entries_reject_vm(self, tmp_path, firewalls):

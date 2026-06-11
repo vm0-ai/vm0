@@ -221,6 +221,12 @@ def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:
             index += 1
 
 
+def _is_legacy_firewall_entry(entry: dict) -> bool:
+    if "kind" in entry:
+        return False
+    return isinstance(entry.get("name"), str) and isinstance(entry.get("apis"), list)
+
+
 def _resolve_firewall_entries(vm: dict) -> list[dict] | None:
     raw_firewalls = vm.get("firewalls")
     if raw_firewalls is None:
@@ -244,6 +250,9 @@ def _resolve_firewall_entries(vm: dict) -> list[dict] | None:
                     "inline firewall entry firewall must be an object"
                 )
             resolved.append(copy.deepcopy(firewall))
+            continue
+        if _is_legacy_firewall_entry(entry):
+            resolved.append(copy.deepcopy(entry))
             continue
 
         raise _FirewallEntryResolutionError("firewall entries must use a supported kind")
