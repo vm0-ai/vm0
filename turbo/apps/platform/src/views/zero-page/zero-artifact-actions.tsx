@@ -446,7 +446,9 @@ export function ArtifactDownloadMenu({
           aria-label={ariaLabel}
           aria-haspopup="menu"
           aria-expanded={open}
-          className={iconButtonClassName(className)}
+          className={iconButtonClassName(
+            cn("data-[state=open]:bg-muted/60 data-[state=open]:text-foreground", className),
+          )}
         >
           <IconDownload size={iconSize} stroke={1.5} />
         </button>
