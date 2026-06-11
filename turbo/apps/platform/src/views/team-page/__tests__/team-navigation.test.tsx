@@ -526,7 +526,7 @@ describe("team page navigation", () => {
 
     click(
       screen.getAllByLabelText(
-        "Open schedule Summarize open research requests",
+        "Open automation Summarize open research requests",
       )[0],
     );
 

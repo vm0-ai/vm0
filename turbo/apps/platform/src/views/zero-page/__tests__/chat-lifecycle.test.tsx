@@ -1867,16 +1867,16 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(screen.getByLabelText("Schedules")).toBeInTheDocument();
+      expect(screen.getByLabelText("Automations")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Schedules"));
+    click(screen.getByLabelText("Automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(screen.getByText(/Next run/u)).toBeInTheDocument();
       expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
-      expect(screen.getByText("Schedule inactive")).toBeInTheDocument();
+      expect(screen.getByText("Automation inactive")).toBeInTheDocument();
       expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
       expect(screen.getByText("No upcoming run")).toBeInTheDocument();
     });
@@ -1887,7 +1887,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
 
-    click(await screen.findByLabelText("Schedules"));
+    click(await screen.findByLabelText("Automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
@@ -1936,7 +1936,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Scheduled message")).toBeInTheDocument();
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Open schedule Launch review"),
+        screen.getByLabelText("Open automation Launch review"),
       ).toHaveAttribute("href", `/automations/${scheduleId}`);
       expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
     });

@@ -516,9 +516,11 @@ describe("zero sidebar", () => {
     click(menuItemByText("Delete chat"));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat and schedules?",
+      name: "Delete chat and automations?",
     });
-    expect(within(dialog).getByText(/2 linked schedules/u)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/2 linked automations/u),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText("Launch cadence")).toBeInTheDocument();
     expect(within(dialog).getByText("Release risk review")).toBeInTheDocument();
 
@@ -527,7 +529,7 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", {
-          name: "Delete chat and schedules?",
+          name: "Delete chat and automations?",
         }),
       ).not.toBeInTheDocument();
       expect(
@@ -539,9 +541,9 @@ describe("zero sidebar", () => {
     click(menuItemByText("Delete chat"));
 
     const confirmDialog = await screen.findByRole("dialog", {
-      name: "Delete chat and schedules?",
+      name: "Delete chat and automations?",
     });
-    click(buttonByText("Delete chat and schedules", confirmDialog));
+    click(buttonByText("Delete chat and automations", confirmDialog));
 
     await waitFor(() => {
       expect(

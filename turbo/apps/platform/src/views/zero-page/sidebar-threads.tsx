@@ -653,12 +653,12 @@ function DeleteChatThreadDialog() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {hasSchedules ? "Delete chat and schedules?" : "Delete chat?"}
+            {hasSchedules ? "Delete chat and automations?" : "Delete chat?"}
           </DialogTitle>
           <DialogDescription>
             {hasSchedules
               ? `This will permanently delete this chat and its ${scheduleCount} linked ${
-                  scheduleCount === 1 ? "schedule" : "schedules"
+                  scheduleCount === 1 ? "automation" : "automations"
                 }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
               : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
           </DialogDescription>
@@ -666,7 +666,7 @@ function DeleteChatThreadDialog() {
         {hasSchedules && pendingDeleteSchedules.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <p className="text-sm font-medium">
-              These schedules will be deleted
+              These automations will be deleted
             </p>
             <ul className="flex list-disc flex-col gap-1 pl-5">
               {pendingDeleteSchedules.map((schedule) => {
@@ -692,7 +692,7 @@ function DeleteChatThreadDialog() {
             Cancel
           </Button>
           <Button variant="destructive" onClick={confirmDelete}>
-            {hasSchedules ? "Delete chat and schedules" : "Delete"}
+            {hasSchedules ? "Delete chat and automations" : "Delete"}
           </Button>
         </DialogFooter>
       </DialogContent>

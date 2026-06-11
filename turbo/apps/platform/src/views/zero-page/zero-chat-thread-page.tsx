@@ -938,7 +938,7 @@ function GithubPrTrackingButton({
 // run time, or a note that the schedule is inactive when it has been disabled.
 function scheduleMenuSubline(schedule: HeaderScheduleEntry): string {
   if (!schedule.enabled) {
-    return "Schedule inactive";
+    return "Automation inactive";
   }
   if (!schedule.nextRunAt) {
     return "No upcoming run";
@@ -954,7 +954,7 @@ function scheduleMenuSubline(schedule: HeaderScheduleEntry): string {
 // schedule.
 export function ScheduleMenuButton({
   threadId,
-  ariaLabel = "Schedules",
+  ariaLabel = "Automations",
 }: {
   threadId: string;
   ariaLabel?: string;
@@ -5043,7 +5043,7 @@ function ScheduleUserMessage({
               pathname="/automations/:scheduleId"
               options={{ pathParams: { scheduleId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open schedule ${scheduleLabel}`}
+              aria-label={`Open automation ${scheduleLabel}`}
             >
               {body}
             </Link>

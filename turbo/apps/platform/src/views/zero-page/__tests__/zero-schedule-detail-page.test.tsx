@@ -156,9 +156,9 @@ describe("zero schedule detail page", () => {
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
 
     await waitFor(() => {
-      expect(screen.getByText("Schedule not found")).toBeInTheDocument();
+      expect(screen.getByText("Automation not found")).toBeInTheDocument();
       expect(
-        screen.getByText("This schedule doesn't exist or was removed."),
+        screen.getByText("This automation doesn't exist or was removed."),
       ).toBeInTheDocument();
       expect(screen.getByText("Back to automations")).toBeInTheDocument();
     });
@@ -181,7 +181,7 @@ describe("zero schedule detail page", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "This instruction runs each time this schedule executes.",
+          "This instruction runs each time this automation executes.",
         ),
       ).toBeInTheDocument();
       expect(
@@ -436,12 +436,12 @@ describe("zero schedule detail page", () => {
     });
     expect(screen.getByText("Active")).toBeInTheDocument();
 
-    click(screen.getByLabelText("Disable this schedule"));
+    click(screen.getByLabelText("Disable this automation"));
 
     await waitFor(() => {
       expect(screen.getByText("Paused")).toBeInTheDocument();
     });
-    expect(screen.getByLabelText("Enable this schedule")).toBeInTheDocument();
+    expect(screen.getByLabelText("Enable this automation")).toBeInTheDocument();
 
     click(buttonByText("Delete automation"));
 

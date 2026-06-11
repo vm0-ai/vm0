@@ -231,7 +231,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       ? {
           title: "Credit usage",
           description:
-            "Your credit usage across chats, schedules, and channels.",
+            "Your credit usage across chats, automations, and channels.",
         }
       : SECTION_META[resolvedSection];
 

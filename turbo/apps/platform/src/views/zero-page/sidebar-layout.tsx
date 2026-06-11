@@ -179,7 +179,7 @@ function MobileScheduleButtonLeaf() {
   return (
     <ScheduleMenuButton
       threadId={thread.threadId}
-      ariaLabel="Open mobile schedules"
+      ariaLabel="Open mobile automations"
     />
   );
 }

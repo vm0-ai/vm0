@@ -342,7 +342,7 @@ describe("zero schedule page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getAllByLabelText(
-        "Open schedule Send morning brief to the team channel",
+        "Open automation Send morning brief to the team channel",
       )[0],
     ).toBeInTheDocument();
   });
@@ -450,7 +450,9 @@ describe("zero schedule page", () => {
     ).toBeInTheDocument();
 
     click(
-      screen.getAllByLabelText("Open schedule Review overnight escalations")[0],
+      screen.getAllByLabelText(
+        "Open automation Review overnight escalations",
+      )[0],
     );
 
     await waitFor(() => {

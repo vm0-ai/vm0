@@ -495,7 +495,7 @@ export function ZeroScheduleCard({
             <DialogHeader>
               <DialogTitle>Delete automation?</DialogTitle>
               <DialogDescription>
-                This will permanently delete the schedule{" "}
+                This will permanently delete the automation{" "}
                 <span className="font-medium text-foreground">
                   {pendingDelete?.name}
                 </span>
