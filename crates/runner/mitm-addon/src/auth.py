@@ -25,7 +25,7 @@ from auth_base_forwarder import (
     ForwardedRequestTooLargeError,
     InvalidResolvedAuthHeaderError,
     forward_request,
-    forwarded_request_header_pairs,
+    forwarded_auth_base_client_header_pairs,
     header_pairs,
     resolved_auth_header_pairs,
 )
@@ -1081,11 +1081,15 @@ async def _apply_url_rewrite(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    # Filter client-controlled hop-by-hop headers before adding trusted
-    # auth headers, so Connection tokens cannot suppress injected auth.
+    # Filter untrusted client headers before adding trusted auth headers, so
+    # placeholder-scoped credentials cannot cross the auth.base rewrite.
     # Repeated request headers are preserved; resolved auth headers
     # intentionally replace any client-supplied value with the same name.
-    req_headers = _merge_auth_headers(forwarded_request_header_pairs(flow.request.headers), headers)
+    client_headers = forwarded_auth_base_client_header_pairs(
+        flow.request.headers,
+        preserve_aws_sigv4_authorization=aws_sigv4 is not None,
+    )
+    req_headers = _merge_auth_headers(client_headers, headers)
     req_body = flow.request.raw_content if flow.request.raw_content is not None else None
     if aws_sigv4 is not None:
         try:
