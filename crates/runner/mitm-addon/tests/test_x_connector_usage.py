@@ -1283,6 +1283,19 @@ class TestXConnectorUsage:
         assert "unparseable" in content.lower()
         assert '"level":"error"' in content or '"level": "error"' in content
 
+    def test_unencodable_fallback_query_suppresses_request_hints(self, tmp_path, real_flow):
+        """Malformed Unicode in fallback queries should fail closed instead of crashing."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            query="noise=" + "\ud800" + "&ids=1",
+            body=b"not json",
+        )
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+        self._assert_lost_visibility_error(proxy_log)
+
     @pytest.mark.parametrize(
         ("path", "query_template", "permission", "rule", "expected_quantity"),
         [

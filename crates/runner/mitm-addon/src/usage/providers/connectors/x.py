@@ -549,7 +549,13 @@ def _slice_exceeds_query_hint_byte_limit(value: str, start: int, end: int, max_b
     size = 0
     for index in range(start, end):
         char = value[index]
-        size += 1 if ord(char) < _ASCII_CODEPOINT_LIMIT else len(char.encode("utf-8"))
+        if ord(char) < _ASCII_CODEPOINT_LIMIT:
+            size += 1
+        else:
+            try:
+                size += len(char.encode("utf-8"))
+            except UnicodeEncodeError:
+                return True
         if size > max_bytes:
             return True
     return False
