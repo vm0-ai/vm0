@@ -7,6 +7,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useGet,
   useSet,
@@ -18,6 +19,7 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
+  IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
@@ -28,6 +30,7 @@ import {
   IconPaperclip,
   IconPlayerStop,
   IconPlug,
+  IconPhoto,
   IconPlus,
   IconSearch,
   IconTemplate,
@@ -92,7 +95,9 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  type IllustrationTemplateItem,
   type PresentationTemplateItem,
   VIDEO_STYLE_GROUPS,
   VIDEO_STYLE_PRESETS,
@@ -137,6 +142,8 @@ import {
   setPendingConnectType$,
   composerSavingType$,
   setComposerSavingType$,
+  clearComputerUsePopoverCloseSuppression$,
+  computerUsePopoverOpen$,
   addDialogSearch$,
   setAddDialogSearch$,
   popoverSearch$,
@@ -157,6 +164,7 @@ import {
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
   setTemplatePickerPreviewSlideIndex$,
+  setComputerUsePopoverOpen$,
   templateCardHover$,
   setTemplateCardHover$,
   type TemplatePickerVideoGroup,
@@ -185,6 +193,12 @@ function isIOSDevice(): boolean {
   return (
     /iPad|iPhone|iPod/.test(ua) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isHappyDomTestEnvironment(): boolean {
+  return (
+    typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
   );
 }
 
@@ -260,6 +274,7 @@ interface ZeroChatComposerProps {
     loading: boolean;
     selectedHostId: string | null;
     onChange: (hostId: string | null) => void;
+    onRefresh: () => void;
     downloadUrl: string;
   };
   /** When true, render a skeleton in the model picker slot. */
@@ -493,7 +508,10 @@ function selectedTemplateTitle(
   if (value?.type === "video") {
     return selectedVideoTemplateItem(value)?.nameEn;
   }
-  return selectedPresentationTemplateItem(value)?.title;
+  return (
+    selectedPresentationTemplateItem(value)?.title ??
+    selectedIllustrationTemplateItem(value)?.title
+  );
 }
 
 function selectedPresentationTemplateItem(
@@ -507,12 +525,50 @@ function selectedPresentationTemplateItem(
   });
 }
 
+function isSelectedIllustrationTemplate(
+  item: IllustrationTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "illustration" &&
+    value.selection.illustrationStyleId === item.illustrationStyleId
+  );
+}
+
+function toIllustrationGenerationTemplate(
+  item: IllustrationTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "illustration",
+    selection: {
+      illustrationStyleId: item.illustrationStyleId,
+    },
+  };
+}
+
+function selectedIllustrationTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): IllustrationTemplateItem | undefined {
+  if (value?.type !== "illustration") {
+    return undefined;
+  }
+  return ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+    return isSelectedIllustrationTemplate(item, value);
+  });
+}
+
 function formatPresentationTemplateKind(templateId: string): string {
   const label = templateId
     .replace(/^template:/, "")
     .replace(/^html-ppt-/, "")
     .replace(/-/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function formatIllustrationTemplateKind(
+  item: IllustrationTemplateItem,
+): string {
+  return `${item.variationCount} variations`;
 }
 
 function presentationTemplateMatchesSearch(
@@ -528,6 +584,22 @@ function presentationTemplateMatchesSearch(
     item.designSystemId,
     item.templateId,
     formatPresentationTemplateKind(item.templateId),
+  ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function illustrationTemplateMatchesSearch(
+  item: IllustrationTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [
+    item.title,
+    item.illustrationStyleId,
+    formatIllustrationTemplateKind(item),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
@@ -584,6 +656,60 @@ function videoTemplateMatchesGroup(
   return group === "all" || item.category === group;
 }
 
+function VideoTemplatePreview({ item }: { item: VideoStylePreset }) {
+  if (!item.sampleVideoUrl) {
+    return (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <IconTemplate size={28} stroke={1.5} />
+      </div>
+    );
+  }
+
+  if (!item.sampleVideoThumbnailUrl) {
+    return (
+      <video
+        src={item.sampleVideoUrl}
+        className="h-full w-full object-cover opacity-0 transition-opacity duration-300"
+        preload="metadata"
+        playsInline
+        muted
+        loop
+        onCanPlay={(event) => {
+          event.currentTarget.style.opacity = "1";
+        }}
+        onMouseEnter={(event) => {
+          detach(event.currentTarget.play(), Reason.DomCallback);
+        }}
+        onMouseLeave={(event) => {
+          const video = event.currentTarget;
+          video.pause();
+          video.currentTime = 0;
+        }}
+      />
+    );
+  }
+
+  return (
+    <video
+      src={item.sampleVideoUrl}
+      poster={item.sampleVideoThumbnailUrl}
+      className="h-full w-full object-cover"
+      preload="none"
+      playsInline
+      muted
+      loop
+      onMouseEnter={(event) => {
+        detach(event.currentTarget.play(), Reason.DomCallback);
+      }}
+      onMouseLeave={(event) => {
+        const video = event.currentTarget;
+        video.pause();
+        video.currentTime = 0;
+      }}
+    />
+  );
+}
+
 function VideoTemplateCard({
   item,
   selected,
@@ -601,29 +727,7 @@ function VideoTemplateCard({
       )}
     >
       <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-        {item.sampleVideoUrl ? (
-          <video
-            src={item.sampleVideoUrl}
-            className="h-full w-full object-cover"
-            preload="metadata"
-            playsInline
-            muted
-            loop
-            onMouseEnter={(e) => {
-              const video = e.currentTarget as HTMLVideoElement;
-              detach(video.play(), Reason.DomCallback);
-            }}
-            onMouseLeave={(e) => {
-              const v = e.currentTarget as HTMLVideoElement;
-              v.pause();
-              v.currentTime = 0;
-            }}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            <IconTemplate size={28} stroke={1.5} />
-          </div>
-        )}
+        <VideoTemplatePreview item={item} />
       </div>
       <div className="flex items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
@@ -650,6 +754,94 @@ function VideoTemplateCard({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const VIDEO_GRID_COLS = 3;
+const VIDEO_TEMPLATE_GRID_SCROLL_SELECTOR = "[data-video-template-grid-scroll]";
+
+function VideoTemplateGrid({
+  items,
+  value,
+  onSelect,
+}: {
+  items: VideoStylePreset[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: VideoStylePreset) => void;
+}) {
+  const rows: VideoStylePreset[][] = [];
+  for (let i = 0; i < items.length; i += VIDEO_GRID_COLS) {
+    rows.push(items.slice(i, i + VIDEO_GRID_COLS));
+  }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => {
+      return globalThis.document.querySelector<HTMLDivElement>(
+        VIDEO_TEMPLATE_GRID_SCROLL_SELECTOR,
+      );
+    },
+    estimateSize: () => {
+      return 200;
+    },
+    overscan: 2,
+  });
+
+  if (isHappyDomTestEnvironment()) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => {
+          return (
+            <VideoTemplateCard
+              key={item.id}
+              item={item}
+              selected={isSelectedVideoTemplate(item, value)}
+              onSelect={onSelect}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        height: `${virtualizer.getTotalSize()}px`,
+        width: "100%",
+        position: "relative",
+      }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => {
+        const rowItems = rows[virtualRow.index]!;
+        return (
+          <div
+            key={virtualRow.key}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {rowItems.map((item) => {
+              return (
+                <VideoTemplateCard
+                  key={item.id}
+                  item={item}
+                  selected={isSelectedVideoTemplate(item, value)}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -703,6 +895,145 @@ function presentationTemplateSlideImages(
   return [item.previewImage];
 }
 
+interface PresentationPreviewImageCache {
+  readonly decoded: Set<string>;
+  readonly pendingDecodes: Map<string, Promise<void>>;
+  readonly preloads: Map<string, HTMLImageElement>;
+}
+
+function presentationPreviewImageCache(): PresentationPreviewImageCache {
+  const cacheKey = "vm0PresentationPreviewImageDecodeCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | PresentationPreviewImageCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: PresentationPreviewImageCache = {
+    decoded: new Set<string>(),
+    pendingDecodes: new Map<string, Promise<void>>(),
+    preloads: new Map<string, HTMLImageElement>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+function preloadPresentationPreviewImage(
+  url: string,
+): HTMLImageElement | undefined {
+  if (typeof Image === "undefined") {
+    return undefined;
+  }
+
+  const cache = presentationPreviewImageCache();
+  const cachedImage = cache.preloads.get(url);
+  if (cachedImage !== undefined) {
+    return cachedImage;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = url;
+  cache.preloads.set(url, image);
+  return image;
+}
+
+function preloadPresentationPreviewImages(imageUrls: readonly string[]): void {
+  for (const imageUrl of imageUrls) {
+    preloadPresentationPreviewImage(imageUrl);
+  }
+}
+
+async function decodePresentationPreviewImage(url: string): Promise<void> {
+  const cache = presentationPreviewImageCache();
+  if (cache.decoded.has(url)) {
+    return;
+  }
+
+  if (isHappyDomTestEnvironment()) {
+    cache.decoded.add(url);
+    return;
+  }
+
+  const pendingDecode = cache.pendingDecodes.get(url);
+  if (pendingDecode !== undefined) {
+    await pendingDecode;
+    return;
+  }
+
+  const image = preloadPresentationPreviewImage(url);
+  if (image === undefined) {
+    return;
+  }
+
+  if (image.decode === undefined) {
+    if (image.complete && image.naturalWidth > 0) {
+      cache.decoded.add(url);
+    }
+    return;
+  }
+
+  const decode = markPresentationPreviewImageDecoded(url, image);
+  cache.pendingDecodes.set(url, decode);
+  await decode;
+}
+
+async function markPresentationPreviewImageDecoded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = presentationPreviewImageCache();
+  await tapError(image.decode(), () => {});
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  cache.pendingDecodes.delete(url);
+}
+
+function presentationPreviewImageDecoded(url: string): boolean {
+  return presentationPreviewImageCache().decoded.has(url);
+}
+
+async function selectDecodedTemplatePreviewImage({
+  container,
+  imageUrl,
+  index,
+  item,
+  setHover,
+}: {
+  container: HTMLDivElement;
+  imageUrl: string;
+  index: number;
+  item: PresentationTemplateItem;
+  setHover: (value: { readonly slug: string; readonly index: number }) => void;
+}): Promise<void> {
+  await decodePresentationPreviewImage(imageUrl);
+  if (
+    container.dataset.targetSlideIndex === String(index) &&
+    presentationPreviewImageDecoded(imageUrl)
+  ) {
+    setHover({ slug: item.slug, index });
+  }
+}
+
+async function markPresentationPreviewImageLoaded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = presentationPreviewImageCache();
+  if (image.decode !== undefined) {
+    await tapError(image.decode(), () => {});
+  }
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  image.dataset.loaded = "true";
+  image.parentElement
+    ?.querySelector<HTMLElement>("[data-template-preview-error]")
+    ?.setAttribute("hidden", "");
+}
+
 function TemplatePreview({
   item,
   onPreview,
@@ -714,7 +1045,8 @@ function TemplatePreview({
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
-  const previewImage = slideImages[hoverSlideIndex] ?? item.previewImage;
+  const previewImage = slideImages[0] ?? item.previewImage;
+  const isHovering = hover?.slug === item.slug;
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (slideImages.length < 2) {
@@ -733,26 +1065,113 @@ function TemplatePreview({
       Math.round((offsetX / rect.width) * (slideImages.length - 1)),
     );
     if (nextIndex !== hoverSlideIndex) {
-      setHover({ slug: item.slug, index: nextIndex });
+      const nextImage = slideImages[nextIndex] ?? item.previewImage;
+      event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
+      if (nextIndex === 0) {
+        setHover({ slug: item.slug, index: nextIndex });
+        return;
+      }
+
+      if (presentationPreviewImageDecoded(nextImage)) {
+        setHover({ slug: item.slug, index: nextIndex });
+        return;
+      }
+
+      detach(
+        selectDecodedTemplatePreviewImage({
+          container: event.currentTarget,
+          imageUrl: nextImage,
+          index: nextIndex,
+          item,
+          setHover,
+        }),
+        Reason.DomCallback,
+      );
     }
   };
 
   return (
     <div
       className="relative aspect-[16/9] overflow-hidden bg-muted"
+      onMouseEnter={() => {
+        preloadPresentationPreviewImages(slideImages);
+        detach(
+          Promise.all(
+            slideImages.map((imageUrl) => {
+              return decodePresentationPreviewImage(imageUrl);
+            }),
+          ),
+          Reason.DomCallback,
+        );
+      }}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => {
+      onMouseLeave={(event) => {
+        delete event.currentTarget.dataset.targetSlideIndex;
         setHover(null);
       }}
     >
       {previewImage ? (
-        <img
-          src={previewImage}
-          alt=""
-          title={`${item.title} card preview slide ${hoverSlideIndex + 1}`}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
+        <>
+          <img
+            src={previewImage}
+            alt=""
+            title={`${item.title} card preview slide 1`}
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+            onLoad={(event) => {
+              event.currentTarget.parentElement
+                ?.querySelector<HTMLElement>("[data-template-preview-error]")
+                ?.setAttribute("hidden", "");
+            }}
+            onError={(event) => {
+              event.currentTarget.parentElement
+                ?.querySelector<HTMLElement>("[data-template-preview-error]")
+                ?.removeAttribute("hidden");
+            }}
+          />
+          {isHovering &&
+            slideImages.map((imageUrl, imageIndex) => {
+              const active = imageIndex > 0 && imageIndex === hoverSlideIndex;
+              return (
+                <img
+                  key={imageUrl}
+                  src={imageUrl}
+                  alt=""
+                  title={`${item.title} card preview slide ${
+                    isHovering ? imageIndex + 1 : 1
+                  }`}
+                  className={cn(
+                    "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-75",
+                    active && "data-[loaded=true]:opacity-100",
+                  )}
+                  loading={isHovering ? "eager" : "lazy"}
+                  onLoad={(event) => {
+                    detach(
+                      markPresentationPreviewImageLoaded(
+                        imageUrl,
+                        event.currentTarget,
+                      ),
+                      Reason.DomCallback,
+                    );
+                  }}
+                  onError={(event) => {
+                    event.currentTarget.parentElement
+                      ?.querySelector<HTMLElement>(
+                        "[data-template-preview-error]",
+                      )
+                      ?.removeAttribute("hidden");
+                  }}
+                />
+              );
+            })}
+          <div
+            data-template-preview-error=""
+            hidden
+            className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
+          >
+            <IconTemplate size={28} stroke={1.5} />
+          </div>
+        </>
       ) : (
         <div className="flex h-full items-center justify-center text-muted-foreground">
           <IconTemplate size={28} stroke={1.5} />
@@ -930,17 +1349,633 @@ function TemplatePreviewPage({
   );
 }
 
+function PptCard({
+  item,
+  selected,
+  onSelect,
+  onPreview,
+}: {
+  item: PresentationTemplateItem;
+  selected: boolean;
+  onSelect: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <TemplatePreview item={item} onPreview={onPreview} />
+      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.title}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {formatPresentationTemplateKind(item.templateId)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            aria-label={`Select template ${item.title}`}
+            aria-pressed={selected}
+            onClick={() => {
+              onSelect(item);
+            }}
+            className={cn(
+              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            Use
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IllustrationTemplatePreview({
+  item,
+  onPreview,
+}: {
+  item: IllustrationTemplateItem;
+  onPreview: (item: IllustrationTemplateItem) => void;
+}) {
+  return (
+    <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+      <img
+        src={item.previewImage}
+        alt=""
+        title={`${item.title} illustration preview`}
+        className="h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
+        loading="lazy"
+        decoding="async"
+        onLoad={(event) => {
+          const image = event.currentTarget;
+          detach(
+            markIllustrationPreviewImageLoaded(item.previewImage, image),
+            Reason.DomCallback,
+          );
+        }}
+        onError={(event) => {
+          event.currentTarget.parentElement
+            ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
+            ?.removeAttribute("hidden");
+        }}
+      />
+      <div
+        data-illustration-preview-error=""
+        hidden
+        className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
+      >
+        <IconTemplate size={28} stroke={1.5} />
+      </div>
+      <button
+        type="button"
+        aria-label={`View template ${item.title}`}
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(0,0,0,.3)] text-white opacity-0 shadow-sm transition-colors hover:bg-[rgba(0,0,0,.45)] hover:text-white group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={(event) => {
+          event.stopPropagation();
+          onPreview(item);
+        }}
+      >
+        <IconEye size={16} stroke={1.8} />
+      </button>
+    </div>
+  );
+}
+
+interface IllustrationPreviewImageCache {
+  readonly decoded: Set<string>;
+}
+
+function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
+  const cacheKey = "vm0IllustrationPreviewImageDecodeCache";
+  const existingCache = Reflect.get(globalThis, cacheKey) as
+    | IllustrationPreviewImageCache
+    | undefined;
+  if (existingCache !== undefined) {
+    return existingCache;
+  }
+
+  const cache: IllustrationPreviewImageCache = {
+    decoded: new Set<string>(),
+  };
+  Reflect.set(globalThis, cacheKey, cache);
+  return cache;
+}
+
+async function markIllustrationPreviewImageLoaded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  if (image.decode !== undefined) {
+    await tapError(image.decode(), () => {});
+  }
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  image.dataset.loaded = "true";
+  image.parentElement
+    ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
+    ?.setAttribute("hidden", "");
+}
+
+function IllustrationTemplateCard({
+  item,
+  selected,
+  onSelect,
+  onPreview,
+}: {
+  item: IllustrationTemplateItem;
+  selected: boolean;
+  onSelect: (item: IllustrationTemplateItem) => void;
+  onPreview: (item: IllustrationTemplateItem) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <IllustrationTemplatePreview item={item} onPreview={onPreview} />
+      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.title}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {formatIllustrationTemplateKind(item)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            aria-label={`Select template ${item.title}`}
+            aria-pressed={selected}
+            onClick={() => {
+              onSelect(item);
+            }}
+            className={cn(
+              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            Use
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IllustrationPreviewPage({
+  item,
+  selectedImageIndex,
+  onImageChange,
+  onBack,
+  onSelect,
+}: {
+  item: IllustrationTemplateItem;
+  selectedImageIndex: number;
+  onImageChange: (index: number) => void;
+  onBack: () => void;
+  onSelect: (item: IllustrationTemplateItem) => void;
+}) {
+  const images =
+    item.previewImages.length > 0 ? item.previewImages : [item.previewImage];
+  const safeImageIndex = Math.max(
+    0,
+    Math.min(selectedImageIndex, images.length - 1),
+  );
+  const selectedImage = images[safeImageIndex] ?? item.previewImage;
+
+  return (
+    <>
+      <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+        <DialogTitle className="flex min-w-0 items-center gap-2 text-base">
+          <button
+            type="button"
+            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onBack}
+          >
+            Templates
+          </button>
+          <span className="shrink-0 text-muted-foreground">/</span>
+          <span className="shrink-0 text-muted-foreground">Illustration</span>
+          <span className="shrink-0 text-muted-foreground">/</span>
+          <span className="min-w-0 truncate">{item.title}</span>
+        </DialogTitle>
+      </DialogHeader>
+      <div className="grid h-[min(72vh,680px)] min-h-0 gap-4 overflow-hidden bg-muted/20 p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="flex min-h-0 flex-col rounded-lg border border-border bg-background p-3">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
+            <img
+              key={selectedImage}
+              src={selectedImage}
+              title={`${item.title} preview variant ${safeImageIndex + 1}`}
+              alt=""
+              className="h-full w-full object-contain"
+              loading="lazy"
+            />
+          </div>
+          <div className="mt-3 flex shrink-0 max-w-full items-center gap-2 overflow-x-auto pb-1">
+            {images.map((image, index) => {
+              const selected = index === safeImageIndex;
+              return (
+                <button
+                  key={image}
+                  type="button"
+                  aria-label={`Show variant ${index + 1}`}
+                  aria-pressed={selected}
+                  className={cn(
+                    "relative h-14 w-20 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selected ? "border-orange-500" : "border-border",
+                  )}
+                  onClick={() => {
+                    onImageChange(index);
+                  }}
+                >
+                  <img
+                    src={image}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg border border-border bg-background p-4">
+            <h3 className="text-lg font-semibold text-foreground">
+              {item.title}
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {formatIllustrationTemplateKind(item)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-background p-4">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              Variants
+            </h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
+                {images.length} reference images
+              </span>
+              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
+                Illustration style
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label={`Select template ${item.title}`}
+            className="h-10 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              onSelect(item);
+            }}
+          >
+            Use this template
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function resolveTemplatePickerCategory({
+  category,
+  hasPptTab,
+  hasIllustrationTab,
+  hasVideoTab,
+}: {
+  category: string;
+  hasPptTab: boolean;
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+}): string {
+  const categories: string[] = [];
+  if (hasPptTab) {
+    categories.push("slides");
+  }
+  if (hasIllustrationTab) {
+    categories.push("illustration");
+  }
+  if (hasVideoTab) {
+    categories.push("video");
+  }
+  const defaultCategory = categories[0] ?? "slides";
+  if (category === "video" && !hasVideoTab) {
+    return defaultCategory;
+  }
+  return categories.includes(category) ? category : defaultCategory;
+}
+
+function TemplatePickerTabs({
+  selectedCategory,
+  hasPptTab,
+  hasIllustrationTab,
+  hasVideoTab,
+  onChange,
+}: {
+  selectedCategory: string;
+  hasPptTab: boolean;
+  hasIllustrationTab: boolean;
+  hasVideoTab: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Tabs value={selectedCategory} onValueChange={onChange} className="-mb-px">
+      <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
+        {hasPptTab && (
+          <TabsTrigger
+            value="slides"
+            className={cn(
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              selectedCategory === "slides"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <IconPresentation
+              className={cn(
+                "h-5 w-5",
+                selectedCategory === "slides"
+                  ? "text-blue-500"
+                  : "text-muted-foreground",
+              )}
+              stroke={1.8}
+            />
+            PPT
+          </TabsTrigger>
+        )}
+        {hasIllustrationTab && (
+          <TabsTrigger
+            value="illustration"
+            className={cn(
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              selectedCategory === "illustration"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <IconPhoto
+              className={cn(
+                "h-5 w-5",
+                selectedCategory === "illustration"
+                  ? "text-emerald-500"
+                  : "text-muted-foreground",
+              )}
+              stroke={1.8}
+            />
+            Illustration
+          </TabsTrigger>
+        )}
+        {hasVideoTab && (
+          <TabsTrigger
+            value="video"
+            className={cn(
+              "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+              selectedCategory === "video"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <IconVideo
+              className={cn(
+                "h-5 w-5",
+                selectedCategory === "video"
+                  ? "text-purple-500"
+                  : "text-muted-foreground",
+              )}
+              stroke={1.8}
+            />
+            Video
+          </TabsTrigger>
+        )}
+      </TabsList>
+    </Tabs>
+  );
+}
+
+const ILLUSTRATION_GRID_COLS = 3;
+const ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR =
+  "[data-illustration-template-grid-scroll]";
+
+function IllustrationTemplateGrid({
+  items,
+  value,
+  onSelect,
+  onPreview,
+}: {
+  items: IllustrationTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: IllustrationTemplateItem) => void;
+  onPreview: (item: IllustrationTemplateItem) => void;
+}) {
+  const rows: IllustrationTemplateItem[][] = [];
+  for (let i = 0; i < items.length; i += ILLUSTRATION_GRID_COLS) {
+    rows.push(items.slice(i, i + ILLUSTRATION_GRID_COLS));
+  }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => {
+      return globalThis.document.querySelector<HTMLDivElement>(
+        ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR,
+      );
+    },
+    estimateSize: () => {
+      return 250;
+    },
+    overscan: 2,
+  });
+
+  if (isHappyDomTestEnvironment()) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => {
+          return (
+            <IllustrationTemplateCard
+              key={item.illustrationStyleId}
+              item={item}
+              selected={isSelectedIllustrationTemplate(item, value)}
+              onSelect={onSelect}
+              onPreview={onPreview}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        height: `${virtualizer.getTotalSize()}px`,
+        width: "100%",
+        position: "relative",
+      }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => {
+        const rowItems = rows[virtualRow.index]!;
+        return (
+          <div
+            key={virtualRow.key}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {rowItems.map((item) => {
+              return (
+                <IllustrationTemplateCard
+                  key={item.illustrationStyleId}
+                  item={item}
+                  selected={isSelectedIllustrationTemplate(item, value)}
+                  onSelect={onSelect}
+                  onPreview={onPreview}
+                />
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const PPT_GRID_COLS = 3;
+const PPT_TEMPLATE_GRID_SCROLL_SELECTOR = "[data-ppt-template-grid-scroll]";
+
+function PptTemplateGrid({
+  items,
+  value,
+  onSelect,
+  onPreview,
+}: {
+  items: PresentationTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: PresentationTemplateItem) => void;
+  onPreview: (item: PresentationTemplateItem) => void;
+}) {
+  const rows: PresentationTemplateItem[][] = [];
+  for (let i = 0; i < items.length; i += PPT_GRID_COLS) {
+    rows.push(items.slice(i, i + PPT_GRID_COLS));
+  }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => {
+      return globalThis.document.querySelector<HTMLDivElement>(
+        PPT_TEMPLATE_GRID_SCROLL_SELECTOR,
+      );
+    },
+    estimateSize: () => {
+      return 220;
+    },
+    overscan: 2,
+  });
+
+  if (isHappyDomTestEnvironment()) {
+    return (
+      <div className="overflow-y-auto" style={{ maxHeight: "60vh" }}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => {
+            return (
+              <PptCard
+                key={item.slug}
+                item={item}
+                selected={isSelectedPresentationTemplate(item, value)}
+                onSelect={onSelect}
+                onPreview={onPreview}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-ppt-template-grid-scroll=""
+      className="overflow-y-auto"
+      style={{ maxHeight: "60vh" }}
+    >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const rowItems = rows[virtualRow.index]!;
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+              className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {rowItems.map((item) => {
+                return (
+                  <PptCard
+                    key={item.slug}
+                    item={item}
+                    selected={isSelectedPresentationTemplate(item, value)}
+                    onSelect={onSelect}
+                    onPreview={onPreview}
+                  />
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function TemplatePickerDialog({
   value,
   onChange,
   onClose,
   hasPptTab,
+  hasIllustrationTab,
   hasVideoTab,
 }: {
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
   hasPptTab: boolean;
+  hasIllustrationTab: boolean;
   hasVideoTab: boolean;
 }) {
   const category = useGet(templatePickerCategory$);
@@ -957,9 +1992,23 @@ function TemplatePickerDialog({
     PRESENTATION_TEMPLATE_ITEMS.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
+  const illustrationPreviewItem =
+    ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+      return item.slug === previewSlug;
+    }) ?? null;
+  const isPreviewing = Boolean(previewItem ?? illustrationPreviewItem);
+  const dialogContentClassName = cn(
+    "p-0 gap-0 overflow-hidden",
+    isPreviewing ? "max-w-6xl" : "max-w-4xl",
+  );
   const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
   });
+  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS.filter(
+    (item) => {
+      return illustrationTemplateMatchesSearch(item, search);
+    },
+  );
   const filteredVideoItems = VIDEO_STYLE_PRESETS.filter((item) => {
     return (
       videoTemplateMatchesGroup(item, videoGroup) &&
@@ -981,22 +2030,34 @@ function TemplatePickerDialog({
     onClose();
   };
 
+  const handleSelectIllustration = (item: IllustrationTemplateItem) => {
+    onChange(toIllustrationGenerationTemplate(item));
+    onClose();
+  };
+
   const handlePreview = (item: PresentationTemplateItem) => {
     setSelectedSlideIndex(0);
     setPreviewSlug(item.slug);
   };
 
-  const defaultCategory = hasPptTab ? "slides" : "video";
-  const effectiveCategory =
-    category === "slides" && !hasPptTab ? "video" : category;
-  const selectedCategory = effectiveCategory || defaultCategory;
+  const handleIllustrationPreview = (item: IllustrationTemplateItem) => {
+    setSelectedSlideIndex(0);
+    setPreviewSlug(item.slug);
+  };
+
+  const selectedCategory = resolveTemplatePickerCategory({
+    category,
+    hasPptTab,
+    hasIllustrationTab,
+    hasVideoTab,
+  });
 
   return (
     <Dialog
       open
       onOpenChange={(open) => {
         if (!open) {
-          if (previewItem) {
+          if (isPreviewing) {
             setPreviewSlug(null);
             return;
           }
@@ -1005,10 +2066,7 @@ function TemplatePickerDialog({
       }}
     >
       <DialogContent
-        className={cn(
-          "p-0 gap-0 overflow-hidden",
-          previewItem ? "max-w-6xl" : "max-w-4xl",
-        )}
+        className={dialogContentClassName}
         aria-describedby={undefined}
       >
         {previewItem ? (
@@ -1021,64 +2079,29 @@ function TemplatePickerDialog({
             }}
             onSelect={handleSelectPresentation}
           />
+        ) : illustrationPreviewItem ? (
+          <IllustrationPreviewPage
+            item={illustrationPreviewItem}
+            selectedImageIndex={selectedSlideIndex}
+            onImageChange={setSelectedSlideIndex}
+            onBack={() => {
+              setPreviewSlug(null);
+            }}
+            onSelect={handleSelectIllustration}
+          />
         ) : (
           <>
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
               <DialogTitle>Templates</DialogTitle>
             </DialogHeader>
             <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
-              <Tabs
-                value={selectedCategory}
-                onValueChange={setCategory}
-                className="-mb-px"
-              >
-                <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
-                  {hasPptTab && (
-                    <TabsTrigger
-                      value="slides"
-                      className={cn(
-                        "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
-                        selectedCategory === "slides"
-                          ? "border-foreground text-foreground"
-                          : "border-transparent text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      <IconPresentation
-                        className={cn(
-                          "h-5 w-5",
-                          selectedCategory === "slides"
-                            ? "text-blue-500"
-                            : "text-muted-foreground",
-                        )}
-                        stroke={1.8}
-                      />
-                      PPT
-                    </TabsTrigger>
-                  )}
-                  {hasVideoTab && (
-                    <TabsTrigger
-                      value="video"
-                      className={cn(
-                        "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
-                        selectedCategory === "video"
-                          ? "border-foreground text-foreground"
-                          : "border-transparent text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      <IconVideo
-                        className={cn(
-                          "h-5 w-5",
-                          selectedCategory === "video"
-                            ? "text-purple-500"
-                            : "text-muted-foreground",
-                        )}
-                        stroke={1.8}
-                      />
-                      Video
-                    </TabsTrigger>
-                  )}
-                </TabsList>
-              </Tabs>
+              <TemplatePickerTabs
+                selectedCategory={selectedCategory}
+                hasPptTab={hasPptTab}
+                hasIllustrationTab={hasIllustrationTab}
+                hasVideoTab={hasVideoTab}
+                onChange={setCategory}
+              />
               <div className="w-full pb-3 sm:w-64">
                 <div className="relative">
                   <IconSearch
@@ -1098,66 +2121,42 @@ function TemplatePickerDialog({
               </div>
             </div>
             {selectedCategory === "slides" && hasPptTab && (
-              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+              <div className="px-5 pt-4">
                 <TemplateSectionHeader
                   label="VM0 templates"
                   count={filteredPptItems.length}
                 />
                 {filteredPptItems.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredPptItems.map((item) => {
-                      const selected = isSelectedPresentationTemplate(
-                        item,
-                        value,
-                      );
-                      return (
-                        <div
-                          key={item.slug}
-                          className={cn(
-                            "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-                            selected
-                              ? "border-primary ring-1 ring-primary"
-                              : "border-border",
-                          )}
-                        >
-                          <TemplatePreview
-                            item={item}
-                            onPreview={handlePreview}
-                          />
-                          <div className="flex items-start justify-between gap-3 px-3.5 py-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {item.title}
-                              </p>
-                              <p className="mt-1 truncate text-xs text-muted-foreground">
-                                {formatPresentationTemplateKind(
-                                  item.templateId,
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 items-center">
-                              <button
-                                type="button"
-                                aria-label={`Select template ${item.title}`}
-                                aria-pressed={selected}
-                                onClick={() => {
-                                  handleSelectPresentation(item);
-                                }}
-                                className={cn(
-                                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                  selected
-                                    ? "border-primary/40 bg-primary/10 text-primary"
-                                    : "border-border bg-background text-foreground hover:bg-muted",
-                                )}
-                              >
-                                Use
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <PptTemplateGrid
+                    items={filteredPptItems}
+                    value={value}
+                    onSelect={handleSelectPresentation}
+                    onPreview={handlePreview}
+                  />
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
+            {selectedCategory === "illustration" && (
+              <div
+                data-illustration-template-grid-scroll=""
+                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+              >
+                <TemplateSectionHeader
+                  label="VM0 illustration styles"
+                  count={filteredIllustrationItems.length}
+                />
+                {filteredIllustrationItems.length > 0 ? (
+                  <IllustrationTemplateGrid
+                    items={filteredIllustrationItems}
+                    value={value}
+                    onSelect={handleSelectIllustration}
+                    onPreview={handleIllustrationPreview}
+                  />
                 ) : (
                   <TemplateEmptyPanel
                     title="No matches"
@@ -1167,7 +2166,10 @@ function TemplatePickerDialog({
               </div>
             )}
             {selectedCategory === "video" && hasVideoTab && (
-              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+              <div
+                data-video-template-grid-scroll=""
+                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+              >
                 <TemplateSectionHeader
                   label="VM0 video styles"
                   count={filteredVideoItems.length}
@@ -1196,18 +2198,11 @@ function TemplatePickerDialog({
                   })}
                 </div>
                 {filteredVideoItems.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredVideoItems.map((item) => {
-                      return (
-                        <VideoTemplateCard
-                          key={item.id}
-                          item={item}
-                          selected={isSelectedVideoTemplate(item, value)}
-                          onSelect={handleSelectVideo}
-                        />
-                      );
-                    })}
-                  </div>
+                  <VideoTemplateGrid
+                    items={filteredVideoItems}
+                    value={value}
+                    onSelect={handleSelectVideo}
+                  />
                 ) : (
                   <TemplateEmptyPanel
                     title="No matches"
@@ -1303,6 +2298,47 @@ function SelectedVideoTemplateChip({
   );
 }
 
+function SelectedIllustrationTemplateChip({
+  item,
+  onRemove,
+}: {
+  item: IllustrationTemplateItem;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+            <img
+              src={item.previewImage}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          </span>
+          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+            Illustration
+          </span>
+          <span className="h-3.5 w-px shrink-0 bg-border/70" />
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.title}
+          </span>
+          <button
+            type="button"
+            aria-label={`Remove template ${item.title}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
 function SelectedTemplateChipSlot({
   picker,
   onDraftChange,
@@ -1311,6 +2347,7 @@ function SelectedTemplateChipSlot({
   onDraftChange: (() => void) | undefined;
 }) {
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
+  const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   if (!picker) {
     return null;
@@ -1337,16 +2374,29 @@ function SelectedTemplateChipSlot({
       />
     );
   }
+  if (illustrationItem) {
+    return (
+      <SelectedIllustrationTemplateChip
+        item={illustrationItem}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
   return null;
 }
 
 function TemplatePickerButton({
   picker,
   hasPptTab,
+  hasIllustrationTab,
   hasVideoTab,
 }: {
   picker: ComposerTemplatePicker;
   hasPptTab: boolean;
+  hasIllustrationTab: boolean;
   hasVideoTab: boolean;
 }) {
   const open = useGet(templatePickerOpen$);
@@ -1394,6 +2444,7 @@ function TemplatePickerButton({
             setOpen(false);
           }}
           hasPptTab={hasPptTab}
+          hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
         />
       )}
@@ -1407,15 +2458,20 @@ function ComposerTemplatePickerSlot({
   picker: ComposerTemplatePicker | undefined;
 }) {
   const features = useLastResolved(featureSwitch$);
-  const hasPptTab = Boolean(features?.[FeatureSwitchKey.ChatTemplatePicker]);
+  const hasChatTemplatePicker = Boolean(
+    features?.[FeatureSwitchKey.ChatTemplatePicker],
+  );
+  const hasPptTab = hasChatTemplatePicker;
+  const hasIllustrationTab = hasChatTemplatePicker;
   const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
-  if (!picker || (!hasPptTab && !hasVideoTab)) {
+  if (!picker || (!hasChatTemplatePicker && !hasVideoTab)) {
     return null;
   }
   return (
     <TemplatePickerButton
       picker={picker}
       hasPptTab={hasPptTab}
+      hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
     />
   );
@@ -1721,9 +2777,27 @@ function ComputerUsePopoverButton({
   computerUse: ComposerComputerUse;
 }) {
   const active = computerUse.selectedHostId !== null;
+  const open = useGet(computerUsePopoverOpen$);
+  const setOpen = useSet(setComputerUsePopoverOpen$);
+  const clearCloseSuppression = useSet(
+    clearComputerUsePopoverCloseSuppression$,
+  );
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setOpen(true);
+      computerUse.onRefresh();
+      window.setTimeout(() => {
+        clearCloseSuppression();
+      }, 300);
+      return;
+    }
+
+    setOpen(false);
+  };
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <PopoverTrigger asChild>
@@ -1760,13 +2834,26 @@ function ComputerUsePopoverButton({
               })}
             </div>
           ) : computerUse.hosts.length > 0 ? (
-            <div className="flex max-h-72 flex-col overflow-y-auto">
+            <div
+              className="flex max-h-72 flex-col overflow-y-auto"
+              role="radiogroup"
+              aria-label="Computer Use host"
+            >
               {computerUse.hosts.map((host) => {
                 const checked = computerUse.selectedHostId === host.id;
                 return (
-                  <div
+                  <button
                     key={host.id}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                    type="button"
+                    role="radio"
+                    aria-checked={checked}
+                    onClick={() => {
+                      computerUse.onChange(checked ? null : host.id);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
+                      checked ? "bg-primary/5" : "hover:bg-muted/50",
+                    )}
                   >
                     <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                       <IconDeviceDesktop size={16} stroke={1.5} />
@@ -1774,16 +2861,18 @@ function ComputerUsePopoverButton({
                     <span className="text-sm flex-1 truncate text-foreground">
                       {host.hostName}
                     </span>
-                    <LoadingSwitch
-                      checked={checked}
-                      onCheckedChange={(nextChecked) => {
-                        computerUse.onChange(nextChecked ? host.id : null);
-                      }}
-                      loading={false}
-                      ariaLabel={`${checked ? "Disable" : "Enable"} ${host.hostName}`}
-                      size="sm"
-                    />
-                  </div>
+                    <span
+                      className={cn(
+                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                        checked
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border text-transparent",
+                      )}
+                      aria-hidden="true"
+                    >
+                      {checked && <IconCheck size={11} stroke={3} />}
+                    </span>
+                  </button>
                 );
               })}
             </div>

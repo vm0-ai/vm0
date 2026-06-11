@@ -60,7 +60,7 @@ interface ScreenshotPreview {
 }
 
 const STATUS_LABELS = {
-  idle: "Idle",
+  offline: "Offline",
   connecting: "Connecting",
   online: "Online",
   recovering: "Recovering",

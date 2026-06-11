@@ -42,6 +42,7 @@ const RESERVED_PRIVATE_DIR_SUBTREES: &[&str] = &[
     "/var/lib/vm0-runner/groups",
     "/var/lib/vm0-runner/images",
     "/var/lib/vm0-runner/locks",
+    "/var/lib/vm0-runner/live-runner-instances",
     "/var/lib/vm0-runner/logs",
     "/var/lib/vm0-runner/mitmproxy",
     "/var/lib/vm0-runner/storages",

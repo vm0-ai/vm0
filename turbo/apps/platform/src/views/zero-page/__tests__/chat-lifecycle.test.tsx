@@ -12,6 +12,11 @@ import {
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  VIDEO_STYLE_PRESETS,
+} from "@vm0/core";
+import {
   zeroBillingCheckoutContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingStatusContract,
@@ -290,10 +295,10 @@ function mockActiveRunThread(threadId: string): void {
         role: "assistant",
         content: null,
         runId: "run-active",
-        status: "running",
         createdAt: "2026-06-09T10:00:01Z",
       },
     ],
+    activeRunIds: ["run-active"],
   });
 }
 
@@ -371,7 +376,6 @@ function mockServerQueuedThreadStories(): void {
           content: null,
           runId: "run-server-queued-visible",
           runEventId: "queue:queued",
-          status: "queued" as const,
           createdAt: "2026-06-09T10:00:01Z",
         },
       ] satisfies PagedChatMessage[],
@@ -394,7 +398,6 @@ function mockServerQueuedThreadStories(): void {
           content: null,
           runId: "run-server-queued-resolved",
           runEventId: "queue:queued",
-          status: "queued" as const,
           createdAt: "2026-06-09T10:05:01Z",
         },
         {
@@ -402,7 +405,6 @@ function mockServerQueuedThreadStories(): void {
           role: "assistant" as const,
           content: "Queued deployment is running now.",
           runId: "run-server-queued-resolved",
-          status: "completed" as const,
           createdAt: "2026-06-09T10:05:02Z",
         },
         {
@@ -813,7 +815,6 @@ function mockFailedAssistantThread({
         role: "assistant",
         content: null,
         runId: `${threadId}-run`,
-        status: "failed",
         error,
         runLifecycleEvent: "failed",
         createdAt: "2026-06-09T10:00:01Z",
@@ -1122,10 +1123,10 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           runId: "run-active",
-          status: "running",
           createdAt: "2026-06-09T10:00:01Z",
         },
       ],
+      activeRunIds: ["run-active"],
       onQueuedMessageAppend: (body) => {
         queuedBody = body;
       },
@@ -1225,7 +1226,6 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-server-queued",
           runEventId: "queue:queued",
-          status: "queued",
           createdAt: "2026-06-09T10:00:01Z",
         },
         {
@@ -1242,6 +1242,7 @@ describe("chat lifecycle", () => {
       onRecallMessageAppend: (body) => {
         recalls.push(body.revokesMessageId);
       },
+      activeRunIds: ["run-server-queued"],
     });
 
     detachedSetupPage({
@@ -1295,6 +1296,136 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps completed chat work visible when folding is disabled", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-disabled",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Audit the launch checklist",
+          runId: "run-work-folding-disabled",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "The launch checklist is ready.",
+          runId: "run-work-folding-disabled",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:55Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-disabled",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Audit the launch checklist"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("The launch checklist is ready."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    });
+  });
+
+  it("keeps chat work visible while the run is active", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-running",
+      activeRunIds: ["run-work-folding-running"],
+      chatMessages: [
+        {
+          role: "user",
+          content: "Draft the launch checklist",
+          runId: "run-work-folding-running",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the remaining launch steps.",
+          runId: "run-work-folding-running",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-running",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Draft the launch checklist"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Checking the remaining launch steps."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    });
+  });
+
+  it("folds completed chat work and toggles the hidden history", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-completed",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the launch status",
+          runId: "run-work-folding-completed",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Launch status is summarized.",
+          runId: "run-work-folding-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:55Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-completed",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+
+    const expandButton = await screen.findByLabelText("Expand work history");
+    expect(expandButton).toHaveTextContent("Worked for 55s");
+    expect(screen.queryByText("Summarize the launch status")).toBeNull();
+    expect(
+      screen.getByText("Launch status is summarized."),
+    ).toBeInTheDocument();
+
+    click(expandButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize the launch status"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+
+    click(screen.getByLabelText("Collapse work history"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Summarize the launch status")).toBeNull();
+      expect(screen.getByLabelText("Expand work history")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    });
+  });
+
   it("renders a server-corrected assistant message without the stale answer", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-corrected-answer",
@@ -1312,7 +1443,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: "Use the old launch plan.",
           runId: "run-corrected-answer",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
         {
@@ -1321,7 +1451,6 @@ describe("chat lifecycle", () => {
           content: "Use the revised launch plan with updated owners.",
           runId: "run-corrected-answer",
           revokesMessageId: "msg-stale-answer",
-          status: "completed",
           createdAt: "2026-06-09T10:02:00Z",
         },
       ],
@@ -1359,7 +1488,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           runId: "run-restored-interrupt",
-          status: "running",
           createdAt: "2026-06-09T10:01:00Z",
         },
         {
@@ -1375,7 +1503,6 @@ describe("chat lifecycle", () => {
           content: "Run cancelled",
           runId: "run-restored-interrupt",
           error: "Run cancelled",
-          status: "cancelled",
           runLifecycleEvent: "cancelled",
           createdAt: "2026-06-09T10:03:00Z",
         },
@@ -1672,7 +1799,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId,
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -1713,7 +1839,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-assistant-copy",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -1822,6 +1947,10 @@ describe("chat lifecycle", () => {
 
   it("shows template labels on historical user messages", async () => {
     const threadId = "template-message-history";
+    const presentationTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const videoTemplate = VIDEO_STYLE_PRESETS[0]!;
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Template labels",
@@ -1834,8 +1963,8 @@ describe("chat lifecycle", () => {
           generationTemplate: {
             type: "presentation",
             selection: {
-              designSystemId: "retired-design-system",
-              templateId: "template:html-ppt-quarterly-business-review",
+              designSystemId: presentationTemplate.designSystemId,
+              templateId: presentationTemplate.templateId,
             },
           },
           createdAt: "2026-06-09T10:00:00Z",
@@ -1847,9 +1976,22 @@ describe("chat lifecycle", () => {
           runId: "run-template-video",
           generationTemplate: {
             type: "video",
-            selection: { stylePresetId: "template:phone-demo" },
+            selection: { stylePresetId: videoTemplate.id },
           },
           createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-template-illustration",
+          role: "user",
+          content: "Create an illustrated launch card",
+          runId: "run-template-illustration",
+          generationTemplate: {
+            type: "illustration",
+            selection: {
+              illustrationStyleId: illustrationTemplate.illustrationStyleId,
+            },
+          },
+          createdAt: "2026-06-09T10:02:00Z",
         },
       ],
     });
@@ -1865,11 +2007,76 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Message template Quarterly business review"),
+        screen.getByLabelText(`Message template ${presentationTemplate.title}`),
       ).toHaveTextContent("Slides");
       expect(
-        screen.getByLabelText("Message template Phone demo"),
+        screen.getByLabelText(`Message template ${videoTemplate.nameEn}`),
       ).toHaveTextContent("Video");
+      expect(
+        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
+      ).toHaveTextContent("Illustration");
+    });
+  });
+
+  it("hides historical template labels behind picker feature switches", async () => {
+    const threadId = "template-message-history-gated";
+    const presentationTemplate = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Template labels gated",
+      chatMessages: [
+        {
+          id: "msg-template-presentation-gated",
+          role: "user",
+          content: "Create the business review deck",
+          runId: "run-template-presentation-gated",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: presentationTemplate.designSystemId,
+              templateId: presentationTemplate.templateId,
+            },
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-template-illustration-gated",
+          role: "user",
+          content: "Create an illustrated launch card",
+          runId: "run-template-illustration-gated",
+          generationTemplate: {
+            type: "illustration",
+            selection: {
+              illustrationStyleId: illustrationTemplate.illustrationStyleId,
+            },
+          },
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Create the business review deck")).toBeVisible();
+      expect(
+        screen.queryByLabelText(
+          `Message template ${presentationTemplate.title}`,
+        ),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText(
+          `Message template ${illustrationTemplate.title}`,
+        ),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -2093,7 +2300,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-feedback",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -2160,7 +2366,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-feedback-summary",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -2234,7 +2439,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId: "run-feedback-edit",
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -2327,14 +2531,22 @@ describe("chat lifecycle", () => {
           id: "msg-followup-user",
           role: "user",
           content: "Package this launch plan",
-          runId: undefined,
+          runId: "run-followup",
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
           id: "msg-followup-assistant",
           role: "assistant",
           content: assistantReply,
-          runId: undefined,
+          runId: "run-followup",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-followup-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-followup",
+          runLifecycleEvent: "completed",
           recommendedFollowups: [
             {
               prompt: followupPrompt,
@@ -2365,7 +2577,7 @@ describe("chat lifecycle", () => {
               kind: "talk",
             },
           ],
-          createdAt: "2026-06-09T10:01:00Z",
+          createdAt: "2026-06-09T10:01:01Z",
         },
       ],
     });
@@ -2415,6 +2627,17 @@ describe("chat lifecycle", () => {
             createdAt: "2026-06-10T11:00:00Z",
           },
           {
+            id: "host-online-2",
+            displayName: "Office Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "online",
+            lastSeenAt: "2026-06-10T12:01:00Z",
+            createdAt: "2026-06-10T11:01:00Z",
+          },
+          {
             id: "host-offline",
             displayName: "Offline Desktop",
             appVersion: "1.0.0",
@@ -2439,9 +2662,124 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Studio Mac")).toBeInTheDocument();
+      expect(screen.getByText("Office Mac")).toBeInTheDocument();
       expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
       expect(screen.getByText("Connect my computer")).toBeInTheDocument();
-      expect(screen.getByLabelText("Enable Studio Mac")).toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "Studio Mac" })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+      expect(screen.getByRole("radio", { name: "Office Mac" })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+    });
+  });
+
+  it("does not auto-select the only online Computer Use host", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-manual-selection";
+    let sentComputerUseHostId: string | null | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      onRunCreate: (body) => {
+        sentComputerUseHostId = body.computerUseHostId;
+      },
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: "host-online",
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+    expect(screen.getByRole("radio", { name: "Studio Mac" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+
+    const textarea = (await screen.findByPlaceholderText(
+      PLACEHOLDER,
+    )) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Open the app on my computer");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Open the app on my computer"),
+      ).toBeInTheDocument();
+      expect(sentComputerUseHostId).toBeNull();
+    });
+  });
+
+  it("refreshes online computers when the chat composer popover opens", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-refresh";
+    let hostOnline = true;
+    let requestCount = 0;
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      requestCount += 1;
+      return respond(200, {
+        hosts: [
+          {
+            id: "host-refresh",
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: hostOnline ? "online" : "offline",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Studio Mac")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Computer Use"));
+    await waitFor(() => {
+      expect(screen.queryByText("Connect my computer")).not.toBeInTheDocument();
+    });
+
+    const requestCountAfterFirstOpen = requestCount;
+    hostOnline = false;
+
+    await user.click(screen.getByLabelText("Computer Use"));
+
+    await waitFor(() => {
+      expect(requestCount).toBeGreaterThan(requestCountAfterFirstOpen);
+      expect(screen.queryByText("Studio Mac")).not.toBeInTheDocument();
+      expect(screen.getByText("No online computers")).toBeInTheDocument();
     });
   });
 
@@ -2480,7 +2818,7 @@ describe("chat lifecycle", () => {
     });
 
     await user.click(await screen.findByLabelText("Computer Use"));
-    await user.click(await screen.findByLabelText("Enable Studio Mac"));
+    await user.click(await screen.findByRole("radio", { name: "Studio Mac" }));
 
     const textarea = (await screen.findByPlaceholderText(
       PLACEHOLDER,
@@ -2530,18 +2868,14 @@ describe("chat lifecycle", () => {
 
     await user.click(await screen.findByLabelText("Computer Use"));
 
-    const disableSwitch = await screen.findByLabelText("Disable Studio Mac");
-    expect(disableSwitch).toBeInTheDocument();
-    await user.click(disableSwitch);
+    const selectedComputer = await screen.findByRole("radio", {
+      name: "Studio Mac",
+    });
+    expect(selectedComputer).toHaveAttribute("aria-checked", "true");
+    await user.click(selectedComputer);
 
     await waitFor(() => {
-      expect(
-        screen.queryByLabelText("Disable Studio Mac"),
-      ).not.toBeInTheDocument();
-    });
-    await user.click(await screen.findByLabelText("Computer Use"));
-    await waitFor(() => {
-      expect(screen.getByLabelText("Enable Studio Mac")).toBeInTheDocument();
+      expect(selectedComputer).toHaveAttribute("aria-checked", "false");
     });
   });
 
@@ -2686,7 +3020,6 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: assistantReply,
           runId,
-          status: "completed",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -2998,7 +3331,6 @@ describe("chat lifecycle", () => {
                 role: "assistant",
                 content: null,
                 runId: "run-active",
-                status: "running",
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],

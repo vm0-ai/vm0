@@ -26,7 +26,7 @@ import {
 } from "./computer-use-host";
 import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
-  IDLE_COMPUTER_USE_HOST_STATE,
+  OFFLINE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
   type ComputerUseHostRuntimeState,
   type DesktopComputerUseState,
@@ -283,7 +283,7 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
     host:
       computerUseRuntime?.getState() ??
       computerUseBlockedHostState ??
-      IDLE_COMPUTER_USE_HOST_STATE,
+      OFFLINE_COMPUTER_USE_HOST_STATE,
     keepAwake: keepAwakeController?.getState() ?? {
       enabled: false,
       active: false,

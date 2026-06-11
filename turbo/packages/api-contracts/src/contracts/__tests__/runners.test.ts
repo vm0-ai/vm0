@@ -159,6 +159,83 @@ describe("runner storage manifest contract", () => {
   });
 });
 
+describe("runner firewall entry contract", () => {
+  it("accepts compact builtin firewall entries", () => {
+    const firewalls = [
+      {
+        kind: "builtin",
+        name: "zendesk",
+        baseUrlVars: { ZENDESK_SUBDOMAIN: "acme" },
+      },
+    ];
+
+    expect(
+      storedExecutionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(true);
+  });
+
+  it("accepts inline firewall entries", () => {
+    const firewalls = [
+      {
+        kind: "inline",
+        firewall: {
+          name: "internal-api",
+          apis: [
+            {
+              base: "https://api.internal.example.com",
+              auth: { headers: { Authorization: "${{ secrets.TOKEN }}" } },
+              permissions: [{ name: "read", rules: ["GET /items"] }],
+            },
+          ],
+        },
+      },
+    ];
+
+    expect(
+      storedExecutionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(true);
+  });
+
+  it("accepts legacy expanded firewall entries in execution contexts temporarily", () => {
+    const firewalls = [
+      {
+        name: "github",
+        apis: [{ base: "https://api.github.com", auth: { headers: {} } }],
+      },
+    ];
+
+    expect(
+      storedExecutionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(true);
+    expect(
+      executionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(true);
+  });
+
+  it("rejects unsupported execution firewall kinds", () => {
+    const firewalls = [
+      {
+        kind: "unknown",
+        name: "github",
+        apis: [{ base: "https://api.github.com", auth: { headers: {} } }],
+      },
+    ];
+
+    expect(
+      storedExecutionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(false);
+    expect(
+      executionContextSchema.shape.firewalls.safeParse(firewalls).success,
+    ).toBe(false);
+  });
+});
+
 describe("runner apiStartTime contract", () => {
   it("accepts Unix epoch millisecond integers", () => {
     const timestamp = 1_700_000_000_000;

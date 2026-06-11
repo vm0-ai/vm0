@@ -96,6 +96,21 @@ fn quiesced_connection_rejects_write_file_without_creating_file() {
 }
 
 #[test]
+fn quiesced_connection_rejects_write_file_seq_zero_before_quiesce_state() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_quiesce_operations(&mut host_stream, 214);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+
+    send_control_payload(&mut host_stream, MSG_WRITE_FILE, 0, b"bad");
+    let error = read_error_response(&mut host_stream, 0);
+    assert_eq!(error, "write_file requires non-zero sequence");
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn quiesced_connection_rejects_new_operation_without_decoding_payload() {
     let (handle, mut host_stream) = start_guest_connection();
 

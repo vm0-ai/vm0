@@ -647,6 +647,7 @@ describe("POST /api/runners/*", () => {
       contextOverrides: { apiStartTime: 1 },
     });
 
+    context.mocks.axiomLogging.warn.mockClear();
     const response = await claimRunnerJob({
       runId: queued.runId,
       authorization: OFFICIAL_RUNNER_TOKEN,
@@ -682,6 +683,22 @@ describe("POST /api/runners/*", () => {
     });
     expect(run?.completedAt).toBeInstanceOf(Date);
     expect(run?.startedAt).toBeNull();
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Runner job missing valid execution context",
+      expect.objectContaining({
+        context: "Runners",
+        runId: queued.runId,
+        validationIssueCount: 1,
+        validationIssues: [
+          expect.objectContaining({
+            path: "apiStartTime",
+            code: "too_small",
+            message: expect.any(String),
+          }),
+        ],
+        validationIssuesOmitted: 0,
+      }),
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${queued.runId}`,
       { status: "failed" },
@@ -775,6 +792,7 @@ describe("POST /api/runners/*", () => {
           telemetry: {
             jobDiscoveredToClaimRequestMs: 1234,
             localAdmissionToClaimRequestMs: 56,
+            pollReason: "deferred",
           },
         },
         headers: { authorization: `Bearer ${pat.token}` },
@@ -829,6 +847,38 @@ describe("POST /api/runners/*", () => {
       "vm0-sandbox-op-log-dev",
       [
         expect.objectContaining({
+          op_type: "api_to_runner_queue",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+          poll_reason: "deferred",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "runner_queue_to_claim_request",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+          poll_reason: "deferred",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
           op_type: "api_to_claim_request",
           sandbox_type: "runner",
           run_id: queued.runId,
@@ -837,6 +887,7 @@ describe("POST /api/runners/*", () => {
           runner_group: "vm0/test",
           profile: "vm0/default",
           auth_type: "user",
+          poll_reason: "deferred",
         }),
       ],
     );

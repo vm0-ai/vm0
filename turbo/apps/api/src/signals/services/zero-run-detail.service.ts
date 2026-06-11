@@ -18,10 +18,10 @@ import {
   waitForRunEventWatermarkVisible,
 } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
+import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
 
 type ServiceDb = Pick<Db, "select">;
 type UnknownRecord = Record<string, unknown>;
-type NetworkPolicyValue = "allow" | "deny" | "ask";
 
 interface AgentComposeContent {
   agent?: { framework?: string };
@@ -113,56 +113,6 @@ function stringRecordValue(value: unknown): Record<string, string> | undefined {
     return undefined;
   }
   return Object.fromEntries(entries);
-}
-
-function booleanRecordValue(
-  value: unknown,
-): Record<string, boolean> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const entries = Object.entries(value).filter(
-    (entry): entry is [string, boolean] => {
-      return typeof entry[1] === "boolean";
-    },
-  );
-  if (entries.length === 0) {
-    return undefined;
-  }
-  return Object.fromEntries(entries);
-}
-
-function networkPolicyValue(value: unknown): NetworkPolicyValue | undefined {
-  return value === "allow" || value === "deny" || value === "ask"
-    ? value
-    : undefined;
-}
-
-function sanitizeNetworkPolicies(
-  value: unknown,
-): RunContextResponse["networkPolicies"] {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const policies: NonNullable<RunContextResponse["networkPolicies"]> = {};
-  for (const [name, rawPolicy] of Object.entries(value)) {
-    if (!isRecord(rawPolicy)) {
-      continue;
-    }
-    const unknownPolicy = networkPolicyValue(rawPolicy.unknownPolicy);
-    if (!unknownPolicy) {
-      continue;
-    }
-    policies[name] = {
-      allow: stringArrayValue(rawPolicy.allow) ?? [],
-      deny: stringArrayValue(rawPolicy.deny) ?? [],
-      ask: stringArrayValue(rawPolicy.ask) ?? [],
-      unknownPolicy,
-    };
-  }
-
-  return Object.keys(policies).length > 0 ? policies : null;
 }
 
 function networkActionValue(
@@ -284,24 +234,12 @@ export function zeroRunContext(
 | limit 1`;
 
     const results = (await get(queryAxiom(apl))) as Record<string, unknown>[];
-    const snapshot = results[0] as
-      | (Omit<
-          RunContextResponse,
-          "vars" | "prompt" | "appendSystemPrompt" | "runId" | "secretNames"
-        > & {
-          sessionId?: string;
-          environment?: UnknownRecord;
-          firewalls?: RunContextResponse["firewalls"];
-          networkPolicies?: unknown;
-          volumes?: RunContextResponse["volumes"];
-          artifact?: RunContextResponse["artifact"];
-          featureFlags?: UnknownRecord;
-        })
-      | undefined;
+    const snapshot = results[0];
 
     if (!snapshot) {
       return { kind: "no-snapshot" };
     }
+    const normalizedSnapshot = normalizeRunContextSnapshot(snapshot);
 
     return {
       kind: "ok",
@@ -309,16 +247,15 @@ export function zeroRunContext(
         prompt: run.prompt,
         appendSystemPrompt: run.appendSystemPrompt ?? null,
         runId,
-        sessionId: (snapshot.sessionId as string) ?? null,
+        sessionId: normalizedSnapshot.sessionId,
         secretNames: (run.secretNames as string[]) ?? [],
         vars: (run.vars as Record<string, string> | undefined) ?? null,
-        environment: stringRecordValue(snapshot.environment) ?? {},
-        firewalls:
-          (snapshot.firewalls as RunContextResponse["firewalls"]) ?? [],
-        networkPolicies: sanitizeNetworkPolicies(snapshot.networkPolicies),
-        volumes: (snapshot.volumes as RunContextResponse["volumes"]) ?? [],
-        artifact: (snapshot.artifact as RunContextResponse["artifact"]) ?? null,
-        featureFlags: booleanRecordValue(snapshot.featureFlags) ?? null,
+        environment: normalizedSnapshot.environment,
+        firewalls: normalizedSnapshot.firewalls,
+        networkPolicies: normalizedSnapshot.networkPolicies,
+        volumes: normalizedSnapshot.volumes,
+        artifact: normalizedSnapshot.artifact,
+        featureFlags: normalizedSnapshot.featureFlags,
       },
     };
   });

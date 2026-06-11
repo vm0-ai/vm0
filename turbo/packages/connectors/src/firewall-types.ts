@@ -79,6 +79,33 @@ export const firewallSchema = z.object({
  */
 export const firewallsSchema = z.array(firewallSchema);
 
+export const executionFirewallBuiltinEntrySchema = z.object({
+  kind: z.literal("builtin"),
+  name: z.string().min(1),
+  baseUrlVars: z.record(z.string(), z.string()).optional(),
+});
+
+export const executionFirewallInlineEntrySchema = z.object({
+  kind: z.literal("inline"),
+  firewall: firewallSchema,
+});
+
+const executionFirewallTaggedEntrySchema = z.discriminatedUnion("kind", [
+  executionFirewallBuiltinEntrySchema,
+  executionFirewallInlineEntrySchema,
+]);
+
+export const executionFirewallLegacyEntrySchema = firewallSchema.extend({
+  kind: z.never().optional(),
+});
+
+export const executionFirewallEntrySchema = z.union([
+  executionFirewallTaggedEntrySchema,
+  executionFirewallLegacyEntrySchema,
+]);
+
+export const executionFirewallsSchema = z.array(executionFirewallEntrySchema);
+
 /**
  * Reserved permission name used by user grant storage to represent the
  * unknown-endpoint policy row for a connector firewall.
@@ -147,6 +174,19 @@ export type FirewallApi = z.infer<typeof firewallApiSchema>;
 export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
 export type Firewall = z.infer<typeof firewallSchema>;
 export type Firewalls = z.infer<typeof firewallsSchema>;
+export type ExecutionFirewallBuiltinEntry = z.infer<
+  typeof executionFirewallBuiltinEntrySchema
+>;
+export type ExecutionFirewallInlineEntry = z.infer<
+  typeof executionFirewallInlineEntrySchema
+>;
+export type ExecutionFirewallLegacyEntry = z.infer<
+  typeof executionFirewallLegacyEntrySchema
+>;
+export type ExecutionFirewallEntry = z.infer<
+  typeof executionFirewallEntrySchema
+>;
+export type ExecutionFirewalls = z.infer<typeof executionFirewallsSchema>;
 
 /**
  * Regex pattern matching `${{ secrets.XXX }}` references in auth header templates.

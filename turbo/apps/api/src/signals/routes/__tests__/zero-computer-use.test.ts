@@ -269,45 +269,54 @@ describe("desktop computer-use runtime", () => {
     expect(fixture.orgId).toBeTruthy();
   });
 
-  it("rejects a second active Desktop app computer-use host", async () => {
+  it("starts and lists multiple active Desktop app computer-use hosts", async () => {
     await createOrgFixture();
     const client = setupApp({ context })(zeroComputerUseHostsContract);
-    const body = {
+    const firstBody = {
       hostName: "Zero Desktop",
       appVersion: "0.1.0",
       osVersion: "macOS 15",
       supportedCapabilities: [...supportedCapabilities],
       permissions: { accessibility: true, screenRecording: true },
     };
+    const secondBody = { ...firstBody, hostName: "Studio Mac" };
 
-    const started = await accept(
+    const first = await accept(
       client.start({
-        body,
+        body: firstBody,
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
-
-    const rejected = await accept(
+    const second = await accept(
       client.start({
-        body,
+        body: secondBody,
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [409],
-    );
-
-    expect(rejected.body.error.message).toBe(
-      "A Desktop Computer Use host is already active",
+      [200],
     );
     const listed = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    expect(listed.body.hosts).toHaveLength(1);
-    expect(listed.body.hosts[0]?.id).toBe(started.body.hostId);
+    expect(listed.body.hosts).toHaveLength(2);
+    expect(listed.body.hosts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.body.hostId,
+          hostName: "Zero Desktop",
+          status: "online",
+        }),
+        expect.objectContaining({
+          id: second.body.hostId,
+          hostName: "Studio Mac",
+          status: "online",
+        }),
+      ]),
+    );
   });
 
-  it("rejects a stale host heartbeat when another Desktop host is active", async () => {
+  it("accepts a stale host heartbeat when another Desktop host is active", async () => {
     const fixture = await createOrgFixture();
     const staleHostToken = "stale-host-token";
     const staleHostId = await seedComputerUseHost({
@@ -335,10 +344,10 @@ describe("desktop computer-use runtime", () => {
       [200],
     );
 
-    const rejected = await accept(
+    const heartbeat = await accept(
       heartbeatClient.heartbeat({
         body: {
-          hostName: "Zero Desktop",
+          hostName: "Recovered Desktop",
           appVersion: "0.1.0",
           osVersion: "macOS 15",
           supportedCapabilities: [...supportedCapabilities],
@@ -346,19 +355,20 @@ describe("desktop computer-use runtime", () => {
         },
         headers: { authorization: `Bearer ${staleHostToken}` },
       }),
-      [409],
+      [200],
     );
 
-    expect(rejected.body.error.message).toBe(
-      "A Desktop Computer Use host is already active",
-    );
+    expect(heartbeat.body).toStrictEqual({ ok: true, hostId: staleHostId });
     const writeDb = store.set(writeDb$);
     const [staleHost] = await writeDb
       .select()
       .from(computerUseHosts)
       .where(eq(computerUseHosts.id, staleHostId));
-    expect(staleHost).toMatchObject({ status: "offline" });
-    expect(staleHost?.revokedAt).toBeInstanceOf(Date);
+    expect(staleHost).toMatchObject({
+      displayName: "Recovered Desktop",
+      status: "online",
+      revokedAt: null,
+    });
   });
 
   it("stops a Desktop host so another host can start immediately", async () => {

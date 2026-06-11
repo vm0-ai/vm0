@@ -40,6 +40,49 @@ const L = logger("Runners");
 const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
+const MAX_VALIDATION_ISSUES_TO_LOG = 10;
+
+interface ValidationIssueLike {
+  readonly path: readonly PropertyKey[];
+  readonly code: string;
+  readonly message: string;
+}
+
+function validationIssuePath(path: readonly PropertyKey[]): string {
+  if (path.length === 0) {
+    return "<root>";
+  }
+  return path
+    .map((segment) => {
+      return String(segment);
+    })
+    .join(".");
+}
+
+function warnInvalidStoredExecutionContext(
+  runId: string,
+  issues: readonly ValidationIssueLike[],
+): void {
+  const validationIssueCount = issues.length;
+  const validationIssues = issues
+    .slice(0, MAX_VALIDATION_ISSUES_TO_LOG)
+    .map((issue) => {
+      return {
+        path: validationIssuePath(issue.path),
+        code: issue.code,
+        message: issue.message,
+      };
+    });
+  L.warn(INVALID_EXECUTION_CONTEXT_ERROR, {
+    runId,
+    validationIssueCount,
+    validationIssues,
+    validationIssuesOmitted: Math.max(
+      0,
+      validationIssueCount - MAX_VALIDATION_ISSUES_TO_LOG,
+    ),
+  });
+}
 
 const unauthorizedNotAuthenticated = Object.freeze({
   status: 401 as const,
@@ -535,11 +578,14 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
+  readonly apiToRunnerQueueMs: number | undefined;
+  readonly runnerQueueToClaimRequestMs: number;
   readonly apiToClaimRequestMs: number | undefined;
   readonly apiToClaimMs: number | undefined;
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly pollReason: string | undefined;
 }): void {
   waitUntil(
     publishRunChangedForUserSafely(args.userId, args.runId, {
@@ -559,18 +605,36 @@ async function recordClaimTimingMetrics(args: {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
+  readonly apiToRunnerQueueMs: number | undefined;
+  readonly runnerQueueToClaimRequestMs: number;
   readonly apiToClaimRequestMs: number | undefined;
   readonly apiToClaimMs: number | undefined;
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly pollReason: string | undefined;
 }): Promise<void> {
   await Promise.resolve();
-  const dimensions = {
+  const dimensions: Record<string, string> = {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
   };
+  if (args.pollReason) {
+    dimensions.poll_reason = args.pollReason;
+  }
+  recordClaimTimingOperation(
+    args.runId,
+    "api_to_runner_queue",
+    args.apiToRunnerQueueMs,
+    dimensions,
+  );
+  recordClaimTimingOperation(
+    args.runId,
+    "runner_queue_to_claim_request",
+    args.runnerQueueToClaimRequestMs,
+    dimensions,
+  );
   recordClaimTimingOperation(
     args.runId,
     "api_to_claim_request",
@@ -694,7 +758,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     jobWithRun.job.executionContext,
   );
   if (!storedContextResult.success) {
-    L.warn(INVALID_EXECUTION_CONTEXT_ERROR, { runId });
+    warnInvalidStoredExecutionContext(runId, storedContextResult.error.issues);
     const poisonResult = await failPoisonQueuedJob(
       db,
       runId,
@@ -756,12 +820,21 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Run not found");
   }
 
+  const queueCreatedAtMs = jobWithRun.job.createdAt.getTime();
   scheduleClaimSucceededSideEffects({
     runId,
     userId: run.userId,
     runnerGroup: jobWithRun.job.runnerGroup,
     profile: jobWithRun.job.profile,
     authType: auth.type,
+    apiToRunnerQueueMs: elapsedSinceApiStartMs(
+      storedContext.apiStartTime,
+      queueCreatedAtMs,
+    ),
+    runnerQueueToClaimRequestMs: Math.max(
+      0,
+      claimRequestStartedAtMs - queueCreatedAtMs,
+    ),
     apiToClaimRequestMs: elapsedSinceApiStartMs(
       storedContext.apiStartTime,
       claimRequestStartedAtMs,
@@ -778,6 +851,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       body.data.telemetry?.jobDiscoveredToClaimRequestMs,
     localAdmissionToClaimRequestMs:
       body.data.telemetry?.localAdmissionToClaimRequestMs,
+    pollReason: body.data.telemetry?.pollReason,
   });
 
   return {

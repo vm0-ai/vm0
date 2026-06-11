@@ -753,6 +753,11 @@ export {
   firewallApiSchema,
   firewallSchema,
   firewallsSchema,
+  executionFirewallBuiltinEntrySchema,
+  executionFirewallInlineEntrySchema,
+  executionFirewallLegacyEntrySchema,
+  executionFirewallEntrySchema,
+  executionFirewallsSchema,
   firewallConfigSchema,
   firewallPolicyValueSchema,
   firewallPoliciesSchema,
@@ -762,6 +767,11 @@ export {
   type FirewallApi,
   type Firewall,
   type Firewalls,
+  type ExecutionFirewallBuiltinEntry,
+  type ExecutionFirewallInlineEntry,
+  type ExecutionFirewallLegacyEntry,
+  type ExecutionFirewallEntry,
+  type ExecutionFirewalls,
   type FirewallPolicyValue,
   type FirewallPolicy,
   type FirewallPolicies,
@@ -1410,14 +1420,6 @@ export {
   type GitHubIssuesCallbackPayload,
   type InternalCallbacksGithubIssuesContract,
 } from "./internal-callbacks-github-issues";
-export {
-  internalCallbacksScheduleContract,
-  scheduleCronCallbackPayloadSchema,
-  scheduleLoopCallbackPayloadSchema,
-  type InternalCallbacksScheduleContract,
-  type ScheduleCronCallbackPayload,
-  type ScheduleLoopCallbackPayload,
-} from "./internal-callbacks-schedule";
 export {
   automationsV2MainContract,
   automationsV2ByRefContract,

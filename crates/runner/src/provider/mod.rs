@@ -29,6 +29,7 @@ pub struct JobCandidate {
     local_job_path: Option<PathBuf>,
     discovered_at: Instant,
     local_admission_started_at: Option<Instant>,
+    poll_reason: Option<String>,
 }
 
 impl JobCandidate {
@@ -39,6 +40,7 @@ impl JobCandidate {
             local_job_path: None,
             discovered_at: Instant::now(),
             local_admission_started_at: None,
+            poll_reason: None,
         }
     }
 
@@ -49,6 +51,7 @@ impl JobCandidate {
             local_job_path: Some(job_path),
             discovered_at: Instant::now(),
             local_admission_started_at: None,
+            poll_reason: None,
         }
     }
 
@@ -77,6 +80,15 @@ impl JobCandidate {
             .map(|started| started.elapsed())
     }
 
+    pub(crate) fn poll_reason(&self) -> Option<&str> {
+        self.poll_reason.as_deref()
+    }
+
+    pub(crate) fn with_poll_reason(mut self, poll_reason: impl Into<String>) -> Self {
+        self.poll_reason = Some(poll_reason.into());
+        self
+    }
+
     #[cfg(test)]
     pub(crate) fn new_with_timing_for_test(
         run_id: RunId,
@@ -90,6 +102,7 @@ impl JobCandidate {
             local_job_path: None,
             discovered_at,
             local_admission_started_at,
+            poll_reason: None,
         }
     }
 }

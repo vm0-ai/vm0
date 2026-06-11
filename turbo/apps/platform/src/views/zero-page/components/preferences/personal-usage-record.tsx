@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import {
   IconBrandGithub,
   IconBrandSlack,
@@ -12,6 +12,7 @@ import {
   IconRobot,
   IconTerminal2,
 } from "@tabler/icons-react";
+import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type {
   UsageRecordKind,
   UsageRecordRange,
@@ -20,6 +21,7 @@ import type {
   UsageRecordScope,
   UsageRecordSource,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
+import type { UsageMembersResponse } from "@vm0/api-contracts/contracts/zero-usage";
 import {
   Button,
   DropdownMenu,
@@ -34,18 +36,17 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import {
-  loadMoreLegacyUsageRecord$,
   loadMoreUsageRecord$,
   myUsageRecordAsync$,
-  teamUsageRecordAsync$,
-  usageRecordAsync$,
-  usageSourceFilter$,
+  teamMemberUsageAsync$,
 } from "../../../../signals/zero-page/settings/personal-usage-record.ts";
+import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { setSettingsDialogOpen$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { nowDate } from "../../../../lib/time.ts";
 import { Link } from "../../../router/link.tsx";
+import { MemberUsageTable } from "../org-manage/org-usage-tab.tsx";
 
 const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
 
@@ -99,14 +100,6 @@ const RANGE_OPTIONS = [
   label: string;
 }[];
 
-const FILTER_OPTIONS = [
-  "chat",
-  "schedule",
-  "slack",
-  "telegram",
-  "other",
-] as const satisfies readonly UsageRecordSource[];
-
 const ROW_CLASS =
   "block px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50";
 
@@ -114,6 +107,11 @@ type UsageRecordLoadable =
   | { readonly state: "loading" }
   | { readonly state: "hasError" }
   | { readonly state: "hasData"; readonly data: UsageRecordResponse };
+
+type UsageMembersLoadable =
+  | { readonly state: "loading" }
+  | { readonly state: "hasError" }
+  | { readonly state: "hasData"; readonly data: UsageMembersResponse };
 
 function formatCredits(n: number): string {
   if (n >= 1_000_000) {
@@ -145,55 +143,6 @@ function rangeLabel(range: UsageRecordRange): string {
 
 function usageRowKey(row: UsageRecordRow): string {
   return `${row.source}:${row.threadId ?? row.runId ?? row.lastActivityAt}:${row.member?.userId ?? "mine"}`;
-}
-
-export function SourceFilter({
-  value,
-  onChange,
-}: {
-  value: UsageRecordSource | null;
-  onChange: (source: UsageRecordSource | null) => void;
-}) {
-  const label = value ? SOURCE_META[value].label : "All sources";
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
-        >
-          {label}
-          <IconChevronDown
-            size={14}
-            stroke={1.5}
-            className="ml-1.5 text-muted-foreground"
-          />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem
-          onClick={() => {
-            onChange(null);
-          }}
-        >
-          All sources
-        </DropdownMenuItem>
-        {FILTER_OPTIONS.map((source) => {
-          return (
-            <DropdownMenuItem
-              key={source}
-              onClick={() => {
-                onChange(source);
-              }}
-            >
-              {SOURCE_META[source].label}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }
 
 export function UsageRangeSelect({
@@ -452,54 +401,42 @@ function UsageRecordContent({
   );
 }
 
-export function LegacyPersonalUsageRecord() {
-  const loadable = useLastLoadable(usageRecordAsync$);
-  const loadMore = useSet(loadMoreLegacyUsageRecord$);
-  const filter = useGet(usageSourceFilter$);
+function TeamMemberUsageContent({
+  loadable,
+  range,
+}: {
+  loadable: UsageMembersLoadable;
+  range: UsageRecordRange;
+}) {
+  const membersLoadable = useLoadable(orgMembers$);
+  const orgMembersList =
+    membersLoadable.state === "hasData" ? membersLoadable.data : [];
+  const memberMap = new Map<string, OrgMember>(
+    orgMembersList.map((member) => {
+      return [member.userId, member];
+    }),
+  );
 
   return (
     <section className="flex flex-col gap-4">
       {loadable.state === "loading" && <UsageRecordSkeleton />}
       {loadable.state === "hasError" && (
         <p className="text-sm text-muted-foreground" role="alert">
-          Couldn&apos;t load your usage record. Please try again later.
+          Couldn&apos;t load team usage. Please try again later.
         </p>
       )}
       {loadable.state === "hasData" &&
-        (loadable.data.rows.length === 0 ? (
+        (!loadable.data.period ? (
           <p className="text-sm text-muted-foreground">
-            {filter
-              ? "No usage from this source yet."
-              : "No usage yet. Your runs will show up here as you use credits."}
+            No active billing period. Team usage is available on paid plans.
           </p>
+        ) : loadable.data.members.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>
         ) : (
-          <div className="flex flex-col gap-3">
-            <TooltipProvider delayDuration={100}>
-              <div
-                className="overflow-hidden rounded-xl bg-card"
-                style={{ border: CARD_BORDER }}
-              >
-                {loadable.data.rows.map((row) => {
-                  return <UsageRow key={usageRowKey(row)} row={row} />;
-                })}
-              </div>
-            </TooltipProvider>
-            {loadable.data.rows.length < loadable.data.pagination.total && (
-              <div className="flex justify-center">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
-                  onClick={() => {
-                    loadMore();
-                  }}
-                >
-                  Load more
-                </Button>
-              </div>
-            )}
-          </div>
+          <MemberUsageTable
+            members={loadable.data.members}
+            memberMap={memberMap}
+          />
         ))}
     </section>
   );
@@ -511,6 +448,6 @@ export function PersonalUsageRecord({ range }: { range: UsageRecordRange }) {
 }
 
 export function TeamUsageRecord({ range }: { range: UsageRecordRange }) {
-  const loadable = useLastLoadable(teamUsageRecordAsync$);
-  return <UsageRecordContent loadable={loadable} range={range} scope="team" />;
+  const loadable = useLastLoadable(teamMemberUsageAsync$);
+  return <TeamMemberUsageContent loadable={loadable} range={range} />;
 }

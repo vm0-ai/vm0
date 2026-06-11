@@ -78,10 +78,54 @@ describe("GET /api/zero/usage/members", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const response = await accept(apiClient().get({ headers: {} }), [401]);
+    const response = await accept(
+      apiClient().get({ query: {}, headers: {} }),
+      [401],
+    );
 
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 403 when a non-admin requests member usage", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, { currentPeriodEnd: null }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      apiClient().get({ query: {}, headers: authHeaders() }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only org admins can view member usage",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns 400 for invalid timezone values", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, { currentPeriodEnd: null }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { tz: "Not/A/Timezone" },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Invalid timezone: Not/A/Timezone",
+        code: "BAD_REQUEST",
+      },
     });
   });
 
@@ -92,11 +136,60 @@ describe("GET /api/zero/usage/members", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
+      apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
     );
 
     expect(response.body).toStrictEqual({ period: null, members: [] });
+  });
+
+  it("returns aggregated usage for a selected range using processedAt", async () => {
+    mockClerkUserLookup();
+    const fixture = await track(
+      store.set(seedUsageFixture$, { currentPeriodEnd: null }, context.signal),
+    );
+    const outsideUserId = `user_${randomUUID()}`;
+    const now = nowDate();
+
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        inputTokens: 100,
+        creditsCharged: 25,
+        processedAt: new Date(now.getTime() - 60 * 60 * 1000),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: outsideUserId,
+        inputTokens: 500,
+        creditsCharged: 99,
+        processedAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.period).not.toBeNull();
+    expect(response.body.members).toHaveLength(1);
+    expect(response.body.members[0]).toMatchObject({
+      userId: fixture.userId,
+      inputTokens: 100,
+      creditsCharged: 25,
+    });
   });
 
   it("returns aggregated usage for a single user with processed records", async () => {
@@ -137,7 +230,7 @@ describe("GET /api/zero/usage/members", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
+      apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
     );
 
@@ -190,7 +283,7 @@ describe("GET /api/zero/usage/members", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
+      apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
     );
 
@@ -234,7 +327,7 @@ describe("GET /api/zero/usage/members", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
+      apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
     );
 
@@ -355,7 +448,7 @@ describe("GET /api/zero/usage/members", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
+      apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
     );
 
@@ -443,7 +536,7 @@ describe("GET /api/zero/usage/members", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
+      apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
     );
 
@@ -508,7 +601,7 @@ describe("GET /api/zero/usage/members", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
+      apiClient().get({ query: {}, headers: authHeaders() }),
       [200],
     );
 

@@ -49,7 +49,7 @@ export function shouldAutoStartComputerUse(
     stateValue.supported &&
     hasReadyDesktopAuth(authState) &&
     hasRequiredComputerUsePermissions(stateValue.permissions) &&
-    (stateValue.host.status === "idle" ||
+    (stateValue.host.status === "offline" ||
       stateValue.host.status === "unauthenticated")
   );
 }

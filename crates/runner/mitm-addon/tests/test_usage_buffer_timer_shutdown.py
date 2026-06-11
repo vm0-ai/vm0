@@ -96,7 +96,6 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
         enqueued_runs.append(payload["runId"])
         if payload["runId"] == "run-1":
             timer_enqueue_started.set()
-            assert usage.flush_usage_events(trigger="runner") == 0
             usage.buffer_usage_events(
                 url,
                 sandbox_token,

@@ -22,6 +22,13 @@ export {
   type PresentationTemplateItem,
 } from "./presentation-template-items";
 export {
+  ILLUSTRATION_ASSET_BASE,
+  ILLUSTRATION_STYLES,
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  type IllustrationStyle,
+  type IllustrationTemplateItem,
+} from "./illustration-template-items";
+export {
   VIDEO_STYLE_GROUPS,
   VIDEO_STYLE_PRESETS,
   VIDEO_DIMENSION_DESCRIPTIONS,
@@ -247,6 +254,11 @@ export {
   firewallApiSchema,
   firewallSchema,
   firewallsSchema,
+  executionFirewallBuiltinEntrySchema,
+  executionFirewallInlineEntrySchema,
+  executionFirewallLegacyEntrySchema,
+  executionFirewallEntrySchema,
+  executionFirewallsSchema,
   firewallConfigSchema,
   firewallPolicyValueSchema,
   firewallPoliciesSchema,
@@ -578,6 +590,11 @@ export {
   type FirewallApi,
   type Firewall,
   type Firewalls,
+  type ExecutionFirewallBuiltinEntry,
+  type ExecutionFirewallInlineEntry,
+  type ExecutionFirewallLegacyEntry,
+  type ExecutionFirewallEntry,
+  type ExecutionFirewalls,
   type FirewallPolicyValue,
   type FirewallPolicy,
   type FirewallPolicies,

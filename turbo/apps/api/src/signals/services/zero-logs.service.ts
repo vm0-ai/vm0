@@ -155,7 +155,9 @@ export function zeroLogsList(
       conditions.push(eq(zeroRuns.triggerSource, params.triggerSource));
     }
     if (params.scheduleId) {
-      conditions.push(eq(zeroRuns.scheduleId, params.scheduleId));
+      // Schedule ids are automation ids (D2 on #16847); historical runs were
+      // backfilled with automation provenance by the drop migration.
+      conditions.push(eq(zeroRuns.automationId, params.scheduleId));
     }
 
     const whereClause = and(...conditions);
@@ -171,7 +173,7 @@ export function zeroLogsList(
           startedAt: agentRuns.startedAt,
           completedAt: agentRuns.completedAt,
           triggerSource: zeroRuns.triggerSource,
-          scheduleId: zeroRuns.scheduleId,
+          scheduleId: zeroRuns.automationId,
           agentId: zeroAgents.id,
           composeName: agentComposes.name,
           composeContent: agentComposeVersions.content,
@@ -261,7 +263,7 @@ async function getLogsTotalCount(
     conditions.push(eq(zeroRuns.triggerSource, params.triggerSource));
   }
   if (params.scheduleId) {
-    conditions.push(eq(zeroRuns.scheduleId, params.scheduleId));
+    conditions.push(eq(zeroRuns.automationId, params.scheduleId));
   }
 
   const [result] = await db
@@ -401,7 +403,7 @@ export function zeroLogDetail(
         agentId: zeroAgents.id,
         agentDisplayName: zeroAgents.displayName,
         triggerSource: zeroRuns.triggerSource,
-        scheduleId: zeroRuns.scheduleId,
+        scheduleId: zeroRuns.automationId,
         triggerAgentName: triggerAgentAlias.displayName,
         modelProvider: zeroRuns.modelProvider,
         selectedModel: zeroRuns.selectedModel,

@@ -3,12 +3,13 @@
 import json
 from pathlib import Path
 
+import brotli
 import pytest
 from mitmproxy.flow import Error
 
-import body_utils
 import mitm_addon
 import usage
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
 from tests.x_flow_helpers import (
     json_body_that_exceeds_decoder_recursion,
@@ -55,9 +56,9 @@ class TestXConnectorResponsePipeline:
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
         callback(b'{"data":[{"id":"1","text":"')
-        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096))
+        callback(b"x" * (STREAM_BUFFER_LIMIT + 4096))
         callback(b'"}],"includes":{"users":[{"id":"u1"}]},"meta":{"result_count":1}}')
-        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
         with self._usage_webhook_api() as webhook:
@@ -77,7 +78,7 @@ class TestXConnectorResponsePipeline:
         with mitm_ctx() as log:
             mitm_addon.responseheaders(flow)
         response_stream(flow)(
-            body_utils.brotli.compress(b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}')
+            brotli.compress(b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}')
         )
 
         payloads = self._call_and_get_billing(flow)
@@ -364,7 +365,7 @@ class TestXConnectorResponsePipeline:
         )
 
         mitm_addon.responseheaders(flow)
-        response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * body_utils.STREAM_BUFFER_LIMIT)
+        response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * STREAM_BUFFER_LIMIT)
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
         with self._usage_webhook_api() as webhook:

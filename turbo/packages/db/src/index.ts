@@ -14,7 +14,6 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
-import * as zeroAgentScheduleSchema from "./schema/zero-agent-schedule";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
@@ -99,7 +98,6 @@ export const schema = {
   ...runnerSchema,
   ...runnerStateSchema,
   ...agentRunQueueSchema,
-  ...zeroAgentScheduleSchema,
   ...secretSchema,
   ...modelProviderSchema,
   ...orgModelPolicySchema,

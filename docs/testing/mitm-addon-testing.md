@@ -47,7 +47,10 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_matching_base_url_parameterized.py` | Parameterized firewall base URL matching |
 | `test_matching_mixed_segments.py` | Mixed parameter-segment matcher regressions |
 | `test_matching_anthropic_firewall_scope.py` | Anthropic firewall scope matching regressions |
-| `test_firewall_matching.py` | Raw firewall request matching and network policy behavior |
+| `test_firewall_request_matching.py` | Raw firewall request matching through the compiled matcher |
+| `test_firewall_request_base_matching.py` | Request-layer firewall base URL matching through raw firewall config |
+| `test_firewall_request_rel_path.py` | Request-layer `rel_path` propagation through raw firewall config |
+| `test_firewall_network_policy_decisions.py` | Request-layer network policy decision behavior |
 | `test_compiled_firewall_base_path_matching.py` | Compiled firewall base path, rule path, segment boundary, and path syntax matching |
 | `test_compiled_firewall_host_base_matching.py` | Compiled firewall host-parameterized base matching |
 | `test_compiled_firewall_authority_normalization.py` | Compiled firewall runtime URL, authority, and port normalization |
@@ -68,11 +71,17 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_auth_query_injection.py` | Firewall auth query injection and query rewrite behavior |
 | `test_url_utils.py` | URL reconstruction and rewrite utility cases |
 | `test_auth_cache.py` | Firewall auth cache behavior |
-| `test_anthropic_messages.py` | Anthropic Messages usage extraction |
+| `test_body_capture.py` | Body capture helpers, capture fields, and capture-level decompression integration |
+| `test_body_decoding.py` | Shared body decoding, streaming decode, codec limits, and decompression errors |
+| `test_anthropic_messages.py` | Anthropic Messages SSE and JSON usage extraction |
+| `test_openai_responses_event_json.py` | OpenAI Responses event JSON usage extraction and merge behavior |
+| `test_openai_responses_json.py` | OpenAI Responses non-SSE JSON usage extraction |
 | `test_openai_responses_sse.py` | OpenAI Responses SSE usage extraction |
 | `test_response_streaming.py` | Response streaming parser setup |
 | `test_model_provider_response_usage.py` | Model provider JSON response usage pipeline |
-| `test_model_provider_stream_usage.py` | Model provider SSE and WebSocket usage pipeline |
+| `test_model_provider_sse_usage.py` | Model provider SSE usage pipeline |
+| `test_model_provider_websocket_usage.py` | Model provider WebSocket usage reporting pipeline |
+| `test_model_provider_websocket_metadata.py` | Model provider WebSocket usage metadata parsing |
 | `test_model_provider_usage.py` | Model provider usage reporter |
 | `test_connector_usage.py` | Connector usage reporter and stream-path detection |
 | `test_usage_idempotency.py` | Usage event idempotency key helpers |

@@ -31,18 +31,18 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# auth_base_forwarder/body_utils/matching/registry/response_streaming/usage
+# auth_base_forwarder/body_capture/matching/registry/response_streaming/usage
 # are imported by module
 # (not selective `from X import ...`)
 # so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
-#      ``body_utils.X(...)`` / ``matching.X(...)`` / ``registry.X(...)`` /
+#      ``body_capture.X(...)`` / ``matching.X(...)`` / ``registry.X(...)`` /
 #      ``response_streaming.X(...)`` / ``usage.X(...)``,
 #      making the module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import auth_base_forwarder
-import body_utils
+import body_capture
 import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
@@ -1066,7 +1066,7 @@ def response(flow: http.HTTPFlow) -> None:
 
         # Add captured header names, selected safe header values, and bodies when enabled
         if flow.metadata.get(metadata_keys.CAPTURE_BODY):
-            body_utils.add_capture_fields(flow, log_entry)
+            body_capture.add_capture_fields(flow, log_entry)
 
         log_network_entry(network_log_path, log_entry)
 

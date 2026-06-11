@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DesktopConfig } from "./config";
-import { IDLE_COMPUTER_USE_HOST_STATE } from "./computer-use-types";
+import { OFFLINE_COMPUTER_USE_HOST_STATE } from "./computer-use-types";
 import type { ComputerUseHostRuntimeState } from "./computer-use-types";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 
@@ -120,9 +120,9 @@ describe("desktop auto-updates", () => {
     });
   });
 
-  it("silently restarts after a downloaded update when Computer Use is idle", async () => {
+  it("silently restarts after a downloaded update when Computer Use is offline", async () => {
     const { updateOptions, prepareForQuitAndInstall } =
-      installAndCaptureUpdateOptions(() => IDLE_COMPUTER_USE_HOST_STATE);
+      installAndCaptureUpdateOptions(() => OFFLINE_COMPUTER_USE_HOST_STATE);
 
     updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
 
@@ -136,7 +136,7 @@ describe("desktop auto-updates", () => {
   it("prompts instead of silently restarting during recent command activity", async () => {
     const { updateOptions, prepareForQuitAndInstall } =
       installAndCaptureUpdateOptions(() => ({
-        ...IDLE_COMPUTER_USE_HOST_STATE,
+        ...OFFLINE_COMPUTER_USE_HOST_STATE,
         lastCommandAt: new Date().toISOString(),
       }));
 

@@ -807,33 +807,41 @@ fn execution_context_deserializes_with_firewalls() {
         "cliAgentType": "claude-code",
         "billableFirewalls": [],
         "firewalls": [{
-            "name": "github",
-            "apis": [{
-                "base": "https://api.github.com",
-                "auth": {
-                    "headers": {
-                        "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
-                    }
-                },
-                "permissions": [
-                    {
-                        "name": "issues-read",
-                        "rules": [
-                            "GET /repos/{owner}/{repo}/issues",
-                            "GET /repos/{owner}/{repo}/issues/{issue_number}"
-                        ]
-                    }
-                ]
-            }]
+            "kind": "inline",
+            "firewall": {
+                "name": "github",
+                "apis": [{
+                    "base": "https://api.github.com",
+                    "auth": {
+                        "headers": {
+                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+                        }
+                    },
+                    "permissions": [
+                        {
+                            "name": "issues-read",
+                            "rules": [
+                                "GET /repos/{owner}/{repo}/issues",
+                                "GET /repos/{owner}/{repo}/issues/{issue_number}"
+                            ]
+                        }
+                    ]
+                }]
+            }
         }]
     });
     let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
     let svcs = ctx.firewalls.unwrap();
     assert_eq!(svcs.len(), 1);
-    assert_eq!(svcs[0].name, "github");
-    assert_eq!(svcs[0].apis.len(), 1);
-    assert_eq!(svcs[0].apis[0].base, "https://api.github.com");
-    let perms = svcs[0].apis[0].permissions.as_ref().unwrap();
+    let crate::types::FirewallEntry::Tagged(crate::types::TaggedFirewallEntry::Inline { firewall }) =
+        &svcs[0]
+    else {
+        panic!("expected inline firewall entry");
+    };
+    assert_eq!(firewall.name, "github");
+    assert_eq!(firewall.apis.len(), 1);
+    assert_eq!(firewall.apis[0].base, "https://api.github.com");
+    let perms = firewall.apis[0].permissions.as_ref().unwrap();
     assert_eq!(perms.len(), 1);
     assert_eq!(perms[0].name, "issues-read");
     assert_eq!(perms[0].rules.len(), 2);

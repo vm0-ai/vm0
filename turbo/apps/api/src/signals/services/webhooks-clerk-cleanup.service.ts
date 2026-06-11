@@ -30,7 +30,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
-import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { automations } from "@vm0/db/schema/automation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
@@ -478,9 +478,7 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
     await cleanupWorkspaceInstallation(db, installation.slackWorkspaceId);
   }
 
-  await db
-    .delete(zeroAgentSchedules)
-    .where(eq(zeroAgentSchedules.orgId, orgId));
+  await db.delete(automations).where(eq(automations.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
   await db.delete(storages).where(eq(storages.orgId, orgId));
@@ -547,9 +545,7 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db.delete(variables).where(eq(variables.userId, userId));
   await db.delete(usageDaily).where(eq(usageDaily.userId, userId));
   await db.delete(exportJobs).where(eq(exportJobs.userId, userId));
-  await db
-    .delete(zeroAgentSchedules)
-    .where(eq(zeroAgentSchedules.userId, userId));
+  await db.delete(automations).where(eq(automations.userId, userId));
   await db.delete(cliTokens).where(eq(cliTokens.userId, userId));
   await db.delete(composeJobs).where(eq(composeJobs.userId, userId));
   await db

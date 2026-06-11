@@ -278,13 +278,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
   },
-  [FeatureSwitchKey.ApiBackend]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Route platform API traffic to the api backend host instead of the www backend host. Unported endpoints continue through the api backend's web fallback proxy.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -333,6 +326,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatCompletedWorkFolding]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Collapse earlier Zero chat work history after a run finishes, leaving the final message visible.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatRecommendedFollowups]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -355,13 +355,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CreditUsageRecords]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show ranged personal and team credit usage records in settings, and enable scoped/ranged /api/zero/usage/record queries.",
-    enabled: false,
+      "Show ranged personal credit usage records and team member usage aggregates in settings, and enable scoped/ranged /api/zero/usage/record queries.",
+    enabled: true,
   },
   [FeatureSwitchKey.ZeroAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Expose the Automations API surface (/api/automations) over the shared automation service. When disabled, the new endpoints 404 and only the legacy /api/zero/schedules surface is reachable.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.AutomationWebhookTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow webhook triggers on automations: creating them (API + CLI sugar), the inbound dispatch endpoint, and secret rotation. Webhook triggers are a NEW capability on top of the schedule-parity automation surface; while off, automations are feature-equivalent to legacy schedules (time triggers only).",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

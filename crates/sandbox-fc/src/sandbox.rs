@@ -634,6 +634,18 @@ enum ProcessMonitorExit {
     Reaped(io::Result<std::process::ExitStatus>),
 }
 
+/// Firecracker-backed implementation of [`sandbox::Sandbox`].
+///
+/// A `FirecrackerSandbox` owns the host-side resources for one Firecracker
+/// sandbox lifecycle, including the VM process once started. Callers normally
+/// obtain instances through [`crate::FirecrackerRuntime`] and
+/// [`sandbox::SandboxFactory::create`] rather than constructing this type
+/// directly.
+///
+/// Use the [`sandbox::Sandbox`] trait methods for sandbox operations and release
+/// instances through [`sandbox::SandboxFactory::destroy`]. `Drop` only provides
+/// best-effort emergency leak cleanup if explicit destruction is missed; it is
+/// not a substitute for successful factory destruction.
 pub struct FirecrackerSandbox {
     pub(crate) config: SandboxConfig,
     factory_config: FirecrackerConfig,

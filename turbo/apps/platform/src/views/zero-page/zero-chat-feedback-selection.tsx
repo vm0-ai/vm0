@@ -28,6 +28,7 @@ import {
   copyFeedbackSelection$,
   dismissFeedback$,
   dismissFeedbackOnScroll$,
+  dismissFeedbackSelection$,
   editFeedbackComment$,
   feedbackActiveValue$,
   feedbackCommentsValue$,
@@ -251,7 +252,7 @@ export function ChatFeedbackSelection() {
   const capture = useSet(captureFeedbackSelection$);
   const dismissOnScroll = useSet(dismissFeedbackOnScroll$);
   const startFeedback = useSet(startFeedback$);
-  const dismiss = useSet(dismissFeedback$);
+  const dismissSelection = useSet(dismissFeedbackSelection$);
   const copy = useSet(copyFeedbackSelection$);
 
   return (
@@ -262,7 +263,7 @@ export function ChatFeedbackSelection() {
           open
           onOpenChange={(next) => {
             if (!next) {
-              dismiss();
+              dismissSelection();
             }
           }}
         >

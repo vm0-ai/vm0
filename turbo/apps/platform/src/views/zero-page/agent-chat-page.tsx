@@ -58,6 +58,7 @@ import {
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   onlineComputerUseHosts$,
+  reloadOnlineComputerUseHosts$,
   selectedOnlineComputerUseHostId,
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
@@ -422,11 +423,14 @@ function useNewThreadComputerUse() {
   const features = useLastResolved(featureSwitch$);
   const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
   const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
+  const lastResolvedComputerUseHosts =
+    useLastResolved(onlineComputerUseHosts$) ?? [];
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
-      : [];
+      : lastResolvedComputerUseHosts;
   const storedComputerUseHostId = useGet(newThreadComputerUseHostId$);
+  const reloadComputerUseHosts = useSet(reloadOnlineComputerUseHosts$);
   const selectedComputerUseHostId = selectedOnlineComputerUseHostId(
     computerUseHosts,
     storedComputerUseHostId,
@@ -443,9 +447,12 @@ function useNewThreadComputerUse() {
     computerUse: computerUseEnabled
       ? {
           hosts: computerUseHosts,
-          loading: computerUseHostsLoadable.state === "loading",
+          loading:
+            computerUseHostsLoadable.state === "loading" &&
+            computerUseHosts.length === 0,
           selectedHostId: selectedComputerUseHostId,
           onChange: setComputerUseHostId,
+          onRefresh: reloadComputerUseHosts,
           downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
         }
       : undefined,

@@ -82,7 +82,7 @@ describe("GET /api/zero/feature-switches", () => {
       store.set(
         seedFeatureSwitches$,
         {
-          apiBackend: true,
+          lab: true,
           audioInput: false,
         },
         context.signal,
@@ -101,7 +101,7 @@ describe("GET /api/zero/feature-switches", () => {
 
     expect(response.body).toStrictEqual({
       switches: {
-        apiBackend: true,
+        lab: true,
         audioInput: false,
       },
     });

@@ -260,6 +260,15 @@ mod tests {
     }
 
     #[test]
+    fn decode_write_file_rejects_invalid_utf8_path() {
+        let payload = [0, 1, 0xC3, 0, 0, 0, 0, 0];
+
+        let err = decode_write_file(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "invalid UTF-8 in path");
+    }
+
+    #[test]
     fn decode_write_file_result_rejects_trailing_bytes() {
         let mut payload = encode_write_file_result(false, "permission denied");
         payload.push(0);

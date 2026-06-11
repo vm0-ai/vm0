@@ -114,7 +114,7 @@ export const zeroUsageRecordContract = c.router({
       500: apiErrorSchema,
     },
     summary:
-      "Get personal or team usage records across sources, ordered by recent activity",
+      "Get personal usage records across sources, ordered by recent activity",
   },
 });
 
