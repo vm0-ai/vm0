@@ -112,7 +112,10 @@ async function enableAutomations(fixture: SchedulesFixture): Promise<void> {
   await db.insert(userFeatureSwitches).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ZeroAutomations]: true },
+    switches: {
+      [FeatureSwitchKey.ZeroAutomations]: true,
+      [FeatureSwitchKey.AutomationWebhookTriggers]: true,
+    },
   });
 }
 

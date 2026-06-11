@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { command, computed } from "ccstate";
 import {
   automationsV2ByRefContract,
   automationsV2MainContract,
@@ -29,6 +29,9 @@ import {
   type AutomationViewV2,
 } from "../services/automations-v2.service";
 import { webhookUrlForToken } from "../services/webhook-automations.service";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { automationsEnabled$ } from "./automations";
 import type { RouteEntry } from "../route";
 
@@ -106,6 +109,25 @@ function automationResponse(view: AutomationViewV2): AutomationResponseV2 {
   };
 }
 
+// Webhook triggers are a NEW capability gated separately from the automation
+// surface itself (#17307): while off, automations stay feature-equivalent to
+// legacy schedules (time triggers only). Creating webhook triggers, rotating
+// their secrets, and the inbound dispatch all respect this switch.
+export const webhookTriggersEnabled$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  return isFeatureEnabled(FeatureSwitchKey.AutomationWebhookTriggers, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
+});
+
+const WEBHOOK_TRIGGERS_DISABLED_MESSAGE =
+  "Webhook triggers are not enabled for this workspace";
+
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!(await get(automationsEnabled$))) {
     return notFound(NOT_FOUND_MESSAGE);
@@ -117,6 +139,13 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
+  if (
+    bodyResult.data.trigger?.kind === "webhook" &&
+    !(await get(webhookTriggersEnabled$))
+  ) {
+    return badRequestMessage(WEBHOOK_TRIGGERS_DISABLED_MESSAGE);
+  }
+  signal.throwIfAborted();
 
   const result = await set(
     createAutomationV2$,
@@ -329,6 +358,13 @@ const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
+  if (
+    bodyResult.data.kind === "webhook" &&
+    !(await get(webhookTriggersEnabled$))
+  ) {
+    return badRequestMessage(WEBHOOK_TRIGGERS_DISABLED_MESSAGE);
+  }
+  signal.throwIfAborted();
 
   const result = await set(
     addTriggerV2$,
@@ -471,6 +507,9 @@ const rotateSecretInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!(await get(automationsEnabled$))) {
       return notFound(NOT_FOUND_MESSAGE);
+    }
+    if (!(await get(webhookTriggersEnabled$))) {
+      return badRequestMessage(WEBHOOK_TRIGGERS_DISABLED_MESSAGE);
     }
     signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
