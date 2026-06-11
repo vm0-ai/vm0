@@ -116,20 +116,6 @@ function storedAgent(content: unknown, name: string): Record<string, unknown> {
 }
 
 describe("POST /api/agent/composes", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const response = await accept(
-      client().create({
-        body: { content: composeContent("unauth-agent") },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
   it("creates a new compose", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

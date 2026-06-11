@@ -1617,3 +1617,16 @@ changed: false }`, no Ably publish).
   seeded compose row and stays in the kept legacy.
 - Reduced `agent-composes-metadata.test.ts` (10 -> 7).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 80 — AGENT COMPOSE CREATE REJECTIONS (CHAIN-AGENT-COMPOSES-CREATE-REJECTIONS, reduce-legacy + GWT chain)
+
+- Reused the CLI-facing `agentComposesMain` client's `create` + `getByName`.
+- Added `agent-composes-create-rejections.bdd.test.ts`: create rejects
+  unauthenticated callers (401); plus a full Given-When-Then — an admin creates a
+  compose (creating a compose is free; a unique name avoids the content-hash
+  version-reuse path), which is then readable back by name.
+- The name-normalization, field-stripping, update-by-name, version-reuse,
+  agent-name / framework validation 400s and sandbox-token variants need seeded
+  composes or structured invalid content and stay in the kept legacy.
+- Reduced `agent-composes-create.test.ts` (12 -> 11).
+- Coverage verified (source-only): no regressions vs `main`.
