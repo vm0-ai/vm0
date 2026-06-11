@@ -58,6 +58,7 @@ interface InsertUsageEventArgs {
   readonly quantity?: number;
   readonly creditsCharged?: number | null;
   readonly status?: string;
+  readonly createdAt?: Date;
   readonly processedAt?: Date | null;
 }
 
@@ -71,6 +72,7 @@ interface InsertModelUsageArgs {
   readonly cacheCreationInputTokens?: number;
   readonly creditsCharged?: number | null;
   readonly status?: string;
+  readonly createdAt?: Date;
   readonly processedAt?: Date | null;
 }
 
@@ -238,6 +240,7 @@ export const insertUsageEvent$ = command(
         quantity: args.quantity ?? 1,
         creditsCharged: args.creditsCharged ?? null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       })
@@ -275,6 +278,7 @@ export const insertModelUsage$ = command(
         quantity: args.inputTokens ?? 0,
         creditsCharged: args.creditsCharged ?? null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       },
@@ -288,6 +292,7 @@ export const insertModelUsage$ = command(
         quantity: args.outputTokens ?? 0,
         creditsCharged: null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       },
@@ -301,6 +306,7 @@ export const insertModelUsage$ = command(
         quantity: args.cacheReadInputTokens ?? 0,
         creditsCharged: null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       },
@@ -314,6 +320,7 @@ export const insertModelUsage$ = command(
         quantity: args.cacheCreationInputTokens ?? 0,
         creditsCharged: null,
         status,
+        createdAt: args.createdAt,
         processedAt,
         idempotencyKey: randomUUID(),
       },

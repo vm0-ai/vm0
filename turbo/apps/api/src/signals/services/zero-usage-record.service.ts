@@ -1,12 +1,19 @@
 import { command } from "ccstate";
 import { sql } from "drizzle-orm";
 import type {
+  UsageRecordKind,
+  UsageRecordRange,
   UsageRecordRow,
   UsageRecordResponse,
+  UsageRecordScope,
   UsageRecordSource,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
 
+import { clerk$ } from "../external/clerk";
+import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
+import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
+import { resolveEmails } from "./zero-usage.service";
 
 const MODEL_USAGE_KIND = "model";
 const MODEL_TOKEN_CATEGORIES = [
@@ -16,6 +23,8 @@ const MODEL_TOKEN_CATEGORIES = [
   "tokens.cache_creation",
 ] as const;
 const THREADED_SOURCES = ["chat", "schedule"] as const;
+const USAGE_RECORD_KINDS = ["model", "image", "video", "connector"] as const;
+const DAY_MS = 86_400_000;
 const PASSTHROUGH_TRIGGER_SOURCES = [
   "schedule",
   "slack",
@@ -30,19 +39,41 @@ const PASSTHROUGH_TRIGGER_SOURCES = [
 interface UsageRecordArgs {
   readonly userId: string;
   readonly orgId: string;
+  readonly scope: UsageRecordScope;
+  readonly range: UsageRecordRange;
+  readonly tz: string;
   readonly page: number;
   readonly pageSize: number;
   readonly source?: UsageRecordSource;
 }
 
+interface UsageRecordPeriod {
+  readonly start: Date;
+  readonly end: Date;
+}
+
 interface UsageRecordSqlRow extends Record<string, unknown> {
+  row_key: string;
   source: string;
+  user_id: string;
   thread_id: string | null;
   run_id: string | null;
   title: string | null;
   credits: string;
   tokens: string;
   last_activity: Date | string;
+}
+
+interface UsageRecordIntermediateRow extends UsageRecordRow {
+  readonly rowKey: string;
+  readonly userId: string;
+}
+
+interface UsageRecordBreakdownSqlRow extends Record<string, unknown> {
+  row_key: string;
+  kind: string;
+  provider: string;
+  credits: string;
 }
 
 function pgLit(value: string): string {
@@ -64,25 +95,148 @@ function sourceExpr(triggerSource: string): string {
     END`;
 }
 
+function usageKindExpr(kind: string): string {
+  const usageKindList = USAGE_RECORD_KINDS.map(pgLit).join(", ");
+  return `
+    CASE
+      WHEN ${kind} IN (${usageKindList}) THEN ${kind}
+      ELSE 'other'
+    END`;
+}
+
+interface TimeParts {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+  readonly hour: number;
+  readonly minute: number;
+  readonly second: number;
+}
+
+function partsInTz(date: Date, tz: string): TimeParts {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes): number => {
+    return Number(
+      parts.find((part) => {
+        return part.type === type;
+      })?.value ?? 0,
+    );
+  };
+
+  return {
+    year: value("year"),
+    month: value("month"),
+    day: value("day"),
+    hour: value("hour"),
+    minute: value("minute"),
+    second: value("second"),
+  };
+}
+
+function startOfCalendarDateInTz(isoDate: string, tz: string): Date {
+  const [yearPart, monthPart, dayPart] = isoDate.split("-");
+  const year = Number(yearPart);
+  const month = Number(monthPart);
+  const day = Number(dayPart);
+  const target = Date.UTC(year, month - 1, day, 0, 0, 0);
+  let guess = target;
+
+  for (let i = 0; i < 4; i++) {
+    const parts = partsInTz(new Date(guess), tz);
+    const actual = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second,
+    );
+    const delta = actual - target;
+    if (delta === 0) {
+      return new Date(guess);
+    }
+    guess -= delta;
+  }
+
+  return new Date(guess);
+}
+
+function calendarDateInTz(date: Date, tz: string): string {
+  const parts = partsInTz(date, tz);
+  return [
+    parts.year.toString().padStart(4, "0"),
+    parts.month.toString().padStart(2, "0"),
+    parts.day.toString().padStart(2, "0"),
+  ].join("-");
+}
+
+function startOfDayInTz(date: Date, tz: string): Date {
+  return startOfCalendarDateInTz(calendarDateInTz(date, tz), tz);
+}
+
+function fixedRangeToPeriod(
+  range: Exclude<UsageRecordRange, "billingPeriod">,
+  tz: string,
+): UsageRecordPeriod {
+  const now = nowDate();
+  const todayStart = startOfDayInTz(now, tz);
+
+  switch (range) {
+    case "today": {
+      return { start: todayStart, end: now };
+    }
+    case "yesterday": {
+      const start = new Date(todayStart.getTime() - DAY_MS);
+      return { start, end: todayStart };
+    }
+    case "24h": {
+      return { start: new Date(now.getTime() - DAY_MS), end: now };
+    }
+    case "7d": {
+      return { start: new Date(now.getTime() - 7 * DAY_MS), end: now };
+    }
+  }
+}
+
 // Per-source usage for one user in one org. `record` is the shared CTE so the
 // row query and the count query stay in sync. Threaded sources collapse to one
 // row per source/thread; everything else is one row per run.
-function recordWith(userIdLit: string, orgIdLit: string): string {
+function recordWith(
+  userIdLit: string,
+  orgIdLit: string,
+  period: UsageRecordPeriod,
+): string {
   const threadedSourceList = THREADED_SOURCES.map(pgLit).join(", ");
+  const userPredicate = userIdLit ? `AND ue.user_id = ${userIdLit}` : "";
+  const startTsLit = pgLit(period.start.toISOString());
+  const endTsLit = pgLit(period.end.toISOString());
   return `
     WITH usage_rows AS (
       SELECT
         ue.run_id,
+        ue.user_id,
         COALESCE(ue.credits_charged, 0)::bigint AS credits,
         ${tokenExpr()}::bigint AS tokens
       FROM usage_event ue
-      WHERE ue.user_id = ${userIdLit}
-        AND ue.org_id = ${orgIdLit}
+      WHERE ue.org_id = ${orgIdLit}
+        ${userPredicate}
         AND ue.status = 'processed'
+        AND ue.created_at >= ${startTsLit}::timestamptz
+        AND ue.created_at < ${endTsLit}::timestamptz
     ),
     runs AS (
       SELECT
         ur.run_id,
+        ur.user_id,
         ur.credits,
         ur.tokens,
         ${sourceExpr("zr.trigger_source")} AS source,
@@ -96,7 +250,9 @@ function recordWith(userIdLit: string, orgIdLit: string): string {
     ),
     threaded AS (
       SELECT
+        CONCAT(r.source, ':thread:', r.chat_thread_id::text, ':user:', r.user_id) AS row_key,
         r.source,
+        r.user_id,
         r.chat_thread_id::text AS thread_id,
         NULL::text AS run_id,
         ct.title AS title,
@@ -107,11 +263,13 @@ function recordWith(userIdLit: string, orgIdLit: string): string {
       LEFT JOIN chat_threads ct ON ct.id = r.chat_thread_id
       WHERE r.chat_thread_id IS NOT NULL
         AND r.source IN (${threadedSourceList})
-      GROUP BY r.source, r.chat_thread_id, ct.title
+      GROUP BY r.source, r.user_id, r.chat_thread_id, ct.title
     ),
     unthreaded AS (
       SELECT
+        CONCAT(r.source, ':run:', r.run_id::text, ':user:', r.user_id) AS row_key,
         r.source,
+        r.user_id,
         NULL::text AS thread_id,
         r.run_id::text AS run_id,
         LEFT(COALESCE(NULLIF(MAX(r.summary), ''), MAX(r.prompt)), 120) AS title,
@@ -121,7 +279,7 @@ function recordWith(userIdLit: string, orgIdLit: string): string {
       FROM runs r
       WHERE r.chat_thread_id IS NULL
         OR r.source NOT IN (${threadedSourceList})
-      GROUP BY r.run_id, r.source
+      GROUP BY r.run_id, r.source, r.user_id
     ),
     record AS (
       SELECT * FROM threaded
@@ -136,12 +294,12 @@ async function queryUsageRecordRows(
   sourceFilterLit: string | null,
   pageSize: number,
   offset: number,
-): Promise<UsageRecordRow[]> {
+): Promise<UsageRecordIntermediateRow[]> {
   const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
   const result = await db.execute<UsageRecordSqlRow>(
     sql.raw(`
       ${recordCte}
-      SELECT source, thread_id, run_id, title, credits, tokens, last_activity
+      SELECT row_key, source, user_id, thread_id, run_id, title, credits, tokens, last_activity
       FROM record
       ${where}
       ORDER BY last_activity DESC
@@ -154,12 +312,16 @@ async function queryUsageRecordRows(
         ? row.last_activity.toISOString()
         : new Date(row.last_activity).toISOString();
     return {
+      rowKey: row.row_key,
       source: row.source as UsageRecordSource,
+      userId: row.user_id,
       threadId: row.thread_id,
       runId: row.run_id,
       title: row.title,
       credits: Number(row.credits),
       tokens: Number(row.tokens),
+      breakdown: [],
+      member: null,
       lastActivityAt: lastActivity,
     };
   });
@@ -180,18 +342,160 @@ async function queryUsageRecordTotal(
   return Number(result.rows[0]?.total ?? 0);
 }
 
+function rowKeyExpr(
+  source: string,
+  chatThreadId: string,
+  runId: string,
+  userId: string,
+): string {
+  const threadedSourceList = THREADED_SOURCES.map(pgLit).join(", ");
+  return `
+    CASE
+      WHEN ${chatThreadId} IS NOT NULL AND ${source} IN (${threadedSourceList})
+        THEN CONCAT(${source}, ':thread:', ${chatThreadId}::text, ':user:', ${userId})
+      ELSE CONCAT(${source}, ':run:', ${runId}::text, ':user:', ${userId})
+    END`;
+}
+
+async function queryUsageRecordBreakdown(
+  db: Db,
+  userIdLit: string,
+  orgIdLit: string,
+  period: UsageRecordPeriod,
+  rowKeys: readonly string[],
+): Promise<Map<string, UsageRecordRow["breakdown"]>> {
+  if (rowKeys.length === 0) {
+    return new Map();
+  }
+
+  const userPredicate = userIdLit ? `AND ue.user_id = ${userIdLit}` : "";
+  const startTsLit = pgLit(period.start.toISOString());
+  const endTsLit = pgLit(period.end.toISOString());
+  const rowKeyList = rowKeys.map(pgLit).join(", ");
+  const sourceSql = sourceExpr("zr.trigger_source");
+  const kindSql = usageKindExpr("ue.kind");
+
+  const result = await db.execute<UsageRecordBreakdownSqlRow>(
+    sql.raw(`
+      WITH usage_rows AS (
+        SELECT
+          ${sourceSql} AS source,
+          zr.chat_thread_id,
+          ue.run_id,
+          ue.user_id,
+          ${kindSql} AS kind,
+          COALESCE(NULLIF(ue.provider, ''), 'unknown') AS provider,
+          COALESCE(ue.credits_charged, 0)::bigint AS credits
+        FROM usage_event ue
+        INNER JOIN zero_runs zr ON zr.id = ue.run_id
+        WHERE ue.org_id = ${orgIdLit}
+          ${userPredicate}
+          AND ue.status = 'processed'
+          AND ue.created_at >= ${startTsLit}::timestamptz
+          AND ue.created_at < ${endTsLit}::timestamptz
+      ),
+      keyed AS (
+        SELECT
+          ${rowKeyExpr("source", "chat_thread_id", "run_id", "user_id")} AS row_key,
+          kind,
+          provider,
+          credits
+        FROM usage_rows
+      )
+      SELECT row_key, kind, provider, SUM(credits)::bigint AS credits
+      FROM keyed
+      WHERE row_key IN (${rowKeyList})
+      GROUP BY row_key, kind, provider
+      HAVING SUM(credits) > 0
+      ORDER BY row_key, kind, provider
+    `),
+  );
+
+  const byRow = new Map<
+    string,
+    Map<UsageRecordKind, UsageRecordBreakdownSqlRow[]>
+  >();
+  for (const row of result.rows) {
+    const kind = row.kind as UsageRecordKind;
+    const kinds = byRow.get(row.row_key) ?? new Map();
+    const providers = kinds.get(kind) ?? [];
+    providers.push(row);
+    kinds.set(kind, providers);
+    byRow.set(row.row_key, kinds);
+  }
+
+  const breakdownByRow = new Map<string, UsageRecordRow["breakdown"]>();
+  for (const [rowKey, kindMap] of byRow) {
+    const breakdown: UsageRecordRow["breakdown"] = [];
+    for (const kind of [
+      "model",
+      "image",
+      "video",
+      "connector",
+      "other",
+    ] as const) {
+      const providerRows = kindMap.get(kind) ?? [];
+      if (providerRows.length === 0) {
+        continue;
+      }
+      const providers = providerRows.map((row) => {
+        return {
+          provider: row.provider,
+          credits: Number(row.credits),
+        };
+      });
+      breakdown.push({
+        kind,
+        credits: providers.reduce((sum, provider) => {
+          return sum + provider.credits;
+        }, 0),
+        providers,
+      });
+    }
+    breakdownByRow.set(rowKey, breakdown);
+  }
+
+  return breakdownByRow;
+}
+
 export const zeroUsageRecord$ = command(
   async (
-    { set },
+    { get, set },
     args: UsageRecordArgs,
     signal: AbortSignal,
   ): Promise<UsageRecordResponse> => {
+    const billingPeriod =
+      args.range === "billingPeriod"
+        ? await set(getOrgBillingPeriod$, args.orgId, signal)
+        : null;
+    signal.throwIfAborted();
+
+    if (args.range === "billingPeriod" && !billingPeriod) {
+      return {
+        period: null,
+        rows: [],
+        pagination: {
+          page: args.page,
+          pageSize: args.pageSize,
+          total: 0,
+        },
+      };
+    }
+
+    const period =
+      args.range === "billingPeriod"
+        ? billingPeriod
+        : fixedRangeToPeriod(args.range, args.tz);
+    if (!period) {
+      throw new Error("usage record period was not resolved");
+    }
+
     const db = set(writeDb$);
-    const userIdLit = pgLit(args.userId);
+    const userIdLit = args.scope === "mine" ? pgLit(args.userId) : "";
     const orgIdLit = pgLit(args.orgId);
     const sourceFilterLit = args.source ? pgLit(args.source) : null;
     const offset = (args.page - 1) * args.pageSize;
-    const recordCte = recordWith(userIdLit, orgIdLit);
+    const recordCte = recordWith(userIdLit, orgIdLit, period);
 
     signal.throwIfAborted();
     const rows = await queryUsageRecordRows(
@@ -202,11 +506,60 @@ export const zeroUsageRecord$ = command(
       offset,
     );
     signal.throwIfAborted();
+    const breakdownByRow = await queryUsageRecordBreakdown(
+      db,
+      userIdLit,
+      orgIdLit,
+      period,
+      rows.map((row) => {
+        return row.rowKey;
+      }),
+    );
+    signal.throwIfAborted();
     const total = await queryUsageRecordTotal(db, recordCte, sourceFilterLit);
     signal.throwIfAborted();
 
+    const emailMap =
+      args.scope === "team"
+        ? await resolveEmails(
+            get(clerk$),
+            db,
+            [
+              ...new Set(
+                rows.map((row) => {
+                  return row.userId;
+                }),
+              ),
+            ],
+            signal,
+          )
+        : new Map<string, string>();
+    signal.throwIfAborted();
+
     return {
-      rows,
+      period: {
+        start: period.start.toISOString(),
+        end: period.end.toISOString(),
+      },
+      rows: rows.map((row) => {
+        return {
+          source: row.source,
+          threadId: row.threadId,
+          runId: row.runId,
+          title: row.title,
+          credits: row.credits,
+          tokens: row.tokens,
+          breakdown: breakdownByRow.get(row.rowKey) ?? [],
+          member:
+            args.scope === "team"
+              ? {
+                  userId: row.userId,
+                  email: emailMap.get(row.userId) ?? "unknown",
+                }
+              : null,
+          lastActivityAt: row.lastActivityAt,
+        };
+      }),
       pagination: {
         page: args.page,
         pageSize: args.pageSize,

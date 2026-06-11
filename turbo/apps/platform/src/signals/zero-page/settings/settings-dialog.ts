@@ -27,8 +27,8 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 type OrgManageOnlySettingsSection = "providers";
 type UnifiedSettingsSection = SettingsSection | OrgManageOnlySettingsSection;
 
-// `usage` (Credit balance) is intentionally not admin-only: it holds personal
-// usage that every member can see. The team layer inside it is gated separately.
+// `usage` stays visible to everyone: admins see Credit balance, while members
+// see Credit usage without org balance details.
 const ADMIN_ONLY_SETTINGS_SECTIONS_LIST = [
   "general",
   "people",

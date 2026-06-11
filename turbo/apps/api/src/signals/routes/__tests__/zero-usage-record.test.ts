@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
+
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { nowDate } from "../../../lib/time";
+import { mockNow, nowDate } from "../../../lib/time";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -10,6 +12,7 @@ import {
 import {
   deleteUsageFixture$,
   insertModelUsage$,
+  insertUsageEvent$,
   seedChatThreadRun$,
   seedRun$,
   seedUsageFixture$,
@@ -26,6 +29,39 @@ function authHeaders() {
 
 function apiClient() {
   return setupApp({ context })(zeroUsageRecordContract);
+}
+
+function userIdsFromClerkRequest(args: unknown): string[] {
+  if (typeof args !== "object" || args === null) {
+    return [];
+  }
+  const value = Reflect.get(args, "userId");
+  if (
+    Array.isArray(value) &&
+    value.every((item): item is string => {
+      return typeof item === "string";
+    })
+  ) {
+    return value;
+  }
+  return [];
+}
+
+function mockClerkUserLookup(): void {
+  context.mocks.clerk.users.getUserList.mockImplementation((args: unknown) => {
+    return Promise.resolve({
+      data: userIdsFromClerkRequest(args).map((userId) => {
+        const emailId = `email_${userId}`;
+        return {
+          id: userId,
+          primaryEmailAddressId: emailId,
+          emailAddresses: [
+            { id: emailId, emailAddress: `${userId}@example.com` },
+          ],
+        };
+      }),
+    });
+  });
 }
 
 function createdAt(minutesAgo: number): Date {
@@ -45,6 +81,50 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 400 for invalid timezone values", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { tz: "Not/A/Timezone" },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Invalid timezone: Not/A/Timezone",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("returns 403 when a non-admin requests team usage", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      apiClient().get({
+        query: { scope: "team", range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only org admins can view team usage",
+        code: "FORBIDDEN",
+      },
     });
   });
 
@@ -133,6 +213,7 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body.rows).toHaveLength(3);
     expect(response.body.pagination.total).toBe(3);
+    expect(response.body.period).not.toBeNull();
 
     expect(response.body.rows[0]?.source).toBe("chat");
     expect(response.body.rows[0]?.threadId).toBe(newer.threadId);
@@ -140,6 +221,14 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[0]?.title).toBe("Newer chat");
     expect(response.body.rows[0]?.credits).toBe(250);
     expect(response.body.rows[0]?.tokens).toBe(300);
+    expect(response.body.rows[0]?.breakdown).toStrictEqual([
+      {
+        kind: "model",
+        credits: 250,
+        providers: [{ provider: "claude-sonnet-4-6", credits: 250 }],
+      },
+    ]);
+    expect(response.body.rows[0]?.member).toBeNull();
 
     expect(response.body.rows[1]?.source).toBe("slack");
     expect(response.body.rows[1]?.threadId).toBeNull();
@@ -406,5 +495,285 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.pagination.total).toBe(3);
     expect(response.body.rows[0]?.title).toBe("Chat 10");
     expect(response.body.rows[1]?.title).toBe("Chat 20");
+  });
+
+  it("filters usage by fixed ranges in the requested timezone", async () => {
+    mockNow(new Date("2026-03-15T08:30:00.000Z"));
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+
+    const today = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Shanghai today",
+        createdAt: new Date("2026-03-15T01:00:00.000Z"),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: today.runId,
+        inputTokens: 20,
+        outputTokens: 10,
+        creditsCharged: 30,
+        createdAt: new Date("2026-03-15T01:00:00.000Z"),
+      },
+      context.signal,
+    );
+
+    const yesterday = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Shanghai yesterday",
+        createdAt: new Date("2026-03-14T01:00:00.000Z"),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: yesterday.runId,
+        inputTokens: 10,
+        outputTokens: 10,
+        creditsCharged: 20,
+        createdAt: new Date("2026-03-14T01:00:00.000Z"),
+      },
+      context.signal,
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const todayResponse = await accept(
+      apiClient().get({
+        query: { range: "today", tz: "Asia/Shanghai" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(todayResponse.body.period).toStrictEqual({
+      start: "2026-03-14T16:00:00.000Z",
+      end: "2026-03-15T08:30:00.000Z",
+    });
+    expect(
+      todayResponse.body.rows.map((row) => {
+        return row.title;
+      }),
+    ).toStrictEqual(["Shanghai today"]);
+
+    const yesterdayResponse = await accept(
+      apiClient().get({
+        query: { range: "yesterday", tz: "Asia/Shanghai" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(yesterdayResponse.body.period).toStrictEqual({
+      start: "2026-03-13T16:00:00.000Z",
+      end: "2026-03-14T16:00:00.000Z",
+    });
+    expect(
+      yesterdayResponse.body.rows.map((row) => {
+        return row.title;
+      }),
+    ).toStrictEqual(["Shanghai yesterday"]);
+  });
+
+  it("returns team usage rows with member emails for admins", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const teammateId = `user_${randomUUID()}`;
+    mockClerkUserLookup();
+
+    const mine = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Admin chat",
+        createdAt: createdAt(20),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: mine.runId,
+        inputTokens: 10,
+        outputTokens: 10,
+        creditsCharged: 20,
+      },
+      context.signal,
+    );
+
+    const teammate = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: teammateId,
+        title: "Teammate chat",
+        createdAt: createdAt(10),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: teammateId,
+        runId: teammate.runId,
+        inputTokens: 20,
+        outputTokens: 10,
+        creditsCharged: 40,
+      },
+      context.signal,
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      apiClient().get({
+        query: { scope: "team", range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows).toHaveLength(2);
+    expect(response.body.rows[0]).toMatchObject({
+      title: "Teammate chat",
+      credits: 40,
+      member: {
+        userId: teammateId,
+        email: `${teammateId}@example.com`,
+      },
+    });
+    expect(response.body.rows[1]).toMatchObject({
+      title: "Admin chat",
+      credits: 20,
+      member: {
+        userId: fixture.userId,
+        email: `${fixture.userId}@example.com`,
+      },
+    });
+  });
+
+  it("returns kind and provider breakdowns for each usage row", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+
+    const run = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Mixed media chat",
+        createdAt: createdAt(5),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: run.runId,
+        inputTokens: 100,
+        outputTokens: 50,
+        creditsCharged: 80,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: run.runId,
+        kind: "image",
+        provider: "gpt-image-2",
+        category: "tokens.output.image",
+        quantity: 1,
+        creditsCharged: 120,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: run.runId,
+        kind: "custom",
+        provider: "legacy",
+        category: "legacy.usage",
+        quantity: 1,
+        creditsCharged: 15,
+      },
+      context.signal,
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows[0]?.credits).toBe(215);
+    expect(response.body.rows[0]?.breakdown).toStrictEqual([
+      {
+        kind: "model",
+        credits: 80,
+        providers: [{ provider: "claude-sonnet-4-6", credits: 80 }],
+      },
+      {
+        kind: "image",
+        credits: 120,
+        providers: [{ provider: "gpt-image-2", credits: 120 }],
+      },
+      {
+        kind: "other",
+        credits: 15,
+        providers: [{ provider: "legacy", credits: 15 }],
+      },
+    ]);
+  });
+
+  it("returns an empty null-period response for free billing period usage", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { range: "billingPeriod", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      period: null,
+      rows: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
+    });
   });
 });

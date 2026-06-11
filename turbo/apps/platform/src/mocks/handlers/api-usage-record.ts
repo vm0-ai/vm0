@@ -11,6 +11,10 @@ import {
 import { mockApi } from "../msw-contract.ts";
 
 const defaultResponse: UsageRecordResponse = {
+  period: {
+    start: "2026-03-01T00:00:00.000Z",
+    end: "2026-03-02T00:00:00.000Z",
+  },
   rows: [],
   pagination: { page: 1, pageSize: 20, total: 0 },
 };
@@ -19,13 +23,18 @@ let mockUsageRecordResponse: UsageRecordResponse = { ...defaultResponse };
 
 export function setMockUsageRecord(response: UsageRecordResponse): void {
   mockUsageRecordResponse = {
+    period: response.period,
     rows: [...response.rows],
     pagination: { ...response.pagination },
   };
 }
 
 export function resetMockUsageRecord(): void {
-  mockUsageRecordResponse = { ...defaultResponse };
+  mockUsageRecordResponse = {
+    period: defaultResponse.period,
+    rows: [],
+    pagination: { ...defaultResponse.pagination },
+  };
 }
 
 export const apiUsageRecordHandlers = [
@@ -41,6 +50,7 @@ export const apiUsageRecordHandlers = [
     const offset = (page - 1) * pageSize;
 
     return respond(200, {
+      period: mockUsageRecordResponse.period,
       rows: rows.slice(offset, offset + pageSize),
       pagination: { page, pageSize, total: rows.length },
     });
