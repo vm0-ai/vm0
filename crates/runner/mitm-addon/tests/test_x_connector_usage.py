@@ -79,6 +79,17 @@ class TestXConnectorUsage:
         assert len(payloads) == 1, f"expected 1 billing record, got {len(payloads)}"
         return payloads[0]
 
+    def _assert_lost_visibility_error(self, proxy_log):
+        assert proxy_log.exists()
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        matching_entries = [
+            entry
+            for entry in entries
+            if entry["level"] == "error" and "unparseable" in entry["message"].lower()
+        ]
+        assert len(matching_entries) == 1
+        return matching_entries[0]
+
     def test_logs_single_resource_get(self, tmp_path, real_flow):
         """GET /2/tweets/:id -> category=tweet.read, quantity=1."""
         body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
@@ -1226,21 +1237,18 @@ class TestXConnectorUsage:
     def test_unparseable_response_accumulates_repeated_id_like_fallback_hints(
         self, tmp_path, real_flow
     ):
-        """Repeated ids/usernames keep the same aggregate count behavior as parse_qs."""
+        """Repeated allowed selector keys are accumulated on the matching path."""
         flow = self._make_x_flow(
             real_flow,
             tmp_path,
-            path="/2/users/by",
-            query="ids=1,2&ids=3&usernames=a,b",
+            query="ids=1,2&ids=3",
             body=b"not json",
-            permission="users.read",
-            rule="GET /2/users/by",
         )
 
         p = self._call_and_get_single_billing(flow)
 
-        assert p["category"] == "user.read"
-        assert p["quantity"] == 5
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 3
 
     def test_unparseable_response_does_not_treat_semicolon_as_query_separator(
         self, tmp_path, real_flow
@@ -1279,8 +1287,32 @@ class TestXConnectorUsage:
         ("path", "query", "permission", "rule", "expected_category", "expected_quantity"),
         [
             ("/2/tweets", "ids=1,2,3", "tweet.read", "GET /2/tweets", "posts.read", 3),
-            ("/2/tweets", "max_results=50", "tweet.read", "GET /2/tweets", "posts.read", 50),
+            (
+                "/2/tweets/search/recent",
+                "query=hello&max_results=50",
+                "tweet.read",
+                "GET /2/tweets/search/recent",
+                "posts.read",
+                50,
+            ),
+            (
+                "/2/users/search",
+                "query=alice&max_results=1000",
+                "users.read",
+                "GET /2/users/search",
+                "user.read",
+                1000,
+            ),
+            ("/2/users", "ids=1,2", "users.read", "GET /2/users", "user.read", 2),
             ("/2/users/by", "usernames=a,b", "users.read", "GET /2/users/by", "user.read", 2),
+            (
+                "/2/users/123/followers",
+                "max_results=1000",
+                "follows.read",
+                "GET /2/users/{id}/followers",
+                "following_followers.read",
+                1000,
+            ),
         ],
     )
     def test_x_json_parse_error_with_request_hints_uses_fallback_without_error_log(
@@ -1320,9 +1352,17 @@ class TestXConnectorUsage:
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
         assert all("parse_error" not in entry for entry in entries)
 
-    def test_x_json_parse_error_with_zero_max_results_is_noop_hint(self, tmp_path, real_flow):
-        """A zero max_results hint should suppress lost-visibility logs without billing."""
-        flow = self._make_x_flow(real_flow, tmp_path, query="max_results=0")
+    def test_x_json_parse_error_with_zero_max_results_is_no_reliable_hint(
+        self, tmp_path, real_flow
+    ):
+        """A zero max_results hint should preserve lost-visibility logs."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query="query=hello&max_results=0",
+            rule="GET /2/tweets/search/recent",
+        )
         flow.metadata["x_json_state"] = {
             "body_parsed": False,
             "body_truncated": False,
@@ -1331,12 +1371,110 @@ class TestXConnectorUsage:
         proxy_log = tmp_path / "proxy.jsonl"
 
         assert self._call_and_get_billing(flow) == []
+        entry = self._assert_lost_visibility_error(proxy_log)
+        assert entry["parse_error"] == "incomplete json"
 
-        if proxy_log.exists():
-            entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
-            assert all(entry["level"] != "error" for entry in entries)
-            assert all("unparseable" not in entry["message"].lower() for entry in entries)
-            assert all("parse_error" not in entry for entry in entries)
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "query=hello&max_results=-5",
+            "query=hello&max_results=999999",
+            "query=hello&max_results=+50",
+            "query=hello&max_results=%2050",
+        ],
+    )
+    def test_x_json_parse_error_with_invalid_max_results_preserves_audit_log(
+        self, tmp_path, real_flow, query
+    ):
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query=query,
+            body=b"not json",
+            rule="GET /2/tweets/search/recent",
+        )
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+        self._assert_lost_visibility_error(proxy_log)
+
+    def test_x_json_parse_error_ignores_max_results_on_irrelevant_path(self, tmp_path, real_flow):
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/123",
+            query="max_results=1000",
+            body=b"not json",
+            rule="GET /2/tweets/{id}",
+        )
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+        self._assert_lost_visibility_error(proxy_log)
+
+    @pytest.mark.parametrize(
+        ("path", "query", "permission", "rule"),
+        [
+            ("/2/users/by", "ids=1,2", "users.read", "GET /2/users/by"),
+            (
+                "/2/tweets/search/recent",
+                "query=hello&ids=1,2",
+                "tweet.read",
+                "GET /2/tweets/search/recent",
+            ),
+        ],
+    )
+    def test_x_json_parse_error_ignores_id_like_hints_on_irrelevant_paths(
+        self, tmp_path, real_flow, path, query, permission, rule
+    ):
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=path,
+            query=query,
+            body=b"not json",
+            permission=permission,
+            rule=rule,
+        )
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+        self._assert_lost_visibility_error(proxy_log)
+
+    @pytest.mark.parametrize(
+        ("path", "query", "permission", "rule"),
+        [
+            (
+                "/2/tweets",
+                f"ids={','.join(str(i) for i in range(101))}",
+                "tweet.read",
+                "GET /2/tweets",
+            ),
+            (
+                "/2/users/by",
+                f"usernames={','.join(f'user{i}' for i in range(101))}",
+                "users.read",
+                "GET /2/users/by",
+            ),
+        ],
+    )
+    def test_x_json_parse_error_ignores_excessive_selector_counts(
+        self, tmp_path, real_flow, path, query, permission, rule
+    ):
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=path,
+            query=query,
+            body=b"not json",
+            permission=permission,
+            rule=rule,
+        )
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+        self._assert_lost_visibility_error(proxy_log)
 
     @pytest.mark.parametrize(
         ("query", "expected_quantity"),
@@ -1380,9 +1518,16 @@ class TestXConnectorUsage:
         assert "unparseable" in content.lower()
         assert '"level":"error"' in content or '"level": "error"' in content
 
-    def test_billable_counts_fallback_only_when_no_max_results(self, tmp_path, real_flow):
-        """body unparseable but ?max_results=50 present -> uses max_results."""
-        flow = self._make_x_flow(real_flow, tmp_path, query="max_results=50", body=b"not json")
+    def test_billable_counts_fallback_uses_path_scoped_max_results(self, tmp_path, real_flow):
+        """body unparseable on a max_results endpoint -> uses max_results."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query="query=hello&max_results=50",
+            body=b"not json",
+            rule="GET /2/tweets/search/recent",
+        )
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "posts.read"
         assert p["quantity"] == 50
