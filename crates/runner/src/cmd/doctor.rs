@@ -568,7 +568,7 @@ async fn build_runner_report(
 }
 
 // ---------------------------------------------------------------------------
-// Config loading (lenient — no path validation)
+// Config loading (lenient parse, safe candidate read)
 // ---------------------------------------------------------------------------
 
 async fn load_config_lenient(path: &Path) -> Option<RunnerConfig> {
