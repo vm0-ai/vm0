@@ -1,5 +1,17 @@
 # Changelog
 
+## [9.189.0](https://github.com/vm0-ai/vm0/compare/cli-v9.188.4...cli-v9.189.0) (2026-06-11)
+
+
+### Features
+
+* **cli:** redesign zero automation commands on unified automations v2 api ([#17250](https://github.com/vm0-ai/vm0/issues/17250)) ([90180c7](https://github.com/vm0-ai/vm0/commit/90180c7ae32f5b05df0fd8326463c8d9b83be39d))
+
+
+### Bug Fixes
+
+* clarify static artifact delivery context ([#17249](https://github.com/vm0-ai/vm0/issues/17249)) ([0c2c2cc](https://github.com/vm0-ai/vm0/commit/0c2c2cc1c9cb2837b4a14beba427f9c815525368))
+
 ## [9.188.4](https://github.com/vm0-ai/vm0/compare/cli-v9.188.3...cli-v9.188.4) (2026-06-11)
 
 

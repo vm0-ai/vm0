@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.128.1](https://github.com/vm0-ai/vm0/compare/api-v1.128.0...api-v1.128.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* clarify static artifact delivery context ([#17249](https://github.com/vm0-ai/vm0/issues/17249)) ([0c2c2cc](https://github.com/vm0-ai/vm0/commit/0c2c2cc1c9cb2837b4a14beba427f9c815525368))
+
 ## [1.128.0](https://github.com/vm0-ai/vm0/compare/api-v1.127.1...api-v1.128.0) (2026-06-11)
 
 
