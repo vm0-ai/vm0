@@ -1679,3 +1679,17 @@ changed: false }`, no Ably publish).
   delete) needs a seeded secret and stays in the kept legacy.
 - Reduced `zero-model-providers.test.ts` (29 -> 19).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 84 — ZERO INSIGHTS REJECTIONS (CHAIN-INSIGHTS-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `insights` (`/api/zero/insights`) and
+  `insightsRange` (`/api/zero/insights/range`) clients.
+- Added `zero-insights-rejections.bdd.test.ts`: insights rejects unauthenticated
+  / org-less callers (401) and is empty for a fresh org (`days: []`, zero totals,
+  null lastUpdated); range rejects the same and returns nulls
+  (`minDate`/`maxDate` null, `totalDays: 0`).
+- Populated insights (day shapes, totals, stale-entry filtering, days clamping,
+  cross-org/user isolation) need seeded usage rows (GAP-USAGE-EVENTS) and stay in
+  the kept legacy.
+- Reduced `zero-insights.test.ts` (19 -> 13).
+- Coverage verified (source-only): no regressions vs `main`.

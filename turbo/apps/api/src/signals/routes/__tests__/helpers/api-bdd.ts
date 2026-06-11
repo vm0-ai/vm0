@@ -37,6 +37,10 @@ import {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
+import {
+  zeroInsightsContract,
+  zeroInsightsRangeContract,
+} from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
@@ -238,6 +242,11 @@ export function createBddApi(context: TestContext) {
     /** ts-rest clients for the org `/api/zero/model-providers` family (list +
      * upsert) and `/:type` (delete). A configured provider needs a seeded secret;
      * the auth, empty-list, admin-only and not-found cases are reachable. */
+    /** ts-rest clients for `/api/zero/insights` (daily usage insights) and
+     * `/api/zero/insights/range`. Populated insights need seeded usage rows
+     * (GAP-USAGE-EVENTS); the auth and empty-org cases are reachable. */
+    insights: setupApp({ context })(zeroInsightsContract),
+    insightsRange: setupApp({ context })(zeroInsightsRangeContract),
     modelProviders: setupApp({ context })(zeroModelProvidersMainContract),
     modelProvidersByType: setupApp({ context })(
       zeroModelProvidersByTypeContract,

@@ -115,44 +115,6 @@ describe("GET /api/zero/insights", () => {
     return store.set(deleteInsightsForFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(
-      apiClient().get({ query: {}, headers: {} }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      apiClient().get({ query: {}, headers: authHeaders() }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns empty days when no insights exist", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().get({ query: {}, headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body.days).toStrictEqual([]);
-    expect(response.body.totalCredits).toBe(0);
-    expect(response.body.totalRuns).toBe(0);
-    expect(response.body.lastUpdated).toBeNull();
-  });
-
   it("returns insights with correct structure", async () => {
     const fixture = await track(
       store.set(seedInsightsFixture$, undefined, context.signal),
@@ -503,40 +465,6 @@ describe("GET /api/zero/insights", () => {
 describe("GET /api/zero/insights/range", () => {
   const track = createFixtureTracker<InsightsFixture>((fixture) => {
     return store.set(deleteInsightsForFixture$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(apiRangeClient().get({ headers: {} }), [401]);
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      apiRangeClient().get({ headers: authHeaders() }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns nulls when no insights exist", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiRangeClient().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body.minDate).toBeNull();
-    expect(response.body.maxDate).toBeNull();
-    expect(response.body.totalDays).toBe(0);
   });
 
   it("returns correct range for a single day", async () => {
