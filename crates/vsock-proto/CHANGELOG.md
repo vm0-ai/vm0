@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.13](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.12...vsock-proto-v0.18.13) (2026-06-11)
+
+
+### Documentation
+
+* clarify exec control payload rustdoc ([#17272](https://github.com/vm0-ai/vm0/issues/17272)) ([c45cd12](https://github.com/vm0-ai/vm0/commit/c45cd12d3770dc052c002ea1560f7c9f098f416e))
+
 ## [0.18.12](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.11...vsock-proto-v0.18.12) (2026-06-09)
 
 

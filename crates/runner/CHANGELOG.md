@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.112.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.112.0...runner-rs-v0.112.1) (2026-06-11)
+
+
+### Performance Improvements
+
+* avoid serializing storage cache hit writes ([#17271](https://github.com/vm0-ai/vm0/issues/17271)) ([0f1864d](https://github.com/vm0-ai/vm0/commit/0f1864d71e3eb41d549b3c083bca0509605983d0))
+
 ## [0.112.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.111.3...runner-rs-v0.112.0) (2026-06-11)
 
 
