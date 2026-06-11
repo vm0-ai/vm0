@@ -43,6 +43,10 @@ export const transcribeCommand = new Command()
   .option("--url <presigned-url>", "Pre-signed or public URL of the video file")
   .option("--file-id <id>", "Web file ID (alternative to --url)")
   .option(
+    "--file <path>",
+    "Local file path (alternative to --url or --file-id)",
+  )
+  .option(
     "--no-timestamps",
     "Output plain text only, without per-segment timestamps",
   )
@@ -52,6 +56,7 @@ export const transcribeCommand = new Command()
 Examples:
   Transcribe from URL:      zero video transcribe --url "https://..."
   Transcribe a web file:    zero video transcribe --file-id abc-123-def
+  Transcribe a local file:  zero video transcribe --file /tmp/video.mp4
   Plain text only:          zero video transcribe --url "https://..." --no-timestamps
 
 Output:
@@ -71,32 +76,41 @@ Notes:
       async (options: {
         url?: string;
         fileId?: string;
+        file?: string;
         timestamps: boolean;
       }) => {
-        if (!options.url && !options.fileId) {
+        if (!options.url && !options.fileId && !options.file) {
           process.stderr.write(
-            "Error: provide --url <presigned-url> or --file-id <id>\n",
+            "Error: provide --url <presigned-url>, --file-id <id>, or --file <path>\n",
           );
           process.exit(1);
         }
 
-        const tmpVideo = join(tmpdir(), `zero-video-${Date.now()}.mp4`);
         const tmpAudio = join(tmpdir(), `zero-audio-${Date.now()}.wav`);
+        let tmpVideo: string | undefined;
 
         try {
-          if (options.url) {
-            execFileSync("curl", ["-sS", "-L", "-o", tmpVideo, options.url], {
-              stdio: ["ignore", "ignore", "pipe"],
-            });
+          let videoPath: string;
+
+          if (options.file) {
+            videoPath = options.file;
           } else {
-            await downloadWebFile(options.fileId as string, tmpVideo);
+            tmpVideo = join(tmpdir(), `zero-video-${Date.now()}.mp4`);
+            if (options.url) {
+              execFileSync("curl", ["-sS", "-L", "-o", tmpVideo, options.url], {
+                stdio: ["ignore", "ignore", "pipe"],
+              });
+            } else {
+              await downloadWebFile(options.fileId as string, tmpVideo);
+            }
+            videoPath = tmpVideo;
           }
 
           execFileSync(
             "ffmpeg",
             [
               "-i",
-              tmpVideo,
+              videoPath,
               "-vn",
               "-ar",
               "16000",
@@ -122,7 +136,8 @@ Notes:
             formatTranscript(result.text, result.segments) + "\n",
           );
         } finally {
-          for (const path of [tmpVideo, tmpAudio]) {
+          for (const path of [tmpAudio, tmpVideo]) {
+            if (!path) continue;
             try {
               unlinkSync(path);
             } catch {

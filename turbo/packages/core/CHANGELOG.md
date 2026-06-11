@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.327.0](https://github.com/vm0-ai/vm0/compare/core-v8.326.0...core-v8.327.0) (2026-06-11)
+
+
+### Features
+
+* add Google Analytics connector ([#17153](https://github.com/vm0-ai/vm0/issues/17153)) ([96dee76](https://github.com/vm0-ai/vm0/commit/96dee766588b2721bbbc5c39095dba424bd36aac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.81.1
+    * @vm0/connectors bumped to 1.65.0
+
 ## [8.326.0](https://github.com/vm0-ai/vm0/compare/core-v8.325.0...core-v8.326.0) (2026-06-11)
 
 

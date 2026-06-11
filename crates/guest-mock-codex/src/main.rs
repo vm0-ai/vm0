@@ -29,7 +29,7 @@
 //! codex-event-parser branches that the synthetic sequence cannot reach.
 
 use clap::{Parser, Subcommand};
-use guest_mock_codex::{join_prompt, lookup_fixture, run_fixture, run_new, run_resume};
+use guest_mock_codex::{join_prompt_cow, lookup_fixture, run_fixture, run_new, run_resume};
 use std::io;
 use std::path::PathBuf;
 
@@ -125,7 +125,13 @@ fn main() -> io::Result<()> {
         Cmd::Exec(ExecArgs {
             sub: Some(ExecSub::Resume { thread_id, prompt }),
             ..
-        }) => run_resume(&thread_id, &join_prompt(&prompt)),
-        Cmd::Exec(ExecArgs { prompt, .. }) => run_new(&join_prompt(&prompt)),
+        }) => {
+            let joined_prompt = join_prompt_cow(&prompt);
+            run_resume(&thread_id, joined_prompt.as_ref())
+        }
+        Cmd::Exec(ExecArgs { prompt, .. }) => {
+            let joined_prompt = join_prompt_cow(&prompt);
+            run_new(joined_prompt.as_ref())
+        }
     }
 }
