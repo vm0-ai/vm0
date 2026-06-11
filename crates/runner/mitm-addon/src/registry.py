@@ -141,21 +141,10 @@ def _string_record(value: object, field_name: str) -> dict[str, str]:
     return result
 
 
-def _base_url_vars_for_entry(entry: dict, vm: dict) -> dict[str, str]:
-    result: dict[str, str] = {}
-    raw_vm_vars = vm.get("vars")
-    if isinstance(raw_vm_vars, dict):
-        result.update(
-            {
-                key: value
-                for key, value in raw_vm_vars.items()
-                if isinstance(key, str) and isinstance(value, str)
-            }
-        )
-
+def _base_url_vars_for_entry(entry: dict) -> dict[str, str]:
     if "baseUrlVars" in entry:
-        result.update(_string_record(entry["baseUrlVars"], "baseUrlVars"))
-    return result
+        return _string_record(entry["baseUrlVars"], "baseUrlVars")
+    return {}
 
 
 def _resolve_base_url_template(
@@ -197,7 +186,7 @@ def _resolve_builtin_firewall_entry(entry: dict, vm: dict) -> dict:
     if not isinstance(raw_apis, list):
         raise _FirewallEntryResolutionError(f'builtin firewall "{raw_name}" apis must be a list')
 
-    vars_map = _base_url_vars_for_entry(entry, vm)
+    vars_map = _base_url_vars_for_entry(entry)
     for api in raw_apis:
         if not isinstance(api, dict):
             raise _FirewallEntryResolutionError(

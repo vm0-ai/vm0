@@ -178,6 +178,32 @@ class TestGetVmContext:
         assert state.invalid_vms["10.200.0.1"].reason == "invalid_firewalls"
         assert "ZENDESK_SUBDOMAIN" in state.invalid_vms["10.200.0.1"].message
 
+    def test_builtin_firewall_entry_does_not_read_top_level_vars(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {
+                            "runId": "run-zendesk",
+                            "vars": {"ZENDESK_SUBDOMAIN": "top-level"},
+                            "firewalls": [{"kind": "builtin", "name": "zendesk"}],
+                        }
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.invalid_vms["10.200.0.1"].reason == "invalid_firewalls"
+        assert "ZENDESK_SUBDOMAIN" in state.invalid_vms["10.200.0.1"].message
+
     def test_unknown_builtin_firewall_entry_rejects_vm(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
