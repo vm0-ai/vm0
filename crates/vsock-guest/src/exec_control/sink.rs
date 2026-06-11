@@ -20,12 +20,12 @@
 //! `inner` and `ready` own connection-state changes and wake waiting forwarders.
 //! `active` is the operation-lifetime gate, so close/drop can stop queued or
 //! in-flight forwarding even when a connected stream guard is busy. The
-//! connected stream has a separate `locked` gate so waiters can observe timeouts
-//! and shutdown notifications before taking the stream mutex. `pending` limits
-//! outstanding forwarding work; when it is full, new requests release their
-//! transient count and return `QueueFull`. `PendingControlSlot` releases
-//! accepted work. The shutdown stream clones let close/fail interrupt handshakes
-//! or connected I/O without waiting for the active stream guard.
+//! connected stream has a separate `locked` gate so waiters can keep their
+//! request deadlines and be woken by close/fail before taking the stream mutex.
+//! `pending` limits outstanding forwarding work; when it is full, new requests
+//! release their transient count and return `QueueFull`. `PendingControlSlot`
+//! releases reserved work. The shutdown stream clones let close/fail interrupt
+//! handshakes or connected I/O without waiting for the active stream guard.
 
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -63,7 +63,7 @@ pub(super) struct ConnectedControlSink {
 
 /// Shared connected stream plus a waitable serialization gate.
 ///
-/// `locked` is separate from `stream` so queued forwarders can wait with their
+/// `locked` is separate from `stream` so waiting forwarders can wait with their
 /// request deadline and can be woken by close/fail without contending on a busy
 /// stream mutex.
 pub(super) struct ControlStreamState {
