@@ -189,44 +189,6 @@ describe("GET /api/zero/model-providers", () => {
     return store.set(deleteOrgModelProviders$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-
-    const response = await accept(client.list({ headers: {} }), [401]);
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-
-    const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns empty list when no org providers exist", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-    await track(Promise.resolve({ orgId }));
-
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-
-    const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    expect(response.body.modelProviders).toStrictEqual([]);
-  });
-
   it("allows organization members to list org providers", async () => {
     const fixture = uniqueOrgUser("zmp-list-member");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -433,55 +395,6 @@ describe("GET /api/zero/model-providers", () => {
 describe("POST /api/zero/model-providers", () => {
   const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
     return store.set(deleteOrgModelProviders$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-
-    const response = await accept(
-      client.upsert({
-        headers: {},
-        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-
-    const response = await accept(
-      client.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 403 when the caller is not an org admin", async () => {
-    const fixture = uniqueOrgUser("zmp-upsert-member");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroModelProvidersMainContract);
-
-    const response = await accept(
-      client.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Only admins can manage org model providers",
-    );
   });
 
   it("creates and updates an org single-secret provider", async () => {
@@ -842,69 +755,6 @@ describe("POST /api/zero/model-providers", () => {
 describe("DELETE /api/zero/model-providers/:type", () => {
   const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
     return store.set(deleteOrgModelProviders$, fixture, context.signal);
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
-
-    const response = await accept(
-      client.delete({ headers: {}, params: { type: "anthropic-api-key" } }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
-
-    const response = await accept(
-      client.delete({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 403 for non-admin members", async () => {
-    const fixture = uniqueOrgUser("zmp-delete-member");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
-
-    const response = await accept(
-      client.delete({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.message).toBe(
-      "Only admins can manage org model providers",
-    );
-  });
-
-  it("returns 404 when the target provider is absent", async () => {
-    const fixture = uniqueOrgUser("zmp-delete-missing");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
-
-    const response = await accept(
-      client.delete({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { type: "anthropic-api-key" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.message).toBe("Resource not found");
   });
 
   it("deletes a legacy provider row and its secret", async () => {

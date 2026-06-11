@@ -33,6 +33,10 @@ import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import {
+  zeroModelProvidersMainContract,
+  zeroModelProvidersByTypeContract,
+} from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
@@ -231,6 +235,13 @@ export function createBddApi(context: TestContext) {
     /** ts-rest client for `/api/zero/api-keys/:id` (delete a token). */
     apiKeyById: setupApp({ context })(apiKeysByIdContract),
     /** ts-rest client for `/api/zero/me/model-providers` (list/upsert). */
+    /** ts-rest clients for the org `/api/zero/model-providers` family (list +
+     * upsert) and `/:type` (delete). A configured provider needs a seeded secret;
+     * the auth, empty-list, admin-only and not-found cases are reachable. */
+    modelProviders: setupApp({ context })(zeroModelProvidersMainContract),
+    modelProvidersByType: setupApp({ context })(
+      zeroModelProvidersByTypeContract,
+    ),
     personalModelProviders: setupApp({ context })(
       zeroPersonalModelProvidersMainContract,
     ),

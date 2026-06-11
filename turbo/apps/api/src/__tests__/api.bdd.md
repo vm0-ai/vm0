@@ -1663,3 +1663,19 @@ changed: false }`, no Ably publish).
   volume or a raw request and stay in the kept legacy.
 - Reduced `zero-skills.test.ts` (56 -> 47).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 83 — ORG MODEL PROVIDER REJECTIONS (CHAIN-MODEL-PROVIDERS-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the org `modelProviders`
+  (`/api/zero/model-providers`, list + upsert) and `modelProvidersByType`
+  (`/:type` delete) clients (distinct from the existing personal model-provider
+  clients).
+- Added `zero-model-providers-rejections.bdd.test.ts`: list rejects
+  unauthenticated / org-less callers (401) and is empty for a fresh org; upsert
+  rejects unauthenticated / org-less / non-admin callers (401/401/403); delete
+  rejects the same (401/401/403) and 404s an absent provider ("Resource not
+  found").
+- Configuring a real provider (upsert success, OAuth refresh state, legacy-row
+  delete) needs a seeded secret and stays in the kept legacy.
+- Reduced `zero-model-providers.test.ts` (29 -> 19).
+- Coverage verified (source-only): no regressions vs `main`.
