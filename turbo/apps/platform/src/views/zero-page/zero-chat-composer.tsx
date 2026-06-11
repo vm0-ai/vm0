@@ -192,6 +192,12 @@ function isIOSDevice(): boolean {
   );
 }
 
+function isHappyDomTestEnvironment(): boolean {
+  return (
+    typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -906,12 +912,6 @@ function presentationPreviewImageCache(): PresentationPreviewImageCache {
   };
   Reflect.set(globalThis, cacheKey, cache);
   return cache;
-}
-
-function isHappyDomTestEnvironment(): boolean {
-  return (
-    typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
-  );
 }
 
 function preloadPresentationPreviewImage(
