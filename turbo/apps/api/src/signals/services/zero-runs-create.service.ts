@@ -176,7 +176,9 @@ function buildIntegrationToolsPrompt(
     "Local dev servers are useful for agent-side verification, but they are not by themselves a user-facing deliverable.",
     "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`.",
     "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime, `zero host` may not be sufficient; use the project's own deployment workflow or hosting platform to make the change visible to users.",
-    "A local file needs separate delivery only when it is the requested artifact or the only available user-accessible copy. If the artifact is already available through a hosted URL, email, cloud document, or another user-accessible destination, duplicate file upload is usually unnecessary unless the user asks for the file itself.",
+    "For static HTML or site artifacts, a hosted URL is the user-accessible artifact view; the local `index.html` is an implementation file inside the authored bundle.",
+    "`upload-file` commands provide file delivery, which is different from publishing a user-accessible artifact view. File delivery is useful when the user asks for the file itself, an artifact cannot be hosted, or no hosted, email, cloud document, or other destination already gives the user access.",
+    "Duplicate delivery channels give the user multiple copies of the same artifact; they are useful when they serve different user needs, such as sharing both a live view and a source file.",
   ];
   const localFileContextLines = localFileContext.map((line) => {
     return `- ${line}`;

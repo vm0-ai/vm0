@@ -636,6 +636,8 @@ describe("POST /api/zero/runs", () => {
       "`agent-browser` for browser automation and inspection",
       "Local dev servers are useful for agent-side verification",
       "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`",
+      "For static HTML or site artifacts, a hosted URL is the user-accessible artifact view",
+      "`upload-file` commands provide file delivery, which is different from publishing a user-accessible artifact view",
       "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
       "for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help`",
       "zero connector status <type>",
