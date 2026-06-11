@@ -6,7 +6,7 @@ export interface ComputerUsePermissionState {
 }
 
 export type ComputerUseHostRuntimeStatus =
-  | "idle"
+  | "offline"
   | "connecting"
   | "online"
   | "recovering"
@@ -104,9 +104,9 @@ export function hasRequiredComputerUsePermissions(
   return permissions.accessibility && permissions.screenRecording;
 }
 
-export const IDLE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
+export const OFFLINE_COMPUTER_USE_HOST_STATE: ComputerUseHostRuntimeState =
   Object.freeze({
-    status: "idle",
+    status: "offline",
     hostId: null,
     lastHeartbeatAt: null,
     lastCommandAt: null,
