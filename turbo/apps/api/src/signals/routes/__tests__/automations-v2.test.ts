@@ -98,6 +98,9 @@ const trackExtraComposes = createFixtureTracker<string>(async (composeId) => {
 
 async function seedFixture(): Promise<SchedulesFixture> {
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+  // Pin the description generator to its deterministic template fallback: an
+  // ambient key would make description-less creates call openrouter.ai live.
+  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   context.mocks.s3.send.mockResolvedValue({});
   setSecretKmsClientForTests(fakeKmsClient().client);
   const fixture = await trackSchedules(

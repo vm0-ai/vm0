@@ -26,11 +26,18 @@ type TimeTrigger = Extract<
   { kind: "cron" | "once" | "loop" }
 >;
 
+function isTimeTrigger(
+  trigger: AutomationTriggerResponse,
+): trigger is TimeTrigger {
+  return (
+    trigger.kind === "cron" ||
+    trigger.kind === "once" ||
+    trigger.kind === "loop"
+  );
+}
+
 function timeTriggerOf(automation: AutomationResponseV2): TimeTrigger | null {
-  const trigger = automation.triggers.find((t): t is TimeTrigger => {
-    return t.kind === "cron" || t.kind === "once" || t.kind === "loop";
-  });
-  return trigger ?? null;
+  return automation.triggers.find(isTimeTrigger) ?? null;
 }
 
 // The flat single-trigger projection of an automation: the pages' view model.
@@ -184,16 +191,16 @@ async function updateSchedule(
     [200],
   );
 
-  const trigger = timeTriggerOf(existing);
-  if (!trigger || !triggerMatches(trigger, body)) {
-    if (trigger) {
-      await accept(
-        client(automationTriggersV2Contract).remove({
-          params: { id: trigger.id },
-        }),
-        [204],
-      );
-    }
+  // Replace the time trigger when its config changed. The new trigger is
+  // added before the stale one is removed, so a failure in between never
+  // leaves the automation triggerless (a triggerless automation vanishes
+  // from the schedule pages); the sweep then also collects duplicates left
+  // behind by an earlier interrupted replacement.
+  const timeTriggers = existing.triggers.filter(isTimeTrigger);
+  const kept = timeTriggers.find((trigger) => {
+    return triggerMatches(trigger, body);
+  });
+  if (!kept) {
     await accept(
       client(automationsV2ByRefContract).addTrigger({
         params: { ref: existing.id },
@@ -201,6 +208,16 @@ async function updateSchedule(
       }),
       [201],
     );
+  }
+  for (const stale of timeTriggers) {
+    if (stale !== kept) {
+      await accept(
+        client(automationTriggersV2Contract).remove({
+          params: { id: stale.id },
+        }),
+        [204],
+      );
+    }
   }
 
   return { id: existing.id, created: false };

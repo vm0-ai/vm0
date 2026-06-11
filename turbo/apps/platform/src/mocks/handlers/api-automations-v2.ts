@@ -14,26 +14,30 @@ import { getMockSchedules, setMockSchedules } from "./schedules-store.ts";
 // The Automation resource API over the shared schedule store: each store row
 // (flat single-trigger projection) is served as an automation carrying one
 // time trigger. Trigger ids are minted per row and remembered so trigger
-// sub-resource calls can be traced back to their store row.
+// sub-resource calls can be traced back to their store row. Replaced ids stay
+// resolvable (`triggerOwners`) because the update flow adds the new trigger
+// before deleting the stale one.
 
-const triggerIds = new Map<string, string>();
+const currentTriggerIds = new Map<string, string>();
+const triggerOwners = new Map<string, string>();
+
+export function resetMockAutomationTriggers(): void {
+  currentTriggerIds.clear();
+  triggerOwners.clear();
+}
 
 function triggerIdFor(automationId: string): string {
-  let id = triggerIds.get(automationId);
+  let id = currentTriggerIds.get(automationId);
   if (!id) {
     id = crypto.randomUUID();
-    triggerIds.set(automationId, id);
+    currentTriggerIds.set(automationId, id);
+    triggerOwners.set(id, automationId);
   }
   return id;
 }
 
 function automationIdForTrigger(triggerId: string): string | null {
-  for (const [automationId, id] of triggerIds) {
-    if (id === triggerId) {
-      return automationId;
-    }
-  }
-  return null;
+  return triggerOwners.get(triggerId) ?? null;
 }
 
 function toTrigger(schedule: ScheduleResponse): AutomationTriggerResponse {
@@ -248,7 +252,9 @@ export const apiAutomationsV2Handlers = [
         consecutiveFailures: 0,
         updatedAt: nowDate().toISOString(),
       };
-      triggerIds.delete(row.id);
+      // Mint a fresh id for the new trigger; the replaced id stays known so
+      // the update flow can still DELETE it afterwards.
+      currentTriggerIds.delete(row.id);
       replaceRow(updated);
       return respond(201, { trigger: toTrigger(updated) });
     },
@@ -262,9 +268,12 @@ export const apiAutomationsV2Handlers = [
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }
-    // The store keeps the row (an automation may be briefly triggerless while
-    // the update flow replaces its trigger); only the trigger id mapping goes.
-    triggerIds.delete(automationId);
+    // The store keeps the row; only the trigger id is retired. Removing an
+    // already-replaced id leaves the row's current trigger untouched.
+    triggerOwners.delete(params.id);
+    if (currentTriggerIds.get(automationId) === params.id) {
+      currentTriggerIds.delete(automationId);
+    }
     return respond(204);
   }),
 
