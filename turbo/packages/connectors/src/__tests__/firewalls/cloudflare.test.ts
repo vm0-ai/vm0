@@ -76,7 +76,7 @@ describe("cloudflare firewall", () => {
     expect(firewall.name).toBe("cloudflare");
     expect(firewall.apis).toHaveLength(1);
     expect(firewall.apis[0]).toMatchObject({
-      base: "https://api.cloudflare.com/client/v4",
+      base: "https://api.cloudflare.com/client",
       auth: {
         headers: {
           Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",
@@ -91,63 +91,99 @@ describe("cloudflare firewall", () => {
   it("exposes official Cloudflare API token groups for representative resources", () => {
     expectCloudflareRule(
       "dns-firewall.read",
-      "GET /accounts/{account_id}/dns_firewall",
+      "GET /v4/accounts/{account_id}/dns_firewall",
     );
     expectCloudflareRule(
       "dns-firewall.write",
-      "POST /accounts/{account_id}/dns_firewall",
+      "POST /v4/accounts/{account_id}/dns_firewall",
     );
     expectCloudflareRule(
       "account-firewall-access-rules.read",
-      "GET /accounts/{account_id}/firewall/access_rules/rules",
+      "GET /v4/accounts/{account_id}/firewall/access_rules/rules",
     );
     expectCloudflareRule(
       "account-firewall-access-rules.write",
-      "POST /accounts/{account_id}/firewall/access_rules/rules",
+      "POST /v4/accounts/{account_id}/firewall/access_rules/rules",
     );
     expectCloudflareRule(
       "account-waf.read",
-      "GET /accounts/{account_id}/rulesets",
+      "GET /v4/accounts/{account_id}/rulesets",
     );
-    expectCloudflareRule("zone-waf.read", "GET /zones/{zone_id}/rulesets");
+    expectCloudflareRule("zone-waf.read", "GET /v4/zones/{zone_id}/rulesets");
     expectCloudflareRule(
       "magic-firewall.read",
-      "GET /accounts/{account_id}/rulesets",
+      "GET /v4/accounts/{account_id}/rulesets",
     );
-    expectCloudflareRule("d1.read", "GET /accounts/{account_id}/d1/database");
+    expectCloudflareRule(
+      "d1.read",
+      "GET /v4/accounts/{account_id}/d1/database",
+    );
     expectCloudflareRule(
       "address-maps.write",
-      "DELETE /accounts/{account_id}/addressing/address_maps/{address_map_id}/accounts/{account_id_2}",
+      "DELETE /v4/accounts/{account_id}/addressing/address_maps/{address_map_id}/accounts/{account_id_2}",
     );
     expectCloudflareRule(
       "magic-wan.read",
-      "GET /accounts/{account_id}/magic/connectors/{connector_id}/telemetry/events/{event_t_event_n}",
+      "GET /v4/accounts/{account_id}/magic/connectors/{connector_id}/telemetry/events/{event_t_event_n}",
     );
     expectCloudflareRule(
       "workers-scripts.read",
-      "GET /accounts/{account_id}/workers/scripts",
+      "GET /v4/accounts/{account_id}/workers/scripts",
+    );
+    expectCloudflareRule(
+      "argotunnel.write",
+      "GET /v4/accounts/{account_id}/cfd_tunnel/{tunnel_id}/token",
+    );
+    expectCloudflareRule(
+      "request-tracer.read",
+      "POST /v4/accounts/{account_id}/request-tracer/trace",
     );
   });
 
-  it("filters read endpoints to read permissions instead of write-capable groups", () => {
-    expectCloudflareMatches("GET", "/accounts/account-id/dns_firewall", [
+  it("maps endpoints to every official Cloudflare API token group", () => {
+    expectCloudflareMatches("GET", "/v4/accounts/account-id/dns_firewall", [
       "dns-firewall.read",
+      "dns-firewall.write",
     ]);
     expectCloudflareMatchesContaining(
       "GET",
-      "/accounts/account-id/rulesets",
-      ["account-rulesets.read", "account-waf.read", "magic-firewall.read"],
-      ["account-rulesets.write", "account-waf.write", "magic-firewall.write"],
+      "/v4/accounts/account-id/rulesets",
+      [
+        "account-rulesets.read",
+        "account-rulesets.write",
+        "account-waf.read",
+        "account-waf.write",
+        "magic-firewall.read",
+        "magic-firewall.write",
+      ],
+      [],
     );
+    expectCloudflareMatches(
+      "GET",
+      "/v4/accounts/account-id/cfd_tunnel/tunnel-id/token",
+      [
+        "argotunnel.write",
+        "teams-connector-cloudflared.write",
+        "teams-connectors.write",
+      ],
+    );
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/request-tracer/trace",
+      ["request-tracer.read"],
+    );
+    expectCloudflareMatches("POST", "/v4/zones/zone-id/logpush/edge/jobs", [
+      "logs.read",
+    ]);
   });
 
   it("maps mutating endpoints to write permissions", () => {
-    expectCloudflareMatches("POST", "/accounts/account-id/dns_firewall", [
+    expectCloudflareMatches("POST", "/v4/accounts/account-id/dns_firewall", [
       "dns-firewall.write",
     ]);
     expectCloudflareMatchesContaining(
       "POST",
-      "/accounts/account-id/rulesets",
+      "/v4/accounts/account-id/rulesets",
       ["account-rulesets.write", "account-waf.write", "magic-firewall.write"],
       ["account-rulesets.read", "account-waf.read", "magic-firewall.read"],
     );
@@ -164,14 +200,11 @@ describe("cloudflare firewall", () => {
     expect(cloudflareGenerationStats.operationsWithCfPermissionsRequired).toBe(
       702,
     );
-    expect(cloudflareGenerationStats.mappedOperations).toBe(2597);
-    expect(cloudflareGenerationStats.unmappedOperations).toBe(548);
+    expect(cloudflareGenerationStats.mappedOperations).toBe(2646);
+    expect(cloudflareGenerationStats.unmappedOperations).toBe(499);
     expect(cloudflareGenerationStats.ambiguousOperations).toBe(0);
-    expect(cloudflareGenerationStats.readOperationsWithOnlyWriteGroups).toBe(
-      47,
-    );
-    expect(cloudflareGenerationStats.multiGroupOperations).toBe(536);
-    expect(cloudflareGenerationStats.permissionCount).toBe(247);
+    expect(cloudflareGenerationStats.multiGroupOperations).toBe(1676);
+    expect(cloudflareGenerationStats.permissionCount).toBe(251);
     expect(cloudflareGenerationStats.permissionCount).toBe(permissionCount);
   });
 
@@ -211,14 +244,12 @@ describe("cloudflare firewall", () => {
     expect(policy.unknownPolicy).toBe("allow");
   });
 
-  it("generates Cloudflare default-allowed permissions from readonly rules", () => {
+  it("generates Cloudflare default-allowed permissions from read permission groups", () => {
     const firewall = getConnectorFirewall("cloudflare");
     const readOnlyPermissions = firewall.apis.flatMap((api) => {
       return (api.permissions ?? [])
         .filter((permission) => {
-          return permission.rules.every((rule) => {
-            return rule.startsWith("GET ") || rule.startsWith("HEAD ");
-          });
+          return permission.name.endsWith(".read");
         })
         .map((permission) => {
           return permission.name;
@@ -228,11 +259,13 @@ describe("cloudflare firewall", () => {
     expect([...cloudflareDefaultAllowed].sort()).toStrictEqual(
       readOnlyPermissions.sort(),
     );
-    expect(cloudflareDefaultAllowed).toHaveLength(122);
+    expect(cloudflareDefaultAllowed).toHaveLength(123);
     expect(cloudflareDefaultAllowed).toContain("dns-firewall.read");
     expect(cloudflareDefaultAllowed).toContain("account-waf.read");
     expect(cloudflareDefaultAllowed).toContain("zone-waf.read");
     expect(cloudflareDefaultAllowed).toContain("magic-firewall.read");
+    expect(cloudflareDefaultAllowed).toContain("request-tracer.read");
     expect(cloudflareDefaultAllowed).not.toContain("dns-firewall.write");
+    expect(cloudflareDefaultAllowed).not.toContain("realtime.realtime");
   });
 });

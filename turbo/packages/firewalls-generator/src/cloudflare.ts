@@ -8,10 +8,9 @@
  *
  * Cloudflare publishes operation-level `x-api-token-group` metadata in the
  * OpenAPI schema. The groups are the official API token permission groups.
- * Some read endpoints accept both read and write groups; the firewall should
- * not make write permissions necessary for read-only calls, so this generator
- * filters read operations down to read groups and mutating operations down to
- * non-read groups.
+ * The firewall maps each operation to every official group Cloudflare lists.
+ * Do not infer permissions from HTTP method: Cloudflare has GET endpoints that
+ * require write-capable groups, such as token retrieval endpoints.
  *
  * Cloudflare's /oauth/scopes endpoint publishes the official OAuth scope
  * category used for grouping permissions in the UI. It requires authentication,
@@ -23,7 +22,6 @@
 import {
   ALL_METHODS,
   OPENAPI_PATH_KEYS,
-  escapeString,
   fetchSpec,
   logStats,
   renderCategories,
@@ -40,9 +38,8 @@ import {
 
 // Format: [A-Za-z0-9_-]{40} (gitleaks: cloudflare-api-key)
 const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
-const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
-
-const READ_METHODS = new Set(["get", "head"]);
+const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client";
+const CLOUDFLARE_API_VERSION_PREFIX = "/v4";
 
 type PermissionAction =
   | "admin"
@@ -80,7 +77,6 @@ interface BuildStats {
   mappedOperations: number;
   unmappedOperations: number;
   ambiguousOperations: number;
-  readOperationsWithOnlyWriteGroups: number;
   multiGroupOperations: number;
   permissionCount: number;
 }
@@ -432,21 +428,6 @@ function normalizeGroupName(groupName: string): NormalizedPermission | null {
   };
 }
 
-function groupsForMethod(
-  methodLower: string,
-  groups: NormalizedPermission[],
-): NormalizedPermission[] {
-  if (READ_METHODS.has(methodLower)) {
-    return groups.filter((group) => {
-      return group.action === "read";
-    });
-  }
-
-  return groups.filter((group) => {
-    return group.action !== "read";
-  });
-}
-
 function sanitizeParamName(name: string): string {
   const sanitized = name
     .replace(/[^A-Za-z0-9_-]+/g, "_")
@@ -485,6 +466,10 @@ function sanitizeRulePath(apiPath: string): string {
   return uniquifyPathParamNames(collapseMultiParamSegments(apiPath));
 }
 
+function apiPathToRulePath(apiPath: string): string {
+  return sanitizeRulePath(`${CLOUDFLARE_API_VERSION_PREFIX}${apiPath}`);
+}
+
 function getPermissionGroup(
   permissionGroups: Map<
     string,
@@ -519,7 +504,6 @@ function buildGroups(
     mappedOperations: 0,
     unmappedOperations: 0,
     ambiguousOperations: 0,
-    readOperationsWithOnlyWriteGroups: 0,
     multiGroupOperations: 0,
     permissionCount: 0,
   };
@@ -562,23 +546,14 @@ function buildGroups(
         }
       }
 
-      const methodGroups = groupsForMethod(methodLower, normalizedGroups);
       const selectedGroups = new Map<string, NormalizedPermission>();
-      for (const group of methodGroups) {
+      for (const group of normalizedGroups) {
         selectedGroups.set(group.name, group);
       }
 
       if (selectedGroups.size === 0) {
         stats.unmappedOperations += 1;
         if (hasAmbiguousGroup) stats.ambiguousOperations += 1;
-        if (
-          READ_METHODS.has(methodLower) &&
-          normalizedGroups.some((group) => {
-            return group.action !== "read";
-          })
-        ) {
-          stats.readOperationsWithOnlyWriteGroups += 1;
-        }
         continue;
       }
 
@@ -586,7 +561,7 @@ function buildGroups(
       if (selectedGroups.size > 1) stats.multiGroupOperations += 1;
       stats.mappedOperations += 1;
 
-      const rule = `${methodLower.toUpperCase()} ${sanitizeRulePath(apiPath)}`;
+      const rule = `${methodLower.toUpperCase()} ${apiPathToRulePath(apiPath)}`;
       for (const group of selectedGroups.values()) {
         getPermissionGroup(permissionGroups, group).rules.add(rule);
       }
@@ -642,9 +617,7 @@ function buildGroups(
 
   const defaultAllowed = permissions
     .filter((permission) => {
-      return permission.rules.every((rule) => {
-        return rule.startsWith("GET ") || rule.startsWith("HEAD ");
-      });
+      return permissionAction(permission.name) === "read";
     })
     .map((permission) => {
       return permission.name;
@@ -664,7 +637,6 @@ function renderStats(stats: BuildStats): string[] {
     `  mappedOperations: ${stats.mappedOperations},`,
     `  unmappedOperations: ${stats.unmappedOperations},`,
     `  ambiguousOperations: ${stats.ambiguousOperations},`,
-    `  readOperationsWithOnlyWriteGroups: ${stats.readOperationsWithOnlyWriteGroups},`,
     `  multiGroupOperations: ${stats.multiGroupOperations},`,
     `  permissionCount: ${stats.permissionCount},`,
     "} as const;",
