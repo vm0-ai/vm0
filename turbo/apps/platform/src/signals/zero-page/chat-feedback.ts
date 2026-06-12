@@ -39,6 +39,9 @@ export interface FeedbackItem {
 const feedbackSelection$ = state<FeedbackSelection | null>(null);
 const feedbackItems$ = state<readonly FeedbackItem[]>([]);
 const feedbackThreadId$ = state<string | null>(null);
+// Source-passage ranges keyed by feedback item id, used to keep each commented
+// passage highlighted while its draft lives.
+const feedbackRanges$ = state<ReadonlyMap<number, Range>>(new Map());
 const feedbackNextId$ = state<number>(1);
 const feedbackCopied$ = state<boolean>(false);
 const feedbackCopiedTimerId$ = state<number | null>(null);
@@ -88,12 +91,11 @@ function resolveSelectionThreadId(bubble: Element): string | null {
 // Source-passage highlight. While a feedback comment is being drafted, its
 // quoted passage stays highlighted inside the message via the CSS Custom
 // Highlight API, so the comment is visibly anchored to the text it is about.
-// Ranges are kept here, outside the reactive state, and the registry is a
-// no-op where the API is unavailable (e.g. the test/SSR environment).
+// The painter is a pure function of the range map (kept in feedbackRanges$) and
+// is a no-op where the API is unavailable (e.g. the test/SSR environment).
 // ---------------------------------------------------------------------------
 
 const FEEDBACK_HIGHLIGHT_NAME = "zero-feedback";
-const feedbackHighlightRanges = new Map<number, Range>();
 
 function highlightRegistry(): HighlightRegistry | null {
   if (
@@ -106,41 +108,16 @@ function highlightRegistry(): HighlightRegistry | null {
   return CSS.highlights;
 }
 
-function syncFeedbackHighlight(): void {
+function applyFeedbackHighlight(ranges: ReadonlyMap<number, Range>): void {
   const registry = highlightRegistry();
   if (!registry) {
     return;
   }
-  if (feedbackHighlightRanges.size === 0) {
+  if (ranges.size === 0) {
     registry.delete(FEEDBACK_HIGHLIGHT_NAME);
     return;
   }
-  registry.set(
-    FEEDBACK_HIGHLIGHT_NAME,
-    new Highlight(...feedbackHighlightRanges.values()),
-  );
-}
-
-function addFeedbackHighlight(id: number, range: Range | null): void {
-  if (!range) {
-    return;
-  }
-  feedbackHighlightRanges.set(id, range);
-  syncFeedbackHighlight();
-}
-
-function removeFeedbackHighlight(id: number): void {
-  if (feedbackHighlightRanges.delete(id)) {
-    syncFeedbackHighlight();
-  }
-}
-
-function clearFeedbackHighlight(): void {
-  if (feedbackHighlightRanges.size === 0) {
-    return;
-  }
-  feedbackHighlightRanges.clear();
-  syncFeedbackHighlight();
+  registry.set(FEEDBACK_HIGHLIGHT_NAME, new Highlight(...ranges.values()));
 }
 
 // Read the live document selection when it sits inside an assistant message.
@@ -223,15 +200,21 @@ export const startFeedback$ = command(({ get, set }) => {
   const activeThreadId = get(feedbackThreadId$);
   const crossesThreads =
     activeThreadId !== null && activeThreadId !== selection.threadId;
-  if (crossesThreads) {
-    clearFeedbackHighlight();
-  }
   const existing = crossesThreads ? [] : get(feedbackItems$);
   const id = get(feedbackNextId$);
   set(feedbackNextId$, id + 1);
   set(feedbackThreadId$, selection.threadId);
   set(feedbackItems$, [...existing, { id, quote: selection.text, note: "" }]);
-  addFeedbackHighlight(id, selection.range);
+
+  // A fresh stack on a thread switch starts the highlights over too.
+  const ranges = new Map<number, Range>(
+    crossesThreads ? [] : get(feedbackRanges$),
+  );
+  if (selection.range) {
+    ranges.set(id, selection.range);
+  }
+  set(feedbackRanges$, ranges);
+  applyFeedbackHighlight(ranges);
   set(feedbackSelection$, null);
 });
 
@@ -247,7 +230,11 @@ export const setFeedbackItemNote$ = command(
 );
 
 export const removeFeedbackItem$ = command(({ get, set }, id: number) => {
-  removeFeedbackHighlight(id);
+  const ranges = new Map<number, Range>(get(feedbackRanges$));
+  if (ranges.delete(id)) {
+    set(feedbackRanges$, ranges);
+    applyFeedbackHighlight(ranges);
+  }
   set(
     feedbackItems$,
     get(feedbackItems$).filter((item) => {
@@ -274,7 +261,9 @@ export const dismissFeedback$ = command(({ get, set }) => {
     window.clearTimeout(timerId);
     set(feedbackCopiedTimerId$, null);
   }
-  clearFeedbackHighlight();
+  const emptyRanges = new Map<number, Range>();
+  set(feedbackRanges$, emptyRanges);
+  applyFeedbackHighlight(emptyRanges);
   set(feedbackSelection$, null);
   set(feedbackItems$, []);
   set(feedbackThreadId$, null);
