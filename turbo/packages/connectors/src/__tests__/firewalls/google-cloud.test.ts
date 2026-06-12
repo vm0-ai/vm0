@@ -152,6 +152,16 @@ describe("google-cloud firewall", () => {
       findPermissions(base, "GET", "/storage/v1/b/bucket/o/folder/object.txt"),
     ).toEqual(["storage.objects.get"]);
     expect(
+      findPermissions(
+        base,
+        "PATCH",
+        "/storage/v1/b/bucket/o/folder/object.txt",
+      ),
+    ).toEqual(["storage.objects.update"]);
+    expect(
+      findPermissions(base, "PUT", "/storage/v1/b/bucket/o/folder/object.txt"),
+    ).toEqual(["storage.objects.update"]);
+    expect(
       findPermissions(base, "POST", "/upload/storage/v1/b/bucket/o"),
     ).toEqual(["storage.objects.create"]);
   });

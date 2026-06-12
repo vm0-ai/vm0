@@ -887,7 +887,9 @@ function methodPathWithServicePath(
 function adjustRulePath(methodId: string, path: string): string {
   if (
     methodId === "storage.objects.delete" ||
-    methodId === "storage.objects.get"
+    methodId === "storage.objects.get" ||
+    methodId === "storage.objects.patch" ||
+    methodId === "storage.objects.update"
   ) {
     return path.replace("/o/{object}", "/o/{object+}");
   }
