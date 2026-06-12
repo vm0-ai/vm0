@@ -30,7 +30,7 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -50,7 +50,7 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-test-1";
-const SCHEDULE_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
+const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
@@ -314,9 +314,9 @@ function mockActiveRunThread(threadId: string): void {
   });
 }
 
-function mockScheduleThread(): void {
+function mockAutomationThread(): void {
   mockChatLifecycle(context, {
-    threadId: SCHEDULE_THREAD_ID,
+    threadId: AUTOMATION_THREAD_ID,
     threadTitle: "Scheduled launch review",
     historyMessages: [
       {
@@ -331,11 +331,11 @@ function mockScheduleThread(): void {
       },
     ],
   });
-  context.mocks.data.schedules([
-    createMockScheduleResponse({
+  context.mocks.data.automations([
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000701",
       agentId: AGENT_ID,
-      chatThreadId: SCHEDULE_THREAD_ID,
+      chatThreadId: AUTOMATION_THREAD_ID,
       name: "launch-review",
       description: "Launch review",
       prompt: "Review launch risks",
@@ -343,10 +343,10 @@ function mockScheduleThread(): void {
       triggerType: "cron",
       nextRunAt: "2026-06-10T15:30:00.000Z",
     }),
-    createMockScheduleResponse({
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000702",
       agentId: AGENT_ID,
-      chatThreadId: SCHEDULE_THREAD_ID,
+      chatThreadId: AUTOMATION_THREAD_ID,
       name: "paused-launch-audit",
       description: "Paused launch audit",
       prompt: "Audit launch readiness",
@@ -355,10 +355,10 @@ function mockScheduleThread(): void {
       enabled: false,
       nextRunAt: null,
     }),
-    createMockScheduleResponse({
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000703",
       agentId: AGENT_ID,
-      chatThreadId: SCHEDULE_THREAD_ID,
+      chatThreadId: AUTOMATION_THREAD_ID,
       name: "manual-launch-reminder",
       description: "Manual launch reminder",
       prompt: "Remind the team about launch blockers",
@@ -2194,10 +2194,10 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows linked schedules from the chat header", async () => {
-    mockScheduleThread();
+  it("shows linked automations from the chat header", async () => {
+    mockAutomationThread();
 
-    detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
@@ -2216,10 +2216,10 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("opens a linked schedule detail from the chat header", async () => {
-    mockScheduleThread();
+  it("opens a linked automation detail from the chat header", async () => {
+    mockAutomationThread();
 
-    detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${AUTOMATION_THREAD_ID}` });
 
     click(await screen.findByLabelText("Automations"));
 
@@ -2236,7 +2236,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows scheduled run messages as schedule links in chat history", async () => {
+  it("shows scheduled run messages as automation links in chat history", async () => {
     const threadId = "thread-scheduled-message";
     const scheduleId = "f0000001-0000-4000-a000-000000000721";
     mockChatLifecycle(context, {

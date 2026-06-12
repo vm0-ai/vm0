@@ -1,8 +1,8 @@
 import { useGet, useSet } from "ccstate-react";
 import type { UsageInsightResponse } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import {
-  hoveredScheduleId$,
-  setHoveredScheduleId$,
+  hoveredAutomationId$,
+  setHoveredAutomationId$,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { Link } from "../../router/link.tsx";
 import { getCardPalette } from "../../../lib/card-palette.ts";
@@ -23,24 +23,24 @@ function formatValue(n: number): string {
   return n.toLocaleString();
 }
 
-export function UsageInsightSchedulesTable({
+export function UsageInsightAutomationsTable({
   data,
 }: {
   data: UsageInsightResponse;
 }) {
-  const { schedules, scheduleOtherCount, scheduleOtherCredits } = data;
+  const { automations, automationOtherCount, automationOtherCredits } = data;
   const { accent } = getCardPalette(2);
-  const hoveredId = useGet(hoveredScheduleId$);
-  const setHoveredId = useSet(setHoveredScheduleId$);
+  const hoveredId = useGet(hoveredAutomationId$);
+  const setHoveredId = useSet(setHoveredAutomationId$);
 
-  if (schedules.length === 0 && scheduleOtherCount === 0) {
+  if (automations.length === 0 && automationOtherCount === 0) {
     return (
       <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
         <p
           className="text-xs font-semibold uppercase tracking-widest mb-3"
           style={{ color: accent }}
         >
-          Schedules
+          Automations
         </p>
         <p className="text-sm text-muted-foreground">
           No automations used in this period
@@ -49,13 +49,13 @@ export function UsageInsightSchedulesTable({
     );
   }
 
-  const totalCount = schedules.length + scheduleOtherCount;
-  const totalCredits = schedules.reduce((s, r) => {
+  const totalCount = automations.length + automationOtherCount;
+  const totalCredits = automations.reduce((s, r) => {
     return s + r.credits;
-  }, scheduleOtherCredits);
+  }, automationOtherCredits);
   const maxValue = Math.max(
     1,
-    ...schedules.map((s) => {
+    ...automations.map((s) => {
       return s.credits;
     }),
   );
@@ -66,7 +66,7 @@ export function UsageInsightSchedulesTable({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Schedules
+        Automations
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalCount}
@@ -77,22 +77,23 @@ export function UsageInsightSchedulesTable({
       </p>
       <TooltipProvider delayDuration={300}>
         <ul className="flex flex-col gap-2.5 mt-4">
-          {schedules.map((row) => {
+          {automations.map((row) => {
             const value = row.credits;
             const pct = (value / maxValue) * 100;
-            const isActive = hoveredId === null || hoveredId === row.scheduleId;
+            const isActive =
+              hoveredId === null || hoveredId === row.automationId;
             const fullName =
-              row.scheduleDescription?.trim() || row.scheduleName;
+              row.automationDescription?.trim() || row.automationName;
             return (
-              <li key={row.scheduleId}>
+              <li key={row.automationId}>
                 <Link
                   pathname="/automations/:scheduleId"
-                  options={{ pathParams: { scheduleId: row.scheduleId } }}
+                  options={{ pathParams: { scheduleId: row.automationId } }}
                   className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 ${
-                    hoveredId === row.scheduleId ? "bg-foreground/5" : ""
+                    hoveredId === row.automationId ? "bg-foreground/5" : ""
                   } ${isActive ? "opacity-100" : "opacity-30"}`}
                   onMouseEnter={() => {
-                    setHoveredId(row.scheduleId);
+                    setHoveredId(row.automationId);
                   }}
                   onMouseLeave={() => {
                     setHoveredId(null);
@@ -130,18 +131,18 @@ export function UsageInsightSchedulesTable({
               </li>
             );
           })}
-          {scheduleOtherCount > 0 && (
+          {automationOtherCount > 0 && (
             <li
               className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
                 hoveredId === null ? "opacity-100" : "opacity-30"
               }`}
             >
               <span className="text-sm text-muted-foreground truncate col-span-2">
-                +{scheduleOtherCount} more{" "}
-                {scheduleOtherCount === 1 ? "automation" : "automations"}
+                +{automationOtherCount} more{" "}
+                {automationOtherCount === 1 ? "automation" : "automations"}
               </span>
               <span className="text-xs tabular-nums text-muted-foreground text-right">
-                {formatValue(scheduleOtherCredits)}
+                {formatValue(automationOtherCredits)}
               </span>
             </li>
           )}

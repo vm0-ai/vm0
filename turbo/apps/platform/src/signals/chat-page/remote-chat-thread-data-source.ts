@@ -282,7 +282,7 @@ const subscribeRealtime$ = command(
       set(
         setAblyLoop$,
         `chatThreadSchedulesChanged:${threadId}`,
-        handlers.onSchedulesChanged$,
+        handlers.onAutomationsChanged$,
         signal,
       ),
     ]);

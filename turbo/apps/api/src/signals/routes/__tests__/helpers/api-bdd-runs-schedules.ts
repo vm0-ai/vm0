@@ -49,7 +49,7 @@ import {
   zeroRunsMainContract,
   zeroRunsQueueContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
-import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -114,18 +114,18 @@ type CreateWebhookAutomationRequest = {
   readonly chatThreadId?: string;
 };
 type DeployScheduleResponse = {
-  readonly schedule: ScheduleResponse;
+  readonly schedule: AutomationView;
   readonly created: boolean;
 };
 type ScheduleListResponse = {
-  readonly schedules: readonly ScheduleResponse[];
+  readonly schedules: readonly AutomationView[];
 };
 type AutomationMutationResponse = {
-  readonly automation: ScheduleResponse;
+  readonly automation: AutomationView;
   readonly created: boolean;
 };
 type AutomationListResponse = {
-  readonly automations: readonly ScheduleResponse[];
+  readonly automations: readonly AutomationView[];
 };
 type WebhookAutomationResponse = AutomationResponse & {
   readonly webhookToken: string;
@@ -284,7 +284,7 @@ function hasWebhookTrigger(automation: AutomationResponse): boolean {
 
 function scheduleResponseFromAutomation(
   automation: AutomationResponse,
-): ScheduleResponse {
+): AutomationView {
   const trigger = timeTriggerFor(automation);
   return {
     id: automation.id,
@@ -1182,7 +1182,7 @@ export function createRunsSchedulesApi(context: TestContext) {
     async enableAutomation(
       actor: ApiTestUser,
       automation: AutomationResourceRef,
-    ): Promise<ScheduleResponse> {
+    ): Promise<AutomationView> {
       const response = await accept(
         setupApp({ context })(automationsByRefContract).enable({
           headers: authenticate(context, actor),
@@ -1197,7 +1197,7 @@ export function createRunsSchedulesApi(context: TestContext) {
     async disableAutomation(
       actor: ApiTestUser,
       automation: AutomationResourceRef,
-    ): Promise<ScheduleResponse> {
+    ): Promise<AutomationView> {
       const response = await accept(
         setupApp({ context })(automationsByRefContract).disable({
           headers: authenticate(context, actor),
@@ -1595,7 +1595,7 @@ export function createRunsSchedulesApi(context: TestContext) {
     async enableSchedule(
       actor: ApiTestUser,
       schedule: AutomationResourceRef,
-    ): Promise<ScheduleResponse> {
+    ): Promise<AutomationView> {
       const response = await accept(
         setupApp({ context })(automationsByRefContract).enable({
           headers: authenticate(context, actor),
@@ -1610,7 +1610,7 @@ export function createRunsSchedulesApi(context: TestContext) {
     async disableSchedule(
       actor: ApiTestUser,
       schedule: AutomationResourceRef,
-    ): Promise<ScheduleResponse> {
+    ): Promise<AutomationView> {
       const response = await accept(
         setupApp({ context })(automationsByRefContract).disable({
           headers: authenticate(context, actor),

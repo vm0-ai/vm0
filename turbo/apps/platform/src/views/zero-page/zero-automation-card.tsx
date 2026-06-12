@@ -4,22 +4,22 @@
 
 import { useGet, useSet } from "ccstate-react";
 import {
-  scheduleViewMode$,
-  setScheduleViewMode$,
-  addScheduleOpen$,
-  setAddScheduleOpen$,
-  editingScheduleId$,
-  setEditingScheduleId$,
-  openEditScheduleDialog$,
+  automationViewMode$,
+  setAutomationViewMode$,
+  addAutomationOpen$,
+  setAddAutomationOpen$,
+  editingAutomationId$,
+  setEditingAutomationId$,
+  openEditAutomationDialog$,
   togglingIds$,
-  toggleScheduleCardEnabled$,
+  toggleAutomationCardEnabled$,
   runningIds$,
   setRunningIds$,
   pendingDeleteEntry$,
   setPendingDeleteEntry$,
-  deletingSchedule$,
-  setDeletingSchedule$,
-} from "../../signals/zero-page/schedule-card.ts";
+  deletingAutomation$,
+  setDeletingAutomation$,
+} from "../../signals/zero-page/automation-card.ts";
 import { IconPlus, IconList, IconLayoutGrid } from "@tabler/icons-react";
 import {
   Card,
@@ -38,11 +38,11 @@ import {
 import { nowDate } from "../../lib/time.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  ScheduleFormDialog,
-  type ScheduleFormValues,
-} from "./schedule-dialog.tsx";
-import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
-import { ScheduleListView } from "./schedule-list-view.tsx";
+  AutomationFormDialog,
+  type AutomationFormValues,
+} from "./automation-dialog.tsx";
+import { AutomationCalendarView } from "./automation-calendar-view.tsx";
+import { AutomationListView } from "./automation-list-view.tsx";
 import {
   Dialog,
   DialogContent,
@@ -52,11 +52,11 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 
-import type { ScheduleEntry } from "./schedule-utils";
+import type { AutomationEntry } from "./automation-utils";
 
-export { WEEKDAY_LABELS, type ScheduleEntry } from "./schedule-utils";
+export { WEEKDAY_LABELS, type AutomationEntry } from "./automation-utils";
 
-interface ParsedScheduleTime {
+interface ParsedAutomationTime {
   freq: string;
   date: string;
   hour: number;
@@ -79,8 +79,8 @@ function parse12hTo24h(h: string, ampm: string): number {
 }
 
 function defaultParsed(
-  overrides: Partial<ParsedScheduleTime>,
-): ParsedScheduleTime {
+  overrides: Partial<ParsedAutomationTime>,
+): ParsedAutomationTime {
   return {
     freq: "every_day",
     date: nowDate().toISOString().slice(0, 10),
@@ -117,7 +117,9 @@ function parseWeeklyDays(timeStr: string): string {
     .join(",");
 }
 
-export function parseScheduleTimeString(timeStr: string): ParsedScheduleTime {
+export function parseAutomationTimeString(
+  timeStr: string,
+): ParsedAutomationTime {
   if (timeStr === "Now") {
     return defaultParsed({ freq: "now" });
   }
@@ -173,10 +175,10 @@ export function parseScheduleTimeString(timeStr: string): ParsedScheduleTime {
   return defaultParsed({ hour, minute });
 }
 
-interface ZeroScheduleCardProps {
+interface ZeroAutomationCardProps {
   title: string;
   subtitle: string;
-  initialSchedule: readonly Readonly<ScheduleEntry>[];
+  initialAutomations: readonly Readonly<AutomationEntry>[];
   onSave: (params: {
     prompt: string;
     description?: string;
@@ -190,63 +192,63 @@ interface ZeroScheduleCardProps {
     dayOfMonth?: string;
     editName?: string;
   }) => Promise<void>;
-  /** When provided, called to delete a schedule by name. */
+  /** When provided, called to delete an automation by name. */
   onDelete?: (name: string) => Promise<void>;
-  /** When provided, called to toggle a schedule's enabled state. */
+  /** When provided, called to toggle an automation's enabled state. */
   onToggleEnabled?: (params: {
     name: string;
     enabled: boolean;
   }) => Promise<void>;
-  /** When provided, called to trigger an immediate run for a schedule. */
-  onRunNow?: (entry: ScheduleEntry) => Promise<void>;
-  /** When provided, row clicks navigate to the schedule detail. */
-  onOpenDetails?: (entry: ScheduleEntry) => void;
+  /** When provided, called to trigger an immediate run for an automation. */
+  onRunNow?: (entry: AutomationEntry) => Promise<void>;
+  /** When provided, row clicks navigate to the automation detail. */
+  onOpenDetails?: (entry: AutomationEntry) => void;
   /** When true, the save button shows a loading state. */
   saving?: boolean;
-  /** Default timezone for new schedules. Falls back to browser timezone. */
+  /** Default timezone for new automations. Falls back to browser timezone. */
   defaultTimezone?: string;
 }
 
-export function ZeroScheduleCard({
+export function ZeroAutomationCard({
   title,
   subtitle,
-  initialSchedule,
+  initialAutomations,
   onSave,
   onDelete,
   onToggleEnabled,
   onRunNow,
   onOpenDetails,
   saving,
-}: ZeroScheduleCardProps) {
+}: ZeroAutomationCardProps) {
   const signal = useGet(pageSignal$);
-  const scheduleViewMode = useGet(scheduleViewMode$);
-  const setScheduleViewMode = useSet(setScheduleViewMode$);
-  const scheduleList = [...initialSchedule];
-  const addScheduleOpen = useGet(addScheduleOpen$);
-  const setAddScheduleOpen = useSet(setAddScheduleOpen$);
-  const editingScheduleId = useGet(editingScheduleId$);
-  const setEditingScheduleId = useSet(setEditingScheduleId$);
-  const openEditDialog = useSet(openEditScheduleDialog$);
+  const automationViewMode = useGet(automationViewMode$);
+  const setAutomationViewMode = useSet(setAutomationViewMode$);
+  const automationList = [...initialAutomations];
+  const addAutomationOpen = useGet(addAutomationOpen$);
+  const setAddAutomationOpen = useSet(setAddAutomationOpen$);
+  const editingAutomationId = useGet(editingAutomationId$);
+  const setEditingAutomationId = useSet(setEditingAutomationId$);
+  const openEditDialog = useSet(openEditAutomationDialog$);
   const togglingIds = useGet(togglingIds$);
-  const toggleScheduleCardEnabled = useSet(toggleScheduleCardEnabled$);
+  const toggleAutomationCardEnabled = useSet(toggleAutomationCardEnabled$);
 
-  const editingEntry = editingScheduleId
-    ? (scheduleList.find((e) => {
-        return e.id === editingScheduleId;
+  const editingEntry = editingAutomationId
+    ? (automationList.find((e) => {
+        return e.id === editingAutomationId;
       }) ?? null)
     : null;
 
-  const openAddSchedule = () => {
-    detach(setAddScheduleOpen(true, signal), Reason.DomCallback);
+  const openAddAutomation = () => {
+    detach(setAddAutomationOpen(true, signal), Reason.DomCallback);
   };
 
   const pendingDelete = useGet(pendingDeleteEntry$);
   const setPendingDelete = useSet(setPendingDeleteEntry$);
-  const deleting = useGet(deletingSchedule$);
-  const setDeleting = useSet(setDeletingSchedule$);
+  const deleting = useGet(deletingAutomation$);
+  const setDeleting = useSet(setDeletingAutomation$);
 
-  const openEditSchedule = (entry: ScheduleEntry) => {
-    const parsed = parseScheduleTimeString(entry.time);
+  const openEditAutomation = (entry: AutomationEntry) => {
+    const parsed = parseAutomationTimeString(entry.time);
     detach(
       openEditDialog(
         entry.id,
@@ -270,12 +272,12 @@ export function ZeroScheduleCard({
   };
 
   const handleToggle = onToggleEnabled
-    ? (entry: ScheduleEntry, enabled: boolean) => {
+    ? (entry: AutomationEntry, enabled: boolean) => {
         if (entry.name === undefined) {
           return;
         }
         detach(
-          toggleScheduleCardEnabled(
+          toggleAutomationCardEnabled(
             {
               id: entry.id,
               name: entry.name,
@@ -290,7 +292,7 @@ export function ZeroScheduleCard({
     : undefined;
 
   const handleDelete = onDelete
-    ? (entry: ScheduleEntry) => {
+    ? (entry: AutomationEntry) => {
         setPendingDelete(entry);
       }
     : undefined;
@@ -299,7 +301,7 @@ export function ZeroScheduleCard({
   const setRunningIds = useSet(setRunningIds$);
 
   const handleRunNow = onRunNow
-    ? onDomEventFn(async (entry: ScheduleEntry) => {
+    ? onDomEventFn(async (entry: AutomationEntry) => {
         const id = entry.id;
         setRunningIds((prev) => {
           return new Set([...prev, id]);
@@ -329,7 +331,7 @@ export function ZeroScheduleCard({
     setDeleting(false);
   });
 
-  const handleCreateSave = (values: ScheduleFormValues) => {
+  const handleCreateSave = (values: AutomationFormValues) => {
     detach(
       (async () => {
         await onSave({
@@ -346,13 +348,13 @@ export function ZeroScheduleCard({
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
         });
-        await setAddScheduleOpen(false, signal);
+        await setAddAutomationOpen(false, signal);
       })(),
       Reason.DomCallback,
     );
   };
 
-  const handleEditSave = (values: ScheduleFormValues) => {
+  const handleEditSave = (values: AutomationFormValues) => {
     detach(
       (async () => {
         await onSave({
@@ -370,7 +372,7 @@ export function ZeroScheduleCard({
             values.freq === "every_month" ? values.dayOfMonth : undefined,
           editName: editingEntry?.name,
         });
-        await setEditingScheduleId(null, signal);
+        await setEditingAutomationId(null, signal);
       })(),
       Reason.DomCallback,
     );
@@ -392,15 +394,15 @@ export function ZeroScheduleCard({
               variant="outline"
               size="sm"
               className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-              onClick={openAddSchedule}
+              onClick={openAddAutomation}
             >
               <IconPlus size={14} stroke={2} />
               Add automation
             </Button>
             <Tabs
-              value={scheduleViewMode}
+              value={automationViewMode}
               onValueChange={(v) => {
-                return setScheduleViewMode(v as "list" | "calendar");
+                return setAutomationViewMode(v as "list" | "calendar");
               }}
               className="shrink-0"
             >
@@ -423,12 +425,12 @@ export function ZeroScheduleCard({
             </Tabs>
           </div>
         </header>
-        {scheduleViewMode === "list" && (
-          <ScheduleListView
-            entries={scheduleList}
+        {automationViewMode === "list" && (
+          <AutomationListView
+            entries={automationList}
             togglingIds={togglingIds}
             runningIds={runningIds}
-            onEdit={openEditSchedule}
+            onEdit={openEditAutomation}
             onToggle={handleToggle}
             onDelete={handleDelete}
             onRunNow={handleRunNow}
@@ -436,17 +438,17 @@ export function ZeroScheduleCard({
           />
         )}
 
-        {scheduleViewMode === "calendar" && (
-          <ScheduleCalendarView
-            entries={scheduleList}
-            onEdit={openEditSchedule}
+        {automationViewMode === "calendar" && (
+          <AutomationCalendarView
+            entries={automationList}
+            onEdit={openEditAutomation}
           />
         )}
-        <ScheduleFormDialog
-          open={addScheduleOpen}
+        <AutomationFormDialog
+          open={addAutomationOpen}
           onClose={() => {
             return detach(
-              setAddScheduleOpen(false, signal),
+              setAddAutomationOpen(false, signal),
               Reason.DomCallback,
             );
           }}
@@ -454,11 +456,11 @@ export function ZeroScheduleCard({
           saving={!!saving}
           mode="create"
         />
-        <ScheduleFormDialog
-          open={editingScheduleId !== null}
+        <AutomationFormDialog
+          open={editingAutomationId !== null}
           onClose={() => {
             return detach(
-              setEditingScheduleId(null, signal),
+              setEditingAutomationId(null, signal),
               Reason.DomCallback,
             );
           }}
@@ -470,14 +472,14 @@ export function ZeroScheduleCard({
               ? {
                   prompt: editingEntry.prompt,
                   description: editingEntry.description ?? "",
-                  freq: parseScheduleTimeString(editingEntry.time).freq,
-                  date: parseScheduleTimeString(editingEntry.time).date,
-                  hour: parseScheduleTimeString(editingEntry.time).hour,
-                  minute: parseScheduleTimeString(editingEntry.time).minute,
+                  freq: parseAutomationTimeString(editingEntry.time).freq,
+                  date: parseAutomationTimeString(editingEntry.time).date,
+                  hour: parseAutomationTimeString(editingEntry.time).hour,
+                  minute: parseAutomationTimeString(editingEntry.time).minute,
                   timezone:
                     editingEntry.timezone ??
-                    parseScheduleTimeString(editingEntry.time).timezone,
-                  loopMinutes: parseScheduleTimeString(editingEntry.time)
+                    parseAutomationTimeString(editingEntry.time).timezone,
+                  loopMinutes: parseAutomationTimeString(editingEntry.time)
                     .loopMinutes,
                 }
               : undefined

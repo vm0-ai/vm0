@@ -190,7 +190,7 @@ describe("GET /api/zero/usage/insight", () => {
     );
 
     expect(Array.isArray(response.body.buckets)).toBeTruthy();
-    expect(Array.isArray(response.body.schedules)).toBeTruthy();
+    expect(Array.isArray(response.body.automations)).toBeTruthy();
     expect(Array.isArray(response.body.chats)).toBeTruthy();
     expect(typeof response.body.grandTotalCredits).toBe("number");
     expect(typeof response.body.grandTotalTokens).toBe("number");
@@ -777,7 +777,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(expectedUtcDate).not.toBe(expectedLaDate);
   });
 
-  it("top-100 truncation — 105 schedules → schedules.length === 100, otherCount === 5", async () => {
+  it("top-100 truncation — 105 automations → automations.length === 100, otherCount === 5", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -813,8 +813,8 @@ describe("GET /api/zero/usage/insight", () => {
       },
       context.signal,
     );
-    const eventBoostedScheduleId = scheduleIds[0];
-    expect(eventBoostedScheduleId).toBeDefined();
+    const eventBoostedAutomationId = scheduleIds[0];
+    expect(eventBoostedAutomationId).toBeDefined();
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const response = await accept(
@@ -825,15 +825,15 @@ describe("GET /api/zero/usage/insight", () => {
       [200],
     );
 
-    expect(response.body.schedules).toHaveLength(100);
-    expect(response.body.scheduleOtherCount).toBe(5);
-    expect(response.body.schedules[0]).toMatchObject({
-      scheduleId: eventBoostedScheduleId,
+    expect(response.body.automations).toHaveLength(100);
+    expect(response.body.automationOtherCount).toBe(5);
+    expect(response.body.automations[0]).toMatchObject({
+      automationId: eventBoostedAutomationId,
       credits: 10_001,
     });
   });
 
-  it("returns scheduleDescription alongside scheduleName for scheduled runs", async () => {
+  it("returns automationDescription alongside automationName for automation runs", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
@@ -916,14 +916,14 @@ describe("GET /api/zero/usage/insight", () => {
       [200],
     );
 
-    const described = response.body.schedules.find((s) => {
-      return s.scheduleId === describedScheduleId;
+    const described = response.body.automations.find((s) => {
+      return s.automationId === describedScheduleId;
     });
-    const undescribed = response.body.schedules.find((s) => {
-      return s.scheduleId === undescribedScheduleId;
+    const undescribed = response.body.automations.find((s) => {
+      return s.automationId === undescribedScheduleId;
     });
-    expect(described?.scheduleDescription).toBe("Daily morning brief");
-    expect(undescribed?.scheduleDescription).toBeNull();
+    expect(described?.automationDescription).toBe("Daily morning brief");
+    expect(undescribed?.automationDescription).toBeNull();
   });
 
   it("scope isolation — other user's activity in same org is invisible", async () => {
@@ -1420,7 +1420,7 @@ describe("GET /api/zero/usage/insight", () => {
       [200],
     );
 
-    expect(response.body.schedules).toHaveLength(100);
-    expect(response.body.scheduleOtherCount).toBe(5);
+    expect(response.body.automations).toHaveLength(100);
+    expect(response.body.automationOtherCount).toBe(5);
   });
 });

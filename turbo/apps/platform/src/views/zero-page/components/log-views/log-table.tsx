@@ -31,11 +31,11 @@ export const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
 const GRID_WITH_SOURCE =
   "grid grid-cols-[minmax(6rem,1fr)_minmax(8rem,1.5fr)_minmax(4rem,0.8fr)_6rem_8rem_5rem_2.5rem] gap-x-6 items-center";
 
-/** Without source column (schedule history) */
+/** Without source column (automation history) */
 const GRID_WITHOUT_SOURCE =
   "grid grid-cols-[1fr_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
 
-/** Without source, with description column (cross-schedule run history) */
+/** Without source, with description column (cross-automation run history) */
 const GRID_WITH_DESCRIPTION =
   "grid grid-cols-[minmax(6rem,1fr)_minmax(8rem,2fr)_6rem_8rem_5rem_2.5rem] gap-x-6 items-center";
 

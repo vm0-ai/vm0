@@ -1,32 +1,32 @@
 import { command } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
-import { saveOrgSchedule$ } from "../zero-page/zero-schedule.ts";
-import type { ScheduleFormData } from "./schedule-form.ts";
+import { saveOrgAutomation$ } from "../zero-page/zero-automations.ts";
+import type { AutomationFormData } from "./automation-form.ts";
 import {
-  closeCreateScheduleDialog$,
-  creatingOrgSchedule$,
-  setCreatingOrgSchedule$,
-} from "./schedule-page-ui.ts";
+  closeCreateAutomationDialog$,
+  creatingOrgAutomation$,
+  setCreatingOrgAutomation$,
+} from "./automation-page-ui.ts";
 
 // ---------------------------------------------------------------------------
-// Create-schedule flow wired for the ZeroSchedulePage form dialog.
+// Create-automation flow wired for the ZeroAutomationsPage form dialog.
 // Normalizes form values, saves, closes the dialog, and navigates to the new
-// schedule. Views wrap the `useSet` result with `onDomEventFn` so the
+// automation. Views wrap the `useSet` result with `onDomEventFn` so the
 // returned promise is detached with `Reason.DomCallback`.
 // ---------------------------------------------------------------------------
 
-export const createOrgScheduleFromForm$ = command(
+export const createOrgAutomationFromForm$ = command(
   async (
     { get, set },
-    values: ScheduleFormData,
+    values: AutomationFormData,
     signal: AbortSignal,
   ): Promise<void> => {
-    if (get(creatingOrgSchedule$)) {
+    if (get(creatingOrgAutomation$)) {
       return;
     }
-    set(setCreatingOrgSchedule$, true);
+    set(setCreatingOrgAutomation$, true);
     const scheduleId = await set(
-      saveOrgSchedule$,
+      saveOrgAutomation$,
       {
         prompt: values.prompt.trim(),
         description: values.description.trim() || undefined,
@@ -46,10 +46,10 @@ export const createOrgScheduleFromForm$ = command(
       },
       signal,
     ).finally(() => {
-      set(setCreatingOrgSchedule$, false);
+      set(setCreatingOrgAutomation$, false);
     });
     signal.throwIfAborted();
-    set(closeCreateScheduleDialog$);
+    set(closeCreateAutomationDialog$);
     set(detachedNavigateTo$, "/automations/:scheduleId", {
       pathParams: { scheduleId },
     });

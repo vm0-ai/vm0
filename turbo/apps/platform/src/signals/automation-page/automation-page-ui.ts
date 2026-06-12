@@ -1,11 +1,11 @@
 import { command, computed, state, type StateArg } from "ccstate";
 import { nowDate } from "../../lib/time.ts";
-import type { CombinedEntry } from "../../views/zero-page/zero-schedule-page.tsx";
+import type { CombinedEntry } from "../../views/zero-page/zero-automations-page.tsx";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { agents$ } from "../agent.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
-import { createDefaultFormData, initDialogForm$ } from "./schedule-form.ts";
-import { toggleOrgScheduleEnabled$ } from "../zero-page/zero-schedule.ts";
+import { createDefaultFormData, initDialogForm$ } from "./automation-form.ts";
+import { toggleOrgAutomationEnabled$ } from "../zero-page/zero-automations.ts";
 import { withCleanup } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ function cell<T>(initial: T) {
 }
 
 // ---------------------------------------------------------------------------
-// Schedule page UI state
+// Automation page UI state
 // ---------------------------------------------------------------------------
 
 const internalCreateDialogOpen$ = state(false);
@@ -34,7 +34,7 @@ export const createDialogOpen$ = computed((get) => {
   return get(internalCreateDialogOpen$);
 });
 
-export const openCreateScheduleDialog$ = command(
+export const openCreateAutomationDialog$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const [prefs, allAgents, status] = await Promise.all([
       get(userPreferences$),
@@ -56,11 +56,11 @@ export const openCreateScheduleDialog$ = command(
   },
 );
 
-export const closeCreateScheduleDialog$ = command(({ set }) => {
+export const closeCreateAutomationDialog$ = command(({ set }) => {
   set(internalCreateDialogOpen$, false);
 });
 
-export const { get$: creatingOrgSchedule$, set$: setCreatingOrgSchedule$ } =
+export const { get$: creatingOrgAutomation$, set$: setCreatingOrgAutomation$ } =
   cell(false);
 
 const internalPageTogglingIds$ = state<Set<string>>(new Set());
@@ -82,7 +82,7 @@ function removePendingId(id: string) {
   };
 }
 
-export const togglePageScheduleEnabled$ = command(
+export const togglePageAutomationEnabled$ = command(
   async (
     { set },
     params: { id: string; name: string; enabled: boolean; agentId: string },
@@ -91,7 +91,7 @@ export const togglePageScheduleEnabled$ = command(
     set(internalPageTogglingIds$, addPendingId(params.id));
     await withCleanup(
       set(
-        toggleOrgScheduleEnabled$,
+        toggleOrgAutomationEnabled$,
         {
           name: params.name,
           enabled: params.enabled,

@@ -6,17 +6,17 @@ import {
   type AutomationTriggerResponse,
   type CreateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
-import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { accept } from "../../lib/accept.ts";
 import type { ZeroClientFactory } from "../api-client.ts";
-import type { ScheduleBody } from "./cron.ts";
+import type { AutomationFormBody } from "./cron.ts";
 
 // ---------------------------------------------------------------------------
-// The platform's schedule pages over the Automation resource API.
+// The platform's automation pages over the Automation resource API.
 //
 // The pages keep their single-trigger editing model: each automation they
 // manage carries exactly one time trigger (cron / once / loop), and the view
-// model stays `ScheduleResponse` — the flat projection the pages were built
+// model stays `AutomationView` — the flat projection the pages were built
 // on. These helpers translate between that projection and the resource API
 // (automation + triggers[]), replacing the retired schedule surfaces (#17307).
 // ---------------------------------------------------------------------------
@@ -42,10 +42,10 @@ function timeTriggerOf(automation: AutomationResponse): TimeTrigger | null {
 
 // The flat single-trigger projection of an automation: the pages' view model.
 // `retryStartedAt` is vestigial in the contract and always null.
-function toSchedule(
+function toAutomationView(
   automation: AutomationResponse,
   trigger: TimeTrigger,
-): ScheduleResponse {
+): AutomationView {
   return {
     id: automation.id,
     agentId: automation.agentId,
@@ -71,7 +71,7 @@ function toSchedule(
   };
 }
 
-function toTriggerRequest(body: ScheduleBody): CreateTriggerRequest {
+function toTriggerRequest(body: AutomationFormBody): CreateTriggerRequest {
   if ("cronExpression" in body) {
     return {
       kind: "cron",
@@ -87,7 +87,10 @@ function toTriggerRequest(body: ScheduleBody): CreateTriggerRequest {
 
 // Whether the existing trigger already matches the requested config — if so,
 // the update skips the trigger replacement and keeps the run history state.
-function triggerMatches(trigger: TimeTrigger, body: ScheduleBody): boolean {
+function triggerMatches(
+  trigger: TimeTrigger,
+  body: AutomationFormBody,
+): boolean {
   if ("cronExpression" in body) {
     return (
       trigger.kind === "cron" &&
@@ -107,7 +110,7 @@ function triggerMatches(trigger: TimeTrigger, body: ScheduleBody): boolean {
   );
 }
 
-async function listAutomations(
+async function listAutomationResources(
   client: ZeroClientFactory,
   fetchOptions?: RequestInit,
 ): Promise<AutomationResponse[]> {
@@ -126,35 +129,35 @@ async function findByNameAndAgent(
   name: string,
   agentId: string,
 ): Promise<AutomationResponse> {
-  const automations = await listAutomations(client);
+  const automations = await listAutomationResources(client);
   const match = automations.find((a) => {
     return a.name === name && a.agentId === agentId;
   });
   if (!match) {
-    throw new Error(`Schedule not found: ${name}`);
+    throw new Error(`Automation not found: ${name}`);
   }
   return match;
 }
 
-/** List the schedule-page automations (those carrying a time trigger). */
-export async function listSchedules(
+/** List the automation-page automations (those carrying a time trigger). */
+export async function listAutomations(
   client: ZeroClientFactory,
   fetchOptions?: RequestInit,
-): Promise<ScheduleResponse[]> {
-  const automations = await listAutomations(client, fetchOptions);
-  const schedules: ScheduleResponse[] = [];
+): Promise<AutomationView[]> {
+  const automations = await listAutomationResources(client, fetchOptions);
+  const views: AutomationView[] = [];
   for (const automation of automations) {
     const trigger = timeTriggerOf(automation);
     if (trigger) {
-      schedules.push(toSchedule(automation, trigger));
+      views.push(toAutomationView(automation, trigger));
     }
   }
-  return schedules;
+  return views;
 }
 
-async function createSchedule(
+async function createAutomation(
   client: ZeroClientFactory,
-  body: ScheduleBody,
+  body: AutomationFormBody,
 ): Promise<{ id: string; created: boolean }> {
   const result = await accept(
     client(automationsMainContract).create({
@@ -174,9 +177,9 @@ async function createSchedule(
   return { id: result.body.automation.id, created: true };
 }
 
-async function updateSchedule(
+async function updateAutomation(
   client: ZeroClientFactory,
-  body: ScheduleBody,
+  body: AutomationFormBody,
 ): Promise<{ id: string; created: boolean }> {
   const existing = await findByNameAndAgent(client, body.name, body.agentId);
 
@@ -194,7 +197,7 @@ async function updateSchedule(
   // Replace the time trigger when its config changed. The new trigger is
   // added before the stale one is removed, so a failure in between never
   // leaves the automation triggerless (a triggerless automation vanishes
-  // from the schedule pages); the sweep then also collects duplicates left
+  // from the automation pages); the sweep then also collects duplicates left
   // behind by an earlier interrupted replacement.
   const timeTriggers = existing.triggers.filter(isTimeTrigger);
   const kept = timeTriggers.find((trigger) => {
@@ -224,25 +227,27 @@ async function updateSchedule(
 }
 
 /**
- * Upsert a schedule-shaped automation, keyed on (agent, name). Updates patch
+ * Upsert a single-time-trigger automation, keyed on (agent, name). Updates patch
  * the intent fields and replace the time trigger when its config changed.
  */
-export function deploySchedule(
+export function deployAutomation(
   client: ZeroClientFactory,
-  body: ScheduleBody,
+  body: AutomationFormBody,
   isUpdate: boolean,
 ): Promise<{ id: string; created: boolean }> {
-  return isUpdate ? updateSchedule(client, body) : createSchedule(client, body);
+  return isUpdate
+    ? updateAutomation(client, body)
+    : createAutomation(client, body);
 }
 
 /**
- * Enable or disable a schedule by name, with the legacy surface's enable
+ * Enable or disable an automation by name, with the legacy surface's enable
  * semantics: the time trigger is re-enabled first (reviving an auto-disabled
- * schedule and resetting its failure count; an expired one-time trigger is
+ * automation and resetting its failure count; an expired one-time trigger is
  * rejected before any flag flips), then the automation resumes — which
  * recomputes the trigger's next run.
  */
-export async function setScheduleEnabled(
+export async function setAutomationEnabled(
   client: ZeroClientFactory,
   params: { name: string; agentId: string; enabled: boolean },
 ): Promise<void> {
@@ -273,8 +278,8 @@ export async function setScheduleEnabled(
   );
 }
 
-/** Delete a schedule by name. */
-export async function deleteSchedule(
+/** Delete an automation by name. */
+export async function deleteAutomation(
   client: ZeroClientFactory,
   params: { name: string; agentId: string },
 ): Promise<void> {
@@ -291,8 +296,8 @@ export async function deleteSchedule(
   );
 }
 
-/** Execute a schedule immediately; returns the created run id. */
-export async function runScheduleNow(
+/** Execute an automation immediately; returns the created run id. */
+export async function runAutomationNow(
   client: ZeroClientFactory,
   id: string,
 ): Promise<string> {

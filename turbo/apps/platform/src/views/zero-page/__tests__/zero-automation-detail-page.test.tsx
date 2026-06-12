@@ -13,7 +13,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -80,11 +80,11 @@ function selectComboboxByText(currentText: string, option: string): void {
   click(screen.getByRole("option", { name: option }));
 }
 
-function mockScheduleDetailStory(): void {
+function mockAutomationDetailStory(): void {
   const runs: LogsListResponse["data"] = [
     {
       id: "a0000000-0000-4000-a000-000000000201",
-      sessionId: "session-schedule-1",
+      sessionId: "session-automation-1",
       agentId,
       displayName: "Zero",
       framework: "claude-code",
@@ -99,7 +99,7 @@ function mockScheduleDetailStory(): void {
     },
     {
       id: "a0000000-0000-4000-a000-000000000202",
-      sessionId: "session-schedule-2",
+      sessionId: "session-automation-2",
       agentId,
       displayName: "Zero",
       framework: "claude-code",
@@ -115,8 +115,8 @@ function mockScheduleDetailStory(): void {
   ];
 
   context.mocks.data.team([createZeroAgent()]);
-  context.mocks.data.schedules([
-    createMockScheduleResponse({
+  context.mocks.data.automations([
+    createMockAutomationView({
       id: scheduleId,
       agentId,
       displayName: "Zero",
@@ -148,10 +148,10 @@ function mockScheduleDetailStory(): void {
   });
 }
 
-describe("zero schedule detail page", () => {
-  it("shows a removed schedule state", async () => {
+describe("zero automation detail page", () => {
+  it("shows a removed automation state", async () => {
     context.mocks.data.team([createZeroAgent()]);
-    context.mocks.data.schedules([]);
+    context.mocks.data.automations([]);
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
 
@@ -164,9 +164,9 @@ describe("zero schedule detail page", () => {
     });
   });
 
-  it("edits and discards schedule instructions", async () => {
+  it("edits and discards automation instructions", async () => {
     const user = userEvent.setup();
-    mockScheduleDetailStory();
+    mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
 
@@ -191,7 +191,7 @@ describe("zero schedule detail page", () => {
 
     const editor = document.querySelector('[contenteditable="true"]');
     if (!(editor instanceof HTMLElement)) {
-      throw new Error("schedule instructions editor not found");
+      throw new Error("automation instructions editor not found");
     }
 
     await user.click(editor);
@@ -214,7 +214,7 @@ describe("zero schedule detail page", () => {
 
     const resetEditor = document.querySelector('[contenteditable="true"]');
     if (!(resetEditor instanceof HTMLElement)) {
-      throw new Error("reset schedule instructions editor not found");
+      throw new Error("reset automation instructions editor not found");
     }
 
     await user.click(resetEditor);
@@ -234,8 +234,8 @@ describe("zero schedule detail page", () => {
     });
   });
 
-  it("updates schedule settings", async () => {
-    mockScheduleDetailStory();
+  it("updates automation settings", async () => {
+    mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
 
@@ -300,8 +300,8 @@ describe("zero schedule detail page", () => {
     expect(screen.getByDisplayValue(/Team morning brief/u)).toBeInTheDocument();
   });
 
-  it("filters schedule run history", async () => {
-    mockScheduleDetailStory();
+  it("filters automation run history", async () => {
+    mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
 
@@ -347,8 +347,8 @@ describe("zero schedule detail page", () => {
     });
   });
 
-  it("paginates schedule run history", async () => {
-    mockScheduleDetailStory();
+  it("paginates automation run history", async () => {
+    mockAutomationDetailStory();
     context.mocks.api(logsListContract.list, ({ query, respond }) => {
       const cursor = query.cursor ?? null;
       const startedAt =
@@ -423,9 +423,9 @@ describe("zero schedule detail page", () => {
     });
   });
 
-  it("pauses a schedule and cancels deletion", async () => {
+  it("pauses an automation and cancels deletion", async () => {
     const user = userEvent.setup();
-    mockScheduleDetailStory();
+    mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
 
@@ -469,8 +469,8 @@ describe("zero schedule detail page", () => {
     });
   });
 
-  it("runs and deletes a schedule", async () => {
-    mockScheduleDetailStory();
+  it("runs and deletes an automation", async () => {
+    mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
 
@@ -497,7 +497,7 @@ describe("zero schedule detail page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Automation deleted")).toBeInTheDocument();
-      // Deletion returns to the schedules surface, which renders the
+      // Deletion returns to the automations surface, which renders the
       // Automations product noun now that the switch is globally on (#17307).
       expect(
         screen.getByRole("heading", { name: "Automations" }),

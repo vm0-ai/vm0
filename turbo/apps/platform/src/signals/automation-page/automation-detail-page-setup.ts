@@ -1,39 +1,39 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroScheduleDetailPage } from "../../views/zero-page/zero-schedule-detail-page.tsx";
+import { ZeroAutomationDetailPage } from "../../views/zero-page/zero-automation-detail-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
-import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
+import { fetchAllOrgAutomations$ } from "../zero-page/zero-automations.ts";
 import { fetchSlackChannels$ } from "../zero-page/slack-channels.ts";
 import {
-  setScheduleRunHistoryScheduleId$,
-  seedScheduleRunCursorHistory$,
-} from "./schedule-run-history.ts";
-import { initScheduleDetailTab$ } from "./schedule-detail-tab.ts";
+  setRunHistoryAutomationId$,
+  seedAutomationRunCursorHistory$,
+} from "./automation-run-history.ts";
+import { initAutomationDetailTab$ } from "./automation-detail-tab.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 
-export const setupScheduleDetailPage$ = command(
+export const setupAutomationDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (await set(onboardGuard$, signal)) {
       return;
     }
 
-    set(updatePage$, createElement(ZeroScheduleDetailPage), "sidebar");
-    set(initScheduleDetailTab$);
+    set(updatePage$, createElement(ZeroAutomationDetailPage), "sidebar");
+    set(initAutomationDetailTab$);
 
-    // Initialize run history with the current schedule ID from the URL
+    // Initialize run history with the current automation ID from the URL
     const params = get(pathParams$);
     const scheduleId =
       params && typeof params === "object" && "scheduleId" in params
         ? String(params.scheduleId)
         : null;
-    set(setScheduleRunHistoryScheduleId$, scheduleId);
-    set(seedScheduleRunCursorHistory$);
+    set(setRunHistoryAutomationId$, scheduleId);
+    set(seedAutomationRunCursorHistory$);
 
     await Promise.all([
-      set(fetchAllOrgSchedules$, signal),
+      set(fetchAllOrgAutomations$, signal),
       set(fetchSlackChannels$, signal),
     ]);
     signal.throwIfAborted();

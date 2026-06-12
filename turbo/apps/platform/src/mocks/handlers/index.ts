@@ -88,7 +88,7 @@ import {
   apiAutomationsHandlers,
   resetMockAutomationTriggers,
 } from "./api-automations.ts";
-import { resetMockSchedules } from "./schedules-store.ts";
+import { resetMockAutomations } from "./automations-store.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
@@ -163,7 +163,7 @@ export function resetAllMockHandlers(): void {
   resetMockUsageMembers();
   resetMockUsageInsight();
   resetMockUsageRecord();
-  resetMockSchedules();
+  resetMockAutomations();
   resetMockAutomationTriggers();
   resetMockTeam();
   resetMockSkills();

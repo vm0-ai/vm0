@@ -1,25 +1,25 @@
 /**
- * Signals for schedule run history — paginated list of runs
- * triggered by a specific schedule.
+ * Signals for automation run history — paginated list of runs
+ * triggered by a specific automation.
  */
 import { command, computed, state } from "ccstate";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
 
 // ---------------------------------------------------------------------------
-// Schedule ID — set by the detail page setup
+// Automation ID — set by the detail page setup
 // ---------------------------------------------------------------------------
 
-const internalScheduleId$ = state<string | null>(null);
+const internalAutomationId$ = state<string | null>(null);
 
-const scheduleRunHistoryScheduleId$ = computed((get) => {
-  return get(internalScheduleId$);
+const runHistoryAutomationId$ = computed((get) => {
+  return get(internalAutomationId$);
 });
 
-/** Set the schedule ID to fetch run history for. */
-export const setScheduleRunHistoryScheduleId$ = command(
+/** Set the automation ID to fetch run history for. */
+export const setRunHistoryAutomationId$ = command(
   ({ set }, id: string | null) => {
-    set(internalScheduleId$, id);
+    set(internalAutomationId$, id);
   },
 );
 
@@ -28,7 +28,7 @@ export const setScheduleRunHistoryScheduleId$ = command(
 // ---------------------------------------------------------------------------
 
 /** Status filter derived from URL `?runStatus=` query param. */
-export const scheduleRunStatusFilter$ = computed((get) => {
+export const automationRunStatusFilter$ = computed((get) => {
   return get(searchParams$).get("runStatus") ?? "all";
 });
 
@@ -37,20 +37,20 @@ export const scheduleRunStatusFilter$ = computed((get) => {
 // ---------------------------------------------------------------------------
 
 export const {
-  limit$: scheduleRunLimit$,
-  data$: scheduleRunData$,
-  seedCursorHistory$: seedScheduleRunCursorHistory$,
-  hasPrev$: scheduleRunHasPrev$,
-  currentPage$: scheduleRunCurrentPage$,
-  goToNextPage$: goToNextScheduleRunPage$,
-  goToPrevPage$: goToPrevScheduleRunPage$,
-  goForwardTwoPages$: goForwardTwoScheduleRunPages$,
-  goBackTwoPages$: goBackTwoScheduleRunPages$,
-  setRowsPerPage$: setScheduleRunRowsPerPage$,
-  resetPaginationState$: resetScheduleRunPagination$,
+  limit$: automationRunLimit$,
+  data$: automationRunData$,
+  seedCursorHistory$: seedAutomationRunCursorHistory$,
+  hasPrev$: automationRunHasPrev$,
+  currentPage$: automationRunCurrentPage$,
+  goToNextPage$: goToNextAutomationRunPage$,
+  goToPrevPage$: goToPrevAutomationRunPage$,
+  goForwardTwoPages$: goForwardTwoAutomationRunPages$,
+  goBackTwoPages$: goBackTwoAutomationRunPages$,
+  setRowsPerPage$: setAutomationRunRowsPerPage$,
+  resetPaginationState$: resetAutomationRunPagination$,
 } = createCursorPagination({
   buildFetchParams: (limit, cursor, get) => {
-    const scheduleId = get(scheduleRunHistoryScheduleId$);
+    const scheduleId = get(runHistoryAutomationId$);
     if (!scheduleId) {
       return null;
     }
@@ -64,7 +64,7 @@ export const {
       params.set("cursor", cursor);
     }
 
-    const statusFilter = get(scheduleRunStatusFilter$);
+    const statusFilter = get(automationRunStatusFilter$);
     if (statusFilter !== "all") {
       params.set("status", statusFilter);
     }
@@ -73,7 +73,7 @@ export const {
   },
   preserveUrlParams: (get) => {
     const result: Record<string, string> = {};
-    const status = get(scheduleRunStatusFilter$);
+    const status = get(automationRunStatusFilter$);
     if (status !== "all") {
       result.runStatus = status;
     }
@@ -86,8 +86,8 @@ export const {
 // ---------------------------------------------------------------------------
 
 /** Available status values from the server (only statuses present in run history). */
-export const scheduleRunAvailableStatuses$ = computed(async (get) => {
-  const response = await get(scheduleRunData$);
+export const automationRunAvailableStatuses$ = computed(async (get) => {
+  const response = await get(automationRunData$);
   return response.filters.statuses;
 });
 
@@ -96,13 +96,15 @@ export const scheduleRunAvailableStatuses$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 /** Update the status filter — resets pagination and writes to URL. */
-export const setScheduleRunStatusFilter$ = command(({ set }, value: string) => {
-  set(resetScheduleRunPagination$);
-  const params = new URLSearchParams();
+export const setAutomationRunStatusFilter$ = command(
+  ({ set }, value: string) => {
+    set(resetAutomationRunPagination$);
+    const params = new URLSearchParams();
 
-  if (value !== "all") {
-    params.set("runStatus", value);
-  }
+    if (value !== "all") {
+      params.set("runStatus", value);
+    }
 
-  set(updateSearchParams$, params);
-});
+    set(updateSearchParams$, params);
+  },
+);

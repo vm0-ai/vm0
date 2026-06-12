@@ -2,10 +2,10 @@ import { command, computed, state } from "ccstate";
 import { nowDate } from "../../lib/time.ts";
 
 // ---------------------------------------------------------------------------
-// Schedule form data — single state object for all form fields
+// Automation form data — single state object for all form fields
 // ---------------------------------------------------------------------------
 
-export interface ScheduleFormData {
+export interface AutomationFormData {
   freq: string;
   date: string;
   hour: number;
@@ -19,7 +19,7 @@ export interface ScheduleFormData {
   prompt: string;
 }
 
-export function createDefaultFormData(): ScheduleFormData {
+export function createDefaultFormData(): AutomationFormData {
   return {
     freq: "every_day",
     date: nowDate().toISOString().slice(0, 10),
@@ -35,15 +35,17 @@ export function createDefaultFormData(): ScheduleFormData {
   };
 }
 
-const internalScheduleForm$ = state<ScheduleFormData>(createDefaultFormData());
+const internalAutomationForm$ = state<AutomationFormData>(
+  createDefaultFormData(),
+);
 
-export const scheduleForm$ = computed((get) => {
-  return get(internalScheduleForm$);
+export const automationForm$ = computed((get) => {
+  return get(internalAutomationForm$);
 });
 
-export const updateScheduleForm$ = command(
-  ({ set }, partial: Partial<ScheduleFormData>) => {
-    set(internalScheduleForm$, (prev) => {
+export const updateAutomationForm$ = command(
+  ({ set }, partial: Partial<AutomationFormData>) => {
+    set(internalAutomationForm$, (prev) => {
       return { ...prev, ...partial };
     });
   },
@@ -53,16 +55,16 @@ export const updateScheduleForm$ = command(
 // "Saved state" snapshot for dirty detection (detail page settings form)
 // ---------------------------------------------------------------------------
 
-export type ScheduleSettingsSnapshot = Omit<ScheduleFormData, "prompt">;
+export type AutomationSettingsSnapshot = Omit<AutomationFormData, "prompt">;
 
-const internalSavedState$ = state<ScheduleSettingsSnapshot | null>(null);
+const internalSavedState$ = state<AutomationSettingsSnapshot | null>(null);
 
 export const savedSettingsState$ = computed((get) => {
   return get(internalSavedState$);
 });
 
 export const setSavedSettingsState$ = command(
-  ({ set }, snapshot: ScheduleSettingsSnapshot) => {
+  ({ set }, snapshot: AutomationSettingsSnapshot) => {
     set(internalSavedState$, snapshot);
   },
 );
@@ -125,14 +127,14 @@ export const setShowConfirm$ = command(({ set }, value: boolean) => {
 // Dialog form state (separate from detail page form)
 // ---------------------------------------------------------------------------
 
-const internalDialogForm$ = state<ScheduleFormData>(createDefaultFormData());
+const internalDialogForm$ = state<AutomationFormData>(createDefaultFormData());
 
 export const dialogForm$ = computed((get) => {
   return get(internalDialogForm$);
 });
 
 export const updateDialogForm$ = command(
-  ({ set }, partial: Partial<ScheduleFormData>) => {
+  ({ set }, partial: Partial<AutomationFormData>) => {
     set(internalDialogForm$, (prev) => {
       return { ...prev, ...partial };
     });
@@ -155,7 +157,7 @@ const internalInstructionInitKey$ = state<string | null>(null);
 // Dialog form initialization (called from useEffect when dialog opens)
 // ---------------------------------------------------------------------------
 
-export const initDialogForm$ = command(({ set }, data: ScheduleFormData) => {
+export const initDialogForm$ = command(({ set }, data: AutomationFormData) => {
   set(internalDialogForm$, data);
   set(internalShowConfirm$, false);
 });
@@ -169,11 +171,11 @@ export const syncSettingsFormEntry$ = command(
     { get, set },
     entryId: string,
     prompt: string,
-    initial: ScheduleSettingsSnapshot,
+    initial: AutomationSettingsSnapshot,
   ) => {
     if (get(internalSettingsFormInitId$) !== entryId) {
       set(internalSettingsFormInitId$, entryId);
-      set(internalScheduleForm$, { ...initial, prompt });
+      set(internalAutomationForm$, { ...initial, prompt });
       set(internalSavedState$, initial);
       set(internalShowDeleteConfirm$, false);
     }
