@@ -490,22 +490,28 @@ fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError 
 
 fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
     let mut deserializer = serde_json::Deserializer::from_slice(body);
-    serde_path_to_error::deserialize(&mut deserializer).map_err(|e| {
-        let path = e.path().to_string();
-        let category = match e.inner().classify() {
-            serde_json::error::Category::Io => "io",
-            serde_json::error::Category::Syntax => "syntax",
-            serde_json::error::Category::Data => "data",
-            serde_json::error::Category::Eof => "eof",
-        };
-        let location = format!("line {} column {}", e.inner().line(), e.inner().column());
-        let detail = sanitized_json_error_detail(e.inner());
-        if path == "." {
-            format!("failed at <root>: {detail}; {category} error at {location}")
-        } else {
-            format!("failed at {path}: {detail}; {category} error at {location}")
-        }
-    })
+    let value = serde_path_to_error::deserialize(&mut deserializer)
+        .map_err(|e| format_json_decode_error(e.path().to_string(), e.inner()))?;
+    deserializer
+        .end()
+        .map_err(|e| format_json_decode_error(".".to_string(), &e))?;
+    Ok(value)
+}
+
+fn format_json_decode_error(path: String, error: &serde_json::Error) -> String {
+    let category = match error.classify() {
+        serde_json::error::Category::Io => "io",
+        serde_json::error::Category::Syntax => "syntax",
+        serde_json::error::Category::Data => "data",
+        serde_json::error::Category::Eof => "eof",
+    };
+    let location = format!("line {} column {}", error.line(), error.column());
+    let detail = sanitized_json_error_detail(error);
+    if path == "." {
+        format!("failed at <root>: {detail}; {category} error at {location}")
+    } else {
+        format!("failed at {path}: {detail}; {category} error at {location}")
+    }
 }
 
 fn sanitized_json_error_detail(error: &serde_json::Error) -> String {
@@ -1029,8 +1035,8 @@ mod tests {
                     "sandboxToken": "claim-sandbox-token",
                     "cliAgentType": "claude_code",
                     "firewalls": [{
-                        "kind": "builtin",
-                        "name": 42
+                        "kind": "secret-kind-value",
+                        "name": "github"
                     }],
                     "billableFirewalls": []
                 }));
@@ -1058,7 +1064,7 @@ mod tests {
             "decode error must not include response body values, got: {message}"
         );
         assert!(
-            !message.contains("42"),
+            !message.contains("secret-kind-value"),
             "decode error must not include invalid field values, got: {message}"
         );
         mock.assert_async().await;
@@ -1113,6 +1119,42 @@ mod tests {
         assert!(
             !message.contains("github"),
             "decode error must not include response body values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_decode_rejects_trailing_response_body() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(r#"{"job":null} trailing-response-value"#);
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .poll(
+                "default",
+                &[crate::profile::DEFAULT_PROFILE.to_string()],
+                &[],
+            )
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("poll decode: failed at <root>: trailing characters"),
+            "decode error should reject trailing response content, got: {message}"
+        );
+        assert!(
+            !message.contains("trailing-response-value"),
+            "decode error must not include trailing response values, got: {message}"
         );
         mock.assert_async().await;
     }
