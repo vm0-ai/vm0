@@ -4284,18 +4284,18 @@ export function ZeroChatComposer({
                       }}
                     />
                   )}
+                  <ComposerInputSlot
+                    input={input}
+                    onInputChange={onInputChange}
+                    onDraftChange={onDraftChange}
+                    sending={sending}
+                    autoFocus={autoFocus}
+                    setInputRef={setInputRef}
+                    onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
+                  />
                 </>
               )}
-              <ComposerInputSlot
-                input={input}
-                onInputChange={onInputChange}
-                onDraftChange={onDraftChange}
-                sending={sending}
-                autoFocus={autoFocus}
-                setInputRef={setInputRef}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-              />
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                   <TooltipProvider delayDuration={300}>
