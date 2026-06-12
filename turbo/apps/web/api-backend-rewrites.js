@@ -59,8 +59,7 @@ const ZERO_LOGS_BY_ID_PATH_RE = new RegExp(
 const TEST_TELEGRAM_MOCK_REWRITE_SOURCE =
   "/api/test/telegram-mock/:botToken/:method";
 const TEST_TELEGRAM_MOCK_PATH_RE = /^\/api\/test\/telegram-mock\/[^/]+\/[^/]+$/;
-// The automation resource API on its clean paths (#17307); the /api/v2/*
-// entries below stay as transition aliases for clients built before the move.
+// The automation resource API on its clean paths (#17307).
 const AUTOMATIONS_BY_REF_REWRITE_SOURCE = "/api/automations/:ref";
 const AUTOMATIONS_BY_REF_PATH_RE = /^\/api\/automations\/[^/]+$/;
 const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:ref/enable";
@@ -86,36 +85,6 @@ const AUTOMATION_TRIGGERS_DISABLE_PATH_RE = new RegExp(
 const AUTOMATION_TRIGGERS_ROTATE_SECRET_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/rotate-secret`;
 const AUTOMATION_TRIGGERS_ROTATE_SECRET_PATH_RE = new RegExp(
   `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/rotate-secret$`,
-);
-const AUTOMATIONS_V2_BY_REF_REWRITE_SOURCE = "/api/v2/automations/:ref";
-const AUTOMATIONS_V2_BY_REF_PATH_RE = /^\/api\/v2\/automations\/[^/]+$/;
-const AUTOMATIONS_V2_ENABLE_REWRITE_SOURCE = "/api/v2/automations/:ref/enable";
-const AUTOMATIONS_V2_ENABLE_PATH_RE = /^\/api\/v2\/automations\/[^/]+\/enable$/;
-const AUTOMATIONS_V2_DISABLE_REWRITE_SOURCE =
-  "/api/v2/automations/:ref/disable";
-const AUTOMATIONS_V2_DISABLE_PATH_RE =
-  /^\/api\/v2\/automations\/[^/]+\/disable$/;
-const AUTOMATIONS_V2_RUN_REWRITE_SOURCE = "/api/v2/automations/:ref/run";
-const AUTOMATIONS_V2_RUN_PATH_RE = /^\/api\/v2\/automations\/[^/]+\/run$/;
-const AUTOMATIONS_V2_TRIGGERS_REWRITE_SOURCE =
-  "/api/v2/automations/:ref/triggers";
-const AUTOMATIONS_V2_TRIGGERS_PATH_RE =
-  /^\/api\/v2\/automations\/[^/]+\/triggers$/;
-const AUTOMATION_TRIGGERS_V2_BY_ID_REWRITE_SOURCE = `/api/v2/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})`;
-const AUTOMATION_TRIGGERS_V2_BY_ID_PATH_RE = new RegExp(
-  `^/api/v2/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}$`,
-);
-const AUTOMATION_TRIGGERS_V2_ENABLE_REWRITE_SOURCE = `/api/v2/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/enable`;
-const AUTOMATION_TRIGGERS_V2_ENABLE_PATH_RE = new RegExp(
-  `^/api/v2/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/enable$`,
-);
-const AUTOMATION_TRIGGERS_V2_DISABLE_REWRITE_SOURCE = `/api/v2/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/disable`;
-const AUTOMATION_TRIGGERS_V2_DISABLE_PATH_RE = new RegExp(
-  `^/api/v2/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
-);
-const AUTOMATION_TRIGGERS_V2_ROTATE_SECRET_REWRITE_SOURCE = `/api/v2/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/rotate-secret`;
-const AUTOMATION_TRIGGERS_V2_ROTATE_SECRET_PATH_RE = new RegExp(
-  `^/api/v2/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/rotate-secret$`,
 );
 const AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE =
   "/api/automations/webhooks/:token";
@@ -553,7 +522,6 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
   ["/api/cron/execute-automations", "/api/cron/execute-automations"],
-  ["/api/cron/execute-schedules", "/api/cron/execute-schedules"],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
   [
     "/api/cron/reconcile-billing-entitlements",
@@ -1255,52 +1223,6 @@ export const API_BACKEND_REWRITES = [
     AUTOMATION_TRIGGERS_BY_ID_REWRITE_SOURCE,
     "/api/automation-triggers/:id",
     AUTOMATION_TRIGGERS_BY_ID_PATH_RE,
-  ],
-  ["/api/v2/automations", "/api/v2/automations"],
-  [
-    AUTOMATIONS_V2_ENABLE_REWRITE_SOURCE,
-    "/api/v2/automations/:ref/enable",
-    AUTOMATIONS_V2_ENABLE_PATH_RE,
-  ],
-  [
-    AUTOMATIONS_V2_DISABLE_REWRITE_SOURCE,
-    "/api/v2/automations/:ref/disable",
-    AUTOMATIONS_V2_DISABLE_PATH_RE,
-  ],
-  [
-    AUTOMATIONS_V2_RUN_REWRITE_SOURCE,
-    "/api/v2/automations/:ref/run",
-    AUTOMATIONS_V2_RUN_PATH_RE,
-  ],
-  [
-    AUTOMATIONS_V2_TRIGGERS_REWRITE_SOURCE,
-    "/api/v2/automations/:ref/triggers",
-    AUTOMATIONS_V2_TRIGGERS_PATH_RE,
-  ],
-  [
-    AUTOMATIONS_V2_BY_REF_REWRITE_SOURCE,
-    "/api/v2/automations/:ref",
-    AUTOMATIONS_V2_BY_REF_PATH_RE,
-  ],
-  [
-    AUTOMATION_TRIGGERS_V2_BY_ID_REWRITE_SOURCE,
-    "/api/v2/automation-triggers/:id",
-    AUTOMATION_TRIGGERS_V2_BY_ID_PATH_RE,
-  ],
-  [
-    AUTOMATION_TRIGGERS_V2_ENABLE_REWRITE_SOURCE,
-    "/api/v2/automation-triggers/:id/enable",
-    AUTOMATION_TRIGGERS_V2_ENABLE_PATH_RE,
-  ],
-  [
-    AUTOMATION_TRIGGERS_V2_DISABLE_REWRITE_SOURCE,
-    "/api/v2/automation-triggers/:id/disable",
-    AUTOMATION_TRIGGERS_V2_DISABLE_PATH_RE,
-  ],
-  [
-    AUTOMATION_TRIGGERS_V2_ROTATE_SECRET_REWRITE_SOURCE,
-    "/api/v2/automation-triggers/:id/rotate-secret",
-    AUTOMATION_TRIGGERS_V2_ROTATE_SECRET_PATH_RE,
   ],
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],

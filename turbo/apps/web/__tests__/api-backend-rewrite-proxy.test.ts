@@ -474,12 +474,12 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
-  it("matches the cron execute schedules rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/cron/execute-schedules")).toBe(
+  it("matches the cron execute automations rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/cron/execute-automations")).toBe(
       true,
     );
     expect(
-      matchesApiBackendRewritePath("/api/cron/execute-schedules/extra"),
+      matchesApiBackendRewritePath("/api/cron/execute-automations/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
