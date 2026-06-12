@@ -71,14 +71,17 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     thread.lastMessageAt.getTime(),
     latestText.createdAt.getTime(),
   );
-  const alreadyRead =
-    thread.lastReadAt !== null && thread.lastReadAt.getTime() >= nextReadAtMs;
-  if (alreadyRead && thread.lastReadMessageId === latestText.id) {
+  const currentLastReadAt = thread.lastReadAt;
+  if (
+    currentLastReadAt !== null &&
+    currentLastReadAt.getTime() >= nextReadAtMs &&
+    thread.lastReadMessageId === latestText.id
+  ) {
     return {
       status: 200 as const,
       body: {
         lastReadMessageId: latestText.id,
-        lastReadAt: thread.lastReadAt.toISOString(),
+        lastReadAt: currentLastReadAt.toISOString(),
         changed: false,
       },
     };

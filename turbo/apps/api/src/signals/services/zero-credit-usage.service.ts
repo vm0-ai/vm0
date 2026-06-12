@@ -9,7 +9,7 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { logger } from "../../lib/log";
 import { tapError } from "../utils";
-import { maybeEmitRunBillingMessage$ } from "./zero-chat-billing-message.service";
+import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 
 const L = logger("CreditUsage");
@@ -250,19 +250,13 @@ export const processOrgUsageEvents$ = command(
     }
 
     for (const runId of runIds) {
-      await tapError(
-        set(maybeEmitRunBillingMessage$, runId, signal),
-        (error) => {
-          L.error(
-            "Failed to emit chat billing message after usage processing",
-            {
-              orgId,
-              runId,
-              error,
-            },
-          );
-        },
-      );
+      await tapError(set(maybeEmitRunUsageMessage$, runId, signal), (error) => {
+        L.error("Failed to emit chat usage message after usage processing", {
+          orgId,
+          runId,
+          error,
+        });
+      });
       signal.throwIfAborted();
     }
   },

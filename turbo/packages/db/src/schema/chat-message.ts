@@ -57,22 +57,22 @@ export interface ChatMessageRecommendedFollowup {
 
 export type ChatMessageRecommendedFollowups = ChatMessageRecommendedFollowup[];
 
-export interface ChatMessageBillingProviderBreakdown {
+export interface ChatMessageUsageProviderBreakdown {
   readonly provider: string;
   readonly credits: number;
 }
 
-export interface ChatMessageBillingKindBreakdown {
+export interface ChatMessageUsageKindBreakdown {
   readonly kind: string;
   readonly credits: number;
-  readonly providers: readonly ChatMessageBillingProviderBreakdown[];
+  readonly providers: readonly ChatMessageUsageProviderBreakdown[];
 }
 
-export interface ChatMessageBillingPayload {
+export interface ChatMessageUsagePayload {
   readonly version: 1;
   readonly totalCredits: number;
   readonly settledAt: string;
-  readonly breakdown: readonly ChatMessageBillingKindBreakdown[];
+  readonly breakdown: readonly ChatMessageUsageKindBreakdown[];
 }
 
 export interface ChatMessageAttachFileMetadata {
@@ -133,13 +133,7 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
-    billingRunId: uuid("billing_run_id").references(
-      () => {
-        return agentRuns.id;
-      },
-      { onDelete: "set null" },
-    ),
-    billingPayload: jsonb("billing_payload").$type<ChatMessageBillingPayload>(),
+    usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
     revokesMessageId: uuid("revokes_message_id").references(
       (): AnyPgColumn => {
         return chatMessages.id;
@@ -187,9 +181,9 @@ export const chatMessages = pgTable(
         table.createdAt,
       ),
       index("idx_chat_messages_run_id").on(table.runId),
-      uniqueIndex("chat_messages_billing_run_id_unique")
-        .on(table.billingRunId)
-        .where(sql`${table.billingRunId} IS NOT NULL`),
+      uniqueIndex("chat_messages_usage_run_id_unique")
+        .on(table.runId)
+        .where(sql`${table.usagePayload} IS NOT NULL`),
       uniqueIndex("chat_messages_revokes_message_id_unique").on(
         table.revokesMessageId,
       ),

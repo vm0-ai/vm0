@@ -1224,17 +1224,16 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("ignores billing-only pages for rendering and thinking state", async () => {
+  it("ignores usage-only pages for rendering and thinking state", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-billing-only",
+      threadId: "thread-usage-only",
       chatMessages: [
         {
-          id: "msg-billing-only",
+          id: "msg-usage-only",
           role: "assistant",
           content: null,
-          runId: undefined,
-          billingRunId: "run-billing-only",
-          billing: {
+          runId: "run-usage-only",
+          usage: {
             version: 1,
             totalCredits: 0,
             settledAt: "2026-06-09T10:00:02Z",
@@ -1253,8 +1252,8 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-billing-only",
-      featureSwitches: { [FeatureSwitchKey.ChatRunBilling]: true },
+      path: "/chats/thread-usage-only",
+      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: true },
     });
 
     await waitFor(() => {
@@ -1263,45 +1262,241 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows run credit usage after read aloud with thousands formatting and popover details", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("shows thinking for an assistant run even without active run ids", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-billing-chip",
+      threadId: "thread-message-list-thinking",
+      activeRunIds: [],
       chatMessages: [
         {
-          id: "msg-billing-chip-user",
-          role: "user",
-          content: "Summarize usage",
-          runId: "run-billing-chip",
+          id: "msg-message-list-assistant",
+          role: "assistant",
+          content: "I am working on this.",
+          runId: "run-message-list-thinking",
+          runEventId: "event-message-list-assistant-text",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-thinking",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("I am working on this.")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when the same run completes even with stale active run ids", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-completed",
+      activeRunIds: ["run-message-list-completed"],
+      chatMessages: [
+        {
+          id: "msg-message-list-completed-assistant",
+          role: "assistant",
+          content: "The answer is ready.",
+          runId: "run-message-list-completed",
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
-          id: "msg-billing-chip-assistant",
+          id: "msg-message-list-completed-marker",
           role: "assistant",
-          content: "Usage summary is ready.",
-          runId: "run-billing-chip",
+          content: null,
+          runId: "run-message-list-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-completed",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("The answer is ready.")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps thinking when a different run completes while another run is open", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-stale-lifecycle-thinking",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-stale-usage-r1",
+          role: "assistant",
+          content: null,
+          runId: "run-r1",
+          usage: {
+            version: 1,
+            totalCredits: 5,
+            settledAt: "2026-06-09T10:00:00Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 5,
+                providers: [{ provider: "moonshot", credits: 5 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-stale-user-r2",
+          role: "user",
+          content: "Continue the plan",
+          runId: "run-r2",
           createdAt: "2026-06-09T10:00:01Z",
         },
         {
-          id: "msg-billing-chip",
+          id: "msg-stale-start-r2",
           role: "assistant",
           content: null,
-          runId: undefined,
-          billingRunId: "run-billing-chip",
-          billing: {
+          runId: "run-r2",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-stale-assistant-r2",
+          role: "assistant",
+          content: "The next step is ready.",
+          runId: "run-r2",
+          runEventId: "event-r2-assistant-text",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-stale-completed-r3",
+          role: "assistant",
+          content: null,
+          runId: "run-r3",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-stale-lifecycle-thinking",
+      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Continue the plan")).toBeInTheDocument();
+      expect(screen.getByText("The next step is ready.")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("shows thinking when the latest message is a user message", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-latest-user",
+      activeRunIds: [],
+      chatMessages: [
+        {
+          id: "msg-message-list-latest-user",
+          role: "user",
+          content: "Start the next run",
+          runId: "run-message-list-latest-user",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-latest-user",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Start the next run")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+  });
+
+  it("clears thinking when a run is cancelled", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-message-list-cancelled",
+      activeRunIds: ["run-message-list-cancelled"],
+      chatMessages: [
+        {
+          id: "msg-message-list-cancelled-assistant",
+          role: "assistant",
+          content: "I started this run.",
+          runId: "run-message-list-cancelled",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-message-list-cancelled-marker",
+          role: "assistant",
+          content: "Run cancelled",
+          runId: "run-message-list-cancelled",
+          error: "Run cancelled",
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-message-list-cancelled",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("hides run credit usage when the usage feature switch is disabled", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-switch-disabled",
+      chatMessages: [
+        {
+          id: "msg-usage-disabled-user",
+          role: "user",
+          content: "Summarize usage without usage UI",
+          runId: "run-usage-disabled",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-disabled-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-usage-disabled",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-disabled-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-disabled",
+          usage: {
             version: 1,
-            totalCredits: 23_123,
+            totalCredits: 123,
             settledAt: "2026-06-09T10:00:02Z",
             breakdown: [
               {
-                kind: "model",
-                credits: 23_000,
-                providers: [{ provider: "claude-sonnet-4-6", credits: 23_000 }],
-              },
-              {
-                kind: "image",
+                kind: "model/kimi-k2.5/tokens.input",
                 credits: 123,
-                providers: [{ provider: "gpt-image-2", credits: 123 }],
+                providers: [{ provider: "moonshot", credits: 123 }],
               },
             ],
           },
@@ -1312,14 +1507,79 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-billing-chip",
+      path: "/chats/thread-usage-switch-disabled",
+      featureSwitches: { [FeatureSwitchKey.ChatRunUsage]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Usage summary is ready.")).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Credit usage 123"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows run credit usage after read aloud with friendly popover details", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-chip",
+      chatMessages: [
+        {
+          id: "msg-usage-chip-user",
+          role: "user",
+          content: "Summarize usage",
+          runId: "run-usage-chip",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-chip-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-usage-chip",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-chip",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-chip",
+          usage: {
+            version: 1,
+            totalCredits: 24_234,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 234,
+                providers: [{ provider: "moonshot", credits: 234 }],
+              },
+              {
+                kind: "model/kimi-k2.5/tokens.output",
+                credits: 1000,
+                providers: [{ provider: "moonshot", credits: 1000 }],
+              },
+              {
+                kind: "image",
+                credits: 23_000,
+                providers: [{ provider: "gpt-image-2", credits: 23_000 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-chip",
       featureSwitches: {
         [FeatureSwitchKey.AudioOutput]: true,
-        [FeatureSwitchKey.ChatRunBilling]: true,
+        [FeatureSwitchKey.ChatRunUsage]: true,
       },
     });
 
-    const credit = await screen.findByLabelText("Credit usage 23,123");
+    const credit = await screen.findByLabelText("Credit usage 24,234");
     const actions = credit.closest('[data-testid="chat-message-actions"]');
     expect(actions).not.toBeNull();
     const copy = within(actions as HTMLElement).getByLabelText("Copy message");
@@ -1335,15 +1595,27 @@ describe("chat lifecycle", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    await user.hover(credit);
+    fireEvent.pointerEnter(credit);
 
     await waitFor(() => {
       expect(screen.getByText("Credit usage")).toBeInTheDocument();
-      expect(screen.getAllByText("23,123").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("claude-sonnet-4-6")).toBeInTheDocument();
+      expect(screen.getAllByText("24,234").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Kimi K2.5")).toBeInTheDocument();
+      expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("GPT Image 2")).toBeInTheDocument();
       expect(screen.getAllByText("23,000").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("gpt-image-2")).toBeInTheDocument();
-      expect(screen.getAllByText("123").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.queryByText("model/kimi-k2.5/tokens.input"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("moonshot")).not.toBeInTheDocument();
+    });
+
+    await user.click(credit);
+
+    await waitFor(() => {
+      expect(screen.getByText("Credit usage")).toBeInTheDocument();
+      expect(screen.getByText("Kimi K2.5")).toBeInTheDocument();
+      expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
     });
   });
 

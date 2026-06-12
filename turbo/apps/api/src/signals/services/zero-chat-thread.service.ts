@@ -23,7 +23,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
-  type ChatMessageBillingPayload,
+  type ChatMessageUsagePayload,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowupGenerationType,
@@ -107,8 +107,7 @@ type ChatMessageRow = {
   readonly role: string;
   readonly content: string | null;
   readonly runId: string | null;
-  readonly billingRunId: string | null;
-  readonly billingPayload: ChatMessageBillingPayload | null;
+  readonly usagePayload: ChatMessageUsagePayload | null;
   readonly runEventId: string | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
@@ -173,7 +172,7 @@ function effectiveChatMessageRunId() {
  *
  * The sidebar orders threads by this column, and we deliberately bump it only
  * for terminal runs that produce visible assistant text (including failure
- * text), not on user sends, billing rows, pure lifecycle markers, or mid-stream
+ * text), not on user sends, usage rows, pure lifecycle markers, or mid-stream
  * assistant events. So a thread surfaces to the top when there is new text for
  * the user to read, not the moment they hit send.
  */
@@ -214,8 +213,7 @@ const messageColumns = {
   role: chatMessages.role,
   content: chatMessages.content,
   runId: effectiveChatMessageRunId(),
-  billingRunId: chatMessages.billingRunId,
-  billingPayload: chatMessages.billingPayload,
+  usagePayload: chatMessages.usagePayload,
   runEventId: chatMessages.runEventId,
   error: chatMessages.error,
   runLifecycleEvent: chatMessages.runLifecycleEvent,
@@ -582,6 +580,32 @@ function normalizeRecommendedFollowups(
   return followups.length > 0 ? followups : undefined;
 }
 
+function normalizeUsagePayload(
+  value: ChatMessageUsagePayload | null,
+): PagedChatMessage["usage"] {
+  if (value === null) {
+    return undefined;
+  }
+
+  return {
+    version: value.version,
+    totalCredits: value.totalCredits,
+    settledAt: value.settledAt,
+    breakdown: value.breakdown.map((kind) => {
+      return {
+        kind: kind.kind,
+        credits: kind.credits,
+        providers: kind.providers.map((provider) => {
+          return {
+            provider: provider.provider,
+            credits: provider.credits,
+          };
+        }),
+      };
+    }),
+  };
+}
+
 function toPagedMessage(
   userId: string,
   row: ChatMessageRow,
@@ -595,8 +619,7 @@ function toPagedMessage(
       role,
       content: row.content,
       runId: row.runId ?? undefined,
-      billingRunId: row.billingRunId ?? undefined,
-      billing: row.billingPayload ?? undefined,
+      usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,

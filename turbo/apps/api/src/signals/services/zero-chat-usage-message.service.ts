@@ -3,9 +3,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
-  type ChatMessageBillingKindBreakdown,
-  type ChatMessageBillingPayload,
-  type ChatMessageBillingProviderBreakdown,
+  type ChatMessageUsageKindBreakdown,
+  type ChatMessageUsagePayload,
+  type ChatMessageUsageProviderBreakdown,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { usageEvent } from "@vm0/db/schema/usage-event";
@@ -16,7 +16,7 @@ import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { nowDate } from "../external/time";
 
-const L = logger("ChatBillingMessage");
+const L = logger("ChatUsageMessage");
 
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
 
@@ -33,14 +33,14 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function buildBillingBreakdown(
+function buildUsageBreakdown(
   rows: readonly {
     readonly kind: string;
     readonly provider: string;
     readonly credits: unknown;
   }[],
-): readonly ChatMessageBillingKindBreakdown[] {
-  const byKind = new Map<string, ChatMessageBillingProviderBreakdown[]>();
+): readonly ChatMessageUsageKindBreakdown[] {
+  const byKind = new Map<string, ChatMessageUsageProviderBreakdown[]>();
   for (const row of rows) {
     const providers = byKind.get(row.kind) ?? [];
     providers.push({
@@ -58,7 +58,7 @@ function buildBillingBreakdown(
   });
 }
 
-export const maybeEmitRunBillingMessage$ = command(
+export const maybeEmitRunUsageMessage$ = command(
   async ({ set }, runId: string, signal: AbortSignal): Promise<boolean> => {
     const db = set(writeDb$);
     const [context] = await db
@@ -113,11 +113,11 @@ export const maybeEmitRunBillingMessage$ = command(
       .orderBy(usageEvent.kind, usageEvent.provider);
     signal.throwIfAborted();
 
-    const payload: ChatMessageBillingPayload = {
+    const payload: ChatMessageUsagePayload = {
       version: 1,
       totalCredits: Math.max(0, toNumber(context.totalCredits)),
       settledAt: nowDate().toISOString(),
-      breakdown: buildBillingBreakdown(breakdownRows),
+      breakdown: buildUsageBreakdown(breakdownRows),
     };
 
     const [inserted] = await db
@@ -126,12 +126,12 @@ export const maybeEmitRunBillingMessage$ = command(
         chatThreadId: context.chatThreadId,
         role: "assistant",
         content: null,
-        billingRunId: runId,
-        billingPayload: payload,
+        runId,
+        usagePayload: payload,
       })
       .onConflictDoNothing({
-        target: chatMessages.billingRunId,
-        where: sql`${chatMessages.billingRunId} IS NOT NULL`,
+        target: chatMessages.runId,
+        where: sql`${chatMessages.usagePayload} IS NOT NULL`,
       })
       .returning({ id: chatMessages.id });
     signal.throwIfAborted();
@@ -146,7 +146,7 @@ export const maybeEmitRunBillingMessage$ = command(
     );
     signal.throwIfAborted();
 
-    L.debug("Emitted chat billing message", {
+    L.debug("Emitted chat usage message", {
       runId,
       chatThreadId: context.chatThreadId,
       totalCredits: payload.totalCredits,

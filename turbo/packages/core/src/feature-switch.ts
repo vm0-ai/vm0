@@ -327,10 +327,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Generate and show recommended follow-up prompts after completed chat runs.",
     enabled: true,
   },
-  [FeatureSwitchKey.ChatRunBilling]: {
+  [FeatureSwitchKey.ChatRunUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show per-run credit usage chips in the Zero chat message action bar.",
+      "Show per-run usage chips in the Zero chat message action bar.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

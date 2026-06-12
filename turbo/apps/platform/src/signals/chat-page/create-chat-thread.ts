@@ -40,7 +40,6 @@ import {
   type ChatThreadArtifactRun,
   type ModelSelectionRequest,
   type PagedChatMessage,
-  type ChatMessageBillingPayload,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
@@ -102,8 +101,13 @@ function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   );
 }
 
-function isBillingMessage(msg: PagedChatMessage): boolean {
-  return msg.role === "assistant" && msg.billingRunId !== undefined;
+function isUsageMessage(msg: PagedChatMessage): msg is Extract<
+  PagedChatMessage,
+  { role: "assistant" }
+> & {
+  usage: NonNullable<PagedChatMessage["usage"]>;
+} {
+  return msg.role === "assistant" && msg.usage !== undefined;
 }
 
 function isInterruptControlMessage(msg: PagedChatMessage): boolean {
@@ -287,7 +291,7 @@ function deriveRunIndicatorState(
     if (revokedMessageIds.has(message.id)) {
       continue;
     }
-    if (isBillingMessage(message)) {
+    if (isUsageMessage(message)) {
       continue;
     }
     if (message.role === "assistant") {
@@ -512,7 +516,6 @@ export interface ChatThreadSignals {
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  runBillingById$: Computed<Promise<Map<string, ChatMessageBillingPayload>>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
   latestRunStatus$: Computed<Promise<string | null>>;
@@ -925,8 +928,15 @@ function groupMessagesForDisplay(
 ): GroupedChatMessageGroup[] {
   const activeMessages: EnrichedChatMessage[] = [];
   const queuedMessages: EnrichedChatMessage[] = [];
+  const usageByRunId = new Map<
+    string,
+    NonNullable<EnrichedChatMessage["usage"]>
+  >();
   for (const msg of messages) {
-    if (isBillingMessage(msg)) {
+    if (isUsageMessage(msg)) {
+      if (msg.runId !== undefined) {
+        usageByRunId.set(msg.runId, msg.usage);
+      }
       continue;
     }
     if (msg.role === "user" && msg.isQueued) {
@@ -935,10 +945,21 @@ function groupMessagesForDisplay(
     }
     activeMessages.push(msg);
   }
-  return [
+
+  const groups = [
     ...mergeIntoGroups([], activeMessages),
     ...mergeIntoGroups([], queuedMessages),
   ];
+  return groups.map((group) => {
+    if (group.role !== "assistant") {
+      return group;
+    }
+    const runId = group.messages.find((message) => {
+      return message.runId !== undefined;
+    })?.runId;
+    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    return usage === undefined ? group : { ...group, usage };
+  });
 }
 
 type ServerMessages$ = State<PagedChatMessage[]>;
@@ -1229,27 +1250,6 @@ function createFetchNextPageCommand({
   });
 }
 
-function createRunBillingById(
-  allMessages$: Computed<Promise<readonly PagedChatMessage[]>>,
-): Computed<Promise<Map<string, ChatMessageBillingPayload>>> {
-  return computed(
-    async (get): Promise<Map<string, ChatMessageBillingPayload>> => {
-      const messages = await get(allMessages$);
-      const billingByRunId = new Map<string, ChatMessageBillingPayload>();
-      for (const message of messages) {
-        if (
-          message.role === "assistant" &&
-          message.billingRunId !== undefined &&
-          message.billing !== undefined
-        ) {
-          billingByRunId.set(message.billingRunId, message.billing);
-        }
-      }
-      return billingByRunId;
-    },
-  );
-}
-
 function createPagedMessages(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
@@ -1310,7 +1310,7 @@ function createPagedMessages(
         const message = messages[index]!;
         if (
           message.role === "assistant" &&
-          !isBillingMessage(message) &&
+          !isUsageMessage(message) &&
           (message.content?.trim().length ?? 0) > 0
         ) {
           return message.createdAt;
@@ -1319,8 +1319,6 @@ function createPagedMessages(
       return undefined;
     },
   );
-
-  const runBillingById$ = createRunBillingById(allMessages$);
 
   const hasOlderHistory$ = computed(async (get): Promise<boolean> => {
     const loadedHistoryHasMore = get(loadedHistoryHasMore$);
@@ -1373,7 +1371,6 @@ function createPagedMessages(
     earliestChatMessageId$,
     latestChatMessageId$,
     latestAssistantTextCreatedAt$,
-    runBillingById$,
     allMessages$,
     groupedChatMessages$,
     rawMessages$,
@@ -2314,7 +2311,6 @@ export function createChatThreadSignals(
     earliestChatMessageId$,
     latestChatMessageId$,
     latestAssistantTextCreatedAt$,
-    runBillingById$,
     allMessages$,
     groupedChatMessages$,
     rawMessages$,
@@ -2401,7 +2397,6 @@ export function createChatThreadSignals(
     earliestChatMessageId$,
     latestChatMessageId$,
     latestAssistantTextCreatedAt$,
-    runBillingById$,
     groupedChatMessages$,
     hasOlderHistory$,
     latestRunStatus$,

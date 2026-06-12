@@ -142,22 +142,22 @@ const chatThreadListItemSchema = z.object({
   renamedAt: z.string().nullable().optional(),
 });
 
-const chatMessageBillingProviderBreakdownSchema = z.object({
+const chatMessageUsageProviderBreakdownSchema = z.object({
   provider: z.string(),
   credits: z.number().int().nonnegative(),
 });
 
-const chatMessageBillingKindBreakdownSchema = z.object({
+const chatMessageUsageKindBreakdownSchema = z.object({
   kind: z.string(),
   credits: z.number().int().nonnegative(),
-  providers: z.array(chatMessageBillingProviderBreakdownSchema),
+  providers: z.array(chatMessageUsageProviderBreakdownSchema),
 });
 
-const chatMessageBillingPayloadSchema = z.object({
+const chatMessageUsagePayloadSchema = z.object({
   version: z.literal(1),
   totalCredits: z.number().int().nonnegative(),
   settledAt: z.string(),
-  breakdown: z.array(chatMessageBillingKindBreakdownSchema),
+  breakdown: z.array(chatMessageUsageKindBreakdownSchema),
 });
 
 const toolSummaryEntrySchema = z.object({
@@ -210,8 +210,7 @@ const pagedChatMessageBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   runEventId: z.string().optional(),
-  billingRunId: z.string().optional(),
-  billing: chatMessageBillingPayloadSchema.optional(),
+  usage: chatMessageUsagePayloadSchema.optional(),
   revokesMessageId: z.string().optional(),
   interruptsRunId: z.string().optional(),
   error: z.string().optional(),
@@ -870,7 +869,7 @@ export {
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
-  chatMessageBillingPayloadSchema,
+  chatMessageUsagePayloadSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   attachFileSchema,
@@ -900,8 +899,8 @@ export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
-export type ChatMessageBillingPayload = z.infer<
-  typeof chatMessageBillingPayloadSchema
+export type ChatMessageUsagePayload = z.infer<
+  typeof chatMessageUsagePayloadSchema
 >;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;

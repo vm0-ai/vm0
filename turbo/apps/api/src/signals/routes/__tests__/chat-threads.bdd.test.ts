@@ -620,11 +620,13 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     const marked = await chat.markThreadRead(owner, readStateThreadId);
     expect(marked).toStrictEqual({
       lastReadMessageId: latestAssistant.id,
+      lastReadAt: expect.any(String),
       changed: true,
     });
     const markedAgain = await chat.markThreadRead(owner, readStateThreadId);
     expect(markedAgain).toStrictEqual({
       lastReadMessageId: latestAssistant.id,
+      lastReadAt: expect.any(String),
       changed: false,
     });
     list = await chat.listThreads(owner, { agentId: agent.agentId });
