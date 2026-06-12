@@ -2,9 +2,9 @@ use super::super::*;
 use super::support::{
     assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
     mock_run_config_with_api_url, mock_run_config_with_delay, mock_run_config_with_overrides,
-    push_job, shutdown, test_profiles, wait_budget_count, wait_budget_exhausted_reactor,
-    wait_cancel_token, wait_cancel_token_removed, wait_discover_entered, wait_parking_state,
-    wait_status_mode, wait_usage_flush_requested,
+    mock_run_config_with_runtime, push_job, shutdown, test_profiles, wait_budget_count,
+    wait_budget_exhausted_reactor, wait_cancel_token, wait_cancel_token_removed,
+    wait_discover_entered, wait_parking_state, wait_status_mode, wait_usage_flush_requested,
 };
 
 use super::super::signals::{SignalController, SignalHandlerTask, handle_resume_signal};
@@ -13,6 +13,7 @@ use crate::provider::{ClaimedJob, CompletionAuth, JobCandidate};
 use crate::types::{HeartbeatState, HeldSessionState, SandboxReuseResult};
 use async_trait::async_trait;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct ShutdownRecordingProvider {
@@ -68,6 +69,84 @@ impl sandbox::SandboxRuntime for ShutdownRecordingRuntime {
     }
 }
 
+struct FactoryFailingRuntime {
+    create_calls: Arc<AtomicUsize>,
+    shutdowns: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl sandbox::SandboxRuntime for FactoryFailingRuntime {
+    async fn create_factory(
+        &self,
+        _config: sandbox::FactoryConfig,
+    ) -> sandbox::Result<Box<dyn sandbox::SandboxFactory>> {
+        self.create_calls.fetch_add(1, Ordering::SeqCst);
+        Err(sandbox::SandboxError::Initialization {
+            phase: sandbox::SandboxInitializationPhase::Factory,
+            message: "factory failed".into(),
+        })
+    }
+
+    async fn shutdown(&mut self) {
+        self.shutdowns.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+struct BlockingFactoryRuntime {
+    entered: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    release: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+}
+
+impl BlockingFactoryRuntime {
+    fn new(
+        entered: tokio::sync::oneshot::Sender<()>,
+        release: tokio::sync::oneshot::Receiver<()>,
+    ) -> Self {
+        Self {
+            entered: Mutex::new(Some(entered)),
+            release: tokio::sync::Mutex::new(Some(release)),
+        }
+    }
+}
+
+#[async_trait]
+impl sandbox::SandboxRuntime for BlockingFactoryRuntime {
+    async fn create_factory(
+        &self,
+        _config: sandbox::FactoryConfig,
+    ) -> sandbox::Result<Box<dyn sandbox::SandboxFactory>> {
+        if let Some(entered) = self
+            .entered
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
+            let _ = entered.send(());
+        }
+        let release = {
+            let mut guard = self.release.lock().await;
+            guard.take().expect("factory release should be configured")
+        };
+        let _ = release.await;
+        Ok(Box::new(sandbox_mock::MockSandboxFactory::new()))
+    }
+
+    async fn shutdown(&mut self) {}
+}
+
+async fn status_mode_if_exists(status_path: &std::path::Path) -> Option<String> {
+    let raw = match tokio::fs::read_to_string(status_path).await {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => panic!("failed to read status file {}: {e}", status_path.display()),
+    };
+    let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    status
+        .get("mode")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
 fn usage_pending_path(base_dir: &std::path::Path) -> std::path::PathBuf {
     base_dir.join("mitm-addon").join("usage-pending")
 }
@@ -120,6 +199,8 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
     let mut runtime = ShutdownRecordingRuntime {
         shutdowns: Arc::clone(&runtime_shutdowns),
     };
+    let status_path = dir.path().join("status.json");
+    let status = StatusTracker::new(status_path.clone(), 4, None, None);
     let (mut mitm, _mitm_crash_rx) = crate::proxy::MitmProxy::noop();
     let mut ignore_term_child = tokio::process::Command::new("python3")
         .arg("-c")
@@ -178,6 +259,7 @@ while True:
                 kmsg_handle: crate::kmsg_log::KmsgHandle::noop(),
                 dns_handle: crate::dns::DnsProxy::noop(),
                 memory_prefetch: &mut memory_prefetch,
+                status: &status,
             },
         ),
     )
@@ -203,6 +285,57 @@ while True:
         !std::path::Path::new(&format!("/proc/{proxy_child_pid}")).exists(),
         "proxy child should be killed and reaped during cleanup"
     );
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
+async fn startup_does_not_publish_running_before_factories_are_ready() {
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let runtime = BlockingFactoryRuntime::new(entered_tx, release_rx);
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    tokio::time::timeout(Duration::from_secs(2), entered_rx)
+        .await
+        .expect("factory startup should be entered")
+        .expect("factory startup should report entry");
+    assert_ne!(
+        status_mode_if_exists(&status_path).await.as_deref(),
+        Some("running"),
+        "runner must not publish running before factories are ready",
+    );
+
+    release_tx
+        .send(())
+        .expect("runner should still be waiting for factory release");
+    wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn factory_startup_failure_stops_status_and_cleans_startup_resources() {
+    let create_calls = Arc::new(AtomicUsize::new(0));
+    let runtime_shutdowns = Arc::new(AtomicUsize::new(0));
+    let runtime = FactoryFailingRuntime {
+        create_calls: Arc::clone(&create_calls),
+        shutdowns: Arc::clone(&runtime_shutdowns),
+    };
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let status_path = env._temp_dir.path().join("status.json");
+
+    let error = run(config).await.expect_err("factory startup should fail");
+
+    assert!(
+        error.to_string().contains("factory failed"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(create_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime_shutdowns.load(Ordering::SeqCst), 1);
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {
