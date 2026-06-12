@@ -79,7 +79,6 @@ import {
   readThreadMeta$,
 } from "../external/idb-thread-meta-store.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
-import { setAblyLoop$ } from "../realtime.ts";
 import {
   applyStreamingDelta$,
   clearStreamingDraftsForThread$,

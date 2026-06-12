@@ -41,16 +41,18 @@ fn push_comma_separated_flag_values(args: &mut Vec<String>, flag: &str, values: 
 }
 
 /// Build the argument list from explicit parameters (testable).
-fn build_claude_args(
-    model: &str,
-    resume_id: &str,
-    append_system_prompt: &str,
-    disallowed_tools: &str,
-    tools: &str,
-    settings: &str,
+struct ClaudeArgsConfig<'a> {
+    model: &'a str,
+    resume_id: &'a str,
+    append_system_prompt: &'a str,
+    disallowed_tools: &'a str,
+    tools: &'a str,
+    settings: &'a str,
     include_partial_messages: bool,
-    prompt: &str,
-) -> Vec<String> {
+    prompt: &'a str,
+}
+
+fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
     let mut args = vec![
         "--print".to_string(),
         "--verbose".to_string(),
@@ -59,40 +61,40 @@ fn build_claude_args(
         "--dangerously-skip-permissions".to_string(),
     ];
 
-    if !resume_id.is_empty() {
-        log_info!(LOG_TAG, "Resuming session: {resume_id}");
+    if !config.resume_id.is_empty() {
+        log_info!(LOG_TAG, "Resuming session: {}", config.resume_id);
         args.push("--resume".to_string());
-        args.push(resume_id.to_string());
+        args.push(config.resume_id.to_string());
     } else {
         log_info!(LOG_TAG, "Starting new session");
     }
 
-    if !append_system_prompt.is_empty() {
+    if !config.append_system_prompt.is_empty() {
         args.push("--append-system-prompt".to_string());
-        args.push(append_system_prompt.to_string());
+        args.push(config.append_system_prompt.to_string());
     }
 
-    push_comma_separated_flag_values(&mut args, "--disallowed-tools", disallowed_tools);
-    push_comma_separated_flag_values(&mut args, "--tools", tools);
+    push_comma_separated_flag_values(&mut args, "--disallowed-tools", config.disallowed_tools);
+    push_comma_separated_flag_values(&mut args, "--tools", config.tools);
 
-    if !settings.is_empty() {
+    if !config.settings.is_empty() {
         args.push("--settings".to_string());
-        args.push(settings.to_string());
+        args.push(config.settings.to_string());
     }
 
-    if let Some(effort) = default_claude_effort_for_model(model) {
+    if let Some(effort) = default_claude_effort_for_model(config.model) {
         args.push("--effort".to_string());
         args.push(effort.to_string());
     }
 
-    if include_partial_messages {
+    if config.include_partial_messages {
         args.push("--include-partial-messages".to_string());
     }
 
     // "--" terminates option parsing so Commander.js variadic options
     // (--disallowed-tools, --tools) do not consume the prompt.
     args.push("--".to_string());
-    args.push(prompt.to_string());
+    args.push(config.prompt.to_string());
     args
 }
 
@@ -106,16 +108,16 @@ fn default_claude_effort_for_model(model: &str) -> Option<&'static str> {
 }
 
 fn build_claude_command(use_mock: bool) -> Vec<String> {
-    let args = build_claude_args(
-        env::anthropic_model(),
-        env::resume_session_id(),
-        env::append_system_prompt(),
-        env::disallowed_tools(),
-        env::tools(),
-        env::settings(),
-        env::chat_stream_config().is_some(),
-        env::prompt(),
-    );
+    let args = build_claude_args(ClaudeArgsConfig {
+        model: env::anthropic_model(),
+        resume_id: env::resume_session_id(),
+        append_system_prompt: env::append_system_prompt(),
+        disallowed_tools: env::disallowed_tools(),
+        tools: env::tools(),
+        settings: env::settings(),
+        include_partial_messages: env::chat_stream_config().is_some(),
+        prompt: env::prompt(),
+    });
 
     let bin = if use_mock {
         log_info!(LOG_TAG, "Using mock-claude for testing");
@@ -262,21 +264,30 @@ mod tests {
         prompt: &str,
     ) -> Vec<String> {
         disable_system_log();
-        build_claude_args(
-            "",
+        build_claude_args(ClaudeArgsConfig {
+            model: "",
             resume_id,
             append_system_prompt,
             disallowed_tools,
             tools,
             settings,
-            false,
+            include_partial_messages: false,
             prompt,
-        )
+        })
     }
 
     fn build_claude_args_for_model_test(model: &str, prompt: &str) -> Vec<String> {
         disable_system_log();
-        build_claude_args(model, "", "", "", "", "", prompt)
+        build_claude_args(ClaudeArgsConfig {
+            model,
+            resume_id: "",
+            append_system_prompt: "",
+            disallowed_tools: "",
+            tools: "",
+            settings: "",
+            include_partial_messages: false,
+            prompt,
+        })
     }
 
     fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
@@ -325,7 +336,16 @@ mod tests {
 
     #[test]
     fn build_claude_args_include_partial_messages_before_prompt_separator() {
-        let args = build_claude_args("", "", "", "", "", true, "test");
+        let args = build_claude_args(ClaudeArgsConfig {
+            model: "",
+            resume_id: "",
+            append_system_prompt: "",
+            disallowed_tools: "",
+            tools: "",
+            settings: "",
+            include_partial_messages: true,
+            prompt: "test",
+        });
         let flag_idx = args
             .iter()
             .position(|arg| arg == "--include-partial-messages")
@@ -341,7 +361,16 @@ mod tests {
 
     #[test]
     fn build_claude_args_omits_partial_messages_when_disabled() {
-        let args = build_claude_args("", "", "", "", "", false, "test");
+        let args = build_claude_args(ClaudeArgsConfig {
+            model: "",
+            resume_id: "",
+            append_system_prompt: "",
+            disallowed_tools: "",
+            tools: "",
+            settings: "",
+            include_partial_messages: false,
+            prompt: "test",
+        });
 
         assert!(!args.contains(&"--include-partial-messages".to_string()));
         assert_prompt_with_separator(&args, "test");

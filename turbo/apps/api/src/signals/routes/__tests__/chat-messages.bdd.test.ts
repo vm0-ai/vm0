@@ -490,6 +490,7 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
 
   it("adds chat stream context only for opted-in web chat sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.proxyChatCallbackToApp();
 
     const disabled = await sendChatRun(actor, {
       agentId,
