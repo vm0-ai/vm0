@@ -181,8 +181,69 @@ pub(super) async fn destroy_idle_payload_and_wait(
 mod tests {
     use super::*;
 
+    use std::time::Duration;
+
+    use sandbox::{ResourceLimits, SandboxConfig, SandboxFactory};
+    use sandbox_mock::MockSandboxFactory;
+
+    use crate::idle_pool::{
+        IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult,
+    };
+    use crate::resource_budget::ResourceBudget;
+    use crate::storage_fingerprints::StorageFingerprints;
+    use crate::workspace_promotion::test_support::{TEST_COMPLETED_AT, WorkspacePromotionFixture};
+
     #[tokio::test]
     async fn destroy_idle_jobs_and_wait_empty_returns_false() {
         assert!(!destroy_idle_jobs_and_wait(Vec::new(), "test_empty").await);
+    }
+
+    #[tokio::test]
+    async fn destroy_idle_jobs_and_wait_reports_workspace_cache_promotion() {
+        let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-cache").await;
+        let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(MockSandboxFactory::new()));
+        let sandbox = factory
+            .create(SandboxConfig {
+                id: fixture.sandbox_id,
+                resources: ResourceLimits {
+                    cpu_count: 2,
+                    memory_mb: 4096,
+                },
+                device_rate_limits: None,
+                workspace_drive: None,
+            })
+            .await
+            .expect("create sandbox");
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let request = IdleParkRequest::new(IdleParkRequestParts {
+            sandbox,
+            factory,
+            session_id: fixture.session_id.clone(),
+            sandbox_id: fixture.sandbox_id,
+            profile_name: "vm0/default".into(),
+            device_rate_limits: None,
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            workspace_promotion: Some(fixture.promotion),
+        });
+        let candidate = match request.park_for_idle().await {
+            Ok(candidate) => candidate.with_last_completed_at(TEST_COMPLETED_AT.into()),
+            Err(_) => panic!("park should succeed"),
+        };
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+
+        let promoted = destroy_idle_jobs_and_wait(pool.drain(), "test_idle_destroy_cache").await;
+
+        assert!(promoted);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+        let held = fixture.cache.held_session_states().await;
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].session_id, fixture.session_id);
     }
 }

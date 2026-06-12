@@ -3,6 +3,8 @@ use super::*;
 use std::sync::Arc;
 
 use crate::resource_budget::ResourceBudget;
+use crate::workspace_image_cache::WorkspaceImagePromotionContext;
+use crate::workspace_promotion::test_support::WorkspacePromotionFixture;
 use sandbox::{ResourceLimits, SandboxConfig};
 use sandbox_mock::{MockSandboxFactory, MockSandboxOverrides};
 
@@ -13,7 +15,14 @@ fn reserved_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
 }
 
 async fn make_idle_destroy_payload(overrides: Arc<MockSandboxOverrides>) -> IdleDestroyPayload {
-    let sandbox_id = SandboxId::new_v4();
+    make_idle_destroy_payload_for(SandboxId::new_v4(), overrides, None).await
+}
+
+async fn make_idle_destroy_payload_for(
+    sandbox_id: SandboxId,
+    overrides: Arc<MockSandboxOverrides>,
+    workspace_promotion: Option<WorkspaceImagePromotionContext>,
+) -> IdleDestroyPayload {
     let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
         MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
     ));
@@ -34,7 +43,7 @@ async fn make_idle_destroy_payload(overrides: Arc<MockSandboxOverrides>) -> Idle
         resources: IdleSandboxResources {
             sandbox,
             factory,
-            workspace_promotion: None,
+            workspace_promotion,
         },
     }
 }
@@ -43,8 +52,17 @@ async fn make_idle_destroy_job(
     overrides: Arc<MockSandboxOverrides>,
     budget_lease: BudgetLease,
 ) -> IdleDestroyJob {
+    make_idle_destroy_job_for(SandboxId::new_v4(), overrides, budget_lease, None).await
+}
+
+async fn make_idle_destroy_job_for(
+    sandbox_id: SandboxId,
+    overrides: Arc<MockSandboxOverrides>,
+    budget_lease: BudgetLease,
+    workspace_promotion: Option<WorkspaceImagePromotionContext>,
+) -> IdleDestroyJob {
     IdleDestroyJob {
-        payload: make_idle_destroy_payload(overrides).await,
+        payload: make_idle_destroy_payload_for(sandbox_id, overrides, workspace_promotion).await,
         budget_lease,
         session_id: "sess-destroy".into(),
         profile_name: "vm0/default".into(),
@@ -120,4 +138,31 @@ async fn idle_destroy_job_stop_error_still_attempts_destroy_and_releases_budget_
     assert!(!promoted);
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn idle_destroy_job_unpark_error_skips_workspace_cache_and_still_destroys() {
+    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-unpark-error").await;
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated unpark failure".into(),
+    }));
+    let (budget, lease) = reserved_budget_lease();
+    let job = make_idle_destroy_job_for(
+        fixture.sandbox_id,
+        Arc::clone(&overrides),
+        lease,
+        Some(fixture.promotion),
+    )
+    .await;
+
+    let promoted = job.run_with_context("test_idle_destroy_unpark_error").await;
+
+    assert!(!promoted);
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert!(overrides.exec_calls().is_empty());
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(budget.allocated(), (0, 0, 0));
+    assert!(fixture.cache.held_session_states().await.is_empty());
 }

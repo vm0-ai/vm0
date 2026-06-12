@@ -115,4 +115,7 @@ pub(crate) async fn promote_workspace_image_from_parked_sandbox(
 }
 
 #[cfg(test)]
+pub(crate) mod test_support;
+
+#[cfg(test)]
 mod tests;
