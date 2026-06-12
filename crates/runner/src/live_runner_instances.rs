@@ -76,7 +76,8 @@ enum RecordForIdentity {
 enum RecordRead {
     Valid(LiveRunnerInstanceRecord),
     Missing,
-    Invalid,
+    InvalidFile,
+    NotLive,
 }
 
 pub(crate) async fn publish(
@@ -208,15 +209,14 @@ pub(crate) async fn is_current(
 
 impl LiveRunnerInstanceHandle {
     pub(crate) async fn remove_if_current(&self) -> RunnerResult<bool> {
-        let Some(record) = read_valid_record(&self.path).await else {
-            return Ok(false);
-        };
-        if record.boot_id != self.identity.boot_id
-            || record.pid != self.identity.pid
-            || record.starttime != self.identity.starttime
-            || record.euid != self.identity.euid
-        {
-            return Ok(false);
+        match read_record(&self.path).await {
+            RecordRead::Valid(record)
+                if record.boot_id == self.identity.boot_id
+                    && record.pid == self.identity.pid
+                    && record.starttime == self.identity.starttime
+                    && record.euid == self.identity.euid => {}
+            RecordRead::InvalidFile => {}
+            RecordRead::Missing | RecordRead::NotLive | RecordRead::Valid(_) => return Ok(false),
         }
 
         match tokio::fs::remove_file(&self.path).await {
@@ -230,10 +230,11 @@ impl LiveRunnerInstanceHandle {
     }
 }
 
+#[cfg(test)]
 async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
     match read_record(path).await {
         RecordRead::Valid(record) => Some(record),
-        RecordRead::Missing | RecordRead::Invalid => None,
+        RecordRead::Missing | RecordRead::InvalidFile | RecordRead::NotLive => None,
     }
 }
 
@@ -249,20 +250,20 @@ async fn read_record(path: &Path) -> RecordRead {
         Ok(None) => return RecordRead::Missing,
         Err(e) => {
             tracing::debug!(path = %path.display(), error = %e, "ignoring unreadable live runner instance record");
-            return RecordRead::Invalid;
+            return RecordRead::InvalidFile;
         }
     };
     let record: LiveRunnerInstanceRecord = match serde_json::from_str(&content) {
         Ok(record) => record,
         Err(e) => {
             tracing::debug!(path = %path.display(), error = %e, "ignoring malformed live runner instance record");
-            return RecordRead::Invalid;
+            return RecordRead::InvalidFile;
         }
     };
     if record_is_live(&record).await {
         RecordRead::Valid(record)
     } else {
-        RecordRead::Invalid
+        RecordRead::NotLive
     }
 }
 
@@ -313,7 +314,9 @@ async fn read_record_for_identity(path: &Path, identity: FileProcessIdentity) ->
     let record = match read_record(path).await {
         RecordRead::Valid(record) => record,
         RecordRead::Missing => return RecordForIdentity::InvalidForStaleProcess,
-        RecordRead::Invalid => return invalid_record_for_identity(identity).await,
+        RecordRead::InvalidFile | RecordRead::NotLive => {
+            return invalid_record_for_identity(identity).await;
+        }
     };
     if record.pid == identity.pid && record.starttime == identity.starttime {
         RecordForIdentity::Valid(record)
@@ -968,5 +971,20 @@ mod tests {
 
         assert!(!removed);
         assert!(handle.path.exists());
+    }
+
+    #[tokio::test]
+    async fn remove_if_current_removes_invalid_current_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        crate::state_file::write_private_atomic(&handle.path, b"{")
+            .await
+            .unwrap();
+
+        let removed = handle.remove_if_current().await.unwrap();
+
+        assert!(removed);
+        assert!(!handle.path.exists());
     }
 }
