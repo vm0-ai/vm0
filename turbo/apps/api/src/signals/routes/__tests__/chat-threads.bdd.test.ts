@@ -16,7 +16,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -123,7 +123,7 @@ const insertRunUsageEvent$ = command(
       quantity: 1,
       status: args.status,
       creditsCharged: args.creditsCharged,
-      processedAt: args.status === "processed" ? new Date() : null,
+      processedAt: args.status === "processed" ? nowDate() : null,
       idempotencyKey: randomUUID(),
     });
     signal.throwIfAborted();
@@ -988,8 +988,9 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
 
 describe("CHAT-03 run usage messages", () => {
   it("emits one persisted usage message after completion side effects process run usage", async () => {
-    const { actor, agentId, runnerGroup } =
-      await entitledChatActor("Usage message agent");
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Usage message agent",
+    );
     const provider = `bdd-usage-${randomUUID().slice(0, 8)}`;
     const missingProvider = `${provider}-free`;
     const category = "api_request";
@@ -1036,7 +1037,7 @@ describe("CHAT-03 run usage messages", () => {
       runId,
       context.signal,
     );
-    expect(usageRows).toEqual(
+    expect(usageRows).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           provider,
@@ -1098,8 +1099,9 @@ describe("CHAT-03 run usage messages", () => {
   }, 60_000);
 
   it("emits zero-credit usage messages and suppresses emission while usage is pending", async () => {
-    const { actor, agentId, runnerGroup } =
-      await entitledChatActor("Zero usage message agent");
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Zero usage message agent",
+    );
     if (!actor.orgId) {
       throw new Error("Expected the chat actor to belong to an organization");
     }
