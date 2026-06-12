@@ -176,6 +176,13 @@ class _BatchAdmissionResult:
     retained_batches: list[_PendingBatch]
 
 
+class _BatchEnqueueError(Exception):
+    def __init__(self, original: Exception, admission_result: _BatchAdmissionResult) -> None:
+        super().__init__(str(original))
+        self.original = original
+        self.admission_result = admission_result
+
+
 @dataclass(frozen=True)
 class _RetainBatchesResult:
     retained_batches: list[_PendingBatch]
@@ -715,6 +722,25 @@ class UsageEventBuffer:
 
             try:
                 admission_result = self._enqueue_pending_flush(pending_flush, trigger)
+            except _BatchEnqueueError as exc:
+                timer_to_start = None
+                retain_result = _RetainBatchesResult(retained_batches=[], dropped_batches=[])
+                with self._lock:
+                    retain_result = self._state.complete_admission(
+                        pending_flush, exc.admission_result
+                    )
+                    if retain_result.retained_batches and trigger != "shutdown":
+                        timer_to_start = self._schedule_timer_if_buffered_locked()
+                    self._sync_buffered_counter_locked()
+                if retain_result.dropped_batches:
+                    _log_dropped_batches(
+                        trigger,
+                        pending_flush.flush_sequence,
+                        retain_result.dropped_batches,
+                    )
+                if timer_to_start is not None:
+                    timer_to_start.start()
+                raise exc.original from exc
             except Exception:
                 timer_to_start = None
                 retain_result = _RetainBatchesResult(retained_batches=[], dropped_batches=[])
@@ -779,13 +805,18 @@ class UsageEventBuffer:
             )
             return admission_result
         except Exception as exc:
+            error_type = (
+                type(exc.original).__name__
+                if isinstance(exc, _BatchEnqueueError)
+                else type(exc).__name__
+            )
             _log_flush_summaries(
                 "failed",
                 trigger,
                 pending_flush.flush_sequence,
                 pending_flush.summaries,
                 duration_ms=_elapsed_ms(started_at),
-                error_type=type(exc).__name__,
+                error_type=error_type,
             )
             raise
 
@@ -901,14 +932,23 @@ def _enqueue_batches(
 ) -> _BatchAdmissionResult:
     for index, pending_batch in enumerate(batches):
         batch = pending_batch.batch
-        admitted = enqueue_webhook(
-            batch.url,
-            batch.sandbox_token,
-            batch.payload,
-            batch.proxy_log_path,
-            batch.log_type,
-            delivery_outcome_callback(pending_batch),
-        )
+        try:
+            admitted = enqueue_webhook(
+                batch.url,
+                batch.sandbox_token,
+                batch.payload,
+                batch.proxy_log_path,
+                batch.log_type,
+                delivery_outcome_callback(pending_batch),
+            )
+        except Exception as exc:
+            raise _BatchEnqueueError(
+                exc,
+                _BatchAdmissionResult(
+                    admitted_batch_count=index,
+                    retained_batches=batches[index:],
+                ),
+            ) from exc
         if admitted is False:
             return _BatchAdmissionResult(
                 admitted_batch_count=index,

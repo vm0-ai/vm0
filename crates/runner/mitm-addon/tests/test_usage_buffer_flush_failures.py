@@ -53,13 +53,13 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
     assert_usage_buffer_drained(enqueue)
 
 
-def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_keys(tmp_path):
-    failed_payloads = []
+def test_partial_flush_failure_retains_only_unfinished_batch_after_completed_success(tmp_path):
+    attempted_payloads = []
 
     def fail_second_batch(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token, path, log_type
-        failed_payloads.append(payload)
-        if len(failed_payloads) == 2:
+        attempted_payloads.append(payload)
+        if len(attempted_payloads) == 2:
             raise OSError("second batch rejected")
 
     enqueue = RecordingEnqueue(side_effect=fail_second_batch)
@@ -84,23 +84,80 @@ def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_ke
         usage.flush_usage_events(trigger="test")
 
     assert enqueue.call_count == 2
-    assert [payload["runId"] for payload in failed_payloads] == ["run-1", "run-2"]
+    assert [payload["runId"] for payload in attempted_payloads] == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 1
 
     enqueue.side_effect = None
     enqueue.clear()
-    assert usage.flush_usage_events(trigger="test") == 2
+    assert usage.flush_usage_events(trigger="test") == 1
 
     retry_payloads = enqueue.payloads
-    assert [
-        flushed_event["idempotencyKey"]
-        for payload in retry_payloads
-        for flushed_event in payload["events"]
-    ] == [
-        flushed_event["idempotencyKey"]
-        for payload in failed_payloads
-        for flushed_event in payload["events"]
-    ]
+    assert [payload["runId"] for payload in retry_payloads] == ["run-2"]
+    assert (
+        retry_payloads[0]["events"][0]["idempotencyKey"]
+        == attempted_payloads[1]["events"][0]["idempotencyKey"]
+    )
     assert_usage_buffer_drained(enqueue)
+
+
+def test_partial_flush_failure_waits_for_unfinished_admitted_batch(tmp_path):
+    callbacks: list[DeliveryOutcomeCallback] = []
+    attempted_runs: list[str] = []
+    retry_runs: list[str] = []
+    retrying = False
+
+    def fail_second_batch(
+        url: str,
+        sandbox_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
+    ) -> bool:
+        del url, sandbox_token, path
+        assert log_type == "usage_event"
+        run_id = payload["runId"]
+        if retrying:
+            retry_runs.append(run_id)
+            delivery_outcome_callback("success")
+            return True
+        attempted_runs.append(run_id)
+        if run_id == "run-1":
+            callbacks.append(delivery_outcome_callback)
+            return True
+        raise OSError("second batch rejected")
+
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=fail_second_batch)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1")],
+        proxy_log_path,
+    )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-2",
+        [event(source_key="source-2")],
+        proxy_log_path,
+    )
+
+    with pytest.raises(OSError, match="second batch rejected"):
+        usage.flush_usage_events(trigger="test")
+
+    assert attempted_runs == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 2
+
+    callbacks[0]("success")
+    assert usage.counters._buffered_usage_events == 1
+
+    retrying = True
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert retry_runs == ["run-2"]
+    assert usage.counters._buffered_usage_events == 0
 
 
 def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempotency_key(
