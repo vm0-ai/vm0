@@ -58,6 +58,7 @@ const context = testContext();
 const store = createStore();
 const writeDb = store.set(writeDb$);
 const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
+const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
 
 interface SeedEmailOutboxOptions {
   readonly subject: string;
@@ -79,7 +80,8 @@ async function seedEmailOutbox(options: SeedEmailOutboxOptions): Promise<void> {
     },
     status: options.status ?? "pending",
     attempts: options.attempts ?? 0,
-    createdAt: options.createdAt ?? new Date(now()),
+    createdAt:
+      options.createdAt ?? new Date(now() - OUTBOX_TEST_CREATED_AT_OFFSET_MS),
     nextRetryAt: options.nextRetryAt ?? null,
   });
 
@@ -102,6 +104,21 @@ async function seedEmailSuppression(address: string): Promise<void> {
       .delete(emailSuppressions)
       .where(eq(emailSuppressions.emailAddress, address));
   });
+}
+
+function resendSendCallsTo(recipient: string): number {
+  return context.mocks.resend.send.mock.calls.filter((call) => {
+    const [payload] = call;
+    if (typeof payload !== "object" || payload === null || !("to" in payload)) {
+      return false;
+    }
+
+    const to = payload.to;
+    if (typeof to === "string") {
+      return to === recipient;
+    }
+    return Array.isArray(to) && to.includes(recipient);
+  }).length;
 }
 
 async function touchEmailOutbox(subject: string): Promise<void> {
@@ -146,6 +163,9 @@ async function emailOutboxRow(subject: string): Promise<{
 
 async function drainEmailOutboxCronOk(): Promise<void> {
   const email = createEmailApi(context);
+  context.mocks.resend.send.mockResolvedValue({
+    data: { id: `resend-bdd-drain-${randomUUID()}` },
+  });
   const drain = await email.drainEmailOutboxCron(true);
   if (drain.status !== 200) {
     throw new Error("Expected drain email outbox cron to succeed");
@@ -2029,6 +2049,7 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
         attempts: 1,
         lastError: `Recipient address suppressed (${to})`,
       });
+    expect(resendSendCallsTo(to)).toBe(0);
   });
 
   it("cleans up expired pending and failed outbox rows", async () => {
