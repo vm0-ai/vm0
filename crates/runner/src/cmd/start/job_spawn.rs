@@ -99,7 +99,7 @@ struct ExecutorInvocation {
     reuse_result: SandboxReuseResult,
     cancel: CancellationToken,
     sandbox_token: String,
-    sandbox_started: Option<executor::SandboxStartNotifier>,
+    sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
 }
 
 struct ExecutorPhaseOutcome {
@@ -122,7 +122,7 @@ impl ExecutorInvocation {
             reuse_result,
             cancel,
             sandbox_token,
-            sandbox_started,
+            sandbox_prepared,
         } = self;
         let exec_config_for_panic = Arc::clone(&exec_config);
         let cancel_for_executor = cancel.clone();
@@ -140,7 +140,7 @@ impl ExecutorInvocation {
                 )
                 .await
             } else {
-                executor::execute_job_with_start_notifier(
+                executor::execute_job_with_prepared_notifier(
                     &**factory,
                     context,
                     executor::NewSandboxDispatch {
@@ -150,7 +150,7 @@ impl ExecutorInvocation {
                     &exec_config,
                     &params,
                     cancel_for_executor,
-                    sandbox_started,
+                    sandbox_prepared,
                 )
                 .await
             }
@@ -479,13 +479,13 @@ pub(super) fn spawn_job(
     // into the executor phase, so snapshot the token before spawning.
     let sandbox_token = context.sandbox_token.clone();
     let reused = reuse_entry.is_some();
-    let sandbox_started = if reused {
+    let sandbox_prepared = if reused {
         None
     } else {
-        let status_for_started = Arc::clone(&status);
-        Some(executor::SandboxStartNotifier::new(
+        let status_for_prepared = Arc::clone(&status);
+        Some(executor::SandboxPreparedNotifier::new(
             move |run_id, sandbox_id| {
-                let status = Arc::clone(&status_for_started);
+                let status = Arc::clone(&status_for_prepared);
                 async move {
                     if !status
                         .mark_run_running_if_matching(run_id, sandbox_id)
@@ -494,7 +494,7 @@ pub(super) fn spawn_job(
                         warn!(
                             run_id = %run_id,
                             sandbox_id = %sandbox_id,
-                            "sandbox started after active run status changed"
+                            "sandbox prepared after active run status changed"
                         );
                     }
                 }
@@ -513,7 +513,7 @@ pub(super) fn spawn_job(
         reuse_result,
         cancel: job_cancel.token(),
         sandbox_token: sandbox_token.clone(),
-        sandbox_started,
+        sandbox_prepared,
     };
     let finalization = FinalizationPhase {
         run_id,

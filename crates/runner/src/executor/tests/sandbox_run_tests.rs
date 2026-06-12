@@ -17,13 +17,13 @@ use super::super::agent_run::RunStart;
 use super::super::env::{guest_user_env_dir_path, guest_user_env_file_path};
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
-    execute_new_sandbox_with_start_notifier, execute_prepared_sandbox_run, execute_reused_sandbox,
-    register_proxy,
+    execute_new_sandbox_with_prepared_notifier, execute_prepared_sandbox_run,
+    execute_reused_sandbox, register_proxy,
 };
 use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JobParams,
     NewSandboxDispatch, STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER,
-    SandboxStartNotifier, USER_ENV_FILE_ENV_KEY, execute_job, execute_job_reuse,
+    SandboxPreparedNotifier, USER_ENV_FILE_ENV_KEY, execute_job, execute_job_reuse,
 };
 use super::support::{
     DestroyPanicFactory, QueuedCopyFileSandbox, api_storage, assert_proxy_registry_empty,
@@ -94,7 +94,7 @@ async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_
 }
 
 #[tokio::test]
-async fn execute_new_sandbox_notifies_after_successful_start() {
+async fn execute_new_sandbox_notifies_after_successful_prepare() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let factory = MockSandboxFactory::new();
@@ -103,18 +103,18 @@ async fn execute_new_sandbox_notifies_after_successful_start() {
     let notifications = Arc::new(AtomicUsize::new(0));
     let notifications_for_callback = Arc::clone(&notifications);
     let expected_run_id = ctx.run_id;
-    let notifier = SandboxStartNotifier::new(move |run_id, started_sandbox_id| {
+    let notifier = SandboxPreparedNotifier::new(move |run_id, prepared_sandbox_id| {
         let notifications = Arc::clone(&notifications_for_callback);
         async move {
             assert_eq!(run_id, expected_run_id);
-            assert_eq!(started_sandbox_id, sandbox_id);
+            assert_eq!(prepared_sandbox_id, sandbox_id);
             notifications.fetch_add(1, Ordering::SeqCst);
         }
         .boxed()
     });
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_new_sandbox_with_start_notifier(
+    let outcome = execute_new_sandbox_with_prepared_notifier(
         &factory,
         &ctx,
         NewSandboxDispatch {
@@ -126,7 +126,7 @@ async fn execute_new_sandbox_notifies_after_successful_start() {
         &mut telemetry,
         NewSandboxHooks {
             cancel: tokio_util::sync::CancellationToken::new(),
-            sandbox_started: Some(&notifier),
+            sandbox_prepared: Some(&notifier),
         },
     )
     .await
@@ -147,7 +147,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
     let ctx = minimal_context();
     let notifications = Arc::new(AtomicUsize::new(0));
     let notifications_for_callback = Arc::clone(&notifications);
-    let notifier = SandboxStartNotifier::new(move |_run_id, _sandbox_id| {
+    let notifier = SandboxPreparedNotifier::new(move |_run_id, _sandbox_id| {
         let notifications = Arc::clone(&notifications_for_callback);
         async move {
             notifications.fetch_add(1, Ordering::SeqCst);
@@ -156,7 +156,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
     });
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let result = execute_new_sandbox_with_start_notifier(
+    let result = execute_new_sandbox_with_prepared_notifier(
         &factory,
         &ctx,
         NewSandboxDispatch {
@@ -168,7 +168,52 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
         &mut telemetry,
         NewSandboxHooks {
             cancel: tokio_util::sync::CancellationToken::new(),
-            sandbox_started: Some(&notifier),
+            sandbox_prepared: Some(&notifier),
+        },
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(notifications.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "mount -t ext4".to_string(),
+        exit_code: 64,
+        stdout: Vec::new(),
+        stderr: b"mount denied".to_vec(),
+    });
+    let factory = MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+    let notifications = Arc::new(AtomicUsize::new(0));
+    let notifications_for_callback = Arc::clone(&notifications);
+    let notifier = SandboxPreparedNotifier::new(move |_run_id, _sandbox_id| {
+        let notifications = Arc::clone(&notifications_for_callback);
+        async move {
+            notifications.fetch_add(1, Ordering::SeqCst);
+        }
+        .boxed()
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox_with_prepared_notifier(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        NewSandboxHooks {
+            cancel: tokio_util::sync::CancellationToken::new(),
+            sandbox_prepared: Some(&notifier),
         },
     )
     .await;

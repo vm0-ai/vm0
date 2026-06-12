@@ -4,9 +4,9 @@
 //! budget reservation. The executor owns the sandbox-side run flow, while the
 //! caller owns provider completion and the final sandbox lifecycle decision.
 //!
-//! The fresh path starts a new Firecracker VM and can notify the caller once
-//! the VM process is expected to exist. The reuse path runs in a kept-alive
-//! idle VM.
+//! The fresh path starts and prepares a new Firecracker VM and can notify the
+//! caller once the VM is ready to run the job. The reuse path runs in a
+//! kept-alive idle VM.
 //!
 //! Both paths return `ExecuteOutcome` plus a pending `JobTelemetry`
 //! buffer. When `ExecuteOutcome::sandbox` is `Some`, the sandbox is still alive
@@ -37,7 +37,7 @@ pub(crate) use guest_state::{fix_guest_clock, reseed_guest_entropy};
 use agent_run::ProcessCancelTimeouts;
 use env::validate_execution_context_before_sandbox;
 use sandbox_run::{
-    NewSandboxHooks, execute_new_sandbox_with_start_notifier, execute_reused_sandbox,
+    NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
     workspace_image_promotable,
 };
 use telemetry::{record_api_latency, record_reuse_result};
@@ -154,11 +154,11 @@ pub struct JobParams {
 }
 
 #[derive(Clone)]
-pub(crate) struct SandboxStartNotifier {
+pub(crate) struct SandboxPreparedNotifier {
     callback: Arc<dyn Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync>,
 }
 
-impl SandboxStartNotifier {
+impl SandboxPreparedNotifier {
     pub(crate) fn new(
         callback: impl Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync + 'static,
     ) -> Self {
@@ -307,17 +307,18 @@ pub async fn execute_job(
     params: &JobParams,
     cancel: CancellationToken,
 ) -> (ExecuteOutcome, JobTelemetry) {
-    execute_job_with_start_notifier(factory, context, dispatch, config, params, cancel, None).await
+    execute_job_with_prepared_notifier(factory, context, dispatch, config, params, cancel, None)
+        .await
 }
 
-pub(crate) async fn execute_job_with_start_notifier(
+pub(crate) async fn execute_job_with_prepared_notifier(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
     dispatch: NewSandboxDispatch,
     config: &ExecutorConfig,
     params: &JobParams,
     cancel: CancellationToken,
-    sandbox_started: Option<SandboxStartNotifier>,
+    sandbox_prepared: Option<SandboxPreparedNotifier>,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
@@ -337,7 +338,7 @@ pub(crate) async fn execute_job_with_start_notifier(
             guest_session_id: None,
         }
     } else {
-        match execute_new_sandbox_with_start_notifier(
+        match execute_new_sandbox_with_prepared_notifier(
             factory,
             &context,
             dispatch,
@@ -346,7 +347,7 @@ pub(crate) async fn execute_job_with_start_notifier(
             &mut telemetry,
             NewSandboxHooks {
                 cancel,
-                sandbox_started: sandbox_started.as_ref(),
+                sandbox_prepared: sandbox_prepared.as_ref(),
             },
         )
         .await
