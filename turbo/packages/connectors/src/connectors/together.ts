@@ -36,6 +36,5 @@ export const together = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;

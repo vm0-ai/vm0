@@ -44,6 +44,5 @@ export const base44 = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;

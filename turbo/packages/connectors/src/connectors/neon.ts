@@ -80,6 +80,5 @@ export const neon = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;

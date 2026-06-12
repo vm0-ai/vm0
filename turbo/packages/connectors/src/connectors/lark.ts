@@ -47,6 +47,5 @@ export const lark = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;

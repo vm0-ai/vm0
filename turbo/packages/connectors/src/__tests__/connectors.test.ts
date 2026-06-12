@@ -22,7 +22,6 @@ import {
   type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorExternalCodeGrantConfig,
-  type ConnectorInvalidDefaultAuthMethodType,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
@@ -315,7 +314,6 @@ const connectorAuthMethodFixture = {
     authMethods: {
       "api-token": manualAuthMethodConfig,
     },
-    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;
 
@@ -328,7 +326,6 @@ const multiAuthMethodFixture = {
       oauth: manualAuthMethodConfig,
       "api-token": manualAuthMethodConfig,
     },
-    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;
 
@@ -472,42 +469,12 @@ describe("connector auth method config", () => {
     expectTypeOf<"app-credential">().not.toMatchTypeOf<
       keyof ConnectorConfig["authMethods"]
     >();
-    expectTypeOf<"app-credential">().not.toMatchTypeOf<
-      ConnectorConfig["defaultAuthMethod"]
-    >();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<FixtureConfig>
     >().toEqualTypeOf<"api-token">();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<MultiFixtureConfig>
     >().toEqualTypeOf<"oauth" | "api-token">();
-    expectTypeOf<
-      FixtureConfig["defaultAuthMethod"]
-    >().toEqualTypeOf<"api-token">();
-    expectTypeOf<
-      MultiFixtureConfig["defaultAuthMethod"]
-    >().toEqualTypeOf<"api-token">();
-    expectTypeOf<
-      ConnectorInvalidDefaultAuthMethodType<typeof connectorAuthMethodFixture>
-    >().toEqualTypeOf<never>();
-    expectTypeOf<
-      ConnectorInvalidDefaultAuthMethodType<typeof multiAuthMethodFixture>
-    >().toEqualTypeOf<never>();
-
-    const missingDefaultMethodFixture = {
-      "missing-default-method-fixture": {
-        label: "Missing Default Method Fixture",
-        category: "data-automation-infrastructure",
-        helpText: "Fixture used for connector auth method type coverage.",
-        authMethods: {
-          "api-token": manualAuthMethodConfig,
-        },
-        defaultAuthMethod: "oauth",
-      },
-    } as const satisfies Record<string, ConnectorConfig>;
-    expectTypeOf<
-      ConnectorInvalidDefaultAuthMethodType<typeof missingDefaultMethodFixture>
-    >().toEqualTypeOf<"missing-default-method-fixture">();
   });
 
   it("returns a single auth method config when present", () => {

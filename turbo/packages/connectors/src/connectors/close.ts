@@ -47,6 +47,5 @@ export const close = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;
