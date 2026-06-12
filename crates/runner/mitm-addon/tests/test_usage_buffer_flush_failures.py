@@ -497,6 +497,9 @@ def test_retryable_delivery_failure_retains_flush_and_retries_with_same_key(
     assert retry_body["events"][0]["idempotencyKey"] == failed_key
     usage.write_pending_snapshot(flush_request_id="request-2")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
+    drained_request_count = usage_webhook_server.request_count
+    assert usage.flush_usage_events(trigger="test") == 0
+    assert usage_webhook_server.request_count == drained_request_count
 
 
 def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
@@ -543,6 +546,9 @@ def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
     ]
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+    drained_request_count = usage_webhook_server.request_count
+    assert usage.flush_usage_events(trigger="test") == 0
+    assert usage_webhook_server.request_count == drained_request_count
 
 
 def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
@@ -667,3 +673,6 @@ def test_permanent_http_delivery_failure_completes_flush(
     assert usage_webhook_server.request_count == 1
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+    drained_request_count = usage_webhook_server.request_count
+    assert usage.flush_usage_events(trigger="test") == 0
+    assert usage_webhook_server.request_count == drained_request_count
