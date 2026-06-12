@@ -776,6 +776,24 @@ interface ChatThreadListPage {
   readonly nextCursor: string | null;
 }
 
+function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
+  return db
+    .select({
+      id: chatMessages.id,
+      createdAt: chatMessages.createdAt,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, chatThreads.id),
+        visibleChatMessageCondition(),
+      ),
+    )
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+    .limit(1)
+    .as("last_message");
+}
+
 function chatThreadListProjection() {
   return {
     id: chatThreads.id,
@@ -787,7 +805,6 @@ function chatThreadListProjection() {
     pinnedAt: chatThreads.pinnedAt,
     renamedAt: chatThreads.renamedAt,
     lastMessageAt: chatThreads.lastMessageAt,
-    isRead: sql<boolean>`COALESCE(${chatThreads.lastReadAt} >= ${chatThreads.lastMessageAt}, false)`,
     running: sql<boolean>`EXISTS (
       SELECT 1
       FROM ${zeroRuns}
@@ -808,7 +825,6 @@ type ChatThreadListRow = {
   readonly pinnedAt: Date | null;
   readonly renamedAt: Date | null;
   readonly lastMessageAt: Date;
-  readonly isRead: boolean;
   readonly running: boolean;
 };
 
@@ -824,7 +840,6 @@ function rowToChatThreadListItem(
     },
     createdAt: thread.createdAt.toISOString(),
     updatedAt: thread.updatedAt.toISOString(),
-    isRead: thread.isRead,
     running: thread.running,
     pinnedAt: thread.pinnedAt?.toISOString() ?? null,
     renamedAt: thread.renamedAt?.toISOString() ?? null,
@@ -910,6 +925,48 @@ export function zeroChatThreadList(args: {
       hasMore,
       nextCursor,
     };
+  });
+}
+
+/**
+ * The user's unread threads under an agent, each with the creation time of
+ * the latest visible message — the one that made the thread unread. A thread
+ * is unread when it has at least one visible message and the read cursor
+ * (`lastReadMessageId`) doesn't point at the latest one.
+ */
+export function zeroChatThreadUnreads(args: {
+  readonly userId: string;
+  readonly agentComposeId: string;
+}): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const lastMessage = lastVisibleMessageSubquery(db);
+    const rows = await db
+      .select({
+        threadId: chatThreads.id,
+        unreadAt: lastMessage.createdAt,
+      })
+      .from(chatThreads)
+      .leftJoinLateral(lastMessage, sql`true`)
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          eq(chatThreads.agentComposeId, args.agentComposeId),
+          isNotNull(lastMessage.id),
+          or(
+            isNull(chatThreads.lastReadMessageId),
+            sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+          ),
+        ),
+      );
+    return rows.flatMap((row) => {
+      // Always present: the isNotNull(lastMessage.id) filter guarantees a
+      // joined row, but the left-lateral type keeps the column nullable.
+      if (row.unreadAt === null) {
+        return [];
+      }
+      return [{ threadId: row.threadId, unreadAt: row.unreadAt.toISOString() }];
+    });
   });
 }
 

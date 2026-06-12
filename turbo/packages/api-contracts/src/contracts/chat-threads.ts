@@ -92,6 +92,21 @@ const persistedAttachmentSchema = z.object({
   size: z.number(),
 });
 
+/**
+ * Per-agent unread snapshot. `unreadAt` is the creation time of the latest
+ * visible message — the one that made the thread unread. Clients keep local
+ * optimistic mark-read timestamps and drop them whenever a snapshot reports
+ * an `unreadAt` newer than the local mark.
+ */
+const chatThreadUnreadsSchema = z.object({
+  unreads: z.array(
+    z.object({
+      threadId: z.string(),
+      unreadAt: z.string(),
+    }),
+  ),
+});
+
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -104,11 +119,6 @@ const chatThreadListItemSchema = z.object({
   }),
   createdAt: z.string(),
   updatedAt: z.string(),
-  /**
-   * Read state of the thread's last message, derived from
-   * `lastReadAt >= lastMessageAt`.
-   */
-  isRead: z.boolean(),
   /**
    * True when the thread has at least one non-terminal run
    * (queued / pending / running). Drives the sidebar running indicator,
@@ -390,7 +400,9 @@ export const chatThreadsContract = c.router({
   },
   drafts: {
     method: "GET",
-    path: "/api/zero/chat-threads/drafts",
+    // Sibling path (not nested under /chat-threads/) so it can never
+    // collide with the /chat-threads/:id route pattern.
+    path: "/api/zero/chat-thread-drafts",
     headers: authHeadersSchema,
     query: z.object({
       /**
@@ -411,6 +423,20 @@ export const chatThreadsContract = c.router({
     },
     summary:
       "Report which of the given chat threads hold an unsent composer draft. Fetched separately from the thread list so the sidebar draft dots don't gate the list query.",
+  },
+  unreads: {
+    method: "GET",
+    path: "/api/zero/chat-thread-unreads",
+    headers: authHeadersSchema,
+    query: z.object({
+      agentId: z.string().min(1),
+    }),
+    responses: {
+      200: chatThreadUnreadsSchema,
+      401: apiErrorSchema,
+    },
+    summary:
+      "List the caller's unread chat threads under an agent, each with the timestamp of the message that made it unread. Fetched separately from the thread list; mark-read returns the same snapshot so read state needs no broadcast.",
   },
 });
 
@@ -486,14 +512,19 @@ export const chatThreadMarkReadContract = c.router({
     responses: {
       200: z.object({
         lastReadMessageId: z.string().nullable(),
-        lastReadAt: z.string().nullable(),
-        changed: z.boolean(),
+        /**
+         * Fresh unread snapshot for the thread's agent (same shape as the
+         * unreads endpoint), so the caller syncs read state from the response
+         * instead of a broadcast-triggered refetch.
+         */
+        unreads: chatThreadUnreadsSchema.shape.unreads,
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Mark a chat thread as read up to the latest message",
+    summary:
+      "Mark a chat thread as read up to the latest message and return the agent's unread snapshot",
   },
 });
 

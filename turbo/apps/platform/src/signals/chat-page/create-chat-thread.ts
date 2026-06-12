@@ -33,7 +33,6 @@ import {
 } from "./optimistic-chat-messages.ts";
 import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
-  chatStreamDeltaPayloadSchema,
   chatMessagesContract,
   chatThreadArtifactsContract,
   type AttachFile,
@@ -79,12 +78,6 @@ import {
   readThreadMeta$,
 } from "../external/idb-thread-meta-store.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
-import {
-  applyStreamingDelta$,
-  clearStreamingDraftsForThread$,
-  createStreamingDraftsForThread,
-  reconcileStreamingDrafts$,
-} from "./streaming-drafts.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -970,39 +963,16 @@ function groupMessagesForDisplay(
 }
 
 type ServerMessages$ = State<PagedChatMessage[]>;
-type KnownServerMessageIds$ = State<ReadonlySet<string>>;
-
-function addKnownServerMessageIds(
-  prev: ReadonlySet<string>,
-  messages: readonly PagedChatMessage[],
-): ReadonlySet<string> {
-  if (messages.length === 0) {
-    return prev;
-  }
-  let changed = false;
-  const next = new Set(prev);
-  for (const message of messages) {
-    if (!next.has(message.id)) {
-      next.add(message.id);
-      changed = true;
-    }
-  }
-  return changed ? next : prev;
-}
 
 function createAppendServerMessages(
   threadId: string,
   serverMessages$: ServerMessages$,
   reportedCompletedRunIds$: State<Set<string>>,
-  knownServerMessageIds$: KnownServerMessageIds$,
 ) {
   return command(({ get, set }, msgs: PagedChatMessage[]) => {
     if (msgs.length === 0) {
       return;
     }
-    set(knownServerMessageIds$, (prev) => {
-      return addKnownServerMessageIds(prev, msgs);
-    });
     const reportedCompletedRunIds = get(reportedCompletedRunIds$);
     const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
       (runId) => {
@@ -1037,7 +1007,6 @@ function createAppendServerMessages(
       return changed ? Array.from(byId.values()) : prev;
     });
     set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
-    set(reconcileStreamingDrafts$, { threadId, messages: msgs });
   });
 }
 
@@ -1089,7 +1058,6 @@ function createRawMessagesComputed({
   historyMessages$,
   serverMessages$,
   optimisticMessages$,
-  streamingDrafts$,
 }: {
   initialPage$: Computed<
     Promise<{ messages: PagedChatMessage[]; hasHistoryBefore: boolean }>
@@ -1097,7 +1065,6 @@ function createRawMessagesComputed({
   historyMessages$: State<PagedChatMessage[]>;
   serverMessages$: State<PagedChatMessage[]>;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
-  streamingDrafts$: Computed<PagedChatMessage[]>;
 }): Computed<Promise<ChatMessageProjectionEntry[]>> {
   return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
     const initial = await get(initialPage$);
@@ -1111,15 +1078,11 @@ function createRawMessagesComputed({
     const optimistic = get(optimisticMessages$).filter((entry) => {
       return !serverIds.has(entry.message.id);
     });
-    const streamingDrafts = get(streamingDrafts$);
     const raw: ChatMessageProjectionEntry[] = [
       ...server.map((message) => {
         return { message };
       }),
       ...optimistic,
-      ...streamingDrafts.map((message) => {
-        return { message };
-      }),
     ];
     return raw;
   });
@@ -1213,7 +1176,6 @@ function createFetchNextPageCommand({
   nextCursorId$,
   appendServerMessages$,
   reportedCompletedRunIds$,
-  knownServerMessageIds$,
   dataSource,
 }: {
   threadId: string;
@@ -1221,7 +1183,6 @@ function createFetchNextPageCommand({
   nextCursorId$: State<string | undefined>;
   appendServerMessages$: Command<void, [PagedChatMessage[]]>;
   reportedCompletedRunIds$: State<Set<string>>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<boolean>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
@@ -1229,14 +1190,7 @@ function createFetchNextPageCommand({
     if (!sinceId) {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
-      set(knownServerMessageIds$, (prev) => {
-        return addKnownServerMessageIds(prev, initial.messages);
-      });
       set(reconcileOptimisticChatMessages$, {
-        threadId,
-        messages: initial.messages,
-      });
-      set(reconcileStreamingDrafts$, {
         threadId,
         messages: initial.messages,
       });
@@ -1307,15 +1261,12 @@ function createPagedMessages(
 
   const serverMessages$ = state<PagedChatMessage[]>([]);
   const reportedCompletedRunIds$ = state(new Set<string>());
-  const knownServerMessageIds$ = state<ReadonlySet<string>>(new Set());
   const appendServerMessages$ = createAppendServerMessages(
     threadId,
     serverMessages$,
     reportedCompletedRunIds$,
-    knownServerMessageIds$,
   );
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
-  const streamingDrafts$ = createStreamingDraftsForThread(threadId);
 
   // Tracks the last known server-validated message ID so optimistic
   // (client-generated) IDs never leak into sinceId calls.
@@ -1328,7 +1279,6 @@ function createPagedMessages(
     historyMessages$,
     serverMessages$,
     optimisticMessages$,
-    streamingDrafts$,
   });
   const allMessages$ = createAllMessagesComputed(rawMessages$);
   const latestRunStatus$ = createLatestRunStatus(allMessages$, rawMessages$);
@@ -1392,7 +1342,6 @@ function createPagedMessages(
     nextCursorId$,
     appendServerMessages$,
     reportedCompletedRunIds$,
-    knownServerMessageIds$,
     dataSource,
   });
 
@@ -1414,7 +1363,6 @@ function createPagedMessages(
     earliestChatMessageId$,
     historyMessages$,
     loadedHistoryHasMore$,
-    knownServerMessageIds$,
     dataSource,
   });
 
@@ -1426,7 +1374,6 @@ function createPagedMessages(
     allMessages$,
     groupedChatMessages$,
     rawMessages$,
-    knownServerMessageIds$,
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
@@ -1442,7 +1389,6 @@ function createLoadHistoryCommand({
   earliestChatMessageId$,
   historyMessages$,
   loadedHistoryHasMore$,
-  knownServerMessageIds$,
   dataSource,
 }: {
   threadId: string;
@@ -1450,7 +1396,6 @@ function createLoadHistoryCommand({
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
   historyMessages$: State<PagedChatMessage[]>;
   loadedHistoryHasMore$: State<boolean | null>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -1477,9 +1422,6 @@ function createLoadHistoryCommand({
     set(reconcileOptimisticChatMessages$, {
       threadId,
       messages: result.messages,
-    });
-    set(knownServerMessageIds$, (prev) => {
-      return addKnownServerMessageIds(prev, result.messages);
     });
 
     set(historyMessages$, (prev) => {
@@ -1624,7 +1566,6 @@ interface RunTrackingDeps {
   allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
-  knownServerMessageIds$: KnownServerMessageIds$;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   backfillHistoryBoundary$: Command<Promise<void>, [AbortSignal]>;
@@ -1678,32 +1619,6 @@ function createMarkThreadReadIfNeeded({
   });
 }
 
-function createMessageDeltaHandler({
-  threadId,
-  knownServerMessageIds$,
-  autoScroll$,
-}: {
-  threadId: string;
-  knownServerMessageIds$: KnownServerMessageIds$;
-  autoScroll$: Command<void, []>;
-}) {
-  return command(({ get, set }, data: unknown, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    const payload = chatStreamDeltaPayloadSchema.parse(data);
-    const knownServerMessageIds = get(knownServerMessageIds$);
-    if (knownServerMessageIds.has(payload.messageId)) {
-      return;
-    }
-    set(applyStreamingDelta$, { threadId, payload });
-    animationFrame(
-      () => {
-        set(autoScroll$);
-      },
-      { signal },
-    );
-  });
-}
-
 function createRunTracking({
   threadId,
   reloadThread$,
@@ -1711,7 +1626,6 @@ function createRunTracking({
   allMessages$,
   latestChatMessageId$,
   rawMessages$,
-  knownServerMessageIds$,
   initialPage$,
   fetchNextPage$,
   backfillHistoryBoundary$,
@@ -1754,14 +1668,6 @@ function createRunTracking({
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
-    set(clearStreamingDraftsForThread$, threadId);
-    signal.addEventListener(
-      "abort",
-      () => {
-        set(clearStreamingDraftsForThread$, threadId);
-      },
-      { once: true },
-    );
 
     // Catch up any messages that arrived since the initial page was loaded.
     // Cache hits and active runs still need a catch-up fetch. A fresh remote
@@ -1812,12 +1718,6 @@ function createRunTracking({
       return false;
     });
 
-    const onMessageDelta$ = createMessageDeltaHandler({
-      threadId,
-      knownServerMessageIds$,
-      autoScroll$,
-    });
-
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     await Promise.all([
       set(backfillHistoryBoundary$, signal),
@@ -1826,12 +1726,7 @@ function createRunTracking({
         dataSource.subscribeRealtime$,
         {
           threadId,
-          handlers: {
-            onMessageCreated$,
-            onMessageDelta$,
-            onRunChanged$,
-            onAutomationsChanged$,
-          },
+          handlers: { onMessageCreated$, onRunChanged$, onAutomationsChanged$ },
         },
         signal,
       ),
@@ -2418,7 +2313,6 @@ export function createChatThreadSignals(
     allMessages$,
     groupedChatMessages$,
     rawMessages$,
-    knownServerMessageIds$,
     hasOlderHistory$,
     latestRunStatus$,
     fetchNextPage$,
@@ -2441,7 +2335,6 @@ export function createChatThreadSignals(
     allMessages$,
     latestChatMessageId$,
     rawMessages$,
-    knownServerMessageIds$,
     initialPage$,
     fetchNextPage$,
     backfillHistoryBoundary$,
