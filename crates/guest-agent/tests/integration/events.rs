@@ -99,9 +99,7 @@ async fn send_event_captures_session_metadata_before_masking() {
     });
 
     let session_id = "ses-secret-123";
-    let engine = base64::engine::general_purpose::STANDARD;
-    let encoded_session_id = engine.encode(session_id);
-    let masker = SecretMasker::from_raw(&encoded_session_id);
+    let masker = SecretMasker::from_raw("");
     let event = json!({
         "type": "system",
         "subtype": "init",
@@ -133,8 +131,16 @@ async fn send_event_captures_session_metadata_before_masking() {
         "system log should confirm session ID file creation, got: {system_log}"
     );
     assert!(
-        system_log.contains(&format!("Session history marker written to {hist_file}:")),
+        system_log.contains(&format!("Session history marker written to {hist_file}")),
         "system log should confirm session history marker creation, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(session_id),
+        "system log must not contain the raw session id, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(&history),
+        "system log must not contain the full session history marker payload, got: {system_log}"
     );
 
     mock.delete_async().await;

@@ -474,7 +474,7 @@ pub async fn execute_cli(
                             }
                             // Capture checkpoint metadata before event payload preparation
                             // consumes and masks the event.
-                            events::capture_session_metadata(&event);
+                            events::capture_session_metadata(&event, masker);
 
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.

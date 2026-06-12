@@ -43,7 +43,7 @@ pub async fn send_event(
     seq: u32,
     masker: &SecretMasker,
 ) -> Result<(), AgentError> {
-    capture_session_metadata(&event);
+    capture_session_metadata(&event, masker);
 
     if !http.has_api() {
         return Ok(());
@@ -349,15 +349,16 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// - Codex: `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker — codex
 ///   doesn't write the session file until turn-completion, so resolution
 ///   is deferred to checkpoint time.
-pub(crate) fn capture_session_metadata(event: &Value) {
+pub(crate) fn capture_session_metadata(event: &Value, masker: &SecretMasker) {
     let parsed = match Framework::from_env() {
         Framework::ClaudeCode => extract_claude_session_id(event),
         Framework::Codex => extract_codex_thread_id(event),
     };
     let Some((session_id, history_path_payload)) = parsed else {
-        repair_missing_session_history_marker_from_existing_session();
+        repair_missing_session_history_marker_from_existing_session(masker);
         return;
     };
+    masker.add_sensitive_value(&session_id);
 
     // Idempotency: only the first id-bearing event of the run wins, but allow
     // a retry of the same session to repair a missing history marker after a
@@ -380,7 +381,7 @@ pub(crate) fn capture_session_metadata(event: &Value) {
         }
     }
 
-    log_info!(LOG_TAG, "Captured session ID: {session_id}");
+    log_info!(LOG_TAG, "Captured session ID");
     match paths::write_private(paths::session_id_file(), &session_id) {
         Ok(()) => log_info!(
             LOG_TAG,
@@ -396,7 +397,7 @@ pub(crate) fn capture_session_metadata(event: &Value) {
     write_session_history_marker(&history_path_payload);
 }
 
-fn repair_missing_session_history_marker_from_existing_session() {
+fn repair_missing_session_history_marker_from_existing_session(masker: &SecretMasker) {
     if !should_write_session_history_marker() {
         return;
     }
@@ -415,6 +416,7 @@ fn repair_missing_session_history_marker_from_existing_session() {
     if session_id.is_empty() {
         return;
     }
+    masker.add_sensitive_value(&session_id);
     if let Some(history_path_payload) = history_path_payload_for_session_id(&session_id) {
         write_session_history_marker(&history_path_payload);
     }
@@ -445,14 +447,23 @@ fn write_session_history_marker(history_path_payload: &str) {
     match paths::write_private(paths::session_history_path_file(), history_path_payload) {
         Ok(()) => log_info!(
             LOG_TAG,
-            "Session history marker written to {}: {history_path_payload}",
-            paths::session_history_path_file()
+            "Session history marker written to {} ({})",
+            paths::session_history_path_file(),
+            session_history_marker_kind(history_path_payload)
         ),
         Err(e) => log_error!(
             LOG_TAG,
             "Failed to write session history marker to {}: {e}",
             paths::session_history_path_file()
         ),
+    }
+}
+
+fn session_history_marker_kind(history_path_payload: &str) -> &'static str {
+    if history_path_payload.starts_with("CODEX_SEARCH:") {
+        "codex"
+    } else {
+        "claude"
     }
 }
 

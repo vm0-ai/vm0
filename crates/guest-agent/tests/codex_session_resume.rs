@@ -88,6 +88,21 @@ fn reset_session_files() {
     let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
 }
 
+struct SystemLogOverrideGuard;
+
+impl SystemLogOverrideGuard {
+    fn set(path: &Path) -> Self {
+        guest_common::log::set_system_log_file(path);
+        Self
+    }
+}
+
+impl Drop for SystemLogOverrideGuard {
+    fn drop(&mut self) {
+        guest_common::log::clear_system_log_file();
+    }
+}
+
 /// Build a `YYYY/MM/DD/` style nested path under `root` and write a file.
 ///
 /// Returns `Result<_, String>` rather than `unwrap`-ing because clippy's
@@ -114,11 +129,15 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
 
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
     let masker = SecretMasker::from_raw("");
     let event = json!({
         "type": "thread.started",
-        "thread_id": "0193abcd-ef01-7234-89ab-cdef01234567"
+        "thread_id": thread_id
     });
 
     // No API token → send_event skips the HTTP POST but still captures
@@ -131,7 +150,7 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
 
     let stored_id =
         std::fs::read_to_string(guest_agent::paths::session_id_file()).expect("session id written");
-    assert_eq!(stored_id, "0193abcd-ef01-7234-89ab-cdef01234567");
+    assert_eq!(stored_id, thread_id);
 
     let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
         .expect("history-path file written");
@@ -144,8 +163,27 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
         "marker should embed the codex sessions dir, got: {marker}"
     );
     assert!(
-        marker.ends_with(":0193abcd-ef01-7234-89ab-cdef01234567"),
+        marker.ends_with(&format!(":{thread_id}")),
         "marker should end with the thread id, got: {marker}"
+    );
+    assert_eq!(masker.mask_string(thread_id), "***");
+
+    let system_log = std::fs::read_to_string(&system_log_path).expect("system log written");
+    assert!(
+        system_log.contains("Session history marker written to"),
+        "system log should confirm marker creation, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(thread_id),
+        "system log must not contain the raw thread id, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains("CODEX_SEARCH:"),
+        "system log must not contain the codex marker payload, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(&marker),
+        "system log must not contain the full marker payload, got: {system_log}"
     );
 }
 
