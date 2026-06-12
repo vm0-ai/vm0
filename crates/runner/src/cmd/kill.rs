@@ -232,7 +232,7 @@ impl KillOutcome {
 
 async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKillTarget> {
     let home = HomePaths::new()?;
-    let live_runner_context = live_runner_context(&home, args.run.is_some()).await;
+    let live_runner_context = live_runner_context(&home, args.run.is_some()).await?;
     let discovered = process::discover_all().await;
     let resolved = resolve_target(args, &discovered, live_runner_context.run_mappings.as_ref())?;
     let mut target = KillTarget::from(resolved.process);
@@ -244,18 +244,21 @@ async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKi
     })
 }
 
-async fn live_runner_context(home: &HomePaths, include_run_mappings: bool) -> LiveRunnerContext {
-    let live_runners = crate::live_runner_instances::list(home).await;
+async fn live_runner_context(
+    home: &HomePaths,
+    include_run_mappings: bool,
+) -> RunnerResult<LiveRunnerContext> {
+    let live_runners = crate::live_runner_instances::try_list(home).await?;
     let runner_pids = live_runners.iter().map(|runner| runner.pid).collect();
     let run_mappings = if include_run_mappings {
         Some(run_resolution::collect_active_run_mappings(&live_runners).await)
     } else {
         None
     };
-    LiveRunnerContext {
+    Ok(LiveRunnerContext {
         runner_pids,
         run_mappings,
-    }
+    })
 }
 
 fn resolve_target<'a>(
@@ -303,7 +306,9 @@ async fn rediscover_same_sandbox_process(
 ) -> Result<ResolvedKillTarget, RediscoverTargetError> {
     let home =
         HomePaths::new().map_err(|error| RediscoverTargetError::Resolve(error.to_string()))?;
-    let live_runner_context = live_runner_context(&home, false).await;
+    let live_runner_context = live_runner_context(&home, false)
+        .await
+        .map_err(|error| RediscoverTargetError::Resolve(error.to_string()))?;
     let discovered = process::discover_all().await;
     let target = resolve_same_sandbox_process(expected, &discovered)?;
 
@@ -1049,11 +1054,29 @@ mod tests {
         .await
         .unwrap();
 
-        let context = live_runner_context(&home, false).await;
+        let context = live_runner_context(&home, false).await.unwrap();
 
         assert_eq!(context.runner_pids, vec![std::process::id()]);
         assert!(context.run_mappings.is_none());
         assert!(handle.remove_if_current().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn live_runner_context_fails_when_registry_cannot_be_scanned() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
+        std::fs::write(home.live_runner_instances_dir(), b"not a directory").unwrap();
+
+        let error = match live_runner_context(&home, false).await {
+            Ok(_) => panic!("expected unreadable registry to fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("scan live runner instances"),
+            "{error}"
+        );
     }
 
     // -- resolve_by_run_id (run_id → FC lookup via status + FC list) ---------

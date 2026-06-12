@@ -106,15 +106,27 @@ pub(crate) async fn publish(
 }
 
 pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
+    match try_list(home).await {
+        Ok(instances) => instances,
+        Err(e) => {
+            tracing::debug!(error = %e, "cannot list live runner instances");
+            Vec::new()
+        }
+    }
+}
+
+pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerInstance>> {
     remove_stale_records(home).await;
 
     let dir = home.live_runner_instances_dir();
     let mut entries = match tokio::fs::read_dir(&dir).await {
         Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => {
-            tracing::debug!(path = %dir.display(), error = %e, "cannot scan live runner instances");
-            return Vec::new();
+            return Err(RunnerError::Internal(format!(
+                "scan live runner instances {}: {e}",
+                dir.display()
+            )));
         }
     };
 
@@ -124,8 +136,10 @@ pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
             Ok(Some(entry)) => entry,
             Ok(None) => break,
             Err(e) => {
-                tracing::debug!(path = %dir.display(), error = %e, "cannot read live runner instance entry");
-                break;
+                return Err(RunnerError::Internal(format!(
+                    "read live runner instance entry in {}: {e}",
+                    dir.display()
+                )));
             }
         };
         let Some(identity) = stable_record_identity_from_file_name(&entry.file_name()) else {
@@ -152,7 +166,7 @@ pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
             .then_with(|| left.pid.cmp(&right.pid))
             .then_with(|| left.config_path.cmp(&right.config_path))
     });
-    instances
+    Ok(instances)
 }
 
 pub(crate) async fn is_current(home: &HomePaths, instance: &LiveRunnerInstance) -> bool {
