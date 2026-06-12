@@ -23,7 +23,6 @@ pub struct SecretMasker {
     diagnostic_matcher: Option<Matcher>,
     url_encoded_matcher: Option<Matcher>,
     diagnostic_url_encoded_matcher: Option<Matcher>,
-    max_secret_len: usize,
 }
 
 struct Matcher {
@@ -78,18 +77,11 @@ impl SecretMasker {
             push_url_encoded_secret_pattern(secret, &mut diagnostic_url_encoded_patterns);
             push_diagnostic_multiline_patterns(secret, &mut diagnostic_patterns);
         }
-        let max_secret_len = patterns
-            .iter()
-            .map(|pattern| pattern.chars().count())
-            .max()
-            .unwrap_or(0);
-
         Self::build_with_diagnostic_patterns(
             patterns,
             diagnostic_patterns,
             url_encoded_patterns,
             diagnostic_url_encoded_patterns,
-            max_secret_len,
         )
     }
 
@@ -99,24 +91,12 @@ impl SecretMasker {
             diagnostic_matcher: None,
             url_encoded_matcher: None,
             diagnostic_url_encoded_matcher: None,
-            max_secret_len: 0,
         }
     }
 
     #[cfg(test)]
     fn build(patterns: Vec<String>) -> Self {
-        let max_secret_len = patterns
-            .iter()
-            .map(|pattern| pattern.chars().count())
-            .max()
-            .unwrap_or(0);
-        Self::build_with_diagnostic_patterns(
-            patterns.clone(),
-            patterns,
-            Vec::new(),
-            Vec::new(),
-            max_secret_len,
-        )
+        Self::build_with_diagnostic_patterns(patterns.clone(), patterns, Vec::new(), Vec::new())
     }
 
     fn build_with_diagnostic_patterns(
@@ -124,7 +104,6 @@ impl SecretMasker {
         diagnostic_patterns: Vec<String>,
         url_encoded_patterns: Vec<String>,
         diagnostic_url_encoded_patterns: Vec<String>,
-        max_secret_len: usize,
     ) -> Self {
         let matcher = Self::build_matcher(&patterns);
         let diagnostic_matcher = Self::build_matcher(&diagnostic_patterns);
@@ -135,12 +114,7 @@ impl SecretMasker {
             diagnostic_matcher,
             url_encoded_matcher,
             diagnostic_url_encoded_matcher,
-            max_secret_len,
         }
-    }
-
-    pub(crate) fn max_secret_len(&self) -> usize {
-        self.max_secret_len
     }
 
     /// # Panics

@@ -28,6 +28,7 @@ import {
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
@@ -258,6 +259,17 @@ async function sendChatRunMessage(
     throw new Error("Expected the entitled chat send to create a run");
   }
   return { runId: sent.body.runId, threadId: sent.body.threadId };
+}
+
+function assistantOutputEvent(
+  sequenceNumber: number,
+  text: string,
+): Record<string, unknown> {
+  return {
+    eventType: "assistant",
+    sequenceNumber,
+    eventData: { message: { content: [{ type: "text", text }] } },
+  };
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
@@ -2293,6 +2305,91 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
 });
 
 describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () => {
+  it("acknowledges late assistant events when completion cleanup already wrote the run sequence", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const chatCallbacks = createChatCallbacksApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    chatCallbacks.proxyChatCallbackToApp();
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd cleanup wins before late event",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    chatCallbacks.mockChatOutputEvents([
+      assistantOutputEvent(0, "cleanup-first assistant text"),
+    ]);
+
+    const historyHash = createHash("sha256")
+      .update(`bdd cleanup-first session history ${runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cleanup-first-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+
+    await expect
+      .poll(async () => {
+        const page = await chat.listThreadMessages(actor, threadId);
+        return page.messages.filter((message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === runId &&
+            message.content === "cleanup-first assistant text"
+          );
+        }).length;
+      })
+      .toBe(1);
+
+    const late = await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_late_after_cleanup",
+              content: [{ type: "text", text: "late streamed text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(late.status).toBe(200);
+
+    const afterLate = await chat.listThreadMessages(actor, threadId);
+    const assistantTexts = afterLate.messages.flatMap((message) => {
+      return message.role === "assistant" &&
+        message.runId === runId &&
+        message.content
+        ? [message.content]
+        : [];
+    });
+    expect(assistantTexts).toContain("cleanup-first assistant text");
+    expect(assistantTexts).not.toContain("late streamed text");
+  }, 90_000);
+
   it("persists assistant events into the linked thread and swallows optional consumer failures", async () => {
     const api = createRunsSchedulesApi(context);
     const chat = createChatFilesBddApi(context);

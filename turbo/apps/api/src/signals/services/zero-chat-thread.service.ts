@@ -1438,7 +1438,7 @@ export const insertAssistantEventMessages$ = command(
                 };
               }),
             )
-            .onConflictDoNothing({ target: chatMessages.id })
+            .onConflictDoNothing()
             .returning({ id: chatMessages.id });
     signal.throwIfAborted();
 

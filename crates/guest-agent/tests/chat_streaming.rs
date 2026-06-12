@@ -1,4 +1,4 @@
-//! Chat text streaming should publish Claude partial text to Ably while keeping
+//! Chat text streaming should publish Claude text deltas to Ably while keeping
 //! raw `stream_event` lines out of the API webhook stream.
 //!
 //! This test lives in its own binary because `guest_agent::env` caches
@@ -22,8 +22,8 @@ fn prompt() -> String {
 {{"type":"stream_event","parent_tool_use_id":"toolu_sub","event":{{"type":"message_start","message":{{"id":"msg_sub"}}}}}}
 {{"type":"stream_event","parent_tool_use_id":"toolu_sub","event":{{"type":"content_block_delta","delta":{{"type":"text_delta","text":"subagent leak"}}}}}}
 {{"type":"stream_event","event":{{"type":"message_start","message":{{"id":"msg_01"}}}}}}
-{{"type":"stream_event","event":{{"type":"content_block_delta","delta":{{"type":"text_delta","text":"prefix secret"}}}}}}
-{{"type":"stream_event","event":{{"type":"content_block_delta","delta":{{"type":"text_delta","text":"-token suffix"}}}}}}
+{{"type":"stream_event","event":{{"type":"content_block_delta","delta":{{"type":"text_delta","text":"prefix secret-token"}}}}}}
+{{"type":"stream_event","event":{{"type":"content_block_delta","delta":{{"type":"text_delta","text":" suffix"}}}}}}
 {{"type":"stream_event","event":{{"type":"content_block_stop"}}}}
 {{"type":"stream_event","event":{{"type":"message_stop"}}}}
 {{"type":"assistant","session_id":"{session_id}","message":{{"role":"assistant","content":[{{"type":"text","text":"prefix secret-token suffix"}}]}}}}
@@ -33,7 +33,7 @@ fn prompt() -> String {
 }
 
 #[tokio::test]
-async fn execute_cli_publishes_masked_chat_stream_chunks_before_final_event()
+async fn execute_cli_publishes_masked_chat_stream_deltas_before_final_event()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
@@ -87,7 +87,7 @@ async fn execute_cli_publishes_masked_chat_stream_chunks_before_final_event()
     }
 
     let ably_requests = requests_for_path(&requests, "/channels/user%3Auser_123/messages");
-    assert!(!ably_requests.is_empty());
+    assert_eq!(ably_requests.len(), 2);
     let mut streamed_text = String::new();
     for request in &ably_requests {
         assert_eq!(

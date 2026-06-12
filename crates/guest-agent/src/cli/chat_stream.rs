@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::env::ChatStreamConfig;
 use crate::error::AgentError;
 
-use super::text_chunker::ChunkOut;
+use super::event_delivery::ChatStreamDelta;
 
 const ASSISTANT_MESSAGE_ID_NAMESPACE: &str = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TOPIC_PREFIX: &str = "chatThreadMessageDelta:";
@@ -23,11 +23,11 @@ impl ChatStreamPublisher {
     pub(super) async fn publish(
         &self,
         config: &ChatStreamConfig,
-        chunk: &ChunkOut,
+        delta: &ChatStreamDelta,
     ) -> Result<(), AgentError> {
         let thread_id = thread_id_from_topic(&config.topic)?;
         let message_id =
-            assistant_message_id_for_run_event(crate::env::run_id(), &chunk.message_id)?;
+            assistant_message_id_for_run_event(crate::env::run_id(), &delta.message_id)?;
         let url = format!(
             "{}/channels/{}/messages",
             config.ably_base.trim_end_matches('/'),
@@ -42,9 +42,9 @@ impl ChatStreamPublisher {
                 "data": {
                     "messageId": message_id,
                     "runId": crate::env::run_id(),
-                    "runEventId": chunk.message_id,
+                    "runEventId": delta.message_id,
                     "threadId": thread_id,
-                    "text": chunk.text,
+                    "text": delta.text,
                 },
             }))
             .send()

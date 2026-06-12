@@ -23,7 +23,6 @@ mod diagnostics;
 mod event_delivery;
 mod framework;
 mod termination;
-mod text_chunker;
 
 pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
@@ -38,7 +37,7 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
 use agent_diagnostics::{FailureDetailSource, FailureReason};
-use event_delivery::{AckedEventPrefix, PreparedEvent};
+use event_delivery::{AckedEventPrefix, ChatStreamDelta, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
@@ -47,7 +46,6 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 use termination::{TerminationReason, TerminationState};
-use text_chunker::{ChunkOut, LineAction, TextChunker};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -61,19 +59,39 @@ async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
     }
 }
 
-fn enqueue_chat_stream_chunk(
+fn enqueue_chat_stream_delta(
     event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
     chat_stream_configured: bool,
-    chunk: Option<ChunkOut>,
+    delta: Option<ChatStreamDelta>,
 ) {
     if !chat_stream_configured {
         return;
     }
-    let Some(chunk) = chunk else {
+    let Some(delta) = delta else {
         return;
     };
-    if event_tx.send(PreparedEvent::ChatStream(chunk)).is_err() {
-        log_warn!(LOG_TAG, "Event channel closed, dropping chat stream chunk");
+    if event_tx.send(PreparedEvent::ChatStream(delta)).is_err() {
+        log_warn!(LOG_TAG, "Event channel closed, dropping chat stream delta");
+    }
+}
+
+fn chat_stream_delta_from_event(
+    event: &serde_json::Value,
+    message_id: &str,
+    masker: &SecretMasker,
+) -> Option<ChatStreamDelta> {
+    let text = event
+        .get("delta")
+        .and_then(|delta| delta.get("text"))
+        .and_then(serde_json::Value::as_str)?;
+    let text = masker.mask_string(text);
+    if text.is_empty() {
+        None
+    } else {
+        Some(ChatStreamDelta {
+            message_id: message_id.to_string(),
+            text,
+        })
     }
 }
 
@@ -273,16 +291,7 @@ pub async fn execute_cli(
 
     let chat_stream_config = env::chat_stream_config();
     let chat_stream_configured = chat_stream_config.is_some();
-    let mut text_chunker = TextChunker::new(masker);
-    let chat_stream_interval = Duration::from_millis(100);
-    let mut chat_stream_flush = if chat_stream_configured {
-        Some(tokio::time::interval_at(
-            tokio::time::Instant::now() + chat_stream_interval,
-            chat_stream_interval,
-        ))
-    } else {
-        None
-    };
+    let mut chat_stream_message_id: Option<String> = None;
 
     // Background event sender: HTTP POSTs happen here, never in the
     // stdout reading loop.  Unbounded channel because events are small
@@ -308,11 +317,11 @@ pub async fn execute_cli(
                         }
                     }
                 }
-                PreparedEvent::ChatStream(chunk) => {
+                PreparedEvent::ChatStream(delta) => {
                     let Some(config) = event_chat_stream_config.as_ref() else {
                         continue;
                     };
-                    if let Err(error) = chat_stream_publisher.publish(config, &chunk).await
+                    if let Err(error) = chat_stream_publisher.publish(config, &delta).await
                         && !chat_stream_error_logged
                     {
                         chat_stream_error_logged = true;
@@ -344,22 +353,58 @@ pub async fn execute_cli(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
-                            match text_chunker.on_line(&event, masker) {
-                                LineAction::Consume { chunk } => {
-                                    enqueue_chat_stream_chunk(
-                                        &event_tx,
-                                        chat_stream_configured,
-                                        chunk,
-                                    );
+                            if event.get("type").and_then(serde_json::Value::as_str)
+                                == Some("stream_event")
+                            {
+                                if event
+                                    .get("parent_tool_use_id")
+                                    .is_some_and(|value| !value.is_null())
+                                {
                                     continue;
                                 }
-                                LineAction::PassthroughAfterFlush { chunk } => {
-                                    enqueue_chat_stream_chunk(
-                                        &event_tx,
-                                        chat_stream_configured,
-                                        chunk,
-                                    );
+
+                                let Some(stream_event) = event.get("event") else {
+                                    continue;
+                                };
+                                match stream_event
+                                    .get("type")
+                                    .and_then(serde_json::Value::as_str)
+                                {
+                                    Some("message_start") => {
+                                        chat_stream_message_id = stream_event
+                                            .get("message")
+                                            .and_then(|message| message.get("id"))
+                                            .and_then(serde_json::Value::as_str)
+                                            .map(ToOwned::to_owned);
+                                    }
+                                    Some("content_block_delta")
+                                        if stream_event
+                                            .get("delta")
+                                            .and_then(|delta| delta.get("type"))
+                                            .and_then(serde_json::Value::as_str)
+                                            == Some("text_delta") =>
+                                    {
+                                        let delta = chat_stream_message_id.as_deref().and_then(
+                                            |message_id| {
+                                                chat_stream_delta_from_event(
+                                                    stream_event,
+                                                    message_id,
+                                                    masker,
+                                                )
+                                            },
+                                        );
+                                        enqueue_chat_stream_delta(
+                                            &event_tx,
+                                            chat_stream_configured,
+                                            delta,
+                                        );
+                                    }
+                                    Some("message_stop") => {
+                                        chat_stream_message_id = None;
+                                    }
+                                    _ => {}
                                 }
+                                continue;
                             }
                             last_read_event_at = Some(Instant::now());
                             // First event is the CLI init (system/init or thread.started)
@@ -548,10 +593,6 @@ pub async fn execute_cli(
                     constants::STDOUT_DRAIN_DEADLINE_SECS,
                 );
                 break Ok(());
-            }
-            _ = tick_optional_interval(&mut chat_stream_flush) => {
-                let chunk = text_chunker.flush(masker, false);
-                enqueue_chat_stream_chunk(&event_tx, chat_stream_configured, chunk);
             }
             _ = tick_optional_interval(&mut stuck_tool_check) => {
                 let timeout_secs = env::stuck_tool_timeout_secs();

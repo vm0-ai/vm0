@@ -3,14 +3,18 @@
 //! Event schema transformation and HTTP posting stay in `events`; this module
 //! only owns execution-delivery state consumed by `execute_cli`.
 
-use super::text_chunker::ChunkOut;
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct ChatStreamDelta {
+    pub(super) message_id: String,
+    pub(super) text: String,
+}
 
 pub(super) enum PreparedEvent {
     Webhook {
         sequence: u32,
         payload: serde_json::Value,
     },
-    ChatStream(ChunkOut),
+    ChatStream(ChatStreamDelta),
 }
 
 #[derive(Default)]
