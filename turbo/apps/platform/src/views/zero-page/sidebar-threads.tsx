@@ -84,6 +84,7 @@ import {
   reloadHeaderAutomationMenu$,
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
+import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
@@ -419,6 +420,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const unloadRightThread = useSet(unloadRightThread$);
   const pageSignal = useGet(pageSignal$);
   const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
+  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -429,10 +431,12 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     sidebarThreadId: urlSidebarThreadId,
     threadId: session.id,
   });
+  const isUnread =
+    (unreadThreadIds?.has(session.id) ?? false) && !isHighlighted;
   const indicatorState = getIndicatorState({
     hasDraft: (draftThreadIds?.has(session.id) ?? false) && !isHighlighted,
     isRunning: session.running,
-    isUnread: !session.isRead && !isHighlighted,
+    isUnread,
   });
 
   return {
@@ -441,7 +445,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     isCurrentPage,
     isHighlighted,
     isPinned,
-    isUnread: !session.isRead && !isHighlighted,
+    isUnread,
     loadLeftThread,
     loadRightThread,
     onChatPage,

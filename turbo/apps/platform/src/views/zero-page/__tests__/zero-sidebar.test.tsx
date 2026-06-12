@@ -123,7 +123,6 @@ function createThread(
     agent: { id: AGENT_ID, avatarUrl: null },
     createdAt: "2026-03-10T00:00:00Z",
     updatedAt: "2026-03-10T00:00:00Z",
-    isRead: true,
     running: false,
     pinnedAt: null,
     ...overrides,
@@ -323,7 +322,6 @@ describe("zero sidebar", () => {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
-            isRead: true,
             running: false,
           },
         ]),
@@ -378,12 +376,19 @@ describe("zero sidebar", () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes", { isRead: false }),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
       createThread(AUTOMATION_THREAD_ID, "Running analysis", { running: true }),
       createThread(ARCHIVED_THREAD_ID, "Draft brief"),
     ]);
     context.mocks.api(chatThreadsContract.drafts, ({ respond }) => {
       return respond(200, { draftThreadIds: [ARCHIVED_THREAD_ID] });
+    });
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: [
+          { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
+        ],
+      });
     });
 
     detachedSetupPage({

@@ -687,16 +687,16 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
       nextCursor: null,
     });
 
-    // Read state: a fresh thread is read, a no-credit message flips it to
-    // unread, and mark-read stores the latest visible message id.
+    // Read state lives in the unreads endpoint: a no-credit message makes
+    // the thread unread, mark-read stores the latest visible message id and
+    // returns the agent's fresh (now empty) unread snapshot.
     const readStateThreadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       prompt: "unread until marked",
     });
-    let list = await chat.listThreads(owner, { agentId: agent.agentId });
+    const list = await chat.listThreads(owner, { agentId: agent.agentId });
     expect(list.threads[0]).toMatchObject({
       id: readStateThreadId,
-      isRead: false,
       running: false,
       pinnedAt: null,
       renamedAt: null,
@@ -707,6 +707,11 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     });
     expect(list.threads[0]?.createdAt).toStrictEqual(expect.any(String));
     expect(list.threads[0]?.updatedAt).toStrictEqual(expect.any(String));
+    await expect(
+      chat.listThreadUnreads(owner, agent.agentId),
+    ).resolves.toStrictEqual([
+      { threadId: readStateThreadId, unreadAt: expect.any(String) },
+    ]);
 
     const page = await chat.listThreadMessages(owner, readStateThreadId);
     const latestAssistant = assistantMessages(page.messages).at(-1);
@@ -716,26 +721,25 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     const marked = await chat.markThreadRead(owner, readStateThreadId);
     expect(marked).toStrictEqual({
       lastReadMessageId: latestAssistant.id,
-      lastReadAt: expect.any(String),
-      changed: true,
+      unreads: [],
     });
     const markedAgain = await chat.markThreadRead(owner, readStateThreadId);
     expect(markedAgain).toStrictEqual({
       lastReadMessageId: latestAssistant.id,
-      lastReadAt: expect.any(String),
-      changed: false,
+      unreads: [],
     });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.isRead).toBeTruthy();
+    await expect(
+      chat.listThreadUnreads(owner, agent.agentId),
+    ).resolves.toStrictEqual([]);
 
     // Draft flags through PATCH surface via the drafts endpoint: text,
     // attachments-only, empty, cleared. Unknown ids are silently absent.
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: "unsent text",
     });
-    expect(
-      await chat.listThreadDrafts(owner, [readStateThreadId, randomUUID()]),
-    ).toStrictEqual([readStateThreadId]);
+    await expect(
+      chat.listThreadDrafts(owner, [readStateThreadId, randomUUID()]),
+    ).resolves.toStrictEqual([readStateThreadId]);
 
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: null,
@@ -749,17 +753,17 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
         },
       ],
     });
-    expect(
-      await chat.listThreadDrafts(owner, [readStateThreadId]),
-    ).toStrictEqual([readStateThreadId]);
+    await expect(
+      chat.listThreadDrafts(owner, [readStateThreadId]),
+    ).resolves.toStrictEqual([readStateThreadId]);
 
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: "",
       draftAttachments: null,
     });
-    expect(
-      await chat.listThreadDrafts(owner, [readStateThreadId]),
-    ).toStrictEqual([]);
+    await expect(
+      chat.listThreadDrafts(owner, [readStateThreadId]),
+    ).resolves.toStrictEqual([]);
 
     // Patch guards: unknown thread 404 (visible state untouched), peer 404.
     const patchUnknown = await chat.requestPatchThread(

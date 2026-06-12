@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { sidebarChatThreads$ } from "./optimistic-chat-thread-page.ts";
+import { sidebarChatThreadIds$ } from "./sidebar-chat-thread-ids.ts";
 
 const internalReloadSidebarDrafts$ = state(0);
 
@@ -24,8 +24,8 @@ export const reloadSidebarDraftThreads$ = command(({ set }) => {
 export const sidebarDraftThreadIds$ = computed(
   async (get): Promise<ReadonlySet<string>> => {
     get(internalReloadSidebarDrafts$);
-    const threads = await get(sidebarChatThreads$);
-    if (threads.length === 0) {
+    const threadIds = await get(sidebarChatThreadIds$);
+    if (threadIds.length === 0) {
       return new Set();
     }
 
@@ -33,11 +33,7 @@ export const sidebarDraftThreadIds$ = computed(
     const result = await accept(
       client.drafts({
         query: {
-          threadIds: threads
-            .map((thread) => {
-              return thread.id;
-            })
-            .join(","),
+          threadIds: threadIds.join(","),
         },
       }),
       [200],

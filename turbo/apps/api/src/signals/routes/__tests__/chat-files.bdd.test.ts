@@ -83,8 +83,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     const markedRead = await api.markThreadRead(actor, created.id);
     expect(markedRead).toStrictEqual({
       lastReadMessageId: null,
-      lastReadAt: expect.any(String),
-      changed: false,
+      unreads: [],
     });
 
     await api.updateThreadModelSelection(actor, created.id, null);
@@ -164,8 +163,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
 
     expect(readEmpty).toStrictEqual({
       lastReadMessageId: null,
-      lastReadAt: expect.any(String),
-      changed: false,
+      unreads: [],
     });
 
     const pinnedList = await api.listThreads(owner, {
