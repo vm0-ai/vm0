@@ -491,11 +491,154 @@ fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError 
 fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
     let mut deserializer = serde_json::Deserializer::from_slice(body);
     let value = serde_path_to_error::deserialize(&mut deserializer)
-        .map_err(|e| format_json_decode_error(e.path().to_string(), e.inner()))?;
+        .map_err(|e| format_json_decode_error(format_json_decode_path(e.path()), e.inner()))?;
     deserializer
         .end()
         .map_err(|e| format_json_decode_error(".".to_string(), &e))?;
     Ok(value)
+}
+
+fn format_json_decode_path(path: &serde_path_to_error::Path) -> String {
+    let mut formatted = String::new();
+    let mut redact_next_map_key = false;
+
+    for segment in path {
+        match segment {
+            serde_path_to_error::Segment::Seq { index } => {
+                formatted.push('[');
+                formatted.push_str(&index.to_string());
+                formatted.push(']');
+            }
+            serde_path_to_error::Segment::Map { key } => {
+                push_json_path_map_segment(&mut formatted, key, redact_next_map_key);
+                redact_next_map_key = !redact_next_map_key && is_dynamic_json_map_field(key);
+            }
+            serde_path_to_error::Segment::Enum { .. } => {
+                push_json_path_segment(&mut formatted, "<variant>");
+                redact_next_map_key = false;
+            }
+            serde_path_to_error::Segment::Unknown => {
+                push_json_path_segment(&mut formatted, "?");
+                redact_next_map_key = false;
+            }
+        }
+    }
+
+    if formatted.is_empty() {
+        ".".to_string()
+    } else {
+        formatted
+    }
+}
+
+fn push_json_path_map_segment(formatted: &mut String, key: &str, redact: bool) {
+    let segment = if redact {
+        "<map-key>"
+    } else if is_static_json_field(key) {
+        key
+    } else {
+        "<field>"
+    };
+    push_json_path_segment(formatted, segment);
+}
+
+fn push_json_path_segment(formatted: &mut String, segment: &str) {
+    if !formatted.is_empty() {
+        formatted.push('.');
+    }
+    formatted.push_str(segment);
+}
+
+fn is_dynamic_json_map_field(field: &str) -> bool {
+    matches!(
+        field,
+        "vars"
+            | "environment"
+            | "secretConnectorMap"
+            | "secretConnectorMetadataMap"
+            | "baseUrlVars"
+            | "headers"
+            | "query"
+            | "networkPolicies"
+            | "featureFlags"
+    )
+}
+
+// serde_path_to_error reports both struct fields and runtime map keys as Map
+// segments, so only known response schema fields are safe to print verbatim.
+fn is_static_json_field(field: &str) -> bool {
+    matches!(
+        field,
+        "allow"
+            | "apiStartTime"
+            | "apis"
+            | "archiveUrl"
+            | "artifacts"
+            | "ask"
+            | "auth"
+            | "base"
+            | "baseUrlVars"
+            | "billableFirewalls"
+            | "cached"
+            | "capability"
+            | "captureNetworkBodies"
+            | "checkpointId"
+            | "cliAgentType"
+            | "clientId"
+            | "debugNoMockClaude"
+            | "debugNoMockCodex"
+            | "deny"
+            | "description"
+            | "disallowedTools"
+            | "encryptedSecrets"
+            | "environment"
+            | "experimentalProfile"
+            | "expires"
+            | "featureFlags"
+            | "firewall"
+            | "firewalls"
+            | "headers"
+            | "issued"
+            | "job"
+            | "keyName"
+            | "kind"
+            | "mac"
+            | "manifestUrl"
+            | "metadataKey"
+            | "missingRootPolicy"
+            | "modelUsageProvider"
+            | "mountPath"
+            | "name"
+            | "networkPolicies"
+            | "nonce"
+            | "permissions"
+            | "prompt"
+            | "query"
+            | "resumeSession"
+            | "rules"
+            | "runId"
+            | "sandboxToken"
+            | "secretConnectorMap"
+            | "secretConnectorMetadataMap"
+            | "secretValues"
+            | "sessionHistory"
+            | "sessionId"
+            | "settings"
+            | "sourceType"
+            | "sourceUserId"
+            | "storageManifest"
+            | "storages"
+            | "timestamp"
+            | "token"
+            | "tools"
+            | "ttl"
+            | "unknownPolicy"
+            | "userTimezone"
+            | "vars"
+            | "vasStorageId"
+            | "vasStorageName"
+            | "vasVersionId"
+    )
 }
 
 fn format_json_decode_error(path: String, error: &serde_json::Error) -> String {
@@ -1153,6 +1296,54 @@ mod tests {
         );
         assert!(
             !message.contains("github"),
+            "decode error must not include response body values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_error_redacts_dynamic_map_keys() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "environment": {
+                        "OPENAI_API_KEY": 123
+                    },
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("claim decode: failed at environment.<map-key>"),
+            "decode error should include a redacted dynamic map path, got: {message}"
+        );
+        assert!(
+            !message.contains("OPENAI_API_KEY"),
+            "decode error must not include dynamic map keys, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
             "decode error must not include response body values, got: {message}"
         );
         mock.assert_async().await;
