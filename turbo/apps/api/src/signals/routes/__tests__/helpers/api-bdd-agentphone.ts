@@ -22,7 +22,6 @@ import {
   type TestContext,
 } from "../../../../__tests__/test-helpers";
 import { server } from "../../../../mocks/server";
-import { clearAllDetached } from "../../../utils";
 import type { ApiTestUser } from "./api-bdd";
 import {
   agentPhoneBddWebhookSecret,
@@ -206,8 +205,8 @@ export function createAgentPhoneBddApi(context: TestContext) {
       agentPhoneWebhookHeaders(rawBody, `evt-bdd-agentphone-${randomUUID()}`),
       [200],
     );
-    // Webhook handling is waitUntil-detached; drain before any assertion.
-    await clearAllDetached();
+    // Webhook handling is waitUntil-detached; callers synchronize on the
+    // observable side effect they care about.
     return messageId;
   }
 

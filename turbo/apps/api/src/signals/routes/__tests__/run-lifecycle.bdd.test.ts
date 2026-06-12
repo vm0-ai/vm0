@@ -19,7 +19,6 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -78,9 +77,6 @@ function connectorPlaceholder(
 }
 
 function firewallEntryName(entry: ExecutionFirewallEntry): string {
-  if (entry.kind === undefined) {
-    return entry.name;
-  }
   return entry.kind === "builtin" ? entry.name : entry.firewall.name;
 }
 
@@ -98,10 +94,69 @@ function inlineFirewallApis(
   name: string,
 ): readonly FirewallApi[] {
   const entry = findFirewallEntry(entries, name);
-  if (!entry || entry.kind === "builtin") {
+  if (!entry || entry.kind !== "inline") {
     throw new Error(`Expected inline firewall entry: ${name}`);
   }
-  return entry.kind === "inline" ? entry.firewall.apis : entry.apis;
+  return entry.firewall.apis;
+}
+
+async function waitForRunStatus(
+  api: ReturnType<typeof createRunsSchedulesApi>,
+  actor: ApiTestUser,
+  runId: string,
+  status: string,
+) {
+  await expect
+    .poll(async () => {
+      return (await api.readRun(actor, runId)).status;
+    })
+    .toBe(status);
+  return await api.readRun(actor, runId);
+}
+
+async function waitForRunQueueLength(
+  api: ReturnType<typeof createRunsSchedulesApi>,
+  actor: ApiTestUser,
+  length: number,
+) {
+  await expect
+    .poll(async () => {
+      return (await api.readRunQueue(actor)).body.queue.length;
+    })
+    .toBe(length);
+  return await api.readRunQueue(actor);
+}
+
+async function waitForArrayLength<T>(
+  items: readonly T[],
+  length: number,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return items.length;
+    })
+    .toBe(length);
+}
+
+async function waitForCallbackDeliveryWithStatus(
+  deliveries: readonly ReturnType<typeof callbackDeliveryWithStatus>[],
+  status: "completed" | "failed" | "progress",
+): Promise<ReturnType<typeof callbackDeliveryWithStatus>> {
+  let delivery: ReturnType<typeof callbackDeliveryWithStatus> | undefined;
+  await expect
+    .poll(() => {
+      try {
+        delivery = callbackDeliveryWithStatus(deliveries, status);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+    .toBe(true);
+  if (!delivery) {
+    throw new Error(`Expected a captured ${status} callback delivery`);
+  }
+  return delivery;
 }
 
 function base64UrlEncode(input: string): string {
@@ -350,7 +405,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     await api.requestCancelRun(actor, resumed.runId, [200]);
     await api.requestCancelRun(actor, first.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, first.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -428,16 +482,14 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(queued.body.queue[0]?.runId).toBe(third.runId);
 
     await api.requestCancelRun(actor, first.runId, [200]);
-    await clearAllDetached();
 
-    const promoted = await api.readRun(actor, third.runId);
+    const promoted = await waitForRunStatus(api, actor, third.runId, "pending");
     expect(promoted.status).toBe("pending");
-    const drained = await api.readRunQueue(actor);
+    const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, third.runId, [200]);
-    await clearAllDetached();
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
   });
@@ -452,7 +504,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
 
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
@@ -556,7 +607,6 @@ describe("RUN-01: zero run request validation and token boundaries", () => {
     );
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -591,7 +641,6 @@ describe("RUN-01: zero run request validation and token boundaries", () => {
 
     await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, inferred.runId, [200]);
-    await clearAllDetached();
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
   });
@@ -724,7 +773,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -757,7 +805,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.billableFirewalls).toStrictEqual([]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -859,8 +906,6 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     ).toBeFalsy();
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
-    await clearAllDetached();
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, sent.body.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -928,7 +973,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -976,7 +1020,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
     await api.requestCancelRun(actor, withoutHost.runId, [200]);
     await api.requestCancelRun(actor, withHost.runId, [200]);
-    await clearAllDetached();
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
   });
@@ -1009,7 +1052,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretConnectorMap).toMatchObject({ LARK_TOKEN: "lark" });
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1047,7 +1089,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     ).toContain("google-ads");
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1081,7 +1122,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     ).toBeFalsy();
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1124,7 +1164,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretValues).toContain("user-shared-secret");
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1191,7 +1230,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1244,7 +1282,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1280,7 +1317,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       });
       const claim = await api.claimRunnerJob(run.runId);
       await api.requestCancelRun(actor, run.runId, [200]);
-      await clearAllDetached();
       const policy = claim.networkPolicies?.slack;
       if (!policy) {
         throw new Error("Expected a slack network policy on the claim");
@@ -1399,7 +1435,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
-    await clearAllDetached();
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
   });
@@ -1500,7 +1535,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.secretValues).toContain(zeroToken);
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1541,8 +1575,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const promotedAt = firstStartedAt + 120_000;
     mockNow(promotedAt);
     await api.requestCancelRun(actor, first.runId, [200]);
-    await clearAllDetached();
-    const promoted = await api.readRun(actor, queued.runId);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
     expect(promoted.status).toBe("pending");
 
     await api.heartbeatRunner(runnerGroup);
@@ -1568,7 +1606,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, queued.runId, [200]);
-    await clearAllDetached();
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
   });
@@ -1607,7 +1644,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     ).toContain(`/home/user/.claude/skills/${skillName}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1630,7 +1666,6 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     expect(running.status).toBe("running");
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
 
@@ -1763,7 +1798,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
 
     await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
-    await clearAllDetached();
     const settled = await api.readRunQueue(actor);
     expect(settled.body.concurrency.active).toBe(0);
   });
@@ -1839,7 +1873,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       sandboxHeaders,
       [200],
     );
-    await clearAllDetached();
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("sandbox crashed before claim");
@@ -1888,7 +1921,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(claim.prompt).toBe("claim without stored secrets");
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
 
@@ -1943,10 +1975,10 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
       prompt: "first cancellable chat run",
     });
     await api.requestCancelRun(actor, first.runId, [200]);
-    await clearAllDetached();
 
     const firstCancelled = await api.readRun(actor, first.runId);
     expect(firstCancelled.status).toBe("cancelled");
+    await waitForArrayLength(rejectedDeliveries, 1);
     expect(rejectedDeliveries).toHaveLength(1);
     expect(rejectedDeliveries[0]).toMatchObject({
       signature: expect.stringMatching(/.+/),
@@ -1978,10 +2010,14 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
       prompt: "second cancellable chat run",
     });
     await api.requestCancelRun(actor, second.runId, [200]);
-    await clearAllDetached();
 
     const secondCancelled = await api.readRun(actor, second.runId);
     expect(secondCancelled.status).toBe("cancelled");
+    await expect
+      .poll(() => {
+        return unreachableDispatches;
+      })
+      .toBe(1);
     expect(unreachableDispatches).toBe(1);
 
     proxyChatCallbackToApp();
@@ -1992,18 +2028,22 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
       prompt: "third cancellable chat run",
     });
     await api.requestCancelRun(actor, third.runId, [200]);
-    // The delivered callback acknowledges immediately and persists its chat
-    // side effects in a nested detached task, so drain twice.
-    await clearAllDetached();
-    await clearAllDetached();
 
     const thirdCancelled = await api.readRun(actor, third.runId);
     expect(thirdCancelled.status).toBe("cancelled");
 
-    const messages = await chat.listThreadMessages(actor, first.threadId);
-    const cancelNote = messages.messages.find((message) => {
-      return message.role === "assistant" && message.runId === third.runId;
-    });
+    let cancelNote:
+      | Awaited<ReturnType<typeof chat.listThreadMessages>>["messages"][number]
+      | undefined;
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadMessages(actor, first.threadId);
+        cancelNote = messages.messages.find((message) => {
+          return message.role === "assistant" && message.runId === third.runId;
+        });
+        return cancelNote?.role;
+      })
+      .toBe("assistant");
     if (!cancelNote || cancelNote.role !== "assistant") {
       throw new Error(
         "Expected the delivered chat callback to append an assistant message",
@@ -2061,8 +2101,10 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
     // A sandbox heartbeat dispatches a progress delivery; replaying it hits
     // the agent route's non-completed early return without touching Axiom.
     await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
-    await clearAllDetached();
-    const progressDelivery = callbackDeliveryWithStatus(deliveries, "progress");
+    const progressDelivery = await waitForCallbackDeliveryWithStatus(
+      deliveries,
+      "progress",
+    );
     const queryCallsBeforeProgress =
       context.mocks.axiom.query.mock.calls.length;
     const progressReplay = await webhooks.replayInternalCallback(
@@ -2095,10 +2137,9 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
       sandboxHeaders,
       [200],
     );
-    await clearAllDetached();
     const completed = await api.readRun(actor, runId);
     expect(completed.status).toBe("completed");
-    const completedDelivery = callbackDeliveryWithStatus(
+    const completedDelivery = await waitForCallbackDeliveryWithStatus(
       deliveries,
       "completed",
     );
@@ -2398,7 +2439,6 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
 
     await api.requestCancelRun(actor, detachedRun.runId, [200]);
     await api.requestCancelRun(actor, runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -2571,7 +2611,6 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
 
     await api.requestCancelRun(actor, actorRun.runId, [200]);
     await api.requestCancelRun(member, memberRun.runId, [200]);
-    await clearAllDetached();
     const settled = await api.readRunQueue(actor);
     expect(settled.body.concurrency.active).toBe(0);
   });
@@ -2741,7 +2780,6 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       sandboxHeaders,
       [200],
     );
-    await clearAllDetached();
 
     const completed = await api.readRun(actor, created.runId);
     expect(completed.status).toBe("completed");
@@ -2771,7 +2809,6 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       success: true,
       status: "completed",
     });
-    await clearAllDetached();
     const settled = await api.readRun(actor, created.runId);
     expect(settled.status).toBe("completed");
     expect(settled.error ?? null).toBeNull();
@@ -2804,8 +2841,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       `run:changed:${run.runId}`,
       { status: "failed" },
     );
-
-    await clearAllDetached();
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("Checkpoint for run not found");
@@ -2822,7 +2857,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
 
     const late = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
@@ -2833,8 +2867,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       throw new Error("Expected the late completion to be acknowledged");
     }
     expect(late.body).toStrictEqual({ success: true, status: "failed" });
-
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -2866,7 +2898,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       [200],
     );
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
 
     const late = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
@@ -2879,8 +2910,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       );
     }
     expect(late.body).toStrictEqual({ success: true, status: "failed" });
-
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -2965,7 +2994,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       sandboxHeaders,
       [200],
     );
-    await clearAllDetached();
     const completed = await api.readRun(actor, run.runId);
     expect(completed.status).toBe("completed");
     expect(completed.result?.checkpointId).toBeDefined();

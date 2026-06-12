@@ -2674,22 +2674,35 @@ interface RecommendedFollowupSource {
 function latestRecommendedFollowups(
   groups: readonly GroupedChatMessageGroup[],
 ): RecommendedFollowupSource | null {
-  const lastGroup = groups[groups.length - 1];
-  if (lastGroup?.role !== "assistant") {
-    return null;
+  for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex -= 1) {
+    const group = groups[groupIndex];
+    if (!group || group.role !== "assistant") {
+      continue;
+    }
+
+    for (
+      let messageIndex = group.messages.length - 1;
+      messageIndex >= 0;
+      messageIndex -= 1
+    ) {
+      const message = group.messages[messageIndex];
+      if (!message || message.role !== "assistant") {
+        continue;
+      }
+
+      const content = message.content?.trim();
+      if (content) {
+        return null;
+      }
+
+      const followups = message.recommendedFollowups ?? [];
+      if (followups.length > 0) {
+        return { messageId: message.id, followups };
+      }
+    }
   }
-  const lastMessage = lastGroup.messages[lastGroup.messages.length - 1];
-  if (!lastMessage || lastMessage.role !== "assistant") {
-    return null;
-  }
-  if (lastMessage.runLifecycleEvent !== "completed") {
-    return null;
-  }
-  const followups = lastMessage.recommendedFollowups ?? [];
-  if (followups.length === 0) {
-    return null;
-  }
-  return { messageId: lastMessage.id, followups };
+
+  return null;
 }
 
 function RecommendedFollowupIcon({
@@ -2777,7 +2790,6 @@ function RecommendedFollowupList({
         followup.prompt,
         modelSelection,
         {
-          revokesMessageId: source.messageId,
           includeDraftAttachments: false,
         },
         rootSignal,

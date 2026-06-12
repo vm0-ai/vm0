@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../utils";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -1189,7 +1188,6 @@ describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
     });
 
     await runs.requestCancelRun(admin, created.runId, [200]);
-    await clearAllDetached();
     const cancelled = await runs.readRun(admin, created.runId);
     expect(cancelled.status).toBe("cancelled");
   });

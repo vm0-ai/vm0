@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
-import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -85,87 +84,23 @@ function automationRunIdFromThread(
   return runId;
 }
 
-describe("AUTOMATIONS-02: automations feature-switch gating", () => {
-  it("hides every automation endpoint while the switch is off", async () => {
+describe("AUTOMATIONS-02: webhook trigger feature-switch gating", () => {
+  it("keeps webhook trigger creation gated while the automation resource stays mounted", async () => {
     const bdd = createBddApi(context);
     const api = createRunsSchedulesApi(context);
 
-    // Given a fresh user whose org/user has no zeroAutomations override (the
+    // Given a fresh user whose org/user has no webhook-trigger override (the
     // switch defaults to off). First test in this file: install the ably
-    // default explicitly — mock defaults are only installed by afterEach.
+    // default explicitly because mock defaults are only installed by afterEach.
     context.mocks.ably.publish.mockResolvedValue(undefined);
     const actor = bdd.user();
 
-    // When/Then creating an automation reports not-found
-    const create = await api.requestCreateAutomationUnchecked(
-      actor,
-      {
-        name: "gated",
-        agentId: randomUUID(),
-        cronExpression: "0 9 * * *",
-        prompt: "Should not be created",
-        timezone: "UTC",
-      },
-      [404],
-    );
-    expectApiError(create.body);
-    expect(create.body.error.code).toBe("NOT_FOUND");
-
-    // When/Then listing automations reports not-found (raw request: the list
-    // contract has no 404 response, so the typed client cannot express it)
+    // Then listing automations is mounted even before webhook triggers are on.
     const list = await api.requestListAutomationsRaw(actor);
-    expect(list.status).toBe(404);
-    expectApiError(list.body);
-    expect(list.body.error.code).toBe("NOT_FOUND");
+    expect(list.status).toBe(200);
+    expect(list.body).toMatchObject({ automations: [] });
 
-    // When/Then updating an automation by name reports not-found
-    const update = await api.requestUpdateAutomationUnchecked(
-      actor,
-      "gated",
-      {
-        agentId: randomUUID(),
-        cronExpression: "0 10 * * *",
-        prompt: "Should not update",
-        timezone: "UTC",
-      },
-      [404],
-    );
-    expectApiError(update.body);
-    expect(update.body.error.code).toBe("NOT_FOUND");
-
-    // When/Then enabling an automation reports not-found
-    const enable = await api.requestEnableAutomation(
-      actor,
-      { name: "gated", agentId: randomUUID() },
-      [404],
-    );
-    expectApiError(enable.body);
-    expect(enable.body.error.code).toBe("NOT_FOUND");
-
-    // When/Then disabling an automation reports not-found
-    const disable = await api.requestDisableAutomation(
-      actor,
-      { name: "gated", agentId: randomUUID() },
-      [404],
-    );
-    expectApiError(disable.body);
-    expect(disable.body.error.code).toBe("NOT_FOUND");
-
-    // When/Then running an automation reports not-found
-    const run = await api.requestRunAutomation(actor, randomUUID(), [404]);
-    expectApiError(run.body);
-    expect(run.body.error.code).toBe("NOT_FOUND");
-
-    // When/Then deleting an automation reports not-found
-    const remove = await api.requestDeleteAutomation(
-      actor,
-      { name: "gated", agentId: randomUUID() },
-      [404],
-    );
-    expectApiError(remove.body);
-    expect(remove.body.error.code).toBe("NOT_FOUND");
-
-    // When/Then creating a webhook automation reports not-found
+    // When/Then creating a webhook automation reports a visible bad request.
     const webhookCreate = await api.requestCreateWebhookAutomationUnchecked(
       actor,
       {
@@ -173,19 +108,18 @@ describe("AUTOMATIONS-02: automations feature-switch gating", () => {
         instruction: "Should not be created.",
         agentId: randomUUID(),
       },
-      [404],
+      [400],
     );
     expectApiError(webhookCreate.body);
-    expect(webhookCreate.body.error.code).toBe("NOT_FOUND");
+    expect(webhookCreate.body.error.code).toBe("BAD_REQUEST");
 
-    // Given only the base automations switch is on
+    // Given the webhook trigger switch is explicitly off
     const triggerGatedActor = bdd.user();
     await api.enableAutomations(triggerGatedActor, {
       webhookTriggers: false,
     });
 
-    // When/Then creating a webhook automation still reports not-found because
-    // creation mints a webhook trigger, which has its own feature switch.
+    // When/Then creating a webhook automation still reports bad request.
     const webhookTriggerCreate =
       await api.requestCreateWebhookAutomationUnchecked(
         triggerGatedActor,
@@ -194,22 +128,13 @@ describe("AUTOMATIONS-02: automations feature-switch gating", () => {
           instruction: "Should not be created.",
           agentId: randomUUID(),
         },
-        [404],
+        [400],
       );
     expectApiError(webhookTriggerCreate.body);
-    expect(webhookTriggerCreate.body.error.code).toBe("NOT_FOUND");
-
-    // When/Then deleting a webhook automation reports not-found
-    const webhookDelete = await api.requestDeleteWebhookAutomation(
-      actor,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(webhookDelete.body);
-    expect(webhookDelete.body.error.code).toBe("NOT_FOUND");
+    expect(webhookTriggerCreate.body.error.code).toBe("BAD_REQUEST");
 
     // Then the unauthenticated boundary still reports unauthorized rather
-    // than the gated not-found
+    // than the gated bad request.
     const unauthenticated = await api.requestListWebhookAutomations(
       null,
       [401],
@@ -277,7 +202,7 @@ describe("AUTOMATIONS-03: automation run-now dispatch", () => {
     expect(claim.appendSystemPrompt).toContain(
       "You are currently running inside: Schedule",
     );
-    expect(claim.appendSystemPrompt).toContain("Trigger type: cron");
+    expect(claim.appendSystemPrompt).toContain("Trigger type: manual");
     expect(claim.appendSystemPrompt).toContain("Automation tone.");
 
     // Then a second run-now conflicts while the previous run is still active
@@ -291,12 +216,11 @@ describe("AUTOMATIONS-03: automation run-now dispatch", () => {
 
     // Then the run is terminal-ized and the org queue drains
     await api.requestCancelRun(actor, runId, [200]);
-    await clearAllDetached();
     const queue = await api.readRunQueue(actor);
     expect(queue.body.concurrency.active).toBe(0);
 
-    // When a disabled loop automation is run now (covers the loop-callback
-    // arm of the automation interpreter)
+    // When a disabled loop automation is run now, the manual fire still
+    // belongs to the automation rather than to a specific trigger.
     const loopCreated = await api.createAutomation(actor, {
       name: uniqueScheduleName("bdd-auto-loop"),
       agentId,
@@ -315,27 +239,23 @@ describe("AUTOMATIONS-03: automation run-now dispatch", () => {
       throw new Error("Expected the loop automation run-now to create a run");
     }
 
-    // Then the claim renders the loop trigger context, and the run drains
+    // Then the claim renders the manual trigger context, and the run drains.
     const loopClaim = await api.claimRunnerJob(loopRun.body.runId);
-    expect(loopClaim.appendSystemPrompt).toContain("Trigger type: loop");
+    expect(loopClaim.appendSystemPrompt).toContain("Trigger type: manual");
     await api.requestCancelRun(actor, loopRun.body.runId, [200]);
-    await clearAllDetached();
     await api.deleteAutomation(actor, loopCreated.automation);
 
-    // Then updating the automation against a missing agent reports not-found
-    const updateMissingAgent = await api.requestUpdateAutomationUnchecked(
+    // Then updating a missing automation reports not-found
+    const updateMissingAutomation = await api.requestUpdateAutomationUnchecked(
       actor,
-      automationName,
+      uniqueScheduleName("bdd-missing-auto"),
       {
-        agentId: randomUUID(),
-        cronExpression: "0 10 * * *",
         prompt,
-        timezone: "UTC",
       },
       [404],
     );
-    expectApiError(updateMissingAgent.body);
-    expect(updateMissingAgent.body.error.code).toBe("NOT_FOUND");
+    expectApiError(updateMissingAutomation.body);
+    expect(updateMissingAutomation.body.error.code).toBe("NOT_FOUND");
 
     // Cleanup: delete the automation and verify it left the list
     await api.deleteAutomation(actor, automation);
@@ -521,7 +441,6 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
 
     // Then the run is terminal-ized and the org queue drains
     await api.requestCancelRun(actor, runId, [200]);
-    await clearAllDetached();
     const queue = await api.readRunQueue(actor);
     expect(queue.body.concurrency.active).toBe(0);
 

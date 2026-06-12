@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -119,7 +118,6 @@ async function completeRun(
     headers,
     [200],
   );
-  await clearAllDetached();
 }
 
 describe("RUN-03/RUN-04: run read surface auth matrix", () => {
@@ -224,7 +222,6 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, seedRun.runId, [200]);
-    await clearAllDetached();
 
     const malformed = await reads.rawCreateDirectRun(actor, {
       agentComposeId: target.composeId,
@@ -466,7 +463,6 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     await api.requestCancelRun(member, queuedForeign.runId, [200]);
     await api.requestCancelRun(actor, runA.runId, [200]);
     await api.requestCancelRun(member, runM.runId, [200]);
-    await clearAllDetached();
 
     const drained = await reads.requestReadAgentRunQueue(actor, [200]);
     expect(drained.body.concurrency.active).toBe(0);
@@ -490,7 +486,6 @@ describe("RUN-03: cancel through the agent route", () => {
       status: "cancelled",
       message: "Run cancelled successfully",
     });
-    await clearAllDetached();
     const c1Detail = await api.readRun(actor, c1.runId);
     expect(c1Detail.status).toBe("cancelled");
 
@@ -539,7 +534,6 @@ describe("RUN-03: cancel through the agent route", () => {
       [200],
     );
     expect(sandboxCancelled.body).toMatchObject({ status: "cancelled" });
-    await clearAllDetached();
 
     const orphanToken = api.sandboxTokenForRun(actor, randomUUID());
     const orphanCancel = await reads.requestCancelAgentRunAs(
@@ -578,13 +572,11 @@ describe("RUN-03: cancel through the agent route", () => {
       [200],
     );
     expect(queuedCancelled.body).toMatchObject({ status: "cancelled" });
-    await clearAllDetached();
     const queueAfter = await api.readRunQueue(actor);
     expect(queueAfter.body.queue).toStrictEqual([]);
 
     await api.requestCancelRun(actor, d1.runId, [200]);
     await api.requestCancelRun(actor, d2.runId, [200]);
-    await clearAllDetached();
   });
 });
 
@@ -680,7 +672,6 @@ describe("RUN-03: queue position", () => {
     await api.requestCancelRun(member, memberQueued.runId, [200]);
     await api.requestCancelRun(actor, pending.runId, [200]);
     await api.requestCancelRun(actor, running.runId, [200]);
-    await clearAllDetached();
   });
 });
 
@@ -751,7 +742,6 @@ describe("RUN-04: session and checkpoint reads", () => {
       headers1,
       [200],
     );
-    await clearAllDetached();
 
     const completed = await api.readRun(actor, r1.runId);
     expect(completed.status).toBe("completed");
@@ -806,7 +796,6 @@ describe("RUN-04: session and checkpoint reads", () => {
       throw new Error("Expected the bare checkpoint webhook to succeed");
     }
     await api.requestCancelRun(actor, r2.runId, [200]);
-    await clearAllDetached();
 
     const missingSession = await reads.requestReadSession(
       actor,
@@ -1004,7 +993,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       headers1,
       [200],
     );
-    await clearAllDetached();
 
     const resumed = await api.createDirectRun(actor, {
       checkpointId,
@@ -1042,14 +1030,12 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       throw new Error("Expected the bare resume checkpoint to succeed");
     }
     await api.requestCancelRun(actor, resumed.runId, [200]);
-    await clearAllDetached();
 
     const bareResume = await api.createDirectRun(actor, {
       checkpointId: bareCheckpoint.body.checkpointId,
       prompt: "resume without snapshots",
     });
     await api.requestCancelRun(actor, bareResume.runId, [200]);
-    await clearAllDetached();
 
     const bothIds = await reads.requestCreateDirectRun(
       actor,
@@ -1081,7 +1067,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       throw new Error("Expected the version-pinned run create to succeed");
     }
     await api.requestCancelRun(actor, byVersion.body.runId, [200]);
-    await clearAllDetached();
 
     const strictMemory = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
@@ -1106,7 +1091,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       },
     ]);
     await api.requestCancelRun(actor, strictMemory.runId, [200]);
-    await clearAllDetached();
 
     const customCanonical = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
@@ -1136,7 +1120,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       },
     ]);
     await api.requestCancelRun(actor, customCanonical.runId, [200]);
-    await clearAllDetached();
 
     const continued = await api.createDirectRun(actor, {
       sessionId: r1.sessionId,
@@ -1158,7 +1141,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       missingRootPolicy: "preserveParentVersion",
     });
     await api.requestCancelRun(actor, continued.runId, [200]);
-    await clearAllDetached();
   });
 });
 
@@ -1208,7 +1190,6 @@ describe("RUN-01: direct run admission boundaries", () => {
     await api.requestCancelRun(actor, uncapped.body.runId, [200]);
     await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
-    await clearAllDetached();
 
     mockEnv("ENV", "production");
     const uncachedGate = await reads.requestCreateDirectRun(
@@ -1257,7 +1238,6 @@ describe("RUN-01: direct run admission boundaries", () => {
     const captureClaim = await api.claimRunnerJob(allowed.body.runId);
     expect(captureClaim.captureNetworkBodies).toBeTruthy();
     await api.requestCancelRun(internal, allowed.body.runId, [200]);
-    await clearAllDetached();
   });
 });
 
@@ -1693,7 +1673,6 @@ describe("RUN-04: agent run telemetry families", () => {
     expectApiError(memberTelemetry.body);
 
     await api.requestCancelRun(actor, pendingRun.runId, [200]);
-    await clearAllDetached();
   });
 
   it("maps zero run context, network, events, and runner metadata from axiom snapshots", async () => {
@@ -1735,7 +1714,6 @@ describe("RUN-04: agent run telemetry families", () => {
       headers,
       [200],
     );
-    await clearAllDetached();
 
     const bareRun = await api.createRun(actor, {
       agentId: agent.agentId,
@@ -2137,7 +2115,6 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(bareRunner.body).toStrictEqual({ sandboxReuseResult: null });
 
     await api.requestCancelRun(actor, bareRun.runId, [200]);
-    await clearAllDetached();
   });
 });
 
@@ -2252,7 +2229,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(member, memberRun.runId, [200]);
-    await clearAllDetached();
 
     const listed = await reads.requestListLogs(actor, {}, [200]);
     mustOk(listed, "the logs list");
@@ -2475,7 +2451,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       sandboxHeaders(api.sandboxTokenForRun(actor, failedRun.runId)),
       [200],
     );
-    await clearAllDetached();
     const failedDetail = await reads.requestReadLogById(
       actor,
       failedRun.runId,
@@ -2519,7 +2494,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(tokenDetail.body).toMatchObject({ id: webRun.runId });
 
     await api.requestCancelRun(actor, tokenRun.runId, [200]);
-    await clearAllDetached();
   });
 
   it("splits multi-run log searches into a bounded run-id filter", async () => {
@@ -2544,7 +2518,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, secondRun.runId, [200]);
-    await clearAllDetached();
 
     context.mocks.axiom.query.mockImplementation((apl: unknown) => {
       if (typeof apl === "string" && apl.includes("runId in (")) {

@@ -25,7 +25,6 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
-import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -145,16 +144,52 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
   return token;
 }
 
-async function drainDetached(times: number): Promise<void> {
-  for (let index = 0; index < times; index++) {
-    await clearAllDetached();
+async function waitForThreadMessages(
+  actor: ApiTestUser,
+  threadId: string,
+  predicate: (messages: readonly PagedChatMessage[]) => boolean,
+) {
+  let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
+  await expect
+    .poll(async () => {
+      page = await chat.listThreadMessages(actor, threadId);
+      return predicate(page.messages);
+    })
+    .toBe(true);
+  if (!page) {
+    throw new Error(`Expected chat thread ${threadId} messages to be readable`);
   }
+  return page;
+}
+
+async function waitForRunStatus(
+  actor: ApiTestUser,
+  runId: string,
+  status: "cancelled" | "completed" | "failed" | "pending" | "running",
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const run = await api.readRun(actor, runId);
+      return run.status;
+    })
+    .toBe(status);
+}
+
+async function waitForThreadTitle(
+  actor: ApiTestUser,
+  threadId: string,
+  title: string | null,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      return (await chat.readThread(actor, threadId)).title;
+    })
+    .toBe(title);
 }
 
 /**
  * Checkpoint + exitCode-0 complete (completing without a checkpoint fails the
- * run). Drains three times: terminal side effects → callback ACK → nested
- * chat-processing waitUntil.
+ * run).
  */
 async function completeChatRunOk(
   runId: string,
@@ -185,7 +220,6 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
-  await drainDetached(3);
 }
 
 async function failChatRun(
@@ -198,12 +232,11 @@ async function failChatRun(
     sandboxHeaders,
     [200],
   );
-  await drainDetached(3);
 }
 
 async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
   await api.requestCancelRun(actor, runId, [200]);
-  await drainDetached(3);
+  await waitForRunStatus(actor, runId, "cancelled");
 }
 
 function assistantMessages(
@@ -217,6 +250,19 @@ function assistantMessages(
 function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
   return messages.flatMap((message) => {
     return message.role === "user" ? [message] : [];
+  });
+}
+
+function eventBackedContents(
+  messages: readonly PagedChatMessage[],
+  runId: string,
+): AssistantMessage[] {
+  return assistantMessages(messages).filter((message) => {
+    return (
+      message.runId === runId &&
+      message.content !== null &&
+      message.runLifecycleEvent === undefined
+    );
   });
 }
 
@@ -342,7 +388,6 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
     expect(first.body.threadId).toBe(clientThreadId);
     expect(first.body.status).toBe("pending");
     const runId = first.body.runId;
-    await drainDetached(1);
 
     const run = await api.readRun(actor, runId);
     expect(run.prompt).toBe(prompt);
@@ -351,7 +396,13 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
     );
     expect(run.appendSystemPrompt).not.toContain("# Generation Template");
 
-    const messages = await chat.listThreadMessages(actor, clientThreadId);
+    const messages = await waitForThreadMessages(
+      actor,
+      clientThreadId,
+      (items) => {
+        return userMessages(items).length === 1;
+      },
+    );
     expect(userMessages(messages.messages)).toHaveLength(1);
     expect(userMessages(messages.messages)[0]).toMatchObject({
       id: clientMessageId,
@@ -476,7 +527,6 @@ describe("CHAT-02: interrupting active chat runs", () => {
       agentId,
       prompt: "long task to interrupt",
     });
-    await drainDetached(1);
 
     const interruptId = randomUUID();
     const interrupted = await chat.requestSendMessage(
@@ -493,10 +543,25 @@ describe("CHAT-02: interrupting active chat runs", () => {
       throw new Error("Expected the interrupt send to be accepted");
     }
     expect(interrupted.body.runId).toBeNull();
-    expect((await api.readRun(actor, first.runId)).status).toBe("cancelled");
-    await drainDetached(3);
+    await waitForRunStatus(actor, first.runId, "cancelled");
 
-    const messages = await chat.listThreadMessages(actor, first.threadId);
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return (
+          userMessages(items).some((message) => {
+            return message.interruptsRunId === first.runId;
+          }) &&
+          assistantMessages(items).some((message) => {
+            return (
+              message.runId === first.runId &&
+              message.runLifecycleEvent === "cancelled"
+            );
+          })
+        );
+      },
+    );
     const interruptRows = userMessages(messages.messages).filter((message) => {
       return message.interruptsRunId === first.runId;
     });
@@ -549,7 +614,6 @@ describe("CHAT-02: interrupting active chat runs", () => {
       threadId: first.threadId,
       prompt: "cancelled through the cancel api",
     });
-    await drainDetached(1);
     await cancelChatRun(actor, second.runId);
     const lateInterrupt = await chat.requestSendMessage(
       actor,
@@ -607,7 +671,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
       agentId,
       prompt: "anchor active run",
     });
-    await drainDetached(1);
 
     const queuedId = randomUUID();
     const queued = await chat.requestSendMessage(
@@ -779,7 +842,6 @@ describe("CHAT-02: org queue markers", () => {
       throw new Error("Expected the blocking send to create a run");
     }
     expect(blocker.body.status).toBe("pending");
-    await drainDetached(1);
 
     const queuedRun = await chat.requestSendMessage(
       actor,
@@ -790,10 +852,20 @@ describe("CHAT-02: org queue markers", () => {
       throw new Error("Expected the second send to create a queued run");
     }
     expect(queuedRun.body.status).toBe("queued");
-    await drainDetached(1);
 
     const queuedThread = queuedRun.body.threadId;
-    const beforeDequeue = await chat.listThreadMessages(actor, queuedThread);
+    const beforeDequeue = await waitForThreadMessages(
+      actor,
+      queuedThread,
+      (items) => {
+        return (
+          userMessages(items).length === 1 &&
+          assistantMessages(items).some((message) => {
+            return message.runEventId === "queue:queued";
+          })
+        );
+      },
+    );
     expect(userMessages(beforeDequeue.messages)).toHaveLength(1);
     expect(userMessages(beforeDequeue.messages)[0]).toMatchObject({
       content: "wait behind the active run",
@@ -876,15 +948,18 @@ describe("CHAT-02: org queue markers", () => {
       },
       [201],
     );
-    await drainDetached(3);
 
-    expect((await api.readRun(actor, blocker.body.runId)).status).toBe(
-      "cancelled",
+    await waitForRunStatus(actor, blocker.body.runId, "cancelled");
+    await waitForRunStatus(actor, queuedRun.body.runId, "pending");
+    const afterDequeue = await waitForThreadMessages(
+      actor,
+      queuedThread,
+      (items) => {
+        return assistantMessages(items).some((message) => {
+          return message.runEventId === "queue:dequeued";
+        });
+      },
     );
-    expect((await api.readRun(actor, queuedRun.body.runId)).status).toBe(
-      "pending",
-    );
-    const afterDequeue = await chat.listThreadMessages(actor, queuedThread);
     const revoker = assistantMessages(afterDequeue.messages).find((message) => {
       return message.runEventId === "queue:dequeued";
     });
@@ -921,7 +996,6 @@ describe("CHAT-02: dispatch failure", () => {
       throw new Error("Expected the failed dispatch to still create a run");
     }
     expect(sent.body.status).toBe("failed");
-    await drainDetached(3);
 
     const run = await api.readRun(actor, sent.body.runId);
     expect(run.status).toBe("failed");
@@ -1025,7 +1099,6 @@ describe("CHAT-02: explicit provider pins", () => {
         selectedModel: "deepseek-v4-pro",
       },
     });
-    await drainDetached(1);
 
     const { claim, sandboxHeaders } = await claimChatRun(
       runnerGroup,
@@ -1076,7 +1149,6 @@ describe("CHAT-02: explicit provider pins", () => {
       const vm0Body = vm0Send.body as { readonly runId: string | null };
       if (vm0Body.runId !== null) {
         await api.requestCancelRun(actor, vm0Body.runId, [200]);
-        await clearAllDetached();
       }
     }
   }, 90_000);
@@ -1106,7 +1178,6 @@ describe("CHAT-02: server-side model switches", () => {
 
     const firstPrompt = "first turn on the default opus policy";
     const first = await sendChatRun(actor, { agentId, prompt: firstPrompt });
-    await drainDetached(1);
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-opus-4-6",
@@ -1114,6 +1185,11 @@ describe("CHAT-02: server-side model switches", () => {
     chatCallbacks.mockChatOutputEvents([assistantEvent(0, "opus answer")]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
       lastEventSequence: 0,
+    });
+    await waitForThreadMessages(actor, first.threadId, (items) => {
+      return eventBackedContents(items, first.runId).some((message) => {
+        return message.content === "opus answer";
+      });
     });
     expect((await chat.readThread(actor, first.threadId)).selectedModel).toBe(
       "claude-opus-4-6",
@@ -1133,7 +1209,6 @@ describe("CHAT-02: server-side model switches", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await drainDetached(1);
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
@@ -1158,7 +1233,6 @@ describe("CHAT-02: server-side model switches", () => {
       threadId: first.threadId,
       prompt: "continue on sonnet",
     });
-    await drainDetached(1);
     const thirdClaim = await claimChatRun(runnerGroup, third.runId);
     expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${second.runId}`,
@@ -1190,7 +1264,6 @@ describe("CHAT-02: server-side model switches", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await drainDetached(1);
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
@@ -1212,7 +1285,6 @@ describe("CHAT-02: server-side model switches", () => {
       threadId: first.threadId,
       prompt: "follow up after the provider rotation",
     });
-    await drainDetached(1);
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     const environment = claimEnvironment(secondClaim.claim);
     expect(environment.ANTHROPIC_API_KEY).toBe(
@@ -1325,7 +1397,6 @@ describe("CHAT-02: incomplete-round context", () => {
       agentId,
       prompt: "first incomplete",
     });
-    await drainDetached(1);
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     await failChatRun(first.runId, firstClaim.sandboxHeaders, "boom one");
 
@@ -1335,7 +1406,6 @@ describe("CHAT-02: incomplete-round context", () => {
       threadId: first.threadId,
       prompt: longPrompt,
     });
-    await drainDetached(1);
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     await failChatRun(second.runId, secondClaim.sandboxHeaders, "boom two");
 
@@ -1406,10 +1476,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 
     const firstPrompt = "plan the API migration";
     const first = await sendChatRun(actor, { agentId, prompt: firstPrompt });
-    await drainDetached(1);
-    expect((await chat.readThread(actor, first.threadId)).title).toBe(
-      "Migration Plan",
-    );
+    await waitForThreadTitle(actor, first.threadId, "Migration Plan");
     expect(titleRequests).toBe(1);
     expect(upstreamAuthorization).toBe("Bearer title-key");
 
@@ -1421,7 +1488,15 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       lastEventSequence: 0,
     });
 
-    const afterFirst = await chat.listThreadMessages(actor, first.threadId);
+    const afterFirst = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return assistantMessages(items).some((message) => {
+          return (message.recommendedFollowups?.length ?? 0) > 0;
+        });
+      },
+    );
     const recommender = assistantMessages(afterFirst.messages).find(
       (message) => {
         return (message.recommendedFollowups?.length ?? 0) > 0;
@@ -1462,7 +1537,6 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       threadId: first.threadId,
       prompt: "follow-up question",
     });
-    await drainDetached(1);
     expect((await chat.readThread(actor, first.threadId)).title).toBe(
       "Migration Plan",
     );
@@ -1485,7 +1559,6 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       threadId: first.threadId,
       prompt: "manual title should stay",
     });
-    await drainDetached(1);
     expect((await chat.readThread(actor, first.threadId)).title).toBe(
       "Manual Migration Title",
     );
@@ -1549,7 +1622,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const videoRun = await api.readRun(actor, video.runId);
     const videoPrompt = videoRun.appendSystemPrompt ?? "";
-    expect(videoPrompt).toContain(`## Video Style: ${preset.nameEn}`);
+    expect(videoPrompt).toContain("# Video Template Preset");
+    expect(videoPrompt).toContain(`- Preset name: ${preset.nameEn}`);
     expect(videoPrompt).toContain(
       `- Visual Tone: ${preset.dimensions.visualTone}`,
     );
@@ -1651,7 +1725,6 @@ describe("CHAT-02: generation templates and attachments", () => {
         { id: fileId, filename, contentType: "image/png", size: 42 },
       ],
     });
-    await drainDetached(1);
 
     const created = await api.readRun(actor, run.runId);
     expect(created.prompt).toContain(`[Web file] ${filename} (image/png)`);
@@ -1659,7 +1732,15 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(created.appendSystemPrompt).toContain("zero web download-file -h");
     expect(created.appendSystemPrompt).toContain("zero web upload-file -h");
 
-    const messages = await chat.listThreadMessages(actor, run.threadId);
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (message.attachFiles?.length ?? 0) > 0;
+        });
+      },
+    );
     const attached = userMessages(messages.messages)[0]?.attachFiles?.[0];
     expect(attached).toMatchObject({
       id: fileId,
@@ -1681,7 +1762,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       agentId,
       prompt: "anchor before the queued attachment",
     });
-    await drainDetached(1);
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
     const fileId = randomUUID();
@@ -1710,9 +1790,17 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    await drainDetached(1);
-
-    const messages = await chat.listThreadMessages(actor, anchor.threadId);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === queuedId && message.runId !== undefined
+          );
+        });
+      },
+    );
     const promoted = userMessages(messages.messages).find((message) => {
       return message.revokesMessageId === queuedId;
     });
@@ -1751,7 +1839,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       agentId,
       prompt: "no computer use selected",
     });
-    await drainDetached(1);
     const plainClaim = await claimChatRun(runnerGroup, plain.runId);
     const plainToken = zeroTokenFromClaim(plainClaim.claim);
     const deniedCommand = await cu.requestCreateComputerUseWriteCommand(
@@ -1775,7 +1862,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       prompt: "open the remote browser",
       computerUseHostId: hostId,
     });
-    await drainDetached(1);
     const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
@@ -1790,7 +1876,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       threadId: granted.threadId,
       prompt: "keep using the same host",
     });
-    await drainDetached(1);
     const stickyClaim = await claimChatRun(runnerGroup, sticky.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(
@@ -1807,7 +1892,6 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       prompt: "drop the host",
       computerUseHostId: null,
     });
-    await drainDetached(1);
     const clearedClaim = await claimChatRun(runnerGroup, cleared.runId);
     await cu.heartbeatComputerUseHost(hostToken);
     await cu.requestCreateComputerUseWriteCommand(

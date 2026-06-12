@@ -8,17 +8,16 @@ use super::types::{
 
 /// Parse a runner argv for `start`/`benchmark` subcommand and `--config` path.
 ///
-/// Returns `(config_path, subcommand)` or `None` if the argv doesn't match.
-fn parse_runner_cmdline(argv: &[String]) -> Option<(PathBuf, String)> {
-    let subcmd = argv
-        .iter()
-        .find(|t| *t == "start" || *t == "benchmark")?
-        .clone();
+/// Returns the config path or `None` if the argv doesn't match.
+fn parse_runner_cmdline(argv: &[String]) -> Option<PathBuf> {
+    if !argv.iter().any(|t| t == "start" || t == "benchmark") {
+        return None;
+    }
 
     let config_pos = argv.iter().position(|t| t == "--config" || t == "-c")?;
     let config_path = argv.get(config_pos + 1)?;
 
-    Some((PathBuf::from(config_path), subcmd))
+    Some(PathBuf::from(config_path))
 }
 
 /// Check if an argv belongs to a firecracker process.
@@ -145,11 +144,10 @@ pub async fn discover_all() -> DiscoveredProcesses {
     let mut dnsmasqs = Vec::new();
 
     for (pid, argv) in &procs {
-        if let Some((config_path, subcommand)) = parse_runner_cmdline(argv) {
+        if let Some(config_path) = parse_runner_cmdline(argv) {
             runners.push(RunnerProcessInfo {
                 pid: *pid,
                 config_path,
-                subcommand,
             });
         }
         if is_firecracker_cmdline(argv) {
@@ -247,9 +245,8 @@ mod tests {
             "--config",
             "/data/runner-01/config.yaml",
         ]);
-        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
+        let config = parse_runner_cmdline(&a).unwrap();
         assert_eq!(config, Path::new("/data/runner-01/config.yaml"));
-        assert_eq!(subcmd, "start");
     }
 
     #[test]
@@ -260,17 +257,15 @@ mod tests {
             "--config",
             "/etc/runner/bench.yaml",
         ]);
-        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
+        let config = parse_runner_cmdline(&a).unwrap();
         assert_eq!(config, Path::new("/etc/runner/bench.yaml"));
-        assert_eq!(subcmd, "benchmark");
     }
 
     #[test]
     fn parse_runner_short_config_flag() {
         let a = argv(&["runner", "start", "-c", "/data/runner.yaml"]);
-        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
+        let config = parse_runner_cmdline(&a).unwrap();
         assert_eq!(config, Path::new("/data/runner.yaml"));
-        assert_eq!(subcmd, "start");
     }
 
     #[test]
@@ -278,9 +273,8 @@ mod tests {
         // Regression for #10479: a path argument containing spaces must stay
         // as a single argv element, not be split into multiple tokens.
         let a = argv(&["runner", "start", "--config", "/data/my config/config.yaml"]);
-        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
+        let config = parse_runner_cmdline(&a).unwrap();
         assert_eq!(config, Path::new("/data/my config/config.yaml"));
-        assert_eq!(subcmd, "start");
     }
 
     #[test]

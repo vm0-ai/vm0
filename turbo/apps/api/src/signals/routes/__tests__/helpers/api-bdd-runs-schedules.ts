@@ -17,20 +17,12 @@ import {
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
-  automationRunContract,
-  automationsByNameContract,
-  automationsEnableContract,
-  automationsMainContract,
-  type AutomationListResponse,
-  type AutomationMutationResponse,
-  type AutomationResponse,
-} from "@vm0/api-contracts/contracts/automations";
-import {
-  webhookAutomationsByIdContract,
-  webhookAutomationsMainContract,
-  type WebhookAutomationCreateResponse,
-  type WebhookAutomationListResponse,
-} from "@vm0/api-contracts/contracts/webhook-automations";
+  automationsV2ByRefContract,
+  automationsV2MainContract,
+  automationTriggersV2Contract,
+  type AutomationResponseV2,
+  type AutomationTriggerResponse,
+} from "@vm0/api-contracts/contracts/automations-v2";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -38,7 +30,7 @@ import {
   cronAggregateInsightsContract,
   cronAggregateUsageContract,
   cronCleanupSandboxesContract,
-  cronExecuteSchedulesContract,
+  cronExecuteAutomationsContract,
   cronProcessUsageEventsContract,
   cronReconcileBillingEntitlementsContract,
   cronSummarizeMemoryContract,
@@ -57,15 +49,7 @@ import {
   zeroRunsMainContract,
   zeroRunsQueueContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
-import {
-  zeroScheduleRunContract,
-  zeroSchedulesByNameContract,
-  zeroSchedulesEnableContract,
-  zeroSchedulesMainContract,
-  type DeployScheduleResponse,
-  type ScheduleListResponse,
-  type ScheduleResponse,
-} from "@vm0/api-contracts/contracts/zero-schedules";
+import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -89,18 +73,76 @@ type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
 type ComposeContent = z.infer<
   (typeof composesMainContract.create)["body"]
 >["content"];
-type CreateAutomationRequest = z.infer<
-  (typeof automationsMainContract.create)["body"]
+type V2CreateAutomationRequest = z.infer<
+  (typeof automationsV2MainContract.create)["body"]
 >;
-type UpdateAutomationRequest = z.infer<
-  (typeof automationsByNameContract.update)["body"]
+type V2UpdateAutomationRequest = z.infer<
+  (typeof automationsV2ByRefContract.update)["body"]
 >;
-type CreateWebhookAutomationRequest = z.infer<
-  (typeof webhookAutomationsMainContract.create)["body"]
+type CreateTriggerRequest = z.infer<
+  (typeof automationsV2ByRefContract.addTrigger)["body"]
 >;
-type DeployScheduleRequest = z.infer<
-  (typeof zeroSchedulesMainContract.deploy)["body"]
->;
+type DeployScheduleRequest = {
+  readonly name: string;
+  readonly cronExpression?: string;
+  readonly atTime?: string;
+  readonly intervalSeconds?: number;
+  readonly timezone?: string;
+  readonly prompt: string;
+  readonly description?: string;
+  readonly appendSystemPrompt?: string;
+  readonly agentId: string;
+  readonly enabled?: boolean;
+  readonly chatThreadId?: string;
+};
+type CreateAutomationRequest = DeployScheduleRequest;
+type UpdateAutomationRequest = Omit<
+  Partial<DeployScheduleRequest>,
+  "description" | "appendSystemPrompt"
+> & {
+  readonly name?: string;
+  readonly description?: string | null;
+  readonly appendSystemPrompt?: string | null;
+};
+type CreateWebhookAutomationRequest = {
+  readonly name: string;
+  readonly instruction: string;
+  readonly description?: string;
+  readonly appendSystemPrompt?: string;
+  readonly agentId: string;
+  readonly enabled?: boolean;
+  readonly chatThreadId?: string;
+};
+type DeployScheduleResponse = {
+  readonly schedule: ScheduleResponse;
+  readonly created: boolean;
+};
+type ScheduleListResponse = {
+  readonly schedules: readonly ScheduleResponse[];
+};
+type AutomationResponse = ScheduleResponse;
+type AutomationMutationResponse = {
+  readonly automation: AutomationResponse;
+  readonly created: boolean;
+};
+type AutomationListResponse = {
+  readonly automations: readonly AutomationResponse[];
+};
+type WebhookAutomationResponse = AutomationResponseV2 & {
+  readonly webhookToken: string;
+  readonly webhookUrl: string;
+};
+type WebhookAutomationCreateResponse = {
+  readonly automation: WebhookAutomationResponse;
+  readonly secret: string;
+};
+type WebhookAutomationListResponse = {
+  readonly automations: readonly WebhookAutomationResponse[];
+};
+type AutomationResourceRef = {
+  readonly id?: string;
+  readonly name: string;
+};
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
 >;
@@ -190,6 +232,221 @@ function cronHeaders(valid: boolean): AuthHeaders {
 
 function runnerHeaders(valid: boolean): AuthHeaders {
   return valid ? { authorization: OFFICIAL_RUNNER_AUTHORIZATION } : {};
+}
+
+type TimeTriggerResponse = Extract<
+  AutomationTriggerResponse,
+  { readonly kind: "cron" | "once" | "loop" }
+>;
+type WebhookTriggerResponse = Extract<
+  AutomationTriggerResponse,
+  { readonly kind: "webhook" }
+>;
+
+function isTimeTrigger(
+  trigger: AutomationTriggerResponse,
+): trigger is TimeTriggerResponse {
+  return (
+    trigger.kind === "cron" ||
+    trigger.kind === "once" ||
+    trigger.kind === "loop"
+  );
+}
+
+function timeTriggerFor(automation: AutomationResponseV2): TimeTriggerResponse {
+  const trigger = automation.triggers.find(isTimeTrigger);
+  if (!trigger) {
+    throw new Error(`Automation ${automation.id} has no time trigger`);
+  }
+  return trigger;
+}
+
+function webhookTriggerFor(
+  automation: AutomationResponseV2,
+): WebhookTriggerResponse {
+  const trigger = automation.triggers.find((item) => {
+    return item.kind === "webhook";
+  });
+  if (!trigger) {
+    throw new Error(`Automation ${automation.id} has no webhook trigger`);
+  }
+  return trigger;
+}
+
+function hasTimeTrigger(automation: AutomationResponseV2): boolean {
+  return automation.triggers.some(isTimeTrigger);
+}
+
+function hasWebhookTrigger(automation: AutomationResponseV2): boolean {
+  return automation.triggers.some((trigger) => {
+    return trigger.kind === "webhook";
+  });
+}
+
+function scheduleResponseFromAutomation(
+  automation: AutomationResponseV2,
+): ScheduleResponse {
+  const trigger = timeTriggerFor(automation);
+  return {
+    id: automation.id,
+    agentId: automation.agentId,
+    displayName: automation.displayName,
+    userId: automation.userId,
+    name: automation.name,
+    triggerType: trigger.kind,
+    cronExpression: trigger.kind === "cron" ? trigger.cronExpression : null,
+    atTime: trigger.kind === "once" ? trigger.atTime : null,
+    intervalSeconds: trigger.kind === "loop" ? trigger.intervalSeconds : null,
+    timezone: trigger.timezone,
+    prompt: automation.instruction,
+    description: automation.description,
+    appendSystemPrompt: automation.appendSystemPrompt,
+    enabled: automation.enabled && trigger.enabled,
+    nextRunAt: trigger.nextRunAt,
+    lastRunAt: trigger.lastRunAt,
+    retryStartedAt: null,
+    consecutiveFailures: trigger.consecutiveFailures,
+    chatThreadId: automation.chatThreadId,
+    createdAt: automation.createdAt,
+    updatedAt: automation.updatedAt,
+  };
+}
+
+function webhookResponseFromAutomation(
+  automation: AutomationResponseV2,
+): WebhookAutomationResponse {
+  const trigger = webhookTriggerFor(automation);
+  return {
+    ...automation,
+    webhookToken: trigger.webhookToken,
+    webhookUrl: trigger.webhookUrl,
+  };
+}
+
+function createTimeTriggerRequest(
+  body: Pick<
+    DeployScheduleRequest,
+    "cronExpression" | "atTime" | "intervalSeconds" | "timezone"
+  >,
+): CreateTriggerRequest | null {
+  if (body.cronExpression !== undefined) {
+    return {
+      kind: "cron",
+      cronExpression: body.cronExpression,
+      ...(body.timezone === undefined ? {} : { timezone: body.timezone }),
+    };
+  }
+  if (body.atTime !== undefined) {
+    return {
+      kind: "once",
+      atTime: body.atTime,
+      ...(body.timezone === undefined ? {} : { timezone: body.timezone }),
+    };
+  }
+  if (body.intervalSeconds !== undefined) {
+    return { kind: "loop", intervalSeconds: body.intervalSeconds };
+  }
+  return null;
+}
+
+function createV2AutomationBody(
+  body: CreateAutomationRequest,
+): V2CreateAutomationRequest {
+  const trigger = createTimeTriggerRequest(body);
+  if (!trigger) {
+    throw new Error("Time-trigger automation requires a trigger");
+  }
+  return {
+    name: body.name,
+    agentId: body.agentId,
+    instruction: body.prompt,
+    ...(body.description === undefined
+      ? {}
+      : { description: body.description }),
+    ...(body.appendSystemPrompt === undefined
+      ? {}
+      : { appendSystemPrompt: body.appendSystemPrompt }),
+    ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+    ...(body.chatThreadId === undefined
+      ? {}
+      : { chatThreadId: body.chatThreadId }),
+    trigger,
+  };
+}
+
+function createV2AutomationBodyUnchecked(
+  body: unknown,
+): V2CreateAutomationRequest {
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "prompt" in body &&
+    "name" in body &&
+    "agentId" in body &&
+    createTimeTriggerRequest(body as DeployScheduleRequest) !== null
+  ) {
+    return createV2AutomationBody(body as CreateAutomationRequest);
+  }
+  return body as V2CreateAutomationRequest;
+}
+
+function createV2WebhookAutomationBody(
+  body: CreateWebhookAutomationRequest,
+): V2CreateAutomationRequest {
+  return {
+    name: body.name,
+    agentId: body.agentId,
+    instruction: body.instruction,
+    ...(body.description === undefined
+      ? {}
+      : { description: body.description }),
+    ...(body.appendSystemPrompt === undefined
+      ? {}
+      : { appendSystemPrompt: body.appendSystemPrompt }),
+    ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+    ...(body.chatThreadId === undefined
+      ? {}
+      : { chatThreadId: body.chatThreadId }),
+    trigger: { kind: "webhook" },
+  };
+}
+
+function createV2WebhookAutomationBodyUnchecked(
+  body: unknown,
+): V2CreateAutomationRequest {
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "instruction" in body &&
+    "name" in body &&
+    "agentId" in body
+  ) {
+    return createV2WebhookAutomationBody(
+      body as CreateWebhookAutomationRequest,
+    );
+  }
+  return body as V2CreateAutomationRequest;
+}
+
+function updateV2AutomationBody(
+  body: UpdateAutomationRequest,
+): V2UpdateAutomationRequest {
+  return {
+    ...(body.name === undefined ? {} : { name: body.name }),
+    ...(body.prompt === undefined ? {} : { instruction: body.prompt }),
+    ...(body.description === undefined
+      ? {}
+      : { description: body.description }),
+    ...(body.appendSystemPrompt === undefined
+      ? {}
+      : { appendSystemPrompt: body.appendSystemPrompt }),
+  };
+}
+
+function automationRef(resource: AutomationResourceRef | string): string {
+  return typeof resource === "string"
+    ? resource
+    : (resource.id ?? resource.name);
 }
 
 function runnerHeartbeatBody(
@@ -495,7 +752,6 @@ export function createRunsSchedulesApi(context: TestContext) {
           headers: authenticate(context, actor),
           body: {
             switches: {
-              [FeatureSwitchKey.ZeroAutomations]: true,
               [FeatureSwitchKey.AutomationWebhookTriggers]:
                 options.webhookTriggers ?? true,
             },
@@ -815,24 +1071,27 @@ export function createRunsSchedulesApi(context: TestContext) {
       body: CreateAutomationRequest,
     ): Promise<AutomationMutationResponse> {
       const response = await accept(
-        setupApp({ context })(automationsMainContract).create({
+        setupApp({ context })(automationsV2MainContract).create({
           headers: authenticate(context, actor),
-          body,
+          body: createV2AutomationBody(body),
         }),
-        [200, 201],
+        [201],
       );
-      return response.body;
+      return {
+        automation: scheduleResponseFromAutomation(response.body.automation),
+        created: true,
+      };
     },
 
     async requestCreateAutomationUnchecked(
       actor: ApiTestUser | null,
       body: unknown,
-      statuses: readonly (200 | 201 | 400 | 401 | 403 | 404)[],
+      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsMainContract).create({
+        setupApp({ context })(automationsV2MainContract).create({
           headers: authenticate(context, actor),
-          body: body as CreateAutomationRequest,
+          body: createV2AutomationBodyUnchecked(body),
         }),
         statuses,
       );
@@ -840,20 +1099,24 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async listAutomations(actor: ApiTestUser): Promise<AutomationListResponse> {
       const response = await accept(
-        setupApp({ context })(automationsMainContract).list({
+        setupApp({ context })(automationsV2MainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body;
+      return {
+        automations: response.body.automations
+          .filter(hasTimeTrigger)
+          .map(scheduleResponseFromAutomation),
+      };
     },
 
     async requestListAutomations(
       actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403)[],
+      statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsMainContract).list({
+        setupApp({ context })(automationsV2MainContract).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -865,45 +1128,86 @@ export function createRunsSchedulesApi(context: TestContext) {
       name: string,
       body: UpdateAutomationRequest,
     ): Promise<AutomationMutationResponse> {
-      const response = await accept(
-        setupApp({ context })(automationsByNameContract).update({
+      const updated = await accept(
+        setupApp({ context })(automationsV2ByRefContract).update({
           headers: authenticate(context, actor),
-          params: { name },
-          body,
+          params: { ref: name },
+          body: updateV2AutomationBody(body),
         }),
-        [200, 201],
+        [200],
       );
-      return response.body;
+
+      const trigger = createTimeTriggerRequest(body);
+      if (trigger !== null) {
+        const triggers = await accept(
+          setupApp({ context })(automationsV2ByRefContract).listTriggers({
+            headers: authenticate(context, actor),
+            params: { ref: updated.body.id },
+          }),
+          [200],
+        );
+        for (const existing of triggers.body.triggers) {
+          if (isTimeTrigger(existing)) {
+            await accept(
+              setupApp({ context })(automationTriggersV2Contract).remove({
+                headers: authenticate(context, actor),
+                params: { id: existing.id },
+              }),
+              [204],
+            );
+          }
+        }
+        await accept(
+          setupApp({ context })(automationsV2ByRefContract).addTrigger({
+            headers: authenticate(context, actor),
+            params: { ref: updated.body.id },
+            body: trigger,
+          }),
+          [201],
+        );
+      }
+
+      const shown = await accept(
+        setupApp({ context })(automationsV2ByRefContract).show({
+          headers: authenticate(context, actor),
+          params: { ref: updated.body.id },
+        }),
+        [200],
+      );
+      return {
+        automation: scheduleResponseFromAutomation(shown.body),
+        created: false,
+      };
     },
 
     async enableAutomation(
       actor: ApiTestUser,
-      automation: Pick<AutomationResponse, "agentId" | "name">,
+      automation: AutomationResourceRef,
     ): Promise<AutomationResponse> {
       const response = await accept(
-        setupApp({ context })(automationsEnableContract).enable({
+        setupApp({ context })(automationsV2ByRefContract).enable({
           headers: authenticate(context, actor),
-          params: { name: automation.name },
-          body: { agentId: automation.agentId },
+          params: { ref: automationRef(automation) },
+          body: {},
         }),
         [200],
       );
-      return response.body;
+      return scheduleResponseFromAutomation(response.body);
     },
 
     async disableAutomation(
       actor: ApiTestUser,
-      automation: Pick<AutomationResponse, "agentId" | "name">,
+      automation: AutomationResourceRef,
     ): Promise<AutomationResponse> {
       const response = await accept(
-        setupApp({ context })(automationsEnableContract).disable({
+        setupApp({ context })(automationsV2ByRefContract).disable({
           headers: authenticate(context, actor),
-          params: { name: automation.name },
-          body: { agentId: automation.agentId },
+          params: { ref: automationRef(automation) },
+          body: {},
         }),
         [200],
       );
-      return response.body;
+      return scheduleResponseFromAutomation(response.body);
     },
 
     async requestRunAutomation(
@@ -922,9 +1226,10 @@ export function createRunsSchedulesApi(context: TestContext) {
       )[],
     ) {
       return await accept(
-        setupApp({ context })(automationRunContract).run({
+        setupApp({ context })(automationsV2ByRefContract).run({
           headers: authenticate(context, actor),
-          body: { automationId },
+          params: { ref: automationId },
+          body: {},
         }),
         statuses,
       );
@@ -932,13 +1237,12 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async deleteAutomation(
       actor: ApiTestUser,
-      automation: Pick<AutomationResponse, "agentId" | "name">,
+      automation: AutomationResourceRef,
     ): Promise<void> {
       await accept(
-        setupApp({ context })(automationsByNameContract).delete({
+        setupApp({ context })(automationsV2ByRefContract).delete({
           headers: authenticate(context, actor),
-          params: { name: automation.name },
-          query: { agentId: automation.agentId },
+          params: { ref: automationRef(automation) },
         }),
         [204],
       );
@@ -946,14 +1250,13 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async requestDeleteAutomation(
       actor: ApiTestUser | null,
-      automation: Pick<AutomationResponse, "agentId" | "name">,
+      automation: AutomationResourceRef,
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsByNameContract).delete({
+        setupApp({ context })(automationsV2ByRefContract).delete({
           headers: authenticate(context, actor),
-          params: { name: automation.name },
-          query: { agentId: automation.agentId },
+          params: { ref: automationRef(automation) },
         }),
         statuses,
       );
@@ -963,13 +1266,13 @@ export function createRunsSchedulesApi(context: TestContext) {
       actor: ApiTestUser | null,
       name: string,
       body: unknown,
-      statuses: readonly (200 | 201 | 400 | 401 | 403 | 404)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsByNameContract).update({
+        setupApp({ context })(automationsV2ByRefContract).update({
           headers: authenticate(context, actor),
-          params: { name },
-          body: body as UpdateAutomationRequest,
+          params: { ref: name },
+          body: updateV2AutomationBody(body as UpdateAutomationRequest),
         }),
         statuses,
       );
@@ -977,14 +1280,14 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async requestEnableAutomation(
       actor: ApiTestUser | null,
-      automation: Pick<AutomationResponse, "agentId" | "name">,
+      automation: AutomationResourceRef,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsEnableContract).enable({
+        setupApp({ context })(automationsV2ByRefContract).enable({
           headers: authenticate(context, actor),
-          params: { name: automation.name },
-          body: { agentId: automation.agentId },
+          params: { ref: automationRef(automation) },
+          body: {},
         }),
         statuses,
       );
@@ -992,14 +1295,14 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async requestDisableAutomation(
       actor: ApiTestUser | null,
-      automation: Pick<AutomationResponse, "agentId" | "name">,
+      automation: AutomationResourceRef,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsEnableContract).disable({
+        setupApp({ context })(automationsV2ByRefContract).disable({
           headers: authenticate(context, actor),
-          params: { name: automation.name },
-          body: { agentId: automation.agentId },
+          params: { ref: automationRef(automation) },
+          body: {},
         }),
         statuses,
       );
@@ -1027,13 +1330,22 @@ export function createRunsSchedulesApi(context: TestContext) {
       body: CreateWebhookAutomationRequest,
     ): Promise<WebhookAutomationCreateResponse> {
       const response = await accept(
-        setupApp({ context })(webhookAutomationsMainContract).create({
+        setupApp({ context })(automationsV2MainContract).create({
           headers: authenticate(context, actor),
-          body,
+          body: createV2WebhookAutomationBody(body),
         }),
         [201],
       );
-      return response.body;
+      const secret = response.body.webhookSecret;
+      if (secret === undefined) {
+        throw new Error(
+          "Expected webhook automation creation to return secret",
+        );
+      }
+      return {
+        automation: webhookResponseFromAutomation(response.body.automation),
+        secret,
+      };
     },
 
     async requestCreateWebhookAutomationUnchecked(
@@ -1042,9 +1354,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookAutomationsMainContract).create({
+        setupApp({ context })(automationsV2MainContract).create({
           headers: authenticate(context, actor),
-          body: body as CreateWebhookAutomationRequest,
+          body: createV2WebhookAutomationBodyUnchecked(body),
         }),
         statuses,
       );
@@ -1054,12 +1366,16 @@ export function createRunsSchedulesApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<WebhookAutomationListResponse> {
       const response = await accept(
-        setupApp({ context })(webhookAutomationsMainContract).list({
+        setupApp({ context })(automationsV2MainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body;
+      return {
+        automations: response.body.automations
+          .filter(hasWebhookTrigger)
+          .map(webhookResponseFromAutomation),
+      };
     },
 
     async requestListWebhookAutomations(
@@ -1067,7 +1383,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookAutomationsMainContract).list({
+        setupApp({ context })(automationsV2MainContract).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -1079,9 +1395,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       id: string,
     ): Promise<void> {
       await accept(
-        setupApp({ context })(webhookAutomationsByIdContract).delete({
+        setupApp({ context })(automationsV2ByRefContract).delete({
           headers: authenticate(context, actor),
-          params: { id },
+          params: { ref: id },
         }),
         [204],
       );
@@ -1093,9 +1409,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookAutomationsByIdContract).delete({
+        setupApp({ context })(automationsV2ByRefContract).delete({
           headers: authenticate(context, actor),
-          params: { id },
+          params: { ref: id },
         }),
         statuses,
       );
@@ -1138,25 +1454,114 @@ export function createRunsSchedulesApi(context: TestContext) {
       actor: ApiTestUser,
       body: DeployScheduleRequest,
     ): Promise<DeployScheduleResponse> {
-      const response = await accept(
-        setupApp({ context })(zeroSchedulesMainContract).deploy({
+      const existingList = await accept(
+        setupApp({ context })(automationsV2MainContract).list({
           headers: authenticate(context, actor),
-          body,
         }),
-        [200, 201],
+        [200],
       );
-      return response.body;
+      const existing = existingList.body.automations.find((automation) => {
+        return (
+          automation.name === body.name &&
+          automation.agentId === body.agentId &&
+          hasTimeTrigger(automation)
+        );
+      });
+
+      if (existing !== undefined) {
+        const updated = await accept(
+          setupApp({ context })(automationsV2ByRefContract).update({
+            headers: authenticate(context, actor),
+            params: { ref: existing.id },
+            body: updateV2AutomationBody(body),
+          }),
+          [200],
+        );
+        const triggers = await accept(
+          setupApp({ context })(automationsV2ByRefContract).listTriggers({
+            headers: authenticate(context, actor),
+            params: { ref: updated.body.id },
+          }),
+          [200],
+        );
+        for (const trigger of triggers.body.triggers) {
+          if (isTimeTrigger(trigger)) {
+            await accept(
+              setupApp({ context })(automationTriggersV2Contract).remove({
+                headers: authenticate(context, actor),
+                params: { id: trigger.id },
+              }),
+              [204],
+            );
+          }
+        }
+        const nextTrigger = createTimeTriggerRequest(body);
+        if (!nextTrigger) {
+          throw new Error("Schedule deployment requires a time trigger");
+        }
+        await accept(
+          setupApp({ context })(automationsV2ByRefContract).addTrigger({
+            headers: authenticate(context, actor),
+            params: { ref: updated.body.id },
+            body: nextTrigger,
+          }),
+          [201],
+        );
+        if (body.enabled === true && !updated.body.enabled) {
+          await accept(
+            setupApp({ context })(automationsV2ByRefContract).enable({
+              headers: authenticate(context, actor),
+              params: { ref: updated.body.id },
+              body: {},
+            }),
+            [200],
+          );
+        }
+        if (body.enabled === false && updated.body.enabled) {
+          await accept(
+            setupApp({ context })(automationsV2ByRefContract).disable({
+              headers: authenticate(context, actor),
+              params: { ref: updated.body.id },
+              body: {},
+            }),
+            [200],
+          );
+        }
+        const shown = await accept(
+          setupApp({ context })(automationsV2ByRefContract).show({
+            headers: authenticate(context, actor),
+            params: { ref: updated.body.id },
+          }),
+          [200],
+        );
+        return {
+          schedule: scheduleResponseFromAutomation(shown.body),
+          created: false,
+        };
+      }
+
+      const response = await accept(
+        setupApp({ context })(automationsV2MainContract).create({
+          headers: authenticate(context, actor),
+          body: createV2AutomationBody(body),
+        }),
+        [201],
+      );
+      return {
+        schedule: scheduleResponseFromAutomation(response.body.automation),
+        created: true,
+      };
     },
 
     async requestDeployScheduleUnchecked(
       actor: ApiTestUser | null,
       body: unknown,
-      statuses: readonly (200 | 201 | 400 | 401 | 403 | 404)[],
+      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSchedulesMainContract).deploy({
+        setupApp({ context })(automationsV2MainContract).create({
           headers: authenticate(context, actor),
-          body: body as DeployScheduleRequest,
+          body: createV2AutomationBodyUnchecked(body),
         }),
         statuses,
       );
@@ -1164,12 +1569,16 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async listSchedules(actor: ApiTestUser): Promise<ScheduleListResponse> {
       const response = await accept(
-        setupApp({ context })(zeroSchedulesMainContract).list({
+        setupApp({ context })(automationsV2MainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
       );
-      return response.body;
+      return {
+        schedules: response.body.automations
+          .filter(hasTimeTrigger)
+          .map(scheduleResponseFromAutomation),
+      };
     },
 
     async requestListSchedules(
@@ -1177,7 +1586,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSchedulesMainContract).list({
+        setupApp({ context })(automationsV2MainContract).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -1186,44 +1595,44 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async enableSchedule(
       actor: ApiTestUser,
-      schedule: Pick<ScheduleResponse, "agentId" | "name">,
+      schedule: AutomationResourceRef,
     ): Promise<ScheduleResponse> {
       const response = await accept(
-        setupApp({ context })(zeroSchedulesEnableContract).enable({
+        setupApp({ context })(automationsV2ByRefContract).enable({
           headers: authenticate(context, actor),
-          params: { name: schedule.name },
-          body: { agentId: schedule.agentId },
+          params: { ref: automationRef(schedule) },
+          body: {},
         }),
         [200],
       );
-      return response.body;
+      return scheduleResponseFromAutomation(response.body);
     },
 
     async disableSchedule(
       actor: ApiTestUser,
-      schedule: Pick<ScheduleResponse, "agentId" | "name">,
+      schedule: AutomationResourceRef,
     ): Promise<ScheduleResponse> {
       const response = await accept(
-        setupApp({ context })(zeroSchedulesEnableContract).disable({
+        setupApp({ context })(automationsV2ByRefContract).disable({
           headers: authenticate(context, actor),
-          params: { name: schedule.name },
-          body: { agentId: schedule.agentId },
+          params: { ref: automationRef(schedule) },
+          body: {},
         }),
         [200],
       );
-      return response.body;
+      return scheduleResponseFromAutomation(response.body);
     },
 
     async requestEnableSchedule(
       actor: ApiTestUser | null,
-      schedule: Pick<ScheduleResponse, "agentId" | "name">,
+      schedule: AutomationResourceRef,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSchedulesEnableContract).enable({
+        setupApp({ context })(automationsV2ByRefContract).enable({
           headers: authenticate(context, actor),
-          params: { name: schedule.name },
-          body: { agentId: schedule.agentId },
+          params: { ref: automationRef(schedule) },
+          body: {},
         }),
         statuses,
       );
@@ -1245,9 +1654,10 @@ export function createRunsSchedulesApi(context: TestContext) {
       )[],
     ) {
       return await accept(
-        setupApp({ context })(zeroScheduleRunContract).run({
+        setupApp({ context })(automationsV2ByRefContract).run({
           headers: authenticate(context, actor),
-          body: { scheduleId },
+          params: { ref: scheduleId },
+          body: {},
         }),
         statuses,
       );
@@ -1255,13 +1665,12 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async deleteSchedule(
       actor: ApiTestUser,
-      schedule: Pick<ScheduleResponse, "agentId" | "name">,
+      schedule: AutomationResourceRef,
     ): Promise<void> {
       await accept(
-        setupApp({ context })(zeroSchedulesByNameContract).delete({
+        setupApp({ context })(automationsV2ByRefContract).delete({
           headers: authenticate(context, actor),
-          params: { name: schedule.name },
-          query: { agentId: schedule.agentId },
+          params: { ref: automationRef(schedule) },
         }),
         [204],
       );
@@ -1269,14 +1678,13 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async requestDeleteSchedule(
       actor: ApiTestUser | null,
-      schedule: Pick<ScheduleResponse, "agentId" | "name">,
+      schedule: AutomationResourceRef,
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSchedulesByNameContract).delete({
+        setupApp({ context })(automationsV2ByRefContract).delete({
           headers: authenticate(context, actor),
-          params: { name: schedule.name },
-          query: { agentId: schedule.agentId },
+          params: { ref: automationRef(schedule) },
         }),
         statuses,
       );
@@ -1284,14 +1692,13 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async requestDeleteScheduleAs(
       authorization: string | undefined,
-      schedule: Pick<ScheduleResponse, "agentId" | "name">,
+      schedule: AutomationResourceRef,
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroSchedulesByNameContract).delete({
+        setupApp({ context })(automationsV2ByRefContract).delete({
           headers: authorization === undefined ? {} : { authorization },
-          params: { name: schedule.name },
-          query: { agentId: schedule.agentId },
+          params: { ref: automationRef(schedule) },
         }),
         statuses,
       );
@@ -1299,7 +1706,7 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async executeSchedulesCron(validAuth: boolean) {
       return await accept(
-        setupApp({ context })(cronExecuteSchedulesContract).execute({
+        setupApp({ context })(cronExecuteAutomationsContract).execute({
           headers: cronHeaders(validAuth),
         }),
         [200, 401],

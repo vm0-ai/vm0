@@ -15,7 +15,6 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
-import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -135,16 +134,40 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
   return token;
 }
 
-async function drainDetached(times: number): Promise<void> {
-  for (let index = 0; index < times; index++) {
-    await clearAllDetached();
+async function waitForThreadMessages(
+  actor: ApiTestUser,
+  threadId: string,
+  predicate: (messages: readonly PagedChatMessage[]) => boolean,
+) {
+  let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
+  await expect
+    .poll(async () => {
+      page = await chat.listThreadMessages(actor, threadId);
+      return predicate(page.messages);
+    })
+    .toBe(true);
+  if (!page) {
+    throw new Error(`Expected chat thread ${threadId} messages to be readable`);
   }
+  return page;
+}
+
+async function waitForRunStatus(
+  actor: ApiTestUser,
+  runId: string,
+  status: "cancelled" | "completed" | "failed" | "pending" | "running",
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const run = await api.readRun(actor, runId);
+      return run.status;
+    })
+    .toBe(status);
 }
 
 /**
  * Checkpoint + exitCode-0 complete (completing without a checkpoint fails the
- * run). Drains three times: terminal side effects → callback ACK → nested
- * chat-processing waitUntil.
+ * run).
  */
 async function completeChatRunOk(
   runId: string,
@@ -168,12 +191,11 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
-  await drainDetached(3);
 }
 
 async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
   await api.requestCancelRun(actor, runId, [200]);
-  await drainDetached(3);
+  await waitForRunStatus(actor, runId, "cancelled");
 }
 
 function assistantMessages(
@@ -371,7 +393,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         selectedModel: "claude-sonnet-4-6",
       },
     });
-    await drainDetached(1);
 
     let detail = await chat.readThread(actor, run.threadId);
     expect(detail.selectedModel).toBe("claude-sonnet-4-6");
@@ -438,7 +459,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       agentId,
       prompt: "delete cascade anchor",
     });
-    await drainDetached(1);
     await claimChatRun(runnerGroup, main.runId);
     const scheduleName = uniqueScheduleName("bdd-thread-linked");
     await api.deploySchedule(actor, {
@@ -462,7 +482,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       agentId,
       prompt: "sibling thread completes",
     });
-    await drainDetached(1);
     const siblingClaim = await claimChatRun(runnerGroup, sibling.runId);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(sibling.runId, siblingClaim.sandboxHeaders);
@@ -483,7 +502,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       agentId,
       prompt: "other thread stays active",
     });
-    await drainDetached(1);
 
     const peerDelete = await chat.requestDeleteThread(
       peer,
@@ -505,7 +523,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
     expect(deleted.body).toBeUndefined();
-    await clearAllDetached();
 
     expect((await api.readRun(actor, main.runId)).status).toBe("cancelled");
     expect((await api.readRun(actor, sibling.runId)).status).toBe("completed");
@@ -1323,7 +1340,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       agentId,
       prompt: "produce thread artifacts",
     });
-    await drainDetached(1);
     const { claim, sandboxHeaders } = await claimChatRun(
       runnerGroup,
       run.runId,
@@ -1496,7 +1512,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       agentId,
       prompt: "first artifact run",
     });
-    await drainDetached(1);
     const claim1 = await claimChatRun(runnerGroup, run1.runId);
     const bearer1 = `Bearer ${zeroTokenFromClaim(claim1.claim)}`;
     const ownId = randomUUID();
@@ -1523,7 +1538,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       threadId: run1.threadId,
       prompt: "second artifact run",
     });
-    await drainDetached(1);
     const claim2 = await claimChatRun(runnerGroup, run2.runId);
     const bearer2 = `Bearer ${zeroTokenFromClaim(claim2.claim)}`;
     await chat.completeUploadWithBearer(bearer2, { id: sharedId }, [200]);
@@ -1907,13 +1921,17 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       createdAt: expect.any(String),
     });
     const run1Id = sent.body.runId;
-    await drainDetached(1);
 
     const run1 = await api.readRun(actor, run1Id);
     expect(run1.prompt).toBe("hello from v1");
     expect(run1.appendSystemPrompt).toContain(
       "You are currently running inside: Web",
     );
+    await waitForThreadMessages(actor, thread.id, (messages) => {
+      return userMessages(messages).some((message) => {
+        return message.id === sent.body.messageId;
+      });
+    });
 
     const v1Page = await chat.requestV1ThreadMessages(
       bearer,
@@ -1931,7 +1949,15 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
         content: "hello from v1",
       }),
     );
-    const zeroPage = await chat.listThreadMessages(actor, thread.id);
+    const zeroPage = await waitForThreadMessages(
+      actor,
+      thread.id,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return message.id === sent.body.messageId && message.runId === run1Id;
+        });
+      },
+    );
     expect(
       userMessages(zeroPage.messages).find((message) => {
         return message.id === sent.body.messageId;
@@ -1946,6 +1972,13 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     // no-stored-assistant fallback in the next send's context.
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run1Id, claim1.sandboxHeaders);
+    await waitForThreadMessages(actor, thread.id, (messages) => {
+      return assistantMessages(messages).some((message) => {
+        return (
+          message.runId === run1Id && message.runLifecycleEvent === "completed"
+        );
+      });
+    });
 
     const second = await chat.requestV1Send(
       bearer,
@@ -1956,7 +1989,6 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       throw new Error("Expected the second v1 send to create a run");
     }
     const run2Id = second.body.runId;
-    await drainDetached(1);
     const run2 = await api.readRun(actor, run2Id);
     const appended = run2.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
@@ -1986,8 +2018,18 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     // Completing the active run auto-sends the queued message into a new run.
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run2Id, claim2.sandboxHeaders);
-    await drainDetached(1);
-    const afterQueue = await chat.listThreadMessages(actor, thread.id);
+    const afterQueue = await waitForThreadMessages(
+      actor,
+      thread.id,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesMessageId === queued.body.messageId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
     const promoted = userMessages(afterQueue.messages).find((message) => {
       return message.revokesMessageId === queued.body.messageId;
     });
@@ -2023,7 +2065,6 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       throw new Error("Expected the skill-mounting v1 send to create a run");
     }
     const run4Id = skillSend.body.runId;
-    await drainDetached(1);
     const claim4 = await claimChatRun(runnerGroup, run4Id);
     expect(claim4.claim.storageManifest?.storages).toContainEqual(
       expect.objectContaining({
@@ -2049,7 +2090,6 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     if (afterDelete.status !== 201 || afterDelete.body.runId === null) {
       throw new Error("Expected the post-delete v1 send to create a run");
     }
-    await drainDetached(1);
     const claim5 = await claimChatRun(runnerGroup, afterDelete.body.runId);
     expect(JSON.stringify(claim5.claim)).not.toContain(
       `custom-skill@${skillName}`,

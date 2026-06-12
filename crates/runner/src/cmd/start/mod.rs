@@ -164,17 +164,36 @@ pub struct StartArgs {
     local: bool,
 }
 
+struct LiveRunnerPublishResources<'a> {
+    provider: &'a dyn JobProvider,
+    runtime: &'a mut dyn SandboxRuntime,
+    mitm: &'a mut proxy::MitmProxy,
+    kmsg_handle: kmsg_log::KmsgHandle,
+    dns_handle: dns::DnsProxy,
+    memory_prefetch: &'a mut prefetch::MemoryPrefetchTasks,
+}
+
 async fn publish_live_runner_instance_or_shutdown_startup_resources(
     home: &HomePaths,
     metadata: crate::live_runner_instances::LiveRunnerInstanceMetadata,
-    provider: &dyn JobProvider,
-    runtime: &mut dyn SandboxRuntime,
-) -> RunnerResult<crate::live_runner_instances::LiveRunnerInstanceHandle> {
+    resources: LiveRunnerPublishResources<'_>,
+) -> RunnerResult<(
+    crate::live_runner_instances::LiveRunnerInstanceHandle,
+    kmsg_log::KmsgHandle,
+    dns::DnsProxy,
+)> {
     match crate::live_runner_instances::publish(home, metadata).await {
-        Ok(handle) => Ok(handle),
+        Ok(handle) => Ok((handle, resources.kmsg_handle, resources.dns_handle)),
         Err(e) => {
-            provider.shutdown().await;
-            runtime.shutdown().await;
+            resources.memory_prefetch.cancel();
+            resources.provider.shutdown().await;
+            resources.runtime.shutdown().await;
+            if let Err(kill_error) = resources.mitm.kill_now().await {
+                warn!(error = %kill_error, "failed to kill proxy after live runner instance publish failed");
+            }
+            resources.kmsg_handle.stop().await;
+            resources.dns_handle.stop().await;
+            resources.memory_prefetch.drain().await;
             Err(e)
         }
     }
@@ -195,6 +214,12 @@ pub async fn run_start(
         .map_err(|e| RunnerError::Internal(format!("register signal handlers: {e}")))?;
 
     let mut runner_config = config::load(&args.config).await?;
+    let registry_config_path = tokio::fs::canonicalize(&args.config).await.map_err(|e| {
+        RunnerError::Config(format!(
+            "canonicalize config path {} for live runner registry: {e}",
+            args.config.display()
+        ))
+    })?;
 
     // CLI / env overrides — take server out so we can mutate independently
     let mut server = runner_config.server.take().unwrap_or(config::ServerConfig {
@@ -310,7 +335,7 @@ pub async fn run_start(
     })?;
 
     // Start background prefetch of snapshot memory for all profiles.
-    let memory_prefetch =
+    let mut memory_prefetch =
         prefetch::MemoryPrefetchTasks::spawn(runner_config.profiles.values().map(|profile| {
             crate::paths::RootfsPaths::new(&home, &profile.rootfs_hash)
                 .snapshot(&profile.snapshot_hash)
@@ -509,19 +534,27 @@ pub async fn run_start(
     });
 
     let live_runner_instance_metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
-        config_path: args.config.clone(),
+        config_path: registry_config_path,
         base_dir: base_dir_canonical.clone(),
         runner_name: name.clone(),
         runner_group: group_name.clone(),
+        subcommand: "start".into(),
     };
 
-    let live_runner_instance_handle = publish_live_runner_instance_or_shutdown_startup_resources(
-        &home,
-        live_runner_instance_metadata,
-        provider.as_ref(),
-        runtime.as_mut(),
-    )
-    .await?;
+    let (live_runner_instance_handle, kmsg_handle, dns_handle) =
+        publish_live_runner_instance_or_shutdown_startup_resources(
+            &home,
+            live_runner_instance_metadata,
+            LiveRunnerPublishResources {
+                provider: provider.as_ref(),
+                runtime: runtime.as_mut(),
+                mitm: &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                memory_prefetch: &mut memory_prefetch,
+            },
+        )
+        .await?;
 
     let config = RunConfig {
         runner: RunnerInfo {

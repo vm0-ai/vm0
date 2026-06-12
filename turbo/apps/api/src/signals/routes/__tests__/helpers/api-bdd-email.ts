@@ -10,7 +10,6 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../../utils";
 
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 const RESEND_WEBHOOK_SECRET = "whsec_test";
@@ -80,7 +79,6 @@ export function createEmailApi(context: TestContext) {
         },
         [200],
       );
-      await clearAllDetached();
       return { from, subject };
     },
 

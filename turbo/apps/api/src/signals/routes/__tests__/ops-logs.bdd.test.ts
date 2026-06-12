@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
@@ -31,6 +30,12 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 const context = testContext();
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
+type UserExportStatusBody = Extract<
+  Awaited<
+    ReturnType<ReturnType<typeof createOpsLogsApi>["requestGetUserExport"]>
+  >["body"],
+  { job: unknown }
+>;
 
 afterEach(() => {
   clearMockNow();
@@ -105,6 +110,29 @@ function unsubscribeToken(userId: string): string {
   return `${userId}.${signature}`;
 }
 
+async function waitForUserExportJobStatus(
+  api: ReturnType<typeof createOpsLogsApi>,
+  actor: ApiTestUser,
+  jobId: string,
+  status: "completed" | "failed" | "pending" | "running",
+) {
+  let body: UserExportStatusBody | undefined;
+  await expect
+    .poll(async () => {
+      const response = await api.requestGetUserExport(actor, [200]);
+      if (!("job" in response.body)) {
+        return null;
+      }
+      body = response.body;
+      return body.job?.id === jobId ? body.job.status : null;
+    })
+    .toBe(status);
+  if (!body) {
+    throw new Error(`Expected user export job ${jobId} to become ${status}`);
+  }
+  return body;
+}
+
 describe("BILL-02: model usage aggregation and public rankings", () => {
   it("rejects the model-stats aggregation cron without the cron secret", async () => {
     const api = createOpsLogsApi(context);
@@ -155,7 +183,6 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       authorization: `Bearer ${runs.sandboxTokenForRun(actor, created.runId)}`,
     };
     await runs.requestCancelRun(actor, created.runId, [200]);
-    await clearAllDetached();
 
     mockNow(aggregateAt);
     const baselineAggregate = await api.requestAggregateModelStats(
@@ -577,10 +604,14 @@ describe("OPS-01: user data export", () => {
     expect(active.body.nextExportAt).toBeNull();
 
     pendingPut.resolve();
-    await clearAllDetached();
 
-    const completed = await api.requestGetUserExport(actor, [200]);
-    expect(completed.body).toStrictEqual({
+    const completed = await waitForUserExportJobStatus(
+      api,
+      actor,
+      jobId,
+      "completed",
+    );
+    expect(completed).toStrictEqual({
       job: {
         id: jobId,
         status: "completed",
@@ -642,10 +673,14 @@ describe("OPS-01: user data export", () => {
     context.mocks.s3.send.mockResolvedValue({});
     const restarted = await api.requestPostUserExport(actor, [202]);
     expect(restarted.body.jobId).not.toBe(jobId);
-    await clearAllDetached();
 
-    const latest = await api.requestGetUserExport(actor, [200]);
-    expect(latest.body.job).toStrictEqual({
+    const latest = await waitForUserExportJobStatus(
+      api,
+      actor,
+      restarted.body.jobId,
+      "completed",
+    );
+    expect(latest.job).toStrictEqual({
       id: restarted.body.jobId,
       status: "completed",
       createdAt: new Date(expiredReadAt).toISOString(),
@@ -677,28 +712,36 @@ describe("OPS-01: user data export", () => {
     context.mocks.s3.send.mockRejectedValueOnce(new Error("S3 upload failed"));
 
     const failedStart = await api.requestPostUserExport(actor, [202]);
-    await clearAllDetached();
 
-    const failedStatus = await api.requestGetUserExport(actor, [200]);
-    expect(failedStatus.body.job).toMatchObject({
+    const failedStatus = await waitForUserExportJobStatus(
+      api,
+      actor,
+      failedStart.body.jobId,
+      "failed",
+    );
+    expect(failedStatus.job).toMatchObject({
       id: failedStart.body.jobId,
       status: "failed",
       error: "S3 upload failed",
       downloadUrl: null,
     });
-    expect(failedStatus.body.canExport).toBeTruthy();
-    expect(failedStatus.body.nextExportAt).toBeNull();
+    expect(failedStatus.canExport).toBeTruthy();
+    expect(failedStatus.nextExportAt).toBeNull();
 
     mockNow(failedStartAt + 60_000);
     context.mocks.s3.send.mockResolvedValue({});
     const retried = await api.requestPostUserExport(actor, [202]);
     expect(retried.body.jobId).not.toBe(failedStart.body.jobId);
-    await clearAllDetached();
 
-    const retriedStatus = await api.requestGetUserExport(actor, [200]);
-    expect(retriedStatus.body.job?.id).toBe(retried.body.jobId);
-    expect(retriedStatus.body.job?.status).toBe("completed");
-    expect(retriedStatus.body.canExport).toBeFalsy();
+    const retriedStatus = await waitForUserExportJobStatus(
+      api,
+      actor,
+      retried.body.jobId,
+      "completed",
+    );
+    expect(retriedStatus.job?.id).toBe(retried.body.jobId);
+    expect(retriedStatus.job?.status).toBe("completed");
+    expect(retriedStatus.canExport).toBeFalsy();
   });
 
   it("completes exports without an email for unsubscribed users", async () => {
@@ -714,10 +757,14 @@ describe("OPS-01: user data export", () => {
     );
     context.mocks.s3.send.mockResolvedValue({});
     const started = await api.requestPostUserExport(actor, [202]);
-    await clearAllDetached();
 
-    const status = await api.requestGetUserExport(actor, [200]);
-    expect(status.body.job?.id).toBe(started.body.jobId);
-    expect(status.body.job?.status).toBe("completed");
+    const status = await waitForUserExportJobStatus(
+      api,
+      actor,
+      started.body.jobId,
+      "completed",
+    );
+    expect(status.job?.id).toBe(started.body.jobId);
+    expect(status.job?.status).toBe("completed");
   });
 });

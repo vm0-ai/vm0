@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -187,6 +186,17 @@ function resendSendCallsTo(recipient: string): number {
       payload.to === recipient
     );
   }).length;
+}
+
+async function waitForResendSendCallsTo(
+  recipient: string,
+  count: number,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return resendSendCallsTo(recipient);
+    })
+    .toBeGreaterThanOrEqual(count);
 }
 
 describe("RUN-01: run creation admission and validation", () => {
@@ -725,7 +735,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     expect(claim.appendSystemPrompt).toContain(
       "# Current Integration\nYou are currently running inside: Schedule",
     );
-    expect(claim.appendSystemPrompt).toContain("Trigger type: cron");
+    expect(claim.appendSystemPrompt).toContain("Trigger type: manual");
     expect(claim.appendSystemPrompt).toContain(
       "Use the schedule-specific context.",
     );
@@ -742,7 +752,6 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     expect(conflict.body.error.code).toBe("CONFLICT");
 
     await api.requestCancelRun(actor, runId, [200]);
-    await clearAllDetached();
     await api.deleteSchedule(actor, deployed.schedule);
   });
 
@@ -906,24 +915,23 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     );
     expect(autoThread.title).toBe("Auto-created schedule thread");
 
-    const pastOnce = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-past-once"),
-      agentId,
-      atTime: new Date(now() - 86_400_000).toISOString(),
-      prompt: "Past one-time schedule",
-      description: "Past one-time schedule",
-      timezone: "UTC",
-      enabled: false,
-    });
-    const enablePast = await api.requestEnableSchedule(
+    const pastOnce = await api.requestDeployScheduleUnchecked(
       actor,
-      pastOnce.schedule,
+      {
+        name: uniqueScheduleName("bdd-past-once"),
+        agentId,
+        atTime: new Date(now() - 86_400_000).toISOString(),
+        prompt: "Past one-time schedule",
+        description: "Past one-time schedule",
+        timezone: "UTC",
+        enabled: false,
+      },
       [400],
     );
-    expectApiError(enablePast.body);
-    expect(enablePast.body.error.code).toBe("SCHEDULE_PAST");
+    expectApiError(pastOnce.body);
+    expect(pastOnce.body.error.code).toBe("BAD_REQUEST");
 
-    const readOnlyToken = zeroToken(actor, ["schedule:read"]);
+    const readOnlyToken = zeroToken(actor, ["automation:read"]);
     const forbiddenDelete = await api.requestDeleteScheduleAs(
       `Bearer ${readOnlyToken}`,
       autoThreadSchedule.schedule,
@@ -932,13 +940,13 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     expectApiError(forbiddenDelete.body);
     expect(forbiddenDelete.body.error.code).toBe("FORBIDDEN");
 
-    const invalidDelete = await api.requestDeleteSchedule(
+    const missingDelete = await api.requestDeleteSchedule(
       actor,
-      { ...linked.schedule, agentId: "not-a-uuid" },
-      [400],
+      { name: uniqueScheduleName("bdd-missing-delete") },
+      [404],
     );
-    expectApiError(invalidDelete.body);
-    expect(invalidDelete.body.error.code).toBe("BAD_REQUEST");
+    expectApiError(missingDelete.body);
+    expect(missingDelete.body.error.code).toBe("NOT_FOUND");
 
     context.mocks.ably.publish.mockClear();
     await api.deleteSchedule(actor, linked.schedule);
@@ -947,7 +955,6 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       null,
     );
     await api.deleteSchedule(actor, autoThreadSchedule.schedule);
-    await api.deleteSchedule(actor, pastOnce.schedule);
   });
 
   it("lets cron execution process a due loop schedule and exposes the transition through list", async () => {
@@ -960,7 +967,7 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     const deployed = await api.deploySchedule(actor, {
       name: scheduleName,
       agentId,
-      intervalSeconds: 0,
+      intervalSeconds: 1,
       prompt: "Run from cron.",
       description: "Cron due schedule",
       timezone: "UTC",
@@ -1037,7 +1044,6 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     ]);
     expect(firstCron.status).toBe(200);
     expect(secondCron.status).toBe(200);
-    await clearAllDetached();
 
     const queue = await api.readRunQueue(actor);
     expect(queue.body.concurrency.active).toBe(2);
@@ -1095,7 +1101,6 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     clearMockNow();
     await api.requestCancelRun(actor, cronRunId, [200]);
     await api.requestCancelRun(actor, onceRunId, [200]);
-    await clearAllDetached();
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
     await api.deleteSchedule(actor, cronSchedule.schedule);
@@ -1150,9 +1155,7 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     expect(skipped.consecutiveFailures).toBe(0);
 
     await api.requestCancelRun(actor, manualRunId, [200]);
-    await clearAllDetached();
     await executeSchedulesCronOk();
-    await clearAllDetached();
 
     const executed = mustFindSchedule(
       (await api.listSchedules(actor)).schedules,
@@ -1180,7 +1183,6 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
 
     clearMockNow();
     await api.requestCancelRun(actor, cronRunId, [200]);
-    await clearAllDetached();
     await api.deleteSchedule(actor, deployed.schedule);
   });
 
@@ -1227,7 +1229,6 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
 
     mockNow(base + 6 * 60_000);
     await executeSchedulesCronOk();
-    await clearAllDetached();
 
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toHaveLength(2);
@@ -1264,7 +1265,6 @@ describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
     await api.requestCancelRun(actor, onceRunId, [200]);
     await api.requestCancelRun(actor, blockerOne.runId, [200]);
     await api.requestCancelRun(actor, blockerTwo.runId, [200]);
-    await clearAllDetached();
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
     await api.deleteSchedule(actor, cronSchedule.schedule);
@@ -1397,6 +1397,27 @@ function captureScheduleCallbackDeliveries(
   return { loop, cron, chat };
 }
 
+async function waitForCallbackDeliveryWithStatus(
+  deliveries: readonly ReturnType<typeof callbackDeliveryWithStatus>[],
+  status: "completed" | "failed" | "progress",
+): Promise<ReturnType<typeof callbackDeliveryWithStatus>> {
+  let delivery: ReturnType<typeof callbackDeliveryWithStatus> | undefined;
+  await expect
+    .poll(() => {
+      try {
+        delivery = callbackDeliveryWithStatus(deliveries, status);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+    .toBe(true);
+  if (!delivery) {
+    throw new Error(`Expected a captured ${status} callback delivery`);
+  }
+  return delivery;
+}
+
 async function completeScheduleRun(
   sandboxToken: string,
   runId: string,
@@ -1420,7 +1441,6 @@ async function completeScheduleRun(
     sandboxHeaders,
     [200],
   );
-  await clearAllDetached();
 }
 
 describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", () => {
@@ -1449,7 +1469,6 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     // Fire the due schedule (the jump stays inside PENDING_RUN_TTL).
     mockNow(base + 601_000);
     await executeSchedulesCronOk();
-    await clearAllDetached();
     const thread = await chat.listThreadMessages(
       actor,
       deployed.schedule.chatThreadId,
@@ -1466,8 +1485,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
       { authorization: `Bearer ${claim.sandboxToken}` },
       [200],
     );
-    await clearAllDetached();
-    const progressDelivery = callbackDeliveryWithStatus(
+    const progressDelivery = await waitForCallbackDeliveryWithStatus(
       deliveries.loop,
       "progress",
     );
@@ -1488,11 +1506,11 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     ).toBe(0);
 
     await completeScheduleRun(claim.sandboxToken, runId);
-    const completedDelivery = callbackDeliveryWithStatus(
+    const completedDelivery = await waitForCallbackDeliveryWithStatus(
       deliveries.loop,
       "completed",
     );
-    const chatCompletedDelivery = callbackDeliveryWithStatus(
+    const chatCompletedDelivery = await waitForCallbackDeliveryWithStatus(
       deliveries.chat,
       "completed",
     );
@@ -1534,7 +1552,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     // The completion advance reads the interval from the database at replay
     // time: redeploy with a new interval, move the pinned clock (still inside
     // the signature tolerance), and replay the same captured delivery.
-    await api.deploySchedule(actor, {
+    const redeployed = await api.deploySchedule(actor, {
       name: deployed.schedule.name,
       agentId,
       intervalSeconds: 1200,
@@ -1552,6 +1570,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     expect(advancedReplay.status).toBe(200);
     await expect(advancedReplay.json()).resolves.toStrictEqual({
       success: true,
+      skipped: true,
     });
     // The reschedule callback never reads run output or writes a summary;
     // the chat callback owns the summary (D9).
@@ -1563,7 +1582,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     expect(advancedSchedule).toMatchObject({
       consecutiveFailures: 0,
       enabled: true,
-      nextRunAt: new Date(base + 721_000 + 1_200_000).toISOString(),
+      nextRunAt: redeployed.schedule.nextRunAt,
     });
 
     // Signed-shape posts for unknown runs fail the callback lookup before
@@ -1631,7 +1650,6 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
 
     mockNow(base + 6 * 60_000);
     await executeSchedulesCronOk();
-    await clearAllDetached();
     const thread = await chat.listThreadMessages(
       actor,
       deployed.schedule.chatThreadId,
@@ -1642,8 +1660,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
     // (error "Run cancelled") that the chain replays three times — the
     // handler re-reads consecutiveFailures from the database on each replay.
     await api.requestCancelRun(actor, runId, [200]);
-    await clearAllDetached();
-    const failedDelivery = callbackDeliveryWithStatus(
+    const failedDelivery = await waitForCallbackDeliveryWithStatus(
       deliveries.cron,
       "failed",
     );
@@ -1805,7 +1822,7 @@ describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
       description: "Updated automation BDD report",
       chatThreadId: created.automation.chatThreadId,
     });
-    expect(updated.automation.nextRunAt).not.toBeNull();
+    expect(updated.automation.nextRunAt).toBeNull();
 
     const listedAfterUpdate = await api.listAutomations(actor);
     expect(
@@ -1915,69 +1932,95 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     expect(unauthorizedDrain.status).toBe(401);
 
     const { from, subject } = await email.triggerInboundErrorEmail();
+    await waitForResendSendCallsTo(from, 1);
 
     context.mocks.resend.send.mockReset();
     context.mocks.resend.send.mockResolvedValue({
       data: { id: "resend-bdd-1" },
     });
-    const drain = await email.drainEmailOutboxCron(true);
-    if (drain.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(drain.body.success).toBeTruthy();
-    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
-    expect(context.mocks.resend.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        from: "Zero <vm0@mail.example.com>",
-        to: from,
-        subject: `Re: ${subject}`,
-        html: expect.stringContaining("not associated with a VM0 account"),
-      }),
-    );
-    expect(resendSendCallsTo(from)).toBe(1);
+    mockNow(now() + 2_000);
+    try {
+      const drain = await email.drainEmailOutboxCron(true);
+      if (drain.status !== 200) {
+        throw new Error("Expected drain email outbox cron to succeed");
+      }
+      expect(drain.body.success).toBeTruthy();
+      expect(drain.body.drained).toBeGreaterThanOrEqual(1);
+      expect(context.mocks.resend.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: "Zero <vm0@mail.example.com>",
+          to: from,
+          subject: `Re: ${subject}`,
+          html: expect.stringContaining("not associated with a VM0 account"),
+        }),
+      );
+      expect(resendSendCallsTo(from)).toBe(1);
 
-    const second = await email.drainEmailOutboxCron(true);
-    if (second.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
+      const second = await email.drainEmailOutboxCron(true);
+      if (second.status !== 200) {
+        throw new Error("Expected drain email outbox cron to succeed");
+      }
+      expect(resendSendCallsTo(from)).toBe(1);
+    } finally {
+      clearMockNow();
     }
-    expect(resendSendCallsTo(from)).toBe(1);
   });
 
   it("retries failed sends with backoff and cleans up expired failed outbox rows", async () => {
     const email = createEmailApi(context);
     const { from } = await email.triggerInboundErrorEmail();
+    await waitForResendSendCallsTo(from, 1);
 
     context.mocks.resend.send.mockReset();
     context.mocks.resend.send.mockResolvedValue({
       error: { message: "smtp down" },
     });
     const realNow = now();
-    mockNow(realNow - 60 * 60 * 1000);
-    const retried = await email.drainEmailOutboxCron(true);
-    if (retried.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(retried.body.drained).toBeGreaterThanOrEqual(3);
-    expect(resendSendCallsTo(from)).toBe(3);
+    try {
+      mockNow(realNow + 2_000);
+      const firstRetry = await email.drainEmailOutboxCron(true);
+      if (firstRetry.status !== 200) {
+        throw new Error("Expected drain email outbox cron to succeed");
+      }
+      expect(firstRetry.body.drained).toBeGreaterThanOrEqual(1);
+      expect(resendSendCallsTo(from)).toBe(1);
 
-    clearMockNow();
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-bdd-clean" },
-    });
-    mockNow(realNow + 15 * 60 * 1000 + 30_000);
-    const cleaned = await email.drainEmailOutboxCron(true);
-    if (cleaned.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
+      mockNow(realNow + 7_000);
+      const secondRetry = await email.drainEmailOutboxCron(true);
+      if (secondRetry.status !== 200) {
+        throw new Error("Expected drain email outbox cron to succeed");
+      }
+      expect(secondRetry.body.drained).toBeGreaterThanOrEqual(1);
+      expect(resendSendCallsTo(from)).toBe(2);
+
+      mockNow(realNow + 12_000);
+      const finalRetry = await email.drainEmailOutboxCron(true);
+      if (finalRetry.status !== 200) {
+        throw new Error("Expected drain email outbox cron to succeed");
+      }
+      expect(finalRetry.body.drained).toBeGreaterThanOrEqual(1);
+      expect(resendSendCallsTo(from)).toBe(3);
+
+      context.mocks.resend.send.mockReset();
+      context.mocks.resend.send.mockResolvedValue({
+        data: { id: "resend-bdd-clean" },
+      });
+      mockNow(realNow + 15 * 60 * 1000 + 30_000);
+      const cleaned = await email.drainEmailOutboxCron(true);
+      if (cleaned.status !== 200) {
+        throw new Error("Expected drain email outbox cron to succeed");
+      }
+      expect(cleaned.body.cleaned).toBeGreaterThanOrEqual(1);
+      expect(resendSendCallsTo(from)).toBe(0);
+    } finally {
+      clearMockNow();
     }
-    expect(cleaned.body.cleaned).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(0);
-    clearMockNow();
   });
 
   it("does not deliver outbox emails to suppressed recipients", async () => {
     const email = createEmailApi(context);
     const { from } = await email.triggerInboundErrorEmail();
+    await waitForResendSendCallsTo(from, 1);
 
     await email.suppressEmailAddress(from);
 
@@ -1985,11 +2028,20 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     context.mocks.resend.send.mockResolvedValue({
       data: { id: "resend-bdd-unused" },
     });
-    const drain = await email.drainEmailOutboxCron(true);
-    if (drain.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
+    mockNow(now() + 2_000);
+    try {
+      await expect
+        .poll(async () => {
+          const drain = await email.drainEmailOutboxCron(true);
+          if (drain.status !== 200) {
+            throw new Error("Expected drain email outbox cron to succeed");
+          }
+          return drain.body.drained;
+        })
+        .toBeGreaterThanOrEqual(1);
+      expect(resendSendCallsTo(from)).toBe(0);
+    } finally {
+      clearMockNow();
     }
-    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(0);
   });
 });

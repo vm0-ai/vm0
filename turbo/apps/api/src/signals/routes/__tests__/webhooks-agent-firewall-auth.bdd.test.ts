@@ -10,7 +10,6 @@ import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { setFirewallAuthRefreshTimeoutMsForTests } from "../../services/agent-webhook-firewall-auth.service";
-import { clearAllDetached } from "../../utils";
 import {
   basicTemplate,
   createFirewallApi,
@@ -417,7 +416,6 @@ describe("FW-3: billable firewall lease", () => {
       },
       [200],
     );
-    await clearAllDetached();
 
     const denied = await fw.requestFirewallAuth(headers, body, [402]);
     if (denied.status !== 402) {
@@ -426,7 +424,6 @@ describe("FW-3: billable firewall lease", () => {
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
     await runsApi.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
   });
 
   it("denies billable firewall auth when the granted credits already expired", async () => {
@@ -472,7 +469,6 @@ describe("FW-3: billable firewall lease", () => {
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
     await runsApi.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
   });
 });
 

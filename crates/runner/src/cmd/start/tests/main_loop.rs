@@ -105,6 +105,8 @@ fn write_usage_pending_state(
 
 #[tokio::test]
 async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
+    use tokio::io::AsyncBufReadExt;
+
     let dir = tempfile::tempdir().unwrap();
     let home = crate::paths::HomePaths::with_root(dir.path().join("vm0-runner"));
     std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
@@ -118,21 +120,73 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
     let mut runtime = ShutdownRecordingRuntime {
         shutdowns: Arc::clone(&runtime_shutdowns),
     };
+    let (mut mitm, _mitm_crash_rx) = crate::proxy::MitmProxy::noop();
+    let mut ignore_term_child = tokio::process::Command::new("python3")
+        .arg("-c")
+        .arg(
+            r#"
+import os
+import signal
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+os.write(1, b"ready\n")
+while True:
+    signal.pause()
+"#,
+        )
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let proxy_child_pid = ignore_term_child.id().expect("proxy child should have pid");
+    let stdout = ignore_term_child.stdout.take().unwrap();
+    let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
+    let ready = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
+        .await
+        .expect("ignore-term child did not become ready")
+        .unwrap();
+    assert_eq!(ready.as_deref(), Some("ready"));
+    mitm.set_child_for_test(ignore_term_child);
+    let prefetch_cancel = CancellationToken::new();
+    let task_cancel = prefetch_cancel.clone();
+    let (cancelled_tx, cancelled_rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn(async move {
+        task_cancel.cancelled().await;
+        let _ = cancelled_tx.send(());
+    });
+    let mut memory_prefetch =
+        crate::prefetch::MemoryPrefetchTasks::from_test_handle(prefetch_cancel, handle);
     let metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
         config_path: dir.path().join("runner.yaml"),
         base_dir: dir.path().join("base"),
         runner_name: "test-runner".into(),
         runner_group: "vm0/test".into(),
+        subcommand: "start".into(),
     };
 
-    let error = publish_live_runner_instance_or_shutdown_startup_resources(
-        &home,
-        metadata,
-        &provider,
-        &mut runtime,
+    let error = match tokio::time::timeout(
+        Duration::from_secs(2),
+        publish_live_runner_instance_or_shutdown_startup_resources(
+            &home,
+            metadata,
+            LiveRunnerPublishResources {
+                provider: &provider,
+                runtime: &mut runtime,
+                mitm: &mut mitm,
+                kmsg_handle: crate::kmsg_log::KmsgHandle::noop(),
+                dns_handle: crate::dns::DnsProxy::noop(),
+                memory_prefetch: &mut memory_prefetch,
+            },
+        ),
     )
     .await
-    .unwrap_err();
+    .expect("publish failure cleanup should not wait for graceful proxy stop")
+    {
+        Ok(_) => panic!("live runner instance publish should fail"),
+        Err(error) => error,
+    };
 
     assert!(
         error.to_string().contains("ensure live runner instances"),
@@ -140,6 +194,15 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
     );
     assert_eq!(provider_shutdowns.load(Ordering::SeqCst), 1);
     assert_eq!(runtime_shutdowns.load(Ordering::SeqCst), 1);
+    tokio::time::timeout(Duration::from_secs(5), cancelled_rx)
+        .await
+        .expect("prefetch task should observe cleanup cancellation")
+        .expect("prefetch task should report cancellation");
+    assert_eq!(memory_prefetch.task_count(), 0);
+    assert!(
+        !std::path::Path::new(&format!("/proc/{proxy_child_pid}")).exists(),
+        "proxy child should be killed and reaped during cleanup"
+    );
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {

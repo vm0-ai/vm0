@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../utils";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-chat-files";
@@ -497,7 +496,6 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
     });
 
     await runs.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await runs.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });

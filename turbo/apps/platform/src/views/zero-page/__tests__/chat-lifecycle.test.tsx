@@ -2517,6 +2517,10 @@ describe("chat lifecycle", () => {
   it("sends a recommended follow-up from the latest assistant reply", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
+    const sentMessages: {
+      prompt?: string;
+      revokesMessageId?: string;
+    }[] = [];
 
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
@@ -2575,6 +2579,9 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-09T10:01:01Z",
         },
       ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
     });
 
     detachedSetupPage({
@@ -2600,6 +2607,85 @@ describe("chat lifecycle", () => {
       expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
       expect(screen.getByText(followupPrompt)).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages[0]).toMatchObject({ prompt: followupPrompt });
+    expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
+  });
+
+  it("hides recommended follow-ups after a newer assistant reply", async () => {
+    const firstAssistantReply = "I can turn this into a launch package.";
+    const newerAssistantReply = "Here is the newer launch package.";
+    const followupPrompt = "Create a presentation outline";
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-old-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: "run-followup-old",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-old-assistant",
+          role: "assistant",
+          content: firstAssistantReply,
+          runId: "run-followup-old",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-followup-old-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-followup-old",
+          runLifecycleEvent: "completed",
+          recommendedFollowups: [
+            {
+              prompt: followupPrompt,
+              kind: "generate",
+              generationType: "presentation",
+            },
+          ],
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-followup-new-user",
+          role: "user",
+          content: followupPrompt,
+          runId: "run-followup-new",
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-followup-new-assistant",
+          role: "assistant",
+          content: newerAssistantReply,
+          runId: "run-followup-new",
+          createdAt: "2026-06-09T10:03:00Z",
+        },
+        {
+          id: "msg-followup-new-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-followup-new",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:03:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(firstAssistantReply)).toBeInTheDocument();
+      expect(screen.getByText(newerAssistantReply)).toBeInTheDocument();
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
     });
   });
 

@@ -6,7 +6,6 @@ import { z } from "zod";
 
 import { mockEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../utils";
 import { expectApiError } from "./helpers/api-bdd";
 import {
   createAuthOrgAgentsBddApi,
@@ -997,7 +996,6 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
     expect(survivor.id).toBe(compose.composeId);
 
     await runs.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await runs.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
 

@@ -71,7 +71,6 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../../utils";
 import type { ApiTestUser, ApiTestUserOptions } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -951,7 +950,6 @@ export function createBddIntegrationApi(context: TestContext) {
         }),
         [307],
       );
-      await clearAllDetached();
       return { teamId, botUserId, installerSlackUserId };
     },
 
@@ -967,7 +965,6 @@ export function createBddIntegrationApi(context: TestContext) {
         }),
         [200],
       );
-      await clearAllDetached();
     },
 
     async postSlackEvent(
@@ -989,7 +986,6 @@ export function createBddIntegrationApi(context: TestContext) {
         ),
         [200],
       );
-      await clearAllDetached();
       return response.body;
     },
 
@@ -1005,7 +1001,6 @@ export function createBddIntegrationApi(context: TestContext) {
         ),
         [200],
       );
-      await clearAllDetached();
       return response.body;
     },
 
@@ -1025,7 +1020,6 @@ export function createBddIntegrationApi(context: TestContext) {
         ),
         [200],
       );
-      await clearAllDetached();
       return response.body;
     },
 

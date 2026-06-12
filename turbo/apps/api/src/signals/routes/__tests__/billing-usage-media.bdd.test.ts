@@ -18,7 +18,6 @@ import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -2023,7 +2022,6 @@ describe("FILE-02: audio transcription v1 and Gemini generate-image provider con
       contents: [{ role: "user", parts: [{ text: "a cat" }] }],
     });
     // Flush the detached usage-event processing kicked off by the success.
-    await clearAllDetached();
 
     context.mocks.googleGenAi.generateContent.mockResolvedValueOnce({
       candidates: [

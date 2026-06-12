@@ -12,7 +12,6 @@ import { describe, expect, it } from "vitest";
 import { mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-helpers";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
-import { clearAllDetached } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -147,17 +146,64 @@ async function claimChatRun(
   return { authorization: `Bearer ${claim.sandboxToken}` };
 }
 
-async function drainDetached(times: number): Promise<void> {
-  for (let index = 0; index < times; index++) {
-    await clearAllDetached();
+async function waitForArrayLength<T>(
+  items: readonly T[],
+  length: number,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return items.length;
+    })
+    .toBe(length);
+}
+
+async function waitForThreadMessages(
+  actor: ApiTestUser,
+  threadId: string,
+  predicate: (messages: readonly PagedChatMessage[]) => boolean,
+) {
+  let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
+  await expect
+    .poll(async () => {
+      page = await chat.listThreadMessages(actor, threadId);
+      return predicate(page.messages);
+    })
+    .toBe(true);
+  if (!page) {
+    throw new Error(`Expected chat thread ${threadId} messages to be readable`);
   }
+  return page;
+}
+
+async function waitForThreadTitle(
+  actor: ApiTestUser,
+  threadId: string,
+  title: string | null,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      return (await chat.readThread(actor, threadId)).title;
+    })
+    .toBe(title);
+}
+
+async function waitForRunStatus(
+  actor: ApiTestUser,
+  runId: string,
+  status: "cancelled" | "completed" | "failed" | "pending" | "running",
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const run = await api.readRun(actor, runId);
+      return run.status;
+    })
+    .toBe(status);
 }
 
 /**
  * Checkpoint + exitCode-0 complete. Completing without a checkpoint routes to
  * the missing-checkpoint handler and FAILS the run, so every successful chat
- * round checkpoints first. Drains three times: terminal side effects →
- * callback ACK → nested chat-processing waitUntil.
+ * round checkpoints first.
  */
 async function completeChatRunOk(
   runId: string,
@@ -188,7 +234,6 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
-  await drainDetached(3);
 }
 
 async function failChatRun(
@@ -201,7 +246,6 @@ async function failChatRun(
     sandboxHeaders,
     [200],
   );
-  await drainDetached(3);
 }
 
 function assistantMessages(
@@ -332,7 +376,8 @@ describe("CHAT-02: completed chat callback", () => {
       prompt: "unrelated sentinel run",
     });
     await api.requestCancelRun(actor, sentinel.runId, [200]);
-    await drainDetached(3);
+    await waitForRunStatus(actor, sentinel.runId, "cancelled");
+    await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     const titlePromptCountBeforeComplete = titlePrompts.length;
 
     await chatCallbacks.registerPushSubscription(actor);
@@ -345,7 +390,20 @@ describe("CHAT-02: completed chat callback", () => {
       lastEventSequence: 0,
     });
 
-    const after = await chat.listThreadMessages(actor, first.threadId);
+    const after = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return (
+          eventBackedContents(messages, first.runId).length === 1 &&
+          lifecycleMarkers(messages, first.runId, "completed").some(
+            (message) => {
+              return (message.recommendedFollowups?.length ?? 0) === 2;
+            },
+          )
+        );
+      },
+    );
     expect(
       eventBackedContents(after.messages, first.runId).map((message) => {
         return message.content;
@@ -383,9 +441,7 @@ describe("CHAT-02: completed chat callback", () => {
     });
     expect(recommender).toBeUndefined();
 
-    expect((await chat.readThread(actor, first.threadId)).title).toBe(
-      "Debugging Node Apps",
-    );
+    await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
     const initialTitlePrompt = titlePrompts.find((titlePrompt) => {
       return titlePrompt.includes(`Most recent user message:\n${prompt}`);
@@ -406,16 +462,34 @@ describe("CHAT-02: completed chat callback", () => {
       orderedIds.indexOf(first.threadId),
     );
 
-    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
-    expect(
-      pushPayload(context.mocks.webpush.sendNotification.mock.calls[0]),
-    ).toMatchObject({
-      title: prompt.slice(0, 60),
-      body: "Generated summary",
-      url: `/chats/${first.threadId}`,
-    });
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.some(
+          (call) => {
+            const payload = pushPayload(call) as Record<string, unknown>;
+            return (
+              payload.title === prompt.slice(0, 60) &&
+              payload.body === "Generated summary" &&
+              payload.url === `/chats/${first.threadId}`
+            );
+          },
+        );
+      })
+      .toBe(true);
 
-    const claimed = userMessages(after.messages).find((message) => {
+    const afterAutoSend = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.content === "queued next turn" &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimed = userMessages(afterAutoSend.messages).find((message) => {
       return (
         message.content === "queued next turn" && message.runId !== undefined
       );
@@ -429,7 +503,7 @@ describe("CHAT-02: completed chat callback", () => {
     // The paged-messages API returns the revoked original next to the
     // claiming copy; clients collapse the pair through revokesMessageId.
     expect(
-      userMessages(after.messages)
+      userMessages(afterAutoSend.messages)
         .filter((message) => {
           return message.content === "queued next turn";
         })
@@ -470,8 +544,7 @@ describe("CHAT-02: completed chat callback", () => {
     );
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
-    await drainDetached(3);
-    expect((await api.readRun(actor, claimed.runId)).status).toBe("cancelled");
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 });
 
@@ -492,9 +565,8 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       firstHeaders,
       [200],
     );
-    await drainDetached(2);
 
-    expect(deliveries).toHaveLength(1);
+    await waitForArrayLength(deliveries, 1);
     const progressBody: unknown = JSON.parse(deliveries[0]?.body ?? "{}");
     expect(progressBody).toMatchObject({
       callbackId: expect.stringMatching(/[0-9a-f-]{36}/),
@@ -534,7 +606,13 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       lastEventSequence: 1,
     });
 
-    let messages = await chat.listThreadMessages(actor, first.threadId);
+    let messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return eventBackedContents(threadMessages, first.runId).length === 1;
+      },
+    );
     expect(
       eventBackedContents(messages.messages, first.runId).map((message) => {
         return message.content;
@@ -558,7 +636,13 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       lastEventSequence: 0,
     });
 
-    messages = await chat.listThreadMessages(actor, first.threadId);
+    messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return eventBackedContents(threadMessages, second.runId).length === 1;
+      },
+    );
     expect(
       eventBackedContents(messages.messages, second.runId).map((message) => {
         return message.content;
@@ -595,7 +679,13 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       lastEventSequence: 0,
     });
 
-    messages = await chat.listThreadMessages(actor, first.threadId);
+    messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return eventBackedContents(threadMessages, third.runId).length === 1;
+      },
+    );
     expect(
       eventBackedContents(messages.messages, third.runId).map((message) => {
         return message.content;
@@ -618,7 +708,16 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     });
 
     expect((await api.readRun(actor, fourth.runId)).status).toBe("completed");
-    messages = await chat.listThreadMessages(actor, first.threadId);
+    messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return (
+          lifecycleMarkers(threadMessages, fourth.runId, "completed").length ===
+          1
+        );
+      },
+    );
     expect(
       lifecycleMarkers(messages.messages, fourth.runId, "completed"),
     ).toHaveLength(1);
@@ -643,7 +742,7 @@ describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
       lastEventSequence: 1,
     });
 
-    expect(deliveries).toHaveLength(1);
+    await waitForArrayLength(deliveries, 1);
     const completedDelivery = deliveries[0];
     if (!completedDelivery) {
       throw new Error("Expected a captured completed delivery");
@@ -667,9 +766,17 @@ describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
     ]);
     expect(replayA.status).toBe(200);
     expect(replayB.status).toBe(200);
-    await drainDetached(3);
-
-    let messages = await chat.listThreadMessages(actor, first.threadId);
+    let messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return (
+          eventBackedContents(threadMessages, first.runId).length === 2 &&
+          lifecycleMarkers(threadMessages, first.runId, "completed").length ===
+            1
+        );
+      },
+    );
     expect(
       eventBackedContents(messages.messages, first.runId)
         .map((message) => {
@@ -689,9 +796,16 @@ describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
     const replayAgain =
       await chatCallbacks.replayChatCallback(completedDelivery);
     expect(replayAgain.status).toBe(200);
-    await drainDetached(2);
-
-    messages = await chat.listThreadMessages(actor, first.threadId);
+    messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return (
+          lifecycleMarkers(threadMessages, first.runId, "completed").length ===
+          1
+        );
+      },
+    );
     expect(
       lifecycleMarkers(messages.messages, first.runId, "completed"),
     ).toHaveLength(1);
@@ -712,8 +826,13 @@ describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
       signature: chatCallbacks.tamperedSignature(completedDelivery),
     });
     expect(tampered.status).toBe(401);
-    await drainDetached(2);
-    messages = await chat.listThreadMessages(actor, first.threadId);
+    messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return eventBackedContents(threadMessages, first.runId).length === 2;
+      },
+    );
     expect(eventBackedContents(messages.messages, first.runId)).toHaveLength(2);
 
     const second = await startChatRun(actor, {
@@ -728,7 +847,7 @@ describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
       "Cannot continue session from checkpoint",
     );
 
-    expect(deliveries).toHaveLength(2);
+    await waitForArrayLength(deliveries, 2);
     const failedDelivery = deliveries[1];
     if (!failedDelivery) {
       throw new Error("Expected a captured failed delivery");
@@ -744,14 +863,24 @@ describe("CHAT-02/HOOK-01: chat callback replay and signature handling", () => {
     const firstFailedReplay =
       await chatCallbacks.replayChatCallback(failedDelivery);
     expect(firstFailedReplay.status).toBe(200);
-    await drainDetached(2);
+    await waitForThreadMessages(actor, first.threadId, (threadMessages) => {
+      return (
+        lifecycleMarkers(threadMessages, second.runId, "failed").length === 1
+      );
+    });
     context.mocks.ably.publish.mockClear();
     const secondFailedReplay =
       await chatCallbacks.replayChatCallback(failedDelivery);
     expect(secondFailedReplay.status).toBe(200);
-    await drainDetached(2);
-
-    messages = await chat.listThreadMessages(actor, first.threadId);
+    messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return (
+          lifecycleMarkers(threadMessages, second.runId, "failed").length === 1
+        );
+      },
+    );
     const failedMarkers = lifecycleMarkers(
       messages.messages,
       second.runId,
@@ -809,7 +938,16 @@ describe("CHAT-02: failed chat callbacks", () => {
       throw new Error("Expected four failed chat rounds");
     }
 
-    const messages = await chat.listThreadMessages(actor, threadId);
+    const messages = await waitForThreadMessages(actor, threadId, (items) => {
+      const failed = assistantMessages(items).filter((message) => {
+        return message.runLifecycleEvent === "failed";
+      });
+      return runIds.every((runId) => {
+        return failed.some((message) => {
+          return message.runId === runId && message.error !== undefined;
+        });
+      });
+    });
     expect(userMessages(messages.messages)).toHaveLength(4);
     const failed = assistantMessages(messages.messages).filter((message) => {
       return message.runLifecycleEvent === "failed";
@@ -837,7 +975,11 @@ describe("CHAT-02: failed chat callbacks", () => {
       })?.content,
     ).toBe(usageLimitError);
 
-    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(4);
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
+      .toBe(4);
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[1]),
     ).toMatchObject({
@@ -925,7 +1067,18 @@ describe("CHAT-02: auto-send after failures", () => {
     context.mocks.ably.publish.mockClear();
     await failChatRun(second.runId, secondHeaders, "boom");
 
-    const messages = await chat.listThreadMessages(actor, first.threadId);
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === "queued with files" &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
     const claimed = userMessages(messages.messages).find((message) => {
       return (
         message.content === "queued with files" && message.runId !== undefined
@@ -969,8 +1122,7 @@ describe("CHAT-02: auto-send after failures", () => {
     expect(autoContext.body.sessionId).toBe(`bdd-cli-${first.runId}`);
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
-    await drainDetached(3);
-    expect((await api.readRun(actor, claimed.runId)).status).toBe("cancelled");
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 });
 
@@ -1043,7 +1195,18 @@ describe("CHAT-02: auto-send across a model switch", () => {
       lastEventSequence: 0,
     });
 
-    const messages = await chat.listThreadMessages(actor, first.threadId);
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === "queued after model switch" &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
     const claimed = userMessages(messages.messages).find((message) => {
       return (
         message.content === "queued after model switch" &&
@@ -1094,8 +1257,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
     expect(initialTitlePrompt).not.toContain("Use JSON.stringify(value).");
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
-    await drainDetached(3);
-    expect((await api.readRun(actor, claimed.runId)).status).toBe("cancelled");
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 });
 
@@ -1113,9 +1275,7 @@ describe("CHAT-02: thread deletion while a run is active", () => {
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
     await chat.deleteThread(actor, run.threadId);
-    await drainDetached(3);
-
-    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+    await waitForRunStatus(actor, run.runId, "cancelled");
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       `chatThreadMessageCreated:${run.threadId}`,
@@ -1144,7 +1304,16 @@ describe("CHAT-02: push notification gating", () => {
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstHeaders);
 
-    const messages = await chat.listThreadMessages(actor, first.threadId);
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return (
+          lifecycleMarkers(threadMessages, first.runId, "completed").length ===
+          1
+        );
+      },
+    );
     expect(eventBackedContents(messages.messages, first.runId)).toHaveLength(0);
     expect(
       lifecycleMarkers(messages.messages, first.runId, "completed"),
@@ -1163,7 +1332,11 @@ describe("CHAT-02: push notification gating", () => {
     const secondHeaders = await claimChatRun(runnerGroup, second.runId);
     await completeChatRunOk(second.runId, secondHeaders);
 
-    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
+      .toBe(1);
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[0]),
     ).toMatchObject({
@@ -1179,6 +1352,11 @@ describe("CHAT-02: push notification gating", () => {
     });
     const thirdHeaders = await claimChatRun(runnerGroup, third.runId);
     await completeChatRunOk(third.runId, thirdHeaders);
+    await waitForThreadMessages(actor, first.threadId, (threadMessages) => {
+      return (
+        lifecycleMarkers(threadMessages, third.runId, "completed").length === 1
+      );
+    });
     expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
   }, 60_000);
 });

@@ -654,12 +654,13 @@ async function drainById(db: Db, itemId: string): Promise<boolean> {
 
 async function drainNextOutboxItem(db: Db): Promise<boolean> {
   return await db.transaction(async (tx) => {
+    const currentTime = new Date(now());
     const rows = await tx.execute<OutboxRow>(
       sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
              reply_to, headers, template, post_send_action, attempts
           FROM email_outbox
           WHERE status = 'pending'
-            AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+            AND (next_retry_at IS NULL OR next_retry_at <= ${currentTime})
           ORDER BY created_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED`,

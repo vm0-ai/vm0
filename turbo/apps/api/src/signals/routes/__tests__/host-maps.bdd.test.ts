@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { clearAllDetached } from "../../utils";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { hostedTextFile } from "./helpers/api-bdd-chat-files";
@@ -717,7 +716,6 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
     expect(settled.credits).toBe(before.credits - 6);
 
     await runs.requestCancelRun(actor, created.runId, [200]);
-    await clearAllDetached();
     const cancelled = await runs.readRun(actor, created.runId);
     expect(cancelled.status).toBe("cancelled");
   });

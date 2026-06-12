@@ -8,7 +8,6 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -40,6 +39,19 @@ function epochSeconds(offsetDays: number): number {
 
 function isoOf(epoch: number): string {
   return new Date(epoch * 1000).toISOString();
+}
+
+async function waitForExpectation(assertion: () => void): Promise<void> {
+  await expect
+    .poll(() => {
+      try {
+        assertion();
+        return true;
+      } catch {
+        return false;
+      }
+    })
+    .toBe(true);
 }
 
 function stripeEvent(args: {
@@ -1551,7 +1563,6 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     });
 
     await runs.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await runs.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -2102,7 +2113,6 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     await runs.requestCancelRun(actor, first.runId, [200]);
     await runs.requestCancelRun(actor, second.runId, [200]);
     await runs.requestCancelRun(actor, third.runId, [200]);
-    await clearAllDetached();
     const settled = await runs.readRunQueue(actor);
     expect(settled.body.concurrency.active).toBe(0);
   });
@@ -2944,11 +2954,14 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     const firstDelivery = await api.requestClerkWebhook("{}", {}, [200]);
     expect(firstDelivery.body).toBe("OK");
-    await clearAllDetached();
-    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
-      granted.subscriptionId,
-    );
-    expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(botToken);
+    await waitForExpectation(() => {
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+        granted.subscriptionId,
+      );
+      expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
+        botToken,
+      );
+    });
     const survivingRun = await runs.requestReadRun(actor, run.runId, [200]);
     expect(survivingRun.status).toBe(200);
     // The onboarding default agent and the teardown agent both survive.
@@ -2986,9 +2999,12 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     const redelivery = await api.requestClerkWebhook("{}", {}, [200]);
     expect(redelivery.body).toBe("OK");
-    await clearAllDetached();
 
-    expect(deletedS3Keys.length).toBeGreaterThan(0);
+    await expect
+      .poll(() => {
+        return deletedS3Keys.length;
+      })
+      .toBeGreaterThan(0);
     await runs.requestReadRun(actor, run.runId, [404]);
     await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
     expect((await runs.listSchedules(actor)).schedules).toStrictEqual([]);
@@ -3005,11 +3021,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       data: { id: orgOf(plainActor) },
     });
     await api.requestClerkWebhook("{}", {}, [200]);
-    await clearAllDetached();
+    await expect
+      .poll(async () => {
+        const agents = await bdd.listAgents(plainActor);
+        return agents.length;
+      })
+      .toBe(0);
     expect(context.mocks.stripe.subscriptions.cancel.mock.calls).toHaveLength(
       cancelCalls,
     );
-    await expect(bdd.listAgents(plainActor)).resolves.toStrictEqual([]);
   });
 
   it("cleans up user state after a verified user.deleted event", async () => {
@@ -3086,15 +3106,29 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
-    await clearAllDetached();
     context.mocks.s3.send.mockResolvedValue({});
 
-    expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(botToken);
-    const revokedPoll = await runs.requestPollRunnerAs(
-      doomedBearer,
-      { group: runnerGroup, profiles: ["vm0/default"] },
-      [401],
-    );
+    await waitForExpectation(() => {
+      expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
+        botToken,
+      );
+    });
+    let revokedPoll:
+      | Awaited<ReturnType<typeof runs.requestPollRunnerAs>>
+      | undefined;
+    await expect
+      .poll(async () => {
+        revokedPoll = await runs.requestPollRunnerAs(
+          doomedBearer,
+          { group: runnerGroup, profiles: ["vm0/default"] },
+          [200, 401],
+        );
+        return revokedPoll.status;
+      })
+      .toBe(401);
+    if (!revokedPoll || revokedPoll.status !== 401) {
+      throw new Error("Expected deleted user's runner token to be revoked");
+    }
     expectApiError(revokedPoll.body);
     await runs.requestReadRun(doomed, run.runId, [404]);
     expect((await gh.readInstallation(doomed)).isConnected).toBeFalsy();

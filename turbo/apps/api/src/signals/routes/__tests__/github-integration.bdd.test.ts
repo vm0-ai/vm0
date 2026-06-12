@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
-import { clearAllDetached } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
@@ -1011,7 +1010,6 @@ describe("INT-03 G5: label listeners and capability tokens", () => {
     await gh.deleteLabelListener(tokenAuth, tokenListenerId, [200]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await clearAllDetached();
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
   });
@@ -1227,14 +1225,109 @@ function installationEvent(args: {
   });
 }
 
-function latestComment(issueApi: {
-  readonly comments: readonly { readonly body: string }[];
-}): { readonly body: string } {
+type CapturedIssueComment = {
+  readonly body: string;
+};
+
+type CapturedIssueApi = {
+  readonly comments: readonly CapturedIssueComment[];
+};
+
+function latestComment(issueApi: CapturedIssueApi): CapturedIssueComment {
   const comment = issueApi.comments[issueApi.comments.length - 1];
   if (!comment) {
     throw new Error("Expected a captured GitHub issue comment");
   }
   return comment;
+}
+
+async function waitForCommentCount(
+  issueApi: CapturedIssueApi,
+  count: number,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return issueApi.comments.length;
+    })
+    .toBe(count);
+}
+
+async function waitForCommentContaining(
+  issueApi: CapturedIssueApi,
+  text: string,
+  startIndex = 0,
+): Promise<CapturedIssueComment> {
+  let match: CapturedIssueComment | undefined;
+  await expect
+    .poll(() => {
+      match = issueApi.comments.slice(startIndex).find((comment) => {
+        return comment.body.includes(text);
+      });
+      return match?.body ?? null;
+    })
+    .not.toBeNull();
+  if (!match) {
+    throw new Error(
+      `Expected a captured GitHub issue comment containing ${text}`,
+    );
+  }
+  return match;
+}
+
+async function waitForArrayLength<T>(
+  items: readonly T[],
+  length: number,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return items.length;
+    })
+    .toBe(length);
+}
+
+async function waitForRunnerJob(
+  api: ReturnType<typeof createRunsSchedulesApi>,
+  runnerGroup: string,
+) {
+  await api.heartbeatRunner(runnerGroup);
+  let job:
+    | Awaited<ReturnType<typeof api.pollRunner>>["body"]["job"]
+    | undefined;
+  await expect
+    .poll(async () => {
+      const poll = await api.pollRunner(runnerGroup);
+      job = poll.body.job;
+      return job?.runId ?? null;
+    })
+    .not.toBeNull();
+  if (!job) {
+    throw new Error("Expected a dispatched GitHub run to be pollable");
+  }
+  return job;
+}
+
+async function waitForRunStatus(
+  api: ReturnType<typeof createRunsSchedulesApi>,
+  actor: ApiTestUser,
+  runId: string,
+  status: "cancelled" | "completed" | "failed" | "pending" | "running",
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const run = await api.readRun(actor, runId);
+      return run.status;
+    })
+    .toBe(status);
+}
+
+async function waitForAblyPublish(channel: string, payload: unknown) {
+  await expect
+    .poll(() => {
+      return context.mocks.ably.publish.mock.calls.some((call) => {
+        return call[0] === channel && call[1] === payload;
+      });
+    })
+    .toBe(true);
 }
 
 function issueCommentEvent(args: {
@@ -1277,8 +1370,6 @@ async function postGithubWebhook(
     [200],
   );
   // Webhook handling is detached and run dispatch nests more detached work.
-  await clearAllDetached();
-  await clearAllDetached();
 }
 
 function runIdFromAuditComment(body: string): string {
@@ -1297,12 +1388,8 @@ async function claimNextGithubRun(
   readonly sandboxToken: string;
   readonly resumeSessionId: string | null;
 }> {
-  await api.heartbeatRunner(runnerGroup);
-  const poll = await api.pollRunner(runnerGroup);
-  const runId = poll.body.job?.runId;
-  if (!runId) {
-    throw new Error("Expected a dispatched GitHub run to be pollable");
-  }
+  const job = await waitForRunnerJob(api, runnerGroup);
+  const runId = job.runId;
   const claim = await api.claimRunnerJob(runId);
   return {
     runId,
@@ -1335,6 +1422,8 @@ async function completeGithubRun(args: {
   readonly api: ReturnType<typeof createRunsSchedulesApi>;
   readonly webhooks: ReturnType<typeof createWebhookCallbackApi>;
   readonly actor: ApiTestUser;
+  readonly issueApi: CapturedIssueApi;
+  readonly expectedCommentCount: number;
   readonly runId: string;
   readonly sandboxToken: string;
   readonly cliAgentSessionId: string;
@@ -1354,11 +1443,10 @@ async function completeGithubRun(args: {
     { authorization: `Bearer ${args.sandboxToken}` },
     [200],
   );
-  await clearAllDetached();
-  await clearAllDetached();
-  context.mocks.axiom.query.mockResolvedValue([]);
   const completed = await args.api.readRun(args.actor, args.runId);
   expect(completed.status).toBe("completed");
+  await waitForCommentCount(args.issueApi, args.expectedCommentCount);
+  context.mocks.axiom.query.mockResolvedValue([]);
 }
 
 describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", () => {
@@ -1391,7 +1479,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       }),
       "issues",
     );
-    expect(issueApi.comments).toHaveLength(1);
+    await waitForCommentCount(issueApi, 1);
     const startedComment = issueApi.comments[0];
     if (!startedComment) {
       throw new Error("Expected a label-trigger started comment");
@@ -1407,9 +1495,8 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
 
     // Progress callbacks deliver without posting comments or reading output.
     proxyGithubIssuesCallbackToApp(context);
-    await api.heartbeatRunner(runnerGroup);
-    const poll = await api.pollRunner(runnerGroup);
-    expect(poll.body.job?.runId).toBe(runId);
+    const job = await waitForRunnerJob(api, runnerGroup);
+    expect(job.runId).toBe(runId);
     const claim = await api.claimRunnerJob(runId);
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
     const queriesBeforeProgress = context.mocks.axiom.query.mock.calls.length;
@@ -1418,8 +1505,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       sandboxHeaders,
       [200],
     );
-    await clearAllDetached();
-    expect(issueApi.comments).toHaveLength(1);
+    await waitForCommentCount(issueApi, 1);
     expect(context.mocks.axiom.query.mock.calls).toHaveLength(
       queriesBeforeProgress,
     );
@@ -1429,8 +1515,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     // success without posting any comment.
     const deliveries = captureGithubIssuesCallbackDeliveries(context);
     await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
-    await clearAllDetached();
-    expect(deliveries).toHaveLength(1);
+    await waitForArrayLength(deliveries, 1);
     const progressDelivery = deliveries[0];
     if (!progressDelivery?.signature || !progressDelivery.timestamp) {
       throw new Error("Expected a signed progress callback delivery");
@@ -1447,7 +1532,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       [200],
     );
     expect(progressReplay.body).toStrictEqual({ success: true });
-    expect(issueApi.comments).toHaveLength(1);
+    await waitForCommentCount(issueApi, 1);
 
     // Completion posts the audited comment through the captured delivery.
     await gh.enableAuditLink(actor);
@@ -1468,18 +1553,16 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       sandboxHeaders,
       [200],
     );
-    await clearAllDetached();
-    await clearAllDetached();
-    context.mocks.axiom.query.mockResolvedValue([]);
     const completed = await api.readRun(actor, runId);
     expect(completed.status).toBe("completed");
 
-    expect(deliveries).toHaveLength(2);
+    await waitForArrayLength(deliveries, 2);
     const delivery = deliveries[1];
     if (!delivery?.signature || !delivery.timestamp) {
       throw new Error("Expected a signed GitHub issues callback delivery");
     }
-    expect(issueApi.comments).toHaveLength(2);
+    await waitForCommentCount(issueApi, 2);
+    context.mocks.axiom.query.mockResolvedValue([]);
     const completionComment = issueApi.comments[1];
     if (!completionComment) {
       throw new Error("Expected a completion comment");
@@ -1545,7 +1628,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       throw new Error("Expected the entitled chat send to create a run");
     }
     await api.requestCancelRun(actor, sent.body.runId, [200]);
-    await clearAllDetached();
+    await waitForArrayLength(chatDeliveries, 1);
     const chatDelivery = chatDeliveries[0];
     if (!chatDelivery?.signature || !chatDelivery.timestamp) {
       throw new Error("Expected a signed chat callback delivery");
@@ -1574,7 +1657,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       }),
       "issues",
     );
-    expect(issueApi.comments).toHaveLength(3);
+    await waitForCommentCount(issueApi, 3);
     const secondStarted = issueApi.comments[2];
     if (!secondStarted) {
       throw new Error("Expected a second label-trigger started comment");
@@ -1582,11 +1665,9 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     const secondRunId = runIdFromAuditComment(secondStarted.body);
     const queriesBeforeFailure = context.mocks.axiom.query.mock.calls.length;
     await api.requestCancelRun(actor, secondRunId, [200]);
-    await clearAllDetached();
-    await clearAllDetached();
     const cancelledRun = await api.readRun(actor, secondRunId);
     expect(cancelledRun.status).toBe("cancelled");
-    expect(issueApi.comments).toHaveLength(4);
+    await waitForCommentCount(issueApi, 4);
     const failureComment = issueApi.comments[3];
     if (!failureComment) {
       throw new Error("Expected a failure comment");
@@ -1642,12 +1723,13 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       api,
       webhooks,
       actor,
+      issueApi,
+      expectedCommentCount: 1,
       runId: first.runId,
       sandboxToken: first.sandboxToken,
       cliAgentSessionId: "bdd-cli-g6b-first",
       result: "Handled the first mention.",
     });
-    expect(issueApi.comments).toHaveLength(1);
     const firstComment = issueApi.comments[0];
     if (!firstComment) {
       throw new Error("Expected a completion comment for the first mention");
@@ -1659,7 +1741,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     // the installation default, so neither footer appears.
     expect(firstComment.body).not.toContain("Audit");
     expect(firstComment.body).not.toContain("Responded by");
-    expect(issueApi.reactionDeletes).toHaveLength(1);
+    await waitForArrayLength(issueApi.reactionDeletes, 1);
     expect(issueApi.reactionDeletes[0]?.commentId).toBe("100");
 
     // The second mention resumes the saved issue session: its claimed job
@@ -1675,6 +1757,8 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       api,
       webhooks,
       actor,
+      issueApi,
+      expectedCommentCount: 2,
       runId: second.runId,
       sandboxToken: second.sandboxToken,
       cliAgentSessionId: "bdd-cli-g6b-first",
@@ -1709,6 +1793,8 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       api,
       webhooks,
       actor,
+      issueApi,
+      expectedCommentCount: 3,
       runId: third.runId,
       sandboxToken: third.sandboxToken,
       cliAgentSessionId: "bdd-cli-g6b-third",
@@ -1743,6 +1829,8 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       api,
       webhooks,
       actor,
+      issueApi,
+      expectedCommentCount: 4,
       runId: labelRun.runId,
       sandboxToken: labelRun.sandboxToken,
       cliAgentSessionId: "bdd-cli-g6b-label",
@@ -1759,8 +1847,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
     expect(fourth.resumeSessionId).toBe("bdd-cli-g6b-third");
 
     await api.requestCancelRun(actor, fourth.runId, [200]);
-    await clearAllDetached();
-    await clearAllDetached();
     const fourthCancelled = await api.readRun(actor, fourth.runId);
     expect(fourthCancelled.status).toBe("cancelled");
   });
@@ -1820,16 +1906,17 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       }),
       "issues",
     );
-    expect(issueApi.comments).toHaveLength(1);
-    const startedComment = latestComment(issueApi);
+    const startedComment = await waitForCommentContaining(
+      issueApi,
+      'received the "zero-dispatch" label',
+    );
     expect(startedComment.body).toContain('received the "zero-dispatch" label');
     const firstRunId = runIdFromAuditComment(startedComment.body);
 
-    await api.heartbeatRunner(runnerGroup);
-    const firstPoll = await api.pollRunner(runnerGroup);
-    expect(firstPoll.body.job?.runId).toBe(firstRunId);
-    expect(firstPoll.body.job?.prompt).toBe("Handle the dispatched issue");
-    const firstContext = firstPoll.body.job?.appendSystemPrompt ?? "";
+    const firstJob = await waitForRunnerJob(api, runnerGroup);
+    expect(firstJob.runId).toBe(firstRunId);
+    expect(firstJob.prompt).toBe("Handle the dispatched issue");
+    const firstContext = firstJob.appendSystemPrompt ?? "";
     expect(firstContext).toContain("# GitHub Issue Context");
     expect(firstContext).toContain(
       `Issue URL: https://github.com/${repo}/issues/41`,
@@ -1841,11 +1928,12 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     expect(firstContext).toContain("[FILENAME] screenshot.png");
     expect(firstContext).not.toContain(`![screenshot.png](${fileUrl})`);
     expect(firstContext).toContain("You are currently running inside: GitHub");
+    await api.claimRunnerJob(firstRunId);
     await api.requestCancelRun(actor, firstRunId, [200]);
-    await clearAllDetached();
-    await clearAllDetached();
+    await waitForRunStatus(api, actor, firstRunId, "cancelled");
 
     // A null issue body falls back to the placeholder paragraph.
+    const beforeSecondDispatch = issueApi.comments.length;
     await postGithubWebhook(
       webhooks,
       issuesEvent({
@@ -1860,16 +1948,20 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       }),
       "issues",
     );
-    const secondRunId = runIdFromAuditComment(latestComment(issueApi).body);
-    await api.heartbeatRunner(runnerGroup);
-    const secondPoll = await api.pollRunner(runnerGroup);
-    expect(secondPoll.body.job?.runId).toBe(secondRunId);
-    const secondContext = secondPoll.body.job?.appendSystemPrompt ?? "";
+    const secondStartedComment = await waitForCommentContaining(
+      issueApi,
+      'received the "zero-dispatch" label',
+      beforeSecondDispatch,
+    );
+    const secondRunId = runIdFromAuditComment(secondStartedComment.body);
+    const secondJob = await waitForRunnerJob(api, runnerGroup);
+    expect(secondJob.runId).toBe(secondRunId);
+    const secondContext = secondJob.appendSystemPrompt ?? "";
     expect(secondContext).toContain("Title: Fallback title");
     expect(secondContext).toContain("_No description provided._");
+    await api.claimRunnerJob(secondRunId);
     await api.requestCancelRun(actor, secondRunId, [200]);
-    await clearAllDetached();
-    await clearAllDetached();
+    await waitForRunStatus(api, actor, secondRunId, "cancelled");
 
     // Non-matching labels and ignored actions never dispatch.
     let commentCount = issueApi.comments.length;
@@ -1898,11 +1990,12 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       }),
       "issues",
     );
-    expect(issueApi.comments).toHaveLength(commentCount);
+    await waitForCommentCount(issueApi, commentCount);
     const idlePoll = await api.pollRunner(runnerGroup);
     expect(idlePoll.body.job ?? null).toBeNull();
 
     // Labeled pull requests dispatch with pull-request context.
+    const beforePrDispatch = issueApi.comments.length;
     await postGithubWebhook(
       webhooks,
       pullRequestEvent({
@@ -1916,18 +2009,22 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       }),
       "pull_request",
     );
-    const prRunId = runIdFromAuditComment(latestComment(issueApi).body);
-    await api.heartbeatRunner(runnerGroup);
-    const prPoll = await api.pollRunner(runnerGroup);
-    expect(prPoll.body.job?.runId).toBe(prRunId);
-    const prContext = prPoll.body.job?.appendSystemPrompt ?? "";
+    const prStartedComment = await waitForCommentContaining(
+      issueApi,
+      'received the "zero-dispatch" label',
+      beforePrDispatch,
+    );
+    const prRunId = runIdFromAuditComment(prStartedComment.body);
+    const prJob = await waitForRunnerJob(api, runnerGroup);
+    expect(prJob.runId).toBe(prRunId);
+    const prContext = prJob.appendSystemPrompt ?? "";
     expect(prContext).toContain("# GitHub Pull Request Context");
     expect(prContext).toContain(
       `Pull Request URL: https://github.com/${repo}/pull/44`,
     );
+    await api.claimRunnerJob(prRunId);
     await api.requestCancelRun(actor, prRunId, [200]);
-    await clearAllDetached();
-    await clearAllDetached();
+    await waitForRunStatus(api, actor, prRunId, "cancelled");
 
     // Creator-scoped listeners only fire for issues authored by the linked
     // creator account.
@@ -1943,6 +2040,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     );
     const stranger = { githubUserId: newGithubUserId(), login: "stranger" };
     commentCount = issueApi.comments.length;
+    const beforeCreatorDispatch = issueApi.comments.length;
     await postGithubWebhook(
       webhooks,
       issuesEvent({
@@ -1957,7 +2055,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       }),
       "issues",
     );
-    expect(issueApi.comments).toHaveLength(commentCount);
+    await waitForCommentCount(issueApi, commentCount);
     const strangerPoll = await api.pollRunner(runnerGroup);
     expect(strangerPoll.body.job ?? null).toBeNull();
 
@@ -1975,16 +2073,18 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       }),
       "issues",
     );
-    const creatorRunId = runIdFromAuditComment(latestComment(issueApi).body);
-    await api.heartbeatRunner(runnerGroup);
-    const creatorPoll = await api.pollRunner(runnerGroup);
-    expect(creatorPoll.body.job?.runId).toBe(creatorRunId);
-    expect(creatorPoll.body.job?.prompt).toBe("Handle my own issue");
+    const creatorStartedComment = await waitForCommentContaining(
+      issueApi,
+      'received the "mine-only" label',
+      beforeCreatorDispatch,
+    );
+    const creatorRunId = runIdFromAuditComment(creatorStartedComment.body);
+    const creatorJob = await waitForRunnerJob(api, runnerGroup);
+    expect(creatorJob.runId).toBe(creatorRunId);
+    expect(creatorJob.prompt).toBe("Handle my own issue");
+    await api.claimRunnerJob(creatorRunId);
     await api.requestCancelRun(actor, creatorRunId, [200]);
-    await clearAllDetached();
-    await clearAllDetached();
-    const cancelled = await api.readRun(actor, creatorRunId);
-    expect(cancelled.status).toBe("cancelled");
+    await waitForRunStatus(api, actor, creatorRunId, "cancelled");
   });
 
   it("reports rejected and failed label dispatches through comments and callbacks", async () => {
@@ -2041,7 +2141,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       }),
       "issues",
     );
-    expect(issueApi.comments).toHaveLength(1);
+    await waitForCommentCount(issueApi, 1);
     const rejection = latestComment(issueApi);
     expect(rejection.body).toContain("Insufficient credits");
     expect(rejection.body).toContain("Add credits:");
@@ -2081,7 +2181,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       }),
       "issues",
     );
-    expect(issueApi.comments).toHaveLength(2);
+    await waitForCommentCount(issueApi, 2);
     expect(latestComment(issueApi).body).not.toContain("Add credits:");
     expect((await api.readRunQueue(actor)).body.concurrency.active).toBe(0);
 
@@ -2141,7 +2241,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       "issues",
     );
 
-    expect(deliveries).toHaveLength(1);
+    await waitForArrayLength(deliveries, 1);
     const delivery = JSON.parse(deliveries[0]?.body ?? "{}") as Record<
       string,
       unknown
@@ -2159,7 +2259,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     );
     // Without GitHub App credentials neither a started-work comment nor a
     // callback-driven failure comment can be posted.
-    expect(entitledIssueApi.comments).toHaveLength(0);
+    await waitForCommentCount(entitledIssueApi, 0);
   });
 });
 
@@ -2196,12 +2296,7 @@ describe("HOOK-02/INT-03 G8: bot mention dispatches", () => {
       }),
       "issue_comment",
     );
-    await api.heartbeatRunner(runnerGroup);
-    const mentionPoll = await api.pollRunner(runnerGroup);
-    const mentionJob = mentionPoll.body.job;
-    if (!mentionJob) {
-      throw new Error("Expected the alias mention to dispatch a run");
-    }
+    const mentionJob = await waitForRunnerJob(api, runnerGroup);
     expect(mentionJob.prompt).toContain("please inspect");
     expect(mentionJob.prompt).not.toContain("@Zero");
     expect(mentionJob.prompt).toContain("[GitHub file]");
@@ -2220,8 +2315,8 @@ describe("HOOK-02/INT-03 G8: bot mention dispatches", () => {
       "- MSG_ID: comment:900",
     );
     await api.requestCancelRun(actor, mentionJob.runId, [200]);
-    await clearAllDetached();
-    await clearAllDetached();
+    await waitForRunStatus(api, actor, mentionJob.runId, "cancelled");
+    await waitForCommentCount(issueApi, 1);
 
     // Mentions from unlinked senders receive a signed connect-link comment
     // instead of a run.
@@ -2242,7 +2337,7 @@ describe("HOOK-02/INT-03 G8: bot mention dispatches", () => {
       }),
       "issue_comment",
     );
-    expect(issueApi.comments).toHaveLength(beforeConnect + 1);
+    await waitForCommentCount(issueApi, beforeConnect + 1);
     const connectComment = latestComment(issueApi).body;
     expect(connectComment).toContain("connect your GitHub account first");
     const connectUrlText = connectComment.match(
@@ -2293,7 +2388,7 @@ describe("HOOK-02/INT-03 G8: bot mention dispatches", () => {
       }),
       "issue_comment",
     );
-    expect(issueApi.comments).toHaveLength(beforeUnknown);
+    await waitForCommentCount(issueApi, beforeUnknown);
     const unknownPoll = await api.pollRunner(runnerGroup);
     expect(unknownPoll.body.job ?? null).toBeNull();
   });
@@ -2340,12 +2435,8 @@ describe("HOOK-02/INT-03 G9: installation lifecycle webhooks", () => {
       [200],
     );
     expect(response.body).toBe("OK");
-    await clearAllDetached();
 
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "github:changed",
-      null,
-    );
+    await waitForAblyPublish("github:changed", null);
     const missing = await gh.requestReadInstallation(actor, [404]);
     expect(missing.body.error.code).toBe("NOT_FOUND");
   });

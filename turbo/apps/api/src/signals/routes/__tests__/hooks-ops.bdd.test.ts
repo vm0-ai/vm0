@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  automationsV2ByRefContract,
+  automationsV2MainContract,
+} from "@vm0/api-contracts/contracts/automations-v2";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
-import {
-  webhookAutomationsByIdContract,
-  webhookAutomationsMainContract,
-} from "@vm0/api-contracts/contracts/webhook-automations";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -46,12 +46,12 @@ function reportErrorClient() {
   return setupApp({ context })(zeroReportErrorContract);
 }
 
-function webhookAutomationsClient() {
-  return setupApp({ context })(webhookAutomationsMainContract);
+function automationsClient() {
+  return setupApp({ context })(automationsV2MainContract);
 }
 
-function webhookAutomationsByIdClient() {
-  return setupApp({ context })(webhookAutomationsByIdContract);
+function automationsByRefClient() {
+  return setupApp({ context })(automationsV2ByRefContract);
 }
 
 function headersFor(actor: ApiTestUser | null): {
@@ -116,7 +116,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      initial.body.switches[FeatureSwitchKey.ZeroAutomations],
+      initial.body.switches[FeatureSwitchKey.AutomationWebhookTriggers],
     ).toBeUndefined();
 
     const enabled = await accept(
@@ -124,7 +124,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(admin),
         body: {
           switches: {
-            [FeatureSwitchKey.ZeroAutomations]: true,
+            [FeatureSwitchKey.AutomationWebhookTriggers]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
         },
@@ -132,7 +132,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
-      enabled.body.switches[FeatureSwitchKey.ZeroAutomations],
+      enabled.body.switches[FeatureSwitchKey.AutomationWebhookTriggers],
     ).toBeTruthy();
     expect(enabled.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
 
@@ -147,7 +147,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       }),
       [200],
     );
-    expect(merged.body.switches[FeatureSwitchKey.ZeroAutomations]).toBeTruthy();
+    expect(
+      merged.body.switches[FeatureSwitchKey.AutomationWebhookTriggers],
+    ).toBeTruthy();
     expect(merged.body.switches[FeatureSwitchKey.Dummy]).toBeTruthy();
 
     const read = await accept(
@@ -208,19 +210,11 @@ describe("HOOK-02: webhook automation management", () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
 
-    const unavailable = await accept(
-      webhookAutomationsClient().list({ headers: headersFor(admin) }),
-      [404],
-    );
-    expectApiError(unavailable.body);
-    expect(unavailable.body.error.code).toBe("NOT_FOUND");
-
     await accept(
       featureSwitchesClient().update({
         headers: headersFor(admin),
         body: {
           switches: {
-            [FeatureSwitchKey.ZeroAutomations]: true,
             [FeatureSwitchKey.AutomationWebhookTriggers]: true,
           },
         },
@@ -233,26 +227,33 @@ describe("HOOK-02: webhook automation management", () => {
     });
 
     const created = await accept(
-      webhookAutomationsClient().create({
+      automationsClient().create({
         headers: headersFor(admin),
         body: {
           name: "bdd-webhook",
+          agentId: agent.agentId,
           instruction: "Handle signed webhook payloads",
           description: "Created by API-only BDD test",
-          agentId: agent.agentId,
           enabled: true,
+          trigger: { kind: "webhook" },
         },
       }),
       [201],
     );
-    expect(created.body.secret).toStrictEqual(expect.any(String));
+    expect(created.body.webhookSecret).toStrictEqual(expect.any(String));
     expect(created.body.automation.agentId).toBe(agent.agentId);
     expect(created.body.automation.userId).toBe(admin.userId);
     expect(created.body.automation.name).toBe("bdd-webhook");
     expect(created.body.automation.enabled).toBeTruthy();
+    expect(created.body.automation.triggers).toHaveLength(1);
+    const [trigger] = created.body.automation.triggers;
+    expect(trigger).toMatchObject({
+      kind: "webhook",
+      enabled: true,
+    });
 
     const listed = await accept(
-      webhookAutomationsClient().list({ headers: headersFor(admin) }),
+      automationsClient().list({ headers: headersFor(admin) }),
       [200],
     );
     expect(
@@ -262,20 +263,20 @@ describe("HOOK-02: webhook automation management", () => {
     ).toBeTruthy();
     expect(
       listed.body.automations.some((automation) => {
-        return "secret" in automation;
+        return "webhookSecret" in automation;
       }),
     ).toBeFalsy();
 
     await accept(
-      webhookAutomationsByIdClient().delete({
-        params: { id: created.body.automation.id },
+      automationsByRefClient().delete({
+        params: { ref: created.body.automation.id },
         headers: headersFor(admin),
       }),
       [204],
     );
 
     const afterDelete = await accept(
-      webhookAutomationsClient().list({ headers: headersFor(admin) }),
+      automationsClient().list({ headers: headersFor(admin) }),
       [200],
     );
     expect(

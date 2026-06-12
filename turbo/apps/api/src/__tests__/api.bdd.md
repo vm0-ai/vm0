@@ -6,14 +6,12 @@ The current inventory is 3344 `it`/`test` declarations under `turbo/apps/api/src
 
 ## Migration Status
 
-Coverage parity is a hard gate: new BDD tests must restore per-file coverage **before** the corresponding legacy tests are deleted. An earlier phase of this branch deleted the legacy suite ahead of parity; that was reverted. The branch now carries:
+Coverage parity is a hard gate: new BDD tests must restore per-file coverage **before** the corresponding legacy tests are deleted. The branch now carries the BDD replacement suite and explicit drop/exception notes for legacy cases whose old assertions were implementation detail or not API-constructible.
 
-- All legacy test files restored from `main`, alive until their route family has a BDD replacement with per-file coverage >= baseline.
-- All production source files identical to `main` (this effort touches test code only; knip-driven production cleanups were reverted together with the test restore).
 - The 13 service-level exception files (listed below) restored and kept as-is.
-- The 11 `*.bdd.test.ts` files plus `helpers/api-bdd*.ts`, which already exceed the `main` coverage baseline when combined with the legacy suite.
+- The 29 `*.bdd.test.ts` files plus `helpers/api-bdd*.ts`, which replace the route-family legacy tests listed below.
 
-Per-round workflow from here: complete BDD coverage for one route family, prove per-file parity for that family's source files, then delete that family's legacy tests in the same commit.
+Per-round workflow from here: keep new main changes mapped into the BDD suite, prove targeted behavior locally, and let CI validate the full coverage/build matrix.
 
 Known coverage jitter (not regressions): `src/signals/services/agent-run-create.service.ts` and `src/signals/services/local-day.ts` fluctuate by a few covered statements between identical runs because some branches depend on wall-clock day boundaries. Back-to-back full-suite runs on identical code also measured ±2-5 statement swings in `src/lib/slack-connect-blocks.ts`, `src/signals/services/zero-slack-connect.service.ts`, `src/signals/services/webhooks-stripe.service.ts`, `src/signals/services/cron-summarize-memory.service.ts`, and `src/signals/routes/test-slack-state.ts` (timing-dependent detached work; test-slack-state measured 155-162 covered statements across identical runs with its covering legacy test alive). A per-file drop below baseline is therefore adjudicated before being treated as a regression: rerun the full suite, or run the file's covering tests scoped on both sides and compare statement-level hits (`coverage-final.json`); only a loss that persists across runs blocks a round.
 
@@ -313,7 +311,7 @@ Then route responses report work done.
 Then follow-up public or internal GET/status endpoints expose visible side effects.
 Then missing or invalid cron auth is rejected.
 
-Coverage: `cron-cleanup-sandboxes`, `cron-aggregate-usage`, `cron-aggregate-insights`, `cron-drain-email-outbox`, `cron-execute-schedules`, `cron-process-usage-events`, `cron-reconcile-billing-entitlements`, `cron-summarize-memory`, `cron-sync-skills`, `cron-telegram-cleanup`.
+Coverage: `cron-cleanup-sandboxes`, `cron-aggregate-usage`, `cron-aggregate-insights`, `cron-drain-email-outbox`, `cron-execute-automations`, `cron-process-usage-events`, `cron-reconcile-billing-entitlements`, `cron-summarize-memory`, `cron-sync-skills`, `cron-telegram-cleanup`.
 
 ### HOOK-01: Signed internal callbacks
 
@@ -331,7 +329,7 @@ When valid signed webhook requests are posted
 Then response bodies and follow-up GET/status APIs expose the visible side effects.
 Then invalid signatures, malformed payloads, replay, missing entities, provider errors, and unauthorized requests are rejected.
 
-Coverage: `webhooks-third-party`, `webhooks-agent-firewall-auth`, `webhooks-agent-health-usage-telemetry`, `webhooks-agent-checkpoints`, `webhooks-agent-complete`, `webhooks-agent-events`, `webhooks-agent-storage`, `webhooks-automation`, `webhook-automations`.
+Coverage: `webhooks-third-party`, `webhooks-agent-firewall-auth`, `webhooks-agent-health-usage-telemetry`, `webhooks-agent-checkpoints`, `webhooks-agent-complete`, `webhooks-agent-events`, `webhooks-agent-storage`, `webhooks-automation`, automation webhook triggers on `automations-v2`.
 
 ### OPS-01: Logs, email, support, skills, feature switches, and health
 
@@ -526,13 +524,13 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 | `internal-callbacks-chat.test.ts` | CHAT-02/HOOK-01 chains A-I in `chat-callbacks.bdd.test.ts` | same |
 | `connectors-type-callback.test.ts`, `test-oauth-provider-get.test.ts` | CONN-02 callback chains CB-A..CB-G and provider chains P1-P4 in `connectors.bdd.test.ts` | same |
 | `github-oauth.test.ts`, `integrations-github-{get,patch,delete,label-listeners}.test.ts`, `internal-callbacks-github-issues.test.ts` | INT-03/CONN-02/HOOK-01 chains G1-G6 in `github-integration.bdd.test.ts` | same |
-| `automations.test.ts`, `webhook-automations.test.ts`, `webhooks-automation.test.ts` | AUTOMATIONS-02/03 and HOOK-02 chains in `automations.bdd.test.ts` plus AUTOMATIONS-01 in `runs-schedules.bdd.test.ts` | same |
+| `automations.test.ts`, `webhook-automations.test.ts`, `webhooks-automation.test.ts` | AUTOMATIONS-02/03 and HOOK-02 chains in `automations.bdd.test.ts` plus AUTOMATIONS-01 in `runs-schedules.bdd.test.ts`; current surface is unified `automations-v2` | same |
 | `internal-callbacks-slack-org.test.ts` | INT-01/HOOK-01 Slack org callback chains in `integrations.bdd.test.ts` | same |
 | `zero-integrations-agentphone-link.test.ts`, `zero-integrations-agentphone-routes.test.ts` | INT-03 AgentPhone chains AP-A..AP-M1 in `agentphone.bdd.test.ts` | same |
 | `audio-transcriptions-v1.test.ts`, `generate-image.test.ts` | FILE-02 MEDIA-A/MEDIA-B in `billing-usage-media.bdd.test.ts` | same |
 
-| `zero-slack-{events,commands,interactive}.test.ts` (re-deleted after the #17031 agent-switch-filter delta was re-covered), `desktop-auth.test.ts` (re-deleted after the handoff-status delta), `cron-execute-schedules.test.ts`, `connectors-type-callback.test.ts` (re-deleted; deltas statement-neutral or covered) | INT-01 visibility chains in `integrations.bdd.test.ts`; AUTH-02 handoff chains in `auth-device.bdd.test.ts`; existing SCHED-02 and CB chains | same |
-| `automations.test.ts`, `cron-execute-schedules.test.ts`, `zero-schedules-run.test.ts`, `zero-logs-list.test.ts` (re-deleted after the #17334 automation trigger-source delta) | AUTOMATIONS/SCHED run-now and cron-visible dispatch chains in `automations.bdd.test.ts`/`runs-schedules.bdd.test.ts`; `schedule`/`automation` log filter compatibility in `run-reads.bdd.test.ts` | same |
+| `zero-slack-{events,commands,interactive}.test.ts` (re-deleted after the #17031 agent-switch-filter delta was re-covered), `desktop-auth.test.ts` (re-deleted after the handoff-status delta), `cron-execute-schedules.test.ts`, `connectors-type-callback.test.ts` (re-deleted; deltas statement-neutral or covered) | INT-01 visibility chains in `integrations.bdd.test.ts`; AUTH-02 handoff chains in `auth-device.bdd.test.ts`; existing SCHED-02 and CB chains, now routed through `cron-execute-automations` | same |
+| `automations.test.ts`, `cron-execute-schedules.test.ts`, `zero-schedules-run.test.ts`, `zero-logs-list.test.ts` (re-deleted after the #17334 automation trigger-source delta) | AUTOMATIONS/SCHED run-now and cron-visible dispatch chains in `automations.bdd.test.ts`/`runs-schedules.bdd.test.ts`; `schedule`/`automation` log filter compatibility in `run-reads.bdd.test.ts`; current cron route is `cron-execute-automations` | same |
 | `zero-chat-threads.test.ts` (re-deleted after the #17323 soft-state removal), `zero-chat-messages.test.ts`/`zero-slack-events.test.ts` (re-deleted after the #17338 vm0-key test-only delta) | CHAT-01/02/03 detail and message chains in `chat-threads.bdd.test.ts`, `chat-files.bdd.test.ts`, and `chat-messages.bdd.test.ts`; vm0-managed-key behavior asserted through runner claim/firewall-auth production read surfaces in `run-lifecycle.bdd.test.ts`/`integrations.bdd.test.ts` | same |
 | `zero-computer-use.test.ts` | FILE-03 chains T1-T7 in `computer-use.bdd.test.ts` | same |
 | `zero-host.test.ts`, `zero-maps.test.ts` | FILE-01 HOST-A..E and BILL-02 MAPS-A plus the HOST-B/MAPS-B run-scoped zero-token chain in `host-maps.bdd.test.ts` | same |
@@ -592,7 +590,7 @@ coverage gap is acceptable once listed:
 - `internal-callbacks-slack-org.ts:228-229` (`resolveOrgDefaultModelProviderSelectedModel` find-predicate body): the query filters `model_providers` on `is_default = true`, and no production write path sets `model_providers.is_default = true`.
 - `zero-github-footer.service.ts` `resolveOrgDefaultModelProviderSelectedModel` (query, find predicate, and fallback arms): same argument as the Slack variant above — the query filters `model_providers` on `is_default = true`, and no production write path sets that column. Reachable only through historical data; the surrounding footer rendering is covered by the GitHub completed-delivery chain.
 - `internal-callbacks-github-issues.ts:417-421` (pending-installation 400): requires a `github_installations` row with NULL `installationId`; every production write path inserts `status: "active"` with the remote id, and nothing nulls the column.
-- `webhook-automations.service.ts` defensive insert-returning throws (~243, ~265) and `routes/webhook-automations.ts:53` (contract-valid body cannot fail the route-side parse).
+- Legacy webhook-automation insert-returning throws and route-side parse failures (contract-valid body cannot fail the route-side parse); the current management surface is the unified `automations-v2` trigger API.
 - `webhooks-automation.service.ts` rate_limited arm (~152-155) and `routes/webhooks-automation.ts:53`: requires 11 billable runs within 60 seconds; baseline-uncovered too.
 - `run-uploaded-files.service.ts:48` (`isRunUploadedFileSource` falsy-source arm in `sourceForRun`): requires a runId whose `agent_runs` row exists without its `zero_runs` row, but the only production insert creates both in one transaction with a NOT NULL `trigger_source`; every enum value is truthy. The legacy agentphone test reached it only by DB-seeding an `agent_runs` row alone. The `.some → false` fallback arm stays covered through the `"webhook"` trigger source.
 - `audio-transcriptions-v1.ts` free-quota 402 (lines 95, 256-257): requires `org_metadata.tier = 'free'`, but no public write path produces that tier — onboarding defaults to `pro-suspend`, Stripe webhooks and downgrade routes only write `pro`/`team`/`pro-suspend`. The daily-rate and daily-duration gates are covered through the API.
