@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.425.0](https://github.com/vm0-ai/vm0/compare/web-v12.424.3...web-v12.425.0) (2026-06-12)
+
+
+### Features
+
+* polish desktop auth status pages ([#17479](https://github.com/vm0-ai/vm0/issues/17479)) ([eda034c](https://github.com/vm0-ai/vm0/commit/eda034c02ab8cc8b6056f858a262a658e8958b9f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.2
+    * @vm0/core bumped to 8.333.3
+
 ## [12.424.3](https://github.com/vm0-ai/vm0/compare/web-v12.424.2...web-v12.424.3) (2026-06-12)
 
 
