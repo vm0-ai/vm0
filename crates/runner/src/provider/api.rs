@@ -520,46 +520,32 @@ fn sanitized_json_error_detail(error: &serde_json::Error) -> String {
     let detail = message
         .strip_suffix(&location_suffix)
         .unwrap_or(message.as_str());
-    if detail.contains("missing field `")
-        || detail.contains("duplicate field `")
-        || detail.contains("unknown field `")
-    {
+    if detail.starts_with("missing field `") || detail.starts_with("duplicate field `") {
         return detail.to_string();
     }
 
-    redact_json_error_values(detail)
-}
-
-fn redact_json_error_values(detail: &str) -> String {
-    let mut redacted = String::with_capacity(detail.len());
-    let mut chars = detail.chars();
-    while let Some(ch) = chars.next() {
-        match ch {
-            '`' => {
-                redacted.push_str("`<redacted>`");
-                for inner in chars.by_ref() {
-                    if inner == '`' {
-                        break;
-                    }
-                }
-            }
-            '"' => {
-                redacted.push_str("\"<redacted>\"");
-                let mut escaped = false;
-                for inner in chars.by_ref() {
-                    if escaped {
-                        escaped = false;
-                    } else if inner == '\\' {
-                        escaped = true;
-                    } else if inner == '"' {
-                        break;
-                    }
-                }
-            }
-            _ => redacted.push(ch),
-        }
+    if detail.starts_with("unknown field `") {
+        return "unknown field".to_string();
     }
-    redacted
+    if detail.starts_with("trailing characters") {
+        return "trailing characters".to_string();
+    }
+    if detail.starts_with("invalid type:") {
+        return "invalid type".to_string();
+    }
+    if detail.starts_with("invalid value:") {
+        return "invalid value".to_string();
+    }
+    if detail.starts_with("unknown variant `") {
+        return "unknown variant".to_string();
+    }
+    if detail.starts_with("expected value") {
+        return "expected value".to_string();
+    }
+    if detail.starts_with("EOF while parsing") {
+        return "unexpected end of input".to_string();
+    }
+    "invalid JSON".to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -1036,6 +1022,55 @@ mod tests {
                     "cliAgentType": "claude_code",
                     "firewalls": [{
                         "kind": "secret-kind-value",
+                        "name": "github"
+                    }],
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("claim decode: failed at firewalls[0]"),
+            "decode error should include JSON path, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
+            "decode error must not include response body values, got: {message}"
+        );
+        assert!(
+            !message.contains("secret-kind-value"),
+            "decode error must not include invalid field values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_error_redacts_values_that_look_like_field_errors() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "firewalls": [{
+                        "kind": "missing field `secret-kind-value`",
                         "name": "github"
                     }],
                     "billableFirewalls": []
