@@ -2348,6 +2348,30 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat-thread")).toBe(false);
   });
 
+  it("matches the zero chat thread drafts rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread-drafts")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/chat-thread-drafts/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread-draft")).toBe(
+      false,
+    );
+  });
+
+  it("matches the zero chat thread unreads rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread-unreads")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/chat-thread-unreads/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread-unread")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero chat thread detail rewrite path with one dynamic segment", () => {
     expect(
       matchesApiBackendRewritePath(
