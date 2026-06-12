@@ -10,6 +10,12 @@ from tests.pending_helpers import assert_pending
 from tests.usage_buffer_helpers import DeliveryOutcomeCallback, RecordingEnqueue, event
 
 
+def assert_usage_buffer_drained(enqueue: RecordingEnqueue) -> None:
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 0
+    enqueue.assert_not_called()
+
+
 def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp_path):
     failed_payloads = []
 
@@ -44,6 +50,7 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
     assert retry_payload["runId"] == "run-1"
     assert retry_payload["events"][0]["quantity"] == 10
     assert retry_payload["events"][0]["idempotencyKey"] == failed_key
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_keys(tmp_path):
@@ -93,6 +100,7 @@ def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_ke
         for payload in failed_payloads
         for flushed_event in payload["events"]
     ]
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempotency_key(
@@ -134,6 +142,7 @@ def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempoten
     assert retry_payload["runId"] == "run-threshold"
     assert retry_payload["events"][0]["quantity"] == usage_buffer.MAX_BUFFERED_SOURCE_EVENTS
     assert retry_payload["events"][0]["idempotencyKey"] == failed_key
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_saturated_flush_retains_retryable_payload_with_same_idempotency_key(tmp_path):
@@ -162,6 +171,7 @@ def test_saturated_flush_retains_retryable_payload_with_same_idempotency_key(tmp
     assert retry_payload["runId"] == "run-1"
     assert retry_payload["events"][0]["quantity"] == 10
     assert retry_payload["events"][0]["idempotencyKey"] == retained_key
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_partial_saturated_flush_retries_only_unadmitted_batches(tmp_path):
@@ -203,6 +213,7 @@ def test_partial_saturated_flush_retries_only_unadmitted_batches(tmp_path):
     retry_payload = enqueue.last_call.payload
     assert retry_payload["runId"] == "run-2"
     assert retry_payload["events"][0]["idempotencyKey"] == retained_key
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_retained_aggregate_batch_keeps_source_event_count(tmp_path):
@@ -276,6 +287,7 @@ def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.log_type == "model_usage_observation"
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path):
@@ -322,6 +334,7 @@ def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path)
 
     enqueue.assert_called_once()
     assert enqueue.last_call.log_type == "model_usage_observation"
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
@@ -370,6 +383,7 @@ def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert [call.payload["runId"] for call in enqueue.calls] == ["run-a", "run-b"]
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_overlapping_flush_defers_live_snapshot_while_enqueueing(tmp_path):
@@ -406,6 +420,7 @@ def test_overlapping_flush_defers_live_snapshot_while_enqueueing(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-2"
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
@@ -441,6 +456,7 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-2"
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_retryable_delivery_failure_retains_flush_and_retries_with_same_key(
@@ -489,7 +505,9 @@ def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
     usage_webhook_server,
 ):
     del sync_usage_executor
+    pending_path = tmp_path / "usage-pending"
     proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
     for run_id, source_key in (("run-a", "source-a"), ("run-b", "source-b")):
         usage.buffer_usage_events(
             usage_webhook_server.url("/usage"),
@@ -523,6 +541,8 @@ def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
     assert [body["events"][0]["idempotencyKey"] for body in retry_bodies] == [
         body["events"][0]["idempotencyKey"] for body in first_attempts
     ]
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
 
 def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
