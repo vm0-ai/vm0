@@ -100,7 +100,6 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
   });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
@@ -160,14 +159,11 @@ interface ThreadListItem {
   agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
-  isRead: boolean;
   running: boolean;
-  scheduleCount?: number;
   pinnedAt?: string | null;
 }
 
 type PagedThreadItem = ThreadListItem & {
-  hasDraft?: boolean;
   pinnedAt?: string | null;
   renamedAt?: string | null;
 };
@@ -185,7 +181,6 @@ export function splitChatThreadListResponse(
   threads: PagedThreadItem[];
   hasMore: boolean;
   nextCursor: string | null;
-  totalCount: number;
 } {
   const pinned = threads.filter((t) => {
     return t.pinnedAt !== null && t.pinnedAt !== undefined;
@@ -198,7 +193,6 @@ export function splitChatThreadListResponse(
     threads: nonPinned,
     hasMore: false,
     nextCursor: null,
-    totalCount: nonPinned.length,
   };
 }
 

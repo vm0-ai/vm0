@@ -1564,7 +1564,7 @@ interface RunTrackingDeps {
   reloadThread$: Command<void, []>;
   threadData$: Computed<Promise<ChatThread | null>>;
   allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
-  latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
+  latestChatMessageId$: Computed<Promise<string | undefined>>;
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
@@ -1577,46 +1577,45 @@ interface RunTrackingDeps {
 interface MarkThreadReadDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
-  latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  locallyMarkedReadAt$: State<string | undefined>;
+  latestChatMessageId$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadMessageId$: State<string | undefined>;
   dataSource: ChatThreadDataSource;
 }
 
 function createMarkThreadReadIfNeeded({
   threadId,
   threadData$,
-  latestAssistantTextCreatedAt$,
-  locallyMarkedReadAt$,
+  latestChatMessageId$,
+  locallyMarkedReadMessageId$,
   dataSource,
 }: MarkThreadReadDeps) {
   return command(async ({ get, set }, sig: AbortSignal) => {
-    const latestAssistantTextCreatedAt = await get(
-      latestAssistantTextCreatedAt$,
-    );
+    const latestMessageId = await get(latestChatMessageId$);
     sig.throwIfAborted();
-    if (!latestAssistantTextCreatedAt) {
+    if (!latestMessageId) {
       return;
     }
 
     const thread = await get(threadData$);
     sig.throwIfAborted();
-    const lastReadAt = get(locallyMarkedReadAt$) ?? thread?.lastReadAt ?? null;
-    const targetReadAt = Math.max(
-      Date.parse(thread?.lastMessageAt ?? latestAssistantTextCreatedAt),
-      Date.parse(latestAssistantTextCreatedAt),
-    );
-    if (lastReadAt !== null && Date.parse(lastReadAt) >= targetReadAt) {
+    const lastReadMessageId =
+      get(locallyMarkedReadMessageId$) ?? thread?.lastReadMessageId ?? null;
+    if (lastReadMessageId === latestMessageId) {
       return;
     }
 
-    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
+    const newLastReadId = await set(
+      dataSource.markRead$,
+      { threadId, latestMessageId },
+      sig,
+    );
     sig.throwIfAborted();
-    if (newLastReadAt !== null) {
-      set(locallyMarkedReadAt$, newLastReadAt);
+    if (newLastReadId !== null) {
+      set(locallyMarkedReadMessageId$, newLastReadId);
     }
-    // Server broadcasts `threadListChanged` via Ably on mark-read; the
-    // sidebar reloads from that channel. Bumping reloadChatThreads$ here too
-    // forces a redundant refetch that blocks subsequent keyboard navigation.
+    // No sidebar reload needed: markRead$ records an optimistic read mark
+    // and applies the response's unread snapshot, so the unread dot clears
+    // without refetching the thread list.
   });
 }
 
@@ -1625,7 +1624,7 @@ function createRunTracking({
   reloadThread$,
   threadData$,
   allMessages$,
-  latestAssistantTextCreatedAt$,
+  latestChatMessageId$,
   rawMessages$,
   initialPage$,
   fetchNextPage$,
@@ -1634,7 +1633,7 @@ function createRunTracking({
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
-  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
+  const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
 
   const allFinished$ = computed(async (get) => {
     if (hasUnresolvedQueueMarker(await get(rawMessages$))) {
@@ -1648,8 +1647,8 @@ function createRunTracking({
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
     threadData$,
-    latestAssistantTextCreatedAt$,
-    locallyMarkedReadAt$,
+    latestChatMessageId$,
+    locallyMarkedReadMessageId$,
     dataSource,
   });
 
@@ -2334,7 +2333,7 @@ export function createChatThreadSignals(
     reloadThread$,
     threadData$,
     allMessages$,
-    latestAssistantTextCreatedAt$,
+    latestChatMessageId$,
     rawMessages$,
     initialPage$,
     fetchNextPage$,

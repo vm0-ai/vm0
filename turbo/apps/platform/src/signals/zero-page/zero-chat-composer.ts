@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { VideoStyleCategory } from "@vm0/core";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -60,6 +61,25 @@ export const selectedSlashSkillIndex$ = computed((get) => {
 export const setSelectedSlashSkillIndex$ = command(({ set }, index: number) => {
   set(internalSelectedSlashSkillIndex$, index);
 });
+
+// The menu is a native popover: the browser renders it in the top layer (no
+// overflow clipping) and CSS anchor positioning places it, so no coordinates
+// are computed here. The element is hidden until showPopover() is called.
+export const setSlashSkillMenuRef$ = onRef(
+  command((_, element: HTMLElement, signal: AbortSignal) => {
+    // happy-dom does not implement the Popover API
+    if (typeof element.showPopover !== "function") {
+      return;
+    }
+
+    element.showPopover();
+    signal.addEventListener("abort", () => {
+      if (element.isConnected) {
+        element.hidePopover();
+      }
+    });
+  }),
+);
 
 // -- Add-connectors dialog search filter ------------------------------------
 

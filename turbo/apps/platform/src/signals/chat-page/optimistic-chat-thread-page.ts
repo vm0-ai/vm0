@@ -450,7 +450,6 @@ export const sidebarChatThreads$ = computed(
           agent: { id: thread.agentId, avatarUrl: null },
           createdAt: thread.createdAt,
           updatedAt: thread.createdAt,
-          isRead: true,
           running: thread.running,
         };
       });

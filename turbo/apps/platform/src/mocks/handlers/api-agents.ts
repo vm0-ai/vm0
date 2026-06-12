@@ -135,8 +135,12 @@ export const apiAgentsHandlers = [
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
+  }),
+
+  // GET /api/zero/chat-thread-drafts
+  mockApi(chatThreadsContract.drafts, ({ respond }) => {
+    return respond(200, { draftThreadIds: [] });
   }),
 
   // POST /api/zero/chat-threads (create new thread)
@@ -189,12 +193,13 @@ export const apiAgentsHandlers = [
     return respond(204);
   }),
 
+  // GET /api/zero/chat-thread-unreads
+  mockApi(chatThreadsContract.unreads, ({ respond }) => {
+    return respond(200, { unreads: [] });
+  }),
+
   // POST /api/zero/chat-threads/:id/mark-read
   mockApi(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, {
-      lastReadMessageId: null,
-      lastReadAt: null,
-      changed: false,
-    });
+    return respond(200, { lastReadMessageId: null, unreads: [] });
   }),
 ];

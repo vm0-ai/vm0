@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { chatThreadMarkReadContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -8,12 +8,12 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import {
-  publishThreadListChanged,
-  publishUserSignal,
-} from "../external/realtime";
+import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
+import {
+  visibleChatMessageCondition,
+  zeroChatThreadUnreads,
+} from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
 
 const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -25,9 +25,8 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const [thread] = await writeDb
     .select({
-      lastReadAt: chatThreads.lastReadAt,
       lastReadMessageId: chatThreads.lastReadMessageId,
-      lastMessageAt: chatThreads.lastMessageAt,
+      agentComposeId: chatThreads.agentComposeId,
     })
     .from(chatThreads)
     .where(
@@ -40,15 +39,22 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Chat thread not found");
   }
 
-  const [latestText] = await writeDb
-    .select({ id: chatMessages.id, createdAt: chatMessages.createdAt })
+  const agentUnreads = async () => {
+    const unreads = await get(
+      zeroChatThreadUnreads({
+        userId: auth.userId,
+        agentComposeId: thread.agentComposeId,
+      }),
+    );
+    return [...unreads];
+  };
+
+  const [latest] = await writeDb
+    .select({ id: chatMessages.id })
     .from(chatMessages)
     .where(
       and(
         eq(chatMessages.chatThreadId, params.id),
-        eq(chatMessages.role, "assistant"),
-        isNotNull(chatMessages.content),
-        sql`${chatMessages.content} <> ''`,
         visibleChatMessageCondition(),
       ),
     )
@@ -56,70 +62,38 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .limit(1);
   signal.throwIfAborted();
 
-  if (!latestText) {
+  const latestMessageId = latest?.id ?? null;
+  if (thread.lastReadMessageId === latestMessageId) {
     return {
       status: 200 as const,
       body: {
-        lastReadMessageId: null,
-        lastReadAt: thread.lastReadAt?.toISOString() ?? null,
-        changed: false,
+        lastReadMessageId: latestMessageId,
+        unreads: await agentUnreads(),
       },
     };
   }
 
-  const nextReadAtMs = Math.max(
-    thread.lastMessageAt.getTime(),
-    latestText.createdAt.getTime(),
-  );
-  const currentLastReadAt = thread.lastReadAt;
-  if (
-    currentLastReadAt !== null &&
-    currentLastReadAt.getTime() >= nextReadAtMs &&
-    thread.lastReadMessageId === latestText.id
-  ) {
-    return {
-      status: 200 as const,
-      body: {
-        lastReadMessageId: latestText.id,
-        lastReadAt: currentLastReadAt.toISOString(),
-        changed: false,
-      },
-    };
-  }
-
-  const [updated] = await writeDb
+  await writeDb
     .update(chatThreads)
-    .set({
-      lastReadAt: sql`GREATEST(
-        COALESCE(${chatThreads.lastReadAt}, 'epoch'::timestamp),
-        ${chatThreads.lastMessageAt},
-        ${latestText.createdAt}
-      )`,
-      lastReadMessageId: latestText.id,
-    })
+    .set({ lastReadMessageId: latestMessageId })
     .where(
       and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
-    )
-    .returning({ lastReadAt: chatThreads.lastReadAt });
+    );
   signal.throwIfAborted();
-  const lastReadAt = updated?.lastReadAt ?? new Date(nextReadAtMs);
 
+  // Per-thread read-cursor signal only. No threadListChanged broadcast: the
+  // caller syncs from the unread snapshot in this response, and other
+  // clients converge on their next unreads fetch.
   await publishUserSignal(
     [auth.userId],
     `chatThreadReadCursorUpdated:${params.id}`,
-    { lastReadMessageId: latestText.id, lastReadAt: lastReadAt.toISOString() },
+    { lastReadMessageId: latestMessageId },
   );
-  signal.throwIfAborted();
-  await publishThreadListChanged(auth.userId);
   signal.throwIfAborted();
 
   return {
     status: 200 as const,
-    body: {
-      lastReadMessageId: latestText.id,
-      lastReadAt: lastReadAt.toISOString(),
-      changed: true,
-    },
+    body: { lastReadMessageId: latestMessageId, unreads: await agentUnreads() },
   };
 });
 

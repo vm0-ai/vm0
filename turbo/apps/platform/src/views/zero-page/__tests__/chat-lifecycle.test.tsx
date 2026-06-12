@@ -256,7 +256,6 @@ function mockKeyboardNavigationThreads(): void {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-06-01T00:00:00Z",
             updatedAt: `2026-06-01T00:0${index}:00Z`,
-            isRead: true,
             running: false,
             pinnedAt: null,
           };
@@ -474,7 +473,6 @@ function mockServerQueuedThreadStories(): void {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-06-09T10:00:00Z",
             updatedAt: `2026-06-09T10:0${index}:00Z`,
-            isRead: true,
             running: thread.activeRunIds.length > 0,
             pinnedAt: null,
           };
@@ -515,11 +513,7 @@ function mockServerQueuedThreadStories(): void {
     },
   );
   context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, {
-      lastReadMessageId: null,
-      lastReadAt: null,
-      changed: false,
-    });
+    return respond(200, { lastReadMessageId: null, unreads: [] });
   });
 }
 
@@ -2278,8 +2272,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, {
         lastReadMessageId: null,
-        lastReadAt: null,
-        changed: false,
+        unreads: [],
       });
     });
 
@@ -4198,7 +4191,6 @@ describe("chat lifecycle", () => {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
-            isRead: true,
             running: true,
           },
           {
@@ -4207,13 +4199,11 @@ describe("chat lifecycle", () => {
             agent: { id: AGENT_ID, avatarUrl: null },
             createdAt: "2026-03-10T00:01:00Z",
             updatedAt: "2026-03-10T00:01:00Z",
-            isRead: true,
             running: false,
           },
         ],
         hasMore: false,
         nextCursor: null,
-        totalCount: 2,
       });
     });
     context.mocks.api(

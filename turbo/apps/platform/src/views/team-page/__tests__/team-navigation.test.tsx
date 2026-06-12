@@ -196,7 +196,6 @@ function mockTeamAPIs(): void {
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
   });
   context.mocks.api(zeroComposesMainContract.getByName, ({ respond }) => {
