@@ -213,6 +213,7 @@ async fn send_event_keeps_existing_session_metadata() {
         "/tmp/first-session.jsonl",
         "later id-bearing events must not replace checkpoint history metadata"
     );
+    assert_eq!(masker.mask_string("first-session"), "***");
     assert_eq!(masker.mask_string("second-session"), "***");
 
     mock.delete_async().await;

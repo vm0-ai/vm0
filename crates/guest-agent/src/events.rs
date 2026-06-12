@@ -365,7 +365,11 @@ pub(crate) fn capture_session_metadata(event: &Value, masker: &SecretMasker) {
     // partial metadata write.
     match std::fs::read_to_string(paths::session_id_file()) {
         Ok(existing_session_id) => {
-            if existing_session_id.trim() == session_id {
+            let existing_session_id = existing_session_id.trim();
+            if !existing_session_id.is_empty() {
+                masker.add_sensitive_value(existing_session_id);
+            }
+            if existing_session_id == session_id {
                 ensure_session_history_marker(&history_path_payload);
             }
             return;
