@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.335.0](https://github.com/vm0-ai/vm0/compare/core-v8.334.2...core-v8.335.0) (2026-06-12)
+
+
+### Features
+
+* stream assistant text deltas to web chat ([#17370](https://github.com/vm0-ai/vm0/issues/17370)) ([cbfdf74](https://github.com/vm0-ai/vm0/commit/cbfdf74761771d0142603030ca764d1f33d61479))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.89.0
+    * @vm0/connectors bumped to 1.73.0
+
 ## [8.334.2](https://github.com/vm0-ai/vm0/compare/core-v8.334.1...core-v8.334.2) (2026-06-12)
 
 
