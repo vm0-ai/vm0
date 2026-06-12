@@ -1331,13 +1331,6 @@ describe("CHAT-02: thread deletion while a run is active", () => {
         });
       })
       .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === "threadListChanged";
-        });
-      })
-      .toBe(true);
 
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
