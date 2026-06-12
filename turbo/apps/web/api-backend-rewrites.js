@@ -1070,7 +1070,6 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/voice-io/quota", "/api/zero/voice-io/quota"],
   ["/api/zero/voice-io/speech", "/api/zero/voice-io/speech"],
   ["/api/zero/voice-io/stt", "/api/zero/voice-io/stt"],
-  ["/api/zero/voice-io/tts", "/api/zero/voice-io/tts"],
   [
     "/api/zero/integrations/phone/:path*",
     "/api/zero/integrations/phone/:path*",

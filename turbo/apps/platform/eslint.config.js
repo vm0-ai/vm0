@@ -161,7 +161,6 @@ export default [
       "src/signals/api-client.ts",
       "src/signals/zero-page/chat-draft.ts",
       "src/signals/__tests__/fetch.test.ts",
-      "src/signals/voice-io/voice-io-tts.ts",
       "src/signals/voice-io/voice-io-stt.ts",
       "src/views/zero-page/components/org-manage/org-general-tab.tsx",
       "src/views/agents-page/agents-page.tsx",

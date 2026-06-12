@@ -5,13 +5,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import {
-  IconMenu2,
-  IconPackage,
-  IconUserPlus,
-  IconVolume2,
-} from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { IconMenu2, IconPackage, IconUserPlus } from "@tabler/icons-react";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
@@ -29,7 +23,6 @@ import {
   setSidebarExpanded$,
   isChatRoute,
 } from "../../signals/zero-page/zero-nav.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
 import { Link } from "../router/link.tsx";
@@ -48,10 +41,6 @@ import {
 } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import {
-  autoReadEnabled$,
-  toggleAutoRead$,
-} from "../../signals/voice-io/voice-io-settings.ts";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import {
@@ -77,28 +66,6 @@ function AgentAvatarInTopBar() {
       className="h-6 w-6 shrink-0 rounded-full object-cover object-top"
       data-testid="agent-avatar"
     />
-  );
-}
-
-function AutoReadToggleLeaf() {
-  const autoRead = useGet(autoReadEnabled$);
-  const toggleAutoReadFn = useSet(toggleAutoRead$);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        toggleAutoReadFn();
-      }}
-      className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-        autoRead
-          ? "text-primary bg-primary/10"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-      )}
-      aria-label="Toggle auto-read"
-    >
-      <IconVolume2 size={16} stroke={1.5} />
-    </button>
   );
 }
 
@@ -186,14 +153,11 @@ function MobileScheduleButtonLeaf() {
 
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const inChatRoute = isChatRoute(activeId);
-  const features = useLastResolved(featureSwitch$);
   const showInviteFallback = inChatRoute && activeId !== "chat";
-  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   return (
     <>
       {inChatRoute && <MobileScheduleButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
-      {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
       {showInviteFallback && <InviteButtonLeaf />}
     </>
   );

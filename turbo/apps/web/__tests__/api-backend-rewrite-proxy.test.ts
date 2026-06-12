@@ -2176,7 +2176,7 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/stt/extra")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts/extra")).toBe(
       false,
     );

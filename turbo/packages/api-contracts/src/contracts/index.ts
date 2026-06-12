@@ -1446,12 +1446,6 @@ export {
   type ZeroVoiceIoSttResponse,
 } from "./zero-voice-io-stt";
 export {
-  zeroVoiceIoTtsContract,
-  zeroVoiceIoTtsRequestSchema,
-  type ZeroVoiceIoTtsContract,
-  type ZeroVoiceIoTtsRequest,
-} from "./zero-voice-io-tts";
-export {
   zeroUploadsContract,
   type ZeroUploadsContract,
   type UploadPrepareResponse,

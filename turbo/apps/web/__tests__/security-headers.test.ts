@@ -1596,14 +1596,6 @@ const ZERO_SKILLS_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/skills/my-skill/extra",
   "/api/zero/skill/my-skill",
 ] as const;
-const VOICE_IO_TTS_REWRITE_SOURCE = "/api/zero/voice-io/tts";
-const VOICE_IO_TTS_PATH = "/api/zero/voice-io/tts";
-const VOICE_IO_TTS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/voice-io/tts/extra",
-  "/api/zero/voice-io/quota",
-  "/api/zero/voice-io/speech",
-  "/api/zero/voice-io/stt",
-] as const;
 const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
 const ZERO_CONNECTORS_LIST_PATH = "/api/zero/connectors";
 const ZERO_CONNECTORS_LIST_NEXT_NEGATIVE_PATHS = [
@@ -2881,10 +2873,6 @@ describe("API backend rewrites", () => {
         {
           source: "/api/zero/voice-io/stt",
           destination: "https://api.example.test/api/zero/voice-io/stt",
-        },
-        {
-          source: VOICE_IO_TTS_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/zero/voice-io/tts",
         },
         {
           source: "/api/zero/web/download-file",
@@ -7392,29 +7380,6 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_ORG_LOGO_PATH)).toStrictEqual({});
     for (const pathname of ZERO_ORG_LOGO_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact voice-io tts rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === VOICE_IO_TTS_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: VOICE_IO_TTS_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/zero/voice-io/tts",
-    });
-
-    const matcher = getPathMatch(VOICE_IO_TTS_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(VOICE_IO_TTS_PATH)).toStrictEqual({});
-    for (const pathname of VOICE_IO_TTS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

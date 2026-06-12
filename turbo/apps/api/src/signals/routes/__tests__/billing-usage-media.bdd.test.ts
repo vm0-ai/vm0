@@ -10,7 +10,6 @@
 
 import { randomUUID } from "node:crypto";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -887,28 +886,6 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expectApiError(rateLimitedAudio.body);
     expect(rateLimitedAudio.body.error.code).toBe("DAILY_RATE_LIMIT_EXCEEDED");
 
-    const unauthenticatedTts = await api.requestVoiceTts(
-      null,
-      { text: "hello" },
-      [401],
-    );
-    expectApiError(unauthenticatedTts.body);
-    expect(unauthenticatedTts.body.error.code).toBe("UNAUTHORIZED");
-
-    await api.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.AudioOutput]: true,
-    });
-    server.use(
-      http.post("https://api.openai.com/v1/audio/speech", () => {
-        return new HttpResponse(new Uint8Array([1, 2, 3]).buffer, {
-          status: 200,
-          headers: { "Content-Type": "application/octet-stream" },
-        });
-      }),
-    );
-    const tts = await api.requestVoiceTts(admin, { text: "hello" }, [200]);
-    expect(tts.body).toBeInstanceOf(Blob);
-
     const speech = await api.requestVoiceSpeech(
       admin,
       { text: "hello", voice: "marin" },
@@ -1628,20 +1605,6 @@ describe("FILE-02: audio transcription v1 and Gemini generate-image provider con
       [401],
     );
     expectApiError(invalidBearer.body);
-
-    await api.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.AudioInput]: false,
-    });
-    const gated = await api.requestAudioTranscriptionV1WithBearer(
-      apiKey.token,
-      octetStreamBlob(pcm),
-      [403],
-    );
-    expectApiError(gated.body);
-    expect(gated.body.error.message).toBe("Audio input is not enabled");
-    await api.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.AudioInput]: true,
-    });
 
     const transcribed = await requestAudioTranscriptionRaw(apiKey.token, pcm);
     expect(transcribed.status).toBe(200);

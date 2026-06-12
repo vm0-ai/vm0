@@ -220,18 +220,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show audit log links in integration replies",
     enabled: false,
   },
-  [FeatureSwitchKey.AudioInput]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable verbose (timestamped-segment) speech-to-text on /api/zero/voice-io/stt; when off, transcription falls back to plain text",
-    enabled: false,
-  },
-  [FeatureSwitchKey.AudioOutput]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
-    enabled: false,
-  },
   [FeatureSwitchKey.SkillsViewer]: {
     maintainer: "lancy@vm0.ai",
     description: "Show the skills viewer in the Zero sidebar and page UI",
@@ -283,9 +271,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatGithubPrTracking]: {
     maintainer: "linghan@vm0.ai",
     description:
-      "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub.",
+      "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
@@ -315,12 +302,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatCompletedWorkFolding]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Collapse earlier Zero chat work history after a run finishes, leaving the final message visible. Users can opt in individually from Lab.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ChatRecommendedFollowups]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -336,9 +317,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatInlineFeedback]: {
     maintainer: "ming@vm0.ai",
     description:
-      "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
+      "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread. Individuals opt in via feature-switch overrides.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatSlashSkillCommands]: {
     maintainer: "bingjie@vm0.ai",
@@ -346,12 +326,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable slash command suggestions for the current agent's skills in the Zero chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CreditUsageRecords]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show ranged personal credit usage records and team member usage aggregates in settings, and enable scoped/ranged /api/zero/usage/record queries.",
-    enabled: true,
   },
   [FeatureSwitchKey.AutomationWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",

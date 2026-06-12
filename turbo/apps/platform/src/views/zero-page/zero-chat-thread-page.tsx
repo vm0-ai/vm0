@@ -23,11 +23,9 @@ import {
   IconPhoto,
   IconChartLine,
   IconPlayerPlay,
-  IconPlayerStop,
   IconVideo,
   IconCopy,
   IconCheck,
-  IconVolume2,
   IconArrowDown,
   IconArrowUpRight,
   IconChevronRight,
@@ -77,11 +75,6 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
-import {
-  autoReadEnabled$,
-  toggleAutoRead$,
-} from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
 import {
@@ -110,10 +103,6 @@ import {
   completeChatConnectorActionConnect$,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
-import {
-  completedWorkExpandedKeys$,
-  toggleCompletedWorkExpanded$,
-} from "../../signals/chat-page/completed-work-folding.ts";
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -1070,10 +1059,7 @@ function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
 
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadDataLoadable = useLastLoadable(thread.threadData$);
-  const autoRead = useGet(autoReadEnabled$);
-  const toggleAutoReadFn = useSet(toggleAutoRead$);
   const features = useLastResolved(featureSwitch$);
-  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const githubPrTrackingEnabled =
     features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
   const agentId =
@@ -1101,33 +1087,6 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         <ArtifactsButton thread={thread} />
         {githubPrTrackingEnabled && agentId && (
           <GithubPrTrackingButton thread={thread} agentId={agentId} />
-        )}
-        {audioOutputEnabled && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => {
-                    toggleAutoReadFn();
-                  }}
-                  className={cn(
-                    "p-1.5 rounded-md transition-colors duration-150",
-                    autoRead
-                      ? "text-primary bg-primary/10"
-                      : "text-muted-foreground/60 hover:text-foreground hover:bg-accent",
-                  )}
-                  aria-label="Toggle auto-read"
-                  aria-pressed={autoRead}
-                >
-                  <IconVolume2 size={18} stroke={1.5} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {autoRead ? "Auto-read on" : "Auto-read off"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         )}
       </div>
     </header>
@@ -2321,15 +2280,6 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
-  const features = useLastResolved(featureSwitch$);
-  const completedWorkFoldingEnabled =
-    features?.[FeatureSwitchKey.ChatCompletedWorkFolding] ?? false;
-  const completedWorkFolding = completedWorkFoldingEnabled
-    ? buildCompletedWorkFolding(activeGroups)
-    : null;
-  const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
-  const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
-  const visibleGroups = completedWorkFolding?.visibleGroups ?? activeGroups;
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -2372,13 +2322,7 @@ function ChatThreadMessagesMain({
             </p>
           </div>
         )}
-        <ChatThreadMessageGroups
-          thread={thread}
-          groups={visibleGroups}
-          completedWorkFolding={completedWorkFolding}
-          completedWorkExpandedKeys={completedWorkExpandedKeys}
-          onToggleCompletedWork={toggleCompletedWorkExpanded}
-        />
+        <ChatThreadMessageGroups thread={thread} groups={activeGroups} />
         <ThinkingIndicator thread={thread} groups={activeGroups} />
       </div>
     </main>
@@ -2388,310 +2332,20 @@ function ChatThreadMessagesMain({
 function ChatThreadMessageGroups({
   thread,
   groups,
-  completedWorkFolding,
-  completedWorkExpandedKeys,
-  onToggleCompletedWork,
 }: {
   thread: ChatThreadSignals;
   groups: readonly GroupedChatMessageGroup[];
-  completedWorkFolding: CompletedWorkFolding | null;
-  completedWorkExpandedKeys: ReadonlySet<string>;
-  onToggleCompletedWork: (key: string) => void;
 }) {
   return (
     <>
       {groups.map((group) => {
-        const completedWorkFold =
-          completedWorkFolding !== null
-            ? (group.messages
-                .map((message) => {
-                  return completedWorkFolding.foldsByFinalMessageId.get(
-                    message.id,
-                  );
-                })
-                .find((fold) => {
-                  return fold !== undefined;
-                }) ?? null)
-            : null;
-        const completedWorkExpanded =
-          completedWorkFold !== null &&
-          completedWorkExpandedKeys.has(completedWorkFold.key);
         return (
           <div key={group.beginMessageId} className="contents">
-            <PagedGroupRow
-              group={group}
-              thread={thread}
-              completedWorkFold={
-                completedWorkFold !== null
-                  ? {
-                      groups: completedWorkFold.labelGroups,
-                      hiddenGroups: completedWorkFold.hiddenGroups,
-                      expanded: completedWorkExpanded,
-                      onToggle: () => {
-                        onToggleCompletedWork(completedWorkFold.key);
-                      },
-                    }
-                  : undefined
-              }
-            />
+            <PagedGroupRow group={group} thread={thread} />
           </div>
         );
       })}
     </>
-  );
-}
-
-function groupMessagesByRole(
-  messages: readonly EnrichedChatMessage[],
-): GroupedChatMessageGroup[] {
-  const groups: GroupedChatMessageGroup[] = [];
-  for (const message of messages) {
-    const last = groups[groups.length - 1];
-    if (last && last.role === message.role) {
-      last.messages.push(message);
-      continue;
-    }
-    groups.push({
-      beginMessageId: message.id,
-      role: message.role,
-      messages: [message],
-    });
-  }
-  return groups;
-}
-
-interface CompletedWorkFold {
-  key: string;
-  finalMessageId: string;
-  hiddenGroups: GroupedChatMessageGroup[];
-  labelGroups: GroupedChatMessageGroup[];
-}
-
-interface CompletedWorkFolding {
-  visibleGroups: GroupedChatMessageGroup[];
-  foldsByFinalMessageId: Map<string, CompletedWorkFold>;
-}
-
-function groupMessagesForCompletedWorkDisplay(
-  messages: readonly EnrichedChatMessage[],
-  foldFinalMessageIds: ReadonlySet<string>,
-): GroupedChatMessageGroup[] {
-  const groups: GroupedChatMessageGroup[] = [];
-  for (const message of messages) {
-    const forceStandalone = foldFinalMessageIds.has(message.id);
-    const last = groups[groups.length - 1];
-    const lastHasFoldFinal =
-      last?.messages.some((candidate) => {
-        return foldFinalMessageIds.has(candidate.id);
-      }) ?? false;
-
-    if (
-      !forceStandalone &&
-      last &&
-      last.role === message.role &&
-      !lastHasFoldFinal
-    ) {
-      last.messages.push(message);
-      continue;
-    }
-
-    groups.push({
-      beginMessageId: message.id,
-      role: message.role,
-      messages: [message],
-    });
-  }
-  return groups;
-}
-
-function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
-  return (
-    message.role === "assistant" &&
-    (Boolean(message.content) || Boolean(message.error))
-  );
-}
-
-function terminatedRunIdsForCompletedWork(
-  messages: readonly EnrichedChatMessage[],
-): Set<string> {
-  const terminatedRunIds = new Set<string>();
-  for (const message of messages) {
-    if (message.interruptsRunId !== undefined) {
-      terminatedRunIds.add(message.interruptsRunId);
-    }
-    if (
-      message.role === "assistant" &&
-      message.runId !== undefined &&
-      message.runLifecycleEvent !== undefined
-    ) {
-      terminatedRunIds.add(message.runId);
-    }
-  }
-  return terminatedRunIds;
-}
-
-function buildCompletedWorkFolding(
-  groups: readonly GroupedChatMessageGroup[],
-): CompletedWorkFolding | null {
-  const messages = groups.flatMap((group) => {
-    return group.messages;
-  });
-  const terminatedRunIds = terminatedRunIdsForCompletedWork(messages);
-  const visibleMessages: EnrichedChatMessage[] = [];
-  const folds: CompletedWorkFold[] = [];
-
-  for (let index = 0; index < messages.length; ) {
-    const runId = messages[index]!.runId;
-    if (runId === undefined) {
-      visibleMessages.push(messages[index]!);
-      index++;
-      continue;
-    }
-
-    let endIndex = index + 1;
-    while (endIndex < messages.length && messages[endIndex]!.runId === runId) {
-      endIndex++;
-    }
-
-    const runMessages = messages.slice(index, endIndex);
-    if (!terminatedRunIds.has(runId)) {
-      visibleMessages.push(...runMessages);
-      index = endIndex;
-      continue;
-    }
-
-    let finalMessageIndex = -1;
-    for (let offset = runMessages.length - 1; offset >= 0; offset--) {
-      if (isRenderableAssistantMessage(runMessages[offset]!)) {
-        finalMessageIndex = offset;
-        break;
-      }
-    }
-    const finalMessage =
-      finalMessageIndex >= 0 ? runMessages[finalMessageIndex]! : undefined;
-    const precedingMessages =
-      finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
-    const hiddenMessages = precedingMessages.filter((message) => {
-      return message.role !== "user";
-    });
-    const trailingMessages =
-      finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
-    const trailingMessagesAreMarkers = trailingMessages.every((message) => {
-      return (
-        message.role === "assistant" && !isRenderableAssistantMessage(message)
-      );
-    });
-    if (
-      finalMessage !== undefined &&
-      hiddenMessages.length > 0 &&
-      trailingMessagesAreMarkers
-    ) {
-      visibleMessages.push(
-        ...precedingMessages.filter((message) => {
-          return message.role === "user";
-        }),
-        finalMessage,
-      );
-      folds.push({
-        key: `${runId}:${finalMessage.id}`,
-        finalMessageId: finalMessage.id,
-        hiddenGroups: groupMessagesByRole(hiddenMessages),
-        labelGroups: groupMessagesByRole(runMessages),
-      });
-    } else {
-      visibleMessages.push(...runMessages);
-    }
-
-    index = endIndex;
-  }
-
-  if (folds.length === 0) {
-    return null;
-  }
-
-  const foldFinalMessageIds = new Set(
-    folds.map((fold) => {
-      return fold.finalMessageId;
-    }),
-  );
-  return {
-    visibleGroups: groupMessagesForCompletedWorkDisplay(
-      visibleMessages,
-      foldFinalMessageIds,
-    ),
-    foldsByFinalMessageId: new Map(
-      folds.map((fold) => {
-        return [fold.finalMessageId, fold];
-      }),
-    ),
-  };
-}
-
-function parseMessageTime(value: string): number | null {
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? null : timestamp;
-}
-
-function formatCompactDuration(totalSeconds: number): string {
-  if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
-  }
-  const totalMinutes = Math.round(totalSeconds / 60);
-  if (totalMinutes < 60) {
-    return `${totalMinutes}m`;
-  }
-  const totalHours = Math.round(totalMinutes / 60);
-  return `${totalHours}h`;
-}
-
-function completedWorkLabel(
-  groups: readonly GroupedChatMessageGroup[],
-): string {
-  const timestamps = groups.flatMap((group) => {
-    return group.messages.flatMap((message) => {
-      const timestamp = parseMessageTime(message.createdAt);
-      return timestamp === null ? [] : [timestamp];
-    });
-  });
-  if (timestamps.length < 2) {
-    return "Worked";
-  }
-  const elapsedSeconds = Math.max(
-    1,
-    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 1000),
-  );
-  return `Worked for ${formatCompactDuration(elapsedSeconds)}`;
-}
-
-const RUN_SECTION_LABEL_CLASS =
-  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
-
-function CompletedWorkFoldRow({
-  groups,
-  expanded,
-  onToggle,
-}: {
-  groups: readonly GroupedChatMessageGroup[];
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const label = completedWorkLabel(groups);
-  return (
-    <div data-chat-completed-work-fold className="-mx-2">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={expanded ? "Collapse work history" : "Expand work history"}
-        onClick={onToggle}
-        className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
-      >
-        <span className="block h-px w-full bg-border/40" />
-        <span className="flex items-center gap-2">
-          <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
-          <span className="h-px flex-1 bg-border/40" />
-        </span>
-      </button>
-    </div>
   );
 }
 
@@ -3658,6 +3312,9 @@ function InlineThinkingRow({
     </div>
   );
 }
+
+const RUN_SECTION_LABEL_CLASS =
+  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
 
 function FinishedRunRow({
   thread,
@@ -4864,27 +4521,14 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
 function PagedGroupRow({
   group,
   thread,
-  completedWorkFold,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
-  completedWorkFold?: {
-    groups: readonly GroupedChatMessageGroup[];
-    hiddenGroups: readonly GroupedChatMessageGroup[];
-    expanded: boolean;
-    onToggle: () => void;
-  };
 }) {
   if (group.role === "user") {
     return <PagedUserGroup group={group} thread={thread} />;
   }
-  return (
-    <PagedAssistantGroup
-      group={group}
-      thread={thread}
-      completedWorkFold={completedWorkFold}
-    />
-  );
+  return <PagedAssistantGroup group={group} thread={thread} />;
 }
 
 function PagedUserGroup({
@@ -5456,16 +5100,9 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
-  completedWorkFold,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
-  completedWorkFold?: {
-    groups: readonly GroupedChatMessageGroup[];
-    hiddenGroups: readonly GroupedChatMessageGroup[];
-    expanded: boolean;
-    onToggle: () => void;
-  };
 }) {
   const groupElementId = `chat-message-group-${group.beginMessageId}`;
   const fullContent = group.messages
@@ -5484,26 +5121,6 @@ function PagedAssistantGroup({
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-3">
-          {completedWorkFold && (
-            <CompletedWorkFoldRow
-              groups={completedWorkFold.groups}
-              expanded={completedWorkFold.expanded}
-              onToggle={completedWorkFold.onToggle}
-            />
-          )}
-          {completedWorkFold?.expanded
-            ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
-                return (
-                  <div key={hiddenGroup.beginMessageId} className="contents">
-                    {hiddenGroup.messages.map((msg) => {
-                      return (
-                        <PagedAssistantMessageItem key={msg.id} message={msg} />
-                      );
-                    })}
-                  </div>
-                );
-              })
-            : null}
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}
@@ -5554,18 +5171,12 @@ function PagedGroupPrimaryActions({
   firstRunId,
   hasContent,
   copied,
-  audioOutputEnabled,
-  isPlayingThis,
   onCopy,
-  onTts,
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
   copied: boolean;
-  audioOutputEnabled: boolean;
-  isPlayingThis: boolean;
   onCopy: () => void;
-  onTts: () => void;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -5611,29 +5222,6 @@ function PagedGroupPrimaryActions({
           </Tooltip>
         </TooltipProvider>
       )}
-      {hasContent && firstRunId && audioOutputEnabled && (
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={onTts}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
-              >
-                {isPlayingThis ? (
-                  <IconPlayerStop size={18} stroke={1.5} />
-                ) : (
-                  <IconVolume2 size={18} stroke={1.5} />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {isPlayingThis ? "Stop reading" : "Read aloud"}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
     </div>
   );
 }
@@ -5652,15 +5240,10 @@ function PagedGroupActions({
   const copied = copiedId === group.beginMessageId;
   const copyMessage = useSet(thread.copyMessage$);
 
-  const features = useLastResolved(featureSwitch$);
-  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
   const hasContent = content.length > 0;
-  const [ttsLoadable, playTts] = useLoadableSet(playTts$);
-  const isPlayingThis = ttsLoadable.state === "loading";
-  const stopTts = useSet(stopTts$);
 
   if (group.role === "user") {
     return null;
@@ -5680,17 +5263,6 @@ function PagedGroupActions({
     );
   };
 
-  const handleTts = () => {
-    if (!firstRunId) {
-      return;
-    }
-    if (isPlayingThis) {
-      stopTts();
-    } else {
-      detach(playTts(content, pageSignal), Reason.DomCallback);
-    }
-  };
-
   return (
     <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
@@ -5699,10 +5271,7 @@ function PagedGroupActions({
           firstRunId={firstRunId}
           hasContent={hasContent}
           copied={copied}
-          audioOutputEnabled={audioOutputEnabled}
-          isPlayingThis={isPlayingThis}
           onCopy={handleCopy}
-          onTts={handleTts}
         />
       </div>
     </div>

@@ -13,7 +13,6 @@ import { setOrgManageDialogOpen$ } from "../zero-page/settings/org-manage-dialog
 import { logger } from "../log.ts";
 import { createDeferredPromise, resetSignal, settle } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { stopTts$ } from "./voice-io-tts.ts";
 import { accept } from "../../lib/accept.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 
@@ -133,8 +132,6 @@ export const startRecording$ = command(
     if (get(internalRecording$) || get(internalTranscribing$)) {
       return;
     }
-
-    set(stopTts$);
 
     const signal = set(resetRecord$, parentSignal);
 
