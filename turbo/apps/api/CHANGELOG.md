@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.135.1](https://github.com/vm0-ai/vm0/compare/api-v1.135.0...api-v1.135.1) (2026-06-12)
+
+
+### Refactoring
+
+* retire obsolete feature switches ([#17496](https://github.com/vm0-ai/vm0/issues/17496)) ([b37964a](https://github.com/vm0-ai/vm0/commit/b37964aa0c45ad3feb291762fdbaaf2fc457cc20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.1
+    * @vm0/connectors bumped to 1.72.1
+    * @vm0/core bumped to 8.334.1
+    * @vm0/db bumped to 1.47.1
+
 ## [1.135.0](https://github.com/vm0-ai/vm0/compare/api-v1.134.3...api-v1.135.0) (2026-06-12)
 
 

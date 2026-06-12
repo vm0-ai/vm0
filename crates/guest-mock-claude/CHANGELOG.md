@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.10](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.9...guest-mock-claude-v0.18.10) (2026-06-12)
+
+
+### Bug Fixes
+
+* set fable effort to low ([#17486](https://github.com/vm0-ai/vm0/issues/17486)) ([5a190d6](https://github.com/vm0-ai/vm0/commit/5a190d6b1c9c06f11f00437ef5110f51741b0f9a))
+
 ## [0.18.9](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.8...guest-mock-claude-v0.18.9) (2026-06-12)
 
 
