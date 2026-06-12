@@ -71,7 +71,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("- Production Type:");
     expect(result.prompt).toContain("- Emotional Tone:");
     expect(result.prompt).toContain("- Style Reference:");
-    expect(result.prompt).toContain("- Style constraints (inject into the video prompt):");
+    expect(result.prompt).toContain(
+      "- Style constraints (inject into the video prompt):",
+    );
     expect(result.prompt).toContain(
       `reflect every dimension and constraint above for the style ${item.nameEn}`,
     );
