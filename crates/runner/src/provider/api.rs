@@ -499,12 +499,61 @@ fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> 
             serde_json::error::Category::Eof => "eof",
         };
         let location = format!("line {} column {}", e.inner().line(), e.inner().column());
+        let detail = sanitized_json_error_detail(e.inner());
         if path == "." {
-            format!("failed at <root>: {category} error at {location}")
+            format!("failed at <root>: {detail}; {category} error at {location}")
         } else {
-            format!("failed at {path}: {category} error at {location}")
+            format!("failed at {path}: {detail}; {category} error at {location}")
         }
     })
+}
+
+fn sanitized_json_error_detail(error: &serde_json::Error) -> String {
+    let message = error.to_string();
+    let location_suffix = format!(" at line {} column {}", error.line(), error.column());
+    let detail = message
+        .strip_suffix(&location_suffix)
+        .unwrap_or(message.as_str());
+    if detail.contains("missing field `")
+        || detail.contains("duplicate field `")
+        || detail.contains("unknown field `")
+    {
+        return detail.to_string();
+    }
+
+    redact_json_error_values(detail)
+}
+
+fn redact_json_error_values(detail: &str) -> String {
+    let mut redacted = String::with_capacity(detail.len());
+    let mut chars = detail.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '`' => {
+                redacted.push_str("`<redacted>`");
+                for inner in chars.by_ref() {
+                    if inner == '`' {
+                        break;
+                    }
+                }
+            }
+            '"' => {
+                redacted.push_str("\"<redacted>\"");
+                let mut escaped = false;
+                for inner in chars.by_ref() {
+                    if escaped {
+                        escaped = false;
+                    } else if inner == '\\' {
+                        escaped = true;
+                    } else if inner == '"' {
+                        break;
+                    }
+                }
+            }
+            _ => redacted.push(ch),
+        }
+    }
+    redacted
 }
 
 // ---------------------------------------------------------------------------
@@ -1011,6 +1060,59 @@ mod tests {
         assert!(
             !message.contains("42"),
             "decode error must not include invalid field values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_error_includes_missing_field_name() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "firewalls": [{
+                        "name": "github",
+                        "apis": []
+                    }],
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("claim decode: failed at firewalls[0]"),
+            "decode error should include JSON path, got: {message}"
+        );
+        assert!(
+            message.contains("missing field `kind`"),
+            "decode error should include the missing field name, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
+            "decode error must not include response body values, got: {message}"
+        );
+        assert!(
+            !message.contains("github"),
+            "decode error must not include response body values, got: {message}"
         );
         mock.assert_async().await;
     }
