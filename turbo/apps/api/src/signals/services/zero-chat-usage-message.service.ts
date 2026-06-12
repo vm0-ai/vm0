@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -14,7 +14,6 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { nowDate } from "../external/time";
 
 const L = logger("ChatUsageMessage");
 
@@ -58,6 +57,34 @@ function buildUsageBreakdown(
   });
 }
 
+function usagePayloadKey(payload: ChatMessageUsagePayload): string {
+  return JSON.stringify({
+    version: payload.version,
+    totalCredits: payload.totalCredits,
+    settledAt: payload.settledAt,
+    breakdown: payload.breakdown
+      .map((kind) => {
+        return {
+          kind: kind.kind,
+          credits: kind.credits,
+          providers: [...kind.providers].sort((a, b) => {
+            return a.provider.localeCompare(b.provider);
+          }),
+        };
+      })
+      .sort((a, b) => {
+        return a.kind.localeCompare(b.kind);
+      }),
+  });
+}
+
+function usagePayloadEquals(
+  left: ChatMessageUsagePayload,
+  right: ChatMessageUsagePayload,
+): boolean {
+  return usagePayloadKey(left) === usagePayloadKey(right);
+}
+
 export const maybeEmitRunUsageMessage$ = command(
   async ({ set }, runId: string, signal: AbortSignal): Promise<boolean> => {
     const db = set(writeDb$);
@@ -69,6 +96,12 @@ export const maybeEmitRunUsageMessage$ = command(
         pendingCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'pending')::int`,
         processedCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'processed')::int`,
         totalCredits: sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0)) FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`,
+        settledAt: sql<Date>`COALESCE(
+          MAX(${usageEvent.processedAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
+          MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
+          MAX(${agentRuns.completedAt}),
+          MAX(${agentRuns.createdAt})
+        )`,
       })
       .from(agentRuns)
       .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
@@ -116,9 +149,29 @@ export const maybeEmitRunUsageMessage$ = command(
     const payload: ChatMessageUsagePayload = {
       version: 1,
       totalCredits: Math.max(0, toNumber(context.totalCredits)),
-      settledAt: nowDate().toISOString(),
+      settledAt: context.settledAt.toISOString(),
       breakdown: buildUsageBreakdown(breakdownRows),
     };
+
+    const [latestUsageMessage] = await db
+      .select({ usagePayload: chatMessages.usagePayload })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.runId, runId),
+          sql`${chatMessages.usagePayload} IS NOT NULL`,
+        ),
+      )
+      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (
+      latestUsageMessage?.usagePayload &&
+      usagePayloadEquals(latestUsageMessage.usagePayload, payload)
+    ) {
+      return false;
+    }
 
     const [inserted] = await db
       .insert(chatMessages)
@@ -128,10 +181,6 @@ export const maybeEmitRunUsageMessage$ = command(
         content: null,
         runId,
         usagePayload: payload,
-      })
-      .onConflictDoNothing({
-        target: chatMessages.runId,
-        where: sql`${chatMessages.usagePayload} IS NOT NULL`,
       })
       .returning({ id: chatMessages.id });
     signal.throwIfAborted();
