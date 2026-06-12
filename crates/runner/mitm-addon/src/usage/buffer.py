@@ -376,9 +376,17 @@ class _UsageBufferState:
 
         del self._delivering_flushes[id(pending_flush)]
         completed_flush = delivering_flush.pending_flush
+        retryable_batch_ids = {
+            id(pending_batch) for pending_batch in delivering_flush.retryable_batches
+        }
+        retryable_batches = [
+            pending_batch
+            for pending_batch in completed_flush.batches
+            if id(pending_batch) in retryable_batch_ids
+        ]
         retain_result = self._retain_batches_for_retry(
             completed_flush.flush_sequence,
-            delivering_flush.retryable_batches,
+            retryable_batches,
             delivering_flush.flush_generation,
         )
         return _DeliveryCompletion(
