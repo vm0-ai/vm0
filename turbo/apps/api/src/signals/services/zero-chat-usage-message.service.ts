@@ -178,7 +178,10 @@ export const maybeEmitRunUsageMessage$ = command(
             sql`${chatMessages.usagePayload} IS NOT NULL`,
           ),
         )
-        .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+        .orderBy(
+          desc(sql<string>`${chatMessages.usagePayload}->>'settledAt'`),
+          desc(chatMessages.createdAt),
+        )
         .limit(1);
       signal.throwIfAborted();
 
@@ -197,6 +200,7 @@ export const maybeEmitRunUsageMessage$ = command(
           content: null,
           runId,
           usagePayload: payload,
+          createdAt: new Date(payload.settledAt),
         })
         .returning({ id: chatMessages.id });
       signal.throwIfAborted();
