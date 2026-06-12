@@ -96,7 +96,7 @@ async function cancelLastAdminOrgsStripeSubscriptions(
     .where(
       and(
         eq(orgMembersCache.userId, userId),
-        eq(orgMembersCache.role, "org:admin"),
+        eq(orgMembersCache.role, "admin"),
       ),
     );
 
@@ -107,7 +107,7 @@ async function cancelLastAdminOrgsStripeSubscriptions(
       .where(
         and(
           eq(orgMembersCache.orgId, orgId),
-          eq(orgMembersCache.role, "org:admin"),
+          eq(orgMembersCache.role, "admin"),
         ),
       );
 
