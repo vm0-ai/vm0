@@ -5,13 +5,14 @@
 //! `codex_auth`; command construction stays in `cli::command`.
 
 use std::process::Stdio;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use tokio::io::AsyncWriteExt as _;
 
+use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::masker::SecretMasker;
@@ -62,25 +63,35 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
+        .process_group(0)
         .kill_on_drop(true)
         .spawn();
     let result = match result {
         Ok(mut child) => {
-            if let Some(mut stdin) = child.stdin.take() {
-                let _ = stdin.write_all(api_key.as_bytes()).await;
-            }
-
+            let pgid = child.id().map(|pid| pid as i32);
             let stderr = child.stderr.take();
-            let stderr_lines = async move {
+            let stderr_handle = tokio::spawn(async move {
                 match stderr {
                     Some(stderr) => diagnostics::collect_stderr_result_tail(stderr).await,
                     None => Vec::new(),
                 }
-            };
-            let (status, stderr_lines) = tokio::join!(child.wait(), stderr_lines);
-            status
-                .map(|status| (status, stderr_lines))
-                .map_err(|e| ("wait", e))
+            });
+
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(api_key.as_bytes()).await;
+            }
+
+            match child.wait().await {
+                Ok(status) => {
+                    let stderr_lines = drain_setup_stderr_after_wait(stderr_handle, pgid).await;
+                    Ok((status, stderr_lines))
+                }
+                Err(e) => {
+                    stderr_handle.abort();
+                    let _ = stderr_handle.await;
+                    Err(("wait", e))
+                }
+            }
         }
         Err(e) => Err(("spawn", e)),
     };
@@ -107,6 +118,49 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
     }
     record_sandbox_op("codex_login", login_start.elapsed(), success, None);
     Ok(())
+}
+
+async fn drain_setup_stderr_after_wait(
+    mut stderr_handle: tokio::task::JoinHandle<Vec<String>>,
+    pgid: Option<i32>,
+) -> Vec<String> {
+    if !stderr_handle.is_finished() {
+        tokio::task::yield_now().await;
+    }
+
+    if !stderr_handle.is_finished()
+        && let Some(pid) = pgid
+    {
+        log_warn!(
+            LOG_TAG,
+            "codex login stderr still open after exit, SIGKILL pgid={pid}"
+        );
+        unsafe {
+            libc::kill(-pid, libc::SIGKILL);
+        }
+    }
+
+    let stderr_timeout =
+        tokio::time::sleep(Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS));
+    tokio::pin!(stderr_timeout);
+    tokio::select! {
+        result = &mut stderr_handle => match result {
+            Ok(lines) => lines,
+            Err(e) => {
+                log_warn!(LOG_TAG, "codex login stderr collector panicked: {e}");
+                Vec::new()
+            }
+        },
+        () = &mut stderr_timeout => {
+            log_warn!(
+                LOG_TAG,
+                "codex login stderr drain timeout, possible orphaned child process"
+            );
+            stderr_handle.abort();
+            let _ = stderr_handle.await;
+            Vec::new()
+        },
+    }
 }
 
 fn setup_api_key_masker(api_key: &str) -> SecretMasker {

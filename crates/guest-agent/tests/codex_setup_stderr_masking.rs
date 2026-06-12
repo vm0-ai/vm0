@@ -6,6 +6,7 @@
 use base64::Engine as _;
 use guest_agent::masker::SecretMasker;
 use std::path::Path;
+use std::time::Duration;
 
 const API_KEY: &str = "sk-test-codex-setup-api-key";
 const API_KEY_OVERLAPPING_SECRET: &str = "sk-test-codex";
@@ -73,7 +74,12 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
 
     let _system_log = SystemLogOverrideGuard::set(&system_log_path);
     let masker = SecretMasker::from_env();
-    guest_agent::cli::setup_codex(&masker).await?;
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        guest_agent::cli::setup_codex(&masker),
+    )
+    .await
+    .expect("codex setup should not hang on descendant-held stderr")?;
 
     let system_log = std::fs::read_to_string(&system_log_path)?;
     assert!(
@@ -115,6 +121,7 @@ fn write_fake_codex(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 input=$(cat)
 printf 'stdin secret: %s\n' "$input" >&2
 printf 'env secret: %s\n' "$SETUP_OTHER_SECRET" >&2
+sh -c 'while :; do sleep 60; done' >&2 &
 printf 'overlong-start-' >&2
 i=0
 while [ "$i" -lt 20000 ]; do
