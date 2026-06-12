@@ -47,9 +47,22 @@ def test_completed_write_prunes_path_state_without_explicit_flush(tmp_path):
 
 def test_flush_prunes_completed_path_state(tmp_path):
     log_path = str(tmp_path / "net.jsonl")
+    flush_errors: queue.SimpleQueue[Exception] = queue.SimpleQueue()
+
+    def flush_log_path() -> None:
+        try:
+            jsonl_writer.flush_log_path(log_path)
+        except Exception as exc:
+            flush_errors.put(exc)
 
     jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
-    jsonl_writer.flush_log_path(log_path)
+    flush_thread = threading.Thread(target=flush_log_path, daemon=True)
+    flush_thread.start()
+    flush_thread.join(timeout=1)
+
+    assert not flush_thread.is_alive()
+    if not flush_errors.empty():
+        raise flush_errors.get_nowait()
 
     assert log_path not in jsonl_writer._accepted_by_path
     assert log_path not in jsonl_writer._completed_by_path
