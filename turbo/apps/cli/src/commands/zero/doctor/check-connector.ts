@@ -15,6 +15,7 @@ import {
 } from "@vm0/connectors/firewall-rule-matcher";
 import {
   extractSecretNamesFromApis,
+  resolveFirewallBaseUrlVars,
   type FirewallConfig,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
@@ -118,7 +119,20 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
 
 function runContextFirewallPermissionConfig(
   firewall: RunContextResponse["firewalls"][number],
-): FirewallConfig {
+): FirewallConfig | null {
+  if (!("apis" in firewall)) {
+    if (!isConnectorType(firewall.name)) {
+      return null;
+    }
+    if (!isFirewallConnectorType(firewall.name)) {
+      return null;
+    }
+    const config = getConnectorFirewall(firewall.name);
+    return resolveFirewallBaseUrlVars(
+      [{ name: config.name, apis: config.apis }],
+      firewall.baseUrlVars,
+    )[0]!;
+  }
   return {
     name: firewall.name,
     apis: firewall.apis.map((api) => {
@@ -144,14 +158,16 @@ function resolveConnectorFromRunContext(
   for (const firewall of runContext.firewalls) {
     if (!isConnectorType(firewall.name)) continue;
     if (!isFirewallConnectorType(firewall.name)) continue;
-    for (const api of firewall.apis) {
+    const permissionConfig = runContextFirewallPermissionConfig(firewall);
+    if (!permissionConfig) continue;
+    for (const api of permissionConfig.apis) {
       const match = matchFirewallBaseUrl(url, api.base);
       if (match === null) continue;
       if (!bestMatch || match.score > bestMatch.match.score) {
         bestMatch = {
           connectorType: firewall.name,
           match,
-          permissionConfig: runContextFirewallPermissionConfig(firewall),
+          permissionConfig,
         };
       }
     }
@@ -338,11 +354,21 @@ function printConnectorDomains(
     );
     return;
   }
+  const permissionConfig = runContextFirewallPermissionConfig(matchingEntry);
+  if (!permissionConfig) {
+    console.log(
+      `No configuration found for the ${ctx.label} connector in this run.`,
+    );
+    console.log(
+      "This means no base URLs are registered for credential replacement for this connector.",
+    );
+    return;
+  }
 
   console.log(
     `The ${ctx.label} connector is configured for this run with the following base URLs:`,
   );
-  for (const api of matchingEntry.apis) {
+  for (const api of permissionConfig.apis) {
     console.log(`  - ${api.base}`);
   }
   console.log("");

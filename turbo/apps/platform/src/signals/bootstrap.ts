@@ -300,6 +300,13 @@ const ROUTE_CONFIG = [
     path: "/schedule/:id",
     setup: redirectWithId(ROUTES.scheduleDetail, "scheduleId"),
   },
+  // The surface moved from /schedules to /automations (#17307); old links
+  // and bookmarks redirect.
+  { path: "/schedules", setup: redirectTo(ROUTES.schedules) },
+  {
+    path: "/schedules/:id",
+    setup: redirectWithId(ROUTES.scheduleDetail, "scheduleId"),
+  },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
 
   {

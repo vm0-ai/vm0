@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.440.0](https://github.com/vm0-ai/vm0/compare/app-v0.439.0...app-v0.440.0) (2026-06-11)
+
+
+### Features
+
+* **api:** delete the legacy schedule and flat automation surfaces ([#17358](https://github.com/vm0-ai/vm0/issues/17358)) ([e25c44c](https://github.com/vm0-ai/vm0/commit/e25c44c01b57e8858ecb687b977ee3c14012700b))
+* **api:** move the automation resource api to /api/automations ([#17362](https://github.com/vm0-ai/vm0/issues/17362)) ([c4ab2d8](https://github.com/vm0-ai/vm0/commit/c4ab2d82a84a4bb083c6755e0b027401cb997626))
+* consolidate inline feedback into one consistent composer-style stack ([#17238](https://github.com/vm0-ai/vm0/issues/17238)) ([c9c09c3](https://github.com/vm0-ai/vm0/commit/c9c09c347fdb0998b41864ef710bcb7b535d8136))
+* enable zero automations for all users ([#17340](https://github.com/vm0-ai/vm0/issues/17340)) ([f864dca](https://github.com/vm0-ai/vm0/commit/f864dcab9cf5292a8513e18801657a63e16d10d6))
+* make chat/preview split width resizable ([#17214](https://github.com/vm0-ai/vm0/issues/17214)) ([6103dfe](https://github.com/vm0-ai/vm0/commit/6103dfe4248a4dddad7c9b9f5d38de37c97aad2d))
+* **platform:** manage schedules through the automation resource api ([#17352](https://github.com/vm0-ai/vm0/issues/17352)) ([a3c6583](https://github.com/vm0-ai/vm0/commit/a3c658320786cff32a60d2da2014be6820b75b6d))
+* rename the cron tick and platform routes to automations ([#17363](https://github.com/vm0-ai/vm0/issues/17363)) ([8ddb863](https://github.com/vm0-ai/vm0/commit/8ddb863ee22c268d3905a1255d3cdfac905e1ff5))
+
+
+### Bug Fixes
+
+* display schedule times in user's preferred timezone ([#17329](https://github.com/vm0-ai/vm0/issues/17329)) ([894ab91](https://github.com/vm0-ai/vm0/commit/894ab914db8ce62b51b5c90c970c29e7b9f4432c))
+* update chat feature switch defaults ([#17355](https://github.com/vm0-ai/vm0/issues/17355)) ([f36ac02](https://github.com/vm0-ai/vm0/commit/f36ac021dfa037a892454e710c9cea4e0b76cabd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.86.0
+    * @vm0/connectors bumped to 1.69.0
+    * @vm0/core bumped to 8.331.0
+
 ## [0.439.0](https://github.com/vm0-ai/vm0/compare/app-v0.438.3...app-v0.439.0) (2026-06-11)
 
 

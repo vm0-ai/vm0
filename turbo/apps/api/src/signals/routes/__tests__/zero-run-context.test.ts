@@ -40,13 +40,9 @@ function makeEntriesSnapshot(runId: string): Record<string, unknown> {
     ],
     firewalls: [
       {
-        name: "test-fw",
-        apis: [
-          {
-            base: "https://api.example.com",
-            permissions: [{ name: "read", rules: ["GET /users/*"] }],
-          },
-        ],
+        kind: "builtin",
+        name: "hosted-fw",
+        baseUrlVars: { HOST: "api.example.com" },
       },
     ],
     volumes: [
@@ -295,8 +291,13 @@ describe("GET /api/zero/runs/:id/context", () => {
       NODE_ENV: "production",
       API_KEY: "***",
     });
-    expect(response.body.firewalls).toHaveLength(1);
-    expect(response.body.firewalls[0]?.name).toBe("test-fw");
+    expect(response.body.firewalls).toStrictEqual([
+      {
+        kind: "builtin",
+        name: "hosted-fw",
+        baseUrlVars: { HOST: "api.example.com" },
+      },
+    ]);
     expect(response.body.volumes).toHaveLength(1);
     expect(response.body.artifact).toBeDefined();
     expect(response.body.networkPolicies).toStrictEqual({
@@ -336,6 +337,7 @@ describe("GET /api/zero/runs/:id/context", () => {
       {
         ...makeEntriesSnapshot(runId),
         firewalls: [
+          { kind: "builtin", name: null },
           {
             name: "valid-fw",
             apis: [
@@ -354,6 +356,18 @@ describe("GET /api/zero/runs/:id/context", () => {
             ],
           },
           { name: "bad-fw", apis: null },
+          {
+            kind: "inline",
+            firewall: {
+              name: "leaky-fw",
+              apis: [
+                {
+                  base: "https://leaky.example.com",
+                  auth: { headers: { Authorization: "Bearer secret" } },
+                },
+              ],
+            },
+          },
         ],
         volumes: [
           {
@@ -626,6 +640,17 @@ describe("GET /api/zero/runs/:id/context", () => {
     expect(response.body.featureFlags).toStrictEqual({
       lab: true,
     });
+    expect(response.body.firewalls).toStrictEqual([
+      {
+        name: "test-fw",
+        apis: [
+          {
+            base: "https://api.example.com",
+            permissions: [{ name: "read", rules: ["GET /users/*"] }],
+          },
+        ],
+      },
+    ]);
   });
 
   it("returns 403 for a sandbox token without agent-run:read capability", async () => {

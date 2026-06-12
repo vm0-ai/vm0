@@ -77,50 +77,6 @@ export async function promptConfirm(
 }
 
 /**
- * Choice option for select prompts
- */
-interface SelectChoice<T> {
-  title: string;
-  value: T;
-  description?: string;
-}
-
-/**
- * Prompt for selecting from a list of options
- * @param message - The prompt message
- * @param choices - Array of choices with title, value, and optional description
- * @param initial - Index of the default selection (0-based)
- * @returns The selected value, or undefined if cancelled or non-interactive
- */
-export async function promptSelect<T>(
-  message: string,
-  choices: SelectChoice<T>[],
-  initial?: number,
-): Promise<T | undefined> {
-  // In non-interactive mode, return undefined immediately
-  if (!isInteractive()) {
-    return undefined;
-  }
-
-  const response = await prompts(
-    {
-      type: "select",
-      name: "value",
-      message,
-      choices,
-      initial,
-    },
-    {
-      onCancel: () => {
-        return false;
-      },
-    },
-  );
-
-  return response.value;
-}
-
-/**
  * Prompt for password/secret input (masked)
  * @param message - The prompt message
  * @returns The user's input, or undefined if cancelled or non-interactive

@@ -164,24 +164,6 @@ export {
   completePhoneFileUpload,
 } from "./domains/integrations-phone";
 
-// Domain modules - Zero Schedules
-export {
-  deployZeroSchedule,
-  listZeroSchedules,
-  deleteZeroSchedule,
-  enableZeroSchedule,
-  disableZeroSchedule,
-  resolveZeroScheduleByAgent,
-} from "./domains/zero-schedules";
-
-// Domain modules - Zero Automations (legacy schedule-backed, deprecated CLI surface)
-export {
-  deployZeroAutomation,
-  listZeroAutomations,
-  enableZeroAutomation,
-  resolveZeroAutomationByAgent,
-} from "./domains/zero-automations";
-
 // Domain modules - Automations v2 (unified automations + triggers)
 export {
   createAutomationV2,
@@ -200,14 +182,6 @@ export {
   disableAutomationTriggerV2,
   rotateAutomationTriggerSecretV2,
 } from "./domains/automations-v2";
-
-// Domain modules - Webhook Automations
-export {
-  createWebhookAutomation,
-  listWebhookAutomations,
-  deleteWebhookAutomation,
-  type WebhookAutomationResponse,
-} from "./domains/webhook-automations";
 
 // Domain modules - Zero Runs
 export { getZeroRunAgentEvents } from "./domains/zero-runs";

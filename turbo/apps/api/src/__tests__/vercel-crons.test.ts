@@ -7,7 +7,7 @@ import {
   cronCleanupSandboxesContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
-  cronExecuteSchedulesContract,
+  cronExecuteAutomationsContract,
   cronProcessUsageEventsContract,
   cronReconcileBillingEntitlementsContract,
   cronSummarizeMemoryContract,
@@ -40,7 +40,7 @@ const expectedVercelCrons = [
     schedule: "* * * * *",
   },
   {
-    path: cronExecuteSchedulesContract.execute.path,
+    path: cronExecuteAutomationsContract.execute.path,
     schedule: "* * * * *",
   },
   {

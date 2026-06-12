@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { networkPoliciesSchema } from "@vm0/connectors/firewall-types";
+import {
+  executionFirewallBuiltinEntrySchema,
+  networkPoliciesSchema,
+} from "@vm0/connectors/firewall-types";
 import {
   createRunResponseSchema,
   getRunResponseSchema,
@@ -175,7 +178,7 @@ const runContextArtifactSchema = z.object({
   vasVersionId: z.string(),
 });
 
-const runContextFirewallSchema = z.object({
+const runContextSanitizedFirewallSchema = z.object({
   name: z.string(),
   apis: z.array(
     z.object({
@@ -192,6 +195,11 @@ const runContextFirewallSchema = z.object({
     }),
   ),
 });
+
+const runContextFirewallSchema = z.union([
+  executionFirewallBuiltinEntrySchema,
+  runContextSanitizedFirewallSchema,
+]);
 
 const runContextResponseSchema = z.object({
   prompt: z.string(),

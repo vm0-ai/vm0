@@ -35,6 +35,54 @@ HOP_BY_HOP: frozenset[str] = frozenset(
 _RESOLVED_AUTH_HEADER_EXCLUDED: frozenset[str] = HOP_BY_HOP | frozenset(
     ("host", "content-length", "transfer-encoding")
 )
+_CLIENT_CREDENTIAL_HEADER_NAMES: frozenset[str] = frozenset(
+    (
+        "access-token",
+        "api-key",
+        "api_access_token",
+        "api_key",
+        "apikey",
+        "app_id",
+        "app_key",
+        "authorization",
+        "chatgpt-account-id",
+        "cookie",
+        "developer-token",
+        "mailsac-key",
+        "private-token",
+        "project-access-token",
+        "x-access-token",
+        "x-amz-security-token",
+        "x-api-key",
+        "x-api-secret",
+        "x-api-token",
+        "x-apikey",
+        "x-auth-token",
+        "x-bb-api-key",
+        "x-browser-use-api-key",
+        "x-cg-demo-api-key",
+        "x-cg-pro-api-key",
+        "x-faire-access-token",
+        "x-goog-api-key",
+        "x-hume-api-key",
+        "x-key",
+        "x-luma-api-key",
+        "x-manus-api-key",
+        "x-moss-project-id",
+        "x-n8n-api-key",
+        "x-rapidapi-key",
+        "x-secret-api-key",
+        "x-server-id",
+        "x-shopify-access-token",
+        "x-subscription-token",
+        "x-user-id",
+        "xi-api-key",
+    )
+)
+_AWS_SIGV4_AUTHORIZATION_PREFIXES: tuple[str, ...] = (
+    "AWS4-HMAC-SHA256 ",
+    "AWS4-ECDSA-P256-SHA256 ",
+)
 _HTTP_TOKEN_CHARS: frozenset[str] = frozenset(
     "!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
@@ -214,6 +262,29 @@ def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
         headers,
         extra_excluded={"host", "content-length", "transfer-encoding"},
     )
+
+
+def _is_aws_sigv4_authorization(value: str) -> bool:
+    return value.startswith(_AWS_SIGV4_AUTHORIZATION_PREFIXES)
+
+
+def forwarded_auth_base_client_header_pairs(
+    headers,
+    *,
+    preserve_aws_sigv4_authorization: bool = False,
+) -> list[tuple[str, str]]:
+    """Return client headers safe to carry across an auth.base rewrite."""
+    pairs = forwarded_request_header_pairs(headers)
+    return [
+        (name, value)
+        for name, value in pairs
+        if name.lower() not in _CLIENT_CREDENTIAL_HEADER_NAMES
+        or (
+            preserve_aws_sigv4_authorization
+            and name.lower() == "authorization"
+            and _is_aws_sigv4_authorization(value)
+        )
+    ]
 
 
 def _validate_resolved_auth_header_pair(header_name: str, header_value: str) -> None:

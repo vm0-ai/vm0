@@ -18,16 +18,16 @@ import {
   type CronTimeOption,
 } from "./cron.ts";
 import {
-  automationsModeEnabled$,
-  listSchedulesVia,
-  deployScheduleVia,
-  setScheduleEnabledVia,
-  deleteScheduleVia,
-  runScheduleNowVia,
-} from "./automations-mode.ts";
+  listSchedules,
+  deploySchedule,
+  setScheduleEnabled,
+  deleteSchedule,
+  runScheduleNow as runScheduleNowApi,
+} from "./automations-api.ts";
 import { ApiError } from "../../lib/accept.ts";
 import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
+import { userPreferences$ } from "./settings/user-preferences.ts";
 
 const SCHEDULE_TIME_PAST_MESSAGE = "Scheduled time must be in the future";
 
@@ -50,7 +50,12 @@ export const setScheduleTabSaving$ = command(({ set }, value: boolean) => {
 // Convert ScheduleResponse to display time string
 // ---------------------------------------------------------------------------
 
-function scheduleToTimeString(s: ScheduleResponse): string {
+function scheduleToTimeString(
+  s: ScheduleResponse,
+  displayTimezone?: string,
+): string {
+  const tz = displayTimezone ?? s.timezone ?? "UTC";
+
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
     if (s.intervalSeconds % 60 === 0) {
       const minutes = s.intervalSeconds / 60;
@@ -60,17 +65,14 @@ function scheduleToTimeString(s: ScheduleResponse): string {
   }
 
   if (s.triggerType === "once" && s.atTime) {
-    const { date, hour, minute } = atTimeInTimezone(
-      s.atTime,
-      s.timezone ?? "UTC",
-    );
+    const { date, hour, minute } = atTimeInTimezone(s.atTime, tz);
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
   }
 
   if (s.cronExpression) {
-    return cronToTimeString(s.cronExpression, s.timezone ?? "UTC");
+    return cronToTimeString(s.cronExpression, tz);
   }
 
   return "Scheduled";
@@ -200,7 +202,7 @@ export interface OrgScheduleEntry {
   description: string | null;
   enabled: boolean;
   name: string;
-  /** IANA timezone stored on the server */
+  /** IANA timezone used for display (user's preferred timezone) */
   timezone: string;
   intervalSeconds: number | null;
   agentId: string;
@@ -218,8 +220,11 @@ export const allOrgSchedulesLoaded$ = computed((get) => {
   return get(internalAllSchedulesLoaded$);
 });
 
-export const allOrgScheduleEntries$ = computed((get) => {
+export const allOrgScheduleEntries$ = computed(async (get) => {
   const schedules = get(internalAllSchedules$);
+  const prefs = await get(userPreferences$);
+  const displayTz =
+    prefs?.timezone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
   return [...schedules]
     .sort((a, b) => {
       return b.createdAt.localeCompare(a.createdAt);
@@ -227,12 +232,12 @@ export const allOrgScheduleEntries$ = computed((get) => {
     .map((s): OrgScheduleEntry => {
       return {
         id: s.id,
-        time: scheduleToTimeString(s),
+        time: scheduleToTimeString(s, displayTz),
         prompt: s.prompt,
         description: s.description,
         enabled: s.enabled,
         name: s.name,
-        timezone: s.timezone,
+        timezone: displayTz,
         intervalSeconds: s.intervalSeconds,
         agentId: s.agentId,
         displayName: s.displayName,
@@ -245,11 +250,9 @@ export const allOrgScheduleEntries$ = computed((get) => {
 
 export const fetchAllOrgSchedules$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const schedules = await listSchedulesVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      { signal },
-    ).finally(() => {
+    const schedules = await listSchedules(get(zeroClient$), {
+      signal,
+    }).finally(() => {
       set(internalAllSchedulesLoaded$, true);
     });
     signal.throwIfAborted();
@@ -267,9 +270,8 @@ export const saveOrgSchedule$ = command(
     try {
       const body = buildScheduleBody(params.agentId, params);
 
-      const result = await deployScheduleVia(
+      const result = await deploySchedule(
         get(zeroClient$),
-        get(automationsModeEnabled$),
         body,
         params.editName !== undefined,
       );
@@ -288,7 +290,9 @@ export const saveOrgSchedule$ = command(
     }
     signal.throwIfAborted();
 
-    toast.success(params.editName ? "Schedule updated" : "Schedule created");
+    toast.success(
+      params.editName ? "Automation updated" : "Automation created",
+    );
     await set(fetchAllOrgSchedules$, signal);
 
     return scheduleId;
@@ -301,15 +305,11 @@ export const toggleOrgScheduleEnabled$ = command(
     params: { name: string; enabled: boolean; agentId: string },
     signal: AbortSignal,
   ) => {
-    await setScheduleEnabledVia(
-      get(zeroClient$),
-      get(automationsModeEnabled$),
-      {
-        name: params.name,
-        agentId: params.agentId,
-        enabled: params.enabled,
-      },
-    );
+    await setScheduleEnabled(get(zeroClient$), {
+      name: params.name,
+      agentId: params.agentId,
+      enabled: params.enabled,
+    });
     signal.throwIfAborted();
 
     await set(fetchAllOrgSchedules$, signal);
@@ -322,13 +322,13 @@ export const deleteOrgSchedule$ = command(
     params: { name: string; agentId: string },
     signal: AbortSignal,
   ) => {
-    await deleteScheduleVia(get(zeroClient$), get(automationsModeEnabled$), {
+    await deleteSchedule(get(zeroClient$), {
       name: params.name,
       agentId: params.agentId,
     });
     signal.throwIfAborted();
 
-    toast.success("Schedule deleted");
+    toast.success("Automation deleted");
     await set(fetchAllOrgSchedules$, signal);
   },
 );
@@ -345,11 +345,7 @@ export const runScheduleNow$ = command(
     });
     let runId: string;
     try {
-      runId = await runScheduleNowVia(
-        get(zeroClient$),
-        get(automationsModeEnabled$),
-        scheduleId,
-      );
+      runId = await runScheduleNowApi(get(zeroClient$), scheduleId);
       signal.throwIfAborted();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Run failed";

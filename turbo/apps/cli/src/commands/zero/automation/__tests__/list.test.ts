@@ -78,7 +78,7 @@ describe("zero automation list command", () => {
 
   it("should display automations with their trigger kinds", async () => {
     server.use(
-      http.get("http://localhost:3000/api/v2/automations", () => {
+      http.get("http://localhost:3000/api/automations", () => {
         return HttpResponse.json({ automations: [mockAutomation] });
       }),
     );
@@ -95,7 +95,7 @@ describe("zero automation list command", () => {
 
   it("should display empty state message when no automations", async () => {
     server.use(
-      http.get("http://localhost:3000/api/v2/automations", () => {
+      http.get("http://localhost:3000/api/automations", () => {
         return HttpResponse.json({ automations: [] });
       }),
     );
@@ -109,7 +109,7 @@ describe("zero automation list command", () => {
 
   it("should handle authentication error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/v2/automations", () => {
+      http.get("http://localhost:3000/api/automations", () => {
         return HttpResponse.json(
           { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
           { status: 401 },

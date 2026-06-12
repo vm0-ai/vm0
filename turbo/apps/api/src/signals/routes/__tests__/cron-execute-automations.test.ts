@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { cronExecuteSchedulesContract } from "@vm0/api-contracts/contracts/cron";
+import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -35,7 +35,7 @@ const track = createFixtureTracker<SchedulesFixture>((fixture) => {
 });
 
 function apiClient() {
-  return setupApp({ context })(cronExecuteSchedulesContract);
+  return setupApp({ context })(cronExecuteAutomationsContract);
 }
 
 function cronHeaders(secret = CRON_SECRET) {

@@ -5,10 +5,9 @@ import {
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import {
-  zeroScheduleRunContract,
-  zeroSchedulesEnableContract,
-  zeroSchedulesMainContract,
-} from "@vm0/api-contracts/contracts/zero-schedules";
+  automationsV2ByRefContract,
+  automationsV2MainContract,
+} from "@vm0/api-contracts/contracts/automations-v2";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import {
   agentComposes,
@@ -62,16 +61,12 @@ function agentsByIdClient() {
   return setupApp({ context })(zeroAgentsByIdContract);
 }
 
-function schedulesClient() {
-  return setupApp({ context })(zeroSchedulesMainContract);
+function automationsClient() {
+  return setupApp({ context })(automationsV2MainContract);
 }
 
-function scheduleEnableClient() {
-  return setupApp({ context })(zeroSchedulesEnableContract);
-}
-
-function scheduleRunClient() {
-  return setupApp({ context })(zeroScheduleRunContract);
+function automationsByRefClient() {
+  return setupApp({ context })(automationsV2ByRefContract);
 }
 
 async function seedDefaultAnthropicProvider(
@@ -467,7 +462,7 @@ describe("POST /api/zero/agents", () => {
     expect(response.body.displayName).toBe("After Delete");
   });
 
-  it("executes a schedule for an agent created via POST /api/zero/agents", async () => {
+  it("executes an automation for an agent created via POST /api/zero/agents", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const fixture = await track(
@@ -487,33 +482,33 @@ describe("POST /api/zero/agents", () => {
     );
 
     const deployed = await accept(
-      schedulesClient().deploy({
+      automationsClient().create({
         headers: authHeaders(),
         body: {
           agentId: created.body.agentId,
           name: "zero-api-run",
-          cronExpression: "0 9 * * *",
-          timezone: "UTC",
-          prompt: "Scheduled run",
+          instruction: "Scheduled run",
+          trigger: { kind: "cron", cronExpression: "0 9 * * *" },
         },
       }),
       [201],
     );
 
     const enabled = await accept(
-      scheduleEnableClient().enable({
-        params: { name: "zero-api-run" },
+      automationsByRefClient().enable({
+        params: { ref: deployed.body.automation.id },
         headers: authHeaders(),
-        body: { agentId: created.body.agentId },
+        body: {},
       }),
       [200],
     );
     expect(enabled.body.enabled).toBeTruthy();
 
     const run = await accept(
-      scheduleRunClient().run({
+      automationsByRefClient().run({
+        params: { ref: deployed.body.automation.id },
         headers: authHeaders(),
-        body: { scheduleId: deployed.body.schedule.id },
+        body: {},
       }),
       [201],
     );

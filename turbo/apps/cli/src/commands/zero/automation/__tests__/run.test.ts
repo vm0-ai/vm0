@@ -39,7 +39,7 @@ describe("zero automation run command", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/v2/automations/:ref/run",
+        "http://localhost:3000/api/automations/:ref/run",
         ({ params }) => {
           firedRef = params.ref as string;
           return HttpResponse.json({ runId: "run-123" }, { status: 201 });
@@ -57,7 +57,7 @@ describe("zero automation run command", () => {
 
   it("should surface API errors (e.g. insufficient credits)", async () => {
     server.use(
-      http.post("http://localhost:3000/api/v2/automations/:ref/run", () => {
+      http.post("http://localhost:3000/api/automations/:ref/run", () => {
         return HttpResponse.json(
           {
             error: {

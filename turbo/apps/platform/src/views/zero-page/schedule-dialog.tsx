@@ -588,7 +588,7 @@ function ScheduleFormDialogInner({
     onSave(current);
   };
 
-  const title = mode === "edit" ? "Edit schedule" : "Add schedule";
+  const title = mode === "edit" ? "Edit automation" : "Add automation";
   const saveLabel = getSaveLabel(mode, saving);
 
   return (
@@ -617,7 +617,7 @@ function ScheduleFormDialogInner({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {mode === "edit"
-              ? "Update the schedule settings and save your changes."
+              ? "Update the automation settings and save your changes."
               : "Configure when and how often this agent should run."}
           </DialogDescription>
         </DialogHeader>

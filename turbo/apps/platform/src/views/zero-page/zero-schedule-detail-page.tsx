@@ -130,11 +130,11 @@ function ScheduleBreadcrumbLink({ chatThreadId }: { chatThreadId?: string }) {
 
   return (
     <Link
-      pathname="/schedules"
+      pathname="/automations"
       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
     >
       <IconCalendar size={14} stroke={1.5} className="shrink-0" />
-      Scheduled
+      Automations
     </Link>
   );
 }
@@ -181,22 +181,22 @@ function ScheduleNotFound() {
         <ScheduleBreadcrumbLink />
         <span className="text-muted-foreground/40 select-none">/</span>
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium">
-          Schedule
+          Automation
         </span>
       </nav>
       <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 pb-20">
         <ZeroNoPermissionIllustration className="h-32 w-auto max-w-[220px] object-contain opacity-90" />
         <h2 className="text-lg font-semibold text-foreground">
-          Schedule not found
+          Automation not found
         </h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          This schedule doesn&apos;t exist or was removed.
+          This automation doesn&apos;t exist or was removed.
         </p>
         <Link
-          pathname="/schedules"
+          pathname="/automations"
           className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
         >
-          Back to scheduled tasks
+          Back to automations
         </Link>
       </div>
     </div>
@@ -339,7 +339,7 @@ function ScheduleSettingsForm({
         <CardContent className="p-4 sm:p-5">
           <InlineSettingsRow
             label="Agent"
-            description="The agent is fixed once a schedule is created. Delete and recreate the schedule to run it on a different agent."
+            description="The agent is fixed once an automation is created. Delete and recreate the automation to run it on a different agent."
           >
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Select value={form.agentId} disabled>
@@ -361,7 +361,7 @@ function ScheduleSettingsForm({
 
           <InlineSettingsRow
             label="Description"
-            description="A short summary shown in the schedule list. Leave blank to auto-generate."
+            description="A short summary shown in the automation list. Leave blank to auto-generate."
           >
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Input
@@ -418,7 +418,7 @@ function ScheduleSettingsForm({
 
           <InlineSettingsRow
             label="Status"
-            description="Paused schedules do not run until re-enabled."
+            description="Paused automations do not run until re-enabled."
             alignControls="center"
           >
             <LoadingSwitch
@@ -427,7 +427,7 @@ function ScheduleSettingsForm({
               onCheckedChange={(checked) => {
                 detach(onToggle(checked), Reason.DomCallback);
               }}
-              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} this schedule`}
+              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} this automation`}
             />
           </InlineSettingsRow>
         </CardContent>
@@ -442,7 +442,7 @@ function ScheduleSettingsForm({
                   Danger zone
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                  Deleting removes this schedule permanently.
+                  Deleting removes this automation permanently.
                 </p>
               </div>
               <div className="flex shrink-0 self-end sm:self-auto sm:pt-0.5">
@@ -456,7 +456,7 @@ function ScheduleSettingsForm({
                   }}
                 >
                   <IconTrash size={14} stroke={1.5} />
-                  Delete schedule
+                  Delete automation
                 </Button>
               </div>
             </div>
@@ -484,9 +484,9 @@ function ScheduleSettingsForm({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete schedule?</DialogTitle>
+            <DialogTitle>Delete automation?</DialogTitle>
             <DialogDescription>
-              This will permanently delete the schedule{" "}
+              This will permanently delete the automation{" "}
               <span className="font-medium text-foreground">
                 {entry.description ?? entry.prompt}
               </span>
@@ -548,7 +548,7 @@ function ScheduleInstructionEditorBlock({
         initialContent={draft ?? entry.prompt}
         onChange={setDraft}
         disabled={saving}
-        footerHint="This instruction runs each time this schedule executes."
+        footerHint="This instruction runs each time this automation executes."
       />
       {isDirty && (
         <ZeroUnsavedBar
@@ -646,7 +646,7 @@ function ScheduleRunHistoryTab() {
             isLoading={isLoading}
             rowsPerPage={rowsPerPage}
             emptyTitle="No runs yet"
-            emptyDescription="When this schedule runs, its history will show up here."
+            emptyDescription="When this automation runs, its history will show up here."
             filteredEmptyTitle="Nothing matches that filter"
             filteredEmptyDescription="Try a different status filter."
             hasActiveFilter={statusFilter !== "all"}
@@ -996,7 +996,7 @@ function ScheduleActionsContainer({
     detach(
       (async () => {
         await deleteSchedule({ name, agentId: entry.agentId }, pageSignal);
-        navigate("/schedules");
+        navigate("/automations");
       })(),
       Reason.DomCallback,
     );

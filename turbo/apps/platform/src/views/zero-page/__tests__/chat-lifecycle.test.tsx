@@ -30,7 +30,7 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -1867,16 +1867,16 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
-      expect(screen.getByLabelText("Schedules")).toBeInTheDocument();
+      expect(screen.getByLabelText("Automations")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Schedules"));
+    click(screen.getByLabelText("Automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(screen.getByText(/Next run/u)).toBeInTheDocument();
       expect(screen.getByText("Paused launch audit")).toBeInTheDocument();
-      expect(screen.getByText("Schedule inactive")).toBeInTheDocument();
+      expect(screen.getByText("Automation inactive")).toBeInTheDocument();
       expect(screen.getByText("Manual launch reminder")).toBeInTheDocument();
       expect(screen.getByText("No upcoming run")).toBeInTheDocument();
     });
@@ -1887,7 +1887,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
 
-    click(await screen.findByLabelText("Schedules"));
+    click(await screen.findByLabelText("Automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
@@ -1936,8 +1936,8 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Scheduled message")).toBeInTheDocument();
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Open schedule Launch review"),
-      ).toHaveAttribute("href", `/schedules/${scheduleId}`);
+        screen.getByLabelText("Open automation Launch review"),
+      ).toHaveAttribute("href", `/automations/${scheduleId}`);
       expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
     });
   });
@@ -2332,7 +2332,7 @@ describe("chat lifecycle", () => {
       "Mention the dates before the risk summary.",
     );
 
-    await user.click(buttonByText("Send 1 comment"));
+    await user.click(screen.getByLabelText("Send feedback"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -2380,6 +2380,9 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
+    // Clicking into a note collapses the text selection in a real browser;
+    // mirror that so later clicks do not re-open the selection toolbar.
+    window.getSelection()?.removeAllRanges();
 
     const firstComment = await screen.findByPlaceholderText(
       "What should change about this?",
@@ -2391,28 +2394,33 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
+    window.getSelection()?.removeAllRanges();
 
-    await user.click(buttonByText("1 comment"));
-
-    expect(
-      screen.getByText("Assign each risk to an owner."),
-    ).toBeInTheDocument();
+    const comments = screen.getAllByPlaceholderText(
+      "What should change about this?",
+    );
+    expect(comments).toHaveLength(2);
+    // The first note persists on top; the newest fragment sits below it with
+    // an empty note, taking the composer position nearest Send.
+    expect(comments[0]).toHaveValue("Assign each risk to an owner.");
+    expect(comments[1]).toHaveValue("");
     expect(
       screen.getByText(
         "Select more text and click Provide feedback to add another comment",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByPlaceholderText("What should change about this?"),
-    ).toHaveValue("");
 
-    await user.click(screen.getByLabelText("Close"));
+    // Removing the empty draft row leaves the noted fragment intact.
+    await user.click(screen.getAllByLabelText("Remove feedback")[1]);
 
     await waitFor(() => {
       expect(
-        screen.queryByText("Feedback on this reply"),
-      ).not.toBeInTheDocument();
+        screen.getAllByPlaceholderText("What should change about this?"),
+      ).toHaveLength(1);
     });
+    expect(
+      screen.getByPlaceholderText("What should change about this?"),
+    ).toHaveValue("Assign each risk to an owner.");
   });
 
   it("edits and sends multiple inline feedback comments", async () => {
@@ -2459,6 +2467,9 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
+    // Clicking into a note collapses the text selection in a real browser;
+    // mirror that so later clicks do not re-open the selection toolbar.
+    window.getSelection()?.removeAllRanges();
 
     await fill(
       await screen.findByPlaceholderText("What should change about this?"),
@@ -2470,34 +2481,21 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
+    window.getSelection()?.removeAllRanges();
 
     await fill(
-      await screen.findByPlaceholderText("What should change about this?"),
+      screen.getAllByPlaceholderText("What should change about this?")[1],
       "Mention launch dates before the risk summary.",
     );
 
-    selectTextForInlineFeedback(assistantReplyElement);
-    await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
-    });
-    await user.click(buttonByText("Provide feedback"));
-
-    click(buttonByText("2 comments"));
-    const firstCommentCard = screen
-      .getByText("Assign each risk to an owner.")
-      .closest("button");
-    if (!firstCommentCard) {
-      throw new Error("Feedback comment card not found");
-    }
-    click(firstCommentCard);
-
-    const editingComment = await screen.findByPlaceholderText(
+    // Edit the first fragment's note in place — the oldest sits on top.
+    const editingComment = screen.getAllByPlaceholderText(
       "What should change about this?",
-    );
+    )[0];
     expect(editingComment).toHaveValue("Assign each risk to an owner.");
     await fill(editingComment, "Assign named owners to each launch risk.");
 
-    await user.click(buttonByText("Send 2 comments"));
+    await user.click(screen.getByLabelText("Send feedback"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();

@@ -47,6 +47,7 @@ import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -672,7 +673,12 @@ describe("POST /api/zero/chat/messages", () => {
       .limit(1);
 
     expect(run?.prompt).toBe("make a product video");
-    expect(run?.appendSystemPrompt).toContain(`## Video Style: ${item.nameEn}`);
+    expect(run?.appendSystemPrompt).toContain("# Video Template Preset");
+    expect(run?.appendSystemPrompt).toContain(`Preset ID: ${item.id}`);
+    expect(run?.appendSystemPrompt).toContain(`Preset name: ${item.nameEn}`);
+    expect(run?.appendSystemPrompt).toContain(
+      "The selected stylePresetId resolves to the seven video template dimensions below.",
+    );
     expect(run?.appendSystemPrompt).toContain(
       `- Visual Tone: ${item.dimensions.visualTone}`,
     );
@@ -680,7 +686,22 @@ describe("POST /api/zero/chat/messages", () => {
       `- Camera Style: ${item.dimensions.cameraStyle}`,
     );
     expect(run?.appendSystemPrompt).toContain(
+      `- Editing Pace: ${item.dimensions.editingPace}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Narrative Mode: ${item.dimensions.narrativeMode}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Production Type: ${item.dimensions.productionType}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Emotional Tone: ${item.dimensions.emotionalTone}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
       `- Style Reference: ${item.dimensions.styleReference}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      "Apply all seven preset dimensions below as hard generation constraints",
     );
     expect(run?.appendSystemPrompt).toContain(
       "safe for all audiences, positive and uplifting, no violence, no explicit content",
@@ -865,11 +886,14 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(agentRuns.id, response.body.runId!))
       .limit(1);
 
-    expect(run?.appendSystemPrompt).toContain(
-      `## Video Style: ${preset.nameEn}`,
-    );
+    expect(run?.appendSystemPrompt).toContain("# Video Template Preset");
+    expect(run?.appendSystemPrompt).toContain(`Preset ID: ${preset.id}`);
+    expect(run?.appendSystemPrompt).toContain(`Preset name: ${preset.nameEn}`);
     expect(run?.appendSystemPrompt).toContain("- Visual Tone:");
     expect(run?.appendSystemPrompt).toContain("- Style Reference:");
+    expect(run?.appendSystemPrompt).toContain(
+      `In the final video prompt, reflect every dimension listed above and the style ${preset.nameEn}.`,
+    );
     expect(run?.appendSystemPrompt).toContain(
       "safe for all audiences, positive and uplifting, no violence, no explicit content",
     );

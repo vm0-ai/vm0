@@ -75,9 +75,9 @@ function ScheduleListRow<T extends ScheduleEntry>({
       <td className="py-2.5 pr-4 align-middle min-w-0 max-w-[1px]">
         {clickable ? (
           <Link
-            pathname="/schedules/:scheduleId"
+            pathname="/automations/:scheduleId"
             options={{ pathParams: { scheduleId: entry.id } }}
-            aria-label={`Open schedule ${entry.prompt}`}
+            aria-label={`Open automation ${entry.prompt}`}
             onClick={(e) => {
               e.stopPropagation();
             }}
@@ -262,12 +262,12 @@ function ScheduleListCard<T extends ScheduleEntry>({
     >
       {clickable && (
         <Link
-          pathname="/schedules/:scheduleId"
+          pathname="/automations/:scheduleId"
           options={{ pathParams: { scheduleId: entry.id } }}
-          aria-label={`Open schedule ${entry.prompt}`}
+          aria-label={`Open automation ${entry.prompt}`}
           className="absolute inset-0 z-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring rounded-sm"
         >
-          <span className="sr-only">Open schedule {entry.prompt}</span>
+          <span className="sr-only">Open automation {entry.prompt}</span>
         </Link>
       )}
       {/* Left: text content — pointer-events disabled so clicks pass through to the Link overlay */}
@@ -357,7 +357,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
       <div className="flex flex-col items-center justify-center py-12 gap-3">
         <img
           src={emptyScheduleImg}
-          alt="No schedules"
+          alt="No automations"
           className="h-24 w-24 object-contain opacity-80"
         />
         <div className="text-center">
@@ -376,7 +376,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
             onClick={onNew}
           >
             <IconPlus size={14} stroke={2} />
-            Add schedule
+            Add automation
           </Button>
         )}
       </div>

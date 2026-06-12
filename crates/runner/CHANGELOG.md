@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.114.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.0...runner-rs-v0.114.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* **mitm-addon:** strip client credentials from auth.base forwarding ([#17347](https://github.com/vm0-ai/vm0/issues/17347)) ([cb762d3](https://github.com/vm0-ai/vm0/commit/cb762d3dbebfeb56681de00e72a52b8756a88d3f))
+
+
+### Refactoring
+
+* remove legacy execution firewall compatibility ([#17349](https://github.com/vm0-ai/vm0/issues/17349)) ([385ea93](https://github.com/vm0-ai/vm0/commit/385ea9345fb9613b0041eefb2ed7557f2af62beb))
+
+
+### Performance Improvements
+
+* batch rust network log appends ([#17339](https://github.com/vm0-ai/vm0/issues/17339)) ([d92d930](https://github.com/vm0-ai/vm0/commit/d92d930a8d406d2162fc6fb648bb30629a350b97))
+
 ## [0.114.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.113.1...runner-rs-v0.114.0) (2026-06-11)
 
 

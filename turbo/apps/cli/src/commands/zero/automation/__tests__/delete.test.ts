@@ -39,7 +39,7 @@ describe("zero automation delete command", () => {
 
     server.use(
       http.delete(
-        "http://localhost:3000/api/v2/automations/:ref",
+        "http://localhost:3000/api/automations/:ref",
         ({ params }) => {
           deletedRef = params.ref as string;
           return new HttpResponse(null, { status: 204 });
@@ -67,7 +67,7 @@ describe("zero automation delete command", () => {
 
   it("should surface not-found errors", async () => {
     server.use(
-      http.delete("http://localhost:3000/api/v2/automations/:ref", () => {
+      http.delete("http://localhost:3000/api/automations/:ref", () => {
         return HttpResponse.json(
           { error: { message: "Automation not found", code: "NOT_FOUND" } },
           { status: 404 },

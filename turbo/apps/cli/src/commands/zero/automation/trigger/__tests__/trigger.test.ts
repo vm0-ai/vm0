@@ -86,7 +86,7 @@ describe("zero automation trigger commands", () => {
     const captured: { ref?: string; body?: Record<string, unknown> } = {};
     server.use(
       http.post(
-        "http://localhost:3000/api/v2/automations/:ref/triggers",
+        "http://localhost:3000/api/automations/:ref/triggers",
         async ({ request, params }) => {
           captured.ref = params.ref as string;
           captured.body = (await request.json()) as Record<string, unknown>;
@@ -247,7 +247,7 @@ describe("zero automation trigger commands", () => {
     it("should display the triggers table", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/v2/automations/:ref/triggers",
+          "http://localhost:3000/api/automations/:ref/triggers",
           ({ params }) => {
             expect(params.ref).toBe("alerts");
             return HttpResponse.json({
@@ -269,12 +269,9 @@ describe("zero automation trigger commands", () => {
 
     it("should display empty state with an add hint", async () => {
       server.use(
-        http.get(
-          "http://localhost:3000/api/v2/automations/:ref/triggers",
-          () => {
-            return HttpResponse.json({ triggers: [] });
-          },
-        ),
+        http.get("http://localhost:3000/api/automations/:ref/triggers", () => {
+          return HttpResponse.json({ triggers: [] });
+        }),
       );
 
       await triggerCommand.parseAsync(["node", "cli", "list", "alerts"]);
@@ -289,7 +286,7 @@ describe("zero automation trigger commands", () => {
     it("should display trigger details", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/v2/automation-triggers/:id",
+          "http://localhost:3000/api/automation-triggers/:id",
           ({ params }) => {
             expect(params.id).toBe(TRIGGER_ID);
             return HttpResponse.json(loopTrigger);
@@ -313,7 +310,7 @@ describe("zero automation trigger commands", () => {
 
       server.use(
         http.delete(
-          "http://localhost:3000/api/v2/automation-triggers/:id",
+          "http://localhost:3000/api/automation-triggers/:id",
           ({ params }) => {
             removedId = params.id as string;
             return new HttpResponse(null, { status: 204 });
@@ -333,7 +330,7 @@ describe("zero automation trigger commands", () => {
     it("should enable a single trigger", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/v2/automation-triggers/:id/enable",
+          "http://localhost:3000/api/automation-triggers/:id/enable",
           () => {
             return HttpResponse.json(cronTrigger);
           },
@@ -349,7 +346,7 @@ describe("zero automation trigger commands", () => {
     it("should disable a single trigger", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/v2/automation-triggers/:id/disable",
+          "http://localhost:3000/api/automation-triggers/:id/disable",
           () => {
             return HttpResponse.json({ ...cronTrigger, enabled: false });
           },
@@ -367,7 +364,7 @@ describe("zero automation trigger commands", () => {
     it("should rotate a webhook trigger secret and print it once", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/v2/automation-triggers/:id/rotate-secret",
+          "http://localhost:3000/api/automation-triggers/:id/rotate-secret",
           () => {
             return HttpResponse.json({
               trigger: webhookTrigger,
@@ -393,7 +390,7 @@ describe("zero automation trigger commands", () => {
     it("should surface the non-webhook trigger error", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/v2/automation-triggers/:id/rotate-secret",
+          "http://localhost:3000/api/automation-triggers/:id/rotate-secret",
           () => {
             return HttpResponse.json(
               {

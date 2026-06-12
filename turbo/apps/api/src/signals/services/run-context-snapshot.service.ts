@@ -5,7 +5,15 @@ type UnknownRecord = Record<string, unknown>;
 type NetworkPolicy = NetworkPolicies[string];
 type NetworkPolicyValue = "allow" | "deny" | "ask";
 type RunContextFirewall = RunContextResponse["firewalls"][number];
-type RunContextFirewallApi = RunContextFirewall["apis"][number];
+type RunContextBuiltinFirewall = Extract<
+  RunContextFirewall,
+  { kind: "builtin" }
+>;
+type RunContextSanitizedFirewall = Extract<
+  RunContextFirewall,
+  { apis: unknown }
+>;
+type RunContextFirewallApi = RunContextSanitizedFirewall["apis"][number];
 type RunContextFirewallPermission = NonNullable<
   RunContextFirewallApi["permissions"]
 >[number];
@@ -219,28 +227,60 @@ function firewallApiFromUnknown(
   };
 }
 
+function builtinFirewallFromUnknown(
+  value: UnknownRecord,
+): RunContextBuiltinFirewall | undefined {
+  if (value.kind !== "builtin") {
+    return undefined;
+  }
+  const name = stringValue(value.name);
+  if (!name) {
+    return undefined;
+  }
+  const baseUrlVars = stringRecordValue(value.baseUrlVars);
+  return baseUrlVars
+    ? { kind: "builtin", name, baseUrlVars }
+    : { kind: "builtin", name };
+}
+
+function sanitizedFirewallFromUnknown(
+  value: UnknownRecord,
+): RunContextSanitizedFirewall | undefined {
+  const name = stringValue(value.name);
+  if (!name || !Array.isArray(value.apis)) {
+    return undefined;
+  }
+  return {
+    name,
+    apis: value.apis.flatMap((api) => {
+      const normalized = firewallApiFromUnknown(api);
+      return normalized ? [normalized] : [];
+    }),
+  };
+}
+
 function firewallsFromUnknown(value: unknown): RunContextResponse["firewalls"] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.flatMap((item) => {
+  const firewalls: RunContextResponse["firewalls"] = [];
+  for (const item of value) {
     if (!isRecord(item)) {
-      return [];
+      continue;
     }
-    const name = stringValue(item.name);
-    if (!name || !Array.isArray(item.apis)) {
-      return [];
+    if (item.kind === "builtin") {
+      const normalized = builtinFirewallFromUnknown(item);
+      if (normalized) {
+        firewalls.push(normalized);
+      }
+      continue;
     }
-    return [
-      {
-        name,
-        apis: item.apis.flatMap((api) => {
-          const normalized = firewallApiFromUnknown(api);
-          return normalized ? [normalized] : [];
-        }),
-      },
-    ];
-  });
+    const normalized = sanitizedFirewallFromUnknown(item);
+    if (normalized) {
+      firewalls.push(normalized);
+    }
+  }
+  return firewalls;
 }
 
 function volumeFromUnknown(value: unknown): RunContextVolume | undefined {

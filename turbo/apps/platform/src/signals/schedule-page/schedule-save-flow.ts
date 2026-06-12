@@ -50,7 +50,7 @@ export const createOrgScheduleFromForm$ = command(
     });
     signal.throwIfAborted();
     set(closeCreateScheduleDialog$);
-    set(detachedNavigateTo$, "/schedules/:scheduleId", {
+    set(detachedNavigateTo$, "/automations/:scheduleId", {
       pathParams: { scheduleId },
     });
   },

@@ -68,9 +68,6 @@ const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
 
 function firewallEntryName(entry: ExecutionFirewallEntry): string {
-  if (entry.kind === undefined) {
-    return entry.name;
-  }
   return entry.kind === "builtin" ? entry.name : entry.firewall.name;
 }
 

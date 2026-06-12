@@ -13,15 +13,14 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import {
-  type ScheduleResponse,
-  zeroSchedulesMainContract,
-} from "@vm0/api-contracts/contracts/zero-schedules";
+import { automationsV2ByRefContract } from "@vm0/api-contracts/contracts/automations-v2";
+import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
-import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
+import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 
 const context = testContext();
 
@@ -199,7 +198,7 @@ describe("zero jobs page", () => {
     expect(findSectionCreateButton("Public")).toBeInTheDocument();
     expect(findSectionCreateButton("Private")).toBeInTheDocument();
 
-    click(screen.getByText("Scheduled"));
+    click(screen.getByText("Automations"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
@@ -371,39 +370,66 @@ describe("zero jobs page", () => {
         prompt: "Summarize launch risks",
       }),
     ];
-    let capturedDeployBody: unknown = null;
+    let capturedUpdateBody: unknown = null;
+    let capturedTriggerBody: unknown = null;
     context.mocks.data.schedules(schedules);
-    context.mocks.api(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-      capturedDeployBody = body;
-      const currentSchedule = schedules[0];
-      if (!currentSchedule) {
-        throw new Error("schedule fixture not found");
-      }
-      const updated = createMockScheduleResponse({
-        ...currentSchedule,
-        name: body.name,
-        agentId: body.agentId,
-        triggerType: "cron",
-        cronExpression: body.cronExpression ?? null,
-        atTime: null,
-        intervalSeconds: null,
-        timezone: body.timezone ?? "UTC",
-        prompt: body.prompt,
-        description: body.description ?? null,
-        appendSystemPrompt: body.appendSystemPrompt ?? null,
-        enabled: body.enabled ?? true,
-        updatedAt: "2026-03-10T00:05:00Z",
-      });
-      schedules = [updated];
-      context.mocks.data.schedules(schedules);
-      return respond(200, { schedule: updated, created: false });
-    });
+    context.mocks.api(
+      automationsV2ByRefContract.update,
+      ({ body, respond }) => {
+        capturedUpdateBody = body;
+        const currentSchedule = schedules[0];
+        if (!currentSchedule) {
+          throw new Error("schedule fixture not found");
+        }
+        const updated = createMockScheduleResponse({
+          ...currentSchedule,
+          prompt: body.instruction ?? currentSchedule.prompt,
+          description:
+            body.description === undefined
+              ? currentSchedule.description
+              : body.description,
+          updatedAt: "2026-03-10T00:05:00Z",
+        });
+        schedules = [updated];
+        context.mocks.data.schedules(schedules);
+        return respond(200, toMockAutomationResponse(updated));
+      },
+    );
+    context.mocks.api(
+      automationsV2ByRefContract.addTrigger,
+      ({ body, respond }) => {
+        capturedTriggerBody = body;
+        const currentSchedule = schedules[0];
+        if (!currentSchedule) {
+          throw new Error("schedule fixture not found");
+        }
+        if (body.kind !== "cron") {
+          throw new Error("expected a cron trigger replacement");
+        }
+        const updated = createMockScheduleResponse({
+          ...currentSchedule,
+          triggerType: "cron",
+          cronExpression: body.cronExpression,
+          atTime: null,
+          intervalSeconds: null,
+          timezone: body.timezone ?? "UTC",
+          updatedAt: "2026-03-10T00:05:00Z",
+        });
+        schedules = [updated];
+        context.mocks.data.schedules(schedules);
+        const trigger = toMockAutomationResponse(updated).triggers[0];
+        if (!trigger) {
+          throw new Error("expected a projected trigger");
+        }
+        return respond(201, { trigger });
+      },
+    );
 
     detachedSetupPage({ context, path: `/agents/${agentId}?tab=schedule` });
 
     await waitFor(() => {
       expect(
-        screen.getByText("Research Agent's scheduled tasks"),
+        screen.getByText("Research Agent's automations"),
       ).toBeInTheDocument();
       expect(
         screen.getAllByText("Every week on Monday at 9:17 AM")[0],
@@ -417,7 +443,7 @@ describe("zero jobs page", () => {
     );
     click(menuItemByText("Edit"));
     const editScheduleDialog = await screen.findByRole("dialog", {
-      name: "Edit schedule",
+      name: "Edit automation",
     });
 
     expect(
@@ -455,12 +481,13 @@ describe("zero jobs page", () => {
       expect(
         screen.getAllByText("Every week on Wednesday at 10:15 PM")[0],
       ).toBeInTheDocument();
-      expect(capturedDeployBody).toMatchObject({
-        name: "monday-risk-review",
-        agentId,
+      expect(capturedUpdateBody).toMatchObject({
+        instruction: "Summarize launch risks",
+      });
+      expect(capturedTriggerBody).toMatchObject({
+        kind: "cron",
         cronExpression: "45 16 * * 3",
         timezone: "Asia/Kolkata",
-        prompt: "Summarize launch risks",
       });
     });
   });
@@ -555,7 +582,7 @@ describe("zero jobs page", () => {
       expect(screen.getAllByText("Release checklist").length).toBeGreaterThan(
         0,
       );
-      expect(screen.getByText("Add schedule")).toBeInTheDocument();
+      expect(screen.getByText("Add automation")).toBeInTheDocument();
     });
     expect(
       screen.getAllByText("Every weekday at 2:30 PM")[0],
@@ -581,9 +608,9 @@ describe("zero jobs page", () => {
       expect(screen.getByText("Instruction")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Add schedule"));
+    click(screen.getByText("Add automation"));
     const createScheduleDialog = await screen.findByRole("dialog", {
-      name: "Add schedule",
+      name: "Add automation",
     });
     await fill(screen.getByLabelText("Prompt"), "Prepare launch summary");
     click(buttonByText("Create", createScheduleDialog));
@@ -599,7 +626,7 @@ describe("zero jobs page", () => {
     );
     click(menuItemByText("Edit"));
     const editScheduleDialog = await screen.findByRole("dialog", {
-      name: "Edit schedule",
+      name: "Edit automation",
     });
     expect(
       within(editScheduleDialog).getByText("Day of week"),
@@ -640,7 +667,7 @@ describe("zero jobs page", () => {
     click(menuItemByText("Delete"));
     const deleteScheduleDialog = await screen.findByRole("dialog");
     expect(
-      within(deleteScheduleDialog).getByText("Delete schedule?"),
+      within(deleteScheduleDialog).getByText("Delete automation?"),
     ).toBeInTheDocument();
     expect(
       within(deleteScheduleDialog).getByText("monthly-risk-audit"),
@@ -648,7 +675,7 @@ describe("zero jobs page", () => {
     click(buttonByText("Cancel", deleteScheduleDialog));
 
     await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
     });
 
     click(

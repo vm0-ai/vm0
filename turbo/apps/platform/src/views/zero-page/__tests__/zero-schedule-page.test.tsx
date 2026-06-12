@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
+import {
+  automationsV2ByRefContract,
+  automationsV2MainContract,
+} from "@vm0/api-contracts/contracts/automations-v2";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,7 +13,8 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
+import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -159,10 +162,12 @@ function mockScheduleListEdgeStory(): void {
 }
 
 async function openSchedulePage(): Promise<void> {
-  detachedSetupPage({ context, path: "/schedules" });
+  detachedSetupPage({ context, path: "/automations" });
 
   await waitFor(() => {
-    expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Automations" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Week view")).toBeInTheDocument();
   });
 }
@@ -178,11 +183,9 @@ async function openScheduleList(): Promise<void> {
 }
 
 async function openAutomationsList(): Promise<void> {
-  detachedSetupPage({
-    context,
-    path: "/schedules",
-    featureSwitches: { [FeatureSwitchKey.ZeroAutomations]: true },
-  });
+  // The legacy /schedules path redirects to /automations (#17307); entering
+  // through it keeps the redirect covered.
+  detachedSetupPage({ context, path: "/schedules" });
 
   await waitFor(() => {
     expect(
@@ -222,10 +225,12 @@ describe("zero schedule page", () => {
 
     await openSchedulePage();
 
-    click(buttonByText("Add schedule"));
+    click(buttonByText("Add automation"));
 
     const createDialog = await screen.findByRole("dialog");
-    expect(within(createDialog).getByText("Add schedule")).toBeInTheDocument();
+    expect(
+      within(createDialog).getByText("Add automation"),
+    ).toBeInTheDocument();
     expect(within(createDialog).getByText("Agent")).toBeInTheDocument();
     expect(within(createDialog).getByText("Prompt")).toBeInTheDocument();
     await fill(
@@ -301,7 +306,7 @@ describe("zero schedule page", () => {
 
     await openSchedulePage();
 
-    click(buttonByText("Add schedule"));
+    click(buttonByText("Add automation"));
 
     const createDialog = await screen.findByRole("dialog");
     await fill(
@@ -337,7 +342,7 @@ describe("zero schedule page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getAllByLabelText(
-        "Open schedule Send morning brief to the team channel",
+        "Open automation Send morning brief to the team channel",
       )[0],
     ).toBeInTheDocument();
   });
@@ -360,7 +365,8 @@ describe("zero schedule page", () => {
     const addScheduleButtons = queryAllByRoleFast("button").filter(
       (candidate) => {
         return (
-          candidate.textContent?.replace(/\s+/g, " ").trim() === "Add schedule"
+          candidate.textContent?.replace(/\s+/g, " ").trim() ===
+          "Add automation"
         );
       },
     );
@@ -379,29 +385,33 @@ describe("zero schedule page", () => {
 
     const schedulesReady = context.mocks.deferred<void>();
 
-    context.mocks.api(zeroSchedulesMainContract.list, async ({ respond }) => {
+    context.mocks.api(automationsV2MainContract.list, async ({ respond }) => {
       await schedulesReady.promise;
       return respond(200, {
-        schedules: [
-          createMockScheduleResponse({
-            id: "f0000001-0000-4000-a000-000000000306",
-            agentId: researchAgentId,
-            displayName: "Research Agent",
-            name: "launch-loading-check",
-            cronExpression: "45 17 * * 1-5",
-            timezone: "UTC",
-            prompt: "Check launch risks before standup",
-            description: "Launch loading check",
-            enabled: true,
-          }),
+        automations: [
+          toMockAutomationResponse(
+            createMockScheduleResponse({
+              id: "f0000001-0000-4000-a000-000000000306",
+              agentId: researchAgentId,
+              displayName: "Research Agent",
+              name: "launch-loading-check",
+              cronExpression: "45 17 * * 1-5",
+              timezone: "UTC",
+              prompt: "Check launch risks before standup",
+              description: "Launch loading check",
+              enabled: true,
+            }),
+          ),
         ],
       });
     });
 
-    detachedSetupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/automations" });
 
     await waitFor(() => {
-      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Automations" }),
+      ).toBeInTheDocument();
     });
     click(tabByText("List"));
 
@@ -440,7 +450,9 @@ describe("zero schedule page", () => {
     ).toBeInTheDocument();
 
     click(
-      screen.getAllByLabelText("Open schedule Review overnight escalations")[0],
+      screen.getAllByLabelText(
+        "Open automation Review overnight escalations",
+      )[0],
     );
 
     await waitFor(() => {
@@ -536,6 +548,28 @@ describe("zero schedule page", () => {
     });
   });
 
+  it("surfaces run-now failures from the schedule list", async () => {
+    mockSchedulePageStory();
+    context.mocks.api(automationsV2ByRefContract.run, ({ respond }) => {
+      return respond(503, {
+        error: {
+          message: "Runner queue unavailable",
+          code: "PROVIDER_UNAVAILABLE",
+        },
+      });
+    });
+
+    await openScheduleList();
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Runner queue unavailable")).toBeInTheDocument();
+      expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+    });
+  });
+
   it("deletes a schedule from the list after confirmation", async () => {
     mockSchedulePageStory();
 
@@ -548,7 +582,7 @@ describe("zero schedule page", () => {
 
     const deleteDialog = await screen.findByRole("dialog");
     expect(
-      within(deleteDialog).getByText("Delete schedule?"),
+      within(deleteDialog).getByText("Delete automation?"),
     ).toBeInTheDocument();
     expect(
       within(deleteDialog).getByText("weekday-morning-brief"),
@@ -557,7 +591,7 @@ describe("zero schedule page", () => {
     click(buttonByText("Cancel", deleteDialog));
 
     await waitFor(() => {
-      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+      expect(screen.queryByText("Delete automation?")).not.toBeInTheDocument();
     });
 
     click(

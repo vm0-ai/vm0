@@ -56,25 +56,37 @@ const ZERO_LOGS_BY_ID_REWRITE_SOURCE = `/api/zero/logs/:id(${UUID_PATH_SEGMENT_P
 const ZERO_LOGS_BY_ID_PATH_RE = new RegExp(
   `^/api/zero/logs/${UUID_PATH_SEGMENT_PATTERN}$`,
 );
-const ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE = "/api/zero/schedules/:name";
-const ZERO_SCHEDULES_BY_NAME_PATH_RE = /^\/api\/zero\/schedules\/[^/]+$/;
 const TEST_TELEGRAM_MOCK_REWRITE_SOURCE =
   "/api/test/telegram-mock/:botToken/:method";
 const TEST_TELEGRAM_MOCK_PATH_RE = /^\/api\/test\/telegram-mock\/[^/]+\/[^/]+$/;
-const ZERO_SCHEDULES_RUN_REWRITE_SOURCE = "/api/zero/schedules/run";
-const ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE =
-  "/api/zero/schedules/:name/disable";
-const ZERO_SCHEDULES_DISABLE_PATH_RE =
-  /^\/api\/zero\/schedules\/[^/]+\/disable$/;
-const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
-const ZERO_SCHEDULES_ENABLE_PATH_RE = /^\/api\/zero\/schedules\/[^/]+\/enable$/;
-const AUTOMATIONS_RUN_REWRITE_SOURCE = "/api/automations/run";
-const AUTOMATIONS_BY_NAME_REWRITE_SOURCE = "/api/automations/:name";
-const AUTOMATIONS_BY_NAME_PATH_RE = /^\/api\/automations\/[^/]+$/;
-const AUTOMATIONS_DISABLE_REWRITE_SOURCE = "/api/automations/:name/disable";
-const AUTOMATIONS_DISABLE_PATH_RE = /^\/api\/automations\/[^/]+\/disable$/;
-const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:name/enable";
+// The automation resource API on its clean paths (#17307); the /api/v2/*
+// entries below stay as transition aliases for clients built before the move.
+const AUTOMATIONS_BY_REF_REWRITE_SOURCE = "/api/automations/:ref";
+const AUTOMATIONS_BY_REF_PATH_RE = /^\/api\/automations\/[^/]+$/;
+const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:ref/enable";
 const AUTOMATIONS_ENABLE_PATH_RE = /^\/api\/automations\/[^/]+\/enable$/;
+const AUTOMATIONS_DISABLE_REWRITE_SOURCE = "/api/automations/:ref/disable";
+const AUTOMATIONS_DISABLE_PATH_RE = /^\/api\/automations\/[^/]+\/disable$/;
+const AUTOMATIONS_RUN_REWRITE_SOURCE = "/api/automations/:ref/run";
+const AUTOMATIONS_RUN_PATH_RE = /^\/api\/automations\/[^/]+\/run$/;
+const AUTOMATIONS_TRIGGERS_REWRITE_SOURCE = "/api/automations/:ref/triggers";
+const AUTOMATIONS_TRIGGERS_PATH_RE = /^\/api\/automations\/[^/]+\/triggers$/;
+const AUTOMATION_TRIGGERS_BY_ID_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})`;
+const AUTOMATION_TRIGGERS_BY_ID_PATH_RE = new RegExp(
+  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
+const AUTOMATION_TRIGGERS_ENABLE_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/enable`;
+const AUTOMATION_TRIGGERS_ENABLE_PATH_RE = new RegExp(
+  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/enable$`,
+);
+const AUTOMATION_TRIGGERS_DISABLE_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/disable`;
+const AUTOMATION_TRIGGERS_DISABLE_PATH_RE = new RegExp(
+  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
+);
+const AUTOMATION_TRIGGERS_ROTATE_SECRET_REWRITE_SOURCE = `/api/automation-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/rotate-secret`;
+const AUTOMATION_TRIGGERS_ROTATE_SECRET_PATH_RE = new RegExp(
+  `^/api/automation-triggers/${UUID_PATH_SEGMENT_PATTERN}/rotate-secret$`,
+);
 const AUTOMATIONS_V2_BY_REF_REWRITE_SOURCE = "/api/v2/automations/:ref";
 const AUTOMATIONS_V2_BY_REF_PATH_RE = /^\/api\/v2\/automations\/[^/]+$/;
 const AUTOMATIONS_V2_ENABLE_REWRITE_SOURCE = "/api/v2/automations/:ref/enable";
@@ -540,6 +552,7 @@ export const API_BACKEND_REWRITES = [
     "/api/cron/computer-use-screenshot-cleanup",
   ],
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
+  ["/api/cron/execute-automations", "/api/cron/execute-automations"],
   ["/api/cron/execute-schedules", "/api/cron/execute-schedules"],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
   [
@@ -1187,49 +1200,61 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/runs/:id/telemetry/agent",
     ZERO_RUNS_AGENT_EVENTS_PATH_RE,
   ],
-  ["/api/zero/schedules", "/api/zero/schedules"],
-  [ZERO_SCHEDULES_RUN_REWRITE_SOURCE, "/api/zero/schedules/run"],
   [
     ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
     "/api/zero/secrets/:name",
     ZERO_SECRETS_BY_NAME_PATH_RE,
   ],
   [
-    ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE,
-    "/api/zero/schedules/:name",
-    ZERO_SCHEDULES_BY_NAME_PATH_RE,
-  ],
-  [
-    ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE,
-    "/api/zero/schedules/:name/disable",
-    ZERO_SCHEDULES_DISABLE_PATH_RE,
-  ],
-  [
-    ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
-    "/api/zero/schedules/:name/enable",
-    ZERO_SCHEDULES_ENABLE_PATH_RE,
-  ],
-  ["/api/automations", "/api/automations"],
-  [
     AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE,
     "/api/automations/webhooks/:token",
     AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE,
   ],
-  [AUTOMATIONS_RUN_REWRITE_SOURCE, "/api/automations/run"],
-  [
-    AUTOMATIONS_DISABLE_REWRITE_SOURCE,
-    "/api/automations/:name/disable",
-    AUTOMATIONS_DISABLE_PATH_RE,
-  ],
+  ["/api/automations", "/api/automations"],
   [
     AUTOMATIONS_ENABLE_REWRITE_SOURCE,
-    "/api/automations/:name/enable",
+    "/api/automations/:ref/enable",
     AUTOMATIONS_ENABLE_PATH_RE,
   ],
   [
-    AUTOMATIONS_BY_NAME_REWRITE_SOURCE,
-    "/api/automations/:name",
-    AUTOMATIONS_BY_NAME_PATH_RE,
+    AUTOMATIONS_DISABLE_REWRITE_SOURCE,
+    "/api/automations/:ref/disable",
+    AUTOMATIONS_DISABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_RUN_REWRITE_SOURCE,
+    "/api/automations/:ref/run",
+    AUTOMATIONS_RUN_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_TRIGGERS_REWRITE_SOURCE,
+    "/api/automations/:ref/triggers",
+    AUTOMATIONS_TRIGGERS_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_BY_REF_REWRITE_SOURCE,
+    "/api/automations/:ref",
+    AUTOMATIONS_BY_REF_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_ENABLE_REWRITE_SOURCE,
+    "/api/automation-triggers/:id/enable",
+    AUTOMATION_TRIGGERS_ENABLE_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_DISABLE_REWRITE_SOURCE,
+    "/api/automation-triggers/:id/disable",
+    AUTOMATION_TRIGGERS_DISABLE_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_ROTATE_SECRET_REWRITE_SOURCE,
+    "/api/automation-triggers/:id/rotate-secret",
+    AUTOMATION_TRIGGERS_ROTATE_SECRET_PATH_RE,
+  ],
+  [
+    AUTOMATION_TRIGGERS_BY_ID_REWRITE_SOURCE,
+    "/api/automation-triggers/:id",
+    AUTOMATION_TRIGGERS_BY_ID_PATH_RE,
   ],
   ["/api/v2/automations", "/api/v2/automations"],
   [

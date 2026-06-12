@@ -56,7 +56,7 @@ describe("zero automation update command", () => {
 
     server.use(
       http.patch(
-        "http://localhost:3000/api/v2/automations/:ref",
+        "http://localhost:3000/api/automations/:ref",
         async ({ request, params }) => {
           capturedRef = params.ref as string;
           capturedBody = (await request.json()) as Record<string, unknown>;
@@ -101,7 +101,7 @@ describe("zero automation update command", () => {
 
   it("should surface API errors", async () => {
     server.use(
-      http.patch("http://localhost:3000/api/v2/automations/:ref", () => {
+      http.patch("http://localhost:3000/api/automations/:ref", () => {
         return HttpResponse.json(
           {
             error: {

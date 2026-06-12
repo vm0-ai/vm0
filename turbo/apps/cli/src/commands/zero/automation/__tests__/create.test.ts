@@ -110,7 +110,7 @@ describe("zero automation create command", () => {
     server.use(
       composeByNameHandler(),
       http.post(
-        "http://localhost:3000/api/v2/automations",
+        "http://localhost:3000/api/automations",
         async ({ request }) => {
           capturedBody = (await request.json()) as Record<string, unknown>;
           return HttpResponse.json(
@@ -150,7 +150,7 @@ describe("zero automation create command", () => {
     server.use(
       composeByNameHandler(),
       http.post(
-        "http://localhost:3000/api/v2/automations",
+        "http://localhost:3000/api/automations",
         async ({ request }) => {
           capturedBody = (await request.json()) as Record<string, unknown>;
           return HttpResponse.json(
@@ -193,7 +193,7 @@ describe("zero automation create command", () => {
     server.use(
       composeByNameHandler(),
       http.post(
-        "http://localhost:3000/api/v2/automations",
+        "http://localhost:3000/api/automations",
         async ({ request }) => {
           capturedBody = (await request.json()) as Record<string, unknown>;
           return HttpResponse.json(
@@ -226,7 +226,7 @@ describe("zero automation create command", () => {
   it("should print the webhook URL and one-time secret with --webhook", async () => {
     server.use(
       composeByNameHandler(),
-      http.post("http://localhost:3000/api/v2/automations", () => {
+      http.post("http://localhost:3000/api/automations", () => {
         return HttpResponse.json(
           {
             automation: baseAutomation([webhookTrigger]),
@@ -305,7 +305,7 @@ describe("zero automation create command", () => {
   it("should surface API validation errors", async () => {
     server.use(
       composeByNameHandler(),
-      http.post("http://localhost:3000/api/v2/automations", () => {
+      http.post("http://localhost:3000/api/automations", () => {
         return HttpResponse.json(
           {
             error: {
