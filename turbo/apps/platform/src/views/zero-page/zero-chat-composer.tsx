@@ -2079,6 +2079,10 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem ?? illustrationPreviewItem);
   const dialogContentClassName = cn(
     "p-0 gap-0 overflow-hidden",
+    // The auto-rendered close button defaults to top-4, which is tuned for the
+    // default p-6 dialog. This dialog uses a custom py-4 header, so re-center the
+    // 36px (size-9) close button within the 50px header.
+    "[&>button[aria-label=Close]]:top-[7px]",
     isPreviewing ? "max-w-6xl" : "max-w-4xl",
   );
   const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
