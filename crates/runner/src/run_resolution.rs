@@ -301,6 +301,41 @@ mod tests {
         assert_eq!(mappings.runners_failed, 1);
     }
 
+    #[tokio::test]
+    async fn collect_active_run_mappings_from_home_reads_live_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let base = dir.path().join("runner-base");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(
+            base.join("status.json"),
+            r#"{"active_runs":[{"run_id":"run-live","sandbox_id":"sandbox-live"}]}"#,
+        )
+        .unwrap();
+        let handle = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: base.join("runner.yaml"),
+                base_dir: base,
+                runner_name: "test-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let mappings = collect_active_run_mappings_from_home(&home).await;
+
+        assert_eq!(mappings.runners_total, 1);
+        assert_eq!(mappings.runners_failed, 0);
+        assert_eq!(
+            mappings.entries,
+            vec![("run-live".into(), "sandbox-live".into())]
+        );
+        assert!(handle.remove_if_current().await.unwrap());
+    }
+
     #[test]
     fn run_prefix_resolves_to_sandbox_id() {
         let status = mappings(vec![(
