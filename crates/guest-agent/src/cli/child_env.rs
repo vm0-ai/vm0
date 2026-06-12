@@ -40,19 +40,6 @@ pub(super) fn apply_to_tokio_command(cmd: &mut tokio::process::Command) {
     });
 }
 
-pub(super) fn apply_to_std_command(cmd: &mut std::process::Command) {
-    cmd.env_clear();
-    for (key, value) in base_child_env() {
-        cmd.env(key, value);
-    }
-    for (key, value) in env::user_env() {
-        cmd.env(key, value);
-    }
-    apply_runner_visible_env(|key, value| {
-        cmd.env(key, value);
-    });
-}
-
 fn base_child_env() -> Vec<(&'static str, String)> {
     let mut base = Vec::with_capacity(OPTIONAL_BASE_ENV_KEYS.len() + 3);
     base.push(("HOME", env::home_dir().to_string()));

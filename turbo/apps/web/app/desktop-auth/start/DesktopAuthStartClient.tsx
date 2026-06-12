@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useTheme } from "../../components/ThemeProvider";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { getClerkAppearance } from "../../components/auth/clerk-appearance";
+import { DesktopAuthStatusPage } from "../DesktopAuthStatusPage";
 
 const DESKTOP_AUTH_CALLBACK_PATH = "/desktop-auth/callback";
 const DESKTOP_AUTH_CALLBACK_SCHEME_PARAM = "callbackScheme";
@@ -45,7 +46,10 @@ export function DesktopAuthStartClient() {
 
   if (!isLoaded || isSignedIn) {
     return (
-      <p style={{ padding: "2rem", fontFamily: "monospace" }}>Signing in...</p>
+      <DesktopAuthStatusPage
+        title="Signing in to Zero"
+        description="Checking your browser session before continuing to Zero Computer Use."
+      />
     );
   }
 

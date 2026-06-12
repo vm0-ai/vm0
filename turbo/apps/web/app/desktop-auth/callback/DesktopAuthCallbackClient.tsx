@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { IconCheck } from "@tabler/icons-react";
-import Image from "next/image";
 import { useSearchParams } from "next/navigation";
+
+import { DesktopAuthStatusPage } from "../DesktopAuthStatusPage";
 
 interface HandoffResponse {
   readonly callbackUrl?: string;
@@ -108,71 +108,23 @@ async function getDesktopAuthHandoffStatus(
   return body.status;
 }
 
-function StatusCard({
-  children,
-}: {
-  readonly children: ReactNode;
-}): React.JSX.Element {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[400px] overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex flex-col items-center p-10">
-          <div className="mb-8 flex items-center gap-2">
-            <Image
-              src="/assets/vm0-logo-dark.svg"
-              alt="VM0"
-              width={82}
-              height={20}
-              priority
-              className="dark:hidden"
-            />
-            <Image
-              src="/assets/vm0-logo.svg"
-              alt="VM0"
-              width={82}
-              height={20}
-              priority
-              className="hidden dark:block"
-            />
-            <span className="text-2xl text-foreground">Platform</span>
-          </div>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function WaitingStatus(): React.JSX.Element {
   return (
-    <StatusCard>
-      <div className="mt-4 flex flex-col items-center gap-2 text-center">
-        <h1 className="text-lg font-medium leading-7 text-foreground">
-          Waiting for Zero Computer Use
-        </h1>
-        <p className="text-sm leading-5 text-muted-foreground">
-          This page will update when desktop sign-in completes.
-        </p>
-      </div>
-    </StatusCard>
+    <DesktopAuthStatusPage
+      title="Waiting for Zero Computer Use"
+      description="This page will update when desktop sign-in completes."
+      tone="waiting"
+    />
   );
 }
 
 function CompletedStatus(): React.JSX.Element {
   return (
-    <StatusCard>
-      <div className="mt-4 flex flex-col items-center gap-4">
-        <IconCheck size={40} className="text-lime-600" stroke={1} />
-        <div className="flex flex-col items-center gap-2 text-center">
-          <h1 className="text-lg font-medium leading-7 text-foreground">
-            Zero Computer Use is signed in.
-          </h1>
-          <p className="text-sm leading-5 text-muted-foreground">
-            You can close this browser window and return to the app.
-          </p>
-        </div>
-      </div>
-    </StatusCard>
+    <DesktopAuthStatusPage
+      title="Zero Computer Use is signed in."
+      description="You can close this browser window and return to the app."
+      tone="success"
+    />
   );
 }
 
@@ -250,7 +202,11 @@ export function DesktopAuthCallbackClient() {
 
   if (error) {
     return (
-      <p style={{ padding: "2rem", fontFamily: "monospace" }}>Error: {error}</p>
+      <DesktopAuthStatusPage
+        title="Desktop sign-in failed"
+        description={error}
+        tone="error"
+      />
     );
   }
 
@@ -263,6 +219,9 @@ export function DesktopAuthCallbackClient() {
   }
 
   return (
-    <p style={{ padding: "2rem", fontFamily: "monospace" }}>Signing in...</p>
+    <DesktopAuthStatusPage
+      title="Signing in to Zero"
+      description="Connecting this browser session to Zero Computer Use."
+    />
   );
 }

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useSignIn } from "@clerk/nextjs/legacy";
 
+import { DesktopAuthStatusPage } from "../DesktopAuthStatusPage";
+
 interface DesktopAuthConsumeClientProps {
   readonly code?: string;
   readonly errorMessage?: string;
@@ -81,11 +83,18 @@ export function DesktopAuthConsumeClient({
 
   if (error) {
     return (
-      <p style={{ padding: "2rem", fontFamily: "monospace" }}>Error: {error}</p>
+      <DesktopAuthStatusPage
+        title="Desktop sign-in failed"
+        description={error}
+        tone="error"
+      />
     );
   }
 
   return (
-    <p style={{ padding: "2rem", fontFamily: "monospace" }}>Signing in...</p>
+    <DesktopAuthStatusPage
+      title="Signing in to Zero"
+      description="Securing your desktop session before returning to the app."
+    />
   );
 }

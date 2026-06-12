@@ -46,6 +46,14 @@ vi.mock("@clerk/nextjs/legacy", () => {
   };
 });
 
+vi.mock("next/image", () => {
+  return {
+    default: ({ alt, src }: { alt: string; src: string }) => {
+      return <span data-alt={alt} data-src={src} />;
+    },
+  };
+});
+
 const fetchMock = vi.fn<typeof fetch>();
 
 describe("DesktopAuthConsumeClient", () => {
@@ -87,7 +95,7 @@ describe("DesktopAuthConsumeClient", () => {
   it("exchanges the desktop auth code and activates the Clerk session", async () => {
     render(<DesktopAuthConsumeClient code="desktop-code" />);
 
-    expect(screen.getByText("Signing in...")).toBeTruthy();
+    expect(screen.getByText("Signing in to Zero")).toBeTruthy();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/desktop-auth/consume", {
         method: "POST",
@@ -135,9 +143,8 @@ describe("DesktopAuthConsumeClient", () => {
       />,
     );
 
-    expect(
-      screen.getByText("Error: Missing desktop sign-in code."),
-    ).toBeTruthy();
+    expect(screen.getByText("Desktop sign-in failed")).toBeTruthy();
+    expect(screen.getByText("Missing desktop sign-in code.")).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
