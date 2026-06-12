@@ -323,16 +323,10 @@ function resolveTelegramBotAvatarUrl(
 }
 
 function getTelegramLoginDomain(): string {
-  if (typeof location === "undefined" || !location.hostname) {
-    return "your app domain";
-  }
   return location.hostname;
 }
 
-function getTelegramLoginOrigin(): string | undefined {
-  if (typeof location === "undefined" || !location.origin) {
-    return undefined;
-  }
+function getTelegramLoginOrigin(): string {
   return location.origin;
 }
 

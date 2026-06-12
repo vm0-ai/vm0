@@ -13,6 +13,7 @@ import {
   usageInsightLast7DaysSourceFixture,
   usageInsightTodayFixture,
 } from "./test-fixtures.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 
 const context = testContext();
 
@@ -84,6 +85,7 @@ describe("/usage page", () => {
   });
 
   it("shows linked usage details and updates totals by date range and group", async () => {
+    mockNow();
     context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
       if (query.range === "7d" && query.groupBy === "agent") {
         return respond(200, usageInsightLast7DaysAgentFixture);

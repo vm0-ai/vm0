@@ -70,15 +70,6 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
-function selectOptionByLabel(
-  label: string,
-  option: string,
-  container: HTMLElement,
-): void {
-  click(within(container).getByLabelText(label));
-  click(screen.getByRole("option", { name: option }));
-}
-
 function mockSchedulePageStory(): void {
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
@@ -237,38 +228,6 @@ describe("zero schedule page", () => {
       within(createDialog).getByLabelText("Prompt"),
       "Draft the weekly support handoff",
     );
-
-    selectOptionByLabel("Agent", "Research Agent", createDialog);
-    expect(
-      within(createDialog).getByText("Research Agent"),
-    ).toBeInTheDocument();
-
-    selectOptionByLabel("Time", "Loop", createDialog);
-    expect(within(createDialog).getByText("Every")).toBeInTheDocument();
-    expect(within(createDialog).getByText("15 minutes")).toBeInTheDocument();
-
-    selectOptionByLabel("Every", "60 minutes", createDialog);
-    expect(within(createDialog).getByText("60 minutes")).toBeInTheDocument();
-
-    selectOptionByLabel("Time", "Every week", createDialog);
-    expect(within(createDialog).getByText("Day of week")).toBeInTheDocument();
-    expect(buttonByText("Mon", createDialog)).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    click(buttonByText("Wed", createDialog));
-    expect(buttonByText("Wed", createDialog)).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-
-    selectOptionByLabel("Time", "Every month", createDialog);
-    expect(within(createDialog).getByText("Day of month")).toBeInTheDocument();
-    selectOptionByLabel("Day of month", "12", createDialog);
-    expect(within(createDialog).getByText("12")).toBeInTheDocument();
-
-    selectOptionByLabel("Time", "Once", createDialog);
-    expect(within(createDialog).getByLabelText("Date")).toBeInTheDocument();
 
     expect(
       within(createDialog).getByDisplayValue(

@@ -1383,7 +1383,7 @@ export function PermissionsDrawer({
     );
   };
 
-  const connectorLabel = CONNECTOR_TYPES[connectorType]?.label ?? connectorType;
+  const connectorLabel = CONNECTOR_TYPES[connectorType].label;
 
   return (
     <Sheet
