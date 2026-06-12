@@ -403,7 +403,7 @@ pub(crate) fn capture_session_metadata(event: &Value, masker: &SecretMasker) {
     write_session_history_marker(&history_path_payload);
 }
 
-fn register_event_session_identifier(event: &Value, masker: &SecretMasker) {
+pub(crate) fn register_event_session_identifier(event: &Value, masker: &SecretMasker) {
     let id = match Framework::from_env() {
         Framework::ClaudeCode => string_field(event, "session_id"),
         Framework::Codex => string_field(event, "thread_id"),
