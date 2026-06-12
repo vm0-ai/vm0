@@ -163,7 +163,7 @@ async fn execute(
     // Codex setup: best-effort `codex login`. Failure is non-fatal —
     // `codex exec` also receives `OPENAI_API_KEY` through the curated CLI env.
     if matches!(env::Framework::from_env(), env::Framework::Codex)
-        && let Err(e) = cli::setup_codex()
+        && let Err(e) = cli::setup_codex(masker).await
     {
         log_error!(LOG_TAG, "Codex setup failed (non-fatal, continuing): {e}");
     }

@@ -158,7 +158,7 @@ function createGitRefsResponse(commitSha: string): string {
   return header + refLine;
 }
 
-function createMockTarball(mockSkills: readonly MockSkillEntry[]): Buffer {
+function buildMockTarball(mockSkills: readonly MockSkillEntry[]): Buffer {
   const tmpDir = mkdtempSync(join(tmpdir(), "vm0-api-test-tarball-"));
   const prefix = `${DEFAULT_SKILLS_REPO}-${DEFAULT_SKILLS_BRANCH}`;
 
@@ -183,6 +183,27 @@ function createMockTarball(mockSkills: readonly MockSkillEntry[]): Buffer {
   rmSync(tmpDir, { recursive: true, force: true });
   return tarball;
 }
+
+function memoizedTarballBuilder(): (
+  mockSkills: readonly MockSkillEntry[],
+) => Buffer {
+  // Building a tarball involves heavy filesystem I/O (temp dirs, per-file
+  // writes, gzip). The output is deterministic for the same entries, so cache
+  // it to keep repeated full-seed tarball builds from timing out tests in CI.
+  const cache = new Map<string, Buffer>();
+  return (mockSkills) => {
+    const cacheKey = JSON.stringify(mockSkills);
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const tarball = buildMockTarball(mockSkills);
+    cache.set(cacheKey, tarball);
+    return tarball;
+  };
+}
+
+const createMockTarball = memoizedTarballBuilder();
 
 function seedSkillEntries(): MockSkillEntry[] {
   return ALL_SEED_SKILL_NAMES.map((name) => {

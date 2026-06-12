@@ -8,6 +8,7 @@ import {
   completeDesktopAuth,
   completeDesktopAuthHandoff,
 } from "../completeDesktopAuth";
+import { DesktopAuthStatusPage } from "../DesktopAuthStatusPage";
 
 const DESKTOP_AUTH_START_PATH = "/desktop-auth/start";
 
@@ -84,81 +85,64 @@ export function DesktopAuthSelectOrgClient({
 
   if (error) {
     return (
-      <p style={{ padding: "2rem", fontFamily: "monospace" }}>Error: {error}</p>
+      <DesktopAuthStatusPage
+        title="Desktop sign-in failed"
+        description={error}
+        tone="error"
+      />
     );
   }
 
   if (!isAuthLoaded || !organizationList.isLoaded) {
     return (
-      <p style={{ padding: "2rem", fontFamily: "monospace" }}>Signing in...</p>
+      <DesktopAuthStatusPage
+        title="Signing in to Zero"
+        description="Loading the workspaces available for Zero Computer Use."
+      />
     );
   }
 
   const memberships = organizationList.userMemberships.data ?? [];
   if (memberships.length === 0) {
     return (
-      <p style={{ padding: "2rem", fontFamily: "monospace" }}>
-        No workspaces are available.
-      </p>
+      <DesktopAuthStatusPage
+        title="No workspaces are available"
+        description="Create or join a workspace before connecting this Mac to Zero Computer Use."
+        tone="error"
+      />
     );
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        padding: "2rem",
-        fontFamily:
-          'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        background: "#f8fafc",
-        color: "#111827",
-      }}
+    <DesktopAuthStatusPage
+      title="Select workspace"
+      description="Choose the workspace that should receive this Mac as a Computer Use runtime."
+      tone="waiting"
     >
-      <section
-        style={{
-          maxWidth: "28rem",
-          margin: "4rem auto",
-          display: "grid",
-          gap: "1rem",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: "1.5rem", lineHeight: 1.25 }}>
-          Select workspace
-        </h1>
-        <div style={{ display: "grid", gap: "0.75rem" }}>
-          {memberships.map((membership) => {
-            const organization = membership.organization;
-            return (
-              <button
-                key={organization.id}
-                type="button"
-                onClick={() => {
-                  selectOrganization(organization.id);
-                }}
-                disabled={selectedOrgId !== null}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  minHeight: "3.25rem",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "0.5rem",
-                  padding: "0.75rem 1rem",
-                  background: "#ffffff",
-                  color: "#111827",
-                  font: "inherit",
-                  cursor: selectedOrgId === null ? "pointer" : "wait",
-                }}
-              >
-                <span>{organization.name}</span>
-                {selectedOrgId === organization.id ? (
-                  <span style={{ color: "#64748b" }}>Signing in...</span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-    </main>
+      <div className="grid gap-3">
+        {memberships.map((membership) => {
+          const organization = membership.organization;
+          return (
+            <button
+              key={organization.id}
+              type="button"
+              onClick={() => {
+                selectOrganization(organization.id);
+              }}
+              disabled={selectedOrgId !== null}
+              aria-busy={selectedOrgId === organization.id}
+              className="flex min-h-[3.25rem] items-center justify-between rounded-lg border border-border bg-background px-4 py-3 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-wait disabled:opacity-80"
+            >
+              <span className="truncate">{organization.name}</span>
+              {selectedOrgId === organization.id ? (
+                <span className="ml-3 shrink-0 text-muted-foreground">
+                  Signing in...
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </DesktopAuthStatusPage>
   );
 }

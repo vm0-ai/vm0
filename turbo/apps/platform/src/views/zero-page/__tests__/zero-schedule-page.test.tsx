@@ -70,6 +70,15 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
+function selectOptionByLabel(
+  label: string,
+  option: string,
+  container: HTMLElement,
+): void {
+  click(within(container).getByLabelText(label));
+  click(screen.getByRole("option", { name: option }));
+}
+
 function mockSchedulePageStory(): void {
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
@@ -192,6 +201,16 @@ async function openAutomationsList(): Promise<void> {
   });
 }
 
+async function openCreateDialog(): Promise<HTMLElement> {
+  mockScheduleCreateStory();
+
+  await openSchedulePage();
+
+  click(buttonByText("Add automation"));
+
+  return await screen.findByRole("dialog");
+}
+
 describe("zero schedule page", () => {
   it("shows scheduled work in the calendar", async () => {
     mockSchedulePageStory();
@@ -211,14 +230,8 @@ describe("zero schedule page", () => {
     ).toBeInTheDocument();
   });
 
-  it("protects unsaved create edits", async () => {
-    mockScheduleCreateStory();
-
-    await openSchedulePage();
-
-    click(buttonByText("Add automation"));
-
-    const createDialog = await screen.findByRole("dialog");
+  it("detects unsaved basic-field edits in the create dialog", async () => {
+    const createDialog = await openCreateDialog();
     expect(
       within(createDialog).getByText("Add automation"),
     ).toBeInTheDocument();
@@ -229,11 +242,83 @@ describe("zero schedule page", () => {
       "Draft the weekly support handoff",
     );
 
+    selectOptionByLabel("Agent", "Research Agent", createDialog);
+    await waitFor(() => {
+      expect(
+        within(createDialog).getByText("Research Agent"),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Cancel", createDialog));
+
+    const confirmClose = await screen.findByRole("alertdialog");
+    expect(
+      within(confirmClose).getByText("You have unsaved changes"),
+    ).toBeInTheDocument();
+  });
+
+  it("switches frequency fields while keeping unsaved prompt edits", async () => {
+    const createDialog = await openCreateDialog();
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Draft the weekly support handoff",
+    );
+
+    selectOptionByLabel("Time", "Loop", createDialog);
+    await waitFor(() => {
+      expect(within(createDialog).getByText("Every")).toBeInTheDocument();
+      expect(within(createDialog).getByText("15 minutes")).toBeInTheDocument();
+    });
+
+    selectOptionByLabel("Every", "60 minutes", createDialog);
+    await waitFor(() => {
+      expect(within(createDialog).getByText("60 minutes")).toBeInTheDocument();
+    });
+
+    selectOptionByLabel("Time", "Every week", createDialog);
+    await waitFor(() => {
+      expect(within(createDialog).getByText("Day of week")).toBeInTheDocument();
+    });
+    expect(buttonByText("Mon", createDialog)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    click(buttonByText("Wed", createDialog));
+    expect(buttonByText("Wed", createDialog)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    selectOptionByLabel("Time", "Every month", createDialog);
+    await waitFor(() => {
+      expect(
+        within(createDialog).getByText("Day of month"),
+      ).toBeInTheDocument();
+    });
+    selectOptionByLabel("Day of month", "12", createDialog);
+    await waitFor(() => {
+      expect(within(createDialog).getByText("12")).toBeInTheDocument();
+    });
+
+    selectOptionByLabel("Time", "Once", createDialog);
+    await waitFor(() => {
+      expect(within(createDialog).getByLabelText("Date")).toBeInTheDocument();
+    });
+
     expect(
       within(createDialog).getByDisplayValue(
         "Draft the weekly support handoff",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps unsaved create edits after continuing editing", async () => {
+    const createDialog = await openCreateDialog();
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Draft the weekly support handoff",
+    );
+
     click(buttonByText("Cancel", createDialog));
 
     const confirmClose = await screen.findByRole("alertdialog");
@@ -250,6 +335,14 @@ describe("zero schedule page", () => {
         "Draft the weekly support handoff",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("discards unsaved create edits and closes the dialog", async () => {
+    const createDialog = await openCreateDialog();
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Draft the weekly support handoff",
+    );
 
     click(buttonByText("Cancel", createDialog));
     const discardChanges = await screen.findByRole("alertdialog");

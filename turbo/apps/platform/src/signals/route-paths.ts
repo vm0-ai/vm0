@@ -11,6 +11,7 @@ export const ROUTES = {
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:activityRunId",
   chat: "/chats/:threadId",
+  prompt: "/prompt",
   schedules: "/automations",
   scheduleDetail: "/automations/:scheduleId",
   works: "/works",

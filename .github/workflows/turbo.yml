@@ -365,6 +365,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
+      - name: Check DB ownership boundary
+        run: .github/scripts/check-db-boundary.sh
       - name: Validate oxlintrc.json react allowImportNames
         working-directory: turbo
         run: |

@@ -111,6 +111,24 @@ fn build_mock_run_config(
     )
 }
 
+pub(in super::super) fn mock_run_config_with_runtime(
+    profiles: BTreeMap<String, config::ProfileConfig>,
+    budget_vcpu: u32,
+    budget_memory_mb: u32,
+    max_concurrent: usize,
+    runtime: Box<dyn sandbox::SandboxRuntime>,
+) -> (RunConfig, MockRunEnv) {
+    build_mock_run_config_with_runtime(
+        profiles,
+        budget_vcpu,
+        budget_memory_mb,
+        max_concurrent,
+        MockJobProvider::new,
+        runtime,
+        "http://localhost:0",
+    )
+}
+
 /// Variant that points the runner's HTTP client at an explicit URL. Used by
 /// tests that spin up an `httpmock::MockServer` to observe webhook traffic.
 pub(in super::super) fn mock_run_config_with_api_url(

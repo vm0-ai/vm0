@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.443.0](https://github.com/vm0-ai/vm0/compare/app-v0.442.1...app-v0.443.0) (2026-06-12)
+
+
+### Features
+
+* add tooltips to artifacts icon buttons ([#17467](https://github.com/vm0-ai/vm0/issues/17467)) ([fb72d43](https://github.com/vm0-ai/vm0/commit/fb72d43a99a8968359ee36619e57136432547cbf))
+* move skills entry to slash menu ([#17448](https://github.com/vm0-ai/vm0/issues/17448)) ([60b5d5a](https://github.com/vm0-ai/vm0/commit/60b5d5ae7c2031551832d5478bd04a772295abeb))
+
+
+### Bug Fixes
+
+* align completed work row styling ([#17460](https://github.com/vm0-ai/vm0/issues/17460)) ([a3e6b1d](https://github.com/vm0-ai/vm0/commit/a3e6b1d397782b76a8c853cbf3e8e6668ae6c1d6))
+* restore completed work hover state ([#17471](https://github.com/vm0-ai/vm0/issues/17471)) ([864e84a](https://github.com/vm0-ai/vm0/commit/864e84a8c25ac81baafc59f95315b88a47251cd0))
+* **web:** inline feedback styling, thread scoping, and persistent highlight ([#17408](https://github.com/vm0-ai/vm0/issues/17408)) ([5e48d88](https://github.com/vm0-ai/vm0/commit/5e48d8801ea82bcfce2156c6275515276f21c925))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.1
+    * @vm0/connectors bumped to 1.71.1
+    * @vm0/core bumped to 8.333.2
+
 ## [0.442.1](https://github.com/vm0-ai/vm0/compare/app-v0.442.0...app-v0.442.1) (2026-06-12)
 
 

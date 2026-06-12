@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.114.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.6...runner-rs-v0.114.7) (2026-06-12)
+
+
+### Refactoring
+
+* **runner:** remove argv-derived runner identity ([#17418](https://github.com/vm0-ai/vm0/issues/17418)) ([f25341e](https://github.com/vm0-ai/vm0/commit/f25341ea7b4f4b69250a4332e50697558d360513))
+
 ## [0.114.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.5...runner-rs-v0.114.6) (2026-06-12)
 
 

@@ -29,6 +29,11 @@ import { settle } from "../utils";
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
+interface EmailOutboxDrainContext {
+  readonly currentTimeMs: number;
+  readonly signal: AbortSignal;
+}
+
 const log = logger("zero:email");
 const ORG_CACHE_TTL_MS = 60_000;
 const USER_CACHE_TTL_MS = 900_000;
@@ -574,6 +579,7 @@ async function executePostSendAction(
 async function processOutboxItem(
   tx: Transaction,
   row: OutboxRow,
+  currentTimeMs: number = now(),
 ): Promise<true> {
   const itemId = row.id;
   const attempts = row.attempts + 1;
@@ -613,7 +619,7 @@ async function processOutboxItem(
         .set({
           status: "pending",
           lastError: result.error,
-          nextRetryAt: new Date(now() + backoffMs),
+          nextRetryAt: new Date(currentTimeMs + backoffMs),
         })
         .where(eq(emailOutbox.id, itemId));
     } else {
@@ -652,9 +658,12 @@ async function drainById(db: Db, itemId: string): Promise<boolean> {
   });
 }
 
-async function drainNextOutboxItem(db: Db): Promise<boolean> {
+async function drainNextOutboxItem(
+  db: Db,
+  currentTimeMs: number,
+): Promise<boolean> {
   return await db.transaction(async (tx) => {
-    const currentTime = new Date(now());
+    const currentTime = new Date(currentTimeMs);
     const rows = await tx.execute<OutboxRow>(
       sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
              reply_to, headers, template, post_send_action, attempts
@@ -666,26 +675,26 @@ async function drainNextOutboxItem(db: Db): Promise<boolean> {
           FOR UPDATE SKIP LOCKED`,
     );
     const row = rows.rows[0];
-    return row ? await processOutboxItem(tx, row) : false;
+    return row ? await processOutboxItem(tx, row, currentTimeMs) : false;
   });
 }
 
 export const drainEmailOutboxBatch$ = command(
-  async ({ set }, signal: AbortSignal): Promise<number> => {
+  async ({ set }, context: EmailOutboxDrainContext): Promise<number> => {
     const db = set(writeDb$);
     let processed = 0;
 
     for (let index = 0; index < MAX_OUTBOX_BATCH_SIZE; index++) {
-      signal.throwIfAborted();
-      const hadItem = await drainNextOutboxItem(db);
-      signal.throwIfAborted();
+      context.signal.throwIfAborted();
+      const hadItem = await drainNextOutboxItem(db, context.currentTimeMs);
+      context.signal.throwIfAborted();
       if (!hadItem) {
         break;
       }
 
       processed++;
       if (index < MAX_OUTBOX_BATCH_SIZE - 1) {
-        await delay(OUTBOX_DRAIN_DELAY_MS, { signal });
+        await delay(OUTBOX_DRAIN_DELAY_MS, { signal: context.signal });
       }
     }
 
@@ -697,9 +706,9 @@ export const drainEmailOutboxBatch$ = command(
 );
 
 export const cleanupExpiredEmailOutbox$ = command(
-  async ({ set }, signal: AbortSignal): Promise<number> => {
+  async ({ set }, context: EmailOutboxDrainContext): Promise<number> => {
     const db = set(writeDb$);
-    const cutoff = new Date(now() - OUTBOX_TTL_MS);
+    const cutoff = new Date(context.currentTimeMs - OUTBOX_TTL_MS);
     const deleted = await db
       .delete(emailOutbox)
       .where(
@@ -712,7 +721,7 @@ export const cleanupExpiredEmailOutbox$ = command(
         ),
       )
       .returning({ id: emailOutbox.id });
-    signal.throwIfAborted();
+    context.signal.throwIfAborted();
 
     if (deleted.length > 0) {
       log.debug("Cleaned up expired email outbox items", {

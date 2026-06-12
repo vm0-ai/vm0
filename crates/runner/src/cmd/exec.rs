@@ -100,7 +100,7 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
         sid.clone()
     } else if let Some(ref rid) = args.run {
         let home = HomePaths::new()?;
-        let mappings = run_resolution::collect_active_run_mappings_from_home(&home).await;
+        let mappings = run_resolution::collect_active_run_mappings_from_home(&home).await?;
         run_resolution::resolve_run_to_sandbox(rid, &mappings)?
     } else {
         // clap group guarantees one is set — this branch is unreachable.

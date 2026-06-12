@@ -1001,7 +1001,13 @@ describe("CHAT-02: dispatch failure", () => {
     expect(run.status).toBe("failed");
     expect(run.error).toContain("RUNNER_DEFAULT_GROUP");
 
-    expect(deliveries).toHaveLength(1);
+    // The terminal chat callback is dispatched after the response returns,
+    // so poll until the delivery has been captured before asserting on it.
+    await expect
+      .poll(() => {
+        return deliveries.length;
+      })
+      .toBe(1);
     const delivery: unknown = JSON.parse(deliveries[0]?.body ?? "{}");
     expect(delivery).toMatchObject({
       runId: sent.body.runId,

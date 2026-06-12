@@ -60,7 +60,7 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::SharedRunCancellationMap;
-use crate::status::{RunnerMode, StatusTracker};
+use crate::status::{RunnerMode, StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
 mod active_sessions;
@@ -171,6 +171,7 @@ struct LiveRunnerPublishResources<'a> {
     kmsg_handle: kmsg_log::KmsgHandle,
     dns_handle: dns::DnsProxy,
     memory_prefetch: &'a mut prefetch::MemoryPrefetchTasks,
+    status: &'a StatusTracker,
 }
 
 async fn publish_live_runner_instance_or_shutdown_startup_resources(
@@ -194,15 +195,43 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
             resources.kmsg_handle.stop().await;
             resources.dns_handle.stop().await;
             resources.memory_prefetch.drain().await;
+            resources.status.set_mode(RunnerMode::Stopped).await;
             Err(e)
         }
     }
+}
+
+async fn shutdown_startup_resources_after_factory_failure(
+    provider: &dyn JobProvider,
+    mitm: &mut proxy::MitmProxy,
+    kmsg_handle: kmsg_log::KmsgHandle,
+    dns_handle: dns::DnsProxy,
+    memory_prefetch: &mut prefetch::MemoryPrefetchTasks,
+    status: &StatusTracker,
+) {
+    memory_prefetch.cancel();
+    provider.shutdown().await;
+    if let Err(e) = mitm.kill_now().await {
+        warn!(error = %e, "failed to kill proxy after factory startup failed");
+    }
+    kmsg_handle.stop().await;
+    dns_handle.stop().await;
+    memory_prefetch.drain().await;
+    status.set_mode(RunnerMode::Stopped).await;
 }
 
 /// Load config and run the main poll loop.
 pub async fn run_start(
     args: StartArgs,
     runtime_provider: &dyn RuntimeProvider,
+) -> RunnerResult<()> {
+    run_start_with_home(args, runtime_provider, HomePaths::new).await
+}
+
+async fn run_start_with_home(
+    args: StartArgs,
+    runtime_provider: &dyn RuntimeProvider,
+    load_home: impl FnOnce() -> RunnerResult<HomePaths>,
 ) -> RunnerResult<()> {
     // Register lifecycle signals (SIGTERM/SIGINT/SIGUSR1/SIGUSR2) before
     // any slow startup work. Tokio's `signal()` installs the process-wide
@@ -277,7 +306,7 @@ pub async fn run_start(
             runner_config.base_dir.display()
         ))
     })?;
-    let home = HomePaths::new()?;
+    let home = load_home()?;
     let mut base_dir_lock = lock::try_acquire(home.base_dir_lock(&base_dir_canonical))
         .await
         .map_err(|e| {
@@ -303,6 +332,8 @@ pub async fn run_start(
             );
         }
     }
+    let paths = RunnerPaths::new(runner_config.base_dir.clone());
+    remove_stale_status_file(&paths.status()).await?;
 
     // Load or generate a persistent runner identity (UUID).
     let runner_id = load_or_generate_runner_id(&runner_config.base_dir).await?;
@@ -334,6 +365,27 @@ pub async fn run_start(
         ))
     })?;
 
+    // Create provider inputs before startup resources are allocated. These
+    // checks can fail due to config/filesystem state and should not leave
+    // runtime-owned pools behind.
+    let cancel = CancellationToken::new();
+    let http = HttpClient::new(HttpClientConfig {
+        api_url: server.url.clone(),
+        vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+    })?;
+    let name = runner_config.name;
+    let group = runner_config.group;
+    let cancel_tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let local_group_dir = if args.local {
+        let group_dir = home.groups_dir().join(&group);
+        std::fs::create_dir_all(&group_dir).map_err(|e| {
+            RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
+        })?;
+        Some(group_dir)
+    } else {
+        None
+    };
+
     // Start background prefetch of snapshot memory for all profiles.
     let mut memory_prefetch =
         prefetch::MemoryPrefetchTasks::spawn(runner_config.profiles.values().map(|profile| {
@@ -358,7 +410,6 @@ pub async fn run_start(
         .unwrap_or(1);
 
     // Start proxy before factory so proxy_port is available for netns pool.
-    let paths = RunnerPaths::new(runner_config.base_dir.clone());
     let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
@@ -475,47 +526,35 @@ pub async fn run_start(
         Some(mitm.port()),
         Some(dns_handle.port()),
     ));
-    status.write_initial().await;
 
     // Create provider — handles discovery + claim + complete
-    let cancel = CancellationToken::new();
-    let http = HttpClient::new(HttpClientConfig {
-        api_url: server.url.clone(),
-        vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
-    })?;
-    let name = runner_config.name;
-    let group = runner_config.group;
-    let cancel_tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
-    let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
-        let group_dir = home.groups_dir().join(&group);
-        std::fs::create_dir_all(&group_dir).map_err(|e| {
-            RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
-        })?;
-        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-        let provider = LocalProvider::new(
-            group_dir,
-            profiles,
-            cancel.clone(),
-            Arc::clone(&cancel_tokens),
-        );
-        (provider, group)
-    } else {
-        let group_name = group.clone();
-        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-        let provider = ApiProvider::new(
-            http.clone(),
-            server.token,
-            group,
-            profiles,
-            runner_id.clone(),
-            cancel.clone(),
-            Arc::clone(&cancel_tokens),
-        )
-        .await;
-        (provider, group_name)
-    };
+    let (provider, group_name): (Arc<dyn JobProvider>, String) =
+        if let Some(group_dir) = local_group_dir {
+            let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+            let provider = LocalProvider::new(
+                group_dir,
+                profiles,
+                cancel.clone(),
+                Arc::clone(&cancel_tokens),
+            );
+            (provider, group)
+        } else {
+            let group_name = group.clone();
+            let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+            let provider = ApiProvider::new(
+                http.clone(),
+                server.token,
+                group,
+                profiles,
+                runner_id.clone(),
+                cancel.clone(),
+                Arc::clone(&cancel_tokens),
+            )
+            .await;
+            (provider, group_name)
+        };
 
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
@@ -552,6 +591,7 @@ pub async fn run_start(
                 kmsg_handle,
                 dns_handle,
                 memory_prefetch: &mut memory_prefetch,
+                status: status.as_ref(),
             },
         )
         .await?;
@@ -1008,15 +1048,35 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         mut mitm,
         mut mitm_crash_rx,
     } = proxy;
+    let ShutdownHandles {
+        kmsg_handle,
+        dns_handle,
+        mut memory_prefetch,
+    } = shutdown;
 
-    let mut factories = start_factories(
+    let mut factories = match start_factories(
         &runner.profiles,
         &firecracker,
         &paths.base_dir,
         &paths.home,
         runtime.as_mut(),
     )
-    .await?;
+    .await
+    {
+        Ok(factories) => factories,
+        Err(e) => {
+            shutdown_startup_resources_after_factory_failure(
+                provider_state.provider.as_ref(),
+                &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                &mut memory_prefetch,
+                shared.status.as_ref(),
+            )
+            .await;
+            return Err(e);
+        }
+    };
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
@@ -1354,11 +1414,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
-    let ShutdownHandles {
-        kmsg_handle,
-        dns_handle,
-        mut memory_prefetch,
-    } = shutdown;
     let teardown = TeardownTimer::start();
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");

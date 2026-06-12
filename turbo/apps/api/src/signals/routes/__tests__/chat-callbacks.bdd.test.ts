@@ -512,6 +512,22 @@ describe("CHAT-02: completed chat callback", () => {
         })
         .sort(),
     ).toStrictEqual([queued.id, claimed.id].sort());
+    // The auto-send publishes happen in background callback processing, so
+    // poll until each expected channel has been published before asserting.
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadMessageCreated:${first.threadId}`;
+        });
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadRunCreated:${first.threadId}`;
+        });
+      })
+      .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${first.threadId}`,
       null,

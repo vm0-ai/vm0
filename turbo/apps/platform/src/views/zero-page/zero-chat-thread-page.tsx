@@ -205,6 +205,7 @@ import {
 import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
   feedbackItemsValue$,
+  feedbackThreadIdValue$,
   feedbackSendCountValue$,
   setFeedbackItemNote$,
   removeFeedbackItem$,
@@ -1644,39 +1645,58 @@ function ChatArtifactInboxHeader({
           </span>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onToggleSearch}
-        aria-label="Search artifacts"
-        aria-pressed={searchOpen}
-        className={cn(
-          "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
-          searchOpen && "bg-muted/60 text-foreground",
-        )}
-      >
-        <IconSearch size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={onToggleFullscreen}
-        aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-        data-testid="artifact-inbox-fullscreen-toggle"
-        className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
-      >
-        {fullscreen ? (
-          <IconArrowsDiagonalMinimize2 size={16} />
-        ) : (
-          <IconArrowsDiagonal size={16} />
-        )}
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close artifacts"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        <IconX size={16} />
-      </button>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleSearch}
+              aria-label="Search artifacts"
+              aria-pressed={searchOpen}
+              className={cn(
+                "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+                searchOpen && "bg-muted/60 text-foreground",
+              )}
+            >
+              <IconSearch size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Search artifacts</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              data-testid="artifact-inbox-fullscreen-toggle"
+              className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
+            >
+              {fullscreen ? (
+                <IconArrowsDiagonalMinimize2 size={16} />
+              ) : (
+                <IconArrowsDiagonal size={16} />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close artifacts"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <IconX size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Close artifacts</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
@@ -2667,13 +2687,13 @@ function CompletedWorkFoldRow({
 }) {
   const label = completedWorkLabel(groups);
   return (
-    <div data-chat-completed-work-fold>
+    <div data-chat-completed-work-fold className="-mx-2">
       <button
         type="button"
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="flex h-5 w-full flex-col justify-center gap-1.5 text-left"
+        className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
       >
         <span className="block h-px w-full bg-border/40" />
         <span className="flex items-center gap-2">
@@ -3356,6 +3376,7 @@ function useChatThreadComposerFeedback(
   const inlineFeedbackEnabled =
     features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
   const items = useGet(feedbackItemsValue$);
+  const feedbackThreadId = useGet(feedbackThreadIdValue$);
   const sendCount = useGet(feedbackSendCountValue$);
   const setNote = useSet(setFeedbackItemNote$);
   const removeItem = useSet(removeFeedbackItem$);
@@ -3364,7 +3385,9 @@ function useChatThreadComposerFeedback(
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
 
-  if (!inlineFeedbackEnabled) {
+  // Feedback is owned by the thread it was drafted in; other threads keep their
+  // own composer textarea so a draft never bleeds across chats.
+  if (!inlineFeedbackEnabled || feedbackThreadId !== thread.threadId) {
     return undefined;
   }
   return {
@@ -5500,7 +5523,7 @@ function PagedAssistantGroup({
     <div
       id={groupElementId}
       data-role="assistant"
-      className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />

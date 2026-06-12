@@ -23,6 +23,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
+  IconFileText,
   IconPresentation,
   IconEye,
   IconLoader2,
@@ -189,6 +190,7 @@ import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import { orgSkills$ } from "../../signals/skills-page/skills-signals.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
+import { Link } from "../router/link.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -519,8 +521,8 @@ function ComposerFeedbackRow({
   return (
     <div className="border-b border-dashed border-border/60 pb-2 pt-1 last:border-b-0">
       <div className="flex items-center gap-2">
-        <span className="h-3.5 w-[3px] shrink-0 rounded-sm bg-primary" />
-        <span className="min-w-0 flex-1 truncate text-xs italic leading-snug text-muted-foreground">
+        <span className="h-4 w-[3px] shrink-0 bg-muted-foreground/30" />
+        <span className="min-w-0 flex-1 truncate text-sm italic leading-snug text-muted-foreground">
           {item.quote}
         </span>
         <button
@@ -565,7 +567,7 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
   const newestId = feedback.items[feedback.items.length - 1]?.id;
 
   return (
-    <div className="flex flex-col px-3 pt-3">
+    <div className="flex flex-col px-3 pb-2 pt-3">
       {feedback.items.map((item) => {
         return (
           <ComposerFeedbackRow
@@ -582,8 +584,8 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      <span className="px-1 pt-1.5 text-xs leading-snug text-muted-foreground">
-        Select more text and click Provide feedback to add another comment
+      <span className="px-1 pt-2 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
+        Select more text to add another comment
       </span>
     </div>
   );
@@ -2077,6 +2079,10 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem ?? illustrationPreviewItem);
   const dialogContentClassName = cn(
     "p-0 gap-0 overflow-hidden",
+    // The auto-rendered close button defaults to top-4, which is tuned for the
+    // default p-6 dialog. This dialog uses a custom py-4 header, so re-center the
+    // 36px (size-9) close button within the 50px header.
+    "[&>button[aria-label=Close]]:top-[7px]",
     isPreviewing ? "max-w-6xl" : "max-w-4xl",
   );
   const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
@@ -3275,11 +3281,13 @@ function SlashSkillMenu({
   skills,
   loading,
   selectedIndex,
+  showSkillsPageLink,
   onSelect,
 }: {
   readonly skills: readonly ComposerSlashSkill[];
   readonly loading: boolean;
   readonly selectedIndex: number;
+  readonly showSkillsPageLink: boolean;
   readonly onSelect: (skill: ComposerSlashSkill) => void;
 }) {
   return (
@@ -3287,7 +3295,7 @@ function SlashSkillMenu({
       ref={(element) => {
         placeSlashSkillMenu(element);
       }}
-      className="fixed z-50 max-h-72 w-[260px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
+      className="fixed z-50 flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
     >
       <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
         Skills
@@ -3297,7 +3305,7 @@ function SlashSkillMenu({
           Loading skills...
         </div>
       ) : skills.length > 0 ? (
-        <div className="max-h-60 overflow-y-auto px-1.5 pb-1.5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
           {skills.map((skill, index) => {
             const selected = index === selectedIndex;
             return (
@@ -3324,6 +3332,28 @@ function SlashSkillMenu({
       ) : (
         <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
           No matching skills
+        </div>
+      )}
+      {showSkillsPageLink && (
+        <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1.5">
+          <Link
+            pathname="/skills"
+            className="flex h-9 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <IconFileText
+                size={16}
+                stroke={1.8}
+                className="shrink-0 text-muted-foreground"
+              />
+              <span className="truncate">View all skills</span>
+            </span>
+            <IconChevronRight
+              size={16}
+              stroke={1.8}
+              className="shrink-0 text-muted-foreground"
+            />
+          </Link>
         </div>
       )}
     </div>
@@ -3484,6 +3514,7 @@ function SlashSkillComposerInput({
   const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
   const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
   const currentAgent = useLastResolved(currentChatAgent$);
+  const features = useLastResolved(featureSwitch$);
   const orgSkillsLoadable = useLastLoadable(orgSkills$);
   const orgSkills =
     orgSkillsLoadable.state === "hasData" ? orgSkillsLoadable.data : [];
@@ -3498,8 +3529,10 @@ function SlashSkillComposerInput({
       })
     : [];
   const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
+  const showSkillsPageLink = features?.[FeatureSwitchKey.SkillsViewer] ?? false;
   const showSlashSkillMenu =
-    slashRange !== null && (isLoadingOrgSkills || composerSkills.length > 0);
+    slashRange !== null &&
+    (isLoadingOrgSkills || composerSkills.length > 0 || showSkillsPageLink);
 
   const updateCaretIndex = (textarea: HTMLTextAreaElement) => {
     setCaretIndex(textarea.selectionStart);
@@ -3577,6 +3610,7 @@ function SlashSkillComposerInput({
           skills={slashSkillSuggestions}
           loading={isLoadingOrgSkills}
           selectedIndex={selectedSkillIndex}
+          showSkillsPageLink={showSkillsPageLink}
           onSelect={(skill) => {
             insertSlashSkill(
               skill,
