@@ -195,10 +195,10 @@ fn codex_error_message(error: Option<&Value>) -> Option<String> {
 
 fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     let error = error?;
-    if codex_error_code(error) == Some("invalid_api_key") {
+    if error.get("code").and_then(Value::as_str) == Some("invalid_api_key") {
         return Some(FailureReason::InvalidApiKey);
     }
-    if codex_error_code(error) == Some("TOKEN_REFRESH_FAILED")
+    if codex_refresh_error_code(error) == Some("TOKEN_REFRESH_FAILED")
         && error.get("failureReason").and_then(Value::as_str) == Some("reconnect_required")
         && has_exact_codex_oauth_connector(error)
     {
@@ -211,7 +211,7 @@ fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<Fa
     codex_error_failure_reason(error).or_else(|| codex_error_failure_reason(Some(event)))
 }
 
-fn codex_error_code(value: &Value) -> Option<&str> {
+fn codex_refresh_error_code(value: &Value) -> Option<&str> {
     value
         .get("code")
         .or_else(|| value.get("error"))
@@ -736,6 +736,24 @@ mod tests {
                 event_type: "error",
                 message: "Incorrect API key provided".to_string(),
                 failure_reason: Some(FailureReason::InvalidApiKey),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_error_string_invalid_api_key_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "error",
+            "error": "invalid_api_key",
+            "message": "Provider reported invalid_api_key in an error field"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Provider reported invalid_api_key in an error field".to_string(),
+                failure_reason: None,
             })
         );
     }
