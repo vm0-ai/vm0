@@ -194,6 +194,38 @@ fn build_env_json_required_keys() {
 }
 
 #[test]
+fn build_env_json_injects_complete_chat_stream_env() {
+    let mut ctx = minimal_context();
+    ctx.chat_stream_channel = Some("user:user_123".into());
+    ctx.chat_stream_topic =
+        Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222".into());
+    ctx.chat_stream_token = Some("stream-token".into());
+
+    let env = build_env_for_test(&ctx, "https://api.example.com");
+
+    assert_eq!(env.get("VM0_CHAT_STREAM_CHANNEL").unwrap(), "user:user_123");
+    assert_eq!(
+        env.get("VM0_CHAT_STREAM_TOPIC").unwrap(),
+        "chatThreadMessageDelta:22222222-2222-4222-8222-222222222222"
+    );
+    assert_eq!(env.get("VM0_CHAT_STREAM_TOKEN").unwrap(), "stream-token");
+}
+
+#[test]
+fn build_env_json_omits_partial_chat_stream_env() {
+    let mut ctx = minimal_context();
+    ctx.chat_stream_channel = Some("user:user_123".into());
+    ctx.chat_stream_topic =
+        Some("chatThreadMessageDelta:22222222-2222-4222-8222-222222222222".into());
+
+    let env = build_env_for_test(&ctx, "https://api.example.com");
+
+    assert!(!env.contains_key("VM0_CHAT_STREAM_CHANNEL"));
+    assert!(!env.contains_key("VM0_CHAT_STREAM_TOPIC"));
+    assert!(!env.contains_key("VM0_CHAT_STREAM_TOKEN"));
+}
+
+#[test]
 fn build_env_json_sandbox_reuse_result_wire_format() {
     let ctx = minimal_context();
     let sid = SandboxId::new_v4().to_string();
@@ -322,6 +354,12 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         ("CUSTOM_ENV".into(), "kept".into()),
         ("VM0_PROMPT".into(), "user prompt".into()),
         ("VM0_API_TOKEN".into(), "stolen".into()),
+        ("VM0_CHAT_STREAM_CHANNEL".into(), "user:attacker".into()),
+        (
+            "VM0_CHAT_STREAM_TOPIC".into(),
+            "chatThreadMessageDelta:attacker".into(),
+        ),
+        ("VM0_CHAT_STREAM_TOKEN".into(), "attacker-token".into()),
         ("VM0_WORKING_DIR".into(), "/legacy".into()),
         (
             guest_runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
@@ -363,6 +401,9 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     for key in [
         "VM0_PROMPT",
         "VM0_API_TOKEN",
+        "VM0_CHAT_STREAM_CHANNEL",
+        "VM0_CHAT_STREAM_TOPIC",
+        "VM0_CHAT_STREAM_TOKEN",
         "VM0_WORKING_DIR",
         guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
         "VM0_FEATURE_FLAGS",

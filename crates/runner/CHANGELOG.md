@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.115.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.10...runner-rs-v0.115.0) (2026-06-12)
+
+
+### Features
+
+* stream assistant text deltas to web chat ([#17370](https://github.com/vm0-ai/vm0/issues/17370)) ([cbfdf74](https://github.com/vm0-ai/vm0/commit/cbfdf74761771d0142603030ca764d1f33d61479))
+
 ## [0.114.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.9...runner-rs-v0.114.10) (2026-06-12)
 
 ## [0.114.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.8...runner-rs-v0.114.9) (2026-06-12)

@@ -50,7 +50,10 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
                 // Skip the flag and its single JSON value argument
                 skip_flag_value(args, &mut i);
             }
-            "--print" | "--verbose" | "--dangerously-skip-permissions" => {
+            "--print"
+            | "--verbose"
+            | "--dangerously-skip-permissions"
+            | "--include-partial-messages" => {
                 i += 1;
             }
             "--" => {
@@ -108,6 +111,7 @@ mod tests {
             "--print",
             "--verbose",
             "--dangerously-skip-permissions",
+            "--include-partial-messages",
             "--resume",
             "session-abc",
             "--append-system-prompt",

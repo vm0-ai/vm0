@@ -17,6 +17,10 @@ import {
 
 const context = testContext();
 
+beforeEach(() => {
+  mockNow();
+});
+
 function tabByText(text: string): HTMLElement {
   const tab = queryAllByRoleFast("tab").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;

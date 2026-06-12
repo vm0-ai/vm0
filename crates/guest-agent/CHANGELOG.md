@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.34...guest-agent-v0.35.0) (2026-06-12)
+
+
+### Features
+
+* stream assistant text deltas to web chat ([#17370](https://github.com/vm0-ai/vm0/issues/17370)) ([cbfdf74](https://github.com/vm0-ai/vm0/commit/cbfdf74761771d0142603030ca764d1f33d61479))
+
 ## [0.34.34](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.33...guest-agent-v0.34.34) (2026-06-12)
 
 

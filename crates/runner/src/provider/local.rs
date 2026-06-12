@@ -227,6 +227,9 @@ impl JobProvider for LocalProvider {
             feature_flags: req.feature_flags,
             billable_firewalls: vec![],
             model_usage_provider: None,
+            chat_stream_channel: None,
+            chat_stream_topic: None,
+            chat_stream_token: None,
         };
         match ClaimedJob::local(run_id, context) {
             Ok(claimed) => {

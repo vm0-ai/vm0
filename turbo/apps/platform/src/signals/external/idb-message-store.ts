@@ -10,7 +10,7 @@ const L = logger("ChatIdbCache");
 interface ChatMessageReadStore {
   readLatest(
     threadId: string,
-    limit: number,
+    limit?: number,
     signal?: AbortSignal,
   ): Promise<PagedChatMessage[]>;
   readBefore(
@@ -96,7 +96,7 @@ function createIdbMessageStores(userId: string, orgId: string) {
       const range = IDBKeyRange.bound([threadId, ""], [threadId, "￿"]);
       const messages: PagedChatMessage[] = [];
       let cursor = await index.openCursor(range, "prev");
-      while (cursor && messages.length < limit) {
+      while (cursor && (limit === undefined || messages.length < limit)) {
         signal?.throwIfAborted();
         messages.push(validateMessage(cursor.value));
         cursor = await cursor.continue();

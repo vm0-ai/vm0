@@ -20,6 +20,10 @@
 #![allow(dead_code)] // consumed across multiple test binaries
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 
 /// 128 + SIGTERM(15). Rust / glibc's default signal handler maps a
 /// SIGTERM-terminated process to this exit code.
@@ -42,6 +46,280 @@ pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.
 pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
     "[stderr line omitted: exceeded diagnostic size limit]";
+
+pub const CHAT_STREAM_THREAD_ID: &str = "22222222-2222-4222-8222-222222222222";
+pub const CHAT_STREAM_SESSION_ID: &str = "mock-stream-session";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordedRequest {
+    pub path: String,
+    pub authorization: Option<String>,
+    pub body: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RecordedHttpEvent {
+    Request(RecordedRequest),
+    Response { path: String, status: u16 },
+}
+
+pub struct RecordingServer {
+    pub base_url: String,
+    events: Arc<Mutex<Vec<RecordedHttpEvent>>>,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl RecordingServer {
+    pub async fn start(ably_status: u16, ably_response_delay: Duration) -> Result<Self, String> {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|e| format!("bind recording server: {e}"))?;
+        let addr = listener
+            .local_addr()
+            .map_err(|e| format!("recording server local_addr: {e}"))?;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let task_events = Arc::clone(&events);
+        let handle = tokio::spawn(async move {
+            while let Ok((mut socket, _peer)) = listener.accept().await {
+                let connection_events = Arc::clone(&task_events);
+                tokio::spawn(async move {
+                    let Ok(request) = read_http_request(&mut socket).await else {
+                        let _ = write_http_response(&mut socket, 400).await;
+                        return;
+                    };
+                    let status = if request.path.starts_with("/channels/") {
+                        ably_status
+                    } else {
+                        200
+                    };
+                    push_recorded_event(
+                        &connection_events,
+                        RecordedHttpEvent::Request(request.clone()),
+                    );
+                    if request.path.starts_with("/channels/") && !ably_response_delay.is_zero() {
+                        tokio::time::sleep(ably_response_delay).await;
+                    }
+                    let _ = write_http_response(&mut socket, status).await;
+                    push_recorded_event(
+                        &connection_events,
+                        RecordedHttpEvent::Response {
+                            path: request.path,
+                            status,
+                        },
+                    );
+                });
+            }
+        });
+
+        Ok(Self {
+            base_url: format!("http://{addr}"),
+            events,
+            handle,
+        })
+    }
+
+    pub fn events(&self) -> Result<Vec<RecordedHttpEvent>, String> {
+        self.events
+            .lock()
+            .map(|events| events.clone())
+            .map_err(|_| "recording server event mutex poisoned".to_string())
+    }
+
+    pub fn requests(&self) -> Result<Vec<RecordedRequest>, String> {
+        Ok(self
+            .events()?
+            .into_iter()
+            .filter_map(|event| match event {
+                RecordedHttpEvent::Request(request) => Some(request),
+                RecordedHttpEvent::Response { .. } => None,
+            })
+            .collect())
+    }
+
+    pub async fn wait_for_quiet(
+        &self,
+        quiet_for: Duration,
+        timeout: Duration,
+    ) -> Result<Vec<RecordedHttpEvent>, String> {
+        let started_at = Instant::now();
+        let mut last_len = self.events()?.len();
+        let mut quiet_started_at = Instant::now();
+
+        loop {
+            let events = self.events()?;
+            if events.len() != last_len {
+                last_len = events.len();
+                quiet_started_at = Instant::now();
+            } else if quiet_started_at.elapsed() >= quiet_for {
+                return Ok(events);
+            }
+
+            if started_at.elapsed() >= timeout {
+                return Err(format!(
+                    "recording server did not become quiet within {timeout:?}; observed {last_len} events"
+                ));
+            }
+
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+}
+
+impl Drop for RecordingServer {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
+#[derive(Debug)]
+pub struct RunFilesGuard {
+    ops_file: String,
+}
+
+impl RunFilesGuard {
+    pub fn new() -> Self {
+        let ops_file = guest_common::telemetry::sandbox_ops_log().to_string();
+        cleanup_run_files(&ops_file);
+        Self { ops_file }
+    }
+}
+
+impl Default for RunFilesGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for RunFilesGuard {
+    fn drop(&mut self) {
+        cleanup_run_files(&self.ops_file);
+    }
+}
+
+fn cleanup_run_files(ops_file: &str) {
+    let _ = std::fs::remove_file(guest_agent::paths::agent_log_file());
+    let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
+    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
+    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
+    let _ = std::fs::remove_file(ops_file);
+}
+
+async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<RecordedRequest, String> {
+    let mut buffer = Vec::new();
+    let header_end = loop {
+        if let Some(index) = find_subsequence(&buffer, b"\r\n\r\n") {
+            break index;
+        }
+        let mut chunk = [0u8; 1024];
+        let read = socket
+            .read(&mut chunk)
+            .await
+            .map_err(|e| format!("read request: {e}"))?;
+        if read == 0 {
+            return Err("connection closed before request headers".to_string());
+        }
+        buffer.extend_from_slice(
+            chunk
+                .get(..read)
+                .ok_or_else(|| "read chunk length out of bounds".to_string())?,
+        );
+    };
+
+    let header_bytes = buffer
+        .get(..header_end)
+        .ok_or_else(|| "request header range out of bounds".to_string())?;
+    let headers = std::str::from_utf8(header_bytes)
+        .map_err(|e| format!("request headers are not UTF-8: {e}"))?;
+    let (request_line, header_lines) = headers
+        .split_once("\r\n")
+        .map_or((headers, ""), |(line, rest)| (line, rest));
+    let path = request_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| format!("invalid request line: {request_line:?}"))?
+        .to_string();
+
+    let mut authorization = None;
+    let mut content_length = 0usize;
+    for line in header_lines.lines() {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let trimmed_name = name.trim();
+        let trimmed_value = value.trim();
+        if trimmed_name.eq_ignore_ascii_case("authorization") {
+            authorization = Some(trimmed_value.to_string());
+        }
+        if trimmed_name.eq_ignore_ascii_case("content-length") {
+            content_length = trimmed_value
+                .parse()
+                .map_err(|e| format!("invalid content-length {trimmed_value:?}: {e}"))?;
+        }
+    }
+
+    let body_start = header_end
+        .checked_add(4)
+        .ok_or_else(|| "request header length overflow".to_string())?;
+    let body_end = body_start
+        .checked_add(content_length)
+        .ok_or_else(|| "request body length overflow".to_string())?;
+    while buffer.len() < body_end {
+        let mut chunk = [0u8; 1024];
+        let read = socket
+            .read(&mut chunk)
+            .await
+            .map_err(|e| format!("read request body: {e}"))?;
+        if read == 0 {
+            return Err("connection closed before request body".to_string());
+        }
+        buffer.extend_from_slice(
+            chunk
+                .get(..read)
+                .ok_or_else(|| "body chunk length out of bounds".to_string())?,
+        );
+    }
+
+    let body_bytes = buffer
+        .get(body_start..body_end)
+        .ok_or_else(|| "request body range out of bounds".to_string())?;
+    let body = String::from_utf8_lossy(body_bytes).into_owned();
+
+    Ok(RecordedRequest {
+        path,
+        authorization,
+        body,
+    })
+}
+
+async fn write_http_response(
+    socket: &mut tokio::net::TcpStream,
+    status: u16,
+) -> Result<(), String> {
+    let reason = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        500 => "Internal Server Error",
+        _ => "OK",
+    };
+    let response =
+        format!("HTTP/1.1 {status} {reason}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
+    socket
+        .write_all(response.as_bytes())
+        .await
+        .map_err(|e| format!("write response: {e}"))
+}
+
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn push_recorded_event(events: &Arc<Mutex<Vec<RecordedHttpEvent>>>, event: RecordedHttpEvent) {
+    if let Ok(mut events) = events.lock() {
+        events.push(event);
+    }
+}
 
 /// Integration tests call `execute_cli` directly, bypassing the runner-side
 /// workspace-drive mount. Create the canonical mountpoint once at the host-test
@@ -214,6 +492,57 @@ pub unsafe fn setup_env(
         // (`$HOME/.claude/projects/.../<session>.jsonl`) stays inside
         // the tempdir and gets cleaned up with it, instead of
         // accumulating in the dev's real ~/.claude on every run.
+        std::env::set_var("HOME", workdir);
+    }
+    std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
+    ensure_canonical_workspace_for_test()?;
+    std::env::set_current_dir(workdir).map_err(|e| format!("set_current_dir: {e}"))?;
+    Ok(())
+}
+
+/// Configure the process environment for one chat-streaming integration test.
+/// See `setup_env` for the LazyLock and cwd caveats.
+///
+/// SAFETY: callers run one scenario per test binary, before any
+/// `guest_agent::env::*` accessor can read the process env.
+pub unsafe fn setup_chat_stream_env(
+    mock_path: &Path,
+    workdir: &Path,
+    run_id: &str,
+    prompt: &str,
+    api_url: &str,
+    stream_enabled: bool,
+    secret_values: Option<&str>,
+) -> Result<(), String> {
+    unsafe {
+        std::env::set_var("CLI_AGENT_TYPE", "claude-code");
+        std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
+        std::env::set_var("USE_MOCK_CLAUDE", "true");
+        std::env::set_var("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "3");
+        std::env::set_var("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1");
+        std::env::set_var("VM0_RUN_ID", run_id);
+        std::env::set_var("VM0_PROMPT", prompt);
+        std::env::set_var("VM0_API_URL", api_url);
+        std::env::set_var("VM0_API_TOKEN", "test-token");
+        std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
+        std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
+        std::env::remove_var("VM0_CHAT_STREAM_CHANNEL");
+        std::env::remove_var("VM0_CHAT_STREAM_TOPIC");
+        std::env::remove_var("VM0_CHAT_STREAM_TOKEN");
+        std::env::remove_var("VM0_CHAT_STREAM_ABLY_BASE");
+        std::env::remove_var("VM0_SECRET_VALUES");
+        if stream_enabled {
+            std::env::set_var("VM0_CHAT_STREAM_CHANNEL", "user:user_123");
+            std::env::set_var(
+                "VM0_CHAT_STREAM_TOPIC",
+                format!("chatThreadMessageDelta:{CHAT_STREAM_THREAD_ID}"),
+            );
+            std::env::set_var("VM0_CHAT_STREAM_TOKEN", "stream-token");
+            std::env::set_var("VM0_CHAT_STREAM_ABLY_BASE", api_url);
+        }
+        if let Some(secret_values) = secret_values {
+            std::env::set_var("VM0_SECRET_VALUES", secret_values);
+        }
         std::env::set_var("HOME", workdir);
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;

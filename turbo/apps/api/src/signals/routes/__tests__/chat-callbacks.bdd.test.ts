@@ -1317,6 +1317,20 @@ describe("CHAT-02: thread deletion while a run is active", () => {
       prompt: "delete this thread",
     });
     await claimChatRun(runnerGroup, run.runId);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadMessageCreated:${run.threadId}`;
+        });
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadRunCreated:${run.threadId}`;
+        });
+      })
+      .toBe(true);
 
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();

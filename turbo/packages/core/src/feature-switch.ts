@@ -334,6 +334,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AssistantTextStreaming]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Stream assistant text deltas from Claude web chat runs through user-scoped realtime channels before the final assistant message is stored.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.AutomationWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",
     description:

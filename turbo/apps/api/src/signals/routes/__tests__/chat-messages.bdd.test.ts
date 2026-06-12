@@ -325,14 +325,21 @@ async function upsertOrgModelProvider(
   };
 }
 
-async function disableComputerUse(actor: ApiTestUser): Promise<void> {
+async function updateFeatureSwitches(
+  actor: ApiTestUser,
+  switches: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
   await accept(
     setupApp({ context })(zeroFeatureSwitchesContract).update({
       headers: sessionHeaders(actor),
-      body: { switches: { [FeatureSwitchKey.ComputerUse]: false } },
+      body: { switches },
     }),
     [200],
   );
+}
+
+async function disableComputerUse(actor: ApiTestUser): Promise<void> {
+  await updateFeatureSwitches(actor, { [FeatureSwitchKey.ComputerUse]: false });
 }
 
 /**
@@ -479,6 +486,48 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
     expect(emptyRetry.body.error.message).toBe(
       "Client thread id is already in use",
     );
+  }, 90_000);
+
+  it("adds chat stream context only for opted-in web chat sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.proxyChatCallbackToApp();
+
+    const disabled = await sendChatRun(actor, {
+      agentId,
+      prompt: "streaming disabled web chat",
+    });
+    const disabledClaim = await claimChatRun(runnerGroup, disabled.runId);
+    expect(disabledClaim.claim).not.toHaveProperty("chatStreamChannel");
+    expect(disabledClaim.claim).not.toHaveProperty("chatStreamTopic");
+    expect(disabledClaim.claim).not.toHaveProperty("chatStreamToken");
+    expect(context.mocks.ably.requestToken).not.toHaveBeenCalled();
+    await cancelChatRun(actor, disabled.runId);
+
+    context.mocks.ably.requestToken.mockResolvedValueOnce({
+      token: "stream-token",
+    });
+    await updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.AssistantTextStreaming]: true,
+    });
+
+    const enabled = await sendChatRun(actor, {
+      agentId,
+      prompt: "streaming enabled web chat",
+    });
+    const enabledClaim = await claimChatRun(runnerGroup, enabled.runId);
+    expect(enabledClaim.claim).toMatchObject({
+      chatStreamChannel: `user:${actor.userId}`,
+      chatStreamTopic: `chatThreadMessageDelta:${enabled.threadId}`,
+      chatStreamToken: "stream-token",
+    });
+    expect(context.mocks.ably.requestToken).toHaveBeenCalledWith({
+      capability: JSON.stringify({
+        [`user:${actor.userId}`]: ["publish"],
+      }),
+      ttl: 24 * 60 * 60 * 1000,
+      clientId: undefined,
+    });
+    await cancelChatRun(actor, enabled.runId);
   }, 90_000);
 
   it("rejects unauthenticated, unknown-agent, and foreign private-agent sends", async () => {

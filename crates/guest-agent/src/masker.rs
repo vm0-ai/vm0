@@ -77,7 +77,6 @@ impl SecretMasker {
             push_url_encoded_secret_pattern(secret, &mut diagnostic_url_encoded_patterns);
             push_diagnostic_multiline_patterns(secret, &mut diagnostic_patterns);
         }
-
         Self::build_with_diagnostic_patterns(
             patterns,
             diagnostic_patterns,

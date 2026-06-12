@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.34.34"
+version = "0.35.0"
 edition.workspace = true
 
 [dependencies]
@@ -27,7 +27,7 @@ thiserror.workspace = true
 tar.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "io-util", "fs", "sync", "net"] }
 tokio-util.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v5"] }
 zstd.workspace = true
 
 [dev-dependencies]

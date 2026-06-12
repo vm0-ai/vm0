@@ -19,6 +19,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -27,6 +28,7 @@ import {
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
@@ -257,6 +259,17 @@ async function sendChatRunMessage(
     throw new Error("Expected the entitled chat send to create a run");
   }
   return { runId: sent.body.runId, threadId: sent.body.threadId };
+}
+
+function assistantOutputEvent(
+  sequenceNumber: number,
+  text: string,
+): Record<string, unknown> {
+  return {
+    eventType: "assistant",
+    sequenceNumber,
+    eventData: { message: { content: [{ type: "text", text }] } },
+  };
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
@@ -1541,6 +1554,51 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it.each(["slack", "telegram", "email"] as const)(
+    "does not add chat stream context to %s-triggered runs",
+    async (triggerSource) => {
+      const bdd = createBddApi(context);
+      const api = createRunsSchedulesApi(context);
+      const connectors = createConnectorBddApi(context);
+      const actor = bdd.user();
+      bdd.acceptAgentStorageWrites();
+      api.acceptStorageDownloads();
+      api.acceptTelemetryIngest();
+      const runnerGroup = api.configureRunnerGroup();
+      await api.grantProEntitlement(actor);
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.AssistantTextStreaming]: true,
+      });
+
+      const composeName = `bdd-${triggerSource}-stream-off`;
+      const compose = await api.createCompose(actor, {
+        version: "1",
+        agents: {
+          [composeName]: {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          },
+        },
+      });
+
+      const run = await api.createDirectRun(actor, {
+        agentComposeId: compose.composeId,
+        prompt: `${triggerSource} should not stream`,
+        triggerSource,
+      });
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(run.runId);
+      expect(claim).not.toHaveProperty("chatStreamChannel");
+      expect(claim).not.toHaveProperty("chatStreamTopic");
+      expect(claim).not.toHaveProperty("chatStreamToken");
+      expect(context.mocks.ably.requestToken).not.toHaveBeenCalled();
+
+      await api.requestCancelRun(actor, run.runId, [200]);
+      const cancelled = await api.readRun(actor, run.runId);
+      expect(cancelled.status).toBe("cancelled");
+    },
+  );
+
   it("promotes queued runs with feature flags and a fresh api start time", async () => {
     const api = createRunsSchedulesApi(context);
     const computerUse = createComputerUseBddApi(context);
@@ -2247,6 +2305,91 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
 });
 
 describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () => {
+  it("acknowledges late assistant events when completion cleanup already wrote the run sequence", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const chatCallbacks = createChatCallbacksApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    chatCallbacks.proxyChatCallbackToApp();
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd cleanup wins before late event",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    chatCallbacks.mockChatOutputEvents([
+      assistantOutputEvent(0, "cleanup-first assistant text"),
+    ]);
+
+    const historyHash = createHash("sha256")
+      .update(`bdd cleanup-first session history ${runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cleanup-first-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+
+    await expect
+      .poll(async () => {
+        const page = await chat.listThreadMessages(actor, threadId);
+        return page.messages.filter((message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === runId &&
+            message.content === "cleanup-first assistant text"
+          );
+        }).length;
+      })
+      .toBe(1);
+
+    const late = await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_late_after_cleanup",
+              content: [{ type: "text", text: "late streamed text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(late.status).toBe(200);
+
+    const afterLate = await chat.listThreadMessages(actor, threadId);
+    const assistantTexts = afterLate.messages.flatMap((message) => {
+      return message.role === "assistant" &&
+        message.runId === runId &&
+        message.content
+        ? [message.content]
+        : [];
+    });
+    expect(assistantTexts).toContain("cleanup-first assistant text");
+    expect(assistantTexts).not.toContain("late streamed text");
+  }, 90_000);
+
   it("persists assistant events into the linked thread and swallows optional consumer failures", async () => {
     const api = createRunsSchedulesApi(context);
     const chat = createChatFilesBddApi(context);
@@ -2290,6 +2433,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const firstAssistant = afterFirst.messages.find((message) => {
       return message.role === "assistant" && message.runId === runId;
     });
+    expect(firstAssistant?.id).toBe(
+      assistantMessageIdForRunEvent(runId, "msg_bdd_1"),
+    );
     expect(firstAssistant?.content).toBe("Hello from BDD events");
 
     context.mocks.ably.publish.mockRejectedValueOnce(
@@ -2410,6 +2556,34 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         return message.role === "assistant" && message.runId === runId;
       }),
     ).toHaveLength(3);
+
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 8,
+            message: {
+              id: "msg_bdd_1",
+              content: [{ type: "text", text: "Duplicate text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const afterDuplicate = await chat.listThreadMessages(actor, threadId);
+    const duplicatedMessageId = assistantMessageIdForRunEvent(
+      runId,
+      "msg_bdd_1",
+    );
+    const matchingDuplicateRows = afterDuplicate.messages.filter((message) => {
+      return message.role === "assistant" && message.id === duplicatedMessageId;
+    });
+    expect(matchingDuplicateRows).toHaveLength(1);
+    expect(matchingDuplicateRows[0]?.content).toBe("Hello from BDD events");
 
     // Assistant text on a run without a chat thread changes no thread state.
     const threadsBefore = await chat.listThreads(actor);

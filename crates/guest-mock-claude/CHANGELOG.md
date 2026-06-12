@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.10...guest-mock-claude-v0.19.0) (2026-06-12)
+
+
+### Features
+
+* stream assistant text deltas to web chat ([#17370](https://github.com/vm0-ai/vm0/issues/17370)) ([cbfdf74](https://github.com/vm0-ai/vm0/commit/cbfdf74761771d0142603030ca764d1f33d61479))
+
 ## [0.18.10](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.9...guest-mock-claude-v0.18.10) (2026-06-12)
 
 

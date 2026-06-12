@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.136.0](https://github.com/vm0-ai/vm0/compare/api-v1.135.2...api-v1.136.0) (2026-06-12)
+
+
+### Features
+
+* stream assistant text deltas to web chat ([#17370](https://github.com/vm0-ai/vm0/issues/17370)) ([cbfdf74](https://github.com/vm0-ai/vm0/commit/cbfdf74761771d0142603030ca764d1f33d61479))
+
+
+### Bug Fixes
+
+* load all cached chat messages on thread entry ([#17520](https://github.com/vm0-ai/vm0/issues/17520)) ([0ebd1c4](https://github.com/vm0-ai/vm0/commit/0ebd1c4b149399d87ae2833d2ba08f556778233d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.89.0
+    * @vm0/connectors bumped to 1.73.0
+    * @vm0/core bumped to 8.335.0
+    * @vm0/db bumped to 1.47.3
+
 ## [1.135.2](https://github.com/vm0-ai/vm0/compare/api-v1.135.1...api-v1.135.2) (2026-06-12)
 
 
