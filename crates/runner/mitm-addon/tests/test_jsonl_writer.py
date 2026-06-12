@@ -61,6 +61,7 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
     append_started = threading.Event()
     release_append = threading.Event()
     flush_threads: list[threading.Thread] = []
+    flush_errors: list[Exception] = []
     original_append_lines = jsonl_writer._append_lines
 
     def append_lines(path: str, content: bytes) -> None:
@@ -68,14 +69,20 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
         release_append.wait()
         original_append_lines(path, content)
 
+    def flush_log_path() -> None:
+        try:
+            jsonl_writer.flush_log_path(log_path)
+        except Exception as exc:
+            flush_errors.append(exc)
+
     with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
         try:
             jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
             assert append_started.wait(timeout=1)
 
             flush_threads = [
-                threading.Thread(target=jsonl_writer.flush_log_path, args=(log_path,)),
-                threading.Thread(target=jsonl_writer.flush_log_path, args=(log_path,)),
+                threading.Thread(target=flush_log_path),
+                threading.Thread(target=flush_log_path),
             ]
             for thread in flush_threads:
                 thread.start()
@@ -93,6 +100,7 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
     for thread in flush_threads:
         assert not thread.is_alive()
 
+    assert not flush_errors
     assert log_path not in jsonl_writer._accepted_by_path
     assert log_path not in jsonl_writer._completed_by_path
     assert log_path not in jsonl_writer._flush_waiters_by_path
