@@ -32,6 +32,7 @@ import {
   IconPlug,
   IconPhoto,
   IconPlus,
+  IconQuote,
   IconSearch,
   IconTemplate,
   IconVideo,
@@ -533,20 +534,31 @@ function ComposerFeedbackRow({
         showDivider && "border-t border-dashed border-border/60",
       )}
     >
-      <div className="flex items-center gap-2">
-        <span className="h-4 w-[3px] shrink-0 bg-muted-foreground/30" />
-        <span className="min-w-0 flex-1 truncate text-sm italic leading-snug text-muted-foreground">
-          {item.quote}
-        </span>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remove feedback"
-          title="Remove feedback"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <IconX size={15} stroke={2} />
-        </button>
+      {/* Quote reference reuses the selected-template chip treatment (bordered
+          pill, icon square, in-pill remove) so feedback references read the same
+          as template chips. */}
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted">
+            <IconQuote
+              size={12}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          </span>
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.quote}
+          </span>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove feedback"
+            title="Remove feedback"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
       </div>
       <textarea
         ref={(element) => {
