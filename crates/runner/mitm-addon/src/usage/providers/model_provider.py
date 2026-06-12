@@ -41,7 +41,8 @@ def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
 
     This gates response usage parser setup and model usage observation
     reporting. It is not a billing gate: BYOK/non-billable model providers can
-    be observable when the run context supplies ``MODEL_USAGE_PROVIDER``.
+    be observable when the run context supplies a non-empty
+    ``MODEL_USAGE_PROVIDER``.
     ``FIREWALL_BILLABLE`` is also accepted as a legacy model-provider
     observability signal for older billable contexts.
     """
@@ -114,8 +115,8 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
 
     - ``run_id`` is non-empty.
     - ``firewall_name`` starts with ``model-provider:``.
-    - The flow is model-provider observable: ``MODEL_USAGE_PROVIDER`` is
-      present, or legacy ``FIREWALL_BILLABLE`` is truthy.
+    - The flow is model-provider observable: ``MODEL_USAGE_PROVIDER`` is a
+      non-empty string, or legacy ``FIREWALL_BILLABLE`` is truthy.
     - At least one model-provider usage source is available.
     - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
       quantity.
