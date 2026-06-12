@@ -8,6 +8,8 @@ import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { logger } from "../../lib/log";
+import { tapError } from "../utils";
+import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 
 const L = logger("CreditUsage");
@@ -132,7 +134,7 @@ export const processOrgUsageEvents$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const writeDb = set(writeDb$);
 
-    const { totalCredits } = await writeDb.transaction(async (tx) => {
+    const { totalCredits, runIds } = await writeDb.transaction(async (tx) => {
       // Same advisory key as web: 'credit_' prefix + orgId.
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext('credit_' || ${orgId}))`,
@@ -146,8 +148,15 @@ export const processOrgUsageEvents$ = command(
         );
 
       if (pendingRecords.length === 0) {
-        return { totalCredits: 0 };
+        return { totalCredits: 0, runIds: [] };
       }
+      const runIds = [
+        ...new Set(
+          pendingRecords.flatMap((record) => {
+            return record.runId ? [record.runId] : [];
+          }),
+        ),
+      ];
 
       const pricingRecords = await tx.select().from(usagePricing);
       const pricingByKey = new Map(
@@ -227,7 +236,7 @@ export const processOrgUsageEvents$ = command(
         await deductFromExpiresRecords(tx, orgId, totalCredits);
       }
       signal.throwIfAborted();
-      return { totalCredits };
+      return { totalCredits, runIds };
     });
     signal.throwIfAborted();
 
@@ -237,6 +246,17 @@ export const processOrgUsageEvents$ = command(
       // its own errors (clearPendingFlag in catch); the await here is
       // bounded by the route handler's outer waitUntil envelope.
       await set(triggerAutoRecharge$, orgId, signal);
+      signal.throwIfAborted();
+    }
+
+    for (const runId of runIds) {
+      await tapError(set(maybeEmitRunUsageMessage$, runId, signal), (error) => {
+        L.error("Failed to emit chat usage message after usage processing", {
+          orgId,
+          runId,
+          error,
+        });
+      });
       signal.throwIfAborted();
     }
   },

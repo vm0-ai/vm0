@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.32](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.31...guest-agent-v0.34.32) (2026-06-12)
+
+
+### Bug Fixes
+
+* mask codex setup login diagnostics ([#17458](https://github.com/vm0-ai/vm0/issues/17458)) ([ed43b5a](https://github.com/vm0-ai/vm0/commit/ed43b5ab028c02472083c544495d563918352ca1))
+
 ## [0.34.31](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.30...guest-agent-v0.34.31) (2026-06-12)
 
 

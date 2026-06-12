@@ -61,6 +61,13 @@ export function NavMenu({
         onPointerEnter={onOpen}
         onFocus={onOpen}
         onBlur={onScheduleClose}
+        onClick={(event) => {
+          // The menu is hover/focus driven; a click must never toggle it shut.
+          // preventDefault stops Radix's onOpenToggle from closing an already
+          // open menu, then we keep it open explicitly (covers touch taps too).
+          event.preventDefault();
+          onOpen();
+        }}
       >
         {label}
         <IconChevronDown
@@ -102,6 +109,21 @@ interface NavMenuRowProps {
 }
 
 function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
+  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    // Modifier or non-primary clicks open the link in a new tab/window; keep
+    // the menu open so several items can be opened in a row without re-hovering.
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    ) {
+      return;
+    }
+    onSelect();
+  };
+
   const body = (
     <>
       <Image
@@ -134,7 +156,7 @@ function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
         target="_blank"
         rel="noopener noreferrer"
         className="nav-popover-item"
-        onClick={onSelect}
+        onClick={handleClick}
       >
         {body}
       </a>
@@ -142,7 +164,7 @@ function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
   }
 
   return (
-    <Link href={item.href} className="nav-popover-item" onClick={onSelect}>
+    <Link href={item.href} className="nav-popover-item" onClick={handleClick}>
       {body}
     </Link>
   );

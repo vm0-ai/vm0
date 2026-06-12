@@ -58,6 +58,7 @@ export enum FeatureSwitchKey {
   MemoryDevRefresh = "memoryDevRefresh",
   ChatCompletedWorkFolding = "chatCompletedWorkFolding",
   ChatRecommendedFollowups = "chatRecommendedFollowups",
+  ChatRunUsage = "chatRunUsage",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",
   ChatSlashSkillCommands = "chatSlashSkillCommands",

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { command, createStore } from "ccstate";
+import { asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -7,13 +9,19 @@ import {
   zeroSkillsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import { writeDb$ } from "../../external/db";
+import { maybeEmitRunUsageMessage$ } from "../../services/zero-chat-usage-message.service";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import {
   createBddApi,
@@ -46,13 +54,15 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
  * thread artifacts with Google Drive sync status, and the `/api/v1`
  * personal-access-token surface.
  *
- * Every Given is constructed through public APIs (Stripe-webhook entitlement,
- * org model provider routes, runner heartbeat/claim, sandbox report webhooks,
- * connector OAuth flows, feature-switch and skills routes) and every Then is
- * a response body or a follow-up read — no database fixtures or row asserts.
+ * Most Given state is constructed through public APIs (Stripe-webhook
+ * entitlement, org model provider routes, runner heartbeat/claim, sandbox
+ * report webhooks, connector OAuth flows, feature-switch and skills routes).
+ * Targeted database checks are kept for migration and side-effect coverage
+ * where the persisted row shape is the contract under test.
  */
 
 const context = testContext();
+const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsSchedulesApi(context);
 const chat = createChatFilesBddApi(context);
@@ -65,6 +75,97 @@ const routeMocks = createZeroRouteMocks(context);
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
+
+const seedUsagePricing$ = command(
+  async (
+    { set },
+    args: {
+      readonly provider: string;
+      readonly category: string;
+      readonly unitPrice: number;
+      readonly unitSize: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db.insert(usagePricing).values({
+      kind: "connector",
+      provider: args.provider,
+      category: args.category,
+      unitPrice: args.unitPrice,
+      unitSize: args.unitSize,
+    });
+    signal.throwIfAborted();
+  },
+);
+
+const insertRunUsageEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly runId: string;
+      readonly orgId: string;
+      readonly userId: string;
+      readonly provider: string;
+      readonly status: "pending" | "processed";
+      readonly creditsCharged: number | null;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db.insert(usageEvent).values({
+      runId: args.runId,
+      orgId: args.orgId,
+      userId: args.userId,
+      kind: "connector",
+      provider: args.provider,
+      category: "api_request",
+      quantity: 1,
+      status: args.status,
+      creditsCharged: args.creditsCharged,
+      processedAt: args.status === "processed" ? nowDate() : null,
+      idempotencyKey: randomUUID(),
+    });
+    signal.throwIfAborted();
+  },
+);
+
+const usageEventsForRun$ = command(
+  async ({ set }, runId: string, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    const rows = await db
+      .select({
+        provider: usageEvent.provider,
+        category: usageEvent.category,
+        creditsCharged: usageEvent.creditsCharged,
+        status: usageEvent.status,
+        billingError: usageEvent.billingError,
+      })
+      .from(usageEvent)
+      .where(eq(usageEvent.runId, runId))
+      .orderBy(asc(usageEvent.provider), asc(usageEvent.category));
+    signal.throwIfAborted();
+    return rows;
+  },
+);
+
+const usageMessagesForRun$ = command(
+  async ({ set }, runId: string, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    const rows = await db
+      .select({
+        id: chatMessages.id,
+        usagePayload: chatMessages.usagePayload,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.runId, runId))
+      .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id));
+    signal.throwIfAborted();
+    return rows.filter((row) => {
+      return row.usagePayload !== null;
+    });
+  },
+);
 
 interface EntitledChatActor {
   readonly actor: ApiTestUser;
@@ -620,11 +721,13 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     const marked = await chat.markThreadRead(owner, readStateThreadId);
     expect(marked).toStrictEqual({
       lastReadMessageId: latestAssistant.id,
+      lastReadAt: expect.any(String),
       changed: true,
     });
     const markedAgain = await chat.markThreadRead(owner, readStateThreadId);
     expect(markedAgain).toStrictEqual({
       lastReadMessageId: latestAssistant.id,
+      lastReadAt: expect.any(String),
       changed: false,
     });
     list = await chat.listThreads(owner, { agentId: agent.agentId });
@@ -881,6 +984,213 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     ).toStrictEqual([firstAssistant, secondUser]);
     expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
   }, 30_000);
+});
+
+describe("CHAT-03 run usage messages", () => {
+  it("emits one persisted usage message after completion side effects process run usage", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Usage message agent",
+    );
+    const provider = `bdd-usage-${randomUUID().slice(0, 8)}`;
+    const missingProvider = `${provider}-free`;
+    const category = "api_request";
+    await store.set(
+      seedUsagePricing$,
+      { provider, category, unitPrice: 7, unitSize: 2 },
+      context.signal,
+    );
+
+    const { runId, threadId } = await sendChatRun(actor, {
+      agentId,
+      prompt: "record billable usage",
+    });
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, runId);
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider,
+            category,
+            quantity: 5,
+          },
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: missingProvider,
+            category,
+            quantity: 1,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    await completeChatRunOk(runId, sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const usageRows = await store.set(
+      usageEventsForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageRows).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider,
+          category,
+          creditsCharged: 18,
+          status: "processed",
+          billingError: null,
+        }),
+        expect.objectContaining({
+          provider: missingProvider,
+          category,
+          creditsCharged: 0,
+          status: "processed",
+          billingError: "missing_pricing",
+        }),
+      ]),
+    );
+
+    const page = await chat.listThreadMessages(actor, threadId);
+    const usageMessages = page.messages.filter((message) => {
+      return message.runId === runId && message.usage !== undefined;
+    });
+    expect(usageMessages).toHaveLength(1);
+    expect(usageMessages[0]).toMatchObject({
+      role: "assistant",
+      content: null,
+      usage: {
+        version: 1,
+        totalCredits: 18,
+        settledAt: expect.any(String),
+        breakdown: [
+          {
+            kind: "connector",
+            credits: 18,
+            providers: expect.arrayContaining([
+              { provider, credits: 18 },
+              { provider: missingProvider, credits: 0 },
+            ]),
+          },
+        ],
+      },
+    });
+
+    let usageMessageRows = await store.set(
+      usageMessagesForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageMessageRows).toHaveLength(1);
+    await expect(
+      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+    ).resolves.toBeFalsy();
+    usageMessageRows = await store.set(
+      usageMessagesForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageMessageRows).toHaveLength(1);
+  }, 60_000);
+
+  it("emits zero-credit usage messages and suppresses emission while usage is pending", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Zero usage message agent",
+    );
+    if (!actor.orgId) {
+      throw new Error("Expected the chat actor to belong to an organization");
+    }
+
+    const zeroRun = await sendChatRun(actor, {
+      agentId,
+      prompt: "record zero-credit usage",
+    });
+    const { sandboxHeaders: zeroSandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      zeroRun.runId,
+    );
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: zeroRun.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: `missing-${randomUUID().slice(0, 8)}`,
+            category: "api_request",
+            quantity: 1,
+          },
+        ],
+      },
+      zeroSandboxHeaders,
+      [200],
+    );
+    await completeChatRunOk(zeroRun.runId, zeroSandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const zeroPage = await chat.listThreadMessages(actor, zeroRun.threadId);
+    const zeroUsageMessage = zeroPage.messages.find((message) => {
+      return message.runId === zeroRun.runId && message.usage !== undefined;
+    });
+    expect(zeroUsageMessage?.usage).toMatchObject({
+      version: 1,
+      totalCredits: 0,
+      breakdown: [
+        {
+          kind: "connector",
+          credits: 0,
+          providers: [expect.objectContaining({ credits: 0 })],
+        },
+      ],
+    });
+
+    const pendingRun = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold usage message while pending",
+    });
+    const { sandboxHeaders: pendingSandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      pendingRun.runId,
+    );
+    await completeChatRunOk(pendingRun.runId, pendingSandboxHeaders);
+    await flushWaitUntilForTest();
+    await store.set(
+      insertRunUsageEvent$,
+      {
+        runId: pendingRun.runId,
+        orgId: actor.orgId,
+        userId: actor.userId,
+        provider: `processed-${randomUUID().slice(0, 8)}`,
+        status: "processed",
+        creditsCharged: 12,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertRunUsageEvent$,
+      {
+        runId: pendingRun.runId,
+        orgId: actor.orgId,
+        userId: actor.userId,
+        provider: `pending-${randomUUID().slice(0, 8)}`,
+        status: "pending",
+        creditsCharged: null,
+      },
+      context.signal,
+    );
+
+    await expect(
+      store.set(maybeEmitRunUsageMessage$, pendingRun.runId, context.signal),
+    ).resolves.toBeFalsy();
+    await expect(
+      store.set(usageMessagesForRun$, pendingRun.runId, context.signal),
+    ).resolves.toHaveLength(0);
+  }, 60_000);
 });
 
 describe("CHAT-01 chat search", () => {

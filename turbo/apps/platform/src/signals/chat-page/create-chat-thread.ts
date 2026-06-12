@@ -101,6 +101,15 @@ function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   );
 }
 
+function isUsageMessage(msg: PagedChatMessage): msg is Extract<
+  PagedChatMessage,
+  { role: "assistant" }
+> & {
+  usage: NonNullable<PagedChatMessage["usage"]>;
+} {
+  return msg.role === "assistant" && msg.usage !== undefined;
+}
+
 function isInterruptControlMessage(msg: PagedChatMessage): boolean {
   return (
     msg.role === "user" &&
@@ -280,6 +289,9 @@ function deriveRunIndicatorState(
   let hasQueued = false;
   for (const message of messages) {
     if (revokedMessageIds.has(message.id)) {
+      continue;
+    }
+    if (isUsageMessage(message)) {
       continue;
     }
     if (message.role === "assistant") {
@@ -503,6 +515,7 @@ export interface ChatThreadSignals {
   // ── Paged messages (sole rendering path) ─────────────────────────────────
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
+  latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
   latestRunStatus$: Computed<Promise<string | null>>;
@@ -915,17 +928,38 @@ function groupMessagesForDisplay(
 ): GroupedChatMessageGroup[] {
   const activeMessages: EnrichedChatMessage[] = [];
   const queuedMessages: EnrichedChatMessage[] = [];
+  const usageByRunId = new Map<
+    string,
+    NonNullable<EnrichedChatMessage["usage"]>
+  >();
   for (const msg of messages) {
+    if (isUsageMessage(msg)) {
+      if (msg.runId !== undefined) {
+        usageByRunId.set(msg.runId, msg.usage);
+      }
+      continue;
+    }
     if (msg.role === "user" && msg.isQueued) {
       queuedMessages.push(msg);
       continue;
     }
     activeMessages.push(msg);
   }
-  return [
+
+  const groups = [
     ...mergeIntoGroups([], activeMessages),
     ...mergeIntoGroups([], queuedMessages),
   ];
+  return groups.map((group) => {
+    if (group.role !== "assistant") {
+      return group;
+    }
+    const runId = group.messages.find((message) => {
+      return message.runId !== undefined;
+    })?.runId;
+    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    return usage === undefined ? group : { ...group, usage };
+  });
 }
 
 type ServerMessages$ = State<PagedChatMessage[]>;
@@ -1269,6 +1303,23 @@ function createPagedMessages(
     },
   );
 
+  const latestAssistantTextCreatedAt$ = computed(
+    async (get): Promise<string | undefined> => {
+      const messages = await get(allMessages$);
+      for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index]!;
+        if (
+          message.role === "assistant" &&
+          !isUsageMessage(message) &&
+          (message.content?.trim().length ?? 0) > 0
+        ) {
+          return message.createdAt;
+        }
+      }
+      return undefined;
+    },
+  );
+
   const hasOlderHistory$ = computed(async (get): Promise<boolean> => {
     const loadedHistoryHasMore = get(loadedHistoryHasMore$);
     if (loadedHistoryHasMore !== null) {
@@ -1319,6 +1370,7 @@ function createPagedMessages(
     initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
+    latestAssistantTextCreatedAt$,
     allMessages$,
     groupedChatMessages$,
     rawMessages$,
@@ -1512,7 +1564,7 @@ interface RunTrackingDeps {
   reloadThread$: Command<void, []>;
   threadData$: Computed<Promise<ChatThread | null>>;
   allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
-  latestChatMessageId$: Computed<Promise<string | undefined>>;
+  latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
@@ -1525,41 +1577,42 @@ interface RunTrackingDeps {
 interface MarkThreadReadDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
-  latestChatMessageId$: Computed<Promise<string | undefined>>;
-  locallyMarkedReadMessageId$: State<string | undefined>;
+  latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
+  locallyMarkedReadAt$: State<string | undefined>;
   dataSource: ChatThreadDataSource;
 }
 
 function createMarkThreadReadIfNeeded({
   threadId,
   threadData$,
-  latestChatMessageId$,
-  locallyMarkedReadMessageId$,
+  latestAssistantTextCreatedAt$,
+  locallyMarkedReadAt$,
   dataSource,
 }: MarkThreadReadDeps) {
   return command(async ({ get, set }, sig: AbortSignal) => {
-    const latestMessageId = await get(latestChatMessageId$);
+    const latestAssistantTextCreatedAt = await get(
+      latestAssistantTextCreatedAt$,
+    );
     sig.throwIfAborted();
-    if (!latestMessageId) {
+    if (!latestAssistantTextCreatedAt) {
       return;
     }
 
     const thread = await get(threadData$);
     sig.throwIfAborted();
-    const lastReadMessageId =
-      get(locallyMarkedReadMessageId$) ?? thread?.lastReadMessageId ?? null;
-    if (lastReadMessageId === latestMessageId) {
+    const lastReadAt = get(locallyMarkedReadAt$) ?? thread?.lastReadAt ?? null;
+    const targetReadAt = Math.max(
+      Date.parse(thread?.lastMessageAt ?? latestAssistantTextCreatedAt),
+      Date.parse(latestAssistantTextCreatedAt),
+    );
+    if (lastReadAt !== null && Date.parse(lastReadAt) >= targetReadAt) {
       return;
     }
 
-    const newLastReadId = await set(
-      dataSource.markRead$,
-      { threadId, latestMessageId },
-      sig,
-    );
+    const newLastReadAt = await set(dataSource.markRead$, { threadId }, sig);
     sig.throwIfAborted();
-    if (newLastReadId !== null) {
-      set(locallyMarkedReadMessageId$, newLastReadId);
+    if (newLastReadAt !== null) {
+      set(locallyMarkedReadAt$, newLastReadAt);
     }
     // Server broadcasts `threadListChanged` via Ably on mark-read; the
     // sidebar reloads from that channel. Bumping reloadChatThreads$ here too
@@ -1572,7 +1625,7 @@ function createRunTracking({
   reloadThread$,
   threadData$,
   allMessages$,
-  latestChatMessageId$,
+  latestAssistantTextCreatedAt$,
   rawMessages$,
   initialPage$,
   fetchNextPage$,
@@ -1581,7 +1634,7 @@ function createRunTracking({
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
-  const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
+  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
 
   const allFinished$ = computed(async (get) => {
     if (hasUnresolvedQueueMarker(await get(rawMessages$))) {
@@ -1595,8 +1648,8 @@ function createRunTracking({
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
     threadData$,
-    latestChatMessageId$,
-    locallyMarkedReadMessageId$,
+    latestAssistantTextCreatedAt$,
+    locallyMarkedReadAt$,
     dataSource,
   });
 
@@ -2257,6 +2310,7 @@ export function createChatThreadSignals(
     initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
+    latestAssistantTextCreatedAt$,
     allMessages$,
     groupedChatMessages$,
     rawMessages$,
@@ -2280,7 +2334,7 @@ export function createChatThreadSignals(
     reloadThread$,
     threadData$,
     allMessages$,
-    latestChatMessageId$,
+    latestAssistantTextCreatedAt$,
     rawMessages$,
     initialPage$,
     fetchNextPage$,
@@ -2342,6 +2396,7 @@ export function createChatThreadSignals(
     scheduleDraftSync$,
     earliestChatMessageId$,
     latestChatMessageId$,
+    latestAssistantTextCreatedAt$,
     groupedChatMessages$,
     hasOlderHistory$,
     latestRunStatus$,

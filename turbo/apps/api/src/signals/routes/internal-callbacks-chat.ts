@@ -505,7 +505,21 @@ async function insertRunLifecycleMarker(args: {
     if (marker.length === 0) {
       return false;
     }
-    await touchChatThreadLastMessageAt(tx, args.threadId);
+    const [assistantText] = await tx
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.runId, args.runId),
+          eq(chatMessages.role, "assistant"),
+          isNotNull(chatMessages.content),
+          sql`${chatMessages.content} <> ''`,
+        ),
+      )
+      .limit(1);
+    if (assistantText) {
+      await touchChatThreadLastMessageAt(tx, args.threadId);
+    }
     return true;
   });
   if (!inserted) {

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.443.1](https://github.com/vm0-ai/vm0/compare/app-v0.443.0...app-v0.443.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* isolate completed work hover scope ([#17480](https://github.com/vm0-ai/vm0/issues/17480)) ([c563ae1](https://github.com/vm0-ai/vm0/commit/c563ae199b43cb83d0df2155f94fa57a1dd74588))
+* remove extra completed work divider ([#17489](https://github.com/vm0-ai/vm0/issues/17489)) ([9aa442b](https://github.com/vm0-ai/vm0/commit/9aa442b5a5dcf23dc83ea6b0b3d2b5082ee386c4))
+* render chat image previews at natural aspect ratio ([#17469](https://github.com/vm0-ai/vm0/issues/17469)) ([e00033d](https://github.com/vm0-ai/vm0/commit/e00033d5259bd8a01dbc977526d51f6ff831aef2))
+* vertically center close button in templates dialog header ([#17485](https://github.com/vm0-ai/vm0/issues/17485)) ([2bf9764](https://github.com/vm0-ai/vm0/commit/2bf9764666494ccbaded73bffe7bb5208d25d6a7))
+
+
+### Refactoring
+
+* **platform:** rename the schedule internals to automation ([#17465](https://github.com/vm0-ai/vm0/issues/17465)) ([e27fde6](https://github.com/vm0-ai/vm0/commit/e27fde65b93e6be3bb97fa65c606fa5c69277d41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.2
+    * @vm0/core bumped to 8.333.3
+
 ## [0.443.0](https://github.com/vm0-ai/vm0/compare/app-v0.442.1...app-v0.443.0) (2026-06-12)
 
 

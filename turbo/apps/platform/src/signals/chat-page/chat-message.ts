@@ -13,6 +13,7 @@ import {
   chatThreadPinContract,
   chatThreadUnpinContract,
   chatThreadRenameContract,
+  type ChatMessageUsagePayload,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -50,6 +51,7 @@ export interface GroupedChatMessageGroup {
   beginMessageId: string;
   role: "user" | "assistant";
   messages: EnrichedChatMessage[];
+  usage?: ChatMessageUsagePayload;
 }
 
 // ---------------------------------------------------------------------------
