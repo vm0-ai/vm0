@@ -149,7 +149,7 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
             continue;
         };
         let path = entry.path();
-        let record = match read_record_for_identity(&path, identity).await {
+        let record = match read_record_for_identity(&path, identity).await? {
             RecordForIdentity::Valid(record) => record,
             RecordForIdentity::InvalidForStaleProcess => continue,
             RecordForIdentity::InvalidForLiveProcess => {
@@ -189,7 +189,7 @@ pub(crate) async fn is_current(
         starttime: instance.starttime,
     };
     let path = home.live_runner_instance_record_path(identity.pid, identity.starttime);
-    let record = match read_record_for_identity(&path, identity).await {
+    let record = match read_record_for_identity(&path, identity).await? {
         RecordForIdentity::Valid(record) => record,
         RecordForIdentity::InvalidForStaleProcess => return Ok(false),
         RecordForIdentity::InvalidForLiveProcess => {
@@ -209,7 +209,7 @@ pub(crate) async fn is_current(
 
 impl LiveRunnerInstanceHandle {
     pub(crate) async fn remove_if_current(&self) -> RunnerResult<bool> {
-        match read_record(&self.path).await {
+        match read_record(&self.path).await? {
             RecordRead::Valid(record)
                 if record.boot_id == self.identity.boot_id
                     && record.pid == self.identity.pid
@@ -232,13 +232,13 @@ impl LiveRunnerInstanceHandle {
 
 #[cfg(test)]
 async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
-    match read_record(path).await {
+    match read_record(path).await.expect("read live runner record") {
         RecordRead::Valid(record) => Some(record),
         RecordRead::Missing | RecordRead::InvalidFile | RecordRead::NotLive => None,
     }
 }
 
-async fn read_record(path: &Path) -> RecordRead {
+async fn read_record(path: &Path) -> RunnerResult<RecordRead> {
     let content = match crate::state_file::read_to_string(
         path,
         LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES,
@@ -247,23 +247,23 @@ async fn read_record(path: &Path) -> RecordRead {
     .await
     {
         Ok(Some(content)) => content,
-        Ok(None) => return RecordRead::Missing,
+        Ok(None) => return Ok(RecordRead::Missing),
         Err(e) => {
             tracing::debug!(path = %path.display(), error = %e, "ignoring unreadable live runner instance record");
-            return RecordRead::InvalidFile;
+            return Ok(RecordRead::InvalidFile);
         }
     };
     let record: LiveRunnerInstanceRecord = match serde_json::from_str(&content) {
         Ok(record) => record,
         Err(e) => {
             tracing::debug!(path = %path.display(), error = %e, "ignoring malformed live runner instance record");
-            return RecordRead::InvalidFile;
+            return Ok(RecordRead::InvalidFile);
         }
     };
-    if record_is_live(&record).await {
-        RecordRead::Valid(record)
+    if record_is_live(&record).await? {
+        Ok(RecordRead::Valid(record))
     } else {
-        RecordRead::NotLive
+        Ok(RecordRead::NotLive)
     }
 }
 
@@ -294,8 +294,15 @@ async fn remove_stale_records(home: &HomePaths) {
         let path = entry.path();
         if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
             match read_record_for_identity(&path, identity).await {
-                RecordForIdentity::Valid(_) | RecordForIdentity::InvalidForLiveProcess => {}
-                RecordForIdentity::InvalidForStaleProcess => {
+                Err(e) => {
+                    tracing::debug!(
+                        path = %path.display(),
+                        error = %e,
+                        "preserving live runner instance record after liveness check failed"
+                    );
+                }
+                Ok(RecordForIdentity::Valid(_)) | Ok(RecordForIdentity::InvalidForLiveProcess) => {}
+                Ok(RecordForIdentity::InvalidForStaleProcess) => {
                     remove_stale_file(&path, "stale live runner instance record").await;
                 }
             }
@@ -304,22 +311,35 @@ async fn remove_stale_records(home: &HomePaths) {
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        if !file_process_identity_is_live(identity).await {
-            remove_stale_file(&path, "stale live runner instance tmp file").await;
+        match file_process_identity_is_live(identity).await {
+            Ok(true) => {}
+            Ok(false) => {
+                remove_stale_file(&path, "stale live runner instance tmp file").await;
+            }
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "preserving live runner instance tmp file after liveness check failed"
+                );
+            }
         }
     }
 }
 
-async fn read_record_for_identity(path: &Path, identity: FileProcessIdentity) -> RecordForIdentity {
-    let record = match read_record(path).await {
+async fn read_record_for_identity(
+    path: &Path,
+    identity: FileProcessIdentity,
+) -> RunnerResult<RecordForIdentity> {
+    let record = match read_record(path).await? {
         RecordRead::Valid(record) => record,
-        RecordRead::Missing => return RecordForIdentity::InvalidForStaleProcess,
+        RecordRead::Missing => return Ok(RecordForIdentity::InvalidForStaleProcess),
         RecordRead::InvalidFile | RecordRead::NotLive => {
             return invalid_record_for_identity(identity).await;
         }
     };
     if record.pid == identity.pid && record.starttime == identity.starttime {
-        RecordForIdentity::Valid(record)
+        Ok(RecordForIdentity::Valid(record))
     } else {
         tracing::debug!(
             path = %path.display(),
@@ -333,11 +353,13 @@ async fn read_record_for_identity(path: &Path, identity: FileProcessIdentity) ->
     }
 }
 
-async fn invalid_record_for_identity(identity: FileProcessIdentity) -> RecordForIdentity {
-    if file_process_identity_is_live(identity).await {
-        RecordForIdentity::InvalidForLiveProcess
+async fn invalid_record_for_identity(
+    identity: FileProcessIdentity,
+) -> RunnerResult<RecordForIdentity> {
+    if file_process_identity_is_live(identity).await? {
+        Ok(RecordForIdentity::InvalidForLiveProcess)
     } else {
-        RecordForIdentity::InvalidForStaleProcess
+        Ok(RecordForIdentity::InvalidForStaleProcess)
     }
 }
 
@@ -373,7 +395,7 @@ fn atomic_tmp_record_identity_from_file_name(name: &OsStr) -> Option<FileProcess
     stable_record_identity_from_str(stable_name)
 }
 
-async fn record_is_live(record: &LiveRunnerInstanceRecord) -> bool {
+async fn record_is_live(record: &LiveRunnerInstanceRecord) -> RunnerResult<bool> {
     process_identity_is_live(ProcessIdentity {
         boot_id: record.boot_id.clone(),
         pid: record.pid,
@@ -383,24 +405,20 @@ async fn record_is_live(record: &LiveRunnerInstanceRecord) -> bool {
     .await
 }
 
-async fn file_process_identity_is_live(identity: FileProcessIdentity) -> bool {
-    let Ok(boot_id) = current_boot_id().await else {
-        return false;
-    };
+async fn file_process_identity_is_live(identity: FileProcessIdentity) -> RunnerResult<bool> {
+    let boot_id = current_boot_id().await?;
     let identity = ProcessIdentity {
         boot_id: boot_id.clone(),
         pid: identity.pid,
         starttime: identity.starttime,
         euid: current_euid(),
     };
-    process_identity_is_live_for_boot(&identity, &boot_id).await
+    Ok(process_identity_is_live_for_boot(&identity, &boot_id).await)
 }
 
-async fn process_identity_is_live(identity: ProcessIdentity) -> bool {
-    let Ok(boot_id) = current_boot_id().await else {
-        return false;
-    };
-    process_identity_is_live_for_boot(&identity, &boot_id).await
+async fn process_identity_is_live(identity: ProcessIdentity) -> RunnerResult<bool> {
+    let boot_id = current_boot_id().await?;
+    Ok(process_identity_is_live_for_boot(&identity, &boot_id).await)
 }
 
 async fn process_identity_is_live_for_boot(identity: &ProcessIdentity, boot_id: &str) -> bool {
