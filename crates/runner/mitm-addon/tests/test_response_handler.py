@@ -105,6 +105,35 @@ class TestResponseHandler:
         assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
 
+    async def test_preserves_model_provider_401_body_without_connector_diagnostic(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.openai.com",
+            path="/v1/responses",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "application/json"}),
+                content=b'{"error":"provider auth error"}',
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.status_code == 401
+        assert flow.response.content == b'{"error":"provider auth error"}'
+        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        assert entry["status"] == 401
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
     async def test_preserves_connector_401_body_when_query_auth_is_present(
         self, tmp_path, real_flow, mitm_ctx
     ):
