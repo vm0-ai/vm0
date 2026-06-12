@@ -1,0 +1,24 @@
+import type { DesktopAuthCallback } from "./desktop-auth";
+
+interface DesktopLaunchComputerUseOptions {
+  readonly pendingCallback: DesktopAuthCallback | null;
+  readonly consumeAuthCallback: (
+    callback: DesktopAuthCallback,
+  ) => Promise<void>;
+  readonly autoStartComputerUse: () => Promise<void>;
+  readonly logAuthError: (error: unknown) => void;
+  readonly logAutoStartError: (error: unknown) => void;
+}
+
+export function startDesktopLaunchComputerUse(
+  options: DesktopLaunchComputerUseOptions,
+): void {
+  if (options.pendingCallback) {
+    void options
+      .consumeAuthCallback(options.pendingCallback)
+      .catch(options.logAuthError);
+    return;
+  }
+
+  void options.autoStartComputerUse().catch(options.logAutoStartError);
+}
