@@ -28,7 +28,7 @@ use crate::workspace_image_cache::{WorkspaceImageLease, WorkspaceImagePrepareReq
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
-const SLOW_PROXY_REGISTER_THRESHOLD: Duration = Duration::from_secs(10);
+const SLOW_PROXY_REGISTER_THRESHOLD: Duration = Duration::from_secs(3);
 
 #[cfg(test)]
 pub(super) async fn execute_new_sandbox(

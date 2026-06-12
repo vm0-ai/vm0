@@ -95,7 +95,7 @@ fn proxy_register_slow_success_warns_with_stable_fields() {
             RunId::nil(),
             SandboxId::from(uuid::Uuid::nil()),
             "vm0/default",
-            Duration::from_secs(10),
+            Duration::from_secs(3),
         );
     });
 
@@ -104,8 +104,8 @@ fn proxy_register_slow_success_warns_with_stable_fields() {
     assert_eq!(event.level, Level::WARN);
     assert_event_field(event, "message", "slow proxy register");
     assert_event_field(event, "stage", "proxy_register");
-    assert_event_field(event, "elapsed_ms", "10000");
-    assert_event_field(event, "threshold_ms", "10000");
+    assert_event_field(event, "elapsed_ms", "3000");
+    assert_event_field(event, "threshold_ms", "3000");
     assert_event_field(event, "success", "true");
     assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
     assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");

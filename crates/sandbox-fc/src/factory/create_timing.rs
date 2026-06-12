@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use tracing::warn;
 
-pub(super) const SLOW_SANDBOX_CREATE_THRESHOLD: Duration = Duration::from_secs(10);
+pub(super) const SLOW_SANDBOX_CREATE_THRESHOLD: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SandboxCreateStage {
@@ -314,8 +314,8 @@ mod tests {
         assert_field(event, "success", "true");
         assert_field(event, "sandbox_id", "sandbox-1");
         assert_field(event, "profile", "vm0/default");
-        assert_field(event, "total_elapsed_ms", "10000");
-        assert_field(event, "threshold_ms", "10000");
+        assert_field(event, "total_elapsed_ms", "3000");
+        assert_field(event, "threshold_ms", "3000");
         assert_field(event, "workspace_drive_present", "true");
         assert_field(event, "workspace_seed_image_used", "true");
         assert_field(event, "cow_pool_acquire_ms", "10");
