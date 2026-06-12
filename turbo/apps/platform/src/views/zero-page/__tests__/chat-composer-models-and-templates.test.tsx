@@ -517,7 +517,7 @@ describe("chat composer models", () => {
       screen.findByText("/sales-research"),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("/support-escalation")).toBeInTheDocument();
-    expect(screen.getByText("/deep-dive")).toBeInTheDocument();
+    expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
 
     await user.keyboard("sales");
 
@@ -536,7 +536,7 @@ describe("chat composer models", () => {
     expect(highlightedSkill).not.toHaveClass("font-medium");
   });
 
-  it("suggests org skills when the agent has no custom skills", async () => {
+  it("does not suggest org skills that are not enabled on the current agent", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.5");
     mockAgent({ customSkills: [] });
@@ -560,7 +560,10 @@ describe("chat composer models", () => {
     await user.click(textarea);
     await user.keyboard("/");
 
-    await expect(screen.findByText("/deep-dive")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+    });
+    expect(textarea).toHaveValue("/");
   });
 
   it("links to the skills page from the slash skill menu footer", async () => {

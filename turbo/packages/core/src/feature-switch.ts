@@ -343,7 +343,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatSlashSkillCommands]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Enable slash command suggestions for agent and org skills in the Zero chat composer.",
+      "Enable slash command suggestions for the current agent's skills in the Zero chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

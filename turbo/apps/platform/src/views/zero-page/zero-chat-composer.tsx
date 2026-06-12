@@ -3475,16 +3475,7 @@ function buildComposerSlashSkills({
       return [skill.name, skill];
     }),
   );
-  const skillNames = Array.from(
-    new Set([
-      ...agentSkillNames,
-      ...orgSkills.map((skill) => {
-        return skill.name;
-      }),
-    ]),
-  );
-
-  return skillNames.map((name) => {
+  return agentSkillNames.map((name) => {
     const metadata = metadataByName.get(name);
     return {
       name,
@@ -3534,8 +3525,10 @@ function SlashSkillComposerInput({
       })
     : [];
   const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
-  const showSlashSkillMenu = slashRange !== null;
   const showSkillsPageLink = features?.[FeatureSwitchKey.SkillsViewer] ?? false;
+  const showSlashSkillMenu =
+    slashRange !== null &&
+    (isLoadingOrgSkills || composerSkills.length > 0 || showSkillsPageLink);
 
   const updateCaretIndex = (textarea: HTMLTextAreaElement) => {
     setCaretIndex(textarea.selectionStart);
