@@ -5458,6 +5458,13 @@ function PagedAssistantGroup({
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-3">
+          {completedWorkFold && (
+            <CompletedWorkFoldRow
+              groups={completedWorkFold.groups}
+              expanded={completedWorkFold.expanded}
+              onToggle={completedWorkFold.onToggle}
+            />
+          )}
           {completedWorkFold?.expanded
             ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
                 return (
@@ -5471,13 +5478,6 @@ function PagedAssistantGroup({
                 );
               })
             : null}
-          {completedWorkFold && (
-            <CompletedWorkFoldRow
-              groups={completedWorkFold.groups}
-              expanded={completedWorkFold.expanded}
-              onToggle={completedWorkFold.onToggle}
-            />
-          )}
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}

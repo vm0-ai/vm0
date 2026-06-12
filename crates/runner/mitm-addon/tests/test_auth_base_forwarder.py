@@ -7,6 +7,7 @@ import io
 import ssl
 import threading
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -255,6 +256,32 @@ def _fake_forwarder_upstream(**kwargs) -> Iterator[_FakeForwarderUpstream]:
         ),
     ):
         yield upstream
+
+
+class _SubmitRecordingThreadPoolExecutor(ThreadPoolExecutor):
+    def __init__(self, *args, **kwargs) -> None:
+        self._submit_count = 0
+        self._submit_condition = threading.Condition()
+        super().__init__(*args, **kwargs)
+
+    def submit(self, fn, /, *args, **kwargs):
+        future = super().submit(fn, *args, **kwargs)
+        with self._submit_condition:
+            self._submit_count += 1
+            self._submit_condition.notify_all()
+        return future
+
+    @property
+    def submit_count(self) -> int:
+        with self._submit_condition:
+            return self._submit_count
+
+    def wait_for_submit_count(self, count: int, timeout: float) -> bool:
+        with self._submit_condition:
+            return self._submit_condition.wait_for(
+                lambda: self._submit_count >= count,
+                timeout=timeout,
+            )
 
 
 class TestAuthBaseForwarderSecurity:
@@ -1028,8 +1055,16 @@ class TestForwardRequestAsyncWrapper:
                     active -= 1
 
         second_task = None
+        executors: list[_SubmitRecordingThreadPoolExecutor] = []
+
+        def create_executor(*args, **kwargs):
+            executor = _SubmitRecordingThreadPoolExecutor(*args, **kwargs)
+            executors.append(executor)
+            return executor
+
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            patch.object(forwarder, "ThreadPoolExecutor", new=create_executor),
             _fake_forwarder_upstream(create_connection=create_connection),
         ):
             first_task = asyncio.create_task(
@@ -1038,21 +1073,29 @@ class TestForwardRequestAsyncWrapper:
             try:
                 first_started = await asyncio.to_thread(first_entered.wait, 2)
                 assert first_started
+                assert len(executors) == 1
+                executor = executors[0]
+                assert executor.submit_count == 1
 
                 first_task.cancel()
                 with pytest.raises(asyncio.CancelledError):
                     await asyncio.wait_for(first_task, timeout=1)
+                with lock:
+                    assert active == 1
 
                 second_task = asyncio.create_task(
                     forwarder.forward_request("https://example.com", "GET", [], None)
                 )
-                second_started_before_release = await asyncio.to_thread(
-                    second_entered.wait,
-                    0.2,
-                )
-                assert not second_started_before_release
+                await asyncio.sleep(0)
+                assert executor.submit_count == 1
 
                 release_first.set()
+                second_submitted_after_release = await asyncio.to_thread(
+                    executor.wait_for_submit_count,
+                    2,
+                    2,
+                )
+                assert second_submitted_after_release
                 second_started_after_release = await asyncio.to_thread(second_entered.wait, 2)
                 assert second_started_after_release
 
