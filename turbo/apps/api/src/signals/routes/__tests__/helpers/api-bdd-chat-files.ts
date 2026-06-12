@@ -439,7 +439,6 @@ export function createChatFilesBddApi(context: TestContext) {
       readonly threads: readonly ChatThreadListItem[];
       readonly hasMore: boolean;
       readonly nextCursor: string | null;
-      readonly totalCount: number;
     }> {
       const response = await accept(
         threadsClient().list({

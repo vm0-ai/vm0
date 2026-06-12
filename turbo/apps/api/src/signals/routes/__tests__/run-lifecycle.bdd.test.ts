@@ -294,11 +294,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(running.status).toBe("running");
     expect(running.startedAt).toBeDefined();
 
-    const reclaimed = await api.requestClaimRunnerJob(
-      true,
-      created.runId,
-      [404],
-    );
+    const reclaimed = await api.requestClaimRunnerJob(true, created.runId, [
+      404,
+    ]);
     expectApiError(reclaimed.body);
 
     const sandboxHeaders = {
@@ -366,11 +364,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
 
-    const uncancellable = await api.requestCancelRun(
-      actor,
-      created.runId,
-      [400],
-    );
+    const uncancellable = await api.requestCancelRun(actor, created.runId, [
+      400,
+    ]);
     expectApiError(uncancellable.body);
   });
 
@@ -1818,11 +1814,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       `Bearer vm0_official_${"f".repeat(64)}`,
     ];
     for (const authorization of rejectedAuthorizations) {
-      const poll = await api.requestPollRunnerAs(
-        authorization,
-        pollBody,
-        [401],
-      );
+      const poll = await api.requestPollRunnerAs(authorization, pollBody, [
+        401,
+      ]);
       expectApiError(poll.body);
       expect(poll.body.error.message).toBe("Authentication required");
     }
@@ -2437,7 +2431,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       [200],
     );
     const threadsAfter = await chat.listThreads(actor);
-    expect(threadsAfter.totalCount).toBe(threadsBefore.totalCount);
+    expect(threadsAfter.threads.length).toBe(threadsBefore.threads.length);
 
     await api.requestCancelRun(actor, detachedRun.runId, [200]);
     await api.requestCancelRun(actor, runId, [200]);

@@ -122,12 +122,6 @@ const chatThreadListItemSchema = z.object({
    */
   hasDraft: z.boolean().optional(),
   /**
-   * Number of schedules linked to this chat thread. Drives the stronger delete
-   * confirmation copy before removing a scheduled chat thread. Optional for
-   * back-compat with fixtures predating the field.
-   */
-  scheduleCount: z.number().int().nonnegative().optional(),
-  /**
    * ISO timestamp at which the user pinned this thread. Null/undefined means
    * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
    * keep recency order. Optional for back-compat with fixtures that predate
@@ -365,17 +359,11 @@ export const chatThreadsContract = c.router({
          * is false.
          */
         nextCursor: z.string().nullable(),
-        /**
-         * Total count of non-pinned threads matching the same scope as this
-         * query. Drives the sidebar "All Threads (N)" affordance.
-         */
-        totalCount: z.number().int(),
       }),
       401: apiErrorSchema,
-      404: apiErrorSchema,
     },
     summary:
-      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads are cursor-paginated.",
+      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId. An unknown agentId yields an empty list. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads are cursor-paginated.",
   },
 });
 

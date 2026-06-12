@@ -61,7 +61,6 @@ function mockThreadDetails(): void {
       ],
       hasMore: false,
       nextCursor: null,
-      totalCount: 3,
     });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {

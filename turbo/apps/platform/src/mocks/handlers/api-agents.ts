@@ -135,7 +135,6 @@ export const apiAgentsHandlers = [
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
   }),
 

@@ -125,11 +125,9 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expectApiError(peerRead.body);
     expect(peerRead.body.error.code).toBe("NOT_FOUND");
 
-    const outsiderRead = await api.requestReadThread(
-      outsider,
-      thread.id,
-      [404],
-    );
+    const outsiderRead = await api.requestReadThread(outsider, thread.id, [
+      404,
+    ]);
     expectApiError(outsiderRead.body);
     expect(outsiderRead.body.error.code).toBe("NOT_FOUND");
 
@@ -177,7 +175,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       renamedAt: expect.any(String),
     });
     expect(pinnedList.threads).toStrictEqual([]);
-    expect(pinnedList.totalCount).toBe(0);
 
     let detail = await api.readThread(owner, thread.id);
     expect(detail.selectedModel).toBe("gpt-5.4-mini");
@@ -209,11 +206,9 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expectApiError(peerPin.body);
     expect(peerPin.body.error.code).toBe("NOT_FOUND");
 
-    const peerMarkRead = await api.requestMarkThreadRead(
-      peer,
-      thread.id,
-      [404],
-    );
+    const peerMarkRead = await api.requestMarkThreadRead(peer, thread.id, [
+      404,
+    ]);
     expectApiError(peerMarkRead.body);
     expect(peerMarkRead.body.error.code).toBe("NOT_FOUND");
 
@@ -234,7 +229,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       title: "Pinned launch plan",
       pinnedAt: null,
     });
-    expect(unpinnedList.totalCount).toBe(1);
 
     detail = await api.readThread(owner, thread.id);
     expect(detail.selectedModel).toBeNull();
