@@ -130,6 +130,70 @@ class TestResponseHandler:
 
         assert flow.response.content == b"upstream auth error"
 
+    async def test_replaces_connector_401_body_when_auth_header_has_empty_bearer_token(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Bearer "),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream empty auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert flow.response.stream is False
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+
+    async def test_replaces_connector_401_body_when_auth_query_param_is_empty(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro?api_key=",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream empty query auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert flow.response.stream is False
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+
     async def test_preserves_connector_401_body_when_user_auth_is_present(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
