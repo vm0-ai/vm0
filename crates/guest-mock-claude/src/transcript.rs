@@ -2,15 +2,11 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use serde_json::{Value, json};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
-/// Generate a mock session ID: `mock-{timestamp_micros}`.
+/// Generate a mock session ID: `mock-{uuid-v7}`.
 pub(crate) fn generate_session_id() -> String {
-    let micros = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_micros();
-    format!("mock-{micros}")
+    format!("mock-{}", Uuid::now_v7())
 }
 
 pub(crate) fn is_valid_session_history_id(session_id: &str) -> bool {
@@ -168,6 +164,7 @@ pub(crate) fn tool_result_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn session_history_path_structure() {
@@ -239,11 +236,37 @@ mod tests {
     }
 
     #[test]
-    fn session_id_unique() {
-        let id1 = generate_session_id();
-        // Small sleep to ensure different timestamp
-        std::thread::sleep(std::time::Duration::from_millis(1));
-        let id2 = generate_session_id();
-        assert_ne!(id1, id2);
+    fn session_id_has_canonical_uuid_suffix() {
+        let id = generate_session_id();
+        let suffix = id.strip_prefix("mock-").expect("mock prefix");
+        let parsed = Uuid::parse_str(suffix).expect("uuid suffix");
+
+        assert_eq!(parsed.to_string(), suffix);
+    }
+
+    #[test]
+    fn session_id_unique_without_sleep() {
+        let mut ids = HashSet::new();
+
+        for _ in 0..1024 {
+            let id = generate_session_id();
+            assert!(ids.insert(id), "generated duplicate session id");
+        }
+    }
+
+    #[test]
+    fn session_id_unique_across_threads() {
+        let handles = (0..16)
+            .map(|_| {
+                std::thread::spawn(|| (0..64).map(|_| generate_session_id()).collect::<Vec<_>>())
+            })
+            .collect::<Vec<_>>();
+        let mut ids = HashSet::new();
+
+        for handle in handles {
+            for id in handle.join().expect("session id worker should not panic") {
+                assert!(ids.insert(id), "generated duplicate session id");
+            }
+        }
     }
 }
