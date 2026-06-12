@@ -724,7 +724,6 @@ class UsageEventBuffer:
                 admission_result = self._enqueue_pending_flush(pending_flush, trigger)
             except _BatchEnqueueError as exc:
                 timer_to_start = None
-                retain_result = _RetainBatchesResult(retained_batches=[], dropped_batches=[])
                 with self._lock:
                     retain_result = self._state.complete_admission(
                         pending_flush, exc.admission_result
@@ -743,7 +742,6 @@ class UsageEventBuffer:
                 raise exc.original from exc
             except Exception:
                 timer_to_start = None
-                retain_result = _RetainBatchesResult(retained_batches=[], dropped_batches=[])
                 with self._lock:
                     retain_result = self._state.fail_enqueue(pending_flush, flush_generation)
                     if trigger != "shutdown":
@@ -761,7 +759,6 @@ class UsageEventBuffer:
 
             flushed_batch_count += admission_result.admitted_batch_count
             timer_to_start = None
-            retain_result = _RetainBatchesResult(retained_batches=[], dropped_batches=[])
             with self._lock:
                 retain_result = self._state.complete_admission(pending_flush, admission_result)
                 if retain_result.retained_batches and trigger != "shutdown":
