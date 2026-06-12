@@ -39,28 +39,33 @@ export const GOOGLE_CLOUD_DISCOVERY_URLS = {
   spanner: "https://spanner.googleapis.com/$discovery/rest?version=v1",
 } as const;
 
-export const GOOGLE_CLOUD_PERMISSION_DOC_URLS = [
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/delete?hl=en",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/get?hl=en",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert?hl=en",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/list?hl=en",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setMetadata?hl=en",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setTags?hl=en",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/start?hl=en",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/stop?hl=en",
-  "https://docs.cloud.google.com/resource-manager/docs/access-control-proj?hl=en",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable?hl=en",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/disable?hl=en",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/get?hl=en",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/list?hl=en",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/enable?hl=en",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/get?hl=en",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/list?hl=en",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete?hl=en",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get?hl=en",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert?hl=en",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list?hl=en",
+const GOOGLE_CLOUD_PERMISSION_ROLE_PATHS = [
+  "appengine",
+  "artifactregistry",
+  "bigquery",
+  "billing",
+  "cloudbuild",
+  "cloudfunctions",
+  "cloudsql",
+  "compute",
+  "container",
+  "firestore",
+  "iam",
+  "logging",
+  "monitoring",
+  "pubsub",
+  "resourcemanager",
+  "run",
+  "secretmanager",
+  "serviceusage",
+  "spanner",
+  "storage",
 ] as const;
+
+export const GOOGLE_CLOUD_PERMISSION_DOC_URLS =
+  GOOGLE_CLOUD_PERMISSION_ROLE_PATHS.map((path) => {
+    return `https://docs.cloud.google.com/iam/docs/roles-permissions/${path}?hl=en`;
+  });
 
 interface DiscoveryMediaUploadProtocol {
   path?: string;
@@ -97,12 +102,6 @@ interface ApiConfig {
   key: keyof typeof GOOGLE_CLOUD_DISCOVERY_URLS;
   base: string;
   description: string;
-}
-
-interface PermissionMapping {
-  permission: string;
-  sourceUrl: (typeof GOOGLE_CLOUD_PERMISSION_DOC_URLS)[number];
-  snippets: readonly string[];
 }
 
 const API_CONFIGS: ApiConfig[] = [
@@ -208,177 +207,634 @@ const API_CONFIGS: ApiConfig[] = [
   },
 ] as const;
 
-const RESOURCE_MANAGER_PROJECTS_SOURCE =
-  "https://docs.cloud.google.com/resource-manager/docs/access-control-proj?hl=en";
+const GOOGLE_CLOUD_PERMISSION_PREFIXES = new Set([
+  "appengine",
+  "artifactregistry",
+  "bigquery",
+  "billing",
+  "cloudbuild",
+  "cloudfunctions",
+  "cloudsql",
+  "compute",
+  "container",
+  "datastore",
+  "iam",
+  "logging",
+  "monitoring",
+  "pubsub",
+  "resourcemanager",
+  "run",
+  "secretmanager",
+  "serviceusage",
+  "spanner",
+  "storage",
+]);
 
-const PERMISSION_MAPPINGS: Record<string, PermissionMapping> = {
-  "cloudresourcemanager.projects.create": {
-    permission: "resourcemanager.projects.create",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: ["resourcemanager.projects.create"],
+const API_PERMISSION_PREFIXES: Record<ApiConfig["key"], string> = {
+  appengine: "appengine",
+  artifactregistry: "artifactregistry",
+  bigquery: "bigquery",
+  cloudbilling: "billing",
+  cloudbuild: "cloudbuild",
+  cloudfunctions: "cloudfunctions",
+  cloudresourcemanager: "resourcemanager",
+  compute: "compute",
+  container: "container",
+  firestore: "datastore",
+  iam: "iam",
+  logging: "logging",
+  monitoring: "monitoring",
+  pubsub: "pubsub",
+  run: "run",
+  secretmanager: "secretmanager",
+  serviceusage: "serviceusage",
+  spanner: "spanner",
+  sqladmin: "cloudsql",
+  storage: "storage",
+};
+
+const GENERIC_RESOURCE_SEGMENTS = new Set([
+  "folders",
+  "locations",
+  "organizations",
+  "projects",
+  "zones",
+]);
+
+const RESOURCE_SEGMENT_ALIASES: Partial<
+  Record<ApiConfig["key"], Record<string, readonly string[]>>
+> = {
+  appengine: {
+    applications: ["applications"],
+    apps: ["applications"],
   },
-  "cloudresourcemanager.projects.delete": {
-    permission: "resourcemanager.projects.delete",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: ["resourcemanager.projects.delete"],
+  artifactregistry: {
+    aptArtifacts: ["aptartifacts"],
+    dockerImages: ["dockerimages"],
+    files: ["files"],
+    genericArtifacts: ["files"],
+    goModules: ["files"],
+    googetArtifacts: ["files"],
+    kfpArtifacts: ["kfpartifacts"],
+    mavenArtifacts: ["mavenartifacts"],
+    npmPackages: ["npmpackages"],
+    packages: ["packages"],
+    projectConfig: ["projectconfigs"],
+    projectSettings: ["projectsettings"],
+    pythonPackages: ["pythonpackages"],
+    repositories: ["repositories"],
+    rules: ["rules"],
+    tags: ["tags"],
+    versions: ["versions"],
+    yumArtifacts: ["yumartifacts"],
   },
-  "cloudresourcemanager.projects.get": {
-    permission: "resourcemanager.projects.get",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: ["resourcemanager.projects.get"],
+  cloudbuild: {
+    workerPools: ["workerpools"],
   },
-  "cloudresourcemanager.projects.getIamPolicy": {
-    permission: "resourcemanager.projects.getIamPolicy",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: ["resourcemanager.projects.getIamPolicy"],
+  cloudbilling: {
+    billingAccounts: ["accounts"],
+    subAccounts: ["accounts"],
   },
-  "cloudresourcemanager.projects.list": {
-    permission: "resourcemanager.projects.list",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: ["resourcemanager.projects.list"],
+  cloudresourcemanager: {
+    tagBindings: ["tagValueBindings"],
   },
-  "cloudresourcemanager.projects.patch": {
-    permission: "resourcemanager.projects.update",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: ["resourcemanager.projects.update"],
+  firestore: {
+    documents: ["entities"],
+    fields: ["schemas"],
+    indexes: ["schemas"],
   },
-  "cloudresourcemanager.projects.search": {
-    permission: "resourcemanager.projects.get",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: [
-      "resourcemanager.projects.search",
-      "resourcemanager.projects.get",
-    ],
+  logging: {
+    metrics: ["logMetrics"],
   },
-  "cloudresourcemanager.projects.setIamPolicy": {
-    permission: "resourcemanager.projects.setIamPolicy",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: ["resourcemanager.projects.setIamPolicy"],
+  monitoring: {
+    serviceLevelObjectives: ["slos"],
   },
-  "cloudresourcemanager.projects.undelete": {
-    permission: "resourcemanager.projects.undelete",
-    sourceUrl: RESOURCE_MANAGER_PROJECTS_SOURCE,
-    snippets: ["resourcemanager.projects.undelete"],
+  run: {
+    workerPools: ["workerpools"],
   },
-  "compute.instances.delete": {
-    permission: "compute.instances.delete",
-    sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/delete?hl=en",
-    snippets: ["compute.instances.delete"],
-  },
-  "compute.instances.get": {
-    permission: "compute.instances.get",
-    sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/get?hl=en",
-    snippets: ["compute.instances.get"],
-  },
-  "compute.instances.insert": {
-    permission: "compute.instances.create",
-    sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert?hl=en",
-    snippets: ["compute.instances.create"],
-  },
-  "compute.instances.list": {
-    permission: "compute.instances.list",
-    sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/list?hl=en",
-    snippets: ["compute.instances.list"],
-  },
-  "compute.instances.setMetadata": {
-    permission: "compute.instances.setMetadata",
-    sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setMetadata?hl=en",
-    snippets: ["compute.instances.setMetadata"],
-  },
-  "compute.instances.setTags": {
-    permission: "compute.instances.setTags",
-    sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setTags?hl=en",
-    snippets: ["compute.instances.setTags"],
-  },
-  "compute.instances.start": {
-    permission: "compute.instances.start",
-    sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/start?hl=en",
-    snippets: ["compute.instances.start"],
-  },
-  "compute.instances.stop": {
-    permission: "compute.instances.stop",
-    sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/stop?hl=en",
-    snippets: ["compute.instances.stop"],
-  },
-  "serviceusage.services.batchEnable": {
-    permission: "serviceusage.services.enable",
-    sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable?hl=en",
-    snippets: ["serviceusage.services.enable"],
-  },
-  "serviceusage.services.disable": {
-    permission: "serviceusage.services.disable",
-    sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/disable?hl=en",
-    snippets: ["serviceusage.services.disable"],
-  },
-  "serviceusage.services.enable": {
-    permission: "serviceusage.services.enable",
-    sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/enable?hl=en",
-    snippets: ["serviceusage.services.enable"],
-  },
-  "serviceusage.services.get": {
-    permission: "serviceusage.services.get",
-    sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/get?hl=en",
-    snippets: ["serviceusage.services.get"],
-  },
-  "serviceusage.services.list": {
-    permission: "serviceusage.services.list",
-    sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/list?hl=en",
-    snippets: ["serviceusage.services.list"],
-  },
-  "storage.buckets.get": {
-    permission: "storage.buckets.get",
-    sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/get?hl=en",
-    snippets: ["storage.buckets.get"],
-  },
-  "storage.buckets.list": {
-    permission: "storage.buckets.list",
-    sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/list?hl=en",
-    snippets: ["storage.buckets.list"],
-  },
-  "storage.objects.delete": {
-    permission: "storage.objects.delete",
-    sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete?hl=en",
-    snippets: ["storage.objects.delete"],
-  },
-  "storage.objects.get": {
-    permission: "storage.objects.get",
-    sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get?hl=en",
-    snippets: ["storage.objects.get"],
-  },
-  "storage.objects.insert": {
-    permission: "storage.objects.create",
-    sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert?hl=en",
-    snippets: ["storage.objects.create"],
-  },
-  "storage.objects.list": {
-    permission: "storage.objects.list",
-    sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list?hl=en",
-    snippets: ["storage.objects.list"],
+  sqladmin: {
+    Backups: ["backupRuns"],
+    connect: ["instances"],
   },
 };
 
-const NO_PERMISSION_METHODS = new Set([
-  "cloudresourcemanager.projects.testIamPermissions",
-]);
+const RESOURCE_PATH_ALIASES: Record<string, readonly string[]> = {
+  "cloudbilling.billingAccounts.projects": ["resourceAssociations"],
+  "cloudbilling.billingAccounts.subAccounts": ["accounts"],
+  "cloudbilling.organizations.billingAccounts": ["accounts"],
+  "iam.organizations.roles": ["roles"],
+  "iam.projects.roles": ["roles"],
+  "iam.projects.serviceAccounts": ["serviceAccounts"],
+  "iam.projects.serviceAccounts.keys": ["serviceAccountKeys"],
+  "iam.roles": ["roles"],
+};
+
+const VERB_ALIASES: Record<string, readonly string[]> = {
+  CreateBackup: ["create"],
+  DeleteBackup: ["delete"],
+  GetBackup: ["get"],
+  ListBackups: ["list"],
+  UpdateBackup: ["update"],
+  abandonInstances: ["update"],
+  addons: ["update"],
+  addAssociation: ["update"],
+  addInstances: ["update"],
+  addRule: ["update"],
+  addVersion: ["add"],
+  applyUpdatesToInstances: ["update"],
+  aggregatedList: ["list"],
+  announce: ["update"],
+  batchCreate: ["create"],
+  batchDelete: ["delete"],
+  batchEnable: ["enable"],
+  batchGet: ["get"],
+  batchUpdate: ["update"],
+  bulkInsert: ["create"],
+  bulkRestore: ["restore"],
+  bulkSetLabels: ["setLabels"],
+  cancel: ["update", "cancel"],
+  cloneRules: ["copyRules"],
+  compose: ["create"],
+  completeUpgrade: ["update"],
+  copy: ["create"],
+  createInstances: ["update"],
+  createAsync: ["create"],
+  createDocument: ["create"],
+  deletePerInstanceConfigs: ["update"],
+  deleteInstances: ["update"],
+  deleteRecursive: ["delete"],
+  deleteRevision: ["delete"],
+  detach: ["update"],
+  dropDatabase: ["drop"],
+  exportArtifact: ["exportArtifacts"],
+  getAssociation: ["get"],
+  getRule: ["get"],
+  getQueryResults: ["get"],
+  import: ["create"],
+  importDocuments: ["import"],
+  insert: ["create"],
+  legacyAbac: ["update"],
+  listAssociations: ["list"],
+  insertAll: ["updateData"],
+  listDocuments: ["list"],
+  listErrors: ["list"],
+  listInstances: ["list"],
+  listManagedInstances: ["list"],
+  listPerInstanceConfigs: ["list"],
+  locations: ["update"],
+  logging: ["update"],
+  master: ["update"],
+  monitoring: ["update"],
+  modifyPushConfig: ["update"],
+  patch: ["update"],
+  patchRule: ["update"],
+  query: ["create"],
+  removeAssociation: ["update"],
+  removeInstances: ["update"],
+  removeRule: ["update"],
+  recreateInstances: ["update"],
+  resourceLabels: ["update"],
+  resumeInstances: ["update"],
+  rollback: ["update"],
+  resize: ["update"],
+  rewrite: ["create"],
+  setInstanceTemplate: ["update"],
+  setNamedPorts: ["update"],
+  setTargetPools: ["update"],
+  startIpRotation: ["update"],
+  startInstances: ["update"],
+  completeIpRotation: ["update"],
+  setAddons: ["update"],
+  setLegacyAbac: ["update"],
+  setLocations: ["update"],
+  setLogging: ["update"],
+  setMaintenancePolicy: ["update"],
+  setMasterAuth: ["update"],
+  setMonitoring: ["update"],
+  setNetworkPolicy: ["update"],
+  setResourceLabels: ["update"],
+  updateMaster: ["update"],
+  stopInstances: ["update"],
+  suspendInstances: ["update"],
+  patchPerInstanceConfigs: ["update"],
+  updatePerInstanceConfigs: ["update"],
+  updateAsync: ["update"],
+  upload: ["upload", "create"],
+  withdraw: ["update"],
+};
+
+const METHOD_PERMISSION_OVERRIDES: Record<string, string> = {
+  "appengine.apps.services.versions.instances.debug":
+    "appengine.instances.enableDebug",
+  "appengine.projects.locations.applications.services.versions.instances.debug":
+    "appengine.instances.enableDebug",
+  "artifactregistry.projects.getProjectSettings":
+    "artifactregistry.projectsettings.get",
+  "artifactregistry.projects.locations.getProjectConfig":
+    "artifactregistry.projectconfigs.get",
+  "artifactregistry.projects.locations.updateProjectConfig":
+    "artifactregistry.projectconfigs.update",
+  "artifactregistry.projects.updateProjectSettings":
+    "artifactregistry.projectsettings.update",
+  "bigquery.datasets.list": "bigquery.datasets.get",
+  "bigquery.datasets.undelete": "bigquery.datasets.update",
+  "bigquery.jobs.cancel": "bigquery.jobs.update",
+  "bigquery.jobs.getQueryResults": "bigquery.jobs.get",
+  "bigquery.jobs.query": "bigquery.jobs.create",
+  "bigquery.models.get": "bigquery.models.getMetadata",
+  "bigquery.models.patch": "bigquery.models.updateMetadata",
+  "bigquery.tabledata.insertAll": "bigquery.tables.updateData",
+  "bigquery.tabledata.list": "bigquery.tables.getData",
+  "cloudbilling.projects.getBillingInfo": "billing.resourceAssociations.list",
+  "cloudbilling.projects.updateBillingInfo":
+    "billing.resourceAssociations.create",
+  "cloudbuild.projects.builds.retry": "cloudbuild.builds.create",
+  "cloudbuild.projects.locations.builds.retry": "cloudbuild.builds.create",
+  "cloudfunctions.projects.locations.functions.generateDownloadUrl":
+    "cloudfunctions.functions.sourceCodeGet",
+  "cloudfunctions.projects.locations.functions.generateUploadUrl":
+    "cloudfunctions.functions.sourceCodeSet",
+  "cloudresourcemanager.folders.search": "resourcemanager.folders.get",
+  "cloudresourcemanager.liens.create": "resourcemanager.projects.updateLiens",
+  "cloudresourcemanager.liens.delete": "resourcemanager.projects.updateLiens",
+  "cloudresourcemanager.liens.get": "resourcemanager.projects.get",
+  "cloudresourcemanager.liens.list": "resourcemanager.projects.get",
+  "cloudresourcemanager.organizations.search":
+    "resourcemanager.organizations.get",
+  "cloudresourcemanager.projects.search": "resourcemanager.projects.get",
+  "cloudresourcemanager.tagValues.tagHolds.create":
+    "resourcemanager.tagHolds.create",
+  "cloudresourcemanager.tagValues.tagHolds.delete":
+    "resourcemanager.tagHolds.delete",
+  "cloudresourcemanager.tagValues.tagHolds.list":
+    "resourcemanager.tagHolds.list",
+  "container.projects.locations.clusters.nodePools.create":
+    "container.clusters.update",
+  "container.projects.locations.clusters.nodePools.completeUpgrade":
+    "container.clusters.update",
+  "container.projects.locations.clusters.nodePools.delete":
+    "container.clusters.update",
+  "container.projects.locations.clusters.nodePools.get":
+    "container.clusters.get",
+  "container.projects.locations.clusters.nodePools.list":
+    "container.clusters.list",
+  "container.projects.locations.clusters.nodePools.rollback":
+    "container.clusters.update",
+  "container.projects.locations.clusters.nodePools.setAutoscaling":
+    "container.clusters.update",
+  "container.projects.locations.clusters.nodePools.setManagement":
+    "container.clusters.update",
+  "container.projects.locations.clusters.nodePools.setSize":
+    "container.clusters.update",
+  "container.projects.locations.clusters.nodePools.update":
+    "container.clusters.update",
+  "container.projects.zones.clusters.nodePools.create":
+    "container.clusters.update",
+  "container.projects.zones.clusters.nodePools.autoscaling":
+    "container.clusters.update",
+  "container.projects.zones.clusters.nodePools.delete":
+    "container.clusters.update",
+  "container.projects.zones.clusters.nodePools.get": "container.clusters.get",
+  "container.projects.zones.clusters.nodePools.list": "container.clusters.list",
+  "container.projects.zones.clusters.nodePools.rollback":
+    "container.clusters.update",
+  "container.projects.zones.clusters.nodePools.setManagement":
+    "container.clusters.update",
+  "container.projects.zones.clusters.nodePools.setSize":
+    "container.clusters.update",
+  "container.projects.zones.clusters.nodePools.update":
+    "container.clusters.update",
+  "firestore.projects.databases.documents.batchWrite":
+    "datastore.entities.update",
+  "firestore.projects.databases.documents.beginTransaction":
+    "datastore.entities.get",
+  "firestore.projects.databases.documents.commit": "datastore.entities.update",
+  "firestore.projects.databases.documents.listen": "datastore.entities.get",
+  "firestore.projects.databases.documents.partitionQuery":
+    "datastore.entities.list",
+  "firestore.projects.databases.documents.rollback": "datastore.entities.get",
+  "firestore.projects.databases.documents.runAggregationQuery":
+    "datastore.entities.list",
+  "firestore.projects.databases.documents.runQuery": "datastore.entities.list",
+  "firestore.projects.databases.documents.write": "datastore.entities.update",
+  "firestore.projects.databases.bulkDeleteDocuments":
+    "datastore.databases.bulkDelete",
+  "firestore.projects.databases.exportDocuments": "datastore.databases.export",
+  "firestore.projects.databases.importDocuments": "datastore.databases.import",
+  "firestore.projects.databases.restore": "datastore.backups.restoreDatabase",
+  "firestore.projects.databases.userCreds.disable":
+    "datastore.userCreds.update",
+  "firestore.projects.databases.userCreds.enable": "datastore.userCreds.update",
+  "firestore.projects.databases.userCreds.resetPassword":
+    "datastore.userCreds.update",
+  "iam.projects.serviceAccounts.keys.upload": "iam.serviceAccountKeys.create",
+  "logging.entries.copy": "logging.buckets.copyLogEntries",
+  "logging.entries.list": "logging.logEntries.list",
+  "logging.entries.tail": "logging.logEntries.list",
+  "logging.entries.write": "logging.logEntries.create",
+  "monitoring.projects.groups.members.list": "monitoring.groups.get",
+  "monitoring.projects.timeSeries.createService": "monitoring.services.create",
+  "pubsub.projects.subscriptions.acknowledge": "pubsub.subscriptions.consume",
+  "pubsub.projects.subscriptions.modifyAckDeadline":
+    "pubsub.subscriptions.consume",
+  "pubsub.projects.subscriptions.modifyPushConfig":
+    "pubsub.subscriptions.update",
+  "pubsub.projects.subscriptions.pull": "pubsub.subscriptions.consume",
+  "pubsub.projects.subscriptions.seek": "pubsub.subscriptions.consume",
+  "pubsub.projects.schemas.validateMessage": "pubsub.schemas.validate",
+  "pubsub.projects.topics.snapshots.list": "pubsub.snapshots.list",
+  "pubsub.projects.topics.subscriptions.list": "pubsub.subscriptions.list",
+  "run.projects.locations.builds.submit": "cloudbuild.builds.create",
+  "secretmanager.projects.locations.secrets.addVersion":
+    "secretmanager.versions.add",
+  "secretmanager.projects.secrets.addVersion": "secretmanager.versions.add",
+  "spanner.projects.instances.move": "spanner.instances.update",
+  "spanner.projects.instances.databases.dropDatabase": "spanner.databases.drop",
+  "spanner.projects.instances.databases.restore":
+    "spanner.backups.restoreDatabase",
+  "spanner.projects.instances.databases.sessions.batchCreate":
+    "spanner.sessions.create",
+  "spanner.projects.instances.databases.sessions.batchWrite":
+    "spanner.databases.write",
+  "spanner.projects.instances.databases.sessions.beginTransaction":
+    "spanner.databases.beginReadOnlyTransaction",
+  "spanner.projects.instances.databases.sessions.commit":
+    "spanner.databases.write",
+  "spanner.projects.instances.databases.sessions.executeBatchDml":
+    "spanner.databases.write",
+  "spanner.projects.instances.databases.sessions.executeSql":
+    "spanner.databases.select",
+  "spanner.projects.instances.databases.sessions.executeStreamingSql":
+    "spanner.databases.select",
+  "spanner.projects.instances.databases.sessions.partitionQuery":
+    "spanner.databases.partitionQuery",
+  "spanner.projects.instances.databases.sessions.partitionRead":
+    "spanner.databases.partitionRead",
+  "spanner.projects.instances.databases.sessions.read":
+    "spanner.databases.read",
+  "spanner.projects.instances.databases.sessions.rollback":
+    "spanner.databases.beginOrRollbackReadWriteTransaction",
+  "spanner.projects.instances.databases.sessions.streamingRead":
+    "spanner.databases.read",
+  "sql.connect.generateEphemeral": "cloudsql.instances.connect",
+  "sql.connect.resolve": "cloudsql.instances.connect",
+  "sql.instances.pointInTimeRestore": "cloudsql.instances.restoreBackup",
+  "sql.projects.instances.getLatestRecoveryTime": "cloudsql.instances.get",
+  "sql.projects.instances.rescheduleMaintenance": "cloudsql.instances.update",
+  "sql.projects.instances.startExternalSync": "cloudsql.instances.update",
+  "sql.projects.instances.verifyExternalSyncSettings": "cloudsql.instances.get",
+  "storage.objects.compose": "storage.objects.create",
+  "storage.objects.copy": "storage.objects.create",
+  "storage.objects.rewrite": "storage.objects.create",
+  "storage.objects.watchAll": "storage.objects.list",
+};
+
+const EXPLICIT_UNMAPPED_METHOD_PATTERNS = [
+  /\.testIamPermissions$/,
+  /\.locations\.(get|list)$/,
+  /\.operations\.(cancel|delete|get|list|wait)$/,
+  /\.projects\.locations\.operations\.(cancel|delete|get|list|wait)$/,
+  /\.projects\.zones\.operations\.(cancel|delete|get|list|wait)$/,
+  /\.projects\.locations\.(exportImage|exportImageMetadata|exportMetadata|exportProjectMetadata|getDefaultServiceAccount|regionalWebhook)$/,
+  /\.apps\.operations\.(get|list)$/,
+  /\.apps\.locations\.(get|list)$/,
+  /^appengine\.(apps|projects\.locations\.applications)\.(authorizedCertificates|authorizedDomains|domainMappings)\./,
+  /^appengine\.(apps|projects\.locations\.applications)\.firewall\.ingressRules\./,
+  /^appengine\.apps\.repair$/,
+  /\.projects\.locations\.runtimes\.list$/,
+  /\.projects\.locations\.getServerConfig$/,
+  /\.projects\.zones\.getServerconfig$/,
+  /\.projects\.locations\.clusters\.well-known\.getOpenid-configuration$/,
+  /\.projects\.locations\.clusters\.getJwks$/,
+  /\.projects\.locations\.clusters\.fetchClusterUpgradeInfo$/,
+  /\.projects\.locations\.clusters\.nodePools\.fetchNodePoolUpgradeInfo$/,
+  /\.projects\.zones\.clusters\.fetchClusterUpgradeInfo$/,
+  /\.projects\.zones\.clusters\.nodePools\.fetchNodePoolUpgradeInfo$/,
+  /^iam\.iamPolicies\.(lintPolicy|queryAuditableServices)$/,
+  /^iam\.permissions\.queryTestablePermissions$/,
+  /^iam\.projects\.locations\./,
+  /^iam\.locations\./,
+  /^cloudbilling\.services\.skus\.list$/,
+  /^cloudbilling\.services\.list$/,
+  /^artifactregistry\.projects\.locations\.repositories\.googetArtifacts\.import$/,
+  /^artifactregistry\.projects\.locations\.repositories\.(checkPrewarmedArtifact|prewarmArtifact|prewarmedArtifacts\.list|removePrewarmedArtifact)$/,
+  /^artifactregistry\.projects\.locations\.(getVpcscConfig|updateVpcscConfig)$/,
+  /^bigquery\.projects\.(getServiceAccount|list)$/,
+  /^bigquery\.routines\.(getIamPolicy|setIamPolicy)$/,
+  /^cloudbuild\.(githubDotComWebhook\.receive|webhook|locations\.regionalWebhook)$/,
+  /^cloudbuild\.projects(\.locations)?\.triggers\./,
+  /^cloudbuild\.projects\.locations\.(bitbucketServerConfigs|gitLabConfigs|githubEnterpriseConfigs)\./,
+  /^cloudbuild\.projects\.githubEnterpriseConfigs\./,
+  /^cloudfunctions\.projects\.locations\.functions\.(abortFunctionUpgrade|commitFunctionUpgrade|commitFunctionUpgradeAsGen2|detachFunction|redirectFunctionUpgradeTraffic|rollbackFunctionUpgradeTraffic|setupFunctionUpgradeConfig)$/,
+  /^cloudresourcemanager\.(effectiveTags|locations\.effectiveTagBindingCollections|locations\.tagBindingCollections|tagBindings)\./,
+  /^cloudresourcemanager\.(tagKeys|tagValues)\.getNamespaced$/,
+  /^compute\.[^.]+Operations\.(delete|get|list|wait)$/,
+  /^compute\.(global|region|zone)Operations\.wait$/,
+  /^compute\.(addresses|globalAddresses)\.move$/,
+  /^compute\.(backendBuckets|backendServices|regionBackendBuckets|regionBackendServices)\.(getEffectiveSecurityPolicies|getHealth|listUsable|setEdgeSecurityPolicy)$/,
+  /^compute\.(globalNetworkEndpointGroups|networkEndpointGroups|regionNetworkEndpointGroups)\.listNetworkEndpoints$/,
+  /^compute\.(global|zone)?VmExtensionPolicies\./,
+  /^compute\.globalPublicDelegatedPrefixes\.patch$/,
+  /^compute\.imageFamilyViews\.get$/,
+  /^compute\.(instanceGroupManagerResizeRequests|regionInstanceGroupManagerResizeRequests)\./,
+  /^compute\.instances\.(performMaintenance|reportHostAsFaulty)$/,
+  /^compute\.(interconnectAttachmentGroups|interconnectGroups)\.(getIamPolicy|getOperationalStatus|setIamPolicy|createMembers)$/,
+  /^compute\.interconnects\.getDiagnostics$/,
+  /^compute\.(network|regionNetwork)FirewallPolicies\./,
+  /^compute\.networks\.(cancelRequestRemovePeering|requestRemovePeering)$/,
+  /^compute\.nodeGroups\.listNodes$/,
+  /^compute\.organizationSecurityPolicies\./,
+  /^compute\.projects\.(disableXpnHost|disableXpnResource|enableXpnHost|enableXpnResource|getXpnHost|getXpnResources|listXpnHosts|moveDisk|moveInstance)$/,
+  /^compute\.(reservationBlocks|reservationSubBlocks|reservations)\.(getIamPolicy|setIamPolicy)$/,
+  /^compute\.reservationSubBlocks\.getVersion$/,
+  /^compute\.reservation(Sub)?Slots\.getVersion$/,
+  /^compute\.rollouts\.(advance|pause|resume)$/,
+  /^compute\.routers\.(getNatIpInfo|getNatMappingInfo|getRouterStatus|patchRoutePolicy|preview)$/,
+  /^compute\.(securityPolicies|regionSecurityPolicies)\.listPreconfiguredExpressionSets$/,
+  /^compute\.(regionCompositeHealthChecks|regionHealthSources)\.getHealth$/,
+  /^compute\.storagePoolTypes\.(aggregatedList|get|list)$/,
+  /^compute\.storagePools\.listDisks$/,
+  /^compute\.subnetworks\.listUsable$/,
+  /^compute\.targetPools\.(getHealth|setBackup)$/,
+  /^compute\.targetTcpProxies\.(setBackendService|setProxyHeader)$/,
+  /^compute\.vpnGateways\.getStatus$/,
+  /^container\.projects\.aggregated\.usableSubnetworks\.list$/,
+  /^container\.projects\.(locations|zones)\.clusters\.(checkAutopilotCompatibility|fetchClusterUpgradeInfo)$/,
+  /^container\.projects\.(locations|zones)\.clusters\.nodePools\.fetchNodePoolUpgradeInfo$/,
+  /^firestore\.projects\.databases\.documents\.(executePipeline|listCollectionIds)$/,
+  /^iam\.roles\.queryGrantableRoles$/,
+  /^logging\.(billingAccounts|folders|organizations|projects)?\.?get(Cmek)?Settings$/,
+  /^logging\.(folders|organizations)?\.?update(Cmek)?Settings$/,
+  /^logging\.(billingAccounts|folders|organizations|projects)\.locations\.(recentQueries|savedQueries)\./,
+  /^logging\.monitoredResourceDescriptors\.list$/,
+  /^monitoring\.projects\.collectdTimeSeries\.create$/,
+  /^monitoring\.uptimeCheckIps\.list$/,
+  /^run\.projects\.locations\.instances\./,
+  /^run\.projects\.locations\.(jobs\.executions|services\.revisions)\.exportStatus$/,
+  /^spanner\.(projects\.instances\.databases\.getScans|scans\.list)$/,
+  /^spanner\.projects\.instances\.databases\.sessions\.(adaptMessage|adapter)$/,
+  /^sql\.(flags|tiers)\.list$/,
+  /^sql\.instances\.(acquireSsrsLease|demote|releaseSsrsLease|switchover)$/,
+  /^sql\.sslCerts\.createEphemeral$/,
+  /^storage\.(bucketAccessControls|defaultObjectAccessControls|objectAccessControls)\./,
+  /^storage\.buckets\.(getStorageLayout|lockRetentionPolicy)$/,
+  /^storage\.buckets\.operations\.advanceRelocateBucket$/,
+  /^storage\.channels\.stop$/,
+  /^storage\.notifications\./,
+  /^storage\.projects\.serviceAccount\.get$/,
+  /^compute\.(.*\.)?testIamPermissions$/,
+] as const;
+
+function unique(values: Iterable<string>): string[] {
+  return [...new Set(values)];
+}
+
+function lowerInitial(value: string): string {
+  if (value === "") return value;
+  return `${value[0]!.toLowerCase()}${value.slice(1)}`;
+}
+
+function permissionNamePattern(): RegExp {
+  return /\b[a-z][a-z0-9]*\.[a-zA-Z0-9][a-zA-Z0-9.]*\.[a-zA-Z][a-zA-Z0-9]*\b/g;
+}
+
+function isGoogleCloudPermissionName(value: string): boolean {
+  const segments = value.split(".");
+  return (
+    segments.length >= 3 &&
+    GOOGLE_CLOUD_PERMISSION_PREFIXES.has(segments[0]!) &&
+    !value.includes("googleapis.com")
+  );
+}
+
+function extractOfficialPermissionNames(text: string): string[] {
+  return unique(
+    [...text.matchAll(permissionNamePattern())]
+      .map((match) => match[0]!)
+      .filter(isGoogleCloudPermissionName),
+  ).sort();
+}
+
+function expandResourceSegment(
+  apiKey: ApiConfig["key"],
+  segment: string,
+): string[] {
+  const aliases = RESOURCE_SEGMENT_ALIASES[apiKey]?.[segment] ?? [];
+  const regionMatch = /^region([A-Z].+)$/.exec(segment);
+  return unique([
+    segment,
+    segment.toLowerCase(),
+    ...(regionMatch ? [lowerInitial(regionMatch[1]!)] : []),
+    ...aliases,
+  ]);
+}
+
+function cartesianJoin(segments: readonly string[][]): string[] {
+  let values = [""];
+  for (const segment of segments) {
+    values = values.flatMap((prefix) => {
+      return segment.map((entry) => {
+        return prefix === "" ? entry : `${prefix}.${entry}`;
+      });
+    });
+  }
+  return values;
+}
+
+function resourcePathCandidates(
+  apiKey: ApiConfig["key"],
+  methodId: string,
+  resourcePath: readonly string[],
+): string[] {
+  const candidates: string[] = [];
+  const strippedPath =
+    resourcePath.length <= 1
+      ? [...resourcePath]
+      : resourcePath.filter((segment) => {
+          return !GENERIC_RESOURCE_SEGMENTS.has(segment);
+        });
+  const methodPrefix = methodId.split(".")[0]!;
+  const aliasKeys = unique([
+    [methodPrefix, ...resourcePath].join("."),
+    [methodPrefix, ...strippedPath].join("."),
+  ]);
+  for (const aliasKey of aliasKeys) {
+    candidates.push(...(RESOURCE_PATH_ALIASES[aliasKey] ?? []));
+  }
+
+  for (let index = 0; index < strippedPath.length; index += 1) {
+    const suffix = strippedPath.slice(index);
+    candidates.push(
+      ...cartesianJoin(
+        suffix.map((segment) => expandResourceSegment(apiKey, segment)),
+      ),
+    );
+  }
+
+  return unique(candidates).filter((candidate) => {
+    return candidate !== "";
+  });
+}
+
+function verbCandidates(verb: string): string[] {
+  const canonicalVerb = lowerInitial(verb);
+  return unique([
+    verb,
+    canonicalVerb,
+    ...(VERB_ALIASES[verb] ?? []),
+    ...(VERB_ALIASES[canonicalVerb] ?? []),
+  ]);
+}
+
+function methodPermissionCandidates(
+  apiKey: ApiConfig["key"],
+  methodId: string,
+): string[] {
+  const [, ...rest] = methodId.split(".");
+  const verb = rest.at(-1);
+  if (!verb) return [];
+  const resourcePath = rest.slice(0, -1);
+  const permissionPrefix = API_PERMISSION_PREFIXES[apiKey];
+  return unique(
+    resourcePathCandidates(apiKey, methodId, resourcePath).flatMap(
+      (resource) => {
+        return verbCandidates(verb).map((candidateVerb) => {
+          return `${permissionPrefix}.${resource}.${candidateVerb}`;
+        });
+      },
+    ),
+  );
+}
+
+function isExplicitlyUnmappedMethod(methodId: string): boolean {
+  return EXPLICIT_UNMAPPED_METHOD_PATTERNS.some((pattern) => {
+    return pattern.test(methodId);
+  });
+}
+
+function permissionForMethod(
+  apiKey: ApiConfig["key"],
+  methodId: string,
+  officialPermissions: ReadonlySet<string>,
+): string | null {
+  const override = METHOD_PERMISSION_OVERRIDES[methodId];
+  if (override !== undefined) {
+    if (!officialPermissions.has(override)) {
+      throw new Error(
+        `Google Cloud permission override for ${methodId} is not in official IAM docs: ${override}`,
+      );
+    }
+    return override;
+  }
+
+  for (const candidate of methodPermissionCandidates(apiKey, methodId)) {
+    if (officialPermissions.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 function extractMethods(
   resources: Record<string, DiscoveryResource>,
@@ -398,8 +854,8 @@ function extractMethods(
 function normalizeTemplatePath(path: string): string {
   return path
     .replace(/^\//, "")
-    .replace(/\{\+([^}]+)\}/g, "{$1+}")
-    .replace(/\{\*([^}]+)\}/g, "{$1*}");
+    .replace(/\{\+([^}]+)\}/g, "{$1}")
+    .replace(/\{\*([^}]+)\}/g, "{$1}");
 }
 
 function methodPathWithServicePath(
@@ -469,6 +925,8 @@ function addRule(
 function buildPermissionGroups(
   discovery: DiscoveryDocument,
   api: ApiConfig,
+  officialPermissions: ReadonlySet<string>,
+  unexpectedUnmappedMethods: Set<string>,
 ): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
 
@@ -476,20 +934,21 @@ function buildPermissionGroups(
     if (!method.id || !method.httpMethod) {
       throw new Error(`${api.key}: Discovery method missing id or httpMethod`);
     }
-    if (NO_PERMISSION_METHODS.has(method.id)) {
-      continue;
-    }
-    const mapping = PERMISSION_MAPPINGS[method.id];
-    if (!mapping) {
-      // Unmapped Google Cloud methods intentionally fall through to unknownPolicy.
-      // Do not invent IAM permissions when the official method-to-permission
-      // mapping has not been curated here.
+    const permission = permissionForMethod(
+      api.key,
+      method.id,
+      officialPermissions,
+    );
+    if (permission === null) {
+      if (!isExplicitlyUnmappedMethod(method.id)) {
+        unexpectedUnmappedMethods.add(method.id);
+      }
       continue;
     }
     for (const path of rulePathsForMethod(discovery, method)) {
       addRule(
         groups,
-        mapping.permission,
+        permission,
         `${method.httpMethod.toUpperCase()} /${path}`,
       );
     }
@@ -503,43 +962,40 @@ function buildPermissionGroups(
     }));
 }
 
-async function validatePermissionSources(): Promise<void> {
-  const mappingsBySource = new Map<string, Set<string>>();
-  for (const mapping of Object.values(PERMISSION_MAPPINGS)) {
-    const snippets =
-      mappingsBySource.get(mapping.sourceUrl) ?? new Set<string>();
-    for (const snippet of mapping.snippets) {
-      snippets.add(snippet);
-    }
-    mappingsBySource.set(mapping.sourceUrl, snippets);
-  }
-
-  for (const [sourceUrl, snippets] of mappingsBySource) {
+async function loadOfficialPermissions(): Promise<Set<string>> {
+  const officialPermissions = new Set<string>();
+  for (const sourceUrl of GOOGLE_CLOUD_PERMISSION_DOC_URLS) {
     const res = await fetchSpec(
       sourceUrl,
       `google-cloud permission source ${sourceUrl}`,
     );
     const text = await res.text();
-    for (const snippet of snippets) {
-      if (!text.includes(snippet)) {
-        throw new Error(
-          `Google Cloud permission source ${sourceUrl} is missing required snippet: ${snippet}`,
-        );
-      }
+    const permissions = extractOfficialPermissionNames(text);
+    if (permissions.length === 0) {
+      throw new Error(
+        `Google Cloud permission source ${sourceUrl} did not expose any IAM permissions`,
+      );
+    }
+    for (const permission of permissions) {
+      officialPermissions.add(permission);
     }
   }
+  return officialPermissions;
 }
 
 function validateMappingsWereUsed(
-  mappingsSeen: Set<string>,
+  overridesSeen: Set<string>,
   apiPermissions: Map<string, PermissionGroup[]>,
+  unexpectedUnmappedMethods: ReadonlySet<string>,
 ): void {
-  const missing = Object.keys(PERMISSION_MAPPINGS).filter((methodId) => {
-    return !mappingsSeen.has(methodId);
-  });
+  const missing = Object.keys(METHOD_PERMISSION_OVERRIDES).filter(
+    (methodId) => {
+      return !overridesSeen.has(methodId);
+    },
+  );
   if (missing.length > 0) {
     throw new Error(
-      `Google Cloud permission mappings reference missing Discovery methods:\n${missing
+      `Google Cloud permission overrides reference missing Discovery methods:\n${missing
         .sort()
         .map((methodId) => `  - ${methodId}`)
         .join("\n")}`,
@@ -548,10 +1004,24 @@ function validateMappingsWereUsed(
 
   const emptyMappedApis = API_CONFIGS.filter((api) => {
     const permissions = apiPermissions.get(api.key);
-    return permissions === undefined;
+    return permissions === undefined || permissions.length === 0;
   });
-  if (emptyMappedApis.length === API_CONFIGS.length) {
-    throw new Error("Google Cloud generator produced no mapped permissions");
+  if (emptyMappedApis.length > 0) {
+    throw new Error(
+      `Google Cloud generator produced no mapped permissions for configured APIs:\n${emptyMappedApis
+        .map((api) => `  - ${api.key}`)
+        .join("\n")}`,
+    );
+  }
+  if (unexpectedUnmappedMethods.size > 0) {
+    throw new Error(
+      `Google Cloud Discovery methods need permission mapping or explicit unmapped allowlist:\n${[
+        ...unexpectedUnmappedMethods,
+      ]
+        .sort()
+        .map((methodId) => `  - ${methodId}`)
+        .join("\n")}`,
+    );
   }
 }
 
@@ -601,10 +1071,11 @@ function generateTypeScript(
 
 export async function generate(): Promise<void> {
   console.error("Generating Google Cloud firewall config...");
-  await validatePermissionSources();
+  const officialPermissions = await loadOfficialPermissions();
 
   const apiPermissions = new Map<string, PermissionGroup[]>();
-  const mappingsSeen = new Set<string>();
+  const overridesSeen = new Set<string>();
+  const unexpectedUnmappedMethods = new Set<string>();
 
   for (const api of API_CONFIGS) {
     const discoveryUrl = GOOGLE_CLOUD_DISCOVERY_URLS[api.key];
@@ -614,10 +1085,15 @@ export async function generate(): Promise<void> {
       `  ${api.description}: ${discovery.version ?? "unknown version"}`,
     );
 
-    const permissions = buildPermissionGroups(discovery, api);
+    const permissions = buildPermissionGroups(
+      discovery,
+      api,
+      officialPermissions,
+      unexpectedUnmappedMethods,
+    );
     for (const method of extractMethods(discovery.resources ?? {})) {
-      if (method.id && PERMISSION_MAPPINGS[method.id]) {
-        mappingsSeen.add(method.id);
+      if (method.id && METHOD_PERMISSION_OVERRIDES[method.id]) {
+        overridesSeen.add(method.id);
       }
     }
     if (permissions.length > 0) {
@@ -625,7 +1101,11 @@ export async function generate(): Promise<void> {
     }
   }
 
-  validateMappingsWereUsed(mappingsSeen, apiPermissions);
+  validateMappingsWereUsed(
+    overridesSeen,
+    apiPermissions,
+    unexpectedUnmappedMethods,
+  );
 
   const allPermissions = [...apiPermissions.values()].flat();
   logStats(allPermissions);

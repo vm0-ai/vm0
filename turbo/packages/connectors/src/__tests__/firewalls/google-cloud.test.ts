@@ -58,6 +58,12 @@ describe("google-cloud firewall", () => {
     ]);
   });
 
+  it("exposes mapped permissions for every existing Google Cloud host", () => {
+    for (const api of googleCloudFirewall.apis) {
+      expect(api.permissions?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
   it("matches Compute Engine instance endpoints to official IAM permissions", () => {
     const base = "https://compute.googleapis.com";
 
@@ -132,16 +138,128 @@ describe("google-cloud firewall", () => {
     ).toEqual(["storage.objects.create"]);
   });
 
+  it("matches representative endpoints across Google Cloud APIs to official IAM permissions", () => {
+    expect(
+      findPermissions(
+        "https://iam.googleapis.com",
+        "GET",
+        "/v1/projects/project/serviceAccounts/service-account",
+      ),
+    ).toEqual(["iam.serviceAccounts.get"]);
+    expect(
+      findPermissions("https://appengine.googleapis.com", "POST", "/v1/apps"),
+    ).toEqual(["appengine.applications.create"]);
+    expect(
+      findPermissions(
+        "https://sqladmin.googleapis.com",
+        "POST",
+        "/v1/projects/project/instances",
+      ),
+    ).toEqual(["cloudsql.instances.create"]);
+    expect(
+      findPermissions(
+        "https://bigquery.googleapis.com",
+        "POST",
+        "/bigquery/v2/projects/project/datasets/dataset/tables",
+      ),
+    ).toEqual(["bigquery.tables.create"]);
+    expect(
+      findPermissions(
+        "https://run.googleapis.com",
+        "POST",
+        "/v2/projects/project/locations/us-central1/services",
+      ),
+    ).toEqual(["run.services.create"]);
+    expect(
+      findPermissions(
+        "https://cloudbuild.googleapis.com",
+        "POST",
+        "/v1/projects/project/builds",
+      ),
+    ).toEqual(["cloudbuild.builds.create"]);
+    expect(
+      findPermissions(
+        "https://artifactregistry.googleapis.com",
+        "POST",
+        "/v1/projects/project/locations/us/repositories",
+      ),
+    ).toEqual(["artifactregistry.repositories.create"]);
+    expect(
+      findPermissions(
+        "https://container.googleapis.com",
+        "POST",
+        "/v1/projects/project/locations/us-central1/clusters",
+      ),
+    ).toEqual(["container.clusters.create"]);
+    expect(
+      findPermissions(
+        "https://cloudfunctions.googleapis.com",
+        "POST",
+        "/v2/projects/project/locations/us-central1/functions",
+      ),
+    ).toEqual(["cloudfunctions.functions.create"]);
+    expect(
+      findPermissions(
+        "https://secretmanager.googleapis.com",
+        "GET",
+        "/v1/projects/project/secrets/secret/versions/latest:access",
+      ),
+    ).toEqual(["secretmanager.versions.access"]);
+    expect(
+      findPermissions(
+        "https://logging.googleapis.com",
+        "POST",
+        "/v2/projects/project/sinks",
+      ),
+    ).toEqual(["logging.sinks.create"]);
+    expect(
+      findPermissions(
+        "https://monitoring.googleapis.com",
+        "POST",
+        "/v3/projects/project/alertPolicies",
+      ),
+    ).toEqual(["monitoring.alertPolicies.create"]);
+    expect(
+      findPermissions(
+        "https://cloudbilling.googleapis.com",
+        "GET",
+        "/v1/billingAccounts/123",
+      ),
+    ).toEqual(["billing.accounts.get"]);
+    expect(
+      findPermissions(
+        "https://pubsub.googleapis.com",
+        "POST",
+        "/v1/projects/project/topics/topic:publish",
+      ),
+    ).toEqual(["pubsub.topics.publish"]);
+    expect(
+      findPermissions(
+        "https://firestore.googleapis.com",
+        "POST",
+        "/v1/projects/project/databases",
+      ),
+    ).toEqual(["datastore.databases.create"]);
+    expect(
+      findPermissions(
+        "https://spanner.googleapis.com",
+        "POST",
+        "/v1/projects/project/instances",
+      ),
+    ).toEqual(["spanner.instances.create"]);
+  });
+
   it("uses official IAM permission names instead of generic read/write groups", () => {
     expect(permissionNames()).toContain("compute.instances.create");
     expect(permissionNames()).toContain("storage.objects.create");
+    expect(permissionNames()).toContain("spanner.databases.read");
+    expect(permissionNames()).toContain("spanner.databases.write");
+    expect(permissionNames()).not.toContain("read");
+    expect(permissionNames()).not.toContain("write");
     expect(permissionNames()).not.toContain("compute.instances.insert");
     expect(permissionNames()).not.toContain("storage.objects.insert");
-
-    const genericNames = permissionNames().filter((name) => {
-      return name.endsWith(".read") || name.endsWith(".write");
-    });
-    expect(genericNames).toEqual([]);
+    expect(permissionNames()).not.toContain("compute.instances.read");
+    expect(permissionNames()).not.toContain("storage.objects.write");
   });
 
   it("keeps Google Cloud default policies non-breaking", () => {
@@ -153,6 +271,8 @@ describe("google-cloud firewall", () => {
     );
     expect(policy.policies["serviceusage.services.enable"]).toBe("allow");
     expect(policy.policies["storage.objects.create"]).toBe("allow");
+    expect(policy.policies["run.services.create"]).toBe("allow");
+    expect(policy.policies["secretmanager.versions.access"]).toBe("allow");
     expect(policy.unknownPolicy).toBe("allow");
   });
 });

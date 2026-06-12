@@ -305,6 +305,8 @@ import { snowflakeFirewall } from "./snowflake.generated";
 
 export * from "../firewall-types";
 
+const googleCloudFirewallConfig: FirewallConfig = googleCloudFirewall;
+
 // ── Permission categories ───────────────────────────────────────────────
 
 export interface ConnectorCategories {
@@ -409,7 +411,7 @@ const CONNECTOR_FIREWALLS = {
   "google-ads": googleAdsFirewall,
   "google-analytics": googleAnalyticsFirewall,
   "google-calendar": googleCalendarFirewall,
-  "google-cloud": googleCloudFirewall,
+  "google-cloud": googleCloudFirewallConfig,
   "google-docs": googleDocsFirewall,
   "google-drive": googleDriveFirewall,
   "google-meet": googleMeetFirewall,
