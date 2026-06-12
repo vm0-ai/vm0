@@ -53,6 +53,7 @@ def test_flush_prunes_completed_path_state(tmp_path):
 
     assert log_path not in jsonl_writer._accepted_by_path
     assert log_path not in jsonl_writer._completed_by_path
+    assert log_path not in jsonl_writer._flush_waiters_by_path
     assert jsonl_writer._pending_bytes == 0
 
 
