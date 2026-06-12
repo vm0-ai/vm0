@@ -4,17 +4,19 @@
 //! `codex exec`. Fabricated ChatGPT-OAuth auth.json creation stays in
 //! `codex_auth`; command construction stays in `cli::command`.
 
-use std::io::Write as _;
 use std::process::Stdio;
 use std::time::Instant;
 
+use base64::Engine as _;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
+use tokio::io::AsyncWriteExt as _;
 
 use crate::env;
 use crate::error::AgentError;
+use crate::masker::SecretMasker;
 
-use super::child_env;
+use super::{child_env, diagnostics};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -35,7 +37,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 ///   subcommand isn't available.
 ///
 /// Both paths are best-effort -- failure logs but does not abort init.
-pub fn setup_codex() -> Result<(), AgentError> {
+pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
     if env::is_codex_oauth_mode() {
         return setup_codex_chatgpt();
     }
@@ -51,37 +53,84 @@ pub fn setup_codex() -> Result<(), AgentError> {
     }
 
     let login_start = Instant::now();
-    let mut cmd = std::process::Command::new("codex");
-    child_env::apply_to_std_command(&mut cmd);
+    let api_key_masker = setup_api_key_masker(api_key);
+    let mut cmd = tokio::process::Command::new("codex");
+    child_env::apply_to_tokio_command(&mut cmd);
     let result = cmd
         .args(["login", "--with-api-key"])
         .env("CODEX_HOME", &codex_home)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .spawn()
-        .and_then(|mut child| {
+        .spawn();
+    let result = match result {
+        Ok(mut child) => {
             if let Some(mut stdin) = child.stdin.take() {
-                let _ = stdin.write_all(api_key.as_bytes());
+                let _ = stdin.write_all(api_key.as_bytes()).await;
             }
-            child.wait_with_output()
-        });
-    let success = matches!(&result, Ok(o) if o.status.success());
+
+            let stderr = child.stderr.take();
+            let stderr_lines = async move {
+                match stderr {
+                    Some(stderr) => diagnostics::collect_stderr_result_tail(stderr).await,
+                    None => Vec::new(),
+                }
+            };
+            let (status, stderr_lines) = tokio::join!(child.wait(), stderr_lines);
+            status
+                .map(|status| (status, stderr_lines))
+                .map_err(|e| ("wait", e))
+        }
+        Err(e) => Err(("spawn", e)),
+    };
+    let success = matches!(&result, Ok((status, _)) if status.success());
     if success {
         log_info!(LOG_TAG, "Codex authenticated with API key");
     } else {
         match &result {
-            Ok(o) => {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                log_warn!(LOG_TAG, "codex login failed (non-fatal): {stderr}");
+            Ok((status, stderr_lines)) => {
+                let stderr_lines =
+                    mask_setup_diagnostic_lines(masker, &api_key_masker, stderr_lines.clone());
+                if stderr_lines.is_empty() {
+                    log_warn!(LOG_TAG, "codex login failed (non-fatal): {status}");
+                } else {
+                    let stderr = stderr_lines.join("\n");
+                    log_warn!(LOG_TAG, "codex login failed (non-fatal): {stderr}");
+                }
             }
-            Err(e) => {
-                log_warn!(LOG_TAG, "codex login spawn failed (non-fatal): {e}");
+            Err((stage, e)) => {
+                let error = mask_setup_diagnostic_text(masker, &api_key_masker, e.to_string());
+                log_warn!(LOG_TAG, "codex login {stage} failed (non-fatal): {error}");
             }
         }
     }
     record_sandbox_op("codex_login", login_start.elapsed(), success, None);
     Ok(())
+}
+
+fn setup_api_key_masker(api_key: &str) -> SecretMasker {
+    let encoded = base64::engine::general_purpose::STANDARD.encode(api_key);
+    SecretMasker::from_raw(&encoded)
+}
+
+fn mask_setup_diagnostic_text(
+    masker: &SecretMasker,
+    api_key_masker: &SecretMasker,
+    text: String,
+) -> String {
+    mask_setup_diagnostic_lines(masker, api_key_masker, vec![text])
+        .into_iter()
+        .next()
+        .unwrap_or_default()
+}
+
+fn mask_setup_diagnostic_lines(
+    masker: &SecretMasker,
+    api_key_masker: &SecretMasker,
+    lines: Vec<String>,
+) -> Vec<String> {
+    let lines = masker.mask_diagnostic_lines(lines);
+    api_key_masker.mask_diagnostic_lines(lines)
 }
 
 /// Wrapper that calls `codex_auth::setup_codex_chatgpt_inner` with values
