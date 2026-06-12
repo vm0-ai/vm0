@@ -264,7 +264,7 @@ export function createIdbCachedDataSource(
 
     const stores = getStores(userId, orgId);
     const readStore = stores.readStore;
-    const cached = await readStore.readLatest(threadId, MESSAGE_PAGE_SIZE);
+    const cached = await readStore.readLatest(threadId);
 
     if (cached.length > 0) {
       const meta = await readThreadMeta$(userId, orgId, threadId);
