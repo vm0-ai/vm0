@@ -58,6 +58,19 @@ const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
+function expectTextBefore(
+  container: HTMLElement,
+  before: string,
+  after: string,
+) {
+  const text = container.textContent ?? "";
+  const beforeIndex = text.indexOf(before);
+  const afterIndex = text.indexOf(after);
+  expect(beforeIndex).toBeGreaterThanOrEqual(0);
+  expect(afterIndex).toBeGreaterThanOrEqual(0);
+  expect(beforeIndex).toBeLessThan(afterIndex);
+}
+
 interface QueuedMessageCapture {
   content?: string;
   hasTextContent?: boolean;
@@ -1489,6 +1502,16 @@ describe("chat lifecycle", () => {
       expect(
         within(foldedAssistantGroup!).getAllByLabelText("View agent profile"),
       ).toHaveLength(1);
+      expectTextBefore(
+        foldedAssistantGroup!,
+        "Worked for 55s",
+        "Checking launch status.",
+      );
+      expectTextBefore(
+        foldedAssistantGroup!,
+        "Checking launch status.",
+        "Launch status is summarized.",
+      );
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -1659,6 +1682,16 @@ describe("chat lifecycle", () => {
       expect(
         within(secondAssistantGroup!).getAllByLabelText("View agent profile"),
       ).toHaveLength(1);
+      expectTextBefore(
+        secondAssistantGroup!,
+        "Worked for 55s",
+        "Checking the second launch notes.",
+      );
+      expectTextBefore(
+        secondAssistantGroup!,
+        "Checking the second launch notes.",
+        "The second launch summary is ready.",
+      );
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",
