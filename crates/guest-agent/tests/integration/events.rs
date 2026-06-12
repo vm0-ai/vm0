@@ -183,11 +183,13 @@ async fn send_event_keeps_existing_session_metadata() {
 
     let sid_file = guest_agent::paths::session_id_file();
     let hist_file = guest_agent::paths::session_history_path_file();
-    std::fs::write(sid_file, "first-session").unwrap();
-    std::fs::write(hist_file, "/tmp/first-session.jsonl").unwrap();
+    guest_agent::paths::write_private(sid_file, "first-session").unwrap();
+    guest_agent::paths::write_private(hist_file, "/tmp/first-session.jsonl").unwrap();
 
     let mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/events");
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""session_id":"***""#);
         then.status(200);
     });
 
@@ -211,6 +213,7 @@ async fn send_event_keeps_existing_session_metadata() {
         "/tmp/first-session.jsonl",
         "later id-bearing events must not replace checkpoint history metadata"
     );
+    assert_eq!(masker.mask_string("second-session"), "***");
 
     mock.delete_async().await;
 }
@@ -258,6 +261,7 @@ async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
             history.ends_with(&format!("/{session_id}.jsonl")),
             "repaired history marker should point at the existing session id, got: {history}"
         );
+        assert_eq!(masker.mask_string(session_id), "***");
     }
 
     mock.assert_calls_async(2).await;
