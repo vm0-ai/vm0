@@ -249,6 +249,7 @@ def test_retained_aggregate_batch_keeps_source_event_count(tmp_path):
     assert enqueue.last_call.payload["events"][0]["quantity"] == 22
     usage.write_pending_snapshot(flush_request_id="drained")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="drained")
+    assert_usage_buffer_drained(enqueue)
 
 
 def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
@@ -620,6 +621,9 @@ def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
     callbacks[1]("success")
     usage.write_pending_snapshot(flush_request_id="drained")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="drained")
+    drained_payload_count = len(payloads)
+    assert usage.flush_usage_events(trigger="test") == 0
+    assert len(payloads) == drained_payload_count
 
 
 def test_permanent_sync_fallback_failure_does_not_requeue(tmp_path, fresh_usage_executor):
@@ -647,6 +651,7 @@ def test_permanent_sync_fallback_failure_does_not_requeue(tmp_path, fresh_usage_
         flush_request_id="permanent-failure",
     )
     assert "non-retryable" in proxy_log_path.read_text()
+    assert usage.flush_usage_events(trigger="test") == 0
 
 
 def test_permanent_http_delivery_failure_completes_flush(
