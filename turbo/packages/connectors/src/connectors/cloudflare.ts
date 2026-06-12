@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 const CLOUDFLARE_OAUTH_SCOPES = [
   "agent-memory.write",
@@ -365,7 +364,6 @@ export const cloudflare = {
       "Connect your Cloudflare account to manage DNS, zones, workers, and other Cloudflare services",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.CloudflareConnector,
         label: "OAuth",
         helpText: "Sign in with Cloudflare to grant access.",
         client: {

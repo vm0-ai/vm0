@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.440.1](https://github.com/vm0-ai/vm0/compare/app-v0.440.0...app-v0.440.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* send follow-ups without revoking messages ([#17367](https://github.com/vm0-ai/vm0/issues/17367)) ([ebcca89](https://github.com/vm0-ai/vm0/commit/ebcca8954e552c2c6e73254493494cd19d9b4c26))
+
 ## [0.440.0](https://github.com/vm0-ai/vm0/compare/app-v0.439.0...app-v0.440.0) (2026-06-11)
 
 

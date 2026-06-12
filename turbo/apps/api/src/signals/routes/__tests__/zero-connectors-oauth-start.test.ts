@@ -385,13 +385,6 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     orgIds.push(orgId);
     mocks.clerk.session(userId, orgId);
 
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.CloudflareConnector]: true },
-    });
-
     const response = await requestOauthStart("cloudflare", {
       headers: { authorization: "Bearer clerk-session" },
       origin: WEB_ORIGIN,
@@ -415,6 +408,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     const state = authorizationUrl.searchParams.get("state");
     expect(state).toMatch(/^[0-9a-f]{64}$/);
 
+    const db = store.set(writeDb$);
     const [storedState] = await db
       .select()
       .from(connectorOauthStates)
@@ -440,13 +434,6 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     mockEnv("VM0_API_URL", "https://tunnel-liangyou-vm2-www.vm7.ai");
     mockEnv("VM0_WEB_URL", "https://www.vm7.ai:8443");
 
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.CloudflareConnector]: true },
-    });
-
     const response = await requestOauthStart("cloudflare", {
       headers: { authorization: "Bearer clerk-session" },
       origin: "https://www.vm7.ai:8443",
@@ -463,6 +450,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expectCloudflareAuthorizationScopes(authorizationUrl);
 
     const state = authorizationUrl.searchParams.get("state");
+    const db = store.set(writeDb$);
     const [storedState] = await db
       .select()
       .from(connectorOauthStates)

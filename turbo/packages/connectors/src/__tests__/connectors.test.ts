@@ -2514,15 +2514,11 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes Cloudflare OAuth only when its switch is enabled", () => {
+  it("exposes Cloudflare auth methods by default", () => {
     expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+      "oauth",
       "api-token",
     ]);
-    expect(
-      getAvailableConnectorAuthMethodIds("cloudflare", {
-        [FeatureSwitchKey.CloudflareConnector]: true,
-      }),
-    ).toStrictEqual(["oauth", "api-token"]);
   });
 
   it("exposes Google Maps API-token auth only when its switch is enabled", () => {
@@ -4145,7 +4141,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       ]),
     );
     expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
-      featureFlag: FeatureSwitchKey.CloudflareConnector,
       client: {
         clientRegistration: "static",
         clientType: "confidential",
