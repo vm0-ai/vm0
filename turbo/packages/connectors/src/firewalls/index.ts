@@ -305,6 +305,8 @@ import { snowflakeFirewall } from "./snowflake.generated";
 
 export * from "../firewall-types";
 
+// Keep the very large generated Google Cloud permission set from expanding
+// CONNECTOR_FIREWALLS into a huge literal type.
 const googleCloudFirewallConfig: FirewallConfig = googleCloudFirewall;
 
 // ── Permission categories ───────────────────────────────────────────────
