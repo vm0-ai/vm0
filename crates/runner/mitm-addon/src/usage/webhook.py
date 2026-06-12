@@ -269,14 +269,14 @@ def _enqueue_webhook(
     falls back to synchronous delivery so the report is not silently lost.
 
     Returns whether the payload was admitted to delivery.  ``False`` means
-    delivery was saturated and the payload was explicitly dropped.
+    delivery was saturated and the caller still owns the payload.
     """
     admitted_count = _try_acquire_delivery_capacity()
     if admitted_count is None:
         _log_webhook_entry(
             proxy_log_path,
             "warn",
-            f"Webhook POST to {url} dropped because usage delivery is saturated",
+            f"Webhook POST to {url} not admitted because usage delivery is saturated",
             url,
             log_type,
             payload,

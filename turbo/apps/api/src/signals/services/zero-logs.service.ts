@@ -66,15 +66,6 @@ function normalizeTriggerSource(
   return parsed.success ? parsed.data : null;
 }
 
-// "automation" supersedes "schedule" (#17307); until the backfill migration
-// unifies historical rows, a filter on either value matches both.
-function triggerSourceCondition(source: TriggerSource): SQL {
-  if (source === "schedule" || source === "automation") {
-    return inArray(zeroRuns.triggerSource, ["schedule", "automation"]);
-  }
-  return eq(zeroRuns.triggerSource, source);
-}
-
 function buildCursorCondition(cursor: string): SQL | null {
   const separatorIndex = cursor.lastIndexOf("|");
   if (separatorIndex <= 0) {
@@ -161,7 +152,7 @@ export function zeroLogsList(
       conditions.push(eq(agentRuns.status, params.status));
     }
     if (params.triggerSource) {
-      conditions.push(triggerSourceCondition(params.triggerSource));
+      conditions.push(eq(zeroRuns.triggerSource, params.triggerSource));
     }
     if (params.scheduleId) {
       // Schedule ids are automation ids (D2 on #16847); historical runs were
@@ -269,7 +260,7 @@ async function getLogsTotalCount(
     conditions.push(eq(agentRuns.status, params.status));
   }
   if (params.triggerSource) {
-    conditions.push(triggerSourceCondition(params.triggerSource));
+    conditions.push(eq(zeroRuns.triggerSource, params.triggerSource));
   }
   if (params.scheduleId) {
     conditions.push(eq(zeroRuns.automationId, params.scheduleId));
@@ -351,7 +342,6 @@ async function getAvailableFilters(
     .filter((s): s is TriggerSource => {
       return [
         "automation",
-        "schedule",
         "web",
         "slack",
         "email",

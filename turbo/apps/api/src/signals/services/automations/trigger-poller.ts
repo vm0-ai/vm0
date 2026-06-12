@@ -301,9 +301,6 @@ const runTriggerNow$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
-        // Time fires record automation provenance; trigger_source follows
-        // (#17307). Historical rows may still carry "schedule" until the
-        // backfill migration lands.
         triggerSource: "automation",
         chatThreadId: runInput.chatThreadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,

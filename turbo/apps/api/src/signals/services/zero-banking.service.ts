@@ -532,10 +532,7 @@ async function authorizeBankingAccess(
     });
   }
 
-  if (
-    (run.triggerSource === "schedule" || run.triggerSource === "automation") &&
-    !grant.allowScheduledRuns
-  ) {
+  if (run.triggerSource === "automation" && !grant.allowScheduledRuns) {
     return await denyBankingAccess(db, auth, action, providerAccountId, {
       agentId: run.agentId,
       connectionId: grant.connectionId,

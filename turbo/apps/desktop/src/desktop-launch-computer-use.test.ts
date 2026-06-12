@@ -18,17 +18,15 @@ function launchOptions(
     readonly consumeAuthCallback?: (
       callback: DesktopAuthCallback,
     ) => Promise<void>;
-    readonly autoStartComputerUse?: () => Promise<void>;
+    readonly requestAutoStartComputerUse?: () => void;
     readonly logAuthError?: (error: unknown) => void;
-    readonly logAutoStartError?: (error: unknown) => void;
   } = {},
 ) {
   return {
     pendingCallback: null,
     consumeAuthCallback: vi.fn(async () => {}),
-    autoStartComputerUse: vi.fn(async () => {}),
+    requestAutoStartComputerUse: vi.fn(),
     logAuthError: vi.fn(),
-    logAutoStartError: vi.fn(),
     ...overrides,
   };
 }
@@ -40,9 +38,8 @@ describe("startDesktopLaunchComputerUse", () => {
     startDesktopLaunchComputerUse(options);
     await flushLaunchHandlers();
 
-    expect(options.autoStartComputerUse).toHaveBeenCalledOnce();
+    expect(options.requestAutoStartComputerUse).toHaveBeenCalledOnce();
     expect(options.consumeAuthCallback).not.toHaveBeenCalled();
-    expect(options.logAutoStartError).not.toHaveBeenCalled();
   });
 
   it("consumes the pending auth callback instead of auto-starting", async () => {
@@ -52,7 +49,7 @@ describe("startDesktopLaunchComputerUse", () => {
     await flushLaunchHandlers();
 
     expect(options.consumeAuthCallback).toHaveBeenCalledWith(pendingCallback);
-    expect(options.autoStartComputerUse).not.toHaveBeenCalled();
+    expect(options.requestAutoStartComputerUse).not.toHaveBeenCalled();
     expect(options.logAuthError).not.toHaveBeenCalled();
   });
 
@@ -69,21 +66,5 @@ describe("startDesktopLaunchComputerUse", () => {
     await flushLaunchHandlers();
 
     expect(options.logAuthError).toHaveBeenCalledWith(error);
-    expect(options.logAutoStartError).not.toHaveBeenCalled();
-  });
-
-  it("logs auto-start failures from the background launch task", async () => {
-    const error = new Error("auto-start failed");
-    const options = launchOptions({
-      autoStartComputerUse: vi.fn(async () => {
-        throw error;
-      }),
-    });
-
-    startDesktopLaunchComputerUse(options);
-    await flushLaunchHandlers();
-
-    expect(options.logAutoStartError).toHaveBeenCalledWith(error);
-    expect(options.logAuthError).not.toHaveBeenCalled();
   });
 });

@@ -1009,7 +1009,18 @@ describe("CHAT-02: dispatch failure", () => {
       payload: { threadId: sent.body.threadId, agentId },
     });
 
-    const messages = await chat.listThreadMessages(actor, sent.body.threadId);
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.body.threadId,
+      (items) => {
+        return assistantMessages(items).some((message) => {
+          return (
+            message.runId === sent.body.runId &&
+            message.runLifecycleEvent === "failed"
+          );
+        });
+      },
+    );
     const failedMarker = assistantMessages(messages.messages).find(
       (message) => {
         return (

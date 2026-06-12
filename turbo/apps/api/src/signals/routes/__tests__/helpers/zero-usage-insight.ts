@@ -689,7 +689,7 @@ export const seedScheduleBatch$ = command(
         }
         await db.insert(zeroRuns).values({
           id: run.id,
-          triggerSource: "schedule",
+          triggerSource: "automation",
           automationId: scheduleRow.id,
         });
         const credits = args.creditsForIndex(index);

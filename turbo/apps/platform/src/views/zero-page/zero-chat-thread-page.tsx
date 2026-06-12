@@ -2304,11 +2304,8 @@ function ChatThreadMessagesMain({
   const features = useLastResolved(featureSwitch$);
   const completedWorkFoldingEnabled =
     features?.[FeatureSwitchKey.ChatCompletedWorkFolding] ?? false;
-  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinished =
-    allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
   const completedWorkFolding = completedWorkFoldingEnabled
-    ? buildCompletedWorkFolding(activeGroups, allFinished)
+    ? buildCompletedWorkFolding(activeGroups)
     : null;
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
@@ -2504,17 +2501,32 @@ function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   );
 }
 
+function terminatedRunIdsForCompletedWork(
+  messages: readonly EnrichedChatMessage[],
+): Set<string> {
+  const terminatedRunIds = new Set<string>();
+  for (const message of messages) {
+    if (message.interruptsRunId !== undefined) {
+      terminatedRunIds.add(message.interruptsRunId);
+    }
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      terminatedRunIds.add(message.runId);
+    }
+  }
+  return terminatedRunIds;
+}
+
 function buildCompletedWorkFolding(
   groups: readonly GroupedChatMessageGroup[],
-  allFinished: boolean,
 ): CompletedWorkFolding | null {
-  if (!allFinished) {
-    return null;
-  }
-
   const messages = groups.flatMap((group) => {
     return group.messages;
   });
+  const terminatedRunIds = terminatedRunIdsForCompletedWork(messages);
   const visibleMessages: EnrichedChatMessage[] = [];
   const folds: CompletedWorkFold[] = [];
 
@@ -2532,6 +2544,12 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
+    if (!terminatedRunIds.has(runId)) {
+      visibleMessages.push(...runMessages);
+      index = endIndex;
+      continue;
+    }
+
     let finalMessageIndex = -1;
     for (let offset = runMessages.length - 1; offset >= 0; offset--) {
       if (isRenderableAssistantMessage(runMessages[offset]!)) {
@@ -2635,6 +2653,9 @@ function completedWorkLabel(
   return `Worked for ${formatCompactDuration(elapsedSeconds)}`;
 }
 
+const RUN_SECTION_LABEL_CLASS =
+  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
+
 function CompletedWorkFoldRow({
   groups,
   expanded,
@@ -2652,14 +2673,14 @@ function CompletedWorkFoldRow({
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="group flex h-9 w-full items-center gap-2 rounded-lg px-1 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        className="group flex h-9 w-full items-center gap-2 rounded-lg px-1 text-left transition-colors hover:bg-muted/40"
       >
-        <span className="min-w-0 shrink-0">{label}</span>
+        <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
         <IconChevronRight
           size={17}
           stroke={1.7}
           className={cn(
-            "shrink-0 transition-transform duration-150",
+            "shrink-0 text-muted-foreground/50 transition-[color,transform] duration-150 group-hover:text-muted-foreground",
             expanded && "rotate-90",
           )}
         />
@@ -3644,9 +3665,7 @@ function FinishedRunRow({
       <div className="flex h-5 flex-col justify-center gap-1.5">
         <div className="h-px w-full bg-border/40" />
         <div className="flex items-center gap-2">
-          <p className="text-[13px] italic text-muted-foreground/50 font-serif shrink-0">
-            {label}
-          </p>
+          <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
           <div className="h-px flex-1 bg-border/40" />
         </div>
       </div>
