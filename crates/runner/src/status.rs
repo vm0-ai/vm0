@@ -165,8 +165,9 @@ impl StatusTracker {
         self.add_running_run(run_id, sandbox_id).await;
     }
 
-    /// Register an active run that has been claimed but whose Firecracker VM is
-    /// not expected to exist yet.
+    /// Register an active run that has been claimed while its fresh sandbox is
+    /// still being prepared. Its Firecracker process may not exist or be ready
+    /// yet.
     pub async fn add_preparing_run(&self, run_id: RunId, sandbox_id: SandboxId) {
         self.add_run_with_phase(run_id, sandbox_id, ActiveRunPhase::Preparing)
             .await;

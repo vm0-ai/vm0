@@ -40,8 +40,8 @@ const RECHECK_DELAY: Duration = Duration::from_secs(3);
 /// when anomalies persist across all attempts; zero overhead when healthy).
 const RECHECK_MAX_ATTEMPTS: u32 = 3;
 
-/// Grace period where a freshly claimed new-sandbox run may not have spawned
-/// Firecracker yet.
+/// Grace period where a freshly claimed new-sandbox run may still be preparing
+/// and may not have a stable Firecracker process yet.
 const PREPARING_NO_PROCESS_GRACE: Duration = Duration::from_secs(120);
 
 /// A detected anomaly that carries enough context to recheck itself.
@@ -335,7 +335,8 @@ struct JobReport {
 enum JobStatus {
     /// Active run with a matching firecracker process.
     Running { run_id: String, pid: u32 },
-    /// Active run is preparing a fresh sandbox; Firecracker is not expected yet.
+    /// Active run is still preparing a fresh sandbox; Firecracker may not exist
+    /// or may not be ready yet.
     Preparing { run_id: String },
     /// Active run whose firecracker process is missing.
     NoProcess { run_id: String },
