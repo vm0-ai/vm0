@@ -170,8 +170,6 @@ import {
   setSlashSkillCaretIndex$,
   selectedSlashSkillIndex$,
   setSelectedSlashSkillIndex$,
-  slashSkillMenuStyle$,
-  setSlashSkillAnchorRef$,
   setSlashSkillMenuRef$,
   type TemplatePickerVideoGroup,
 } from "../../signals/zero-page/zero-chat-composer.ts";
@@ -3093,15 +3091,14 @@ function SlashSkillMenu({
   readonly showSkillsPageLink: boolean;
   readonly onSelect: (skill: ComposerSlashSkill) => void;
 }) {
-  const menuStyle = useGet(slashSkillMenuStyle$);
   const setMenuRef = useSet(setSlashSkillMenuRef$);
 
   return (
     <div
       ref={setMenuRef}
-      className="absolute z-50 flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
+      popover="manual"
+      className="slash-skill-popover flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
       data-testid="slash-skill-menu"
-      style={menuStyle}
     >
       <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
         Skills
@@ -3288,7 +3285,6 @@ function SlashSkillComposerInput({
   const setCaretIndex = useSet(setSlashSkillCaretIndex$);
   const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
   const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
-  const setSlashSkillAnchorRef = useSet(setSlashSkillAnchorRef$);
   const currentAgent = useLastResolved(currentChatAgent$);
   const features = useLastResolved(featureSwitch$);
   const orgSkillsLoadable = useLastLoadable(orgSkills$);
@@ -3380,7 +3376,7 @@ function SlashSkillComposerInput({
   };
 
   return (
-    <div ref={setSlashSkillAnchorRef} className="relative">
+    <div className="slash-skill-anchor relative">
       {showSlashSkillMenu && (
         <SlashSkillMenu
           skills={slashSkillSuggestions}

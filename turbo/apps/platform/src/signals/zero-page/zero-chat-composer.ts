@@ -44,45 +44,6 @@ export const setComposerSavingType$ = command(
 
 // -- Slash skill picker -----------------------------------------------------
 
-const SLASH_SKILL_MENU_WIDTH = 260;
-const SLASH_SKILL_MENU_MAX_HEIGHT = 320;
-const SLASH_SKILL_MENU_OFFSET = 8;
-const SLASH_SKILL_MENU_VIEWPORT_MARGIN = 12;
-
-interface SlashSkillAnchorRect {
-  readonly top: number;
-  readonly left: number;
-  readonly bottom: number;
-  readonly height: number;
-}
-
-interface SlashSkillViewport {
-  readonly width: number;
-  readonly height: number;
-}
-
-interface SlashSkillMenuStyle {
-  readonly left: string;
-  readonly top: string;
-}
-
-function slashSkillViewport(): SlashSkillViewport {
-  return {
-    width: window.innerWidth,
-    height: window.innerHeight,
-  };
-}
-
-function slashSkillAnchorRect(element: HTMLElement): SlashSkillAnchorRect {
-  const rect = element.getBoundingClientRect();
-  return {
-    top: rect.top,
-    left: rect.left,
-    bottom: rect.bottom,
-    height: rect.height,
-  };
-}
-
 const internalSlashSkillCaretIndex$ = state(0);
 export const slashSkillCaretIndex$ = computed((get) => {
   return get(internalSlashSkillCaretIndex$);
@@ -101,86 +62,21 @@ export const setSelectedSlashSkillIndex$ = command(({ set }, index: number) => {
   set(internalSelectedSlashSkillIndex$, index);
 });
 
-const internalSlashSkillAnchorRect$ = state<SlashSkillAnchorRect | null>(null);
-const internalSlashSkillMenuHeight$ = state<number | null>(null);
-const internalSlashSkillViewport$ = state<SlashSkillViewport>({
-  width: 0,
-  height: 0,
-});
-
-export const slashSkillMenuStyle$ = computed((get): SlashSkillMenuStyle => {
-  const anchorRect = get(internalSlashSkillAnchorRect$);
-  if (!anchorRect) {
-    return {
-      left: `${SLASH_SKILL_MENU_VIEWPORT_MARGIN}px`,
-      top: `calc(100% + ${SLASH_SKILL_MENU_OFFSET}px)`,
-    };
-  }
-
-  const viewport = get(internalSlashSkillViewport$);
-  const menuHeight = Math.min(
-    get(internalSlashSkillMenuHeight$) ?? SLASH_SKILL_MENU_MAX_HEIGHT,
-    SLASH_SKILL_MENU_MAX_HEIGHT,
-  );
-  const spaceAbove = anchorRect.top;
-  const spaceBelow = viewport.height - anchorRect.bottom;
-  const placement =
-    spaceAbove >= menuHeight + SLASH_SKILL_MENU_OFFSET ||
-    spaceAbove >= spaceBelow
-      ? "above"
-      : "below";
-  const viewportLeft = Math.min(
-    Math.max(anchorRect.left + SLASH_SKILL_MENU_VIEWPORT_MARGIN, 12),
-    Math.max(
-      viewport.width -
-        SLASH_SKILL_MENU_WIDTH -
-        SLASH_SKILL_MENU_VIEWPORT_MARGIN,
-      SLASH_SKILL_MENU_VIEWPORT_MARGIN,
-    ),
-  );
-
-  return {
-    left: `${viewportLeft - anchorRect.left}px`,
-    top:
-      placement === "below"
-        ? `${anchorRect.height + SLASH_SKILL_MENU_OFFSET}px`
-        : `${-menuHeight - SLASH_SKILL_MENU_OFFSET}px`,
-  };
-});
-
-export const setSlashSkillAnchorRef$ = onRef(
-  command(({ set }, element: HTMLElement, signal: AbortSignal) => {
-    const updateLayout = () => {
-      set(internalSlashSkillAnchorRect$, slashSkillAnchorRect(element));
-      set(internalSlashSkillViewport$, slashSkillViewport());
-    };
-
-    updateLayout();
-    window.addEventListener("resize", updateLayout);
-    window.addEventListener("scroll", updateLayout, true);
-    signal.addEventListener("abort", () => {
-      window.removeEventListener("resize", updateLayout);
-      window.removeEventListener("scroll", updateLayout, true);
-      set(internalSlashSkillAnchorRect$, null);
-    });
-  }),
-);
-
+// The menu is a native popover: the browser renders it in the top layer (no
+// overflow clipping) and CSS anchor positioning places it, so no coordinates
+// are computed here. The element is hidden until showPopover() is called.
 export const setSlashSkillMenuRef$ = onRef(
-  command(({ set }, element: HTMLElement, signal: AbortSignal) => {
-    const updateHeight = () => {
-      set(internalSlashSkillMenuHeight$, element.offsetHeight);
-    };
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(updateHeight);
+  command((_, element: HTMLElement, signal: AbortSignal) => {
+    // happy-dom does not implement the Popover API
+    if (typeof element.showPopover !== "function") {
+      return;
+    }
 
-    updateHeight();
-    resizeObserver?.observe(element);
+    element.showPopover();
     signal.addEventListener("abort", () => {
-      resizeObserver?.disconnect();
-      set(internalSlashSkillMenuHeight$, null);
+      if (element.isConnected) {
+        element.hidePopover();
+      }
     });
   }),
 );

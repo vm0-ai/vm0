@@ -519,9 +519,9 @@ describe("chat composer models", () => {
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
     const slashSkillMenu = screen.getByTestId("slash-skill-menu");
     expect(composerElementFrom(textarea)).toContain(slashSkillMenu);
-    expect(slashSkillMenu).toHaveClass("absolute");
-    expect(slashSkillMenu.style.left).not.toBe("");
-    expect(slashSkillMenu.style.top).not.toBe("");
+    expect(slashSkillMenu).toHaveAttribute("popover", "manual");
+    expect(slashSkillMenu).toHaveClass("slash-skill-popover");
+    expect(slashSkillMenu.closest(".slash-skill-anchor")).not.toBeNull();
 
     await user.keyboard("sales");
 
