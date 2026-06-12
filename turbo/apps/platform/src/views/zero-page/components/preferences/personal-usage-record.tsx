@@ -200,7 +200,7 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
   // chat's size relative to the largest chat, so the bar reads as magnitude.
   // The kind colors live inside the fill, so one bar carries both size and mix.
   return (
-    <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-[hsl(var(--gray-50))]">
+    <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-foreground/8">
       <div
         className="flex h-full overflow-hidden rounded-full"
         style={{ width: `${(row.credits / max) * 100}%` }}
@@ -367,14 +367,14 @@ function UsageRecordSummary({
 }) {
   const kinds = Object.keys(KIND_META) as UsageRecordKind[];
   return (
-    <div className="px-5 py-3.5">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-3.5">
       <p className="text-sm text-muted-foreground">
         <span className="font-medium text-foreground tabular-nums">
           {count} {count === 1 ? "chat" : "chats"}
         </span>{" "}
         · {formatCredits(totalCredits)} credits
       </p>
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
         {kinds.map((kind) => {
           return (
             <span
