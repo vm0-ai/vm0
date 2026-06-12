@@ -6,7 +6,6 @@ import type {
   DragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
-  RefCallback,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -3756,18 +3755,6 @@ function resolveActiveFeedback(
   return null;
 }
 
-function composerTextareaRef(
-  autoFocus: boolean | undefined,
-  setInputRef: ((el: HTMLElement | null) => void) | undefined,
-): RefCallback<HTMLTextAreaElement> {
-  return (el) => {
-    if (el && autoFocus && !isIOSDevice()) {
-      el.focus();
-    }
-    setInputRef?.(el);
-  };
-}
-
 // Stop while an empty composer is mid-run; otherwise Send. In feedback mode the
 // same button dispatches the feedback turn and stays disabled until a note is
 // written.
@@ -4331,25 +4318,6 @@ export function ZeroChatComposer({
                       }}
                     />
                   )}
-                  <textarea
-                    ref={composerTextareaRef(autoFocus, setInputRef)}
-                    className={cn(
-                      "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px]",
-                    )}
-                    rows={3}
-                    placeholder={
-                      sending
-                        ? "Type your next message\u2026"
-                        : "Ask me to automate workflows, manage tasks..."
-                    }
-                    value={input}
-                    onChange={(e) => {
-                      return onInputChange(e.target.value);
-                    }}
-                    enterKeyHint="enter"
-                    onKeyDown={handleKeyDown}
-                    onPaste={handlePaste}
-                  />
                 </>
               )}
               <ComposerInputSlot
