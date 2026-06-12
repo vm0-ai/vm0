@@ -36,13 +36,15 @@ from mitmproxy.addonmanager import Loader
 # (not selective `from X import ...`)
 # so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
-#      ``body_capture.X(...)`` / ``matching.X(...)`` / ``registry.X(...)`` /
+#      ``body_capture.X(...)`` / ``builtin_connector_diagnostics.X(...)`` /
+#      ``matching.X(...)`` / ``registry.X(...)`` /
 #      ``response_streaming.X(...)`` / ``usage.X(...)``,
 #      making the module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import auth_base_forwarder
 import body_capture
+import builtin_connector_diagnostics
 import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
@@ -67,6 +69,8 @@ from url_utils import AuthorityValidationError, get_trusted_authority
 
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
+_HTTP_STATUS_FORBIDDEN = 403
+_HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
@@ -87,6 +91,40 @@ _TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
 _TCP_REQUEST_SIZE = "_tcp_request_size"
 _TCP_RESPONSE_SIZE = "_tcp_response_size"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES = "_connector_diagnostic_auth_header_names"
+_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES = "_connector_diagnostic_auth_query_param_names"
+_GENERIC_AUTH_HEADER_NAMES = frozenset(
+    (
+        "authorization",
+        "x-api-key",
+        "api-key",
+    )
+)
+_GENERIC_AUTH_QUERY_PARAM_NAMES = frozenset(
+    (
+        "access_token",
+        "api_key",
+        "apikey",
+        "app_key",
+        "auth",
+        "authorization",
+        "key",
+        "token",
+    )
+)
+_AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
+    (
+        "api-key",
+        "apikey",
+        "basic",
+        "bearer",
+        "digest",
+        "key",
+        "oauth",
+        "oauth2",
+        "token",
+    )
+)
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
@@ -383,6 +421,303 @@ def _is_browser_request(flow: http.HTTPFlow) -> bool:
     # This is only a browser-looking User-Agent heuristic. It is not trusted
     # browser provenance: any sandbox client can set this header.
     return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
+
+
+def _active_firewall_names(vm_info: dict) -> set[str]:
+    raw_firewalls = vm_info.get("firewalls")
+    if not isinstance(raw_firewalls, list):
+        return set()
+
+    names: set[str] = set()
+    for firewall in raw_firewalls:
+        if not isinstance(firewall, dict):
+            continue
+        name = firewall.get("name")
+        if isinstance(name, str) and name:
+            names.add(name)
+    return names
+
+
+def _record_connector_diagnostic_candidate(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+) -> None:
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = candidate.connector_type
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = candidate.reason
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = list(candidate.env_names)
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = candidate.base
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES] = candidate.auth_header_names
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES] = candidate.auth_query_param_names
+
+
+def _connector_diagnostic_candidate_from_flow(
+    flow: http.HTTPFlow,
+) -> builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None:
+    meta = flow.metadata
+    connector_type = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE)
+    reason = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_REASON)
+    base = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_BASE)
+    if not (
+        isinstance(connector_type, str)
+        and connector_type
+        and isinstance(reason, str)
+        and reason
+        and isinstance(base, str)
+        and base
+    ):
+        return None
+
+    env_names = _metadata_str_tuple(meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES))
+    auth_header_names = _metadata_str_tuple(meta.get(_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES))
+    auth_query_param_names = _metadata_str_tuple(
+        meta.get(_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES)
+    )
+    return builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
+        connector_type=connector_type,
+        reason=reason,
+        env_names=env_names,
+        base=base,
+        auth_header_names=auth_header_names,
+        auth_query_param_names=auth_query_param_names,
+    )
+
+
+def _metadata_str_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return ()
+        result.append(item)
+    return tuple(result)
+
+
+def _set_connector_diagnostic_failure_metadata(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_BASE] = candidate.base
+    flow.metadata[metadata_keys.FIREWALL_NAME] = candidate.connector_type
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = ""
+    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = ""
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "connector_not_configured_for_run"
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = candidate.connector_type
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = candidate.reason
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = list(candidate.env_names)
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = candidate.base
+
+
+def _connector_diagnostic_response_body(
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    *,
+    upstream_status: int,
+) -> bytes:
+    body = {
+        "error": "connector_not_configured_for_run",
+        "connector": candidate.connector_type,
+        "reason": candidate.reason,
+        "message": _connector_diagnostic_message(candidate),
+        "envNames": list(candidate.env_names),
+        "base": candidate.base,
+        "upstreamStatus": upstream_status,
+    }
+    return json.dumps(body, separators=(",", ":")).encode()
+
+
+def _connector_diagnostic_message(
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+) -> str:
+    if not candidate.env_names:
+        return (
+            f"{candidate.connector_type} is not configured for this run. "
+            "Credentials cannot be injected."
+        )
+    env_names = ", ".join(candidate.env_names)
+    verb = "is" if len(candidate.env_names) == 1 else "are"
+    return (
+        f"{candidate.connector_type} is not configured for this run. "
+        f"{env_names} {verb} unavailable, so credentials cannot be injected."
+    )
+
+
+def _request_has_connector_auth_material(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    original_url: str,
+) -> bool:
+    configured_headers = {name.lower() for name in candidate.auth_header_names}
+    auth_headers = configured_headers | _GENERIC_AUTH_HEADER_NAMES
+    for name in auth_headers:
+        if _request_header_has_auth_material(flow, name):
+            return True
+
+    configured_query_params = set(candidate.auth_query_param_names)
+    normalized_configured_query_params = {name.lower() for name in candidate.auth_query_param_names}
+    try:
+        parsed = urllib.parse.urlparse(original_url)
+    except ValueError:
+        return False
+    for name, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
+        normalized_name = name.lower()
+        is_auth_param = (
+            name in configured_query_params
+            or normalized_name in normalized_configured_query_params
+            or normalized_name in _GENERIC_AUTH_QUERY_PARAM_NAMES
+        )
+        if is_auth_param and _query_param_has_auth_material(value):
+            return True
+    return False
+
+
+def _request_header_has_auth_material(flow: http.HTTPFlow, name: str) -> bool:
+    return any(
+        _header_value_has_auth_material(name, value) for value in flow.request.headers.get_all(name)
+    )
+
+
+def _header_value_has_auth_material(name: str, value: str) -> bool:
+    stripped = value.strip()
+    if not stripped:
+        return False
+    if name.lower() not in ("authorization", "proxy-authorization"):
+        return True
+
+    return _scheme_auth_value_has_credential(stripped)
+
+
+def _scheme_auth_value_has_credential(stripped: str) -> bool:
+    parts = stripped.split(None, 1)
+    if len(parts) == 1:
+        return parts[0].lower() not in _AUTH_SCHEMES_REQUIRING_CREDENTIAL
+    return bool(parts[1].strip())
+
+
+def _query_param_has_auth_material(value: str) -> bool:
+    return bool(value.strip())
+
+
+def _replace_connector_diagnostic_response_content(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    *,
+    upstream_status: int,
+) -> None:
+    if flow.response is None:
+        return
+    flow.metadata.pop(metadata_keys.STREAM_BUFFER, None)
+    flow.metadata.pop(metadata_keys.STREAM_BUFFER_STATE, None)
+    for header in ("content-encoding", "transfer-encoding"):
+        if header in flow.response.headers:
+            del flow.response.headers[header]
+    flow.response.headers["Content-Type"] = "application/json"
+    flow.response.content = _connector_diagnostic_response_body(
+        candidate,
+        upstream_status=upstream_status,
+    )
+
+
+def _log_connector_diagnostic_proxy_entry(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+    upstream_status: int,
+) -> None:
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is None:
+        return
+    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+    log_proxy_entry(
+        flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
+        "warn",
+        f"{candidate.connector_type} is not configured for this run: {safe_url}",
+        type="connector_diagnostic",
+        connector=candidate.connector_type,
+        reason=candidate.reason,
+        upstream_status=upstream_status,
+        url=original_url,
+    )
+
+
+def _maybe_replace_connector_diagnostic_response(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+) -> None:
+    if flow.response is None:
+        return
+    if flow.response.status_code not in (
+        _HTTP_STATUS_UNAUTHORIZED,
+        _HTTP_STATUS_FORBIDDEN,
+    ):
+        return
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+        return
+
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is None:
+        return
+    upstream_status = flow.response.status_code
+    if _request_has_connector_auth_material(flow, candidate, original_url):
+        return
+
+    _set_connector_diagnostic_failure_metadata(flow, candidate)
+    _replace_connector_diagnostic_response_content(
+        flow,
+        candidate,
+        upstream_status=upstream_status,
+    )
+    _log_connector_diagnostic_proxy_entry(
+        flow,
+        original_url=original_url,
+        upstream_status=upstream_status,
+    )
+
+
+def _maybe_make_connector_diagnostic_error_response(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+) -> None:
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+        return
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is None:
+        return
+    if _request_has_connector_auth_material(flow, candidate, original_url):
+        return
+    _set_connector_diagnostic_failure_metadata(flow, candidate)
+    flow.response = http.Response.make(
+        _HTTP_STATUS_BAD_GATEWAY,
+        _connector_diagnostic_response_body(candidate, upstream_status=0),
+        {"Content-Type": "application/json"},
+    )
+    _log_connector_diagnostic_proxy_entry(
+        flow,
+        original_url=original_url,
+        upstream_status=0,
+    )
+
+
+def _should_buffer_connector_diagnostic_response(flow: http.HTTPFlow) -> bool:
+    if flow.response is None:
+        return False
+    if flow.response.status_code not in (
+        _HTTP_STATUS_UNAUTHORIZED,
+        _HTTP_STATUS_FORBIDDEN,
+    ):
+        return False
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+        return False
+
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is None:
+        return False
+    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(original_url, str):
+        return False
+    return not _request_has_connector_auth_material(flow, candidate, original_url)
 
 
 def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
@@ -786,7 +1121,17 @@ async def request(flow: http.HTTPFlow) -> None:
                     _release_tracked_usage_flow(flow)
                 return
 
-        # No firewall match — pass through directly
+        # No active firewall match — pass through directly. If the URL belongs
+        # to a built-in connector that is not active in this run, record only a
+        # diagnostic candidate. Response/error hooks decide whether a failed
+        # request should expose an agent-visible diagnostic body.
+        candidate = builtin_connector_diagnostics.find_candidate(
+            original_url,
+            flow.request.method,
+            active_firewall_names=_active_firewall_names(vm_info),
+        )
+        if candidate is not None:
+            _record_connector_diagnostic_candidate(flow, candidate)
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
@@ -872,6 +1217,8 @@ def _schedule_model_websocket_message_trim(flow: http.HTTPFlow) -> None:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
+    if _should_buffer_connector_diagnostic_response(flow):
+        return
     response_streaming.configure_response_stream(flow)
 
 
@@ -1020,6 +1367,8 @@ def response(flow: http.HTTPFlow) -> None:
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
+    _maybe_replace_connector_diagnostic_response(flow, original_url=original_url)
+
     request_size = len(flow.request.raw_content or b"")
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
@@ -1138,6 +1487,8 @@ def error(flow: http.HTTPFlow) -> None:
     latency_ms = _elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
+
+    _maybe_make_connector_diagnostic_error_response(flow, original_url=original_url)
 
     request_size = len(flow.request.raw_content or b"")
     error_msg = flow.error.msg if flow.error else "unknown error"

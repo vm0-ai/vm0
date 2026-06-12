@@ -12,10 +12,114 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
+from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
 class TestErrorHandler:
+    async def test_connector_candidate_error_gets_local_diagnostic_response(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        body = json.loads(flow.response.content)
+        assert body["error"] == "connector_not_configured_for_run"
+        assert body["connector"] == "fal"
+        assert body["label"] == "fal.ai"
+        assert body["envNames"] == ["FAL_TOKEN"]
+        assert body["base"] == "https://fal.run"
+        assert body["upstreamStatus"] == 0
+
+        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        assert entry["status"] == 0
+        assert entry["error"] == "connection reset by peer"
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+        assert entry["connector_diagnostic_type"] == "fal"
+        assert entry["connector_diagnostic_label"] == "fal.ai"
+        assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
+        assert entry["connector_diagnostic_base"] == "https://fal.run"
+
+        proxy_entries = [
+            json.loads(line) for line in (tmp_path / "proxy.jsonl").read_text().splitlines()
+        ]
+        assert proxy_entries[0]["type"] == "connector_diagnostic"
+        assert proxy_entries[0]["upstream_status"] == 0
+        assert proxy_entries[1]["type"] == "connection_error"
+
+    async def test_browser_connector_candidate_error_keeps_original_error(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                (
+                    "User-Agent",
+                    "Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+                ),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert flow.response is None
+        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        assert entry["status"] == 0
+        assert entry["browser_user_agent"] is True
+        assert entry["error"] == "connection reset by peer"
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
+    async def test_authenticated_connector_candidate_error_keeps_original_error(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert flow.response is None
+        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        assert entry["status"] == 0
+        assert entry["error"] == "connection reset by peer"
+        assert "connector_diagnostic_type" not in entry
+        assert "firewall_error" not in entry
+
     def test_cleans_up_start_time(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False)
         flow.metadata["vm_run_id"] = "run-abc-123"

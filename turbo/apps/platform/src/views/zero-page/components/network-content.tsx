@@ -325,6 +325,42 @@ function addField(
   }
 }
 
+function addConnectorDiagnosticFields(
+  out: [string, string][],
+  entry: NetworkLogEntry,
+): void {
+  addField(
+    out,
+    "Connector Diagnostic",
+    entry.connector_diagnostic_type,
+    formatValue(entry.connector_diagnostic_type),
+  );
+  addField(
+    out,
+    "Connector Label",
+    entry.connector_diagnostic_label,
+    formatValue(entry.connector_diagnostic_label),
+  );
+  addField(
+    out,
+    "Connector Reason",
+    entry.connector_diagnostic_reason,
+    formatValue(entry.connector_diagnostic_reason),
+  );
+  addField(
+    out,
+    "Connector Env Names",
+    entry.connector_diagnostic_env_names,
+    formatValue(entry.connector_diagnostic_env_names),
+  );
+  addField(
+    out,
+    "Connector Base URL",
+    entry.connector_diagnostic_base,
+    formatValue(entry.connector_diagnostic_base),
+  );
+}
+
 // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
 // Note: request_headers, request/response body fields are rendered
 // separately by CapturedBodySections below.
@@ -408,6 +444,7 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
     entry.firewall_error,
     formatValue(entry.firewall_error),
   );
+  addConnectorDiagnosticFields(out, entry);
   addField(
     out,
     "Resolved Secrets",

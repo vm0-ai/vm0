@@ -113,6 +113,34 @@ class TestAddFirewallMetadata:
             "firewall_error": "TOKEN_REFRESH_FAILED",
         }
 
+    def test_copies_valid_connector_diagnostic_metadata(self, real_flow):
+        flow = real_flow(with_response=False)
+        flow.metadata.update(
+            {
+                metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE: "fal",
+                metadata_keys.CONNECTOR_DIAGNOSTIC_LABEL: "fal.ai",
+                metadata_keys.CONNECTOR_DIAGNOSTIC_REASON: "not_configured_for_run",
+                metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES: ["FAL_TOKEN"],
+                metadata_keys.CONNECTOR_DIAGNOSTIC_BASE: "https://fal.run",
+            }
+        )
+        log_entry = {}
+
+        logging_utils.add_firewall_metadata(flow, log_entry)
+
+        assert log_entry == {
+            "firewall_base": "",
+            "firewall_name": "",
+            "firewall_permission": "",
+            "firewall_rule_match": "",
+            "firewall_billable": False,
+            "connector_diagnostic_type": "fal",
+            "connector_diagnostic_label": "fal.ai",
+            "connector_diagnostic_reason": "not_configured_for_run",
+            "connector_diagnostic_env_names": ["FAL_TOKEN"],
+            "connector_diagnostic_base": "https://fal.run",
+        }
+
     def test_defaults_missing_required_firewall_metadata(self, real_flow):
         flow = real_flow(with_response=False)
         log_entry = {}
@@ -187,6 +215,11 @@ class TestAddFirewallMetadata:
                 metadata_keys.AUTH_REFRESHED_SECRETS: [1],
                 metadata_keys.AUTH_CACHE_HIT: "false",
                 metadata_keys.AUTH_URL_REWRITE: 1,
+                metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE: 1,
+                metadata_keys.CONNECTOR_DIAGNOSTIC_LABEL: ["fal.ai"],
+                metadata_keys.CONNECTOR_DIAGNOSTIC_REASON: None,
+                metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES: ["FAL_TOKEN", None],
+                metadata_keys.CONNECTOR_DIAGNOSTIC_BASE: False,
             }
         )
         log_entry = {}

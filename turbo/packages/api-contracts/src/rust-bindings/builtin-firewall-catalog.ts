@@ -1,5 +1,8 @@
 import type { Firewall, FirewallApi } from "@vm0/connectors/firewall-types";
-import { getAllConnectorFirewalls } from "@vm0/connectors/firewalls";
+import {
+  getAllConnectorFirewalls,
+  getBuiltinConnectorDisplayName,
+} from "@vm0/connectors/firewalls";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "../contracts/model-providers";
 
 type JsonValue =
@@ -10,8 +13,12 @@ type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
+type RuntimeFirewall = Firewall & {
+  readonly label?: string;
+};
+
 interface BuiltinFirewallCatalog {
-  readonly firewalls: Record<string, Firewall>;
+  readonly firewalls: Record<string, RuntimeFirewall>;
 }
 
 function runtimeApi(api: FirewallApi): FirewallApi {
@@ -22,7 +29,7 @@ function runtimeApi(api: FirewallApi): FirewallApi {
   };
 }
 
-function runtimeFirewall(firewall: Firewall): Firewall {
+function runtimeFirewall(firewall: Firewall): RuntimeFirewall {
   return {
     name: firewall.name,
     apis: firewall.apis.map(runtimeApi),
@@ -31,8 +38,14 @@ function runtimeFirewall(firewall: Firewall): Firewall {
 
 export function buildBuiltinFirewallCatalog(): BuiltinFirewallCatalog {
   const connectorFirewalls = Object.entries(getAllConnectorFirewalls()).map(
-    ([, firewall]) => {
-      return runtimeFirewall(firewall);
+    ([type, firewall]) => {
+      const connectorType = type as Parameters<
+        typeof getBuiltinConnectorDisplayName
+      >[0];
+      return {
+        ...runtimeFirewall(firewall),
+        label: getBuiltinConnectorDisplayName(connectorType),
+      };
     },
   );
   const modelProviderFirewalls = Object.values(
@@ -41,7 +54,7 @@ export function buildBuiltinFirewallCatalog(): BuiltinFirewallCatalog {
     return runtimeFirewall(firewall);
   });
 
-  const firewalls: Record<string, Firewall> = {};
+  const firewalls: Record<string, RuntimeFirewall> = {};
   for (const firewall of [...connectorFirewalls, ...modelProviderFirewalls]) {
     if (firewall.name in firewalls) {
       throw new Error(

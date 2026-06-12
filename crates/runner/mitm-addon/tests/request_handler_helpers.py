@@ -49,6 +49,24 @@ def _single_firewall_vm(
     return vm_info
 
 
+def _vm_without_firewalls(
+    tmp_path: Path,
+    *,
+    run_id: str = "run-conn-1",
+    sandbox_marker: str = "tok-conn",
+    vm_fields: dict[str, object] | None = None,
+) -> dict[str, object]:
+    vm_info: dict[str, object] = {
+        "runId": run_id,
+        "sandboxToken": sandbox_marker,
+        "networkLogPath": str(tmp_path / "net.jsonl"),
+        "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+    }
+    if vm_fields is not None:
+        vm_info.update(vm_fields)
+    return vm_info
+
+
 def _write_github_firewall_registry(
     tmp_path: Path,
     *,

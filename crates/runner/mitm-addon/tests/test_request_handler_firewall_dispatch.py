@@ -12,6 +12,7 @@ import usage
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import (
     _single_firewall_vm,
+    _vm_without_firewalls,
     _write_github_firewall_registry,
     _write_registry,
 )
@@ -43,6 +44,62 @@ async def test_firewall_match_calls_handler(
     assert flow.metadata["firewall_base"] == "https://api.github.com"
     assert flow.metadata["firewall_name"] == "github"
     assert flow.metadata["firewall_permission"] == "full-access"
+
+
+async def test_inactive_builtin_connector_url_records_diagnostic_candidate(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] == "fal"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_LABEL] == "fal.ai"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == ("not_configured_for_run")
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["FAL_TOKEN"]
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://fal.run"
+
+
+async def test_active_builtin_connector_url_uses_firewall_path(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info={
+            **_vm_without_firewalls(tmp_path),
+            "encryptedSecrets": "iv:tag:data",
+            "firewalls": [{"kind": "builtin", "name": "fal"}],
+        },
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="POST",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://fal.run"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "fal"
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
 
 
 async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ctx, headers):
