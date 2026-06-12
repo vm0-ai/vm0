@@ -213,12 +213,49 @@ impl StatusTracker {
         revision: u64,
         idle_vms: Vec<IdleVm>,
     ) -> bool {
+        self.add_run_with_idle_info_at_revision(
+            run_id,
+            sandbox_id,
+            ActiveRunPhase::Running,
+            revision,
+            idle_vms,
+        )
+        .await
+    }
+
+    /// Register a preparing active run and replace the idle VM list in the
+    /// same status write if the idle snapshot is current.
+    pub async fn add_preparing_run_with_idle_info_at_revision(
+        &self,
+        run_id: RunId,
+        sandbox_id: SandboxId,
+        revision: u64,
+        idle_vms: Vec<IdleVm>,
+    ) -> bool {
+        self.add_run_with_idle_info_at_revision(
+            run_id,
+            sandbox_id,
+            ActiveRunPhase::Preparing,
+            revision,
+            idle_vms,
+        )
+        .await
+    }
+
+    async fn add_run_with_idle_info_at_revision(
+        &self,
+        run_id: RunId,
+        sandbox_id: SandboxId,
+        phase: ActiveRunPhase,
+        revision: u64,
+        idle_vms: Vec<IdleVm>,
+    ) -> bool {
         let mut state = self.state.lock().await;
         state.active_runs.insert(
             run_id,
             ActiveRunState {
                 sandbox_id,
-                phase: ActiveRunPhase::Running,
+                phase,
                 phase_started_at: Utc::now(),
             },
         );
@@ -745,6 +782,42 @@ mod tests {
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
         assert_eq!(vms[0]["session_id"], "fresh");
+        assert_eq!(vms[0]["sandbox_id"], idle_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn add_preparing_run_with_idle_info_revision_records_preparing_phase() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+        let idle_id = SandboxId::new_v4();
+        let run_id = RunId::new_v4();
+        let active_id = SandboxId::new_v4();
+
+        tracker.write_initial().await;
+        assert!(
+            tracker
+                .add_preparing_run_with_idle_info_at_revision(
+                    run_id,
+                    active_id,
+                    1,
+                    vec![IdleVm {
+                        session_id: "fresh-create-after-reuse-miss".into(),
+                        sandbox_id: idle_id,
+                    }],
+                )
+                .await
+        );
+
+        let status = read_status(&path);
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["run_id"], run_id.to_string());
+        assert_eq!(runs[0]["sandbox_id"], active_id.to_string());
+        assert_eq!(runs[0]["phase"], "preparing");
+        let vms = status["idle_vms"].as_array().unwrap();
+        assert_eq!(vms.len(), 1);
+        assert_eq!(vms[0]["session_id"], "fresh-create-after-reuse-miss");
         assert_eq!(vms[0]["sandbox_id"], idle_id.to_string());
     }
 

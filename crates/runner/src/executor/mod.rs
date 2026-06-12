@@ -4,11 +4,11 @@
 //! budget reservation. The executor owns the sandbox-side run flow, while the
 //! caller owns provider completion and the final sandbox lifecycle decision.
 //!
-//! There are two public entry points:
-//! - `execute_job` starts a fresh Firecracker VM.
-//! - `execute_job_reuse` runs in a kept-alive idle VM.
+//! The fresh path starts a new Firecracker VM and can notify the caller once
+//! the VM process is expected to exist. The reuse path runs in a kept-alive
+//! idle VM.
 //!
-//! Both entry points return `ExecuteOutcome` plus a pending `JobTelemetry`
+//! Both paths return `ExecuteOutcome` plus a pending `JobTelemetry`
 //! buffer. When `ExecuteOutcome::sandbox` is `Some`, the sandbox is still alive
 //! and the caller decides whether to park it for reuse or destroy it. The
 //! caller also flushes telemetry after firing `provider.complete`, so the
