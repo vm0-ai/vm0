@@ -109,7 +109,8 @@ export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   whimsical: "quirky, imaginative, fairy-tale whimsy",
   symmetrical_pastel_quirky:
     "deadpan symmetrical framing with pastel palette and flat graphic staging",
-  imax_epic_cinematic: "large-format epic with sweeping aerial scope and vast environmental scale",
+  imax_epic_cinematic:
+    "large-format epic with sweeping aerial scope and vast environmental scale",
   indie_naturalistic:
     "indie naturalistic — raw handheld authenticity, available light",
   film_noir: "classic film noir — shadow, silhouette, moral ambiguity",
