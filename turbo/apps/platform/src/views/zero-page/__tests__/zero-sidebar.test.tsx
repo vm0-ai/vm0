@@ -19,7 +19,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
@@ -30,7 +30,7 @@ const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
 const SUPPORT_AGENT_ID = "c0000000-0000-4000-a000-000000000003";
 const EXISTING_THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const INCIDENT_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
-const SCHEDULED_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
+const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 
 type SidebarThread = Parameters<typeof splitChatThreadListResponse>[0][number];
@@ -381,7 +381,7 @@ describe("zero sidebar", () => {
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
       createThread(INCIDENT_THREAD_ID, "Incident notes", { isRead: false }),
-      createThread(SCHEDULED_THREAD_ID, "Running analysis", { running: true }),
+      createThread(AUTOMATION_THREAD_ID, "Running analysis", { running: true }),
       createThread(ARCHIVED_THREAD_ID, "Draft brief", { hasDraft: true }),
     ]);
 
@@ -467,29 +467,29 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("loads more sidebar chats and confirms deleting a scheduled chat", async () => {
+  it("loads more sidebar chats and confirms deleting a chat with automations", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory(
       [
         createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(SCHEDULED_THREAD_ID, "Scheduled launch", {
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch", {
           scheduleCount: 2,
         }),
       ],
       [createThread(ARCHIVED_THREAD_ID, "Archived context")],
     );
-    context.mocks.data.schedules([
-      createMockScheduleResponse({
+    context.mocks.data.automations([
+      createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000401",
         name: "launch-cadence",
-        chatThreadId: SCHEDULED_THREAD_ID,
+        chatThreadId: AUTOMATION_THREAD_ID,
         description: "Launch cadence",
         prompt: "Post the launch cadence",
       }),
-      createMockScheduleResponse({
+      createMockAutomationView({
         id: "f0000001-0000-4000-a000-000000000402",
         name: "release-risk-review",
-        chatThreadId: SCHEDULED_THREAD_ID,
+        chatThreadId: AUTOMATION_THREAD_ID,
         description: "Release risk review",
         prompt: "Review release risks",
       }),

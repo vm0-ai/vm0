@@ -25,13 +25,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import { WEEKDAY_LABELS, type ScheduleEntry } from "./zero-schedule-card";
+import { WEEKDAY_LABELS, type AutomationEntry } from "./zero-automation-card";
 import {
-  ScheduleFormDialog,
-  type ScheduleFormValues,
-} from "./schedule-dialog.tsx";
-import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
-import { ScheduleListView } from "./schedule-list-view.tsx";
+  AutomationFormDialog,
+  type AutomationFormValues,
+} from "./automation-dialog.tsx";
+import { AutomationCalendarView } from "./automation-calendar-view.tsx";
+import { AutomationListView } from "./automation-list-view.tsx";
 import { agents$ } from "../../signals/agent.ts";
 import {
   COMMON_TIMEZONES,
@@ -44,33 +44,33 @@ import {
   onDomEventFn,
 } from "../../signals/utils.ts";
 import {
-  allOrgScheduleEntries$,
-  allOrgSchedulesLoaded$,
-  deleteOrgSchedule$,
-  runScheduleNow$,
-  type OrgScheduleEntry,
-} from "../../signals/zero-page/zero-schedule.ts";
+  allOrgAutomationEntries$,
+  allOrgAutomationsLoaded$,
+  deleteOrgAutomation$,
+  runAutomationNow$,
+  type OrgAutomationEntry,
+} from "../../signals/zero-page/zero-automations.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   createDialogOpen$,
-  openCreateScheduleDialog$,
-  closeCreateScheduleDialog$,
-  creatingOrgSchedule$,
+  openCreateAutomationDialog$,
+  closeCreateAutomationDialog$,
+  creatingOrgAutomation$,
   pageTogglingIds$,
-  togglePageScheduleEnabled$,
+  togglePageAutomationEnabled$,
   pageRunningIds$,
   setPageRunningIds$,
   pagePendingDelete$,
   setPagePendingDelete$,
-} from "../../signals/schedule-page/schedule-page-ui.ts";
-import { createOrgScheduleFromForm$ } from "../../signals/schedule-page/schedule-save-flow.ts";
+} from "../../signals/automation-page/automation-page-ui.ts";
+import { createOrgAutomationFromForm$ } from "../../signals/automation-page/automation-save-flow.ts";
 import {
-  scheduleListTab$,
-  setScheduleListTab$,
-} from "../../signals/schedule-page/schedule-list-tab.ts";
+  automationListTab$,
+  setAutomationListTab$,
+} from "../../signals/automation-page/automation-list-tab.ts";
 
-export type CombinedEntry = ScheduleEntry & {
+export type CombinedEntry = AutomationEntry & {
   agentLabel: string;
   agentId: string;
   timezone: string;
@@ -79,8 +79,8 @@ export type CombinedEntry = ScheduleEntry & {
   chatThreadId: string;
 };
 
-export function buildCombinedSchedule(
-  entries: OrgScheduleEntry[],
+export function buildCombinedAutomations(
+  entries: OrgAutomationEntry[],
 ): CombinedEntry[] {
   return entries.map((e) => {
     return {
@@ -105,7 +105,7 @@ export function buildCombinedSchedule(
 // Edit fields
 // ---------------------------------------------------------------------------
 
-const SCHEDULE_FREQUENCY_OPTIONS = [
+const AUTOMATION_FREQUENCY_OPTIONS = [
   { value: "now", label: "Now" },
   { value: "once", label: "Once" },
   { value: "every_weekday", label: "Every weekday" },
@@ -115,7 +115,7 @@ const SCHEDULE_FREQUENCY_OPTIONS = [
   { value: "every_n_minutes", label: "Loop" },
 ] as const;
 
-const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
+const AUTOMATION_LOOP_MINUTES = [5, 15, 30, 60] as const;
 
 const HOUR_OPTIONS: readonly number[] = Array.from({ length: 24 }, (_, i) => {
   return i;
@@ -144,7 +144,7 @@ function isCronFreq(f: string): boolean {
   );
 }
 
-export function ScheduleEditFields({
+export function AutomationEditFields({
   freq,
   setFreq,
   loopMinutes,
@@ -175,17 +175,17 @@ export function ScheduleEditFields({
     <>
       <div className="flex flex-col gap-2">
         <label
-          htmlFor="schedule-dialog-freq"
+          htmlFor="automation-dialog-freq"
           className="text-sm font-medium text-foreground"
         >
           Time
         </label>
         <Select value={freq} onValueChange={setFreq}>
-          <SelectTrigger id="schedule-dialog-freq" className="h-9 w-full">
+          <SelectTrigger id="automation-dialog-freq" className="h-9 w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => {
+            {AUTOMATION_FREQUENCY_OPTIONS.map((opt) => {
               return (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
@@ -198,7 +198,7 @@ export function ScheduleEditFields({
       {freq === "every_n_minutes" && (
         <div className="flex flex-col gap-2">
           <label
-            htmlFor="schedule-dialog-loop"
+            htmlFor="automation-dialog-loop"
             className="text-sm font-medium text-foreground"
           >
             Every
@@ -209,11 +209,11 @@ export function ScheduleEditFields({
               return setLoopMinutes(Number(v));
             }}
           >
-            <SelectTrigger id="schedule-dialog-loop" className="h-9 w-full">
+            <SelectTrigger id="automation-dialog-loop" className="h-9 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SCHEDULE_LOOP_MINUTES.map((m) => {
+              {AUTOMATION_LOOP_MINUTES.map((m) => {
                 return (
                   <SelectItem key={m} value={String(m)}>
                     {m} minutes
@@ -227,13 +227,13 @@ export function ScheduleEditFields({
       {freq === "once" && (
         <div className="flex flex-col gap-2">
           <label
-            htmlFor="schedule-dialog-date"
+            htmlFor="automation-dialog-date"
             className="text-sm font-medium text-foreground"
           >
             Date
           </label>
           <Input
-            id="schedule-dialog-date"
+            id="automation-dialog-date"
             type="date"
             value={date}
             onChange={(e) => {
@@ -296,13 +296,13 @@ export function ScheduleEditFields({
       {isCronFreq(freq) && (
         <div className="flex flex-col gap-2">
           <label
-            htmlFor="schedule-dialog-tz"
+            htmlFor="automation-dialog-tz"
             className="text-sm font-medium text-foreground"
           >
             Timezone
           </label>
           <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger id="schedule-dialog-tz" className="h-9 w-full">
+            <SelectTrigger id="automation-dialog-tz" className="h-9 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -328,11 +328,11 @@ export function ScheduleEditFields({
 const SKELETON_LIST_KEYS = ["s-0", "s-1", "s-2", "s-3", "s-4"] as const;
 const SKELETON_ROW_KEYS = ["r-0", "r-1", "r-2", "r-3"] as const;
 
-function ScheduleListSkeleton() {
+function AutomationListSkeleton() {
   return (
     <div
       className="w-full overflow-x-auto"
-      data-testid="schedule-list-skeleton"
+      data-testid="automation-list-skeleton"
     >
       <table className="w-full text-sm border-collapse [&_tr>:first-child]:pl-5 [&_tr>:last-child]:pr-5">
         <thead>
@@ -398,11 +398,11 @@ function ScheduleListSkeleton() {
   );
 }
 
-function ScheduleCalendarSkeleton() {
+function AutomationCalendarSkeleton() {
   return (
     <section
       className="flex flex-col gap-2 p-5"
-      data-testid="schedule-calendar-skeleton"
+      data-testid="automation-calendar-skeleton"
     >
       <Skeleton className="h-4 w-20" />
       <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
@@ -446,11 +446,12 @@ function ScheduleCalendarSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
-// Leaf component: owns the delete-schedule mutation state and dialog
+// Leaf component: owns the delete-automation mutation state and dialog
 // ---------------------------------------------------------------------------
 
-function DeleteScheduleDialogContainer() {
-  const [deleteLoadable, deleteSchedule] = useLoadableSet(deleteOrgSchedule$);
+function DeleteAutomationDialogContainer() {
+  const [deleteLoadable, deleteAutomation] =
+    useLoadableSet(deleteOrgAutomation$);
   const deleting = deleteLoadable.state === "loading";
   const pendingDelete = useGet(pagePendingDelete$);
   const setPendingDelete = useSet(setPagePendingDelete$);
@@ -464,7 +465,7 @@ function DeleteScheduleDialogContainer() {
     const name = entry.name;
     detach(
       (async () => {
-        await deleteSchedule({ name, agentId: entry.agentId }, pageSignal);
+        await deleteAutomation({ name, agentId: entry.agentId }, pageSignal);
         setPendingDelete(null);
       })(),
       Reason.DomCallback,
@@ -524,7 +525,7 @@ const AUTOMATIONS_LABELS = {
 // Main page
 // ---------------------------------------------------------------------------
 
-export function ZeroSchedulePage() {
+export function ZeroAutomationsPage() {
   const labels = AUTOMATIONS_LABELS;
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const defaultComposeId =
@@ -532,47 +533,47 @@ export function ZeroSchedulePage() {
       ? statusLoadable.data.defaultAgentId
       : null;
 
-  const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
-  const entries: OrgScheduleEntry[] =
+  const entriesLoadable = useLastLoadable(allOrgAutomationEntries$);
+  const entries: OrgAutomationEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
   const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const loaded = useGet(allOrgSchedulesLoaded$);
+  const loaded = useGet(allOrgAutomationsLoaded$);
   const isInitialLoading = !loaded;
 
-  const runScheduleNow = useSet(runScheduleNow$);
+  const runAutomationNow = useSet(runAutomationNow$);
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
 
-  const activeListTab = useGet(scheduleListTab$);
-  const setActiveListTab = useSet(setScheduleListTab$);
+  const activeListTab = useGet(automationListTab$);
+  const setActiveListTab = useSet(setAutomationListTab$);
   const createOpen = useGet(createDialogOpen$);
-  const openCreateDialog = useSet(openCreateScheduleDialog$);
-  const closeCreateDialog = useSet(closeCreateScheduleDialog$);
+  const openCreateDialog = useSet(openCreateAutomationDialog$);
+  const closeCreateDialog = useSet(closeCreateAutomationDialog$);
   const togglingIds = useGet(pageTogglingIds$);
-  const togglePageScheduleEnabled = useSet(togglePageScheduleEnabled$);
+  const togglePageAutomationEnabled = useSet(togglePageAutomationEnabled$);
   const runningIds = useGet(pageRunningIds$);
   const setRunningIds = useSet(setPageRunningIds$);
   const setPendingDelete = useSet(setPagePendingDelete$);
 
-  const saving = useGet(creatingOrgSchedule$);
-  const createSchedule = useSet(createOrgScheduleFromForm$);
-  const onCreateSave = onDomEventFn((values: ScheduleFormValues) => {
-    return createSchedule(values, pageSignal);
+  const saving = useGet(creatingOrgAutomation$);
+  const createAutomation = useSet(createOrgAutomationFromForm$);
+  const onCreateSave = onDomEventFn((values: AutomationFormValues) => {
+    return createAutomation(values, pageSignal);
   });
 
-  const combinedSchedule = buildCombinedSchedule(entries);
+  const combinedAutomations = buildCombinedAutomations(entries);
 
   const agentOrder = [
     ...new Set(
-      combinedSchedule.map((e) => {
+      combinedAutomations.map((e) => {
         return e.agentLabel;
       }),
     ),
   ] as const;
 
-  const openScheduleDetail = (entry: CombinedEntry) => {
+  const openAutomationDetail = (entry: CombinedEntry) => {
     navigate("/automations/:scheduleId", {
       pathParams: { scheduleId: entry.id },
     });
@@ -584,7 +585,7 @@ export function ZeroSchedulePage() {
     }
     const name = entry.name;
     detach(
-      togglePageScheduleEnabled(
+      togglePageAutomationEnabled(
         { id: entry.id, name, enabled, agentId: entry.agentId },
         pageSignal,
       ),
@@ -597,7 +598,7 @@ export function ZeroSchedulePage() {
     setRunningIds((prev) => {
       return new Set([...prev, id]);
     });
-    await bestEffort(runScheduleNow(entry.id, pageSignal));
+    await bestEffort(runAutomationNow(entry.id, pageSignal));
     setRunningIds((prev) => {
       const next = new Set(prev);
       next.delete(id);
@@ -669,19 +670,19 @@ export function ZeroSchedulePage() {
           <div className="zero-card overflow-hidden pb-3">
             {isInitialLoading ? (
               activeListTab === "calendar" ? (
-                <ScheduleCalendarSkeleton />
+                <AutomationCalendarSkeleton />
               ) : (
-                <ScheduleListSkeleton />
+                <AutomationListSkeleton />
               )
             ) : activeListTab === "list" ? (
-              <ScheduleListView
-                entries={combinedSchedule}
+              <AutomationListView
+                entries={combinedAutomations}
                 togglingIds={togglingIds}
                 runningIds={runningIds}
                 getAgentLabel={(e) => {
                   return e.agentLabel;
                 }}
-                onEdit={openScheduleDetail}
+                onEdit={openAutomationDetail}
                 onToggle={(entry, enabled) => {
                   handleToggle(entry, enabled);
                 }}
@@ -695,23 +696,23 @@ export function ZeroSchedulePage() {
                 onRunNow={(entry) => {
                   handleRunNow(entry);
                 }}
-                onOpenDetails={openScheduleDetail}
+                onOpenDetails={openAutomationDetail}
               />
             ) : (
-              <ScheduleCalendarView
-                entries={combinedSchedule}
+              <AutomationCalendarView
+                entries={combinedAutomations}
                 agentOrder={agentOrder}
                 getAgentLabel={(e) => {
                   return e.agentLabel;
                 }}
-                onEdit={openScheduleDetail}
+                onEdit={openAutomationDetail}
               />
             )}
           </div>
         </div>
       </main>
 
-      <ScheduleFormDialog
+      <AutomationFormDialog
         open={createOpen}
         onClose={() => {
           return closeCreateDialog();
@@ -724,7 +725,7 @@ export function ZeroSchedulePage() {
           agentId: defaultComposeId ?? agents[0]?.id ?? "",
         }}
       />
-      <DeleteScheduleDialogContainer />
+      <DeleteAutomationDialogContainer />
     </div>
   );
 }

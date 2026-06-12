@@ -40,20 +40,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { ZeroScheduleTab } from "../zero-page/zero-schedule-tab.tsx";
+import { ZeroAutomationTab } from "../zero-page/zero-automation-tab.tsx";
 import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
 
 import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
-import type { ScheduleEntry } from "../zero-page/zero-schedule-card.tsx";
+import type { AutomationEntry } from "../zero-page/zero-automation-card.tsx";
 import {
   agentDetail$,
   agentInstructions$,
-  agentScheduleEntries$,
-  saveAgentSchedule$,
-  deleteAgentSchedule$,
-  toggleAgentScheduleEnabled$,
+  agentAutomationEntries$,
+  saveAgentAutomation$,
+  deleteAgentAutomation$,
+  toggleAgentAutomationEnabled$,
   agentEditedContent$,
   agentInstructionsDirty$,
   setAgentEditedContent$,
@@ -68,7 +68,7 @@ import {
   agentActiveTab$,
   setAgentActiveTab$,
 } from "../../signals/zero-page/zero-job-detail.ts";
-import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
+import { runAutomationNow$ } from "../../signals/zero-page/zero-automations.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -273,7 +273,7 @@ function resolveVisibleTab(
   if (
     hideProfileAndInstructions &&
     rawTab !== "authorization" &&
-    rawTab !== "schedule"
+    rawTab !== "automations"
   ) {
     return "authorization";
   }
@@ -303,7 +303,7 @@ function AgentTabNav({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="authorization">Authorization</SelectItem>
-            <SelectItem value="schedule">Scheduled</SelectItem>
+            <SelectItem value="automations">Automations</SelectItem>
             {showProfileAndInstructions && (
               <SelectItem value="profile">Profile</SelectItem>
             )}
@@ -319,9 +319,9 @@ function AgentTabNav({
           <IconShield size={14} stroke={1.5} />
           Authorization
         </TabsTrigger>
-        <TabsTrigger value="schedule" className={TAB_TRIGGER_CLASS}>
+        <TabsTrigger value="automations" className={TAB_TRIGGER_CLASS}>
           <IconCalendar size={14} stroke={1.5} />
-          Scheduled
+          Automations
         </TabsTrigger>
         {showProfileAndInstructions && (
           <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
@@ -1149,37 +1149,37 @@ function JobPermissionsTab({
   );
 }
 
-function JobScheduleTab({ displayName }: { displayName: string }) {
-  const scheduleLoadable = useLoadable(agentScheduleEntries$);
-  const entries = useLastResolved(agentScheduleEntries$) ?? [];
-  const loading = scheduleLoadable.state === "loading";
-  const scheduleError = loadableErrorMessage(scheduleLoadable);
-  const saveScheduleTracked = useSet(saveAgentSchedule$);
-  const deleteSchedule = useSet(deleteAgentSchedule$);
-  const toggleEnabled = useSet(toggleAgentScheduleEnabled$);
-  const runScheduleNow = useSet(runScheduleNow$);
+function JobAutomationsTab({ displayName }: { displayName: string }) {
+  const automationLoadable = useLoadable(agentAutomationEntries$);
+  const entries = useLastResolved(agentAutomationEntries$) ?? [];
+  const loading = automationLoadable.state === "loading";
+  const automationError = loadableErrorMessage(automationLoadable);
+  const saveAutomationTracked = useSet(saveAgentAutomation$);
+  const deleteAutomation = useSet(deleteAgentAutomation$);
+  const toggleEnabled = useSet(toggleAgentAutomationEnabled$);
+  const runAutomationNow = useSet(runAutomationNow$);
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
-  const handleRunNow = async (entry: ScheduleEntry) => {
-    await runScheduleNow(entry.id, pageSignal);
+  const handleRunNow = async (entry: AutomationEntry) => {
+    await runAutomationNow(entry.id, pageSignal);
   };
 
-  const handleOpenDetails = (entry: ScheduleEntry) => {
+  const handleOpenDetails = (entry: AutomationEntry) => {
     nav("/automations/:scheduleId", { pathParams: { scheduleId: entry.id } });
   };
 
   return (
-    <ZeroScheduleTab
+    <ZeroAutomationTab
       displayName={displayName}
       entries={entries}
       loading={loading}
-      scheduleError={scheduleError}
+      automationError={automationError}
       onSave={(params) => {
-        return saveScheduleTracked(params, pageSignal);
+        return saveAutomationTracked(params, pageSignal);
       }}
       onDelete={(name) => {
-        return deleteSchedule(name, pageSignal);
+        return deleteAutomation(name, pageSignal);
       }}
       onToggleEnabled={(params) => {
         return toggleEnabled(params, pageSignal);
@@ -1357,8 +1357,8 @@ function AgentTabContent({
     case "authorization": {
       return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
     }
-    case "schedule": {
-      return <JobScheduleTab displayName={displayName} />;
+    case "automations": {
+      return <JobAutomationsTab displayName={displayName} />;
     }
     case "profile": {
       return (

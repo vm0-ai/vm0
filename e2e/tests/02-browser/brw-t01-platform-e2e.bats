@@ -6,7 +6,7 @@
 #   1. Sign up a new test account via Clerk
 #   2. Sign out, then sign in with the same account
 #
-# Tests 3-11 (token sign-in, onboarding, chat, team, schedule) are covered
+# Tests 3-11 (token sign-in, onboarding, chat, team, automation) are covered
 # by the Playwright suite and have been removed from this file.
 #
 # Required env vars:

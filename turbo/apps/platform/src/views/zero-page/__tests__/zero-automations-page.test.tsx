@@ -14,7 +14,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -79,13 +79,13 @@ function selectOptionByLabel(
   click(screen.getByRole("option", { name: option }));
 }
 
-function mockSchedulePageStory(): void {
+function mockAutomationsPageStory(): void {
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
     createAgent(researchAgentId, "Research Agent"),
   ]);
-  context.mocks.data.schedules([
-    createMockScheduleResponse({
+  context.mocks.data.automations([
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000301",
       agentId: zeroAgentId,
       displayName: "Zero",
@@ -96,7 +96,7 @@ function mockSchedulePageStory(): void {
       description: "Morning brief",
       enabled: true,
     }),
-    createMockScheduleResponse({
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000302",
       agentId: researchAgentId,
       displayName: "Research Agent",
@@ -109,7 +109,7 @@ function mockSchedulePageStory(): void {
       description: "Office AC",
       enabled: true,
     }),
-    createMockScheduleResponse({
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000303",
       agentId: zeroAgentId,
       displayName: "Zero",
@@ -120,7 +120,7 @@ function mockSchedulePageStory(): void {
       description: "Billing audit",
       enabled: true,
     }),
-    createMockScheduleResponse({
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000304",
       agentId: researchAgentId,
       displayName: "Research Agent",
@@ -136,18 +136,18 @@ function mockSchedulePageStory(): void {
   ]);
 }
 
-function mockScheduleCreateStory(): void {
+function mockAutomationCreateStory(): void {
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
     createAgent(researchAgentId, "Research Agent"),
   ]);
-  context.mocks.data.schedules([]);
+  context.mocks.data.automations([]);
 }
 
-function mockScheduleListEdgeStory(): void {
+function mockAutomationListEdgeStory(): void {
   context.mocks.data.team([createAgent(zeroAgentId, "Zero")]);
-  context.mocks.data.schedules([
-    createMockScheduleResponse({
+  context.mocks.data.automations([
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000305",
       agentId: zeroAgentId,
       displayName: "Zero",
@@ -161,7 +161,7 @@ function mockScheduleListEdgeStory(): void {
   ]);
 }
 
-async function openSchedulePage(): Promise<void> {
+async function openAutomationsPage(): Promise<void> {
   detachedSetupPage({ context, path: "/automations" });
 
   await waitFor(() => {
@@ -172,8 +172,8 @@ async function openSchedulePage(): Promise<void> {
   });
 }
 
-async function openScheduleList(): Promise<void> {
-  await openSchedulePage();
+async function openAutomationList(): Promise<void> {
+  await openAutomationsPage();
   click(tabByText("List"));
 
   await waitFor(() => {
@@ -202,20 +202,20 @@ async function openAutomationsList(): Promise<void> {
 }
 
 async function openCreateDialog(): Promise<HTMLElement> {
-  mockScheduleCreateStory();
+  mockAutomationCreateStory();
 
-  await openSchedulePage();
+  await openAutomationsPage();
 
   click(buttonByText("Add automation"));
 
   return await screen.findByRole("dialog");
 }
 
-describe("zero schedule page", () => {
+describe("zero automations page", () => {
   it("shows scheduled work in the calendar", async () => {
-    mockSchedulePageStory();
+    mockAutomationsPageStory();
 
-    await openSchedulePage();
+    await openAutomationsPage();
 
     expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
@@ -353,10 +353,10 @@ describe("zero schedule page", () => {
     });
   });
 
-  it("creates a schedule and opens the new detail page", async () => {
-    mockScheduleCreateStory();
+  it("creates an automation and opens the new detail page", async () => {
+    mockAutomationCreateStory();
 
-    await openSchedulePage();
+    await openAutomationsPage();
 
     click(buttonByText("Add automation"));
 
@@ -377,9 +377,9 @@ describe("zero schedule page", () => {
   });
 
   it("shows scheduled work in the list", async () => {
-    mockSchedulePageStory();
+    mockAutomationsPageStory();
 
-    await openScheduleList();
+    await openAutomationList();
 
     expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
@@ -399,22 +399,22 @@ describe("zero schedule page", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens create scheduling from the empty list", async () => {
-    mockScheduleCreateStory();
+  it("opens automation creation from the empty list", async () => {
+    mockAutomationCreateStory();
 
-    await openSchedulePage();
+    await openAutomationsPage();
     click(tabByText("List"));
 
     await waitFor(() => {
       expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
       expect(
         screen.getByText(
-          "Set up a schedule and your agents will handle the rest.",
+          "Set up an automation and your agents will handle the rest.",
         ),
       ).toBeInTheDocument();
     });
 
-    const addScheduleButtons = queryAllByRoleFast("button").filter(
+    const addAutomationButtons = queryAllByRoleFast("button").filter(
       (candidate) => {
         return (
           candidate.textContent?.replace(/\s+/g, " ").trim() ===
@@ -422,27 +422,27 @@ describe("zero schedule page", () => {
         );
       },
     );
-    click(addScheduleButtons[addScheduleButtons.length - 1]!);
+    click(addAutomationButtons[addAutomationButtons.length - 1]!);
 
     const createDialog = await screen.findByRole("dialog");
     expect(within(createDialog).getByText("Agent")).toBeInTheDocument();
     expect(within(createDialog).getByText("Prompt")).toBeInTheDocument();
   });
 
-  it("keeps the list loading state visible until schedules resolve", async () => {
+  it("keeps the list loading state visible until automations resolve", async () => {
     context.mocks.data.team([
       createAgent(zeroAgentId, "Zero"),
       createAgent(researchAgentId, "Research Agent"),
     ]);
 
-    const schedulesReady = context.mocks.deferred<void>();
+    const automationsReady = context.mocks.deferred<void>();
 
     context.mocks.api(automationsMainContract.list, async ({ respond }) => {
-      await schedulesReady.promise;
+      await automationsReady.promise;
       return respond(200, {
         automations: [
           toMockAutomationResponse(
-            createMockScheduleResponse({
+            createMockAutomationView({
               id: "f0000001-0000-4000-a000-000000000306",
               agentId: researchAgentId,
               displayName: "Research Agent",
@@ -468,14 +468,16 @@ describe("zero schedule page", () => {
     click(tabByText("List"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("schedule-list-skeleton")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("automation-list-skeleton"),
+      ).toBeInTheDocument();
     });
 
-    schedulesReady.resolve();
+    automationsReady.resolve();
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("schedule-list-skeleton"),
+        screen.queryByTestId("automation-list-skeleton"),
       ).not.toBeInTheDocument();
       expect(
         screen.getAllByText("Launch loading check").length,
@@ -486,10 +488,10 @@ describe("zero schedule page", () => {
     });
   });
 
-  it("opens disabled prompt-only schedules from list rows", async () => {
-    mockScheduleListEdgeStory();
+  it("opens disabled prompt-only automations from list rows", async () => {
+    mockAutomationListEdgeStory();
 
-    await openScheduleList();
+    await openAutomationList();
 
     expect(
       screen.getAllByText("Review overnight escalations")[0],
@@ -514,10 +516,10 @@ describe("zero schedule page", () => {
     });
   });
 
-  it("toggles and runs schedules from the list", async () => {
-    mockSchedulePageStory();
+  it("toggles and runs automations from the list", async () => {
+    mockAutomationsPageStory();
 
-    await openScheduleList();
+    await openAutomationList();
 
     click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
 
@@ -537,9 +539,9 @@ describe("zero schedule page", () => {
     });
   });
 
-  it("manages automations through the schedule page surface", async () => {
+  it("manages automations through the automations page surface", async () => {
     mockNow();
-    mockSchedulePageStory();
+    mockAutomationsPageStory();
 
     await openAutomationsList();
 
@@ -600,8 +602,8 @@ describe("zero schedule page", () => {
     });
   });
 
-  it("surfaces run-now failures from the schedule list", async () => {
-    mockSchedulePageStory();
+  it("surfaces run-now failures from the automation list", async () => {
+    mockAutomationsPageStory();
     context.mocks.api(automationsByRefContract.run, ({ respond }) => {
       return respond(503, {
         error: {
@@ -611,7 +613,7 @@ describe("zero schedule page", () => {
       });
     });
 
-    await openScheduleList();
+    await openAutomationList();
 
     click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
     click(menuItemByText("Run now"));
@@ -622,10 +624,10 @@ describe("zero schedule page", () => {
     });
   });
 
-  it("deletes a schedule from the list after confirmation", async () => {
-    mockSchedulePageStory();
+  it("deletes an automation from the list after confirmation", async () => {
+    mockAutomationsPageStory();
 
-    await openScheduleList();
+    await openAutomationList();
 
     click(
       screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
@@ -660,10 +662,10 @@ describe("zero schedule page", () => {
     expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
   });
 
-  it("opens a schedule detail from the list", async () => {
-    mockSchedulePageStory();
+  it("opens an automation detail from the list", async () => {
+    mockAutomationsPageStory();
 
-    await openScheduleList();
+    await openAutomationList();
 
     click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
     click(menuItemByText("Edit"));

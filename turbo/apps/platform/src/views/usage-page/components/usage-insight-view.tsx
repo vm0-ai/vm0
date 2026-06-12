@@ -4,7 +4,7 @@ import {
   usageInsightAsync$,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { UsageInsightBarChart } from "./usage-insight-bar-chart.tsx";
-import { UsageInsightSchedulesTable } from "./usage-insight-schedules-table.tsx";
+import { UsageInsightAutomationsTable } from "./usage-insight-automations-table.tsx";
 import { UsageInsightChatsTable } from "./usage-insight-chats-table.tsx";
 
 export function UsageInsightView() {
@@ -31,7 +31,7 @@ export function UsageInsightView() {
 
       {data && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <UsageInsightSchedulesTable data={data} />
+          <UsageInsightAutomationsTable data={data} />
           <UsageInsightChatsTable data={data} />
         </div>
       )}

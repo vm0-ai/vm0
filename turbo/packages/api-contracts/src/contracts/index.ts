@@ -990,10 +990,7 @@ export {
   type RunContextResponse,
   type RunRunnerResponse,
 } from "./zero-runs";
-export {
-  scheduleResponseSchema,
-  type ScheduleResponse,
-} from "./zero-schedules";
+export { automationViewSchema, type AutomationView } from "./automation-view";
 export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
@@ -1172,7 +1169,7 @@ export {
   type ZeroUsageInsightContract,
   type UsageInsightResponse,
   type UsageInsightBucket,
-  type UsageInsightScheduleRow,
+  type UsageInsightAutomationRow,
   type UsageInsightChatRow,
 } from "./zero-usage-insight";
 export {

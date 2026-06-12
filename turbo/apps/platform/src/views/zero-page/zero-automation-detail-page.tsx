@@ -41,49 +41,49 @@ import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  allOrgScheduleEntries$,
-  allOrgSchedulesLoaded$,
-  saveOrgSchedule$,
-  toggleOrgScheduleEnabled$,
-  deleteOrgSchedule$,
-  runScheduleNow$,
-  type OrgScheduleEntry,
-  type ZeroScheduleSaveParams,
-} from "../../signals/zero-page/zero-schedule.ts";
+  allOrgAutomationEntries$,
+  allOrgAutomationsLoaded$,
+  saveOrgAutomation$,
+  toggleOrgAutomationEnabled$,
+  deleteOrgAutomation$,
+  runAutomationNow$,
+  type OrgAutomationEntry,
+  type ZeroAutomationSaveParams,
+} from "../../signals/zero-page/zero-automations.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import {
-  scheduleDetailTab$,
-  setScheduleDetailTab$,
-} from "../../signals/schedule-page/schedule-detail-tab.ts";
+  automationDetailTab$,
+  setAutomationDetailTab$,
+} from "../../signals/automation-page/automation-detail-tab.ts";
 import { LogTable, STATUS_LABELS } from "./components/log-views/log-table.tsx";
 import { Pagination } from "../components/pagination.tsx";
 import {
-  scheduleRunData$,
-  scheduleRunLimit$,
-  scheduleRunHasPrev$,
-  scheduleRunCurrentPage$,
-  goToNextScheduleRunPage$,
-  goToPrevScheduleRunPage$,
-  goForwardTwoScheduleRunPages$,
-  goBackTwoScheduleRunPages$,
-  setScheduleRunRowsPerPage$,
-  scheduleRunStatusFilter$,
-  setScheduleRunStatusFilter$,
-  scheduleRunAvailableStatuses$,
-} from "../../signals/schedule-page/schedule-run-history.ts";
+  automationRunData$,
+  automationRunLimit$,
+  automationRunHasPrev$,
+  automationRunCurrentPage$,
+  goToNextAutomationRunPage$,
+  goToPrevAutomationRunPage$,
+  goForwardTwoAutomationRunPages$,
+  goBackTwoAutomationRunPages$,
+  setAutomationRunRowsPerPage$,
+  automationRunStatusFilter$,
+  setAutomationRunStatusFilter$,
+  automationRunAvailableStatuses$,
+} from "../../signals/automation-page/automation-run-history.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 import {
-  buildCombinedSchedule,
-  ScheduleEditFields,
+  buildCombinedAutomations,
+  AutomationEditFields,
   type CombinedEntry,
-} from "./zero-schedule-page.tsx";
-import { parseScheduleTimeString } from "./zero-schedule-card.tsx";
+} from "./zero-automations-page.tsx";
+import { parseAutomationTimeString } from "./zero-automation-card.tsx";
 import { TiptapInstructionsEditor } from "./tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import {
-  scheduleForm$,
-  updateScheduleForm$,
+  automationForm$,
+  updateAutomationForm$,
   savedSettingsState$,
   setSavedSettingsState$,
   showDeleteConfirm$,
@@ -94,14 +94,14 @@ import {
   incrementDiscardNonce$,
   syncSettingsFormEntry$,
   syncInstructionDraftEntry$,
-  type ScheduleSettingsSnapshot,
-} from "../../signals/schedule-page/schedule-form.ts";
+  type AutomationSettingsSnapshot,
+} from "../../signals/automation-page/automation-form.ts";
 import {
-  scheduleTitle,
-  scheduleTitleExcerpt,
-} from "../../signals/zero-page/schedule-title.ts";
+  automationTitle,
+  automationTitleExcerpt,
+} from "../../signals/zero-page/automation-title.ts";
 
-const SCHEDULE_DETAIL_TAB_TRIGGER_CLASS =
+const AUTOMATION_DETAIL_TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
 
 function formatRunAt(iso: string | null): string {
@@ -114,7 +114,7 @@ function formatRunAt(iso: string | null): string {
   });
 }
 
-function ScheduleBreadcrumbLink({ chatThreadId }: { chatThreadId?: string }) {
+function AutomationBreadcrumbLink({ chatThreadId }: { chatThreadId?: string }) {
   if (chatThreadId) {
     return (
       <Link
@@ -139,11 +139,11 @@ function ScheduleBreadcrumbLink({ chatThreadId }: { chatThreadId?: string }) {
   );
 }
 
-function ScheduleDetailSkeleton() {
+function AutomationDetailSkeleton() {
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-        <ScheduleBreadcrumbLink />
+        <AutomationBreadcrumbLink />
         <span className="text-muted-foreground/40 select-none">/</span>
         <div className="h-4 w-32 rounded bg-muted/50 animate-pulse" />
       </nav>
@@ -174,11 +174,11 @@ function ScheduleDetailSkeleton() {
   );
 }
 
-function ScheduleNotFound() {
+function AutomationNotFound() {
   return (
     <div className="h-full flex flex-col min-h-0">
       <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-        <ScheduleBreadcrumbLink />
+        <AutomationBreadcrumbLink />
         <span className="text-muted-foreground/40 select-none">/</span>
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium">
           Automation
@@ -203,21 +203,21 @@ function ScheduleNotFound() {
   );
 }
 
-/** Matches Agent + schedule dropdown column width on the detail settings layout. */
-const SCHEDULE_DETAIL_CONTROL_WIDTH =
+/** Matches Agent + automation dropdown column width on the detail settings layout. */
+const AUTOMATION_DETAIL_CONTROL_WIDTH =
   "w-full sm:w-[min(100%,20rem)] sm:ml-auto";
 
-type ScheduleAgentOption = {
+type AutomationAgentOption = {
   id: string;
   displayName?: string | null;
 };
 
-// ScheduleSettingsSnapshot imported from signals/schedule-page/schedule-form.ts
+// AutomationSettingsSnapshot imported from signals/automation-page/automation-form.ts
 
 function buildSettingsSnapshot(
   entry: CombinedEntry,
-  parsed: ReturnType<typeof parseScheduleTimeString>,
-): ScheduleSettingsSnapshot {
+  parsed: ReturnType<typeof parseAutomationTimeString>,
+): AutomationSettingsSnapshot {
   return {
     freq: parsed.freq,
     date: parsed.date,
@@ -233,8 +233,8 @@ function buildSettingsSnapshot(
 }
 
 function isSettingsChanged(
-  a: ScheduleSettingsSnapshot,
-  b: ScheduleSettingsSnapshot,
+  a: AutomationSettingsSnapshot,
+  b: AutomationSettingsSnapshot,
 ): boolean {
   return (
     a.freq !== b.freq ||
@@ -248,7 +248,7 @@ function isSettingsChanged(
   );
 }
 
-function ScheduleSettingsForm({
+function AutomationSettingsForm({
   entry,
   agents,
   saving,
@@ -258,20 +258,20 @@ function ScheduleSettingsForm({
   onDelete,
 }: {
   entry: CombinedEntry;
-  agents: ScheduleAgentOption[];
+  agents: AutomationAgentOption[];
   saving: boolean;
   toggling: boolean;
   onSave: (
-    params: ZeroScheduleSaveParams & { agentId: string },
+    params: ZeroAutomationSaveParams & { agentId: string },
   ) => Promise<void>;
   onToggle: (enabled: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
-  const parsed = parseScheduleTimeString(entry.time);
+  const parsed = parseAutomationTimeString(entry.time);
   const initial = buildSettingsSnapshot(entry, parsed);
 
-  const form = useGet(scheduleForm$);
-  const updateForm = useSet(updateScheduleForm$);
+  const form = useGet(automationForm$);
+  const updateForm = useSet(updateAutomationForm$);
   const savedState = useGet(savedSettingsState$);
   const setSavedState = useSet(setSavedSettingsState$);
   const showDeleteConfirmVal = useGet(showDeleteConfirm$);
@@ -280,7 +280,7 @@ function ScheduleSettingsForm({
   // Reset form when entry changes (component is keyed by entry.id)
   useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, initial);
 
-  const current: ScheduleSettingsSnapshot = {
+  const current: AutomationSettingsSnapshot = {
     freq: form.freq,
     date: form.date,
     hour: form.hour,
@@ -341,7 +341,7 @@ function ScheduleSettingsForm({
             label="Agent"
             description="The agent is fixed once an automation is created. Delete and recreate the automation to run it on a different agent."
           >
-            <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
+            <div className={AUTOMATION_DETAIL_CONTROL_WIDTH}>
               <Select value={form.agentId} disabled>
                 <SelectTrigger className="h-9 w-full">
                   <SelectValue placeholder="Select agent" />
@@ -363,7 +363,7 @@ function ScheduleSettingsForm({
             label="Description"
             description="A short summary shown in the automation list. Leave blank to auto-generate."
           >
-            <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
+            <div className={AUTOMATION_DETAIL_CONTROL_WIDTH}>
               <Input
                 value={form.description}
                 onChange={(e) => {
@@ -384,10 +384,10 @@ function ScheduleSettingsForm({
               disabled={saving}
               className={cn(
                 "min-w-0 border-0 p-0 m-0 space-y-3 disabled:opacity-60",
-                SCHEDULE_DETAIL_CONTROL_WIDTH,
+                AUTOMATION_DETAIL_CONTROL_WIDTH,
               )}
             >
-              <ScheduleEditFields
+              <AutomationEditFields
                 freq={form.freq}
                 setFreq={(v) => {
                   return updateForm({ freq: v });
@@ -522,7 +522,7 @@ function ScheduleSettingsForm({
  * Isolated editor state: parent sets `key={entry.id + entry.prompt}` so a
  * successful save remounts and clears drafts without useEffect.
  */
-function ScheduleInstructionEditorBlock({
+function AutomationInstructionEditorBlock({
   entry,
   saving,
   onSavePrompt,
@@ -544,7 +544,7 @@ function ScheduleInstructionEditorBlock({
   return (
     <>
       <TiptapInstructionsEditor
-        key={`schedule-instr-${entry.id}-${entry.prompt}-${nonce}`}
+        key={`automation-instr-${entry.id}-${entry.prompt}-${nonce}`}
         initialContent={draft ?? entry.prompt}
         onChange={setDraft}
         disabled={saving}
@@ -570,22 +570,22 @@ function ScheduleInstructionEditorBlock({
 // Run History tab
 // ---------------------------------------------------------------------------
 
-function ScheduleRunHistoryTab() {
+function AutomationRunHistoryTab() {
   const pageSignal = useGet(pageSignal$);
-  const dataLoadable = useLastLoadable(scheduleRunData$);
-  const hasPrev = useGet(scheduleRunHasPrev$);
-  const currentPage = useGet(scheduleRunCurrentPage$);
-  const rowsPerPage = useGet(scheduleRunLimit$);
-  const goToNext = useSet(goToNextScheduleRunPage$);
-  const goToPrev = useSet(goToPrevScheduleRunPage$);
-  const goForwardTwo = useSet(goForwardTwoScheduleRunPages$);
-  const goBackTwo = useSet(goBackTwoScheduleRunPages$);
-  const setRowsPerPage = useSet(setScheduleRunRowsPerPage$);
+  const dataLoadable = useLastLoadable(automationRunData$);
+  const hasPrev = useGet(automationRunHasPrev$);
+  const currentPage = useGet(automationRunCurrentPage$);
+  const rowsPerPage = useGet(automationRunLimit$);
+  const goToNext = useSet(goToNextAutomationRunPage$);
+  const goToPrev = useSet(goToPrevAutomationRunPage$);
+  const goForwardTwo = useSet(goForwardTwoAutomationRunPages$);
+  const goBackTwo = useSet(goBackTwoAutomationRunPages$);
+  const setRowsPerPage = useSet(setAutomationRunRowsPerPage$);
 
-  const statusFilter = useGet(scheduleRunStatusFilter$);
-  const setStatusFilter = useSet(setScheduleRunStatusFilter$);
+  const statusFilter = useGet(automationRunStatusFilter$);
+  const setStatusFilter = useSet(setAutomationRunStatusFilter$);
   const availableStatusesLoadable = useLastLoadable(
-    scheduleRunAvailableStatuses$,
+    automationRunAvailableStatuses$,
   );
 
   const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
@@ -691,7 +691,7 @@ function ScheduleRunHistoryTab() {
 // Detail view
 // ---------------------------------------------------------------------------
 
-function ScheduleDetailView({
+function AutomationDetailView({
   entry,
   dimmed,
   toggling,
@@ -709,22 +709,22 @@ function ScheduleDetailView({
   toggling: boolean;
   running: boolean;
   saving: boolean;
-  agents: ScheduleAgentOption[];
+  agents: AutomationAgentOption[];
   onSettingsSave: (
-    params: ZeroScheduleSaveParams & { agentId: string },
+    params: ZeroAutomationSaveParams & { agentId: string },
   ) => Promise<void>;
   onToggle: (enabled: boolean) => Promise<void>;
   onRunNow: () => Promise<void>;
   onDelete: () => void;
   onInstructionSavePrompt: (prompt: string) => void;
 }) {
-  const summaryTitle = scheduleTitle(entry);
-  const breadcrumbLabel = scheduleTitleExcerpt(entry);
+  const summaryTitle = automationTitle(entry);
+  const breadcrumbLabel = automationTitleExcerpt(entry);
   const nextRunLabel = formatRunAt(entry.nextRunAt);
   const isActive = entry.enabled !== false;
 
-  const activeTab = useGet(scheduleDetailTab$);
-  const setActiveTab = useSet(setScheduleDetailTab$);
+  const activeTab = useGet(automationDetailTab$);
+  const setActiveTab = useSet(setAutomationDetailTab$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
@@ -738,7 +738,7 @@ function ScheduleDetailView({
         className="flex flex-1 flex-col min-h-0"
       >
         <nav className="hidden sm:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          <ScheduleBreadcrumbLink chatThreadId={entry.chatThreadId} />
+          <AutomationBreadcrumbLink chatThreadId={entry.chatThreadId} />
           <span className="text-muted-foreground/40 select-none">/</span>
           <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate min-w-0">
             {breadcrumbLabel}
@@ -839,21 +839,21 @@ function ScheduleDetailView({
               <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
                 <TabsTrigger
                   value="settings"
-                  className={SCHEDULE_DETAIL_TAB_TRIGGER_CLASS}
+                  className={AUTOMATION_DETAIL_TAB_TRIGGER_CLASS}
                 >
                   <IconSettings size={14} stroke={1.5} />
                   Settings
                 </TabsTrigger>
                 <TabsTrigger
                   value="instructions"
-                  className={SCHEDULE_DETAIL_TAB_TRIGGER_CLASS}
+                  className={AUTOMATION_DETAIL_TAB_TRIGGER_CLASS}
                 >
                   <IconFileText size={14} stroke={1.5} />
                   Instructions
                 </TabsTrigger>
                 <TabsTrigger
                   value="history"
-                  className={SCHEDULE_DETAIL_TAB_TRIGGER_CLASS}
+                  className={AUTOMATION_DETAIL_TAB_TRIGGER_CLASS}
                 >
                   <IconRotateClockwise2 size={14} stroke={1.5} />
                   Run History
@@ -884,7 +884,7 @@ function ScheduleDetailView({
         >
           <div className="mx-auto max-w-[900px] flex flex-col gap-4">
             {activeTab === "settings" && (
-              <ScheduleSettingsForm
+              <AutomationSettingsForm
                 key={entry.id}
                 entry={entry}
                 agents={agents}
@@ -898,7 +898,7 @@ function ScheduleDetailView({
 
             {activeTab === "instructions" && (
               <div className="mx-auto w-full max-w-[900px]">
-                <ScheduleInstructionEditorBlock
+                <AutomationInstructionEditorBlock
                   key={`${entry.id}\u0000${entry.prompt}`}
                   entry={entry}
                   saving={saving}
@@ -907,7 +907,7 @@ function ScheduleDetailView({
               </div>
             )}
 
-            {activeTab === "history" && <ScheduleRunHistoryTab />}
+            {activeTab === "history" && <AutomationRunHistoryTab />}
           </div>
         </main>
       </Tabs>
@@ -915,24 +915,24 @@ function ScheduleDetailView({
   );
 }
 
-function ScheduleActionsContainer({
+function AutomationActionsContainer({
   entry,
   dimmed,
   agents,
 }: {
   entry: CombinedEntry;
   dimmed: boolean;
-  agents: ScheduleAgentOption[];
+  agents: AutomationAgentOption[];
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [savingLoadable, saveScheduleTracked] =
-    useLoadableSet(saveOrgSchedule$);
+  const [savingLoadable, saveAutomationTracked] =
+    useLoadableSet(saveOrgAutomation$);
   const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
-    toggleOrgScheduleEnabled$,
+    toggleOrgAutomationEnabled$,
   );
-  const [runningLoadable, runScheduleNowTracked] =
-    useLoadableSet(runScheduleNow$);
-  const deleteSchedule = useSet(deleteOrgSchedule$);
+  const [runningLoadable, runAutomationNowTracked] =
+    useLoadableSet(runAutomationNow$);
+  const deleteAutomation = useSet(deleteOrgAutomation$);
   const navigate = useSet(detachedNavigateTo$);
 
   const saving = savingLoadable.state === "loading";
@@ -940,18 +940,18 @@ function ScheduleActionsContainer({
   const running = runningLoadable.state === "loading";
 
   const handleSettingsSave = async (
-    params: ZeroScheduleSaveParams & { agentId: string },
+    params: ZeroAutomationSaveParams & { agentId: string },
   ) => {
-    await saveScheduleTracked(params, pageSignal);
+    await saveAutomationTracked(params, pageSignal);
   };
 
   const handleInstructionSavePrompt = (prompt: string) => {
     if (!prompt) {
       return;
     }
-    const parsed = parseScheduleTimeString(entry.time);
+    const parsed = parseAutomationTimeString(entry.time);
     detach(
-      saveScheduleTracked(
+      saveAutomationTracked(
         {
           prompt,
           description: entry.description ?? undefined,
@@ -985,7 +985,7 @@ function ScheduleActionsContainer({
   };
 
   const handleRunNow = async () => {
-    await runScheduleNowTracked(entry.id, pageSignal);
+    await runAutomationNowTracked(entry.id, pageSignal);
   };
 
   const handleDelete = () => {
@@ -995,7 +995,7 @@ function ScheduleActionsContainer({
     const name = entry.name;
     detach(
       (async () => {
-        await deleteSchedule({ name, agentId: entry.agentId }, pageSignal);
+        await deleteAutomation({ name, agentId: entry.agentId }, pageSignal);
         navigate("/automations");
       })(),
       Reason.DomCallback,
@@ -1003,7 +1003,7 @@ function ScheduleActionsContainer({
   };
 
   return (
-    <ScheduleDetailView
+    <AutomationDetailView
       entry={entry}
       dimmed={dimmed}
       toggling={toggling}
@@ -1019,48 +1019,48 @@ function ScheduleActionsContainer({
   );
 }
 
-export function ZeroScheduleDetailPage() {
+export function ZeroAutomationDetailPage() {
   const params = useGet(pathParams$);
   const scheduleId =
     params && typeof params === "object" && "scheduleId" in params
       ? String(params.scheduleId)
       : null;
 
-  const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
-  const entries: OrgScheduleEntry[] =
+  const entriesLoadable = useLastLoadable(allOrgAutomationEntries$);
+  const entries: OrgAutomationEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
   const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
-  const schedulesLoaded = useGet(allOrgSchedulesLoaded$);
+  const automationsLoaded = useGet(allOrgAutomationsLoaded$);
   const slackData = useLastLoadable(slackOrgData$);
 
-  const combinedSchedule = buildCombinedSchedule(entries);
+  const combinedAutomations = buildCombinedAutomations(entries);
 
   if (!scheduleId) {
-    return <ScheduleNotFound />;
+    return <AutomationNotFound />;
   }
 
   if (
-    !schedulesLoaded ||
+    !automationsLoaded ||
     entriesLoadable.state !== "hasData" ||
     slackData.state !== "hasData"
   ) {
-    return <ScheduleDetailSkeleton />;
+    return <AutomationDetailSkeleton />;
   }
 
-  const entry = combinedSchedule.find((e) => {
+  const entry = combinedAutomations.find((e) => {
     return e.id === scheduleId;
   });
 
   if (!entry) {
-    return <ScheduleNotFound />;
+    return <AutomationNotFound />;
   }
 
   const dimmed = entry.enabled === false;
 
   return (
-    <ScheduleActionsContainer entry={entry} dimmed={dimmed} agents={agents} />
+    <AutomationActionsContainer entry={entry} dimmed={dimmed} agents={agents} />
   );
 }

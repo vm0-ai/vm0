@@ -8,7 +8,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { publishChatThreadSchedulesChangedSafely } from "../external/realtime";
+import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { isValidTimeZone, settle } from "../utils";
 import {
   automationRowToManualAutomation,
@@ -479,7 +479,7 @@ export const createAutomation$ = command(
     });
     signal.throwIfAborted();
 
-    await publishChatThreadSchedulesChangedSafely(
+    await publishChatThreadAutomationsChangedSafely(
       args.userId,
       view.automation.chatThreadId,
     );
@@ -663,7 +663,7 @@ export const updateAutomation$ = command(
     const triggers = await loadTriggers(db, updated.id);
     signal.throwIfAborted();
 
-    await publishChatThreadSchedulesChangedSafely(
+    await publishChatThreadAutomationsChangedSafely(
       args.userId,
       updated.chatThreadId,
     );
@@ -709,7 +709,7 @@ export const deleteAutomation$ = command(
       .where(eq(automations.id, resolved.automation.id));
     signal.throwIfAborted();
 
-    await publishChatThreadSchedulesChangedSafely(args.userId, chatThreadId);
+    await publishChatThreadAutomationsChangedSafely(args.userId, chatThreadId);
     signal.throwIfAborted();
 
     return { kind: "ok" };
@@ -835,7 +835,7 @@ export const setAutomationEnabled$ = command(
     const triggers = await loadTriggers(db, automation.id);
     signal.throwIfAborted();
 
-    await publishChatThreadSchedulesChangedSafely(
+    await publishChatThreadAutomationsChangedSafely(
       args.userId,
       automation.chatThreadId,
     );
@@ -903,7 +903,7 @@ export const addTrigger$ = command(
       throw new Error(`Failed to create trigger for ${args.ref}`);
     }
 
-    await publishChatThreadSchedulesChangedSafely(
+    await publishChatThreadAutomationsChangedSafely(
       args.userId,
       resolved.automation.chatThreadId,
     );
@@ -1000,7 +1000,7 @@ export const removeTrigger$ = command(
       .where(eq(automationTriggers.id, owned.trigger.id));
     signal.throwIfAborted();
 
-    await publishChatThreadSchedulesChangedSafely(
+    await publishChatThreadAutomationsChangedSafely(
       args.userId,
       owned.automation.chatThreadId,
     );
@@ -1071,7 +1071,7 @@ export const setTriggerEnabled$ = command(
       return { kind: "not_found" };
     }
 
-    await publishChatThreadSchedulesChangedSafely(
+    await publishChatThreadAutomationsChangedSafely(
       args.userId,
       owned.automation.chatThreadId,
     );

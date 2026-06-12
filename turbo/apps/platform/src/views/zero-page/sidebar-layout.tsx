@@ -15,7 +15,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
-import { ScheduleMenuButton } from "./zero-chat-thread-page.tsx";
+import { AutomationMenuButton } from "./zero-chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import {
   currentLeftThread$,
@@ -167,7 +167,7 @@ function MobileArtifactsButtonLeaf() {
   return <MobileArtifactsButtonInner thread={thread} />;
 }
 
-function MobileScheduleButtonLeaf() {
+function MobileAutomationButtonLeaf() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const thread = leftThread ?? rightThread;
@@ -177,7 +177,7 @@ function MobileScheduleButtonLeaf() {
   }
 
   return (
-    <ScheduleMenuButton
+    <AutomationMenuButton
       threadId={thread.threadId}
       ariaLabel="Open mobile automations"
     />
@@ -191,7 +191,7 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   return (
     <>
-      {inChatRoute && <MobileScheduleButtonLeaf />}
+      {inChatRoute && <MobileAutomationButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
       {showInviteFallback && <InviteButtonLeaf />}

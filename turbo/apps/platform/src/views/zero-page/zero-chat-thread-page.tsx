@@ -170,11 +170,11 @@ import {
   setGithubPrTrackingOpenThreadId$,
 } from "../../signals/chat-page/github-pr-tracking.ts";
 import {
-  headerScheduleMenu$,
-  reloadHeaderScheduleMenu$,
-  schedulesForThread,
-  type HeaderScheduleEntry,
-} from "../../signals/chat-page/header-schedule-menu.ts";
+  headerAutomationMenu$,
+  reloadHeaderAutomationMenu$,
+  automationsForThread,
+  type HeaderAutomationEntry,
+} from "../../signals/chat-page/header-automation-menu.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
@@ -941,25 +941,25 @@ function GithubPrTrackingButton({
   );
 }
 
-// Second line shown under each schedule in the header menu: the next scheduled
-// run time, or a note that the schedule is inactive when it has been disabled.
-function scheduleMenuSubline(schedule: HeaderScheduleEntry): string {
-  if (!schedule.enabled) {
+// Second line shown under each automation in the header menu: the next scheduled
+// run time, or a note that the automation is inactive when it has been disabled.
+function automationMenuSubline(automation: HeaderAutomationEntry): string {
+  if (!automation.enabled) {
     return "Automation inactive";
   }
-  if (!schedule.nextRunAt) {
+  if (!automation.nextRunAt) {
     return "No upcoming run";
   }
-  const nextRun = new Date(schedule.nextRunAt).toLocaleString("en-US", {
+  const nextRun = new Date(automation.nextRunAt).toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   });
   return `Next run ${nextRun}`;
 }
 
-// Loads schedules and only renders once this thread has at least one linked
-// schedule.
-export function ScheduleMenuButton({
+// Loads automations and only renders once this thread has at least one linked
+// automation.
+export function AutomationMenuButton({
   threadId,
   ariaLabel = "Automations",
 }: {
@@ -967,16 +967,16 @@ export function ScheduleMenuButton({
   ariaLabel?: string;
 }) {
   const navigate = useSet(detachedNavigateTo$);
-  const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
-  const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
-  const lastResolvedSchedules = useLastResolved(headerScheduleMenu$);
-  const allSchedules =
-    schedulesLoadable.state === "hasData"
-      ? schedulesLoadable.data
-      : (lastResolvedSchedules ?? []);
-  const schedules = schedulesForThread(allSchedules, threadId);
+  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const automationsLoadable = useLastLoadable(headerAutomationMenu$);
+  const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const allAutomations =
+    automationsLoadable.state === "hasData"
+      ? automationsLoadable.data
+      : (lastResolvedAutomations ?? []);
+  const automations = automationsForThread(allAutomations, threadId);
 
-  if (schedules.length === 0) {
+  if (automations.length === 0) {
     return null;
   }
 
@@ -984,7 +984,7 @@ export function ScheduleMenuButton({
     <DropdownMenu
       onOpenChange={(open) => {
         if (open) {
-          reloadSchedules();
+          reloadAutomations();
         }
       }}
     >
@@ -998,13 +998,13 @@ export function ScheduleMenuButton({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        {schedules.map((schedule) => {
+        {automations.map((automation) => {
           return (
             <DropdownMenuItem
-              key={schedule.id}
+              key={automation.id}
               onClick={() => {
                 navigate("/automations/:scheduleId", {
-                  pathParams: { scheduleId: schedule.id },
+                  pathParams: { scheduleId: automation.id },
                 });
               }}
               className="items-start gap-2"
@@ -1014,9 +1014,9 @@ export function ScheduleMenuButton({
                 className="mt-0.5 shrink-0 text-muted-foreground"
               />
               <div className="flex min-w-0 flex-col">
-                <span className="truncate">{schedule.title}</span>
+                <span className="truncate">{automation.title}</span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {scheduleMenuSubline(schedule)}
+                  {automationMenuSubline(automation)}
                 </span>
               </div>
             </DropdownMenuItem>
@@ -1097,7 +1097,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <ScheduleMenuButton threadId={thread.threadId} />
+        <AutomationMenuButton threadId={thread.threadId} />
         <ArtifactsButton thread={thread} />
         {githubPrTrackingEnabled && agentId && (
           <GithubPrTrackingButton thread={thread} agentId={agentId} />
@@ -1457,6 +1457,12 @@ type ChatImagePreviewLinkProps = {
 
 const CHAT_INLINE_MEDIA_PREVIEW_CLASS =
   "inline-flex aspect-[16/10] w-[min(100%,400px)] items-center justify-center rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+
+// Images render at their natural aspect ratio so screenshots that are not 16:10
+// no longer letterbox against a muted fill (the gray edges). The hairline border
+// hugs the actual image; width and height are capped to keep the thread tidy.
+const CHAT_INLINE_IMAGE_PREVIEW_CLASS =
+  "max-h-[360px] max-w-[min(100%,400px)] rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
 function ChatImagePreviewLink({
   alt,
@@ -2685,10 +2691,9 @@ function CompletedWorkFoldRow({
         onClick={onToggle}
         className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
       >
-        <span className="block h-px w-full bg-border/40" />
         <span className="flex items-center gap-2">
           <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
-          <span className="h-px flex-1 bg-border/40" />
+          <span aria-hidden className="h-px flex-1 bg-border/40" />
         </span>
       </button>
     </div>
@@ -3886,12 +3891,12 @@ function BodyContentBlocks({
               key={block.id}
               alt={block.preview.filename}
               ariaLabel={`Preview ${block.preview.filename}`}
-              imageClassName="h-full w-full object-contain"
-              linkClassName={`${CHAT_INLINE_MEDIA_PREVIEW_CLASS} bg-muted/30`}
+              imageClassName="block h-auto w-auto max-h-[360px] max-w-full object-contain"
+              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
               onPreview={() => {
                 openLightbox(block.preview.url);
               }}
-              placeholderClassName="h-full w-full"
+              placeholderClassName="aspect-[4/3] w-[min(100%,260px)]"
               url={block.preview.url}
             />
           );
@@ -4903,7 +4908,7 @@ function PagedUserGroup({
   );
 }
 
-function isScheduleUserMessage(
+function isAutomationUserMessage(
   message: EnrichedChatMessage,
 ): message is EnrichedChatMessage & { role: "user" } {
   return (
@@ -4914,7 +4919,7 @@ function isScheduleUserMessage(
   );
 }
 
-function scheduleMessageLabel(
+function automationMessageLabel(
   message: EnrichedChatMessage & { role: "user" },
 ): string {
   return (
@@ -5127,12 +5132,12 @@ function UserMessageAttachments({
               key={a.url}
               alt={a.filename}
               ariaLabel={`Preview ${a.filename}`}
-              imageClassName="h-full w-full object-contain"
-              linkClassName={`${CHAT_INLINE_MEDIA_PREVIEW_CLASS} bg-muted/30`}
+              imageClassName="block h-auto w-auto max-h-[360px] max-w-full object-contain"
+              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
               onPreview={() => {
                 onImageClick(a.url);
               }}
-              placeholderClassName="h-full w-full"
+              placeholderClassName="aspect-[4/3] w-[min(100%,260px)]"
               url={a.url}
             />
           );
@@ -5318,12 +5323,12 @@ function UserMessageGenerationTemplate({
   );
 }
 
-function ScheduleUserMessage({
+function AutomationUserMessage({
   scheduleId,
-  scheduleLabel,
+  automationLabel,
 }: {
   scheduleId: string | undefined;
-  scheduleLabel: string;
+  automationLabel: string;
 }) {
   const cardClassName =
     "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
@@ -5331,7 +5336,7 @@ function ScheduleUserMessage({
     <>
       <IconClock size={15} className="shrink-0" />
       <span className="min-w-0 truncate font-medium text-foreground">
-        {scheduleLabel}
+        {automationLabel}
       </span>
     </>
   );
@@ -5345,7 +5350,7 @@ function ScheduleUserMessage({
               pathname="/automations/:scheduleId"
               options={{ pathParams: { scheduleId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open automation ${scheduleLabel}`}
+              aria-label={`Open automation ${automationLabel}`}
             >
               {body}
             </Link>
@@ -5410,11 +5415,11 @@ function PagedUserMessage({
     );
   };
 
-  if (isScheduleUserMessage(message)) {
+  if (isAutomationUserMessage(message)) {
     return (
-      <ScheduleUserMessage
+      <AutomationUserMessage
         scheduleId={message.scheduleId}
-        scheduleLabel={scheduleMessageLabel(message)}
+        automationLabel={automationMessageLabel(message)}
       />
     );
   }

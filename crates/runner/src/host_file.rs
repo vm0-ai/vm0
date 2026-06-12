@@ -138,6 +138,7 @@ fn open_dir_components(
             format!("empty {context} path"),
         ));
     }
+    validate_lexical_components(path)?;
 
     let expected_uid = nix::unistd::geteuid().as_raw();
     let start = if path.is_absolute() {
@@ -200,6 +201,31 @@ fn open_dir_components(
     }
 
     Ok(current)
+}
+
+fn validate_lexical_components(path: &Path) -> io::Result<()> {
+    for component in path.components() {
+        match component {
+            Component::RootDir | Component::CurDir | Component::Normal(_) => {}
+            Component::ParentDir => {
+                return Err(permission_denied(format!(
+                    "{} contains a parent directory segment",
+                    path.display()
+                )));
+            }
+            Component::Prefix(prefix) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "{} contains unsupported path prefix {}",
+                        path.display(),
+                        prefix.as_os_str().to_string_lossy()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn open_dir_component(
@@ -473,4 +499,96 @@ fn permission_denied(message: String) -> io::Error {
 
 fn wrap_io(error: io::Error, context: String) -> io::Error {
     io::Error::new(error.kind(), format!("{context}: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::os::unix::fs::symlink;
+
+    use super::*;
+
+    #[test]
+    fn ensure_dir_rejects_private_intermediate_symlink_without_touching_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &link).unwrap();
+
+        let error =
+            ensure_dir(&link.join("child"), DirMode::Private, "test directory").unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(!target.join("child").exists());
+    }
+
+    #[test]
+    fn ensure_dir_rejects_trusted_parent_intermediate_symlink_without_touching_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &link).unwrap();
+
+        let error = ensure_dir(
+            &link.join("child"),
+            DirMode::TrustedParent,
+            "test directory",
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(!target.join("child").exists());
+    }
+
+    #[test]
+    fn ensure_dir_rejects_private_parent_segment_before_creating_missing_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("base");
+        std::fs::create_dir(&base).unwrap();
+
+        let error = ensure_dir(
+            &base.join("missing").join("..").join("leaf"),
+            DirMode::Private,
+            "test directory",
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(!base.join("missing").exists());
+        assert!(!base.join("leaf").exists());
+    }
+
+    #[test]
+    fn ensure_dir_rejects_trusted_parent_parent_segment_before_creating_missing_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("base");
+        std::fs::create_dir(&base).unwrap();
+
+        let error = ensure_dir(
+            &base.join("missing").join("..").join("leaf"),
+            DirMode::TrustedParent,
+            "test directory",
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(!base.join("missing").exists());
+        assert!(!base.join("leaf").exists());
+    }
+
+    #[test]
+    fn open_private_append_file_rejects_symlink_parent_without_touching_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &link).unwrap();
+
+        let error = open_private_append_file(&link.join("log.jsonl"), false).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(!target.join("log.jsonl").exists());
+    }
 }

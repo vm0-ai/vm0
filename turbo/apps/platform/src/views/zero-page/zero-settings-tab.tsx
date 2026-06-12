@@ -347,8 +347,8 @@ export function ZeroSettingsTab({
                         <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
                         <DialogDescription>
                           This will permanently delete the agent, its
-                          instructions, schedules, and all associated data. This
-                          action cannot be undone.
+                          instructions, automations, and all associated data.
+                          This action cannot be undone.
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>

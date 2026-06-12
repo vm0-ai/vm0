@@ -9,7 +9,7 @@ import {
 import { animationFrame, delay } from "signal-timers";
 import { onRef, resetSignal, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { reloadHeaderScheduleMenu$ } from "./header-schedule-menu.ts";
+import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
 import {
   createScrollSignals,
   type ScrollStepDirection,
@@ -1660,9 +1660,9 @@ function createRunTracking({
       return false;
     });
 
-    const onSchedulesChanged$ = command(({ set }) => {
-      L.debug("onSchedulesChanged$ fired", { threadId });
-      set(reloadHeaderScheduleMenu$);
+    const onAutomationsChanged$ = command(({ set }) => {
+      L.debug("onAutomationsChanged$ fired", { threadId });
+      set(reloadHeaderAutomationMenu$);
       return false;
     });
 
@@ -1674,7 +1674,7 @@ function createRunTracking({
         dataSource.subscribeRealtime$,
         {
           threadId,
-          handlers: { onMessageCreated$, onRunChanged$, onSchedulesChanged$ },
+          handlers: { onMessageCreated$, onRunChanged$, onAutomationsChanged$ },
         },
         signal,
       ),

@@ -39,14 +39,14 @@ import {
   setInsightsHoveredAgent$,
   expandedAllowedDays$,
   toggleExpandedAllowed$,
-  expandedScheduleDays$,
-  toggleExpandedScheduleDay$,
+  expandedAutomationDays$,
+  toggleExpandedAutomationDay$,
   expandedChatDays$,
   toggleExpandedChatDay$,
   insightsActiveTab$,
   setInsightsActiveTab$,
   type DayInsight,
-  type DaySchedule,
+  type DayAutomation,
   type DayChat,
   type InsightsTab,
   type NetworkInsightsData,
@@ -994,7 +994,7 @@ function formatDate(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Per-day Schedules card
+// Per-day Automations card
 // ---------------------------------------------------------------------------
 
 function formatCardValue(n: number): string {
@@ -1007,30 +1007,30 @@ function formatCardValue(n: number): string {
   return n.toLocaleString();
 }
 
-function DaySchedulesCard({
+function DayAutomationsCard({
   dayDate,
-  schedules,
+  automations,
 }: {
   dayDate: string;
-  schedules: DaySchedule[];
+  automations: DayAutomation[];
 }) {
   const { accent } = getCardPalette(2);
-  const expandedDays = useGet(expandedScheduleDays$);
-  const toggleExpanded = useSet(toggleExpandedScheduleDay$);
+  const expandedDays = useGet(expandedAutomationDays$);
+  const toggleExpanded = useSet(toggleExpandedAutomationDay$);
   const showAll = expandedDays.has(dayDate);
 
-  if (schedules.length === 0) {
+  if (automations.length === 0) {
     return null;
   }
 
-  const totalCredits = schedules.reduce((s, r) => {
+  const totalCredits = automations.reduce((s, r) => {
     return s + r.credits;
   }, 0);
-  const visible = showAll ? schedules : schedules.slice(0, 4);
-  const overflow = schedules.length - visible.length;
+  const visible = showAll ? automations : automations.slice(0, 4);
+  const overflow = automations.length - visible.length;
   const maxValue = Math.max(
     1,
-    ...schedules.map((s) => {
+    ...automations.map((s) => {
       return s.credits;
     }),
   );
@@ -1045,11 +1045,11 @@ function DaySchedulesCard({
       </p>
       <div className="flex items-center mb-3">
         <span className="text-3xl font-black tabular-nums font-serif">
-          {schedules.length}
+          {automations.length}
         </span>
       </div>
       <p className="text-sm opacity-60">
-        {schedules.length === 1 ? "automation" : "automations"} used{" "}
+        {automations.length === 1 ? "automation" : "automations"} used{" "}
         {formatCardValue(totalCredits)}{" "}
         {totalCredits === 1 ? "credit" : "credits"}
       </p>
@@ -1281,7 +1281,7 @@ function DaySection({
           onHoverAgent={handleHoverAgent}
         />
         <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
-        <DaySchedulesCard dayDate={day.date} schedules={day.schedules} />
+        <DayAutomationsCard dayDate={day.date} automations={day.schedules} />
         <DayChatsCard dayDate={day.date} chats={day.chats} />
         <PermissionsAllowedCard
           day={day}

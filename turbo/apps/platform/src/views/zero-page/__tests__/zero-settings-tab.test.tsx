@@ -187,7 +187,7 @@ describe("zero settings tab", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
-        screen.getByText(/instructions, schedules, and all associated data/u),
+        screen.getByText(/instructions, automations, and all associated data/u),
       ).toBeInTheDocument();
     });
 
@@ -195,7 +195,9 @@ describe("zero settings tab", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText(/instructions, schedules, and all associated data/u),
+        screen.queryByText(
+          /instructions, automations, and all associated data/u,
+        ),
       ).not.toBeInTheDocument();
     });
   });

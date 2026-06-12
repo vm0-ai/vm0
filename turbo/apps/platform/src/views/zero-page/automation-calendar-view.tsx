@@ -22,14 +22,14 @@ import {
   WEEKDAY_LABELS,
   buildCalendarTimeSlots,
   getEntriesInCell,
-  type ScheduleEntry,
-} from "./schedule-utils";
+  type AutomationEntry,
+} from "./automation-utils";
 import {
   calendarSelectedDay$,
   setCalendarSelectedDay$,
   calendarPopoverEntryId$,
   setCalendarPopoverEntryId$,
-} from "../../signals/schedule-page/schedule-page-ui.ts";
+} from "../../signals/automation-page/automation-page-ui.ts";
 
 // ---------------------------------------------------------------------------
 // Agent color classes (multi-agent calendar)
@@ -57,7 +57,7 @@ function getAgentCellClasses(
 // Calendar entry popover (hover to show, double-click to edit)
 // ---------------------------------------------------------------------------
 
-function CalendarEntryPopover<T extends ScheduleEntry>({
+function CalendarEntryPopover<T extends AutomationEntry>({
   entry,
   agentOrder,
   getAgentLabel,
@@ -157,7 +157,7 @@ function CalendarEntryPopover<T extends ScheduleEntry>({
 // Calendar view
 // ---------------------------------------------------------------------------
 
-export function ScheduleCalendarView<T extends ScheduleEntry>({
+export function AutomationCalendarView<T extends AutomationEntry>({
   entries,
   agentOrder,
   getAgentLabel,

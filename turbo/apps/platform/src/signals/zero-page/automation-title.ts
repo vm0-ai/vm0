@@ -1,6 +1,6 @@
-const SCHEDULE_TITLE_EXCERPT_MAX = 30;
+const AUTOMATION_TITLE_EXCERPT_MAX = 30;
 
-interface ScheduleTitleInput {
+interface AutomationTitleInput {
   readonly description?: string | null;
   readonly prompt: string;
   readonly name?: string | null;
@@ -26,7 +26,7 @@ function firstSentenceFromInstruction(text: string): string {
   return t.split(/\r?\n/)[0]?.trim() ?? t;
 }
 
-export function scheduleTitle(entry: ScheduleTitleInput): string {
+export function automationTitle(entry: AutomationTitleInput): string {
   const desc = entry.description?.trim();
   if (desc && desc.length > 0) {
     return desc;
@@ -43,12 +43,12 @@ export function scheduleTitle(entry: ScheduleTitleInput): string {
     return name;
   }
 
-  return "Schedule";
+  return "Automation";
 }
 
-export function scheduleTitleExcerpt(
-  entry: ScheduleTitleInput,
-  maxLen = SCHEDULE_TITLE_EXCERPT_MAX,
+export function automationTitleExcerpt(
+  entry: AutomationTitleInput,
+  maxLen = AUTOMATION_TITLE_EXCERPT_MAX,
 ): string {
-  return excerptText(scheduleTitle(entry), maxLen);
+  return excerptText(automationTitle(entry), maxLen);
 }

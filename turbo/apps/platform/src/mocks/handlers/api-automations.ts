@@ -6,12 +6,12 @@ import {
   type AutomationTriggerResponse,
   type CreateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
-import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
-import { getMockSchedules, setMockSchedules } from "./schedules-store.ts";
+import { getMockAutomations, setMockAutomations } from "./automations-store.ts";
 
-// The Automation resource API over the shared schedule store: each store row
+// The Automation resource API over the shared automation store: each store row
 // (flat single-trigger projection) is served as an automation carrying one
 // time trigger. Trigger ids are minted per row and remembered so trigger
 // sub-resource calls can be traced back to their store row. Replaced ids stay
@@ -40,60 +40,60 @@ function automationIdForTrigger(triggerId: string): string | null {
   return triggerOwners.get(triggerId) ?? null;
 }
 
-function toTrigger(schedule: ScheduleResponse): AutomationTriggerResponse {
+function toTrigger(view: AutomationView): AutomationTriggerResponse {
   const base = {
-    id: triggerIdFor(schedule.id),
-    automationId: schedule.id,
-    enabled: schedule.enabled,
-    createdAt: schedule.createdAt,
-    updatedAt: schedule.updatedAt,
-    timezone: schedule.timezone,
-    nextRunAt: schedule.nextRunAt,
-    lastRunAt: schedule.lastRunAt,
-    consecutiveFailures: schedule.consecutiveFailures,
+    id: triggerIdFor(view.id),
+    automationId: view.id,
+    enabled: view.enabled,
+    createdAt: view.createdAt,
+    updatedAt: view.updatedAt,
+    timezone: view.timezone,
+    nextRunAt: view.nextRunAt,
+    lastRunAt: view.lastRunAt,
+    consecutiveFailures: view.consecutiveFailures,
   };
-  if (schedule.triggerType === "cron") {
+  if (view.triggerType === "cron") {
     return {
       ...base,
       kind: "cron",
-      cronExpression: schedule.cronExpression ?? "0 9 * * *",
+      cronExpression: view.cronExpression ?? "0 9 * * *",
     };
   }
-  if (schedule.triggerType === "once") {
-    return { ...base, kind: "once", atTime: schedule.atTime ?? "" };
+  if (view.triggerType === "once") {
+    return { ...base, kind: "once", atTime: view.atTime ?? "" };
   }
   return {
     ...base,
     kind: "loop",
-    intervalSeconds: schedule.intervalSeconds ?? 60,
+    intervalSeconds: view.intervalSeconds ?? 60,
   };
 }
 
 /** Project a mock store row as its resource-API automation (for test overrides). */
 export function toMockAutomationResponse(
-  schedule: ScheduleResponse,
+  view: AutomationView,
 ): AutomationResponse {
   return {
-    id: schedule.id,
-    agentId: schedule.agentId,
-    displayName: schedule.displayName,
-    userId: schedule.userId,
-    name: schedule.name,
-    description: schedule.description,
-    instruction: schedule.prompt,
-    appendSystemPrompt: schedule.appendSystemPrompt,
-    enabled: schedule.enabled,
-    chatThreadId: schedule.chatThreadId,
-    createdAt: schedule.createdAt,
-    updatedAt: schedule.updatedAt,
-    triggers: [toTrigger(schedule)],
+    id: view.id,
+    agentId: view.agentId,
+    displayName: view.displayName,
+    userId: view.userId,
+    name: view.name,
+    description: view.description,
+    instruction: view.prompt,
+    appendSystemPrompt: view.appendSystemPrompt,
+    enabled: view.enabled,
+    chatThreadId: view.chatThreadId,
+    createdAt: view.createdAt,
+    updatedAt: view.updatedAt,
+    triggers: [toTrigger(view)],
   };
 }
 
 function triggerFields(
   trigger: CreateTriggerRequest,
 ): Pick<
-  ScheduleResponse,
+  AutomationView,
   "triggerType" | "cronExpression" | "atTime" | "intervalSeconds" | "timezone"
 > {
   if (trigger.kind === "cron") {
@@ -123,16 +123,16 @@ function triggerFields(
       timezone: "UTC",
     };
   }
-  throw new Error("Webhook triggers are not modeled by the schedule mocks");
+  throw new Error("Webhook triggers are not modeled by the automation mocks");
 }
 
-function findByRef(ref: string): ScheduleResponse | undefined {
-  return getMockSchedules().find((s) => s.id === ref || s.name === ref);
+function findByRef(ref: string): AutomationView | undefined {
+  return getMockAutomations().find((s) => s.id === ref || s.name === ref);
 }
 
-function replaceRow(updated: ScheduleResponse): void {
-  setMockSchedules(
-    getMockSchedules().map((s) => (s.id === updated.id ? updated : s)),
+function replaceRow(updated: AutomationView): void {
+  setMockAutomations(
+    getMockAutomations().map((s) => (s.id === updated.id ? updated : s)),
   );
 }
 
@@ -140,17 +140,17 @@ export const apiAutomationsHandlers = [
   // GET /api/automations
   mockApi(automationsMainContract.list, ({ respond }) =>
     respond(200, {
-      automations: getMockSchedules().map(toMockAutomationResponse),
+      automations: getMockAutomations().map(toMockAutomationResponse),
     }),
   ),
 
   // POST /api/automations
   mockApi(automationsMainContract.create, ({ body, respond }) => {
     if (!body.trigger) {
-      throw new Error("Schedule mocks expect the first-trigger sugar");
+      throw new Error("Automation mocks expect the first-trigger sugar");
     }
     const now = nowDate().toISOString();
-    const row: ScheduleResponse = {
+    const row: AutomationView = {
       id: crypto.randomUUID(),
       agentId: body.agentId,
       displayName: null,
@@ -169,7 +169,7 @@ export const apiAutomationsHandlers = [
       createdAt: now,
       updatedAt: now,
     };
-    setMockSchedules([...getMockSchedules(), row]);
+    setMockAutomations([...getMockAutomations(), row]);
     return respond(201, { automation: toMockAutomationResponse(row) });
   }),
 
@@ -181,7 +181,7 @@ export const apiAutomationsHandlers = [
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }
-    const updated: ScheduleResponse = {
+    const updated: AutomationView = {
       ...row,
       ...(body.name !== undefined && { name: body.name }),
       ...(body.instruction !== undefined && { prompt: body.instruction }),
@@ -200,7 +200,7 @@ export const apiAutomationsHandlers = [
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }
-    setMockSchedules(getMockSchedules().filter((s) => s.id !== row.id));
+    setMockAutomations(getMockAutomations().filter((s) => s.id !== row.id));
     return respond(204);
   }),
 
@@ -243,7 +243,7 @@ export const apiAutomationsHandlers = [
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }
-    const updated: ScheduleResponse = {
+    const updated: AutomationView = {
       ...row,
       ...triggerFields(body),
       enabled: true,
@@ -278,7 +278,7 @@ export const apiAutomationsHandlers = [
   mockApi(automationTriggersContract.enable, ({ params, respond }) => {
     const automationId = automationIdForTrigger(params.id);
     const row = automationId
-      ? getMockSchedules().find((s) => s.id === automationId)
+      ? getMockAutomations().find((s) => s.id === automationId)
       : undefined;
     if (!row) {
       return respond(404, {

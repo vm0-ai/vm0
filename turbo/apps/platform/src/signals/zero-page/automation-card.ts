@@ -1,13 +1,13 @@
 import { command, computed, state, type StateArg } from "ccstate";
-import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
+import type { AutomationEntry } from "../../views/zero-page/zero-automation-card.tsx";
 import { withCleanup } from "../utils.ts";
 import { fetchSlackChannels$ } from "./slack-channels.ts";
 import { userPreferences$ } from "./settings/user-preferences.ts";
 import {
   createDefaultFormData,
   initDialogForm$,
-  type ScheduleFormData,
-} from "../../signals/schedule-page/schedule-form.ts";
+  type AutomationFormData,
+} from "../../signals/automation-page/automation-form.ts";
 
 // ---------------------------------------------------------------------------
 // Helper: creates a private state atom with exported computed (read) and
@@ -27,20 +27,20 @@ function cell<T>(initial: T) {
 }
 
 // ---------------------------------------------------------------------------
-// Schedule card component state
+// Automation card component state
 // ---------------------------------------------------------------------------
 
-export const { get$: scheduleViewMode$, set$: setScheduleViewMode$ } = cell<
+export const { get$: automationViewMode$, set$: setAutomationViewMode$ } = cell<
   "list" | "calendar"
 >("list");
 
-const addScheduleOpenState$ = state(false);
-export const addScheduleOpen$ = computed((get) => {
-  return get(addScheduleOpenState$);
+const addAutomationOpenState$ = state(false);
+export const addAutomationOpen$ = computed((get) => {
+  return get(addAutomationOpenState$);
 });
-export const setAddScheduleOpen$ = command(
+export const setAddAutomationOpen$ = command(
   async ({ get, set }, open: boolean, signal: AbortSignal) => {
-    set(addScheduleOpenState$, open);
+    set(addAutomationOpenState$, open);
     if (open) {
       const prefs = await get(userPreferences$);
       signal.throwIfAborted();
@@ -54,28 +54,28 @@ export const setAddScheduleOpen$ = command(
   },
 );
 
-const editingScheduleIdState$ = state<string | null>(null);
-export const editingScheduleId$ = computed((get) => {
-  return get(editingScheduleIdState$);
+const editingAutomationIdState$ = state<string | null>(null);
+export const editingAutomationId$ = computed((get) => {
+  return get(editingAutomationIdState$);
 });
 
-export const setEditingScheduleId$ = command(
+export const setEditingAutomationId$ = command(
   async ({ set }, id: string | null, signal: AbortSignal) => {
-    set(editingScheduleIdState$, id);
+    set(editingAutomationIdState$, id);
     if (id !== null) {
       await set(fetchSlackChannels$, signal);
     }
   },
 );
 
-export const openEditScheduleDialog$ = command(
+export const openEditAutomationDialog$ = command(
   async (
     { set },
     id: string,
-    initialValues: ScheduleFormData,
+    initialValues: AutomationFormData,
     signal: AbortSignal,
   ) => {
-    set(editingScheduleIdState$, id);
+    set(editingAutomationIdState$, id);
     set(initDialogForm$, initialValues);
     await set(fetchSlackChannels$, signal);
     signal.throwIfAborted();
@@ -101,7 +101,7 @@ function removePendingId(id: string) {
   };
 }
 
-export const toggleScheduleCardEnabled$ = command(
+export const toggleAutomationCardEnabled$ = command(
   async (
     { set },
     params: {
@@ -134,7 +134,7 @@ export const { get$: runningIds$, set$: setRunningIds$ } = cell<Set<string>>(
 );
 
 export const { get$: pendingDeleteEntry$, set$: setPendingDeleteEntry$ } =
-  cell<ScheduleEntry | null>(null);
+  cell<AutomationEntry | null>(null);
 
-export const { get$: deletingSchedule$, set$: setDeletingSchedule$ } =
+export const { get$: deletingAutomation$, set$: setDeletingAutomation$ } =
   cell(false);
