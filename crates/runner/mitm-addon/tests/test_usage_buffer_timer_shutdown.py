@@ -531,6 +531,47 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
     assert usage.counters._buffered_usage_events == 1
 
 
+def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
+    callbacks: list[Callable[[usage.webhook.WebhookDeliveryOutcome], None]] = []
+    enqueued_keys: list[str] = []
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type, delivery_callback):
+        del url, sandbox_token, path
+        assert log_type == "usage_event"
+        enqueued_keys.append(payload["events"][0]["idempotencyKey"])
+        if len(enqueued_keys) == 1:
+            callbacks.append(delivery_callback)
+        else:
+            delivery_callback("success")
+        return True
+
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue_webhook)
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    timers[0].callback()
+
+    assert len(callbacks) == 1
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 1
+    callbacks[0]("retryable_failure")
+
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 2
+    assert timers[1].started is True
+    assert timers[1].cancelled is False
+
+    timers[1].callback()
+
+    assert enqueued_keys == [enqueued_keys[0], enqueued_keys[0]]
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):
     enqueue = RecordingEnqueue()
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
