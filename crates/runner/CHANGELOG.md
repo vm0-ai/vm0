@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.114.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.3...runner-rs-v0.114.4) (2026-06-12)
+
+
+### Bug Fixes
+
+* **runner:** resolve runs from live registry status ([#17392](https://github.com/vm0-ai/vm0/issues/17392)) ([3bfd39b](https://github.com/vm0-ai/vm0/commit/3bfd39b4aa2fa918485f36bc9b05a4657a4c10c9))
+
 ## [0.114.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.2...runner-rs-v0.114.3) (2026-06-12)
 
 
