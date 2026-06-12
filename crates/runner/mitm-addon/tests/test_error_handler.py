@@ -36,7 +36,9 @@ class TestErrorHandler:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        body = json.loads(flow.response.content)
+        content = flow.response.content
+        assert content is not None
+        body = json.loads(content)
         assert body["error"] == "connector_not_configured_for_run"
         assert body["connector"] == "fal"
         assert body["label"] == "fal.ai"

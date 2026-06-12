@@ -46,7 +46,9 @@ class TestResponseHandler:
 
         assert flow.response.status_code == 401
         assert flow.response.headers["content-type"] == "application/json"
-        body = json.loads(flow.response.content)
+        content = flow.response.content
+        assert content is not None
+        body = json.loads(content)
         assert body == {
             "error": "connector_not_configured_for_run",
             "connector": "fal",
