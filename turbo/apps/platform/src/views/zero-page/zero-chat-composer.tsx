@@ -501,25 +501,38 @@ function QueuedMessagesStrip({
 // composer's toolbar and Send button.
 // ---------------------------------------------------------------------------
 
-function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
-  element?.focus();
+// Grow the note input to fit its content so multi-line comments expand the
+// composer instead of scrolling inside a single row.
+function autoGrowFeedbackNote(element: HTMLTextAreaElement | null): void {
+  if (!element) {
+    return;
+  }
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
 }
 
 function ComposerFeedbackRow({
   item,
   autoFocus,
+  showDivider,
   onChangeNote,
   onRemove,
   onKeyDown,
 }: {
   item: FeedbackItem;
   autoFocus: boolean;
+  showDivider: boolean;
   onChangeNote: (note: string) => void;
   onRemove: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 border-b border-dashed border-border/60 py-1.5">
+    <div
+      className={cn(
+        "flex flex-col gap-1.5 py-1.5",
+        showDivider && "border-t border-dashed border-border/60",
+      )}
+    >
       <div className="flex items-center gap-2">
         <span className="h-4 w-[3px] shrink-0 bg-muted-foreground/30" />
         <span className="min-w-0 flex-1 truncate text-sm italic leading-snug text-muted-foreground">
@@ -536,15 +549,21 @@ function ComposerFeedbackRow({
         </button>
       </div>
       <textarea
-        ref={autoFocus ? focusFeedbackNoteRef : undefined}
+        ref={(element) => {
+          if (autoFocus) {
+            element?.focus();
+          }
+          autoGrowFeedbackNote(element);
+        }}
         value={item.note}
         onChange={(event) => {
+          autoGrowFeedbackNote(event.target);
           return onChangeNote(event.target.value);
         }}
         onKeyDown={onKeyDown}
         rows={1}
         placeholder="What should change about this?"
-        className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+        className="w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
       />
     </div>
   );
@@ -565,15 +584,20 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
 
   // Newest fragment sits at the bottom (nearest Send) and takes focus.
   const newestId = feedback.items[feedback.items.length - 1]?.id;
+  // The dashed separator and the "select more" hint only earn their space once a
+  // second comment exists; a single comment reads as one clean note. min-h keeps
+  // the card from shrinking below the textarea's resting height.
+  const hasMultipleComments = feedback.items.length > 1;
 
   return (
-    <div className="flex flex-col px-3 pb-2 pt-3">
-      {feedback.items.map((item) => {
+    <div className="flex min-h-[96px] flex-col px-3 pb-2 pt-3">
+      {feedback.items.map((item, index) => {
         return (
           <ComposerFeedbackRow
             key={item.id}
             item={item}
             autoFocus={item.id === newestId}
+            showDivider={index > 0}
             onChangeNote={(note) => {
               return feedback.onChangeNote(item.id, note);
             }}
@@ -584,9 +608,11 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      <span className="px-1 pt-1.5 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
-        Select more text to add another comment
-      </span>
+      {hasMultipleComments && (
+        <span className="px-1 pt-1.5 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
+          Select more text to add another comment
+        </span>
+      )}
     </div>
   );
 }
