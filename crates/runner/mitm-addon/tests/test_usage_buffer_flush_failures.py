@@ -283,6 +283,55 @@ def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
     assert usage.counters._buffered_usage_events == 0
 
 
+def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [event(source_key="observation-source")],
+        proxy_log_path,
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 0
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.log_type == "model_usage_observation"
+    assert usage.counters._buffered_usage_events == 1
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="usage-source")],
+        proxy_log_path,
+    )
+    attempted_log_types = []
+
+    def admit_usage_then_saturate_observation(url, sandbox_token, payload, path, log_type):
+        del url, sandbox_token, payload, path
+        attempted_log_types.append(log_type)
+        return log_type == "usage_event"
+
+    enqueue.side_effect = admit_usage_then_saturate_observation
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert attempted_log_types == ["usage_event", "model_usage_observation"]
+    assert usage.counters._buffered_usage_events == 1
+
+    enqueue.side_effect = None
+    enqueue.return_value = True
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.log_type == "model_usage_observation"
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
     def fail_first_flush(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token, payload, path, log_type

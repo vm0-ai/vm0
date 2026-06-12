@@ -144,7 +144,6 @@ class _PendingFlush:
 @dataclass(frozen=True)
 class _BatchAdmissionResult:
     admitted_batch_count: int
-    admitted_source_event_count: int
     retained_batches: list[_FlushBatch]
 
 
@@ -244,8 +243,27 @@ class _UsageBufferState:
     def has_pending_flushes(self) -> bool:
         return bool(self._pending_flushes)
 
-    def pop_pending_flush(self) -> _PendingFlush:
-        return self._pending_flushes.pop(0)
+    def pending_flush_priority(self) -> int | None:
+        if not self._pending_flushes:
+            return None
+        return min(
+            _pending_flush_priority(pending_flush) for pending_flush in self._pending_flushes
+        )
+
+    def pop_highest_priority_pending_flush(self) -> _PendingFlush:
+        selected_index = 0
+        selected_priority = _pending_flush_priority(self._pending_flushes[0])
+        for index, pending_flush in enumerate(self._pending_flushes[1:], start=1):
+            priority = _pending_flush_priority(pending_flush)
+            if priority < selected_priority:
+                selected_index = index
+                selected_priority = priority
+        return self._pending_flushes.pop(selected_index)
+
+    def live_priority(self) -> int | None:
+        if not self._buckets:
+            return None
+        return min(_destination_priority(destination) for destination in self._buckets)
 
     def snapshot_live_flush(self) -> _PendingFlush | None:
         if not self._buckets:
@@ -625,7 +643,15 @@ class UsageEventBuffer:
             timer = self._pop_timer_locked()
             if timer is not None:
                 timer.cancel()
-            return self._state.pop_pending_flush(), False
+            pending_priority = self._state.pending_flush_priority()
+            live_priority = self._state.live_priority() if snapshot_live else None
+            if (
+                pending_priority is not None
+                and live_priority is not None
+                and live_priority < pending_priority
+            ):
+                return self._state.snapshot_live_flush(), True
+            return self._state.pop_highest_priority_pending_flush(), False
         if not snapshot_live:
             return None, False
         timer = self._pop_timer_locked()
@@ -642,7 +668,6 @@ def _enqueue_batches(
     batches: list[_FlushBatch],
     enqueue_webhook: _EnqueueWebhook,
 ) -> _BatchAdmissionResult:
-    admitted_source_event_count = 0
     for index, batch in enumerate(batches):
         admitted = enqueue_webhook(
             batch.url,
@@ -654,13 +679,10 @@ def _enqueue_batches(
         if admitted is False:
             return _BatchAdmissionResult(
                 admitted_batch_count=index,
-                admitted_source_event_count=admitted_source_event_count,
                 retained_batches=batches[index:],
             )
-        admitted_source_event_count += batch.source_event_count
     return _BatchAdmissionResult(
         admitted_batch_count=len(batches),
-        admitted_source_event_count=admitted_source_event_count,
         retained_batches=[],
     )
 
@@ -713,7 +735,21 @@ def _pending_flush_from_batches(flush_sequence: int, batches: list[_FlushBatch])
 
 
 def _destination_priority(destination: _DestinationKey) -> int:
-    if destination.log_type == "usage_event":
+    return _log_type_priority(destination.log_type)
+
+
+def _pending_flush_priority(pending_flush: _PendingFlush) -> int:
+    if not pending_flush.batches:
+        return 1
+    return min(_batch_priority(batch) for batch in pending_flush.batches)
+
+
+def _batch_priority(batch: _FlushBatch) -> int:
+    return _log_type_priority(batch.log_type)
+
+
+def _log_type_priority(log_type: str) -> int:
+    if log_type == "usage_event":
         return 0
     return 1
 
