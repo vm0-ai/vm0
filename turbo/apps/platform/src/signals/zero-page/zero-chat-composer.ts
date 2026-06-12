@@ -40,6 +40,26 @@ export const setComposerSavingType$ = command(
   },
 );
 
+// -- Slash skill picker -----------------------------------------------------
+
+const internalSlashSkillCaretIndex$ = state(0);
+export const slashSkillCaretIndex$ = computed((get) => {
+  return get(internalSlashSkillCaretIndex$);
+});
+export const setSlashSkillCaretIndex$ = command(
+  ({ set }, caretIndex: number) => {
+    set(internalSlashSkillCaretIndex$, caretIndex);
+  },
+);
+
+const internalSelectedSlashSkillIndex$ = state(0);
+export const selectedSlashSkillIndex$ = computed((get) => {
+  return get(internalSelectedSlashSkillIndex$);
+});
+export const setSelectedSlashSkillIndex$ = command(({ set }, index: number) => {
+  set(internalSelectedSlashSkillIndex$, index);
+});
+
 // -- Add-connectors dialog search filter ------------------------------------
 
 const internalAddDialogSearch$ = state("");

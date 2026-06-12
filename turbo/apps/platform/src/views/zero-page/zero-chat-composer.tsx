@@ -93,6 +93,7 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ZeroAgentCustomSkill } from "@vm0/api-contracts/contracts/zero-agents";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -167,6 +168,10 @@ import {
   setComputerUsePopoverOpen$,
   templateCardHover$,
   setTemplateCardHover$,
+  slashSkillCaretIndex$,
+  setSlashSkillCaretIndex$,
+  selectedSlashSkillIndex$,
+  setSelectedSlashSkillIndex$,
   type TemplatePickerVideoGroup,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
@@ -183,6 +188,8 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
+import { currentChatAgent$ } from "../../signals/agent-chat.ts";
+import { orgSkills$ } from "../../signals/skills-page/skills-signals.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -3099,6 +3106,512 @@ function toPersistedAttachments(
 
 type KeyboardSendAction = "none" | "send" | "queue";
 
+interface SlashSkillRange {
+  readonly start: number;
+  readonly end: number;
+  readonly query: string;
+}
+
+interface ComposerSlashSkill extends ZeroAgentCustomSkill {
+  readonly token: string;
+}
+
+function findActiveSlashSkillRange(
+  value: string,
+  caretIndex: number,
+): SlashSkillRange | null {
+  const beforeCaret = value.slice(0, caretIndex);
+  const match = /(?:^|\s)\/([a-z0-9-]*)$/i.exec(beforeCaret);
+  if (!match) {
+    return null;
+  }
+
+  const query = match[1] ?? "";
+  const slashOffset = match[0].lastIndexOf("/");
+  const start = beforeCaret.length - match[0].length + slashOffset;
+  return { start, end: caretIndex, query };
+}
+
+function matchesSkillQuery(skill: ComposerSlashSkill, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+
+  const normalizedQuery = query.toLowerCase();
+  return [skill.name, skill.displayName ?? "", skill.description ?? ""]
+    .join(" ")
+    .toLowerCase()
+    .includes(normalizedQuery);
+}
+
+function skillTokenPattern(skillNames: readonly string[]): RegExp | null {
+  if (skillNames.length === 0) {
+    return null;
+  }
+
+  const escaped = skillNames.map((name) => {
+    return name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  });
+  return new RegExp(`/(?:${escaped.join("|")})(?=$|\\s)`, "g");
+}
+
+function ComposerInputHighlight({
+  input,
+  skills,
+}: {
+  readonly input: string;
+  readonly skills: readonly ComposerSlashSkill[];
+}) {
+  const pattern = skillTokenPattern(
+    skills.map((skill) => {
+      return skill.name;
+    }),
+  );
+
+  if (!input || !pattern) {
+    return null;
+  }
+
+  const parts: { text: string; skill: boolean; start: number }[] = [];
+  let lastIndex = 0;
+  for (const match of input.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    if (start > lastIndex) {
+      parts.push({
+        text: input.slice(lastIndex, start),
+        skill: false,
+        start: lastIndex,
+      });
+    }
+    parts.push({ text: match[0], skill: true, start });
+    lastIndex = start + match[0].length;
+  }
+
+  if (lastIndex < input.length) {
+    parts.push({
+      text: input.slice(lastIndex),
+      skill: false,
+      start: lastIndex,
+    });
+  }
+
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-20 whitespace-pre-wrap break-words px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-transparent"
+      aria-hidden="true"
+    >
+      {parts.map((part) => {
+        return (
+          <span
+            key={`${part.start}:${part.skill ? "skill" : "text"}:${part.text}`}
+            className={part.skill ? "text-primary" : "text-transparent"}
+          >
+            {part.text}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function SlashSkillMenu({
+  skills,
+  loading,
+  selectedIndex,
+  onSelect,
+}: {
+  readonly skills: readonly ComposerSlashSkill[];
+  readonly loading: boolean;
+  readonly selectedIndex: number;
+  readonly onSelect: (skill: ComposerSlashSkill) => void;
+}) {
+  return (
+    <div
+      ref={(element) => {
+        placeSlashSkillMenu(element);
+      }}
+      className="fixed z-50 max-h-72 w-[260px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
+    >
+      <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+        Skills
+      </div>
+      {loading ? (
+        <div className="px-2.5 py-2 text-sm text-muted-foreground">
+          Loading skills...
+        </div>
+      ) : skills.length > 0 ? (
+        <div className="max-h-60 overflow-y-auto px-1.5 pb-1.5">
+          {skills.map((skill, index) => {
+            const selected = index === selectedIndex;
+            return (
+              <button
+                id={slashSkillOptionId(skill.name)}
+                key={skill.name}
+                type="button"
+                className={cn(
+                  "flex w-full items-center rounded px-2 py-1.5 text-left transition-colors",
+                  selected ? "bg-accent" : "hover:bg-accent/60",
+                )}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onSelect(skill);
+                }}
+              >
+                <span className="truncate font-mono text-sm text-primary">
+                  {skill.token}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
+          No matching skills
+        </div>
+      )}
+    </div>
+  );
+}
+
+function slashSkillOptionId(skillName: string): string {
+  return `slash-skill-option-${skillName}`;
+}
+
+function placeSlashSkillMenu(element: HTMLDivElement | null): void {
+  if (!element) {
+    return;
+  }
+
+  const container = element.parentElement;
+  if (!container) {
+    return;
+  }
+
+  const rect = container.getBoundingClientRect();
+  const spaceAbove = rect.top;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const menuHeight = Math.min(element.offsetHeight, 320);
+  const placement =
+    spaceAbove >= menuHeight + 8 || spaceAbove >= spaceBelow
+      ? "above"
+      : "below";
+  const left = Math.min(
+    Math.max(rect.left + 12, 12),
+    Math.max(window.innerWidth - 272, 12),
+  );
+  const top =
+    placement === "below"
+      ? rect.bottom + 8
+      : Math.max(rect.top - menuHeight - 8, 8);
+
+  element.style.left = `${left}px`;
+  element.style.top = `${top}px`;
+}
+
+function scrollSlashSkillIntoView(skill: ComposerSlashSkill | undefined): void {
+  if (!skill) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    const option = document.getElementById(slashSkillOptionId(skill.name));
+    if (option && typeof option.scrollIntoView === "function") {
+      option.scrollIntoView({ block: "nearest" });
+    }
+  });
+}
+
+function ComposerTextarea({
+  input,
+  onInputChange,
+  sending,
+  autoFocus,
+  setInputRef,
+  onKeyDown,
+  onPaste,
+  onAfterInputChange,
+  onPointerSelectionChange,
+}: {
+  readonly input: string;
+  readonly onInputChange: (value: string) => void;
+  readonly sending: boolean | undefined;
+  readonly autoFocus: boolean | undefined;
+  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
+  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  readonly onAfterInputChange?: (textarea: HTMLTextAreaElement) => void;
+  readonly onPointerSelectionChange?: (textarea: HTMLTextAreaElement) => void;
+}) {
+  return (
+    <textarea
+      ref={(el) => {
+        if (el && autoFocus && !isIOSDevice()) {
+          el.focus();
+        }
+        setInputRef?.(el);
+      }}
+      className={cn(
+        "relative z-10 w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground caret-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px] selection:bg-primary/20",
+      )}
+      rows={3}
+      placeholder={
+        sending
+          ? "Type your next message\u2026"
+          : "Ask me to automate workflows, manage tasks..."
+      }
+      value={input}
+      onChange={(e) => {
+        onInputChange(e.target.value);
+        onAfterInputChange?.(e.target);
+      }}
+      onClick={(e) => {
+        onPointerSelectionChange?.(e.currentTarget);
+      }}
+      onKeyUp={(e) => {
+        onPointerSelectionChange?.(e.currentTarget);
+      }}
+      onSelect={(e) => {
+        onPointerSelectionChange?.(e.currentTarget);
+      }}
+      enterKeyHint="enter"
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+    />
+  );
+}
+
+function buildComposerSlashSkills({
+  agentSkillNames,
+  orgSkills,
+}: {
+  readonly agentSkillNames: readonly string[];
+  readonly orgSkills: readonly ZeroAgentCustomSkill[];
+}): readonly ComposerSlashSkill[] {
+  const metadataByName = new Map(
+    orgSkills.map((skill) => {
+      return [skill.name, skill];
+    }),
+  );
+  const skillNames = Array.from(
+    new Set([
+      ...agentSkillNames,
+      ...orgSkills.map((skill) => {
+        return skill.name;
+      }),
+    ]),
+  );
+
+  return skillNames.map((name) => {
+    const metadata = metadataByName.get(name);
+    return {
+      name,
+      displayName: metadata?.displayName ?? null,
+      description: metadata?.description ?? null,
+      token: `/${name}`,
+    };
+  });
+}
+
+function SlashSkillComposerInput({
+  input,
+  onInputChange,
+  onDraftChange,
+  sending,
+  autoFocus,
+  setInputRef,
+  onKeyDown,
+  onPaste,
+}: {
+  readonly input: string;
+  readonly onInputChange: (value: string) => void;
+  readonly onDraftChange: (() => void) | undefined;
+  readonly sending: boolean | undefined;
+  readonly autoFocus: boolean | undefined;
+  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
+  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+}) {
+  const caretIndex = useGet(slashSkillCaretIndex$);
+  const setCaretIndex = useSet(setSlashSkillCaretIndex$);
+  const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
+  const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
+  const currentAgent = useLastResolved(currentChatAgent$);
+  const orgSkillsLoadable = useLastLoadable(orgSkills$);
+  const orgSkills =
+    orgSkillsLoadable.state === "hasData" ? orgSkillsLoadable.data : [];
+  const composerSkills = buildComposerSlashSkills({
+    agentSkillNames: currentAgent?.customSkills ?? [],
+    orgSkills,
+  });
+  const slashRange = findActiveSlashSkillRange(input, caretIndex);
+  const slashSkillSuggestions = slashRange
+    ? composerSkills.filter((skill) => {
+        return matchesSkillQuery(skill, slashRange.query);
+      })
+    : [];
+  const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
+  const showSlashSkillMenu = slashRange !== null;
+
+  const updateCaretIndex = (textarea: HTMLTextAreaElement) => {
+    setCaretIndex(textarea.selectionStart);
+  };
+
+  const insertSlashSkill = (
+    skill: ComposerSlashSkill,
+    textarea: HTMLTextAreaElement | null,
+  ) => {
+    if (!slashRange) {
+      return;
+    }
+
+    const suffix = input.slice(slashRange.end).startsWith(" ") ? "" : " ";
+    const nextInput = `${input.slice(0, slashRange.start)}${skill.token}${suffix}${input.slice(slashRange.end)}`;
+    const nextCaret = slashRange.start + skill.token.length + suffix.length;
+    onInputChange(nextInput);
+    onDraftChange?.();
+    setCaretIndex(nextCaret);
+    window.requestAnimationFrame(() => {
+      textarea?.setSelectionRange(nextCaret, nextCaret);
+      textarea?.focus();
+    });
+  };
+
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (!showSlashSkillMenu) {
+      onKeyDown(e);
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const nextIndex = Math.min(
+        selectedSkillIndex + 1,
+        Math.max(slashSkillSuggestions.length - 1, 0),
+      );
+      setSelectedSkillIndex(nextIndex);
+      scrollSlashSkillIntoView(slashSkillSuggestions[nextIndex]);
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const nextIndex = Math.max(selectedSkillIndex - 1, 0);
+      setSelectedSkillIndex(nextIndex);
+      scrollSlashSkillIntoView(slashSkillSuggestions[nextIndex]);
+      return;
+    }
+
+    if ((e.key === "Enter" || e.key === "Tab") && slashSkillSuggestions[0]) {
+      e.preventDefault();
+      insertSlashSkill(
+        slashSkillSuggestions[
+          Math.min(selectedSkillIndex, slashSkillSuggestions.length - 1)
+        ]!,
+        e.currentTarget,
+      );
+      return;
+    }
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setCaretIndex(-1);
+      return;
+    }
+
+    onKeyDown(e);
+  };
+
+  return (
+    <div className="relative">
+      {showSlashSkillMenu && (
+        <SlashSkillMenu
+          skills={slashSkillSuggestions}
+          loading={isLoadingOrgSkills}
+          selectedIndex={selectedSkillIndex}
+          onSelect={(skill) => {
+            insertSlashSkill(
+              skill,
+              document.activeElement instanceof HTMLTextAreaElement
+                ? document.activeElement
+                : null,
+            );
+          }}
+        />
+      )}
+      <div className="relative min-h-[96px]">
+        <ComposerInputHighlight input={input} skills={composerSkills} />
+        <ComposerTextarea
+          input={input}
+          onInputChange={onInputChange}
+          sending={sending}
+          autoFocus={autoFocus}
+          setInputRef={setInputRef}
+          onKeyDown={handleKeyDown}
+          onPaste={onPaste}
+          onAfterInputChange={(textarea) => {
+            setSelectedSkillIndex(0);
+            updateCaretIndex(textarea);
+          }}
+          onPointerSelectionChange={updateCaretIndex}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ComposerInputSlot({
+  input,
+  onInputChange,
+  onDraftChange,
+  sending,
+  autoFocus,
+  setInputRef,
+  onKeyDown,
+  onPaste,
+}: {
+  readonly input: string;
+  readonly onInputChange: (value: string) => void;
+  readonly onDraftChange: (() => void) | undefined;
+  readonly sending: boolean | undefined;
+  readonly autoFocus: boolean | undefined;
+  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
+  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const slashSkillCommandsEnabled =
+    features?.[FeatureSwitchKey.ChatSlashSkillCommands] ?? false;
+
+  if (slashSkillCommandsEnabled) {
+    return (
+      <SlashSkillComposerInput
+        input={input}
+        onInputChange={onInputChange}
+        onDraftChange={onDraftChange}
+        sending={sending}
+        autoFocus={autoFocus}
+        setInputRef={setInputRef}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+      />
+    );
+  }
+
+  return (
+    <div className="relative min-h-[96px]">
+      <ComposerTextarea
+        input={input}
+        onInputChange={onInputChange}
+        sending={sending}
+        autoFocus={autoFocus}
+        setInputRef={setInputRef}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+      />
+    </div>
+  );
+}
+
 function resolveKeyboardSendAction({
   canSend,
   sending,
@@ -3592,7 +4105,7 @@ export function ZeroChatComposer({
         />
         <Card
           className={cn(
-            "zero-composer relative z-10 overflow-hidden",
+            "zero-composer relative z-10 overflow-visible",
             dragOver && "outline outline-2 outline-blue-400/60",
           )}
           onDrop={handleDrop}
@@ -3614,27 +4127,13 @@ export function ZeroChatComposer({
                   }}
                 />
               )}
-              <textarea
-                ref={(el) => {
-                  if (el && autoFocus && !isIOSDevice()) {
-                    el.focus();
-                  }
-                  setInputRef?.(el);
-                }}
-                className={cn(
-                  "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px]",
-                )}
-                rows={3}
-                placeholder={
-                  sending
-                    ? "Type your next message\u2026"
-                    : "Ask me to automate workflows, manage tasks..."
-                }
-                value={input}
-                onChange={(e) => {
-                  return onInputChange(e.target.value);
-                }}
-                enterKeyHint="enter"
+              <ComposerInputSlot
+                input={input}
+                onInputChange={onInputChange}
+                onDraftChange={onDraftChange}
+                sending={sending}
+                autoFocus={autoFocus}
+                setInputRef={setInputRef}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
               />
