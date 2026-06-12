@@ -471,9 +471,11 @@ async fn check_api_status(resp: Response, label: &str) -> RunnerResult<Response>
 }
 
 async fn decode_api_json<T: DeserializeOwned>(resp: Response, label: &str) -> RunnerResult<T> {
-    resp.json()
+    let body = resp
+        .bytes()
         .await
-        .map_err(|e| RunnerError::Api(format!("{label} decode: {e}")))
+        .map_err(|e| RunnerError::Api(format!("{label} decode read body: {e}")))?;
+    decode_api_json_bytes(&body).map_err(|e| RunnerError::Api(format!("{label} decode: {e}")))
 }
 
 async fn read_api_error(resp: Response) -> (StatusCode, String) {
@@ -484,6 +486,25 @@ async fn read_api_error(resp: Response) -> (StatusCode, String) {
 
 fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError {
     RunnerError::Api(format!("{label} {status}: {body}"))
+}
+
+fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
+    let mut deserializer = serde_json::Deserializer::from_slice(body);
+    serde_path_to_error::deserialize(&mut deserializer).map_err(|e| {
+        let path = e.path().to_string();
+        let category = match e.inner().classify() {
+            serde_json::error::Category::Io => "io",
+            serde_json::error::Category::Syntax => "syntax",
+            serde_json::error::Category::Data => "data",
+            serde_json::error::Category::Eof => "eof",
+        };
+        let location = format!("line {} column {}", e.inner().line(), e.inner().column());
+        if path == "." {
+            format!("failed at <root>: {category} error at {location}")
+        } else {
+            format!("failed at {path}: {category} error at {location}")
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -943,6 +964,55 @@ mod tests {
             assert!(matches!(err, RunnerError::AlreadyClaimed));
             mock.assert_async().await;
         }
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_error_includes_json_path_without_body_values() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "firewalls": [{
+                        "kind": "builtin",
+                        "name": 42
+                    }],
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("claim decode: failed at firewalls[0]"),
+            "decode error should include JSON path, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
+            "decode error must not include response body values, got: {message}"
+        );
+        assert!(
+            !message.contains("42"),
+            "decode error must not include invalid field values, got: {message}"
+        );
+        mock.assert_async().await;
     }
 
     #[tokio::test]
