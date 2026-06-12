@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.114.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.7...runner-rs-v0.114.8) (2026-06-12)
+
+
+### Bug Fixes
+
+* reject parent host file paths before walking ([#17487](https://github.com/vm0-ai/vm0/issues/17487)) ([a32fd21](https://github.com/vm0-ai/vm0/commit/a32fd21228c1e6196f300df59519feea69718e07))
+* stop publishing runner running status during startup ([#17475](https://github.com/vm0-ai/vm0/issues/17475)) ([aabbc1e](https://github.com/vm0-ai/vm0/commit/aabbc1e935847e57c10dd0c1c5b84c599285bf93))
+
 ## [0.114.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.6...runner-rs-v0.114.7) (2026-06-12)
 
 

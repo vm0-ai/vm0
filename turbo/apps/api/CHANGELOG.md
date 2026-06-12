@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.134.3](https://github.com/vm0-ai/vm0/compare/api-v1.134.2...api-v1.134.3) (2026-06-12)
+
+
+### Refactoring
+
+* **platform:** rename the schedule internals to automation ([#17465](https://github.com/vm0-ai/vm0/issues/17465)) ([e27fde6](https://github.com/vm0-ai/vm0/commit/e27fde65b93e6be3bb97fa65c606fa5c69277d41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.2
+    * @vm0/core bumped to 8.333.3
+    * @vm0/db bumped to 1.46.4
+
 ## [1.134.2](https://github.com/vm0-ai/vm0/compare/api-v1.134.1...api-v1.134.2) (2026-06-12)
 
 
