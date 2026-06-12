@@ -884,6 +884,24 @@ function methodPathWithServicePath(
   return `${servicePath.replace(/\/$/, "")}/${normalized}`;
 }
 
+function mediaUploadPathForMethod(
+  discovery: DiscoveryDocument,
+  method: DiscoveryMethod,
+  protocolPath: string,
+): string {
+  const normalized = normalizeTemplatePath(protocolPath);
+  if (!method.flatPath || !/\{[+*][^}]+\}/.test(protocolPath)) {
+    return normalized;
+  }
+  const uploadPrefix = normalized.startsWith("resumable/upload/")
+    ? "resumable/upload/"
+    : normalized.startsWith("upload/")
+      ? "upload/"
+      : null;
+  if (uploadPrefix === null) return normalized;
+  return `${uploadPrefix}${methodPathWithServicePath(discovery, method.flatPath)}`;
+}
+
 function adjustRulePath(methodId: string, path: string): string {
   if (
     methodId === "storage.objects.delete" ||
@@ -918,7 +936,10 @@ function rulePathsForMethod(
   for (const protocol of [protocols?.simple, protocols?.resumable]) {
     if (protocol?.path) {
       paths.add(
-        adjustRulePath(method.id, normalizeTemplatePath(protocol.path)),
+        adjustRulePath(
+          method.id,
+          mediaUploadPathForMethod(discovery, method, protocol.path),
+        ),
       );
     }
   }

@@ -214,6 +214,13 @@ describe("google-cloud firewall", () => {
     ).toEqual(["artifactregistry.repositories.create"]);
     expect(
       findPermissions(
+        "https://artifactregistry.googleapis.com",
+        "POST",
+        "/upload/v1/projects/project/locations/us/repositories/repo/aptArtifacts:create",
+      ),
+    ).toEqual(["artifactregistry.aptartifacts.create"]);
+    expect(
+      findPermissions(
         "https://container.googleapis.com",
         "POST",
         "/v1/projects/project/locations/us-central1/clusters",
