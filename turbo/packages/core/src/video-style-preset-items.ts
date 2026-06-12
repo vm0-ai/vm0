@@ -116,7 +116,7 @@ export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   film_noir: "classic film noir — shadow, silhouette, moral ambiguity",
   tech_minimalist_reveal:
     "clean tech product reveal — white space, precision camera",
-  apple_product:
+  premium_tech_product:
     "premium tech product commercial — clean white space, restrained motion, precision lighting on material surface",
   athletic_motivation_ad:
     "athletic motivation ad — kinetic energy, raw sweat, triumph",
@@ -296,7 +296,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
       narrativeMode: "problem_solution",
       productionType: "live_action",
       emotionalTone: "inspiring",
-      styleReference: "apple_product",
+      styleReference: "premium_tech_product",
     },
     scene: "luxury-watch-dial",
     sampleVideoUrl:
