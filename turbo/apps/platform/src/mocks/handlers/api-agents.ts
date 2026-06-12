@@ -138,6 +138,11 @@ export const apiAgentsHandlers = [
     });
   }),
 
+  // GET /api/zero/chat-threads/drafts
+  mockApi(chatThreadsContract.drafts, ({ respond }) => {
+    return respond(200, { draftThreadIds: [] });
+  }),
+
   // POST /api/zero/chat-threads (create new thread)
   mockApi(chatThreadsContract.create, ({ body, respond }) => {
     return respond(201, {

@@ -11,6 +11,7 @@ import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { logger } from "../log.ts";
+import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
   CancelRunsArgs,
@@ -30,7 +31,7 @@ const L = logger("ChatThread");
 
 const patchDraft$ = command(
   async (
-    { get },
+    { get, set },
     { threadId, content, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
@@ -43,6 +44,8 @@ const patchDraft$ = command(
       }),
       [204],
     );
+    signal.throwIfAborted();
+    set(reloadSidebarDraftThreads$);
   },
 );
 

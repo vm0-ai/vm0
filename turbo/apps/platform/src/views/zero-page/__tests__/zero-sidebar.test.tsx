@@ -380,8 +380,11 @@ describe("zero sidebar", () => {
       createThread(EXISTING_THREAD_ID, "Release plan"),
       createThread(INCIDENT_THREAD_ID, "Incident notes", { isRead: false }),
       createThread(AUTOMATION_THREAD_ID, "Running analysis", { running: true }),
-      createThread(ARCHIVED_THREAD_ID, "Draft brief", { hasDraft: true }),
+      createThread(ARCHIVED_THREAD_ID, "Draft brief"),
     ]);
+    context.mocks.api(chatThreadsContract.drafts, ({ respond }) => {
+      return respond(200, { draftThreadIds: [ARCHIVED_THREAD_ID] });
+    });
 
     detachedSetupPage({
       context,

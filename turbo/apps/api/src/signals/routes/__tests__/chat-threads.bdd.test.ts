@@ -698,7 +698,6 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
       id: readStateThreadId,
       isRead: false,
       running: false,
-      hasDraft: false,
       pinnedAt: null,
       renamedAt: null,
     });
@@ -729,12 +728,14 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     list = await chat.listThreads(owner, { agentId: agent.agentId });
     expect(list.threads[0]?.isRead).toBeTruthy();
 
-    // Draft flags through PATCH: text, attachments-only, empty, cleared.
+    // Draft flags through PATCH surface via the drafts endpoint: text,
+    // attachments-only, empty, cleared. Unknown ids are silently absent.
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: "unsent text",
     });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.hasDraft).toBeTruthy();
+    expect(
+      await chat.listThreadDrafts(owner, [readStateThreadId, randomUUID()]),
+    ).toStrictEqual([readStateThreadId]);
 
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: null,
@@ -748,15 +749,17 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
         },
       ],
     });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.hasDraft).toBeTruthy();
+    expect(
+      await chat.listThreadDrafts(owner, [readStateThreadId]),
+    ).toStrictEqual([readStateThreadId]);
 
     await chat.patchThread(owner, readStateThreadId, {
       draftContent: "",
       draftAttachments: null,
     });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.hasDraft).toBeFalsy();
+    expect(
+      await chat.listThreadDrafts(owner, [readStateThreadId]),
+    ).toStrictEqual([]);
 
     // Patch guards: unknown thread 404 (visible state untouched), peer 404.
     const patchUnknown = await chat.requestPatchThread(
