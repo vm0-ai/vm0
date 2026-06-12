@@ -2304,11 +2304,8 @@ function ChatThreadMessagesMain({
   const features = useLastResolved(featureSwitch$);
   const completedWorkFoldingEnabled =
     features?.[FeatureSwitchKey.ChatCompletedWorkFolding] ?? false;
-  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinished =
-    allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
   const completedWorkFolding = completedWorkFoldingEnabled
-    ? buildCompletedWorkFolding(activeGroups, allFinished)
+    ? buildCompletedWorkFolding(activeGroups)
     : null;
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
@@ -2504,17 +2501,32 @@ function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   );
 }
 
+function terminatedRunIdsForCompletedWork(
+  messages: readonly EnrichedChatMessage[],
+): Set<string> {
+  const terminatedRunIds = new Set<string>();
+  for (const message of messages) {
+    if (message.interruptsRunId !== undefined) {
+      terminatedRunIds.add(message.interruptsRunId);
+    }
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      terminatedRunIds.add(message.runId);
+    }
+  }
+  return terminatedRunIds;
+}
+
 function buildCompletedWorkFolding(
   groups: readonly GroupedChatMessageGroup[],
-  allFinished: boolean,
 ): CompletedWorkFolding | null {
-  if (!allFinished) {
-    return null;
-  }
-
   const messages = groups.flatMap((group) => {
     return group.messages;
   });
+  const terminatedRunIds = terminatedRunIdsForCompletedWork(messages);
   const visibleMessages: EnrichedChatMessage[] = [];
   const folds: CompletedWorkFold[] = [];
 
@@ -2532,6 +2544,12 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
+    if (!terminatedRunIds.has(runId)) {
+      visibleMessages.push(...runMessages);
+      index = endIndex;
+      continue;
+    }
+
     let finalMessageIndex = -1;
     for (let offset = runMessages.length - 1; offset >= 0; offset--) {
       if (isRenderableAssistantMessage(runMessages[offset]!)) {

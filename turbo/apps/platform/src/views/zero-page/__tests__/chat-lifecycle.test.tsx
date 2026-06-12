@@ -1368,6 +1368,71 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps completed chat work folded while a later run is active", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-completed-before-active",
+      activeRunIds: ["run-work-folding-active-later"],
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the earlier launch",
+          runId: "run-work-folding-completed-before-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the earlier launch notes.",
+          runId: "run-work-folding-completed-before-active",
+          createdAt: "2026-06-09T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "The earlier launch summary is ready.",
+          runId: "run-work-folding-completed-before-active",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Investigate the current launch",
+          runId: "run-work-folding-active-later",
+          createdAt: "2026-06-09T10:05:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the current launch notes.",
+          runId: "run-work-folding-active-later",
+          createdAt: "2026-06-09T10:05:10Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-completed-before-active",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+
+    const expandButtons = await screen.findAllByLabelText(
+      "Expand work history",
+    );
+    expect(expandButtons).toHaveLength(1);
+    expect(expandButtons[0]).toHaveTextContent("Worked for 20s");
+    expect(
+      screen.getByText("Summarize the earlier launch"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Checking the earlier launch notes.")).toBeNull();
+    expect(
+      screen.getByText("The earlier launch summary is ready."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Investigate the current launch"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Checking the current launch notes."),
+    ).toBeInTheDocument();
+  });
+
   it("folds completed chat work and toggles the hidden history", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completed",
