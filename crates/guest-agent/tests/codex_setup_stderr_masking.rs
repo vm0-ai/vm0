@@ -8,6 +8,8 @@ use guest_agent::masker::SecretMasker;
 use std::path::Path;
 
 const API_KEY: &str = "sk-test-codex-setup-api-key";
+const API_KEY_OVERLAPPING_SECRET: &str = "sk-test-codex";
+const API_KEY_SUFFIX: &str = "setup-api-key";
 const OTHER_SECRET: &str = "codex-setup-env-secret";
 const STDERR_OMITTED_LONG_LINE: &str = "[stderr line omitted: exceeded diagnostic size limit]";
 
@@ -49,7 +51,10 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
 
     let original_path = std::env::var("PATH").unwrap_or_default();
     let path = format!("{}:{original_path}", bin_dir.display());
+    let encoded_overlapping_secret =
+        base64::engine::general_purpose::STANDARD.encode(API_KEY_OVERLAPPING_SECRET);
     let encoded_other_secret = base64::engine::general_purpose::STANDARD.encode(OTHER_SECRET);
+    let encoded_secrets = format!("{encoded_overlapping_secret},{encoded_other_secret}");
 
     unsafe {
         std::env::set_var("CLI_AGENT_TYPE", "codex");
@@ -59,7 +64,7 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("VM0_PROMPT", "test prompt");
-        std::env::set_var("VM0_SECRET_VALUES", encoded_other_secret);
+        std::env::set_var("VM0_SECRET_VALUES", encoded_secrets);
         std::env::set_var("VM0_USER_ENV_FILE", &user_env_path);
         std::env::set_var(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV, &runtime_dir);
         std::env::set_var("HOME", tmp.path());
@@ -86,6 +91,10 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
     assert!(
         !system_log.contains(API_KEY),
         "system log leaked raw API key: {system_log}"
+    );
+    assert!(
+        !system_log.contains(API_KEY_SUFFIX),
+        "system log leaked raw API key suffix after overlapping mask: {system_log}"
     );
     assert!(
         !system_log.contains(OTHER_SECRET),

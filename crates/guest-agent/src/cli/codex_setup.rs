@@ -129,8 +129,8 @@ fn mask_setup_diagnostic_lines(
     api_key_masker: &SecretMasker,
     lines: Vec<String>,
 ) -> Vec<String> {
-    let lines = masker.mask_diagnostic_lines(lines);
-    api_key_masker.mask_diagnostic_lines(lines)
+    let lines = api_key_masker.mask_diagnostic_lines(lines);
+    masker.mask_diagnostic_lines(lines)
 }
 
 /// Wrapper that calls `codex_auth::setup_codex_chatgpt_inner` with values
