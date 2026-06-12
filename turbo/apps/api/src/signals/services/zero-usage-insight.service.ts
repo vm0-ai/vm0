@@ -509,7 +509,7 @@ async function queryUsageInsightTopAutomations(
         -- dimension spans the cutover).
         SELECT
           zr.automation_id,
-          COALESCE(a.name, 'Unnamed schedule') AS automation_name,
+          COALESCE(a.name, 'Unnamed automation') AS automation_name,
           a.description AS automation_description,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens,
@@ -545,7 +545,7 @@ async function queryUsageInsightTopAutomations(
     } else if (row.automation_id) {
       automations.push({
         automationId: row.automation_id,
-        automationName: row.automation_name ?? "Unnamed schedule",
+        automationName: row.automation_name ?? "Unnamed automation",
         automationDescription: row.automation_description,
         credits: Number(row.credits),
         tokens: Number(row.tokens),
