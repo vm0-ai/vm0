@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.134.2](https://github.com/vm0-ai/vm0/compare/api-v1.134.1...api-v1.134.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* **api:** poll the org-teardown assertions in the clerk deletion test ([#17462](https://github.com/vm0-ai/vm0/issues/17462)) ([7e162bf](https://github.com/vm0-ai/vm0/commit/7e162bfee955c134bb6272b5677c382fd0ad79b9)), closes [#17451](https://github.com/vm0-ai/vm0/issues/17451)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.1
+    * @vm0/connectors bumped to 1.71.1
+    * @vm0/core bumped to 8.333.2
+    * @vm0/db bumped to 1.46.3
+
 ## [1.134.1](https://github.com/vm0-ai/vm0/compare/api-v1.134.0...api-v1.134.1) (2026-06-12)
 
 

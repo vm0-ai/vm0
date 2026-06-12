@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.9](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.8...guest-mock-claude-v0.18.9) (2026-06-12)
+
+
+### Bug Fixes
+
+* **guest-mock-claude:** prevent session id collisions ([#17449](https://github.com/vm0-ai/vm0/issues/17449)) ([ced6107](https://github.com/vm0-ai/vm0/commit/ced6107796391193b49240050e2b65cad241167e))
+
 ## [0.18.8](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.7...guest-mock-claude-v0.18.8) (2026-06-07)
 
 
