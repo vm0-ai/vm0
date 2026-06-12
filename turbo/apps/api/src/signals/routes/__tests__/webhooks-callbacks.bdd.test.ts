@@ -42,7 +42,9 @@ function isoOf(epoch: number): string {
   return new Date(epoch * 1000).toISOString();
 }
 
-async function waitForExpectation(assertion: () => void): Promise<void> {
+async function waitForExpectation(
+  assertion: () => void | Promise<void>,
+): Promise<void> {
   await expect
     .poll(async () => {
       const result = await settle(Promise.resolve().then(assertion));
