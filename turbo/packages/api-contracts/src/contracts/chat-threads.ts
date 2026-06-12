@@ -92,21 +92,6 @@ const persistedAttachmentSchema = z.object({
   size: z.number(),
 });
 
-/**
- * Per-agent unread snapshot. `unreadAt` is the creation time of the latest
- * visible message — the one that made the thread unread. Clients keep local
- * optimistic mark-read timestamps and drop them whenever a snapshot reports
- * an `unreadAt` newer than the local mark.
- */
-const chatThreadUnreadsSchema = z.object({
-  unreads: z.array(
-    z.object({
-      threadId: z.string(),
-      unreadAt: z.string(),
-    }),
-  ),
-});
-
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -120,11 +105,22 @@ const chatThreadListItemSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   /**
+   * Read state of the thread's last message, derived from
+   * `lastReadAt >= lastMessageAt`.
+   */
+  isRead: z.boolean(),
+  /**
    * True when the thread has at least one non-terminal run
    * (queued / pending / running). Drives the sidebar running indicator,
    * which is mutually exclusive with the unread dot.
    */
   running: z.boolean(),
+  /**
+   * True when the thread has draft composer content the user hasn't sent yet
+   * (non-empty `draftContent` or one+ `draftAttachments`). Drives the sidebar
+   * draft indicator. Optional for back-compat with fixtures predating the field.
+   */
+  hasDraft: z.boolean().optional(),
   /**
    * ISO timestamp at which the user pinned this thread. Null/undefined means
    * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
@@ -259,16 +255,6 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
     recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
   }),
 ]);
-
-export const chatStreamDeltaPayloadSchema = z
-  .object({
-    messageId: z.string().uuid(),
-    runId: z.string().uuid(),
-    runEventId: z.string().min(1),
-    threadId: z.string().uuid(),
-    text: z.string(),
-  })
-  .strict();
 
 const chatThreadDetailSchema = z.object({
   id: z.string(),
@@ -408,46 +394,6 @@ export const chatThreadsContract = c.router({
     summary:
       "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId. An unknown agentId yields an empty list. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads are cursor-paginated.",
   },
-  drafts: {
-    method: "GET",
-    // Sibling path (not nested under /chat-threads/) so it can never
-    // collide with the /chat-threads/:id route pattern.
-    path: "/api/zero/chat-thread-drafts",
-    headers: authHeadersSchema,
-    query: z.object({
-      /**
-       * Comma-separated chat thread ids to check. Ids the caller does not
-       * own (or that don't exist) are silently absent from the response.
-       */
-      threadIds: z.string().min(1),
-    }),
-    responses: {
-      200: z.object({
-        /**
-         * Subset of the requested thread ids that currently hold an unsent
-         * draft (non-empty `draftContent` or one+ `draftAttachments`).
-         */
-        draftThreadIds: z.array(z.string()),
-      }),
-      401: apiErrorSchema,
-    },
-    summary:
-      "Report which of the given chat threads hold an unsent composer draft. Fetched separately from the thread list so the sidebar draft dots don't gate the list query.",
-  },
-  unreads: {
-    method: "GET",
-    path: "/api/zero/chat-thread-unreads",
-    headers: authHeadersSchema,
-    query: z.object({
-      agentId: z.string().min(1),
-    }),
-    responses: {
-      200: chatThreadUnreadsSchema,
-      401: apiErrorSchema,
-    },
-    summary:
-      "List the caller's unread chat threads under an agent, each with the timestamp of the message that made it unread. Fetched separately from the thread list; mark-read returns the same snapshot so read state needs no broadcast.",
-  },
 });
 
 /**
@@ -522,19 +468,14 @@ export const chatThreadMarkReadContract = c.router({
     responses: {
       200: z.object({
         lastReadMessageId: z.string().nullable(),
-        /**
-         * Fresh unread snapshot for the thread's agent (same shape as the
-         * unreads endpoint), so the caller syncs read state from the response
-         * instead of a broadcast-triggered refetch.
-         */
-        unreads: chatThreadUnreadsSchema.shape.unreads,
+        lastReadAt: z.string().nullable(),
+        changed: z.boolean(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary:
-      "Mark a chat thread as read up to the latest message and return the agent's unread snapshot",
+    summary: "Mark a chat thread as read up to the latest message",
   },
 });
 
@@ -948,9 +889,6 @@ export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema
->;
-export type ChatStreamDeltaPayload = z.infer<
-  typeof chatStreamDeltaPayloadSchema
 >;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
