@@ -373,6 +373,7 @@ describe("zero jobs page", () => {
     let capturedUpdateBody: unknown = null;
     let capturedTriggerBody: unknown = null;
     context.mocks.data.schedules(schedules);
+    context.mocks.data.userPreferences({ timezone: "Asia/Kolkata" });
     context.mocks.api(
       automationsV2ByRefContract.update,
       ({ body, respond }) => {
@@ -432,13 +433,13 @@ describe("zero jobs page", () => {
         screen.getByText("Research Agent's automations"),
       ).toBeInTheDocument();
       expect(
-        screen.getAllByText("Every week on Monday at 9:17 AM")[0],
+        screen.getAllByText("Every week on Monday at 2:47 PM")[0],
       ).toBeInTheDocument();
     });
 
     click(
       screen.getAllByLabelText(
-        "More actions for Every week on Monday at 9:17 AM",
+        "More actions for Every week on Monday at 2:47 PM",
       )[0],
     );
     click(menuItemByText("Edit"));

@@ -88,7 +88,10 @@ function cronToTimeString(cron: string, timezone = "UTC"): string {
   return `Every day at ${timeStr}`;
 }
 
-function scheduleToTimeString(s: ScheduleItem, displayTimezone?: string): string {
+function scheduleToTimeString(
+  s: ScheduleItem,
+  displayTimezone?: string,
+): string {
   const tz = displayTimezone ?? s.timezone ?? "UTC";
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
     if (s.intervalSeconds % 60 === 0) {
