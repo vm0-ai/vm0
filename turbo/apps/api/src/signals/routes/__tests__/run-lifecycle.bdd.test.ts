@@ -19,6 +19,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -1541,6 +1542,51 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it.each(["slack", "telegram", "email"] as const)(
+    "does not add chat stream context to %s-triggered runs",
+    async (triggerSource) => {
+      const bdd = createBddApi(context);
+      const api = createRunsSchedulesApi(context);
+      const connectors = createConnectorBddApi(context);
+      const actor = bdd.user();
+      bdd.acceptAgentStorageWrites();
+      api.acceptStorageDownloads();
+      api.acceptTelemetryIngest();
+      const runnerGroup = api.configureRunnerGroup();
+      await api.grantProEntitlement(actor);
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.AssistantTextStreaming]: true,
+      });
+
+      const composeName = `bdd-${triggerSource}-stream-off`;
+      const compose = await api.createCompose(actor, {
+        version: "1",
+        agents: {
+          [composeName]: {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          },
+        },
+      });
+
+      const run = await api.createDirectRun(actor, {
+        agentComposeId: compose.composeId,
+        prompt: `${triggerSource} should not stream`,
+        triggerSource,
+      });
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(run.runId);
+      expect(claim).not.toHaveProperty("chatStreamChannel");
+      expect(claim).not.toHaveProperty("chatStreamTopic");
+      expect(claim).not.toHaveProperty("chatStreamToken");
+      expect(context.mocks.ably.requestToken).not.toHaveBeenCalled();
+
+      await api.requestCancelRun(actor, run.runId, [200]);
+      const cancelled = await api.readRun(actor, run.runId);
+      expect(cancelled.status).toBe("cancelled");
+    },
+  );
+
   it("promotes queued runs with feature flags and a fresh api start time", async () => {
     const api = createRunsSchedulesApi(context);
     const computerUse = createComputerUseBddApi(context);
@@ -2290,6 +2336,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const firstAssistant = afterFirst.messages.find((message) => {
       return message.role === "assistant" && message.runId === runId;
     });
+    expect(firstAssistant?.id).toBe(
+      assistantMessageIdForRunEvent(runId, "msg_bdd_1"),
+    );
     expect(firstAssistant?.content).toBe("Hello from BDD events");
 
     context.mocks.ably.publish.mockRejectedValueOnce(
@@ -2410,6 +2459,34 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         return message.role === "assistant" && message.runId === runId;
       }),
     ).toHaveLength(3);
+
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 8,
+            message: {
+              id: "msg_bdd_1",
+              content: [{ type: "text", text: "Duplicate text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const afterDuplicate = await chat.listThreadMessages(actor, threadId);
+    const duplicatedMessageId = assistantMessageIdForRunEvent(
+      runId,
+      "msg_bdd_1",
+    );
+    const matchingDuplicateRows = afterDuplicate.messages.filter((message) => {
+      return message.role === "assistant" && message.id === duplicatedMessageId;
+    });
+    expect(matchingDuplicateRows).toHaveLength(1);
+    expect(matchingDuplicateRows[0]?.content).toBe("Hello from BDD events");
 
     // Assistant text on a run without a chat thread changes no thread state.
     const threadsBefore = await chat.listThreads(actor);

@@ -79,6 +79,14 @@ static SECRET_VALUES: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SECR
 static DISALLOWED_TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_DISALLOWED_TOOLS"));
 static TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_TOOLS"));
 static SETTINGS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SETTINGS"));
+static CHAT_STREAM_CHANNEL: LazyLock<String> =
+    LazyLock::new(|| env_or_empty("VM0_CHAT_STREAM_CHANNEL"));
+static CHAT_STREAM_TOPIC: LazyLock<String> =
+    LazyLock::new(|| env_or_empty("VM0_CHAT_STREAM_TOPIC"));
+static CHAT_STREAM_TOKEN: LazyLock<String> =
+    LazyLock::new(|| env_or_empty("VM0_CHAT_STREAM_TOKEN"));
+static CHAT_STREAM_ABLY_BASE: LazyLock<String> =
+    LazyLock::new(|| env_or_empty("VM0_CHAT_STREAM_ABLY_BASE"));
 static USE_MOCK_CLAUDE: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("USE_MOCK_CLAUDE")
         .map(|v| v == "true")
@@ -238,6 +246,14 @@ fn load_artifacts() -> Vec<ArtifactEnv> {
 }
 
 static ARTIFACTS: LazyLock<Vec<ArtifactEnv>> = LazyLock::new(load_artifacts);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChatStreamConfig {
+    pub channel: String,
+    pub topic: String,
+    pub token: String,
+    pub ably_base: String,
+}
 
 fn load_user_env_from_process() -> Result<HashMap<String, String>, String> {
     let path = env_or_empty(USER_ENV_FILE_ENV_KEY);
@@ -445,6 +461,27 @@ pub fn tools() -> &'static str {
 /// override.
 pub fn settings() -> &'static str {
     &SETTINGS
+}
+pub fn chat_stream_config() -> Option<ChatStreamConfig> {
+    if CHAT_STREAM_CHANNEL.is_empty()
+        || CHAT_STREAM_TOPIC.is_empty()
+        || CHAT_STREAM_TOKEN.is_empty()
+    {
+        return None;
+    }
+
+    let ably_base = if CHAT_STREAM_ABLY_BASE.is_empty() {
+        "https://rest.ably.io".to_string()
+    } else {
+        CHAT_STREAM_ABLY_BASE.clone()
+    };
+
+    Some(ChatStreamConfig {
+        channel: CHAT_STREAM_CHANNEL.clone(),
+        topic: CHAT_STREAM_TOPIC.clone(),
+        token: CHAT_STREAM_TOKEN.clone(),
+        ably_base,
+    })
 }
 /// Load and validate the runner-provided user env payload once at startup.
 pub fn init_user_env() -> Result<(), AgentError> {

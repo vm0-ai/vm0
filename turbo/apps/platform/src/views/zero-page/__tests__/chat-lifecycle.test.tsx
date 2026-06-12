@@ -2286,6 +2286,101 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("renders streaming assistant deltas until the server message arrives", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000706";
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const messageId = "f819e443-a3fc-5990-920b-5eb8e51e038e";
+
+    mockChatLifecycle(context, {
+      threadId,
+      activeRunIds: [runId],
+      chatMessages: [
+        {
+          id: "msg-stream-user",
+          role: "user",
+          content: "Start the streamed answer",
+          runId,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadMessageDelta:${threadId}`,
+        ),
+      ).toBeTruthy();
+    });
+
+    context.mocks.ably.trigger(`chatThreadMessageDelta:${threadId}`, {
+      messageId,
+      runId,
+      runEventId: "msg_01",
+      threadId,
+      text: "partial ",
+    });
+    context.mocks.ably.trigger(`chatThreadMessageDelta:${threadId}`, {
+      messageId,
+      runId,
+      runEventId: "msg_01",
+      threadId,
+      text: "answer",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("partial answer")).toBeInTheDocument();
+    });
+
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      if (!query.sinceId) {
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-stream-user",
+              role: "user",
+              content: "Start the streamed answer",
+              runId,
+              createdAt: "2026-06-09T10:00:00Z",
+            },
+          ],
+          hasHistoryBefore: false,
+        });
+      }
+      return respond(200, {
+        messages: [
+          {
+            id: messageId,
+            role: "assistant",
+            content: "partial answer",
+            runId,
+            runEventId: "msg_01",
+            createdAt: "2026-06-09T10:00:01Z",
+          },
+        ],
+      });
+    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("partial answer")).toHaveLength(1);
+    });
+
+    context.mocks.ably.trigger(`chatThreadMessageDelta:${threadId}`, {
+      messageId,
+      runId,
+      runEventId: "msg_01",
+      threadId,
+      text: " ignored",
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("partial answer ignored")).toBeNull();
+    });
+  });
+
   it("loads older chat history from the thread control", async () => {
     const olderReply = "Earlier launch notes from last week.";
 

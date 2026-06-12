@@ -3,9 +3,14 @@
 //! Event schema transformation and HTTP posting stay in `events`; this module
 //! only owns execution-delivery state consumed by `execute_cli`.
 
-pub(super) struct PreparedEvent {
-    pub(super) sequence: u32,
-    pub(super) payload: serde_json::Value,
+use super::text_chunker::ChunkOut;
+
+pub(super) enum PreparedEvent {
+    Webhook {
+        sequence: u32,
+        payload: serde_json::Value,
+    },
+    ChatStream(ChunkOut),
 }
 
 #[derive(Default)]

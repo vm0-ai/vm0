@@ -64,8 +64,10 @@ import {
 } from "@vm0/core/frameworks";
 import {
   getAllFeatureStates,
+  isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
@@ -114,6 +116,7 @@ import { writeDb$, type Db } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
+  createChatStreamPublishToken,
   publishOrgSignal,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
@@ -317,6 +320,12 @@ interface BuiltStoredExecutionContext {
   readonly secretNames: readonly string[];
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
+}
+
+interface ChatStreamExecutionContext {
+  readonly chatStreamChannel: string;
+  readonly chatStreamTopic: string;
+  readonly chatStreamToken: string;
 }
 
 type ApiErrorResponse<Status extends number, Code extends string> = {
@@ -3018,6 +3027,7 @@ async function buildStoredExecutionContext(args: {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly chatThreadId: string | undefined;
   readonly resolved: ResolvedCompose;
   readonly body: CreateRunBody;
   readonly framework: SupportedFramework;
@@ -3051,6 +3061,12 @@ async function buildStoredExecutionContext(args: {
   const secretValues = executionSecrets.secrets
     ? Object.values(executionSecrets.secrets)
     : [];
+  const chatStreamContext = await buildChatStreamExecutionContext({
+    userId: args.userId,
+    chatThreadId: args.chatThreadId,
+    triggerSource: args.body.triggerSource ?? "cli",
+    featureSwitchContext: args.featureSwitchContext,
+  });
 
   return {
     context: {
@@ -3092,9 +3108,34 @@ async function buildStoredExecutionContext(args: {
         permissions,
       }),
       modelUsageProvider: modelUsageProviderForContext(args.modelProvider),
+      ...chatStreamContext,
     },
     secretNames,
     secretValues,
+  };
+}
+
+async function buildChatStreamExecutionContext(args: {
+  readonly userId: string;
+  readonly chatThreadId: string | undefined;
+  readonly triggerSource: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<ChatStreamExecutionContext | undefined> {
+  if (
+    args.triggerSource !== "web" ||
+    !args.chatThreadId ||
+    !isFeatureEnabled(
+      FeatureSwitchKey.AssistantTextStreaming,
+      args.featureSwitchContext,
+    )
+  ) {
+    return undefined;
+  }
+
+  return {
+    chatStreamChannel: `user:${args.userId}`,
+    chatStreamTopic: `chatThreadMessageDelta:${args.chatThreadId}`,
+    chatStreamToken: await createChatStreamPublishToken(args.userId),
   };
 }
 
@@ -3332,6 +3373,7 @@ function buildRunnerJobPayload(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly zeroTokenComputerUseHostId: string | undefined;
+    readonly chatThreadId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -3385,6 +3427,7 @@ function buildRunnerJobPayload(
         ...args,
         body,
         runId: args.run.id,
+        chatThreadId: args.chatThreadId,
         storageManifest,
         userTimezone: args.userTimezone,
         featureSwitchContext: args.featureSwitchContext,
@@ -3444,6 +3487,7 @@ function dispatchRun(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly zeroTokenComputerUseHostId: string | undefined;
+    readonly chatThreadId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -3517,6 +3561,7 @@ function enqueueRunForConcurrency(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly zeroTokenComputerUseHostId: string | undefined;
+    readonly chatThreadId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -4019,6 +4064,7 @@ function completeQueuedRun(input: {
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
             zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
+            chatThreadId: input.args.chatThreadId,
             extraEnvironment: input.args.extraEnvironment,
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,
@@ -4065,6 +4111,7 @@ function completePendingRun(input: {
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
             zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
+            chatThreadId: input.args.chatThreadId,
             extraEnvironment: input.args.extraEnvironment,
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,

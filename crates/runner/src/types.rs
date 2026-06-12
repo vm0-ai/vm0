@@ -108,6 +108,12 @@ pub struct ExecutionContext {
     pub billable_firewalls: Vec<String>,
     #[serde(default)]
     pub model_usage_provider: Option<String>,
+    #[serde(default)]
+    pub chat_stream_channel: Option<String>,
+    #[serde(default)]
+    pub chat_stream_topic: Option<String>,
+    #[serde(default)]
+    pub chat_stream_token: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

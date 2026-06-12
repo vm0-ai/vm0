@@ -150,6 +150,60 @@ async function runWithChannel({
   }
 }
 
+async function runWithChannelMessageHandler({
+  set,
+  channel,
+  topic,
+  onMessage$,
+  signal,
+}: {
+  set: Setter;
+  channel: RealtimeChannel;
+  topic: string;
+  onMessage$: Command<void, [unknown, AbortSignal]>;
+  signal: AbortSignal;
+}): Promise<void> {
+  signal.throwIfAborted();
+  const done = createDeferredPromise<void>(signal);
+
+  const callback = (message: InboundMessage) => {
+    L.debug("got message payload from topic", topic, message);
+    set(onMessage$, message.data, signal);
+  };
+  let subscribed = false;
+
+  const cleanup = () => {
+    if (subscribed) {
+      subscribed = false;
+      channel.unsubscribe(topic, callback);
+    }
+  };
+
+  signal.addEventListener("abort", cleanup, { once: true });
+
+  // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
+  try {
+    await channel.subscribe(topic, callback);
+    subscribed = true;
+    signal.throwIfAborted();
+    L.debug("subscribed to message topic: " + topic);
+    await done.promise;
+  } catch (error) {
+    signal.throwIfAborted();
+    throwIfAbort(error);
+    if (isAblyConnectionClosedError(error)) {
+      L.debug("Ably connection closed before message subscription completed", {
+        topic,
+      });
+      return;
+    }
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", cleanup);
+    cleanup();
+  }
+}
+
 /**
  * Initialize the Ably realtime client and subscribe to the user's channel.
  * Call once during app bootstrap, after Clerk auth is ready.
@@ -308,6 +362,79 @@ export const setAblyLoop$ = command(
     signal.throwIfAborted();
     if (!loopPromise) {
       throw new Error("realtime subscription did not start");
+    }
+    await loopPromise;
+    signal.throwIfAborted();
+  },
+);
+
+export const setAblyMessageHandler$ = command(
+  async (
+    { get, set },
+    topic: string,
+    onMessage$: Command<void, [unknown, AbortSignal]>,
+    signal: AbortSignal,
+  ) => {
+    signal.throwIfAborted();
+
+    const channel = get(internalUserChannel$);
+    if (channel) {
+      await runWithChannelMessageHandler({
+        set,
+        channel,
+        topic,
+        onMessage$,
+        signal,
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    const startDeferred = createDeferredPromise<void>(signal);
+    let loopPromise: Promise<void> | null = null;
+    const pendingSubscription: PendingAblySubscription = {
+      topic,
+      signal,
+      start: (pendingChannel) => {
+        if (startDeferred.settled()) {
+          return;
+        }
+        loopPromise = runWithChannelMessageHandler({
+          set,
+          channel: pendingChannel,
+          topic,
+          onMessage$,
+          signal,
+        });
+        startDeferred.resolve();
+      },
+      reject: (reason?: unknown) => {
+        if (!startDeferred.settled()) {
+          startDeferred.reject(reason);
+        }
+      },
+    };
+    const removePendingSubscription = () => {
+      set(pendingAblySubscriptions$, (prev) => {
+        return prev.filter((item) => {
+          return item !== pendingSubscription;
+        });
+      });
+    };
+
+    signal.addEventListener("abort", removePendingSubscription, {
+      once: true,
+    });
+    set(pendingAblySubscriptions$, (prev) => {
+      return [...prev, pendingSubscription];
+    });
+
+    await startDeferred.promise.finally(() => {
+      signal.removeEventListener("abort", removePendingSubscription);
+    });
+    signal.throwIfAborted();
+    if (!loopPromise) {
+      throw new Error("realtime message subscription did not start");
     }
     await loopPromise;
     signal.throwIfAborted();

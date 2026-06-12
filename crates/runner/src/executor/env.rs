@@ -247,6 +247,7 @@ pub(super) fn build_env_json_with_host_env(
         reuse_result.as_wire().into(),
     );
     env.insert("VM0_PROMPT".into(), context.prompt.clone());
+    insert_chat_stream_env(&mut env, context);
     insert_guest_agent_tuning_env(&mut env, context);
     if let Some(asp) = &context.append_system_prompt
         && !asp.is_empty()
@@ -363,6 +364,20 @@ pub(super) fn build_env_json_with_host_env(
     Ok(env)
 }
 
+fn insert_chat_stream_env(env: &mut HashMap<String, String>, context: &ExecutionContext) {
+    let (Some(channel), Some(topic), Some(token)) = (
+        &context.chat_stream_channel,
+        &context.chat_stream_topic,
+        &context.chat_stream_token,
+    ) else {
+        return;
+    };
+
+    env.insert("VM0_CHAT_STREAM_CHANNEL".into(), channel.clone());
+    env.insert("VM0_CHAT_STREAM_TOPIC".into(), topic.clone());
+    env.insert("VM0_CHAT_STREAM_TOKEN".into(), token.clone());
+}
+
 pub(super) fn insert_guest_agent_tuning_env(
     env: &mut HashMap<String, String>,
     context: &ExecutionContext,
@@ -418,6 +433,9 @@ pub(super) const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
     "VM0_SANDBOX_REUSE_RESULT",
     "VM0_PROMPT",
+    "VM0_CHAT_STREAM_CHANNEL",
+    "VM0_CHAT_STREAM_TOPIC",
+    "VM0_CHAT_STREAM_TOKEN",
     "VM0_APPEND_SYSTEM_PROMPT",
     // Retired runner-owned key. Keep scrubbing user-provided values so the
     // removed working-dir parameter does not leak into guest CLI processes.

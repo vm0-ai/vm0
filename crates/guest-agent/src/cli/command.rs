@@ -48,6 +48,7 @@ fn build_claude_args(
     disallowed_tools: &str,
     tools: &str,
     settings: &str,
+    include_partial_messages: bool,
     prompt: &str,
 ) -> Vec<String> {
     let mut args = vec![
@@ -84,6 +85,10 @@ fn build_claude_args(
         args.push(effort.to_string());
     }
 
+    if include_partial_messages {
+        args.push("--include-partial-messages".to_string());
+    }
+
     // "--" terminates option parsing so Commander.js variadic options
     // (--disallowed-tools, --tools) do not consume the prompt.
     args.push("--".to_string());
@@ -108,6 +113,7 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
         env::disallowed_tools(),
         env::tools(),
         env::settings(),
+        env::chat_stream_config().is_some(),
         env::prompt(),
     );
 
@@ -263,6 +269,7 @@ mod tests {
             disallowed_tools,
             tools,
             settings,
+            false,
             prompt,
         )
     }
@@ -314,6 +321,30 @@ mod tests {
     fn build_claude_args_empty_append_system_prompt_omitted() {
         let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--append-system-prompt".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_include_partial_messages_before_prompt_separator() {
+        let args = build_claude_args("", "", "", "", "", true, "test");
+        let flag_idx = args
+            .iter()
+            .position(|arg| arg == "--include-partial-messages")
+            .expect("flag should be present");
+        let separator_idx = args
+            .iter()
+            .position(|arg| arg == "--")
+            .expect("separator should be present");
+
+        assert!(flag_idx < separator_idx);
+        assert_prompt_with_separator(&args, "test");
+    }
+
+    #[test]
+    fn build_claude_args_omits_partial_messages_when_disabled() {
+        let args = build_claude_args("", "", "", "", "", false, "test");
+
+        assert!(!args.contains(&"--include-partial-messages".to_string()));
+        assert_prompt_with_separator(&args, "test");
     }
 
     #[test]

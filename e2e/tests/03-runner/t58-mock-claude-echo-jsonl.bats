@@ -46,6 +46,10 @@ teardown_file() {
     prompt=$(cat <<EOF
 @ECHO@
 {"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"$session_id","tools":["Bash"],"model":"mock-claude"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_echo_01"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"partial echo that should stay out of webhooks"}}}
+{"type":"stream_event","event":{"type":"content_block_stop"}}
+{"type":"stream_event","event":{"type":"message_stop"}}
 {"type":"assistant","session_id":"$session_id","message":{"role":"assistant","content":[{"type":"text","text":"echo-jsonl fixture response"}]}}
 {"type":"result","subtype":"success","session_id":"$session_id","is_error":false,"duration_ms":100,"num_turns":1,"result":"Done.","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}
 EOF
@@ -56,6 +60,7 @@ EOF
     assert_success
     assert_output --partial "▷ Claude Code Started"
     assert_output --partial "echo-jsonl fixture response"
+    refute_output --partial "partial echo that should stay out of webhooks"
     assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
     assert_output --partial "Session:"

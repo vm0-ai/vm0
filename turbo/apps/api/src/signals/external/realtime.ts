@@ -37,6 +37,24 @@ export async function createPlatformUserRealtimeToken(
   return tokenRequest;
 }
 
+export async function createChatStreamPublishToken(
+  userId: string,
+): Promise<string> {
+  const channelName = getUserChannelName(userId);
+  const tokenDetails = await ablyClient().auth.requestToken({
+    capability: JSON.stringify({
+      [channelName]: ["publish"],
+    }),
+    ttl: 24 * 60 * 60 * 1000,
+    clientId: undefined,
+  });
+  if (!tokenDetails.token) {
+    throw new Error("Ably did not return a chat stream token");
+  }
+  L.debug(`Generated chat stream publish token for user:${userId}`);
+  return tokenDetails.token;
+}
+
 export async function createBuiltInGenerationRealtimeSubscription(
   userId: string,
   generationId: string,

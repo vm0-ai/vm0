@@ -15,6 +15,7 @@
 //! child reaping. Branch ordering and deadline reset timing in that control
 //! flow are part of the runtime contract.
 
+mod chat_stream;
 mod child_env;
 mod codex_setup;
 mod command;
@@ -22,6 +23,7 @@ mod diagnostics;
 mod event_delivery;
 mod framework;
 mod termination;
+mod text_chunker;
 
 pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
@@ -45,6 +47,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 use termination::{TerminationReason, TerminationState};
+use text_chunker::{ChunkOut, LineAction, TextChunker};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -55,6 +58,22 @@ async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
             interval.tick().await;
         }
         None => std::future::pending::<()>().await,
+    }
+}
+
+fn enqueue_chat_stream_chunk(
+    event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
+    chat_stream_configured: bool,
+    chunk: Option<ChunkOut>,
+) {
+    if !chat_stream_configured {
+        return;
+    }
+    let Some(chunk) = chunk else {
+        return;
+    };
+    if event_tx.send(PreparedEvent::ChatStream(chunk)).is_err() {
+        log_warn!(LOG_TAG, "Event channel closed, dropping chat stream chunk");
     }
 }
 
@@ -252,22 +271,53 @@ pub async fn execute_cli(
     // MAINTENANCE: update if Claude Code adds new network tools that can hang.
     const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
+    let chat_stream_config = env::chat_stream_config();
+    let chat_stream_configured = chat_stream_config.is_some();
+    let mut text_chunker = TextChunker::new(masker);
+    let chat_stream_interval = Duration::from_millis(100);
+    let mut chat_stream_flush = if chat_stream_configured {
+        Some(tokio::time::interval_at(
+            tokio::time::Instant::now() + chat_stream_interval,
+            chat_stream_interval,
+        ))
+    } else {
+        None
+    };
+
     // Background event sender: HTTP POSTs happen here, never in the
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
     let event_http = http.clone();
+    let event_chat_stream_config = chat_stream_config.clone();
     let event_sender = tokio::spawn(async move {
         let mut acked_prefix = AckedEventPrefix::default();
+        let chat_stream_publisher = chat_stream::ChatStreamPublisher::new();
+        let mut chat_stream_error_logged = false;
         while let Some(event) = event_rx.recv().await {
-            match events::post_event(&event_http, &event.payload).await {
-                Ok(()) => {
-                    acked_prefix.record_success(event.sequence);
+            match event {
+                PreparedEvent::Webhook { sequence, payload } => {
+                    match events::post_event(&event_http, &payload).await {
+                        Ok(()) => {
+                            acked_prefix.record_success(sequence);
+                        }
+                        Err(e) => {
+                            acked_prefix.record_failure(sequence);
+                            log_warn!(LOG_TAG, "Event send failed: {e}");
+                        }
+                    }
                 }
-                Err(e) => {
-                    acked_prefix.record_failure(event.sequence);
-                    log_warn!(LOG_TAG, "Event send failed: {e}");
+                PreparedEvent::ChatStream(chunk) => {
+                    let Some(config) = event_chat_stream_config.as_ref() else {
+                        continue;
+                    };
+                    if let Err(error) = chat_stream_publisher.publish(config, &chunk).await
+                        && !chat_stream_error_logged
+                    {
+                        chat_stream_error_logged = true;
+                        log_warn!(LOG_TAG, "Chat stream publish failed: {error}");
+                    }
                 }
             }
         }
@@ -294,6 +344,23 @@ pub async fn execute_cli(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                            match text_chunker.on_line(&event, masker) {
+                                LineAction::Consume { chunk } => {
+                                    enqueue_chat_stream_chunk(
+                                        &event_tx,
+                                        chat_stream_configured,
+                                        chunk,
+                                    );
+                                    continue;
+                                }
+                                LineAction::PassthroughAfterFlush { chunk } => {
+                                    enqueue_chat_stream_chunk(
+                                        &event_tx,
+                                        chat_stream_configured,
+                                        chunk,
+                                    );
+                                }
+                            }
                             last_read_event_at = Some(Instant::now());
                             // First event is the CLI init (system/init or thread.started)
                             if seq == 0 {
@@ -369,7 +436,7 @@ pub async fn execute_cli(
                             if should_send_events {
                                 let payload = events::prepare_event_payload(event, seq, masker);
                                 if event_tx
-                                    .send(PreparedEvent {
+                                    .send(PreparedEvent::Webhook {
                                         sequence: seq,
                                         payload,
                                     })
@@ -481,6 +548,10 @@ pub async fn execute_cli(
                     constants::STDOUT_DRAIN_DEADLINE_SECS,
                 );
                 break Ok(());
+            }
+            _ = tick_optional_interval(&mut chat_stream_flush) => {
+                let chunk = text_chunker.flush(masker, false);
+                enqueue_chat_stream_chunk(&event_tx, chat_stream_configured, chunk);
             }
             _ = tick_optional_interval(&mut stuck_tool_check) => {
                 let timeout_secs = env::stuck_tool_timeout_secs();
