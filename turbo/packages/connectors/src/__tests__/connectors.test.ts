@@ -2549,10 +2549,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes Cloudflare auth methods by default", () => {
-    expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+  it("keeps Cloudflare API-token configured but hidden by default", () => {
+    expect(getConfiguredConnectorAuthMethodIds("cloudflare")).toStrictEqual([
       "oauth",
       "api-token",
+    ]);
+    expect(getConnectorAuthMethod("cloudflare", "api-token")).toMatchObject({
+      visible: false,
+      grant: { kind: "manual" },
+    });
+    expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+      "oauth",
     ]);
   });
 
