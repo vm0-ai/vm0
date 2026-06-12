@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   captureFeedbackSelection$,
   startFeedback$,
+  removeFeedbackItem$,
   dismissFeedback$,
   feedbackItemsValue$,
   feedbackThreadIdValue$,
@@ -74,5 +75,54 @@ describe("inline feedback thread scoping", () => {
 
     expect(ctx.store.get(feedbackThreadIdValue$)).toBeNull();
     expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(0);
+  });
+});
+
+// happy-dom has no CSS Custom Highlight API, so stub the pieces the highlight
+// manager touches and inspect the registry it writes to.
+class FakeHighlight {
+  readonly ranges: readonly Range[];
+  constructor(...ranges: Range[]) {
+    this.ranges = ranges;
+  }
+}
+
+interface HighlightGlobals {
+  Highlight?: unknown;
+  CSS?: { highlights?: Map<string, FakeHighlight> };
+}
+
+describe("inline feedback source highlight", () => {
+  const ctx = testContext();
+  const globals = globalThis as unknown as HighlightGlobals;
+  const originalHighlight = globals.Highlight;
+  const originalCss = globals.CSS;
+
+  afterEach(() => {
+    globals.Highlight = originalHighlight;
+    globals.CSS = originalCss;
+  });
+
+  it("highlights the drafted passage and clears it on remove", () => {
+    // Reset the module-level highlight ranges left by earlier tests.
+    ctx.store.set(dismissFeedback$);
+    const highlights = new Map<string, FakeHighlight>();
+    globals.Highlight = FakeHighlight;
+    globals.CSS = { highlights };
+
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    ctx.store.set(startFeedback$);
+
+    const registered = highlights.get("zero-feedback");
+    expect(registered).toBeDefined();
+    expect(registered?.ranges).toHaveLength(1);
+
+    const id = ctx.store.get(feedbackItemsValue$)[0]?.id;
+    expect(id).toBeDefined();
+    ctx.store.set(removeFeedbackItem$, id as number);
+
+    expect(highlights.has("zero-feedback")).toBe(false);
   });
 });

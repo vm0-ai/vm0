@@ -22,6 +22,9 @@ export interface FeedbackSelection {
   // The thread the selected passage belongs to. Feedback stays with this
   // thread, so switching chats never carries the draft across.
   readonly threadId: string | null;
+  // A snapshot of the selected range. Kept so the passage can stay highlighted
+  // once the comment is drafted and the native selection clears.
+  readonly range: Range | null;
 }
 
 // A quoted passage together with the note the user is writing about it. Every
@@ -81,6 +84,65 @@ function resolveSelectionThreadId(bubble: Element): string | null {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Source-passage highlight. While a feedback comment is being drafted, its
+// quoted passage stays highlighted inside the message via the CSS Custom
+// Highlight API, so the comment is visibly anchored to the text it is about.
+// Ranges are kept here, outside the reactive state, and the registry is a
+// no-op where the API is unavailable (e.g. the test/SSR environment).
+// ---------------------------------------------------------------------------
+
+const FEEDBACK_HIGHLIGHT_NAME = "zero-feedback";
+const feedbackHighlightRanges = new Map<number, Range>();
+
+function highlightRegistry(): HighlightRegistry | null {
+  if (
+    typeof CSS === "undefined" ||
+    typeof Highlight === "undefined" ||
+    !CSS.highlights
+  ) {
+    return null;
+  }
+  return CSS.highlights;
+}
+
+function syncFeedbackHighlight(): void {
+  const registry = highlightRegistry();
+  if (!registry) {
+    return;
+  }
+  if (feedbackHighlightRanges.size === 0) {
+    registry.delete(FEEDBACK_HIGHLIGHT_NAME);
+    return;
+  }
+  registry.set(
+    FEEDBACK_HIGHLIGHT_NAME,
+    new Highlight(...feedbackHighlightRanges.values()),
+  );
+}
+
+function addFeedbackHighlight(id: number, range: Range | null): void {
+  if (!range) {
+    return;
+  }
+  feedbackHighlightRanges.set(id, range);
+  syncFeedbackHighlight();
+}
+
+function removeFeedbackHighlight(id: number): void {
+  if (feedbackHighlightRanges.delete(id)) {
+    syncFeedbackHighlight();
+  }
+}
+
+function clearFeedbackHighlight(): void {
+  if (feedbackHighlightRanges.size === 0) {
+    return;
+  }
+  feedbackHighlightRanges.clear();
+  syncFeedbackHighlight();
+}
+
 // Read the live document selection when it sits inside an assistant message.
 function readAssistantSelection(): {
   text: string;
@@ -137,6 +199,7 @@ export const captureFeedbackSelection$ = command(({ get, set }) => {
   set(feedbackSelection$, {
     text: found.text,
     threadId: resolveSelectionThreadId(found.bubble),
+    range: found.range.cloneRange(),
     rect: {
       top: rect.top,
       left: rect.left,
@@ -158,14 +221,17 @@ export const startFeedback$ = command(({ get, set }) => {
   // different thread starts a fresh stack instead of mixing comments across
   // threads.
   const activeThreadId = get(feedbackThreadId$);
-  const existing =
-    activeThreadId !== null && activeThreadId !== selection.threadId
-      ? []
-      : get(feedbackItems$);
+  const crossesThreads =
+    activeThreadId !== null && activeThreadId !== selection.threadId;
+  if (crossesThreads) {
+    clearFeedbackHighlight();
+  }
+  const existing = crossesThreads ? [] : get(feedbackItems$);
   const id = get(feedbackNextId$);
   set(feedbackNextId$, id + 1);
   set(feedbackThreadId$, selection.threadId);
   set(feedbackItems$, [...existing, { id, quote: selection.text, note: "" }]);
+  addFeedbackHighlight(id, selection.range);
   set(feedbackSelection$, null);
 });
 
@@ -181,6 +247,7 @@ export const setFeedbackItemNote$ = command(
 );
 
 export const removeFeedbackItem$ = command(({ get, set }, id: number) => {
+  removeFeedbackHighlight(id);
   set(
     feedbackItems$,
     get(feedbackItems$).filter((item) => {
@@ -207,6 +274,7 @@ export const dismissFeedback$ = command(({ get, set }) => {
     window.clearTimeout(timerId);
     set(feedbackCopiedTimerId$, null);
   }
+  clearFeedbackHighlight();
   set(feedbackSelection$, null);
   set(feedbackItems$, []);
   set(feedbackThreadId$, null);
