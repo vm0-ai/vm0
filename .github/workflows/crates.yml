@@ -707,7 +707,20 @@ jobs:
           done
           # Verify PostgreSQL can actually start (not just psql --version).
           # Test with TCP on localhost — users will connect via localhost:5432.
-          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "mkdir -p /tmp/pgdata && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='localhost'\" start && pg_isready -h localhost && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c '
+            set -e
+            pg_bin=$(find /usr/lib/postgresql -mindepth 2 -maxdepth 2 -type f -name initdb -printf "%h\n" | sort -V | tail -n 1)
+            if [ -z "$pg_bin" ]; then
+              echo "initdb not found under /usr/lib/postgresql" >&2
+              exit 1
+            fi
+            rm -rf /tmp/pgdata
+            mkdir -p /tmp/pgdata
+            "$pg_bin/initdb" -D /tmp/pgdata -A trust
+            "$pg_bin/pg_ctl" -D /tmp/pgdata -l /tmp/pgdata/log -o "-c listen_addresses=localhost" start
+            pg_isready -h localhost
+            "$pg_bin/pg_ctl" -D /tmp/pgdata stop
+          ' \
             || { sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL start"; }
           echo "  PostgreSQL start/stop: ok"
           echo "PASS: runtime availability"
