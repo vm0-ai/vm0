@@ -11,6 +11,10 @@
 //!
 //! Exec request payloads are [`ExecRequest`]. Termination request payloads are
 //! [`TerminateRequest`]. Responses are serialized as untagged JSON objects.
+//!
+//! Termination clients send `{"action":"terminate"}`. A status response is
+//! shaped like `{"status":"accepted"}`; an error response is shaped like
+//! `{"error":"..."}`.
 
 mod client;
 mod protocol;

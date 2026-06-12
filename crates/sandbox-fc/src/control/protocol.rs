@@ -73,6 +73,9 @@ pub enum ExecResponse {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TerminateAction {
+    /// Request host-side sandbox termination.
+    ///
+    /// This variant serializes as `"terminate"` in the request action field.
     Terminate,
 }
 
@@ -80,6 +83,9 @@ pub enum TerminateAction {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminateRequest {
+    /// Requested host-side control action.
+    ///
+    /// Termination clients send `{"action":"terminate"}`.
     pub action: TerminateAction,
 }
 
@@ -87,19 +93,45 @@ pub struct TerminateRequest {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TerminateStatus {
+    /// The sandbox owner accepted and acknowledged the termination request.
+    ///
+    /// This status serializes as `"accepted"`.
     Accepted,
+    /// The sandbox owner or termination path is already stopped or unavailable.
+    ///
+    /// Callers may treat this as an idempotent stopped outcome. This status
+    /// serializes as `"already_stopped"`.
     AlreadyStopped,
     /// The sandbox is parked in idle ownership; direct process termination
     /// would leave runner-owned idle resources retained.
+    ///
+    /// This status serializes as `"refused_idle"`.
     RefusedIdle,
 }
 
 /// Response to a host-side termination client.
+///
+/// This enum is serialized without a tag. Clients should distinguish variants
+/// by shape: a status response contains a `status` field, while an error
+/// response contains only an `error` string.
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum TerminateResponse {
-    Status { status: TerminateStatus },
-    Error { error: String },
+    /// Termination request completed with a status result.
+    ///
+    /// This variant serializes as `{"status":"..."}`, for example
+    /// `{"status":"accepted"}`.
+    Status {
+        /// Status describing how the termination request was handled.
+        status: TerminateStatus,
+    },
+    /// Request failed before a termination status could be returned.
+    ///
+    /// This variant serializes as `{"error":"..."}`.
+    Error {
+        /// Human-readable error message for operators and clients.
+        error: String,
+    },
 }
 
 /// Maximum frame size: 64 MiB (generous for large stdout/stderr).
@@ -285,40 +317,47 @@ mod tests {
         let request = TerminateRequest {
             action: TerminateAction::Terminate,
         };
-        let request_json = serde_json::to_vec(&request).unwrap();
+        let request_json = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            request_json,
+            serde_json::json!({
+                "action": "terminate",
+            })
+        );
 
-        let decoded: TerminateRequest = serde_json::from_slice(&request_json).unwrap();
+        let decoded: TerminateRequest = serde_json::from_value(request_json).unwrap();
         assert!(matches!(decoded.action, TerminateAction::Terminate));
 
-        let response = TerminateResponse::Status {
-            status: TerminateStatus::Accepted,
-        };
-        let response_json = serde_json::to_vec(&response).unwrap();
-        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
-        assert_eq!(
-            decoded,
-            TerminateResponse::Status {
-                status: TerminateStatus::Accepted
-            }
-        );
+        for (status, status_json) in [
+            (TerminateStatus::Accepted, "accepted"),
+            (TerminateStatus::AlreadyStopped, "already_stopped"),
+            (TerminateStatus::RefusedIdle, "refused_idle"),
+        ] {
+            let response = TerminateResponse::Status { status };
+            let response_json = serde_json::to_value(&response).unwrap();
+            assert_eq!(
+                response_json,
+                serde_json::json!({
+                    "status": status_json,
+                })
+            );
 
-        let response = TerminateResponse::Status {
-            status: TerminateStatus::RefusedIdle,
-        };
-        let response_json = serde_json::to_vec(&response).unwrap();
-        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
-        assert_eq!(
-            decoded,
-            TerminateResponse::Status {
-                status: TerminateStatus::RefusedIdle
-            }
-        );
+            let decoded: TerminateResponse = serde_json::from_value(response_json).unwrap();
+            assert_eq!(decoded, TerminateResponse::Status { status });
+        }
 
         let response = TerminateResponse::Error {
             error: "sandbox not running".into(),
         };
-        let response_json = serde_json::to_vec(&response).unwrap();
-        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
+        let response_json = serde_json::to_value(&response).unwrap();
+        assert_eq!(
+            response_json,
+            serde_json::json!({
+                "error": "sandbox not running",
+            })
+        );
+
+        let decoded: TerminateResponse = serde_json::from_value(response_json).unwrap();
         assert_eq!(
             decoded,
             TerminateResponse::Error {
