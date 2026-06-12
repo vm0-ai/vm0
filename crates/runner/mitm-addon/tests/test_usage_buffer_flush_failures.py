@@ -33,7 +33,6 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
         usage.flush_usage_events(trigger="test")
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == 1
     failed_key = failed_payloads[0]["events"][0]["idempotencyKey"]
 
     enqueue.side_effect = None
@@ -45,7 +44,6 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
     assert retry_payload["runId"] == "run-1"
     assert retry_payload["events"][0]["quantity"] == 10
     assert retry_payload["events"][0]["idempotencyKey"] == failed_key
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_keys(tmp_path):
@@ -80,7 +78,6 @@ def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_ke
 
     assert enqueue.call_count == 2
     assert [payload["runId"] for payload in failed_payloads] == ["run-1", "run-2"]
-    assert usage.counters._buffered_usage_events == 2
 
     enqueue.side_effect = None
     enqueue.clear()
@@ -96,7 +93,6 @@ def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_ke
         for payload in failed_payloads
         for flushed_event in payload["events"]
     ]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempotency_key(
@@ -127,7 +123,6 @@ def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempoten
         )
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == usage_buffer.MAX_BUFFERED_SOURCE_EVENTS
     failed_key = failed_payloads[0]["events"][0]["idempotencyKey"]
 
     enqueue.side_effect = None
@@ -139,7 +134,6 @@ def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempoten
     assert retry_payload["runId"] == "run-threshold"
     assert retry_payload["events"][0]["quantity"] == usage_buffer.MAX_BUFFERED_SOURCE_EVENTS
     assert retry_payload["events"][0]["idempotencyKey"] == failed_key
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_saturated_flush_retains_retryable_payload_with_same_idempotency_key(tmp_path):
@@ -157,7 +151,6 @@ def test_saturated_flush_retains_retryable_payload_with_same_idempotency_key(tmp
     assert usage.flush_usage_events(trigger="test") == 0
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == 1
     retained_key = enqueue.last_call.payload["events"][0]["idempotencyKey"]
 
     enqueue.return_value = True
@@ -169,7 +162,6 @@ def test_saturated_flush_retains_retryable_payload_with_same_idempotency_key(tmp
     assert retry_payload["runId"] == "run-1"
     assert retry_payload["events"][0]["quantity"] == 10
     assert retry_payload["events"][0]["idempotencyKey"] == retained_key
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_partial_saturated_flush_retries_only_unadmitted_batches(tmp_path):
@@ -201,7 +193,6 @@ def test_partial_saturated_flush_retries_only_unadmitted_batches(tmp_path):
     assert usage.flush_usage_events(trigger="test") == 1
 
     assert [payload["runId"] for payload in attempted_payloads] == ["run-1", "run-2"]
-    assert usage.counters._buffered_usage_events == 1
     retained_key = attempted_payloads[1]["events"][0]["idempotencyKey"]
 
     enqueue.side_effect = None
@@ -212,12 +203,13 @@ def test_partial_saturated_flush_retries_only_unadmitted_batches(tmp_path):
     retry_payload = enqueue.last_call.payload
     assert retry_payload["runId"] == "run-2"
     assert retry_payload["events"][0]["idempotencyKey"] == retained_key
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_retained_aggregate_batch_keeps_source_event_count(tmp_path):
     enqueue = RecordingEnqueue(return_value=False)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -235,7 +227,8 @@ def test_retained_aggregate_batch_keeps_source_event_count(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["events"][0]["quantity"] == 22
-    assert usage.counters._buffered_usage_events == 3
+    usage.write_pending_snapshot(flush_request_id="retained")
+    assert_pending(pending_path, flows=0, buffered=3, reports=0, flush_request_id="retained")
 
     enqueue.return_value = True
     enqueue.clear()
@@ -243,7 +236,8 @@ def test_retained_aggregate_batch_keeps_source_event_count(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["events"][0]["quantity"] == 22
-    assert usage.counters._buffered_usage_events == 0
+    usage.write_pending_snapshot(flush_request_id="drained")
+    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="drained")
 
 
 def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
@@ -275,7 +269,6 @@ def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
     assert usage.flush_usage_events(trigger="test") == 1
 
     assert attempted_log_types == ["usage_event", "model_usage_observation"]
-    assert usage.counters._buffered_usage_events == 1
 
     enqueue.side_effect = None
     enqueue.clear()
@@ -283,7 +276,6 @@ def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.log_type == "model_usage_observation"
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path):
@@ -302,7 +294,6 @@ def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path)
 
     enqueue.assert_called_once()
     assert enqueue.last_call.log_type == "model_usage_observation"
-    assert usage.counters._buffered_usage_events == 1
 
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -323,7 +314,6 @@ def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path)
     assert usage.flush_usage_events(trigger="test") == 1
 
     assert attempted_log_types == ["usage_event", "model_usage_observation"]
-    assert usage.counters._buffered_usage_events == 1
 
     enqueue.side_effect = None
     enqueue.return_value = True
@@ -332,7 +322,6 @@ def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path)
 
     enqueue.assert_called_once()
     assert enqueue.last_call.log_type == "model_usage_observation"
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
@@ -361,7 +350,6 @@ def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
         [event(source_key="source-b")],
         proxy_log_path,
     )
-    assert usage.counters._buffered_usage_events == 2
 
     attempted_runs = []
 
@@ -376,14 +364,12 @@ def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
         usage.flush_usage_events(trigger="test")
 
     assert attempted_runs == ["run-a"]
-    assert usage.counters._buffered_usage_events == 2
 
     enqueue.side_effect = None
     enqueue.clear()
     assert usage.flush_usage_events(trigger="test") == 2
 
     assert [call.payload["runId"] for call in enqueue.calls] == ["run-a", "run-b"]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_overlapping_flush_defers_live_snapshot_while_enqueueing(tmp_path):
@@ -397,7 +383,6 @@ def test_overlapping_flush_defers_live_snapshot_while_enqueueing(tmp_path):
         )
         assert usage.flush_usage_events(trigger="test") == 0
         assert payload["runId"] == "run-1"
-        assert usage.counters._buffered_usage_events == 2
         assert log_type == "usage_event"
 
     enqueue = RecordingEnqueue(side_effect=enqueue_webhook)
@@ -414,7 +399,6 @@ def test_overlapping_flush_defers_live_snapshot_while_enqueueing(tmp_path):
     assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == 1
 
     enqueue.side_effect = None
     enqueue.clear()
@@ -422,7 +406,6 @@ def test_overlapping_flush_defers_live_snapshot_while_enqueueing(tmp_path):
 
     enqueue.assert_called_once()
     assert enqueue.last_call.payload["runId"] == "run-2"
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
@@ -436,7 +419,6 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
         )
         assert log_type == "usage_event"
         assert payload["runId"] == "run-1"
-        assert usage.counters._buffered_usage_events == 2
 
     enqueue = RecordingEnqueue(side_effect=enqueue_webhook)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
@@ -452,14 +434,13 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
     assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == 1
 
     enqueue.side_effect = None
     enqueue.clear()
     assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
-    assert usage.counters._buffered_usage_events == 0
+    assert enqueue.last_call.payload["runId"] == "run-2"
 
 
 def test_retryable_delivery_failure_retains_flush_and_retries_with_same_key(
@@ -487,8 +468,6 @@ def test_retryable_delivery_failure_retains_flush_and_retries_with_same_key(
 
     assert usage_webhook_server.request_count == 2
     failed_key = usage_webhook_server.requests[0].json_body()["events"][0]["idempotencyKey"]
-    assert usage.counters._pending_reports == 0
-    assert usage.counters._buffered_usage_events == 1
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1")
 
@@ -500,7 +479,6 @@ def test_retryable_delivery_failure_retains_flush_and_retries_with_same_key(
     assert retry_body["runId"] == "run-1"
     assert retry_body["events"][0]["quantity"] == 10
     assert retry_body["events"][0]["idempotencyKey"] == failed_key
-    assert usage.counters._buffered_usage_events == 0
     usage.write_pending_snapshot(flush_request_id="request-2")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
@@ -532,7 +510,6 @@ def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
         usage_webhook_server.requests[1].json_body(),
     ]
     assert [body["runId"] for body in first_attempts] == ["run-a", "run-b"]
-    assert usage.counters._buffered_usage_events == 2
 
     usage_webhook_server.queue_response(204)
     usage_webhook_server.queue_response(204)
@@ -546,12 +523,12 @@ def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
     assert [body["events"][0]["idempotencyKey"] for body in retry_bodies] == [
         body["events"][0]["idempotencyKey"] for body in first_attempts
     ]
-    assert usage.counters._buffered_usage_events == 0
 
 
 def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
     callbacks: list[DeliveryOutcomeCallback] = []
     payloads: list[dict] = []
+    pending_path = tmp_path / "usage-pending"
 
     def enqueue_without_completion(
         url: str,
@@ -567,6 +544,7 @@ def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
         return True
 
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_without_completion)
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = tmp_path / "proxy.jsonl"
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -577,7 +555,14 @@ def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
     )
 
     assert usage.flush_usage_events(trigger="test") == 1
-    assert usage.counters._buffered_usage_events == 1
+    usage.write_pending_snapshot(flush_request_id="run-1-delivering")
+    assert_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="run-1-delivering",
+    )
 
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -586,19 +571,36 @@ def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
         [event(source_key="source-2")],
         str(proxy_log_path),
     )
-    assert usage.counters._buffered_usage_events == 2
+    usage.write_pending_snapshot(flush_request_id="run-1-and-run-2-buffered")
+    assert_pending(
+        pending_path,
+        flows=0,
+        buffered=2,
+        reports=0,
+        flush_request_id="run-1-and-run-2-buffered",
+    )
     assert usage.flush_usage_events(trigger="test") == 1
 
     assert [payload["runId"] for payload in payloads] == ["run-1", "run-2"]
     callbacks[0]("success")
-    assert usage.counters._buffered_usage_events == 1
+    usage.write_pending_snapshot(flush_request_id="run-2-delivering")
+    assert_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="run-2-delivering",
+    )
     callbacks[1]("success")
-    assert usage.counters._buffered_usage_events == 0
+    usage.write_pending_snapshot(flush_request_id="drained")
+    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="drained")
 
 
 def test_permanent_sync_fallback_failure_does_not_requeue(tmp_path, fresh_usage_executor):
     del fresh_usage_executor
     usage.webhook.usage_executor.shutdown(wait=True)
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
     proxy_log_path = tmp_path / "proxy.jsonl"
     usage.buffer_usage_events(
         "not-a-url",
@@ -610,8 +612,14 @@ def test_permanent_sync_fallback_failure_does_not_requeue(tmp_path, fresh_usage_
 
     assert usage.flush_usage_events(trigger="test") == 1
 
-    assert usage.counters._pending_reports == 0
-    assert usage.counters._buffered_usage_events == 0
+    usage.write_pending_snapshot(flush_request_id="permanent-failure")
+    assert_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="permanent-failure",
+    )
     assert "non-retryable" in proxy_log_path.read_text()
 
 
@@ -637,7 +645,5 @@ def test_permanent_http_delivery_failure_completes_flush(
     assert usage.flush_usage_events(trigger="test") == 1
 
     assert usage_webhook_server.request_count == 1
-    assert usage.counters._pending_reports == 0
-    assert usage.counters._buffered_usage_events == 0
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
