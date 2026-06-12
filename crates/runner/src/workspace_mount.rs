@@ -238,33 +238,27 @@ exit 0
     }
 
     #[cfg(target_os = "linux")]
-    fn wait_for_child_workspace_exe(child: &Child, workspace_dir: &Path) {
-        let exe_path = format!("/proc/{}/exe", child.id());
+    fn wait_for_child_workspace_fd(child: &Child, workspace_dir: &Path) {
+        let fd_dir = format!("/proc/{}/fd", child.id());
         let deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < deadline {
-            if fs::read_link(&exe_path)
-                .ok()
-                .is_some_and(|path| path.starts_with(workspace_dir))
-            {
-                return;
+            if let Ok(entries) = fs::read_dir(&fd_dir) {
+                for entry in entries.flatten() {
+                    if fs::read_link(entry.path())
+                        .ok()
+                        .is_some_and(|path| path.starts_with(workspace_dir))
+                    {
+                        return;
+                    }
+                }
             }
             std::thread::sleep(Duration::from_millis(10));
         }
         panic!(
-            "holder process did not execute from workspace: pid={} workspace={}",
+            "holder process did not keep a workspace fd: pid={} workspace={}",
             child.id(),
             workspace_dir.display()
         );
-    }
-
-    #[cfg(target_os = "linux")]
-    fn sleep_binary_path() -> &'static str {
-        for candidate in ["/bin/sleep", "/usr/bin/sleep"] {
-            if Path::new(candidate).is_file() {
-                return candidate;
-            }
-        }
-        panic!("sleep binary not found");
     }
 
     #[cfg(target_os = "linux")]
@@ -447,30 +441,29 @@ exit 0
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn unmount_script_terminates_workspace_exe_holder_before_retry() {
+    fn unmount_script_terminates_workspace_fd_holder_before_retry() {
         let temp = tempfile::tempdir().unwrap();
         let workspace_dir = temp.path().join("workspace");
         let workspace_device = temp.path().join("vdb");
         let fake_bin = temp.path().join("bin");
         let log_path = temp.path().join("calls.log");
         let count_path = temp.path().join("umount-count");
-        let holder_bin = workspace_dir.join("holder-sleep");
+        let holder_file = workspace_dir.join("holder-file");
         fs::create_dir(&workspace_dir).unwrap();
         fs::create_dir(&fake_bin).unwrap();
-        fs::copy(sleep_binary_path(), &holder_bin).unwrap();
-        let mut permissions = fs::metadata(&holder_bin).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&holder_bin, permissions).unwrap();
+        fs::write(&holder_file, "busy").unwrap();
         write_fake_mountpoint(&fake_bin, &workspace_dir, &workspace_device);
         write_fake_sync(&fake_bin, &log_path);
         write_busy_then_successful_fake_umount(&fake_bin, &log_path, &count_path);
 
-        let mut holder = Command::new(&holder_bin)
-            .arg("60")
-            .current_dir(temp.path())
+        let mut holder = Command::new("sh")
+            .arg("-c")
+            .arg("exec 9< \"$1\" && exec sleep 60")
+            .arg("holder")
+            .arg(&holder_file)
             .spawn()
             .unwrap();
-        wait_for_child_workspace_exe(&holder, &workspace_dir);
+        wait_for_child_workspace_fd(&holder, &workspace_dir);
 
         let output = run_unmount_script(&workspace_dir, &workspace_device, &fake_bin);
         let holder_status = wait_for_child_exit_or_kill(&mut holder);
@@ -486,7 +479,7 @@ exit 0
         );
         assert!(stderr.contains("workspace holder:"));
         assert!(stderr.contains(&format!("pid={}", holder.id())));
-        assert!(stderr.contains("ref=exe"));
+        assert!(stderr.contains("ref=fd"));
         let log = fs::read_to_string(log_path).unwrap();
         assert_eq!(log.matches("umount call=").count(), 2);
         assert!(log.contains("umount call=1 cwd=/ args=--"));
