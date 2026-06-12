@@ -900,6 +900,11 @@ def _log_flush_summaries(
     for summary in summaries:
         if not summary.proxy_log_path:
             continue
+        retained_webhook_batch_count = summary.retained_webhook_batch_count
+        retained_source_event_count = summary.retained_source_event_count
+        if phase == "retained":
+            retained_webhook_batch_count = summary.webhook_batch_count
+            retained_source_event_count = summary.source_event_count
         extra: dict[str, object] = {
             "type": "usage_event_buffer_flush",
             "phase": phase,
@@ -909,8 +914,8 @@ def _log_flush_summaries(
             "aggregate_event_count": summary.aggregate_event_count,
             "webhook_batch_count": summary.webhook_batch_count,
             "dropped_webhook_batch_count": summary.dropped_webhook_batch_count,
-            "retained_webhook_batch_count": summary.retained_webhook_batch_count,
-            "retained_source_event_count": summary.retained_source_event_count,
+            "retained_webhook_batch_count": retained_webhook_batch_count,
+            "retained_source_event_count": retained_source_event_count,
             "run_count": len(summary.run_ids),
             "destination_count": len(summary.destinations),
         }
