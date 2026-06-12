@@ -36,7 +36,7 @@ import {
 } from "@vm0/db/schema/automation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -89,23 +89,39 @@ async function cancelOrgRuns(db: Db, orgId: string): Promise<void> {
   );
 }
 
-async function cancelUserOrgsStripeSubscriptions(
+async function cancelLastAdminOrgsStripeSubscriptions(
   db: Db,
   userId: string,
 ): Promise<void> {
-  const memberships = await db
+  const adminOrgs = await db
     .select({ orgId: orgMembersCache.orgId })
     .from(orgMembersCache)
-    .where(eq(orgMembersCache.userId, userId));
+    .where(
+      and(
+        eq(orgMembersCache.userId, userId),
+        eq(orgMembersCache.role, "org:admin"),
+      ),
+    );
 
-  for (const { orgId } of memberships) {
-    await tapError(cancelStripeSubscription(db, orgId), (error) => {
-      L.warn("failed to cancel stripe subscription for banned user's org", {
-        userId,
-        orgId,
-        error,
+  for (const { orgId } of adminOrgs) {
+    const [result] = await db
+      .select({ adminCount: count() })
+      .from(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, orgId),
+          eq(orgMembersCache.role, "org:admin"),
+        ),
+      );
+
+    if ((result?.adminCount ?? 0) <= 1) {
+      await tapError(cancelStripeSubscription(db, orgId), (error) => {
+        L.warn(
+          "failed to cancel stripe subscription for org with banned last admin",
+          { userId, orgId, error },
+        );
       });
-    });
+    }
   }
 }
 
@@ -638,6 +654,6 @@ export const cleanupClerkBannedUser$ = command(
     signal.throwIfAborted();
     await disableUserAutomations(db, userId);
     signal.throwIfAborted();
-    await cancelUserOrgsStripeSubscriptions(db, userId);
+    await cancelLastAdminOrgsStripeSubscriptions(db, userId);
   },
 );
