@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { updateAutomationV2 } from "../../../lib/api";
+import { updateAutomation } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 interface UpdateOptions {
@@ -35,7 +35,7 @@ Examples:
         );
       }
 
-      const automation = await updateAutomationV2(ref, {
+      const automation = await updateAutomation(ref, {
         name: options.name,
         instruction: options.prompt,
         description: options.description,

@@ -1,11 +1,11 @@
 import {
-  automationsV2MainContract,
-  automationsV2ByRefContract,
-  automationTriggersV2Contract,
-  type AutomationResponseV2,
+  automationsMainContract,
+  automationsByRefContract,
+  automationTriggersContract,
+  type AutomationResponse,
   type AutomationTriggerResponse,
   type CreateTriggerRequest,
-} from "@vm0/api-contracts/contracts/automations-v2";
+} from "@vm0/api-contracts/contracts/automations";
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
@@ -72,7 +72,7 @@ function toTrigger(schedule: ScheduleResponse): AutomationTriggerResponse {
 /** Project a mock store row as its resource-API automation (for test overrides). */
 export function toMockAutomationResponse(
   schedule: ScheduleResponse,
-): AutomationResponseV2 {
+): AutomationResponse {
   return {
     id: schedule.id,
     agentId: schedule.agentId,
@@ -136,16 +136,16 @@ function replaceRow(updated: ScheduleResponse): void {
   );
 }
 
-export const apiAutomationsV2Handlers = [
+export const apiAutomationsHandlers = [
   // GET /api/automations
-  mockApi(automationsV2MainContract.list, ({ respond }) =>
+  mockApi(automationsMainContract.list, ({ respond }) =>
     respond(200, {
       automations: getMockSchedules().map(toMockAutomationResponse),
     }),
   ),
 
   // POST /api/automations
-  mockApi(automationsV2MainContract.create, ({ body, respond }) => {
+  mockApi(automationsMainContract.create, ({ body, respond }) => {
     if (!body.trigger) {
       throw new Error("Schedule mocks expect the first-trigger sugar");
     }
@@ -174,7 +174,7 @@ export const apiAutomationsV2Handlers = [
   }),
 
   // PATCH /api/automations/:ref
-  mockApi(automationsV2ByRefContract.update, ({ params, body, respond }) => {
+  mockApi(automationsByRefContract.update, ({ params, body, respond }) => {
     const row = findByRef(params.ref);
     if (!row) {
       return respond(404, {
@@ -193,7 +193,7 @@ export const apiAutomationsV2Handlers = [
   }),
 
   // DELETE /api/automations/:ref
-  mockApi(automationsV2ByRefContract.delete, ({ params, respond }) => {
+  mockApi(automationsByRefContract.delete, ({ params, respond }) => {
     const row = findByRef(params.ref);
     if (!row) {
       return respond(404, {
@@ -205,7 +205,7 @@ export const apiAutomationsV2Handlers = [
   }),
 
   // POST /api/automations/:ref/enable
-  mockApi(automationsV2ByRefContract.enable, ({ params, respond }) => {
+  mockApi(automationsByRefContract.enable, ({ params, respond }) => {
     const row = findByRef(params.ref);
     if (!row) {
       return respond(404, {
@@ -218,7 +218,7 @@ export const apiAutomationsV2Handlers = [
   }),
 
   // POST /api/automations/:ref/disable
-  mockApi(automationsV2ByRefContract.disable, ({ params, respond }) => {
+  mockApi(automationsByRefContract.disable, ({ params, respond }) => {
     const row = findByRef(params.ref);
     if (!row) {
       return respond(404, {
@@ -231,37 +231,34 @@ export const apiAutomationsV2Handlers = [
   }),
 
   // POST /api/automations/:ref/run
-  mockApi(automationsV2ByRefContract.run, ({ respond }) =>
+  mockApi(automationsByRefContract.run, ({ respond }) =>
     respond(201, { runId: crypto.randomUUID() }),
   ),
 
   // POST /api/automations/:ref/triggers
-  mockApi(
-    automationsV2ByRefContract.addTrigger,
-    ({ params, body, respond }) => {
-      const row = findByRef(params.ref);
-      if (!row) {
-        return respond(404, {
-          error: { message: "Not found", code: "NOT_FOUND" },
-        });
-      }
-      const updated: ScheduleResponse = {
-        ...row,
-        ...triggerFields(body),
-        enabled: true,
-        consecutiveFailures: 0,
-        updatedAt: nowDate().toISOString(),
-      };
-      // Mint a fresh id for the new trigger; the replaced id stays known so
-      // the update flow can still DELETE it afterwards.
-      currentTriggerIds.delete(row.id);
-      replaceRow(updated);
-      return respond(201, { trigger: toTrigger(updated) });
-    },
-  ),
+  mockApi(automationsByRefContract.addTrigger, ({ params, body, respond }) => {
+    const row = findByRef(params.ref);
+    if (!row) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    const updated: ScheduleResponse = {
+      ...row,
+      ...triggerFields(body),
+      enabled: true,
+      consecutiveFailures: 0,
+      updatedAt: nowDate().toISOString(),
+    };
+    // Mint a fresh id for the new trigger; the replaced id stays known so
+    // the update flow can still DELETE it afterwards.
+    currentTriggerIds.delete(row.id);
+    replaceRow(updated);
+    return respond(201, { trigger: toTrigger(updated) });
+  }),
 
   // DELETE /api/automation-triggers/:id
-  mockApi(automationTriggersV2Contract.remove, ({ params, respond }) => {
+  mockApi(automationTriggersContract.remove, ({ params, respond }) => {
     const automationId = automationIdForTrigger(params.id);
     if (!automationId) {
       return respond(404, {
@@ -278,7 +275,7 @@ export const apiAutomationsV2Handlers = [
   }),
 
   // POST /api/automation-triggers/:id/enable
-  mockApi(automationTriggersV2Contract.enable, ({ params, respond }) => {
+  mockApi(automationTriggersContract.enable, ({ params, respond }) => {
     const automationId = automationIdForTrigger(params.id);
     const row = automationId
       ? getMockSchedules().find((s) => s.id === automationId)

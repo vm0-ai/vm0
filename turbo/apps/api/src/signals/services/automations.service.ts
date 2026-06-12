@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations-v2";
+import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -24,19 +24,19 @@ import {
 import {
   loadAgentForDeploy,
   persistManualRunSideEffects,
-  resolveScheduleRunModelContext,
+  resolveAutomationRunModelContext,
   type RunCreationErrorResponse,
-} from "./zero-schedules.service";
+} from "./automations/run-compat";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { generateAutomationDescription } from "./automations/describe";
 
 /**
- * Interpreter key persisted for natively-created v2 automations (D1 on
+ * Interpreter key persisted for natively-created automations (D1 on
  * #16847): the single default interpreter handles every kind, so new
  * automations stop pretending to be kind-specific. The old surfaces keep
  * writing "time"/"webhook" for now; nothing branches on the column.
  */
-const V2_INTERPRETER_KIND = "default";
+const DEFAULT_INTERPRETER_KIND = "default";
 
 /** The time-trigger kinds whose next run is recomputed on enable. */
 const TIME_TRIGGER_KINDS = ["cron", "once", "loop"] as const;
@@ -45,10 +45,10 @@ export type AutomationRow = typeof automations.$inferSelect;
 export type AutomationTriggerRow = typeof automationTriggers.$inferSelect;
 
 /**
- * An automation as the v2 surface projects it: the automation row (identity +
+ * An automation as the automation resource API projects it: the automation row (identity +
  * intent), its agent display name, and ALL its trigger rows (any kind).
  */
-export interface AutomationViewV2 {
+export interface AutomationView {
   readonly automation: AutomationRow;
   readonly displayName: string | null;
   readonly triggers: readonly AutomationTriggerRow[];
@@ -247,7 +247,7 @@ async function resolveTriggerInsert(args: {
   };
 }
 
-interface CreateAutomationV2Body {
+interface CreateAutomationBody {
   readonly name: string;
   readonly agentId: string;
   readonly instruction: string;
@@ -258,10 +258,10 @@ interface CreateAutomationV2Body {
   readonly trigger?: CreateTriggerRequest;
 }
 
-type CreateAutomationV2Result =
+type CreateAutomationResult =
   | {
       readonly kind: "ok";
-      readonly view: AutomationViewV2;
+      readonly view: AutomationView;
       readonly webhookSecret?: string;
     }
   | { readonly kind: "not_found"; readonly message: string }
@@ -299,15 +299,15 @@ async function insertAutomationWithTrigger(
   args: {
     readonly userId: string;
     readonly orgId: string;
-    readonly body: CreateAutomationV2Body;
+    readonly body: CreateAutomationBody;
     readonly displayName: string | null;
     readonly enabled: boolean;
     readonly currentTime: Date;
     readonly triggerInsert: ResolvedTriggerInsert | null;
   },
-): Promise<AutomationViewV2> {
+): Promise<AutomationView> {
   const { body, currentTime } = args;
-  return await db.transaction(async (tx): Promise<AutomationViewV2> => {
+  return await db.transaction(async (tx): Promise<AutomationView> => {
     let chatThreadId = body.chatThreadId;
     if (chatThreadId === undefined) {
       const [thread] = await tx
@@ -338,7 +338,7 @@ async function insertAutomationWithTrigger(
         appendSystemPrompt: body.appendSystemPrompt ?? null,
         agentId: body.agentId,
         chatThreadId,
-        interpreterKind: V2_INTERPRETER_KIND,
+        interpreterKind: DEFAULT_INTERPRETER_KIND,
         enabled: args.enabled,
         createdAt: currentTime,
         updatedAt: currentTime,
@@ -373,16 +373,16 @@ async function insertAutomationWithTrigger(
  * trigger in one transaction. A webhook sugar trigger's signing secret is
  * returned exactly once. A write `command`.
  */
-export const createAutomationV2$ = command(
+export const createAutomation$ = command(
   async (
     { set },
     args: {
       readonly userId: string;
       readonly orgId: string;
-      readonly body: CreateAutomationV2Body;
+      readonly body: CreateAutomationBody;
     },
     signal: AbortSignal,
-  ): Promise<CreateAutomationV2Result> => {
+  ): Promise<CreateAutomationResult> => {
     const db = set(writeDb$);
     const { body } = args;
 
@@ -499,12 +499,12 @@ export const createAutomationV2$ = command(
  * List the caller's automations (every interpreter kind — this is the unified
  * surface) with ALL their triggers, scoped to (orgId, userId), newest first.
  */
-export const listAutomationsV2$ = command(
+export const listAutomations$ = command(
   async (
     { set },
     args: { readonly userId: string; readonly orgId: string },
     signal: AbortSignal,
-  ): Promise<readonly AutomationViewV2[]> => {
+  ): Promise<readonly AutomationView[]> => {
     const db = set(writeDb$);
     const rows = await db
       .select({ automation: automations, displayName: zeroAgents.displayName })
@@ -553,14 +553,14 @@ export const listAutomationsV2$ = command(
   },
 );
 
-type AutomationV2Result =
-  | { readonly kind: "ok"; readonly view: AutomationViewV2 }
+type AutomationResult =
+  | { readonly kind: "ok"; readonly view: AutomationView }
   | { readonly kind: "not_found" }
   | { readonly kind: "ambiguous" }
   | { readonly kind: "bad_request"; readonly message: string };
 
 /** Show an automation (by id or unique name) with all its triggers. */
-export const showAutomationV2$ = command(
+export const showAutomation$ = command(
   async (
     { set },
     args: {
@@ -569,7 +569,7 @@ export const showAutomationV2$ = command(
       readonly ref: string;
     },
     signal: AbortSignal,
-  ): Promise<AutomationV2Result> => {
+  ): Promise<AutomationResult> => {
     const db = set(writeDb$);
     const resolved = await resolveAutomationRef(db, args);
     signal.throwIfAborted();
@@ -589,7 +589,7 @@ export const showAutomationV2$ = command(
   },
 );
 
-interface UpdateAutomationV2Body {
+interface UpdateAutomationBody {
   readonly name?: string;
   readonly instruction?: string;
   readonly description?: string | null;
@@ -602,17 +602,17 @@ interface UpdateAutomationV2Body {
  * the trigger endpoints. Renaming re-checks the (agent, name, org, user)
  * unique key; null clears the nullable fields.
  */
-export const updateAutomationV2$ = command(
+export const updateAutomation$ = command(
   async (
     { set },
     args: {
       readonly userId: string;
       readonly orgId: string;
       readonly ref: string;
-      readonly body: UpdateAutomationV2Body;
+      readonly body: UpdateAutomationBody;
     },
     signal: AbortSignal,
-  ): Promise<AutomationV2Result> => {
+  ): Promise<AutomationResult> => {
     const db = set(writeDb$);
     const resolved = await resolveAutomationRef(db, args);
     signal.throwIfAborted();
@@ -680,13 +680,13 @@ export const updateAutomationV2$ = command(
   },
 );
 
-type DeleteAutomationV2Result =
+type DeleteAutomationResult =
   | { readonly kind: "ok" }
   | { readonly kind: "not_found" }
   | { readonly kind: "ambiguous" };
 
 /** Delete an automation; its trigger rows are removed by the FK cascade. */
-export const deleteAutomationV2$ = command(
+export const deleteAutomation$ = command(
   async (
     { set },
     args: {
@@ -695,7 +695,7 @@ export const deleteAutomationV2$ = command(
       readonly ref: string;
     },
     signal: AbortSignal,
-  ): Promise<DeleteAutomationV2Result> => {
+  ): Promise<DeleteAutomationResult> => {
     const db = set(writeDb$);
     const resolved = await resolveAutomationRef(db, args);
     signal.throwIfAborted();
@@ -768,7 +768,7 @@ function isTimeTriggerKind(kind: string): boolean {
  * triggers without touching their rows (both the poller and the inbound
  * webhook dispatch check `automation.enabled && trigger.enabled`).
  */
-export const setAutomationEnabledV2$ = command(
+export const setAutomationEnabled$ = command(
   async (
     { set },
     args: {
@@ -778,7 +778,7 @@ export const setAutomationEnabledV2$ = command(
       readonly enabled: boolean;
     },
     signal: AbortSignal,
-  ): Promise<AutomationV2Result> => {
+  ): Promise<AutomationResult> => {
     const db = set(writeDb$);
     const resolved = await resolveAutomationRef(db, args);
     signal.throwIfAborted();
@@ -848,7 +848,7 @@ export const setAutomationEnabledV2$ = command(
   },
 );
 
-type TriggerMutationV2Result =
+type TriggerMutationResult =
   | {
       readonly kind: "ok";
       readonly trigger: AutomationTriggerRow;
@@ -863,7 +863,7 @@ type TriggerMutationV2Result =
  * sugar). Multiple triggers of the same kind are allowed; a webhook trigger's
  * signing secret is returned exactly once.
  */
-export const addTriggerV2$ = command(
+export const addTrigger$ = command(
   async (
     { set },
     args: {
@@ -873,7 +873,7 @@ export const addTriggerV2$ = command(
       readonly request: CreateTriggerRequest;
     },
     signal: AbortSignal,
-  ): Promise<TriggerMutationV2Result> => {
+  ): Promise<TriggerMutationResult> => {
     const db = set(writeDb$);
     const resolved = await resolveAutomationRef(db, args);
     signal.throwIfAborted();
@@ -948,12 +948,12 @@ async function loadOwnedTrigger(
   return row ?? null;
 }
 
-type ShowTriggerV2Result =
+type ShowTriggerResult =
   | { readonly kind: "ok"; readonly trigger: AutomationTriggerRow }
   | { readonly kind: "not_found" };
 
 /** Show a single trigger by id, scoped to the caller. */
-export const showTriggerV2$ = command(
+export const showTrigger$ = command(
   async (
     { set },
     args: {
@@ -962,7 +962,7 @@ export const showTriggerV2$ = command(
       readonly id: string;
     },
     signal: AbortSignal,
-  ): Promise<ShowTriggerV2Result> => {
+  ): Promise<ShowTriggerResult> => {
     const db = set(writeDb$);
     const owned = await loadOwnedTrigger(db, args);
     signal.throwIfAborted();
@@ -973,12 +973,12 @@ export const showTriggerV2$ = command(
   },
 );
 
-type RemoveTriggerV2Result =
+type RemoveTriggerResult =
   | { readonly kind: "ok" }
   | { readonly kind: "not_found" };
 
 /** Remove a single trigger; the automation itself is untouched. */
-export const removeTriggerV2$ = command(
+export const removeTrigger$ = command(
   async (
     { set },
     args: {
@@ -987,7 +987,7 @@ export const removeTriggerV2$ = command(
       readonly id: string;
     },
     signal: AbortSignal,
-  ): Promise<RemoveTriggerV2Result> => {
+  ): Promise<RemoveTriggerResult> => {
     const db = set(writeDb$);
     const owned = await loadOwnedTrigger(db, args);
     signal.throwIfAborted();
@@ -1016,7 +1016,7 @@ export const removeTriggerV2$ = command(
  * row's time state as-is — the poller and the inbound dispatch skip via the
  * enabled flags.
  */
-export const setTriggerEnabledV2$ = command(
+export const setTriggerEnabled$ = command(
   async (
     { set },
     args: {
@@ -1026,7 +1026,7 @@ export const setTriggerEnabledV2$ = command(
       readonly enabled: boolean;
     },
     signal: AbortSignal,
-  ): Promise<TriggerMutationV2Result> => {
+  ): Promise<TriggerMutationResult> => {
     const db = set(writeDb$);
     const owned = await loadOwnedTrigger(db, args);
     signal.throwIfAborted();
@@ -1086,7 +1086,7 @@ export const setTriggerEnabledV2$ = command(
  * it encrypted, and return it exactly once. The URL token (identity) is
  * unchanged. Rejected for non-webhook triggers.
  */
-export const rotateTriggerSecretV2$ = command(
+export const rotateTriggerSecret$ = command(
   async (
     { set },
     args: {
@@ -1095,7 +1095,7 @@ export const rotateTriggerSecretV2$ = command(
       readonly id: string;
     },
     signal: AbortSignal,
-  ): Promise<TriggerMutationV2Result> => {
+  ): Promise<TriggerMutationResult> => {
     const db = set(writeDb$);
     const owned = await loadOwnedTrigger(db, args);
     signal.throwIfAborted();
@@ -1127,7 +1127,7 @@ export const rotateTriggerSecretV2$ = command(
   },
 );
 
-type RunAutomationV2Result =
+type RunAutomationResult =
   | { readonly kind: "ok"; readonly runId: string }
   | { readonly kind: "not_found" }
   | { readonly kind: "ambiguous" }
@@ -1146,7 +1146,7 @@ function isActivePreviousRunStatus(status: string): boolean {
  * has an active last run — the same per-trigger skip-if-active rule the
  * poller applies; a triggerless automation has nothing to conflict with.
  */
-export const runAutomationNowV2$ = command(
+export const runAutomationNow$ = command(
   async (
     { set },
     args: {
@@ -1156,7 +1156,7 @@ export const runAutomationNowV2$ = command(
       readonly apiStartTime: number;
     },
     signal: AbortSignal,
-  ): Promise<RunAutomationV2Result> => {
+  ): Promise<RunAutomationResult> => {
     const db = set(writeDb$);
     const resolved = await resolveAutomationRef(db, args);
     signal.throwIfAborted();
@@ -1185,7 +1185,7 @@ export const runAutomationNowV2$ = command(
       }
     }
 
-    const modelContext = await resolveScheduleRunModelContext({
+    const modelContext = await resolveAutomationRunModelContext({
       db,
       orgId: automation.orgId,
       userId: automation.userId,

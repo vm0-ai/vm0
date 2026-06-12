@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import type { AutomationTriggerResponse } from "@vm0/api-contracts/contracts/automations-v2";
+import type { AutomationTriggerResponse } from "@vm0/api-contracts/contracts/automations";
 import { formatRelativeTime } from "../../../lib/domain/schedule-utils";
 import { formatDurationSeconds } from "./duration";
 

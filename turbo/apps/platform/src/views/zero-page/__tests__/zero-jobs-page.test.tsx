@@ -13,13 +13,13 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { automationsV2ByRefContract } from "@vm0/api-contracts/contracts/automations-v2";
+import { automationsByRefContract } from "@vm0/api-contracts/contracts/automations";
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
-import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
+import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
 import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 
 const context = testContext();
@@ -374,30 +374,27 @@ describe("zero jobs page", () => {
     let capturedTriggerBody: unknown = null;
     context.mocks.data.schedules(schedules);
     context.mocks.data.userPreferences({ timezone: "Asia/Kolkata" });
+    context.mocks.api(automationsByRefContract.update, ({ body, respond }) => {
+      capturedUpdateBody = body;
+      const currentSchedule = schedules[0];
+      if (!currentSchedule) {
+        throw new Error("schedule fixture not found");
+      }
+      const updated = createMockScheduleResponse({
+        ...currentSchedule,
+        prompt: body.instruction ?? currentSchedule.prompt,
+        description:
+          body.description === undefined
+            ? currentSchedule.description
+            : body.description,
+        updatedAt: "2026-03-10T00:05:00Z",
+      });
+      schedules = [updated];
+      context.mocks.data.schedules(schedules);
+      return respond(200, toMockAutomationResponse(updated));
+    });
     context.mocks.api(
-      automationsV2ByRefContract.update,
-      ({ body, respond }) => {
-        capturedUpdateBody = body;
-        const currentSchedule = schedules[0];
-        if (!currentSchedule) {
-          throw new Error("schedule fixture not found");
-        }
-        const updated = createMockScheduleResponse({
-          ...currentSchedule,
-          prompt: body.instruction ?? currentSchedule.prompt,
-          description:
-            body.description === undefined
-              ? currentSchedule.description
-              : body.description,
-          updatedAt: "2026-03-10T00:05:00Z",
-        });
-        schedules = [updated];
-        context.mocks.data.schedules(schedules);
-        return respond(200, toMockAutomationResponse(updated));
-      },
-    );
-    context.mocks.api(
-      automationsV2ByRefContract.addTrigger,
+      automationsByRefContract.addTrigger,
       ({ body, respond }) => {
         capturedTriggerBody = body;
         const currentSchedule = schedules[0];

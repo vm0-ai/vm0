@@ -1,11 +1,11 @@
 import { command, computed } from "ccstate";
 import {
-  automationsV2ByRefContract,
-  automationsV2MainContract,
-  automationTriggersV2Contract,
-  type AutomationResponseV2,
+  automationsByRefContract,
+  automationsMainContract,
+  automationTriggersContract,
+  type AutomationResponse,
   type AutomationTriggerResponse,
-} from "@vm0/api-contracts/contracts/automations-v2";
+} from "@vm0/api-contracts/contracts/automations";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -13,21 +13,21 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { now } from "../external/time";
 import {
-  addTriggerV2$,
-  createAutomationV2$,
-  deleteAutomationV2$,
-  listAutomationsV2$,
-  removeTriggerV2$,
-  rotateTriggerSecretV2$,
-  runAutomationNowV2$,
-  setAutomationEnabledV2$,
-  setTriggerEnabledV2$,
-  showAutomationV2$,
-  showTriggerV2$,
-  updateAutomationV2$,
+  addTrigger$,
+  createAutomation$,
+  deleteAutomation$,
+  listAutomations$,
+  removeTrigger$,
+  rotateTriggerSecret$,
+  runAutomationNow$,
+  setAutomationEnabled$,
+  setTriggerEnabled$,
+  showAutomation$,
+  showTrigger$,
+  updateAutomation$,
   type AutomationTriggerRow,
-  type AutomationViewV2,
-} from "../services/automations-v2.service";
+  type AutomationView,
+} from "../services/automations.service";
 import { webhookUrlForToken } from "../services/webhook-automations.service";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -89,7 +89,7 @@ function triggerResponse(
   throw new Error(`Malformed automation trigger row ${trigger.id}`);
 }
 
-function automationResponse(view: AutomationViewV2): AutomationResponseV2 {
+function automationResponse(view: AutomationView): AutomationResponse {
   const { automation } = view;
   return {
     id: automation.id,
@@ -129,7 +129,7 @@ const WEBHOOK_TRIGGERS_DISABLED_MESSAGE =
 
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const bodyResult = await get(bodyResultOf(automationsV2MainContract.create));
+  const bodyResult = await get(bodyResultOf(automationsMainContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -143,7 +143,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const result = await set(
-    createAutomationV2$,
+    createAutomation$,
     { userId: auth.userId, orgId: auth.orgId, body: bodyResult.data },
     signal,
   );
@@ -169,7 +169,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const views = await set(
-    listAutomationsV2$,
+    listAutomations$,
     { userId: auth.userId, orgId: auth.orgId },
     signal,
   );
@@ -182,10 +182,10 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const showInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsV2ByRefContract.show));
+  const params = get(pathParamsOf(automationsByRefContract.show));
 
   const result = await set(
-    showAutomationV2$,
+    showAutomation$,
     { userId: auth.userId, orgId: auth.orgId, ref: params.ref },
     signal,
   );
@@ -205,15 +205,15 @@ const showInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsV2ByRefContract.update));
-  const bodyResult = await get(bodyResultOf(automationsV2ByRefContract.update));
+  const params = get(pathParamsOf(automationsByRefContract.update));
+  const bodyResult = await get(bodyResultOf(automationsByRefContract.update));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
 
   const result = await set(
-    updateAutomationV2$,
+    updateAutomation$,
     {
       userId: auth.userId,
       orgId: auth.orgId,
@@ -238,10 +238,10 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsV2ByRefContract.delete));
+  const params = get(pathParamsOf(automationsByRefContract.delete));
 
   const result = await set(
-    deleteAutomationV2$,
+    deleteAutomation$,
     { userId: auth.userId, orgId: auth.orgId, ref: params.ref },
     signal,
   );
@@ -259,10 +259,10 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 function makeSetEnabledInner(enabled: boolean) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationsV2ByRefContract.enable));
+    const params = get(pathParamsOf(automationsByRefContract.enable));
 
     const result = await set(
-      setAutomationEnabledV2$,
+      setAutomationEnabled$,
       { userId: auth.userId, orgId: auth.orgId, ref: params.ref, enabled },
       signal,
     );
@@ -286,10 +286,10 @@ const disableInner$ = makeSetEnabledInner(false);
 
 const runInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsV2ByRefContract.run));
+  const params = get(pathParamsOf(automationsByRefContract.run));
 
   const result = await set(
-    runAutomationNowV2$,
+    runAutomationNow$,
     {
       userId: auth.userId,
       orgId: auth.orgId,
@@ -317,9 +317,9 @@ const runInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationsV2ByRefContract.addTrigger));
+  const params = get(pathParamsOf(automationsByRefContract.addTrigger));
   const bodyResult = await get(
-    bodyResultOf(automationsV2ByRefContract.addTrigger),
+    bodyResultOf(automationsByRefContract.addTrigger),
   );
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -334,7 +334,7 @@ const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const result = await set(
-    addTriggerV2$,
+    addTrigger$,
     {
       userId: auth.userId,
       orgId: auth.orgId,
@@ -368,10 +368,10 @@ const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const listTriggersInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationsV2ByRefContract.listTriggers));
+    const params = get(pathParamsOf(automationsByRefContract.listTriggers));
 
     const result = await set(
-      showAutomationV2$,
+      showAutomation$,
       { userId: auth.userId, orgId: auth.orgId, ref: params.ref },
       signal,
     );
@@ -395,10 +395,10 @@ const listTriggersInner$ = command(
 
 const showTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(automationTriggersV2Contract.show));
+  const params = get(pathParamsOf(automationTriggersContract.show));
 
   const result = await set(
-    showTriggerV2$,
+    showTrigger$,
     { userId: auth.userId, orgId: auth.orgId, id: params.id },
     signal,
   );
@@ -413,10 +413,10 @@ const showTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const removeTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationTriggersV2Contract.remove));
+    const params = get(pathParamsOf(automationTriggersContract.remove));
 
     const result = await set(
-      removeTriggerV2$,
+      removeTrigger$,
       { userId: auth.userId, orgId: auth.orgId, id: params.id },
       signal,
     );
@@ -432,10 +432,10 @@ const removeTriggerInner$ = command(
 function makeSetTriggerEnabledInner(enabled: boolean) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationTriggersV2Contract.enable));
+    const params = get(pathParamsOf(automationTriggersContract.enable));
 
     const result = await set(
-      setTriggerEnabledV2$,
+      setTriggerEnabled$,
       { userId: auth.userId, orgId: auth.orgId, id: params.id, enabled },
       signal,
     );
@@ -461,10 +461,10 @@ const rotateSecretInner$ = command(
     }
     signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(automationTriggersV2Contract.rotateSecret));
+    const params = get(pathParamsOf(automationTriggersContract.rotateSecret));
 
     const result = await set(
-      rotateTriggerSecretV2$,
+      rotateTriggerSecret$,
       { userId: auth.userId, orgId: auth.orgId, id: params.id },
       signal,
     );
@@ -488,9 +488,9 @@ const rotateSecretInner$ = command(
   },
 );
 
-export const automationsV2Routes: readonly RouteEntry[] = [
+export const automationsRoutes: readonly RouteEntry[] = [
   {
-    route: automationsV2MainContract.create,
+    route: automationsMainContract.create,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -501,7 +501,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2MainContract.list,
+    route: automationsMainContract.list,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -512,7 +512,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2ByRefContract.show,
+    route: automationsByRefContract.show,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -523,7 +523,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2ByRefContract.update,
+    route: automationsByRefContract.update,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -534,7 +534,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2ByRefContract.delete,
+    route: automationsByRefContract.delete,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -545,7 +545,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2ByRefContract.enable,
+    route: automationsByRefContract.enable,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -556,7 +556,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2ByRefContract.disable,
+    route: automationsByRefContract.disable,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -567,7 +567,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2ByRefContract.run,
+    route: automationsByRefContract.run,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -577,7 +577,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2ByRefContract.addTrigger,
+    route: automationsByRefContract.addTrigger,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -588,7 +588,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationsV2ByRefContract.listTriggers,
+    route: automationsByRefContract.listTriggers,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -599,7 +599,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationTriggersV2Contract.show,
+    route: automationTriggersContract.show,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -610,7 +610,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationTriggersV2Contract.remove,
+    route: automationTriggersContract.remove,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -621,7 +621,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationTriggersV2Contract.enable,
+    route: automationTriggersContract.enable,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -632,7 +632,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationTriggersV2Contract.disable,
+    route: automationTriggersContract.disable,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -643,7 +643,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: automationTriggersV2Contract.rotateSecret,
+    route: automationTriggersContract.rotateSecret,
     handler: authRoute(
       {
         requireOrganization: true,

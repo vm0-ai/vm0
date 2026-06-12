@@ -8,9 +8,8 @@ const c = initContract();
  * The unified Automation resource API: one automation = identity + intent
  * (agent, instruction, one linked chat thread, enabled), carrying N triggers
  * (cron / once / loop / webhook) that only decide WHEN it fires. It replaced
- * the split schedule/webhook surfaces (deleted in #17307) and now lives on
- * the clean /api/automations* paths; the server keeps the historical
- * /api/v2/* paths mounted as aliases for clients built before the move.
+ * the split schedule/webhook surfaces (deleted in #17307) and lives on the
+ * /api/automations* paths.
  *
  * `:ref` resolves an automation by id (UUID) or by name; a name shared across
  * agents within the org/user scope is ambiguous and rejected with 400 — use
@@ -62,7 +61,7 @@ export const automationTriggerResponseSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const automationResponseSchemaV2 = z.object({
+export const automationResponseSchema = z.object({
   id: z.string().uuid(),
   agentId: z.string().uuid(),
   displayName: z.string().nullable(),
@@ -78,8 +77,8 @@ export const automationResponseSchemaV2 = z.object({
   triggers: z.array(automationTriggerResponseSchema),
 });
 
-export const automationListResponseSchemaV2 = z.object({
-  automations: z.array(automationResponseSchemaV2),
+export const automationListResponseSchema = z.object({
+  automations: z.array(automationResponseSchema),
 });
 
 /**
@@ -132,8 +131,8 @@ const updateAutomationRequestSchema = z.object({
  * Create/rotate responses surface the webhook HMAC `secret` exactly once;
  * callers must persist it on receipt because it is unrecoverable.
  */
-export const automationMutationResponseSchemaV2 = z.object({
-  automation: automationResponseSchemaV2,
+export const automationMutationResponseSchema = z.object({
+  automation: automationResponseSchema,
   webhookSecret: z.string().optional(),
 });
 
@@ -142,7 +141,7 @@ export const triggerMutationResponseSchema = z.object({
   webhookSecret: z.string().optional(),
 });
 
-export const automationRunResponseSchemaV2 = z.object({
+export const automationRunResponseSchema = z.object({
   runId: z.string(),
 });
 
@@ -155,14 +154,14 @@ const triggerIdParamsSchema = z.object({
   id: z.string().uuid("Invalid trigger ID"),
 });
 
-export const automationsV2MainContract = c.router({
+export const automationsMainContract = c.router({
   create: {
     method: "POST",
     path: "/api/automations",
     headers: authHeadersSchema,
     body: createAutomationRequestSchema,
     responses: {
-      201: automationMutationResponseSchemaV2,
+      201: automationMutationResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -175,7 +174,7 @@ export const automationsV2MainContract = c.router({
     path: "/api/automations",
     headers: authHeadersSchema,
     responses: {
-      200: automationListResponseSchemaV2,
+      200: automationListResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -184,14 +183,14 @@ export const automationsV2MainContract = c.router({
   },
 });
 
-export const automationsV2ByRefContract = c.router({
+export const automationsByRefContract = c.router({
   show: {
     method: "GET",
     path: "/api/automations/:ref",
     headers: authHeadersSchema,
     pathParams: refParamsSchema,
     responses: {
-      200: automationResponseSchemaV2,
+      200: automationResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -206,7 +205,7 @@ export const automationsV2ByRefContract = c.router({
     pathParams: refParamsSchema,
     body: updateAutomationRequestSchema,
     responses: {
-      200: automationResponseSchemaV2,
+      200: automationResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -235,7 +234,7 @@ export const automationsV2ByRefContract = c.router({
     pathParams: refParamsSchema,
     body: z.object({}).optional(),
     responses: {
-      200: automationResponseSchemaV2,
+      200: automationResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -250,7 +249,7 @@ export const automationsV2ByRefContract = c.router({
     pathParams: refParamsSchema,
     body: z.object({}).optional(),
     responses: {
-      200: automationResponseSchemaV2,
+      200: automationResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -265,7 +264,7 @@ export const automationsV2ByRefContract = c.router({
     pathParams: refParamsSchema,
     body: z.object({}).optional(),
     responses: {
-      201: automationRunResponseSchemaV2,
+      201: automationRunResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
@@ -310,7 +309,7 @@ export const automationsV2ByRefContract = c.router({
   },
 });
 
-export const automationTriggersV2Contract = c.router({
+export const automationTriggersContract = c.router({
   show: {
     method: "GET",
     path: "/api/automation-triggers/:id",
@@ -383,11 +382,11 @@ export const automationTriggersV2Contract = c.router({
   },
 });
 
-export type AutomationsV2MainContract = typeof automationsV2MainContract;
-export type AutomationsV2ByRefContract = typeof automationsV2ByRefContract;
-export type AutomationTriggersV2Contract = typeof automationTriggersV2Contract;
+export type AutomationsMainContract = typeof automationsMainContract;
+export type AutomationsByRefContract = typeof automationsByRefContract;
+export type AutomationTriggersContract = typeof automationTriggersContract;
 
-export type AutomationResponseV2 = z.infer<typeof automationResponseSchemaV2>;
+export type AutomationResponse = z.infer<typeof automationResponseSchema>;
 export type AutomationTriggerResponse = z.infer<
   typeof automationTriggerResponseSchema
 >;

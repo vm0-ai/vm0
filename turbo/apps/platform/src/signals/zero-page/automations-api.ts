@@ -1,11 +1,11 @@
 import {
-  automationsV2MainContract,
-  automationsV2ByRefContract,
-  automationTriggersV2Contract,
-  type AutomationResponseV2,
+  automationsMainContract,
+  automationsByRefContract,
+  automationTriggersContract,
+  type AutomationResponse,
   type AutomationTriggerResponse,
   type CreateTriggerRequest,
-} from "@vm0/api-contracts/contracts/automations-v2";
+} from "@vm0/api-contracts/contracts/automations";
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import { accept } from "../../lib/accept.ts";
 import type { ZeroClientFactory } from "../api-client.ts";
@@ -36,14 +36,14 @@ function isTimeTrigger(
   );
 }
 
-function timeTriggerOf(automation: AutomationResponseV2): TimeTrigger | null {
+function timeTriggerOf(automation: AutomationResponse): TimeTrigger | null {
   return automation.triggers.find(isTimeTrigger) ?? null;
 }
 
 // The flat single-trigger projection of an automation: the pages' view model.
 // `retryStartedAt` is vestigial in the contract and always null.
 function toSchedule(
-  automation: AutomationResponseV2,
+  automation: AutomationResponse,
   trigger: TimeTrigger,
 ): ScheduleResponse {
   return {
@@ -110,9 +110,9 @@ function triggerMatches(trigger: TimeTrigger, body: ScheduleBody): boolean {
 async function listAutomations(
   client: ZeroClientFactory,
   fetchOptions?: RequestInit,
-): Promise<AutomationResponseV2[]> {
+): Promise<AutomationResponse[]> {
   const result = await accept(
-    client(automationsV2MainContract).list({ fetchOptions }),
+    client(automationsMainContract).list({ fetchOptions }),
     [200],
     { toast: false },
   );
@@ -125,7 +125,7 @@ async function findByNameAndAgent(
   client: ZeroClientFactory,
   name: string,
   agentId: string,
-): Promise<AutomationResponseV2> {
+): Promise<AutomationResponse> {
   const automations = await listAutomations(client);
   const match = automations.find((a) => {
     return a.name === name && a.agentId === agentId;
@@ -157,7 +157,7 @@ async function createSchedule(
   body: ScheduleBody,
 ): Promise<{ id: string; created: boolean }> {
   const result = await accept(
-    client(automationsV2MainContract).create({
+    client(automationsMainContract).create({
       body: {
         name: body.name,
         agentId: body.agentId,
@@ -181,7 +181,7 @@ async function updateSchedule(
   const existing = await findByNameAndAgent(client, body.name, body.agentId);
 
   await accept(
-    client(automationsV2ByRefContract).update({
+    client(automationsByRefContract).update({
       params: { ref: existing.id },
       body: {
         instruction: body.prompt,
@@ -202,7 +202,7 @@ async function updateSchedule(
   });
   if (!kept) {
     await accept(
-      client(automationsV2ByRefContract).addTrigger({
+      client(automationsByRefContract).addTrigger({
         params: { ref: existing.id },
         body: toTriggerRequest(body),
       }),
@@ -212,7 +212,7 @@ async function updateSchedule(
   for (const stale of timeTriggers) {
     if (stale !== kept) {
       await accept(
-        client(automationTriggersV2Contract).remove({
+        client(automationTriggersContract).remove({
           params: { id: stale.id },
         }),
         [204],
@@ -255,7 +255,7 @@ export async function setScheduleEnabled(
     const trigger = timeTriggerOf(automation);
     if (trigger) {
       await accept(
-        client(automationTriggersV2Contract).enable({
+        client(automationTriggersContract).enable({
           params: { id: trigger.id },
           body: undefined,
         }),
@@ -265,7 +265,7 @@ export async function setScheduleEnabled(
   }
   const action = params.enabled ? "enable" : "disable";
   await accept(
-    client(automationsV2ByRefContract)[action]({
+    client(automationsByRefContract)[action]({
       params: { ref: automation.id },
       body: undefined,
     }),
@@ -284,7 +284,7 @@ export async function deleteSchedule(
     params.agentId,
   );
   await accept(
-    client(automationsV2ByRefContract).delete({
+    client(automationsByRefContract).delete({
       params: { ref: automation.id },
     }),
     [204],
@@ -297,7 +297,7 @@ export async function runScheduleNow(
   id: string,
 ): Promise<string> {
   const result = await accept(
-    client(automationsV2ByRefContract).run({
+    client(automationsByRefContract).run({
       params: { ref: id },
       body: undefined,
     }),
