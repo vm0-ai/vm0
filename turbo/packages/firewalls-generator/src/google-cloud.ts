@@ -708,20 +708,20 @@ function permissionNamePattern(): RegExp {
 
 function isGoogleCloudPermissionName(value: string): boolean {
   const segments = value.split(".");
-  const isGoogleApisHost =
-    segments.length === 3 &&
-    segments[1] === "googleapis" &&
-    segments[2] === "com";
   return (
     segments.length >= 3 &&
     GOOGLE_CLOUD_PERMISSION_PREFIXES.has(segments[0]!) &&
-    !isGoogleApisHost
+    segments[1] !== "googleapis"
   );
 }
 
-function extractOfficialPermissionNames(text: string): string[] {
+function normalizePermissionSourceText(text: string): string {
+  return text.replace(/<wbr\s*\/?>/gi, "");
+}
+
+export function extractOfficialPermissionNames(text: string): string[] {
   return unique(
-    [...text.matchAll(permissionNamePattern())]
+    [...normalizePermissionSourceText(text).matchAll(permissionNamePattern())]
       .map((match) => match[0]!)
       .filter(isGoogleCloudPermissionName),
   ).sort();
