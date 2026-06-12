@@ -593,7 +593,10 @@ describe("chat composer models", () => {
     await user.click(textarea);
     await user.keyboard("/");
 
-    await expect(screen.findByText("/deep-dive")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("No matching skills"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
     const link = linkByText("View all skills");
     expect(link).toHaveAttribute("href", "/skills");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
