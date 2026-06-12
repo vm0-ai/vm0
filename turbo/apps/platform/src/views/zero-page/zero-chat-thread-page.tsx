@@ -2658,13 +2658,13 @@ function CompletedWorkFoldRow({
 }) {
   const label = completedWorkLabel(groups);
   return (
-    <div data-chat-completed-work-fold>
+    <div data-chat-completed-work-fold className="-mx-2">
       <button
         type="button"
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="flex h-5 w-full flex-col justify-center gap-1.5 text-left"
+        className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
       >
         <span className="block h-px w-full bg-border/40" />
         <span className="flex items-center gap-2">
