@@ -3002,9 +3002,18 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         return deletedS3Keys.length;
       })
       .toBeGreaterThan(0);
-    await runs.requestReadRun(actor, run.runId, [404]);
-    await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
-    expect((await runs.listSchedules(actor)).schedules).toStrictEqual([]);
+    // The redelivered webhook responds OK before the teardown finishes, so
+    // the resource deletions land asynchronously — poll instead of asserting
+    // a single snapshot.
+    await waitForExpectation(async () => {
+      await runs.requestReadRun(actor, run.runId, [404]);
+    });
+    await waitForExpectation(async () => {
+      await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
+    });
+    await waitForExpectation(async () => {
+      expect((await runs.listSchedules(actor)).schedules).toStrictEqual([]);
+    });
 
     // An org without a live subscription skips the Stripe cancellation.
     const cancelCalls =

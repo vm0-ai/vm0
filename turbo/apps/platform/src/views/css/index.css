@@ -563,6 +563,14 @@
   color: hsl(var(--foreground));
 }
 
+/* Inline feedback: keep the commented passage highlighted while its draft is
+   open, so the comment stays anchored to the text it is about. A lighter tint
+   than the live selection above. */
+::highlight(zero-feedback) {
+  background-color: hsl(var(--primary-100));
+  color: hsl(var(--foreground));
+}
+
 /* ==========================================================================
    Markdown Preview — full theme override for @uiw/react-markdown-preview.
    We set data-color-mode on the wrapper (via React prop) so the library's

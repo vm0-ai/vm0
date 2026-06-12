@@ -519,8 +519,8 @@ function ComposerFeedbackRow({
   return (
     <div className="border-b border-dashed border-border/60 pb-2 pt-1 last:border-b-0">
       <div className="flex items-center gap-2">
-        <span className="h-3.5 w-[3px] shrink-0 rounded-sm bg-primary" />
-        <span className="min-w-0 flex-1 truncate text-xs italic leading-snug text-muted-foreground">
+        <span className="h-4 w-[3px] shrink-0 bg-muted-foreground/30" />
+        <span className="min-w-0 flex-1 truncate text-sm italic leading-snug text-muted-foreground">
           {item.quote}
         </span>
         <button
@@ -565,7 +565,7 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
   const newestId = feedback.items[feedback.items.length - 1]?.id;
 
   return (
-    <div className="flex flex-col px-3 pt-3">
+    <div className="flex flex-col px-3 pb-2 pt-3">
       {feedback.items.map((item) => {
         return (
           <ComposerFeedbackRow
@@ -582,8 +582,8 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      <span className="px-1 pt-1.5 text-xs leading-snug text-muted-foreground">
-        Select more text and click Provide feedback to add another comment
+      <span className="px-1 pt-2 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
+        Select more text to add another comment
       </span>
     </div>
   );
