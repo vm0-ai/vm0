@@ -62,7 +62,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(`Preset ID: ${item.id}`);
     expect(result.prompt).toContain(`Preset name: ${item.nameEn}`);
     expect(result.prompt).toContain(
-      "The selected stylePresetId resolves to the seven video template dimensions below.",
+      "Apply all dimensions and constraints below as hard generation constraints.",
     );
     expect(result.prompt).toContain("- Visual Tone:");
     expect(result.prompt).toContain("- Camera Style:");
@@ -71,8 +71,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain("- Production Type:");
     expect(result.prompt).toContain("- Emotional Tone:");
     expect(result.prompt).toContain("- Style Reference:");
+    expect(result.prompt).toContain("- Style constraints (inject into the video prompt):");
     expect(result.prompt).toContain(
-      "Apply all seven preset dimensions below as hard generation constraints",
+      `reflect every dimension and constraint above for the style ${item.nameEn}`,
     );
   });
 });
