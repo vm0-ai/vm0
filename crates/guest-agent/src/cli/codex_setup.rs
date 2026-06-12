@@ -69,6 +69,7 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
     let result = match result {
         Ok(mut child) => {
             let pgid = child.id().map(|pid| pid as i32);
+            let mut process_group = SetupProcessGroupGuard::new(pgid);
             let stderr = child.stderr.take();
             let stderr_handle = tokio::spawn(async move {
                 match stderr {
@@ -84,6 +85,7 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
             match child.wait().await {
                 Ok(status) => {
                     let stderr_lines = drain_setup_stderr_after_wait(stderr_handle, pgid).await;
+                    process_group.disarm();
                     Ok((status, stderr_lines))
                 }
                 Err(e) => {
@@ -101,8 +103,12 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
     } else {
         match &result {
             Ok((status, stderr_lines)) => {
-                let stderr_lines =
-                    mask_setup_diagnostic_lines(masker, &api_key_masker, stderr_lines.clone());
+                let stderr_lines = mask_setup_diagnostic_lines(
+                    masker,
+                    api_key,
+                    &api_key_masker,
+                    stderr_lines.clone(),
+                );
                 if stderr_lines.is_empty() {
                     log_warn!(LOG_TAG, "codex login failed (non-fatal): {status}");
                 } else {
@@ -111,13 +117,38 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
                 }
             }
             Err((stage, e)) => {
-                let error = mask_setup_diagnostic_text(masker, &api_key_masker, e.to_string());
+                let error =
+                    mask_setup_diagnostic_text(masker, api_key, &api_key_masker, e.to_string());
                 log_warn!(LOG_TAG, "codex login {stage} failed (non-fatal): {error}");
             }
         }
     }
     record_sandbox_op("codex_login", login_start.elapsed(), success, None);
     Ok(())
+}
+
+struct SetupProcessGroupGuard {
+    pgid: Option<i32>,
+}
+
+impl SetupProcessGroupGuard {
+    fn new(pgid: Option<i32>) -> Self {
+        Self { pgid }
+    }
+
+    fn disarm(&mut self) {
+        self.pgid = None;
+    }
+}
+
+impl Drop for SetupProcessGroupGuard {
+    fn drop(&mut self) {
+        if let Some(pid) = self.pgid {
+            unsafe {
+                libc::kill(-pid, libc::SIGKILL);
+            }
+        }
+    }
 }
 
 async fn drain_setup_stderr_after_wait(
@@ -170,10 +201,11 @@ fn setup_api_key_masker(api_key: &str) -> SecretMasker {
 
 fn mask_setup_diagnostic_text(
     masker: &SecretMasker,
+    api_key: &str,
     api_key_masker: &SecretMasker,
     text: String,
 ) -> String {
-    mask_setup_diagnostic_lines(masker, api_key_masker, vec![text])
+    mask_setup_diagnostic_lines(masker, api_key, api_key_masker, vec![text])
         .into_iter()
         .next()
         .unwrap_or_default()
@@ -181,11 +213,30 @@ fn mask_setup_diagnostic_text(
 
 fn mask_setup_diagnostic_lines(
     masker: &SecretMasker,
+    api_key: &str,
     api_key_masker: &SecretMasker,
     lines: Vec<String>,
 ) -> Vec<String> {
+    let lines = mask_setup_api_key_plaintext_lines(api_key, lines);
     let lines = api_key_masker.mask_diagnostic_lines(lines);
     masker.mask_diagnostic_lines(lines)
+}
+
+fn mask_setup_api_key_plaintext_lines(api_key: &str, lines: Vec<String>) -> Vec<String> {
+    if api_key.is_empty() {
+        return lines;
+    }
+
+    lines
+        .into_iter()
+        .map(|line| {
+            if line.contains(api_key) {
+                line.replace(api_key, "***")
+            } else {
+                line
+            }
+        })
+        .collect()
 }
 
 /// Wrapper that calls `codex_auth::setup_codex_chatgpt_inner` with values
@@ -209,4 +260,30 @@ fn setup_codex_chatgpt() -> Result<(), AgentError> {
         log_info!(LOG_TAG, "Codex ChatGPT-OAuth auth.json written");
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn setup_plaintext_masking_masks_short_api_key() {
+        let lines = mask_setup_api_key_plaintext_lines(
+            "abcd",
+            vec![
+                "before".to_string(),
+                "stderr contains abcd".to_string(),
+                "after".to_string(),
+            ],
+        );
+
+        assert_eq!(
+            lines,
+            vec![
+                "before".to_string(),
+                "stderr contains ***".to_string(),
+                "after".to_string(),
+            ]
+        );
+    }
 }
