@@ -775,6 +775,27 @@ mod tests {
     }
 
     #[test]
+    fn codex_error_event_multi_connector_reconnect_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "TOKEN_REFRESH_FAILED",
+            "message": "Access token expired and refresh failed for: notion, codex-oauth-token.",
+            "connectors": ["notion", "codex-oauth-token"],
+            "failureReason": "reconnect_required"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token expired and refresh failed for: notion, codex-oauth-token."
+                    .to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
     fn codex_turn_failed_event_yields_failure_diagnostic() {
         let event = serde_json::json!({
             "type": "turn.failed",

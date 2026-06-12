@@ -1208,6 +1208,26 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_codex_oauth_reconnect_required_after_metadata() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"request metadata {"traceId":"abc","status":502}: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: codex-oauth-token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
+        );
+
+        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_codex_oauth_reconnect_required_after_template_brace() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"request template {response_id: {"error":"TOKEN_REFRESH_FAILED","message":"Refresh failed for {codex} token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
+        );
+
+        assert_eq!(reason, Some(FailureReason::ReconnectRequired));
+    }
+
+    #[test]
     fn cli_failure_reason_ignores_codex_oauth_upstream_provider() {
         let reason = classify_cli_failure_reason(
             AgentFramework::Codex,
@@ -1232,6 +1252,16 @@ mod tests {
         let reason = classify_cli_failure_reason(
             AgentFramework::Codex,
             r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: zendesk.","permission":"connector:zendesk","connectors":["zendesk"],"failureReason":"reconnect_required"}, url: https://example.zendesk.com/api/v2/tickets"#,
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_oauth_multi_connector_reconnect_required() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            r#"unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: notion, codex-oauth-token.","connectors":["notion","codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses"#,
         );
 
         assert_eq!(reason, None);
