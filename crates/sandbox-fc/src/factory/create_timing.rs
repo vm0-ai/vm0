@@ -149,13 +149,14 @@ impl SandboxCreateTiming {
             return;
         }
         self.failure_logged = true;
+        let safe_error = sanitize_error_for_timing(error);
         warn!(
             stage = stage.as_str(),
             elapsed_ms = duration_ms(elapsed),
             success = false,
             sandbox_id = self.sandbox_id.as_str(),
             profile = self.profile.as_str(),
-            error,
+            error = safe_error.as_str(),
             "sandbox create stage failed"
         );
     }
@@ -194,6 +195,24 @@ fn duration_ms(duration: Duration) -> u64 {
 
 fn optional_duration_ms(duration: Option<Duration>) -> u64 {
     duration.map_or(0, duration_ms)
+}
+
+fn sanitize_error_for_timing(error: &str) -> String {
+    let first_line = error.lines().next().unwrap_or_default().trim();
+    let command_redacted = if let Some((prefix, _)) = first_line.split_once("command failed:") {
+        format!("{} command failed", prefix.trim_end())
+    } else {
+        first_line.to_owned()
+    };
+    redact_path_tokens(&command_redacted)
+}
+
+fn redact_path_tokens(value: &str) -> String {
+    value
+        .split_whitespace()
+        .map(|token| if token.contains('/') { "<path>" } else { token })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg(test)]
@@ -313,5 +332,44 @@ mod tests {
         assert_field(event, "sandbox_id", "sandbox-1");
         assert_field(event, "profile", "vm0/default");
         assert_field(event, "error", "copy failed");
+    }
+
+    #[test]
+    fn stage_failure_redacts_paths_and_command_argv() {
+        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+
+        let events = capture_events(|| {
+            timing.emit_stage_failure(
+                SandboxCreateStage::WorkspaceSeedSparseCopy,
+                Duration::from_millis(25),
+                "sandbox sandbox allocation initialization failed: copy workspace seed image: command failed: cp --sparse=always -- /tmp/source.ext4 /tmp/target.ext4\nsecret stderr",
+            );
+        });
+
+        assert_eq!(events.len(), 1, "events: {events:#?}");
+        let event = &events[0];
+        assert_field(
+            event,
+            "error",
+            "sandbox sandbox allocation initialization failed: copy workspace seed image: command failed",
+        );
+        assert!(!event.fields["error"].contains("/tmp"), "event={event:#?}");
+        assert!(!event.fields["error"].contains("cp --"), "event={event:#?}");
+        assert!(
+            !event.fields["error"].contains("secret stderr"),
+            "event={event:#?}"
+        );
+    }
+
+    #[test]
+    fn stage_failure_redacts_path_tokens() {
+        let error = sanitize_error_for_timing(
+            "workspace seed image size mismatch for /tmp/seed.ext4: expected 1 bytes, got 0 bytes",
+        );
+
+        assert_eq!(
+            error,
+            "workspace seed image size mismatch for <path> expected 1 bytes, got 0 bytes"
+        );
     }
 }
