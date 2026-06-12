@@ -8,6 +8,7 @@ import pytest
 
 import usage
 import usage.buffer as usage_buffer
+from tests.pending_helpers import assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
 from tests.usage_helpers import RecordingTimer, install_recording_usage_timer
 
@@ -574,7 +575,9 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
 
 
 def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
+    pending_path = tmp_path / "usage-pending"
     proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
 
     def enqueue_retryable_failure(
         url: str,
@@ -608,6 +611,8 @@ def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
         timers[1].callback()
 
     assert usage.counters._buffered_usage_events == 0
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
     assert len(timers) == 2
     entries = flush_log_entries(proxy_log_path)
     dropped_entries = [entry for entry in entries if entry["phase"] == "dropped"]
