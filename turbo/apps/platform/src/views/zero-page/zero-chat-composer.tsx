@@ -8,7 +8,6 @@ import type {
   MouseEvent as ReactMouseEvent,
   RefCallback,
 } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useGet,
   useSet,
@@ -840,14 +839,14 @@ function VideoTemplateCard({
   return (
     <div
       className={cn(
-        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+      <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
         <VideoTemplatePreview item={item} />
       </div>
-      <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+      <div className="flex flex-1 items-center justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
             {item.nameEn}
@@ -876,9 +875,6 @@ function VideoTemplateCard({
   );
 }
 
-const VIDEO_GRID_COLS = 3;
-const VIDEO_TEMPLATE_GRID_SCROLL_SELECTOR = "[data-video-template-grid-scroll]";
-
 function VideoTemplateGrid({
   items,
   value,
@@ -888,76 +884,16 @@ function VideoTemplateGrid({
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: VideoStylePreset) => void;
 }) {
-  const rows: VideoStylePreset[][] = [];
-  for (let i = 0; i < items.length; i += VIDEO_GRID_COLS) {
-    rows.push(items.slice(i, i + VIDEO_GRID_COLS));
-  }
-
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => {
-      return globalThis.document.querySelector<HTMLDivElement>(
-        VIDEO_TEMPLATE_GRID_SCROLL_SELECTOR,
-      );
-    },
-    estimateSize: () => {
-      return 200;
-    },
-    overscan: 2,
-  });
-
-  if (isHappyDomTestEnvironment()) {
-    return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => {
-          return (
-            <VideoTemplateCard
-              key={item.id}
-              item={item}
-              selected={isSelectedVideoTemplate(item, value)}
-              onSelect={onSelect}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
-    <div
-      style={{
-        height: `${virtualizer.getTotalSize()}px`,
-        width: "100%",
-        position: "relative",
-      }}
-    >
-      {virtualizer.getVirtualItems().map((virtualRow) => {
-        const rowItems = rows[virtualRow.index]!;
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
         return (
-          <div
-            key={virtualRow.key}
-            data-index={virtualRow.index}
-            ref={virtualizer.measureElement}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {rowItems.map((item) => {
-              return (
-                <VideoTemplateCard
-                  key={item.id}
-                  item={item}
-                  selected={isSelectedVideoTemplate(item, value)}
-                  onSelect={onSelect}
-                />
-              );
-            })}
-          </div>
+          <VideoTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedVideoTemplate(item, value)}
+            onSelect={onSelect}
+          />
         );
       })}
     </div>
@@ -991,7 +927,7 @@ function TemplateEmptyPanel({
   description: string;
 }) {
   return (
-    <div className="flex min-h-40 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
+    <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
       <div className="flex max-w-xl flex-col items-center">
         <IconSearch
           className="mb-4 h-8 w-8 text-muted-foreground/70"
@@ -1210,7 +1146,7 @@ function TemplatePreview({
 
   return (
     <div
-      className="relative aspect-[16/9] overflow-hidden bg-muted"
+      className="relative h-44 shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
         preloadPresentationPreviewImages(slideImages);
         detach(
@@ -1481,12 +1417,12 @@ function PptCard({
   return (
     <div
       className={cn(
-        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
       <TemplatePreview item={item} onPreview={onPreview} />
-      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+      <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
             {item.title}
@@ -1526,14 +1462,15 @@ function IllustrationTemplatePreview({
   onPreview: (item: IllustrationTemplateItem) => void;
 }) {
   return (
-    <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+    <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
       <img
         src={item.previewImage}
         alt=""
         title={`${item.title} illustration preview`}
-        className="h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
+        className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
         loading="lazy"
         decoding="async"
+        fetchPriority="low"
         onLoad={(event) => {
           const image = event.currentTarget;
           detach(
@@ -1620,12 +1557,12 @@ function IllustrationTemplateCard({
   return (
     <div
       className={cn(
-        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        "group flex h-64 flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
       <IllustrationTemplatePreview item={item} onPreview={onPreview} />
-      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+      <div className="flex flex-1 items-start justify-between gap-3 px-3.5 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
             {item.title}
@@ -1888,10 +1825,6 @@ function TemplatePickerTabs({
   );
 }
 
-const ILLUSTRATION_GRID_COLS = 3;
-const ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR =
-  "[data-illustration-template-grid-scroll]";
-
 function IllustrationTemplateGrid({
   items,
   value,
@@ -1903,86 +1836,22 @@ function IllustrationTemplateGrid({
   onSelect: (item: IllustrationTemplateItem) => void;
   onPreview: (item: IllustrationTemplateItem) => void;
 }) {
-  const rows: IllustrationTemplateItem[][] = [];
-  for (let i = 0; i < items.length; i += ILLUSTRATION_GRID_COLS) {
-    rows.push(items.slice(i, i + ILLUSTRATION_GRID_COLS));
-  }
-
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => {
-      return globalThis.document.querySelector<HTMLDivElement>(
-        ILLUSTRATION_TEMPLATE_GRID_SCROLL_SELECTOR,
-      );
-    },
-    estimateSize: () => {
-      return 250;
-    },
-    overscan: 2,
-  });
-
-  if (isHappyDomTestEnvironment()) {
-    return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => {
-          return (
-            <IllustrationTemplateCard
-              key={item.illustrationStyleId}
-              item={item}
-              selected={isSelectedIllustrationTemplate(item, value)}
-              onSelect={onSelect}
-              onPreview={onPreview}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
-    <div
-      style={{
-        height: `${virtualizer.getTotalSize()}px`,
-        width: "100%",
-        position: "relative",
-      }}
-    >
-      {virtualizer.getVirtualItems().map((virtualRow) => {
-        const rowItems = rows[virtualRow.index]!;
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
         return (
-          <div
-            key={virtualRow.key}
-            data-index={virtualRow.index}
-            ref={virtualizer.measureElement}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-            className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {rowItems.map((item) => {
-              return (
-                <IllustrationTemplateCard
-                  key={item.illustrationStyleId}
-                  item={item}
-                  selected={isSelectedIllustrationTemplate(item, value)}
-                  onSelect={onSelect}
-                  onPreview={onPreview}
-                />
-              );
-            })}
-          </div>
+          <IllustrationTemplateCard
+            key={item.illustrationStyleId}
+            item={item}
+            selected={isSelectedIllustrationTemplate(item, value)}
+            onSelect={onSelect}
+            onPreview={onPreview}
+          />
         );
       })}
     </div>
   );
 }
-
-const PPT_GRID_COLS = 3;
-const PPT_TEMPLATE_GRID_SCROLL_SELECTOR = "[data-ppt-template-grid-scroll]";
 
 function PptTemplateGrid({
   items,
@@ -1995,88 +1864,19 @@ function PptTemplateGrid({
   onSelect: (item: PresentationTemplateItem) => void;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
-  const rows: PresentationTemplateItem[][] = [];
-  for (let i = 0; i < items.length; i += PPT_GRID_COLS) {
-    rows.push(items.slice(i, i + PPT_GRID_COLS));
-  }
-
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => {
-      return globalThis.document.querySelector<HTMLDivElement>(
-        PPT_TEMPLATE_GRID_SCROLL_SELECTOR,
-      );
-    },
-    estimateSize: () => {
-      return 220;
-    },
-    overscan: 2,
-  });
-
-  if (isHappyDomTestEnvironment()) {
-    return (
-      <div className="overflow-y-auto" style={{ maxHeight: "60vh" }}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => {
-            return (
-              <PptCard
-                key={item.slug}
-                item={item}
-                selected={isSelectedPresentationTemplate(item, value)}
-                onSelect={onSelect}
-                onPreview={onPreview}
-              />
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      data-ppt-template-grid-scroll=""
-      className="overflow-y-auto"
-      style={{ maxHeight: "60vh" }}
-    >
-      <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: "100%",
-          position: "relative",
-        }}
-      >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const rowItems = rows[virtualRow.index]!;
-          return (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              ref={virtualizer.measureElement}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-              className="grid grid-cols-1 gap-4 pb-4 sm:grid-cols-2 lg:grid-cols-3"
-            >
-              {rowItems.map((item) => {
-                return (
-                  <PptCard
-                    key={item.slug}
-                    item={item}
-                    selected={isSelectedPresentationTemplate(item, value)}
-                    onSelect={onSelect}
-                    onPreview={onPreview}
-                  />
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
+        return (
+          <PptCard
+            key={item.slug}
+            item={item}
+            selected={isSelectedPresentationTemplate(item, value)}
+            onSelect={onSelect}
+            onPreview={onPreview}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -2117,7 +1917,7 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem ?? illustrationPreviewItem);
   const dialogContentClassName = cn(
     "p-0 gap-0 overflow-hidden",
-    isPreviewing ? "max-w-6xl" : "max-w-4xl",
+    isPreviewing ? "max-w-6xl" : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
   );
   const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
@@ -2239,7 +2039,7 @@ function TemplatePickerDialog({
               </div>
             </div>
             {selectedCategory === "slides" && hasPptTab && (
-              <div className="px-5 pt-4">
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4">
                 <TemplateSectionHeader
                   label="VM0 templates"
                   count={filteredPptItems.length}
@@ -2262,7 +2062,7 @@ function TemplatePickerDialog({
             {selectedCategory === "illustration" && (
               <div
                 data-illustration-template-grid-scroll=""
-                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
                 <TemplateSectionHeader
                   label="VM0 illustration styles"
@@ -2286,7 +2086,7 @@ function TemplatePickerDialog({
             {selectedCategory === "video" && hasVideoTab && (
               <div
                 data-video-template-grid-scroll=""
-                className="max-h-[66vh] overflow-y-auto px-5 py-4"
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
                 <TemplateSectionHeader
                   label="VM0 video styles"
