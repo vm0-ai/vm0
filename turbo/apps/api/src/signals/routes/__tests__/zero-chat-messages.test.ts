@@ -47,7 +47,6 @@ import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
   createZeroRouteMocks,

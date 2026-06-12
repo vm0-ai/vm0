@@ -7,6 +7,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   usageInsightLast7DaysAgentFixture,
@@ -84,6 +85,8 @@ describe("/usage page", () => {
   });
 
   it("shows linked usage details and updates totals by date range and group", async () => {
+    mockNow();
+
     context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
       if (query.range === "7d" && query.groupBy === "agent") {
         return respond(200, usageInsightLast7DaysAgentFixture);
