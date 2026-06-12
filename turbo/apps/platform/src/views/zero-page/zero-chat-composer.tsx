@@ -3535,8 +3535,7 @@ function SlashSkillComposerInput({
     : [];
   const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
   const showSlashSkillMenu = slashRange !== null;
-  const showSkillsPageLink =
-    features?.[FeatureSwitchKey.SkillsViewer] ?? false;
+  const showSkillsPageLink = features?.[FeatureSwitchKey.SkillsViewer] ?? false;
 
   const updateCaretIndex = (textarea: HTMLTextAreaElement) => {
     setCaretIndex(textarea.selectionStart);

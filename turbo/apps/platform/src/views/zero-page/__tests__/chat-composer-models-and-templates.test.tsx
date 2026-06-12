@@ -84,6 +84,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function linkByText(text: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!link) {
+    throw new Error(`${text} link not found`);
+  }
+  return link;
+}
+
 function buildProvider(
   overrides: Partial<ModelProviderResponse> & {
     id: string;
@@ -581,7 +591,7 @@ describe("chat composer models", () => {
     await user.keyboard("/");
 
     await expect(screen.findByText("/deep-dive")).resolves.toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "View all skills" });
+    const link = linkByText("View all skills");
     expect(link).toHaveAttribute("href", "/skills");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
   });
