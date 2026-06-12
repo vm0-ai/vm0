@@ -709,9 +709,14 @@ jobs:
           # Test with TCP on localhost — users will connect via localhost:5432.
           sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c '
             set -e
-            pg_bin=$(find /usr/lib/postgresql -mindepth 2 -maxdepth 2 -type f -name initdb -printf "%h\n" | sort -V | tail -n 1)
+            pg_bin=$(
+              for initdb in /usr/lib/postgresql/*/bin/initdb; do
+                [ -x "$initdb" ] && printf "%s\n" "${initdb%/initdb}"
+              done | sort -V | tail -n 1
+            )
             if [ -z "$pg_bin" ]; then
-              echo "initdb not found under /usr/lib/postgresql" >&2
+              echo "initdb not found under /usr/lib/postgresql/*/bin" >&2
+              ls -la /usr/lib/postgresql /usr/lib/postgresql/* /usr/lib/postgresql/*/bin 2>&1 || true
               exit 1
             fi
             rm -rf /tmp/pgdata
