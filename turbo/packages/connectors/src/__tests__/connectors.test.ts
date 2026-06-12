@@ -2430,6 +2430,74 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth", "cli", "api-token"]);
   });
 
+  it("treats statically hidden auth methods as unavailable", () => {
+    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
+    const originalOauth = authMethods.oauth;
+    const originalCli = authMethods.cli;
+    const originalApiToken = authMethods["api-token"];
+
+    Object.defineProperty(authMethods, "oauth", {
+      value: {
+        ...originalOauth,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+
+    try {
+      expect(getConfiguredConnectorAuthMethodIds("stripe")).toStrictEqual([
+        "oauth",
+        "cli",
+        "api-token",
+      ]);
+      expect(
+        getAvailableConnectorAuthMethodIds("stripe", {
+          [FeatureSwitchKey.StripeConnector]: true,
+        }),
+      ).toStrictEqual(["cli", "api-token"]);
+
+      Object.defineProperty(authMethods, "cli", {
+        value: {
+          ...originalCli,
+          visible: false,
+        } satisfies ConnectorAuthMethodConfig,
+        configurable: true,
+        enumerable: true,
+      });
+      Object.defineProperty(authMethods, "api-token", {
+        value: {
+          ...originalApiToken,
+          visible: false,
+        } satisfies ConnectorAuthMethodConfig,
+        configurable: true,
+        enumerable: true,
+      });
+
+      expect(
+        getAvailableConnectorAuthMethodIds("stripe", {
+          [FeatureSwitchKey.StripeConnector]: true,
+        }),
+      ).toStrictEqual([]);
+    } finally {
+      Object.defineProperty(authMethods, "oauth", {
+        value: originalOauth,
+        configurable: true,
+        enumerable: true,
+      });
+      Object.defineProperty(authMethods, "cli", {
+        value: originalCli,
+        configurable: true,
+        enumerable: true,
+      });
+      Object.defineProperty(authMethods, "api-token", {
+        value: originalApiToken,
+        configurable: true,
+        enumerable: true,
+      });
+    }
+  });
+
   it("exposes AWS CLI auth only when the AWS switch is enabled", () => {
     expect(getAvailableConnectorAuthMethodIds("aws", {})).toStrictEqual([]);
     expect(

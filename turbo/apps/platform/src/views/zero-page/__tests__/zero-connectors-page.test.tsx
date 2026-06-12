@@ -5,13 +5,15 @@ import {
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type {
-  ConnectorAuthMethodId,
-  ConnectorType,
+import {
+  CONNECTOR_TYPES,
+  type ConnectorAuthMethodConfig,
+  type ConnectorAuthMethodId,
+  type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -180,6 +182,14 @@ function mockCustomConnectorStory(): void {
 }
 
 describe("connectors page", () => {
+  const restoreConnectorRegistry: (() => void)[] = [];
+
+  afterEach(() => {
+    while (restoreConnectorRegistry.length > 0) {
+      restoreConnectorRegistry.pop()?.();
+    }
+  });
+
   it("lets users browse connectors by grouped categories", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
@@ -325,6 +335,119 @@ describe("connectors page", () => {
     expect(
       within(connectDialog).queryByText("OAuth (Recommended)"),
     ).not.toBeInTheDocument();
+  });
+
+  it("hides statically hidden auth methods from the connect dialog", async () => {
+    mockConnectors([]);
+    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
+    const originalOauth = authMethods.oauth;
+
+    restoreConnectorRegistry.push(() => {
+      Object.defineProperty(authMethods, "oauth", {
+        value: originalOauth,
+        configurable: true,
+        enumerable: true,
+      });
+    });
+    Object.defineProperty(authMethods, "oauth", {
+      value: {
+        ...originalOauth,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+    });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
+    await fill(searchInput, "stripe");
+    click(await screen.findByLabelText("Connect Stripe"));
+
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "Stripe",
+    });
+    expect(
+      within(connectDialog).getByText("Sign in with Stripe"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectDialog).getAllByText("API Key").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(connectDialog).queryByText("OAuth (Recommended)"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides a connector when all auth methods are statically hidden", async () => {
+    mockConnectors([]);
+    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
+    const originalOauth = authMethods.oauth;
+    const originalCli = authMethods.cli;
+    const originalApiToken = authMethods["api-token"];
+
+    restoreConnectorRegistry.push(() => {
+      Object.defineProperty(authMethods, "oauth", {
+        value: originalOauth,
+        configurable: true,
+        enumerable: true,
+      });
+    });
+    Object.defineProperty(authMethods, "oauth", {
+      value: {
+        ...originalOauth,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+    restoreConnectorRegistry.push(() => {
+      Object.defineProperty(authMethods, "cli", {
+        value: originalCli,
+        configurable: true,
+        enumerable: true,
+      });
+    });
+    Object.defineProperty(authMethods, "cli", {
+      value: {
+        ...originalCli,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+    restoreConnectorRegistry.push(() => {
+      Object.defineProperty(authMethods, "api-token", {
+        value: originalApiToken,
+        configurable: true,
+        enumerable: true,
+      });
+    });
+    Object.defineProperty(authMethods, "api-token", {
+      value: {
+        ...originalApiToken,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+    });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
+    await fill(searchInput, "stripe");
+
+    await waitFor(() => {
+      expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Connect Stripe")).not.toBeInTheDocument();
   });
 
   it("completes a device-auth connector grant", async () => {
