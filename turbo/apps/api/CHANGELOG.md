@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.138.0](https://github.com/vm0-ai/vm0/compare/api-v1.137.0...api-v1.138.0) (2026-06-12)
+
+
+### Features
+
+* **db:** drop the schedule columns ([#17537](https://github.com/vm0-ai/vm0/issues/17537)) ([c490692](https://github.com/vm0-ai/vm0/commit/c4906922c4d14d16f1ddcda22dc1199e7eea6336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.49.0
+
 ## [1.137.0](https://github.com/vm0-ai/vm0/compare/api-v1.136.1...api-v1.137.0) (2026-06-12)
 
 
