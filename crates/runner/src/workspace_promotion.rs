@@ -113,3 +113,6 @@ pub(crate) async fn promote_workspace_image_from_parked_sandbox(
 
     promote_workspace_image_from_active_sandbox(sandbox, Some(promotion), reason).await
 }
+
+#[cfg(test)]
+mod tests;
