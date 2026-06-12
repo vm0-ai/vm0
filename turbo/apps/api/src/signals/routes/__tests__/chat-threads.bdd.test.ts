@@ -575,7 +575,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const mainListed = list.threads.find((thread) => {
       return thread.id === main.threadId;
     });
-    expect(mainListed).toMatchObject({ running: true, scheduleCount: 1 });
+    expect(mainListed).toMatchObject({ running: true });
 
     // A sibling thread whose run completes: terminal transition bumps the
     // thread's recency, and the running flag drops.
@@ -593,10 +593,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         return thread.id;
       }),
     ).toStrictEqual([sibling.threadId, main.threadId]);
-    expect(list.threads[0]).toMatchObject({
-      running: false,
-      scheduleCount: 0,
-    });
+    expect(list.threads[0]).toMatchObject({ running: false });
 
     // A third thread with its own pending run must survive the delete.
     const other = await sendChatRun(actor, {
@@ -646,7 +643,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 });
 
 describe("CHAT-01 chat thread list pagination and read state", () => {
-  it("rejects list requests without an authenticated org and unknown agent scopes", async () => {
+  it("rejects unauthenticated list requests and yields empty lists for unknown agent scopes", async () => {
     const unauthenticated = await chat.requestListThreads(null, {}, [401]);
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
@@ -659,15 +656,16 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     expectApiError(orgless.body);
     expect(orgless.body.error.code).toBe("UNAUTHORIZED");
 
-    const unknownAgent = await chat.requestListThreads(
-      bdd.user(),
-      { agentId: randomUUID() },
-      [404],
-    );
-    expectApiError(unknownAgent.body);
-    expect(unknownAgent.body.error).toStrictEqual({
-      message: "Agent not found",
-      code: "NOT_FOUND",
+    // An unknown agent scope is not an error: the list query scopes by
+    // org + agent compose id, so it simply yields an empty list.
+    const unknownAgent = await chat.listThreads(bdd.user(), {
+      agentId: randomUUID(),
+    });
+    expect(unknownAgent).toStrictEqual({
+      pinned: [],
+      threads: [],
+      hasMore: false,
+      nextCursor: null,
     });
   });
 
@@ -687,7 +685,6 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
 
     // Read state: a fresh thread is read, a no-credit message flips it to
@@ -702,7 +699,6 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
       isRead: false,
       running: false,
       hasDraft: false,
-      scheduleCount: 0,
       pinnedAt: null,
       renamedAt: null,
     });
@@ -793,19 +789,6 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     );
     expectApiError(patchMalformed.body);
 
-    // Schedules linked to a thread surface in scheduleCount.
-    const scheduleName = uniqueScheduleName("bdd-list-count");
-    await api.deploySchedule(owner, {
-      name: scheduleName,
-      cronExpression: "0 9 * * *",
-      timezone: "UTC",
-      prompt: "schedule count prompt",
-      agentId: agent.agentId,
-      chatThreadId: readStateThreadId,
-    });
-    list = await chat.listThreads(owner, { agentId: agent.agentId });
-    expect(list.threads[0]?.scheduleCount).toBe(1);
-
     // Pinned threads form their own segment, scoped by agentId.
     const pinnedThread = await chat.createThread(owner, {
       agentId: otherAgent.agentId,
@@ -824,7 +807,6 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     ).toStrictEqual([pinnedThread.id]);
     expect(unified.pinned[0]?.pinnedAt).toStrictEqual(expect.any(String));
     expect(listedThreadIds(unified)).toContain(readStateThreadId);
-    expect(unified.totalCount).toBe(1);
 
     // Cursor walk over three empty threads scoped to the second agent.
     const cursorThreadIds = [pinnedThread.id];
@@ -844,7 +826,6 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     expect(firstPage.threads).toHaveLength(2);
     expect(firstPage.hasMore).toBeTruthy();
     expect(firstPage.nextCursor).not.toBeNull();
-    expect(firstPage.totalCount).toBe(3);
     if (!firstPage.nextCursor) {
       throw new Error("Expected a next cursor on the first page");
     }

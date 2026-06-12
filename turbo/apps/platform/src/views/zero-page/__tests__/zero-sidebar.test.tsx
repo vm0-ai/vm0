@@ -246,14 +246,12 @@ function mockSidebarThreadStory(
         threads: extraThreads,
         hasMore: false,
         nextCursor: null,
-        totalCount: threads.length + extraThreads.length,
       });
     }
     return respond(200, {
       ...splitChatThreadListResponse(threads),
       hasMore: extraThreads.length > 0,
       nextCursor: extraThreads.length > 0 ? "next-page" : null,
-      totalCount: threads.length + extraThreads.length,
     });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
@@ -472,9 +470,7 @@ describe("zero sidebar", () => {
     mockSidebarThreadStory(
       [
         createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(AUTOMATION_THREAD_ID, "Scheduled launch", {
-          scheduleCount: 2,
-        }),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
       ],
       [createThread(ARCHIVED_THREAD_ID, "Archived context")],
     );

@@ -4058,7 +4058,6 @@ describe("chat lifecycle", () => {
         ],
         hasMore: false,
         nextCursor: null,
-        totalCount: 2,
       });
     });
     context.mocks.api(

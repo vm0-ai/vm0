@@ -774,7 +774,6 @@ interface ChatThreadListPage {
   readonly threads: readonly ChatThreadListItem[];
   readonly hasMore: boolean;
   readonly nextCursor: string | null;
-  readonly totalCount: number;
 }
 
 function chatThreadListProjection() {
@@ -803,11 +802,6 @@ function chatThreadListProjection() {
         AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
       )
     )`,
-    scheduleCount: sql<number>`(
-      SELECT COUNT(*)::int
-      FROM ${automations}
-      WHERE ${automations.chatThreadId} = ${chatThreads.id}
-    )`,
   } as const;
 }
 
@@ -824,7 +818,6 @@ type ChatThreadListRow = {
   readonly isRead: boolean;
   readonly running: boolean;
   readonly hasDraft: boolean;
-  readonly scheduleCount: number;
 };
 
 function rowToChatThreadListItem(
@@ -842,7 +835,6 @@ function rowToChatThreadListItem(
     isRead: thread.isRead,
     running: thread.running,
     hasDraft: thread.hasDraft,
-    scheduleCount: thread.scheduleCount,
     pinnedAt: thread.pinnedAt?.toISOString() ?? null,
     renamedAt: thread.renamedAt?.toISOString() ?? null,
   };
@@ -880,30 +872,36 @@ export function zeroChatThreadList(args: {
       scopedFilters.push(eq(chatThreads.agentComposeId, args.agentComposeId));
     }
 
-    // Pinned segment is only returned on the first page (no cursor).
-    // Honours the same agent scope as the non-pinned segment so the sidebar
-    // never surfaces another agent's pinned threads while you're viewing one.
-    const pinnedRows = cursor
-      ? []
-      : await db
-          .select(projection)
-          .from(chatThreads)
-          .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-          .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
-          .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id));
-
     const nonPinnedFilters = [...scopedFilters, isNull(chatThreads.pinnedAt)];
     if (cursor) {
       nonPinnedFilters.push(cursorAdvanceFilter(cursor));
     }
 
-    const nonPinnedRows = await db
-      .select(projection)
-      .from(chatThreads)
-      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .where(and(...nonPinnedFilters))
-      .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
-      .limit(limit + 1);
+    // Pinned segment is only returned on the first page (no cursor).
+    // Honours the same agent scope as the non-pinned segment so the sidebar
+    // never surfaces another agent's pinned threads while you're viewing one.
+    // Both segments are independent, so they run in parallel to avoid
+    // stacking two sequential round-trips on this hot path.
+    const [pinnedRows, nonPinnedRows] = await Promise.all([
+      cursor
+        ? []
+        : db
+            .select(projection)
+            .from(chatThreads)
+            .innerJoin(
+              zeroAgents,
+              eq(zeroAgents.id, chatThreads.agentComposeId),
+            )
+            .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
+            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id)),
+      db
+        .select(projection)
+        .from(chatThreads)
+        .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+        .where(and(...nonPinnedFilters))
+        .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
+        .limit(limit + 1),
+    ]);
 
     const hasMore = nonPinnedRows.length > limit;
     const pageRows = hasMore ? nonPinnedRows.slice(0, limit) : nonPinnedRows;
@@ -915,18 +913,11 @@ export function zeroChatThreadList(args: {
         })
       : null;
 
-    const [countRow] = await db
-      .select({ count: sql<number>`COUNT(*)::int` })
-      .from(chatThreads)
-      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .where(and(...scopedFilters, isNull(chatThreads.pinnedAt)));
-
     return {
       pinned: pinnedRows.map(rowToChatThreadListItem),
       threads: pageRows.map(rowToChatThreadListItem),
       hasMore,
       nextCursor,
-      totalCount: countRow?.count ?? 0,
     };
   });
 }

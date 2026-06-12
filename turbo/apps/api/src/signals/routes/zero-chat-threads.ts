@@ -15,7 +15,6 @@ import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
-import { zeroComposeExists } from "../services/zero-compose-data.service";
 import {
   applyGoogleDriveArtifactSyncStatuses,
   googleDriveArtifactStatusLookup,
@@ -113,15 +112,8 @@ const listChatThreadsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatThreadsContract.list));
 
-  if (query.agentId) {
-    const exists = await get(
-      zeroComposeExists({ orgId: auth.orgId, composeId: query.agentId }),
-    );
-    if (!exists) {
-      return notFound("Agent not found");
-    }
-  }
-
+  // No existence check on agentId: the list query already scopes by
+  // org + agentComposeId, so an unknown agent yields an empty list.
   const page = await get(
     zeroChatThreadList({
       userId: auth.userId,
@@ -139,7 +131,6 @@ const listChatThreadsInner$ = computed(async (get) => {
       threads: [...page.threads],
       hasMore: page.hasMore,
       nextCursor: page.nextCursor,
-      totalCount: page.totalCount,
     },
   };
 });

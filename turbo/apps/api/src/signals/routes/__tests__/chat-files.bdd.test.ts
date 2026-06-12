@@ -179,7 +179,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       renamedAt: expect.any(String),
     });
     expect(pinnedList.threads).toStrictEqual([]);
-    expect(pinnedList.totalCount).toBe(0);
 
     let detail = await api.readThread(owner, thread.id);
     expect(detail.selectedModel).toBe("gpt-5.4-mini");
@@ -236,7 +235,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       title: "Pinned launch plan",
       pinnedAt: null,
     });
-    expect(unpinnedList.totalCount).toBe(1);
 
     detail = await api.readThread(owner, thread.id);
     expect(detail.selectedModel).toBeNull();
