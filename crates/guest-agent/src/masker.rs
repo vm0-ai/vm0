@@ -48,7 +48,9 @@ struct Matcher {
 impl SecretMasker {
     /// Build a masker from the `VM0_SECRET_VALUES` environment variable.
     pub fn from_env() -> Self {
-        Self::from_raw(env::secret_values())
+        let masker = Self::from_raw(env::secret_values());
+        masker.add_sensitive_value(env::resume_session_id());
+        masker
     }
 
     /// Build a masker from a raw comma-separated base64-encoded secret string.

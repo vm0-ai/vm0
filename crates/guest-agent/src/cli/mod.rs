@@ -156,6 +156,7 @@ pub async fn execute_cli(
 ) -> Result<CliExecutionResult, AgentError> {
     let framework = env::Framework::from_env();
     let behavior = CliFrameworkBehavior::new(framework);
+    masker.add_sensitive_value(env::resume_session_id());
     log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
 
     let cmd = command::build_cli_command_for_framework(framework)?;
