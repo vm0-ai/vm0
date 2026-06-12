@@ -31,8 +31,12 @@ def test_full_write_queue_warns_and_does_not_track_dropped_path_state(tmp_path):
 def test_completed_write_prunes_path_state_without_explicit_flush(tmp_path):
     log_path = str(tmp_path / "proxy.jsonl")
 
+    def path_state_pruned() -> bool:
+        return log_path not in jsonl_writer._accepted_by_path and jsonl_writer._pending_bytes == 0
+
     jsonl_writer.write_jsonl_line(log_path, b'{"message":"done"}\n', "proxy")
-    jsonl_writer._queue.join()
+    with jsonl_writer._condition:
+        assert jsonl_writer._condition.wait_for(path_state_pruned, timeout=1)
 
     assert log_path not in jsonl_writer._accepted_by_path
     assert log_path not in jsonl_writer._completed_by_path
