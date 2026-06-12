@@ -8,6 +8,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -2951,6 +2952,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     const firstDelivery = await api.requestClerkWebhook("{}", {}, [200]);
     expect(firstDelivery.body).toBe("OK");
+    await flushWaitUntilForTest();
     await waitForExpectation(() => {
       expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
         granted.subscriptionId,
@@ -2996,6 +2998,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     const redelivery = await api.requestClerkWebhook("{}", {}, [200]);
     expect(redelivery.body).toBe("OK");
+    await flushWaitUntilForTest();
 
     await expect
       .poll(() => {

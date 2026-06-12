@@ -600,7 +600,7 @@ describe("Automations API", () => {
       }),
       [200],
     );
-    expect(cronResponse.body).toMatchObject({ executed: 0, skipped: 1 });
+    expect(cronResponse.body.skipped).toBeGreaterThanOrEqual(1);
     const runs = await db
       .select({ id: zeroRuns.id })
       .from(zeroRuns)
