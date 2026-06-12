@@ -215,6 +215,13 @@ describe("google-cloud firewall", () => {
     ).toEqual(["bigquery.tables.create"]);
     expect(
       findPermissions(
+        "https://bigquery.googleapis.com",
+        "POST",
+        "/upload/bigquery/v2/projects/project/jobs",
+      ),
+    ).toEqual(["bigquery.jobs.create"]);
+    expect(
+      findPermissions(
         "https://run.googleapis.com",
         "POST",
         "/v2/projects/project/locations/us-central1/services",
