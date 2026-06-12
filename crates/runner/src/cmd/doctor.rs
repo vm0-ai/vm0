@@ -1490,7 +1490,6 @@ mod tests {
 
     fn empty_fresh() -> process::DiscoveredProcesses {
         process::DiscoveredProcesses {
-            runners: vec![],
             firecrackers: vec![],
             mitmdumps: vec![],
             dnsmasqs: vec![],
@@ -1952,7 +1951,6 @@ mod tests {
 
     fn empty_discovered() -> process::DiscoveredProcesses {
         process::DiscoveredProcesses {
-            runners: vec![],
             firecrackers: vec![],
             mitmdumps: vec![],
             dnsmasqs: vec![],
@@ -2115,7 +2113,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_runner_reports_ignores_discovered_runner_candidates() {
+    async fn build_runner_reports_requires_live_registry_entries() {
         let server = MockServer::start_async().await;
         let api = server
             .mock_async(|when, then| {
@@ -2153,12 +2151,7 @@ mod tests {
             serde_yaml_ng::to_string(&config).unwrap(),
         )
         .unwrap();
-        let discovered = process::DiscoveredProcesses {
-            runners: vec![process::RunnerProcessInfo {
-                pid: std::process::id(),
-            }],
-            ..empty_discovered()
-        };
+        let discovered = empty_discovered();
 
         let reports = build_runner_reports(&[], &discovered, &[]).await;
 

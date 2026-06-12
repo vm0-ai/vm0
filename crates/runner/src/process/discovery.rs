@@ -3,20 +3,8 @@ use std::path::{Path, PathBuf};
 use super::procfs::{read_cmdline, read_cwd, read_ppid, read_process_stat, scan_proc_cmdlines};
 use super::types::{
     DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
-    MitmproxyProcessInfo, ProcessStat, RunnerProcessInfo, process_stat_is_live,
+    MitmproxyProcessInfo, ProcessStat, process_stat_is_live,
 };
-
-/// Check whether argv looks like a runner `start`/`benchmark` command.
-fn is_runner_cmdline(argv: &[String]) -> bool {
-    if !argv.iter().any(|t| t == "start" || t == "benchmark") {
-        return false;
-    }
-
-    let Some(config_pos) = argv.iter().position(|t| t == "--config" || t == "-c") else {
-        return false;
-    };
-    argv.get(config_pos + 1).is_some()
-}
 
 /// Check if an argv belongs to a firecracker process.
 ///
@@ -132,19 +120,18 @@ async fn unidentified_firecracker_if_present(pid: u32) -> Option<FirecrackerProc
     Some(unidentified_firecracker_process(pid, read_ppid(pid).await))
 }
 
-/// Scan `/proc` once and discover all runner, firecracker, and mitmdump processes.
+/// Scan `/proc` once for sandbox child process facts.
+///
+/// Live runner identity is published by `live_runner_instances`; this scan
+/// intentionally does not infer runner identity from argv.
 pub async fn discover_all() -> DiscoveredProcesses {
     let procs = scan_proc_cmdlines().await;
 
-    let mut runners = Vec::new();
     let mut firecrackers = Vec::new();
     let mut mitmdumps = Vec::new();
     let mut dnsmasqs = Vec::new();
 
     for (pid, argv) in &procs {
-        if is_runner_cmdline(argv) {
-            runners.push(RunnerProcessInfo { pid: *pid });
-        }
         if is_firecracker_cmdline(argv) {
             firecrackers.push(*pid);
         }
@@ -207,7 +194,6 @@ pub async fn discover_all() -> DiscoveredProcesses {
     }
 
     DiscoveredProcesses {
-        runners,
         firecrackers: fc_infos,
         mitmdumps: mitm_infos,
         dnsmasqs,
@@ -230,61 +216,6 @@ mod tests {
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| (*s).to_string()).collect()
-    }
-
-    #[test]
-    fn detect_runner_start_cmdline() {
-        let a = argv(&[
-            "/var/lib/vm0-runner/bin/runner",
-            "start",
-            "--config",
-            "/data/runner-01/config.yaml",
-        ]);
-        assert!(is_runner_cmdline(&a));
-    }
-
-    #[test]
-    fn detect_runner_benchmark_cmdline() {
-        let a = argv(&[
-            "/usr/local/bin/runner",
-            "benchmark",
-            "--config",
-            "/etc/runner/bench.yaml",
-        ]);
-        assert!(is_runner_cmdline(&a));
-    }
-
-    #[test]
-    fn detect_runner_short_config_flag() {
-        let a = argv(&["runner", "start", "-c", "/data/runner.yaml"]);
-        assert!(is_runner_cmdline(&a));
-    }
-
-    #[test]
-    fn detect_runner_config_path_with_spaces() {
-        // Regression for #10479: a path argument containing spaces must stay
-        // as a single argv element, not be split into multiple tokens.
-        let a = argv(&["runner", "start", "--config", "/data/my config/config.yaml"]);
-        assert!(is_runner_cmdline(&a));
-    }
-
-    #[test]
-    fn detect_runner_no_config_returns_false() {
-        assert!(!is_runner_cmdline(&argv(&["runner", "start"])));
-    }
-
-    #[test]
-    fn detect_runner_no_subcommand_returns_false() {
-        assert!(!is_runner_cmdline(&argv(&[
-            "runner",
-            "--config",
-            "/data/config.yaml",
-        ])));
-    }
-
-    #[test]
-    fn detect_runner_empty_cmdline() {
-        assert!(!is_runner_cmdline(&[]));
     }
 
     #[test]

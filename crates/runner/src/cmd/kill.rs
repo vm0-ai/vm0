@@ -201,6 +201,11 @@ struct ResolvedKillTarget {
     runner_pids: Vec<u32>,
 }
 
+struct LiveRunnerContext {
+    runner_pids: Vec<u32>,
+    run_mappings: Option<run_resolution::ActiveRunMappings>,
+}
+
 #[derive(Debug)]
 enum KillOutcome {
     OwnerAccepted(RemoteKillResult),
@@ -226,22 +231,31 @@ impl KillOutcome {
 }
 
 async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKillTarget> {
+    let home = HomePaths::new()?;
+    let live_runner_context = live_runner_context(&home, args.run.is_some()).await;
     let discovered = process::discover_all().await;
-    let runner_pids: Vec<u32> = discovered.runners.iter().map(|r| r.pid).collect();
-    let run_mappings = if args.run.is_some() {
-        let home = HomePaths::new()?;
-        Some(run_resolution::collect_active_run_mappings_from_home(&home).await)
-    } else {
-        None
-    };
-    let resolved = resolve_target(args, &discovered, run_mappings.as_ref())?;
+    let resolved = resolve_target(args, &discovered, live_runner_context.run_mappings.as_ref())?;
     let mut target = KillTarget::from(resolved.process);
     target.run_id = resolved.run_id;
 
     Ok(ResolvedKillTarget {
         target,
-        runner_pids,
+        runner_pids: live_runner_context.runner_pids,
     })
+}
+
+async fn live_runner_context(home: &HomePaths, include_run_mappings: bool) -> LiveRunnerContext {
+    let live_runners = crate::live_runner_instances::list(home).await;
+    let runner_pids = live_runners.iter().map(|runner| runner.pid).collect();
+    let run_mappings = if include_run_mappings {
+        Some(run_resolution::collect_active_run_mappings(&live_runners).await)
+    } else {
+        None
+    };
+    LiveRunnerContext {
+        runner_pids,
+        run_mappings,
+    }
 }
 
 fn resolve_target<'a>(
@@ -287,13 +301,15 @@ async fn rediscover_same_target(
 async fn rediscover_same_sandbox_process(
     expected: &KillTarget,
 ) -> Result<ResolvedKillTarget, RediscoverTargetError> {
+    let home =
+        HomePaths::new().map_err(|error| RediscoverTargetError::Resolve(error.to_string()))?;
+    let live_runner_context = live_runner_context(&home, false).await;
     let discovered = process::discover_all().await;
-    let runner_pids: Vec<u32> = discovered.runners.iter().map(|r| r.pid).collect();
     let target = resolve_same_sandbox_process(expected, &discovered)?;
 
     Ok(ResolvedKillTarget {
         target,
-        runner_pids,
+        runner_pids: live_runner_context.runner_pids,
     })
 }
 
@@ -1016,6 +1032,30 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn live_runner_context_uses_registry_pids_for_orphan_owners() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: dir.path().join("benchmark.yaml"),
+                base_dir: dir.path().join("benchmark-base"),
+                runner_name: "bench-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "benchmark".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let context = live_runner_context(&home, false).await;
+
+        assert_eq!(context.runner_pids, vec![std::process::id()]);
+        assert!(context.run_mappings.is_none());
+        assert!(handle.remove_if_current().await.unwrap());
+    }
+
     // -- resolve_by_run_id (run_id → FC lookup via status + FC list) ---------
 
     #[test]
@@ -1047,14 +1087,13 @@ mod tests {
     }
 
     #[test]
-    fn resolve_target_uses_supplied_mappings_not_discovered_runner_candidates() {
+    fn resolve_target_uses_supplied_registry_mappings() {
         let args = KillArgs {
             run: Some("run-live".into()),
             sandbox: None,
             force: true,
         };
         let discovered = DiscoveredProcesses {
-            runners: vec![process::RunnerProcessInfo { pid: 999 }],
             firecrackers: vec![make_fc(200, "sandbox-live")],
             mitmdumps: vec![],
             dnsmasqs: vec![],
@@ -1203,7 +1242,6 @@ mod tests {
         firecrackers: Vec<FirecrackerProcessInfo>,
     ) -> DiscoveredProcesses {
         DiscoveredProcesses {
-            runners: vec![],
             firecrackers,
             mitmdumps: vec![],
             dnsmasqs: vec![],
