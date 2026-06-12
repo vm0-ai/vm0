@@ -47,7 +47,16 @@ def test_completed_write_prunes_path_state_without_explicit_flush(tmp_path):
 
 def test_flush_prunes_completed_path_state(tmp_path):
     log_path = str(tmp_path / "net.jsonl")
+    append_started = threading.Event()
+    release_append = threading.Event()
+    flush_thread: threading.Thread | None = None
     flush_errors: queue.SimpleQueue[Exception] = queue.SimpleQueue()
+    original_append_lines = jsonl_writer._append_lines
+
+    def append_lines(path: str, content: bytes) -> None:
+        append_started.set()
+        release_append.wait()
+        original_append_lines(path, content)
 
     def flush_log_path() -> None:
         try:
@@ -55,11 +64,25 @@ def test_flush_prunes_completed_path_state(tmp_path):
         except Exception as exc:
             flush_errors.put(exc)
 
-    jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
-    flush_thread = threading.Thread(target=flush_log_path, daemon=True)
-    flush_thread.start()
-    flush_thread.join(timeout=1)
+    with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
+        try:
+            jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
+            assert append_started.wait(timeout=1)
 
+            flush_thread = threading.Thread(target=flush_log_path, daemon=True)
+            flush_thread.start()
+
+            with jsonl_writer._condition:
+                assert jsonl_writer._condition.wait_for(
+                    lambda: jsonl_writer._flush_waiters_by_path.get(log_path, 0) == 1,
+                    timeout=1,
+                )
+        finally:
+            release_append.set()
+            if flush_thread is not None:
+                flush_thread.join(timeout=1)
+
+    assert flush_thread is not None
     assert not flush_thread.is_alive()
     if not flush_errors.empty():
         raise flush_errors.get_nowait()
