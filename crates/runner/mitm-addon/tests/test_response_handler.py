@@ -262,7 +262,7 @@ class TestResponseHandler:
             with_response=False,
             client_ip="10.200.0.5",
             host="fal.run",
-            path="/fal-ai/nano-banana-pro?API_KEY=user-provided",
+            path="/fal-ai/nano-banana-pro?auth=token",
             method="POST",
         )
 
