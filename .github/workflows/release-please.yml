@@ -1062,11 +1062,23 @@ jobs:
           fi
           echo "✅ All build-phase jobs succeeded or were skipped."
 
+  # Promote web staged deployment to production. If the same release run also
+  # promotes API, wait for API traffic to be live first.
   promote-web-production:
-    needs: [release-please, builds-complete, build-web-production]
+    needs:
+      [
+        release-please,
+        builds-complete,
+        build-web-production,
+        promote-api-production,
+      ]
     if: >-
-      !failure() && !cancelled() &&
-      needs.release-please.outputs.web_release_created == 'true'
+      always() &&
+      needs.release-please.outputs.web_release_created == 'true' &&
+      needs.builds-complete.result == 'success' &&
+      needs.build-web-production.result == 'success' &&
+      (needs.release-please.outputs.api_release_created != 'true' ||
+       needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -1414,18 +1426,23 @@ jobs:
                   type: mrkdwn
                   text: "*App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Promote app staged deployment to production (traffic switch)
+  # Promote app staged deployment to production (traffic switch). If the same
+  # release run also promotes API, wait for API traffic to be live first.
   promote-app-production:
     needs:
       [
         release-please,
         builds-complete,
         build-app-production,
-        promote-web-production,
+        promote-api-production,
       ]
     if: >-
-      !failure() && !cancelled() &&
-      needs.release-please.outputs.app_release_created == 'true'
+      always() &&
+      needs.release-please.outputs.app_release_created == 'true' &&
+      needs.builds-complete.result == 'success' &&
+      needs.build-app-production.result == 'success' &&
+      (needs.release-please.outputs.api_release_created != 'true' ||
+       needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -2181,21 +2198,26 @@ jobs:
 
   # Promote runner: install systemd service (traffic cutover), drain
   # old runners, garbage-collect old artifacts, global health check.
-  # Waits for build-runner-production plus promote-web-production so the new
-  # runner only serves traffic after web is live. Host-level prep
-  # (provision-runner, provision-monitoring) already ran in build.
+  # Waits for build-runner-production and, when present in the same release
+  # run, promote-api-production so the new runner only serves after the API it
+  # targets is live. Host-level prep (provision-runner, provision-monitoring)
+  # already ran in build.
   promote-runner-production:
     needs:
       [
         release-please,
         builds-complete,
-        promote-web-production,
+        promote-api-production,
         resolve-image-cache,
         build-runner-production,
       ]
     if: >-
-      !failure() && !cancelled() &&
-      needs.release-please.outputs.runner_rs_release_created == 'true'
+      always() &&
+      needs.release-please.outputs.runner_rs_release_created == 'true' &&
+      needs.builds-complete.result == 'success' &&
+      needs.build-runner-production.result == 'success' &&
+      (needs.release-please.outputs.api_release_created != 'true' ||
+       needs.promote-api-production.result == 'success')
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
