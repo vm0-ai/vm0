@@ -130,3 +130,32 @@ EOF
     # Verify network logs contain captured fields rendered by the CLI
     wait_for_log "$RUN_ID" --network -- "request_headers:" "response_body:"
 }
+
+@test "t45-4: connector diagnostic fields appear in network logs" {
+    create_agent
+
+    # Replicate's model list endpoint is read-only and returns 401 when no
+    # token is present. Since this run does not configure the replicate
+    # connector, mitmproxy should replace that response body with the
+    # connector-not-configured diagnostic and persist the diagnostic metadata
+    # to network logs.
+    run $VM0_CLI run "$AGENT_NAME" \
+        --artifact "$ARTIFACT_NAME:/home/user/workspace" \
+        "STATUS=\$(curl -sS -o /tmp/replicate-diagnostic.json -w '%{http_code}' https://api.replicate.com/v1/models); cat /tmp/replicate-diagnostic.json; echo; echo REPLICATE_STATUS=\$STATUS"
+    assert_success
+    assert_output --partial "connector_not_configured_for_run"
+    assert_output --partial "REPLICATE_STATUS=401"
+
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    wait_for_log "$RUN_ID" --network -- \
+        "connector diagnostic" \
+        "replicate" \
+        "not_configured_for_run" \
+        "REPLICATE_TOKEN" \
+        "https://api.replicate.com"
+}
