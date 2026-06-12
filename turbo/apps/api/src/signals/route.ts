@@ -190,22 +190,6 @@ export interface RouteEntry {
   readonly handler: SignalRouteHandler<unknown>;
 }
 
-/**
- * The automation resource API lived under /api/v2/* before #17307 moved it to
- * the clean /api/automations* paths. Clients built before the move (deployed
- * platform bundles, older CLI releases) still call the /v2 paths, so every
- * resource route is also mounted under its historical alias. Drop this once
- * those clients have aged out.
- */
-function withLegacyV2Alias(
-  entries: readonly RouteEntry[],
-): readonly RouteEntry[] {
-  return entries.flatMap((entry) => {
-    const aliasPath = entry.route.path.replace(/^\/api\//, "/api/v2/");
-    return [entry, { ...entry, route: { ...entry.route, path: aliasPath } }];
-  });
-}
-
 export const ROUTES: readonly RouteEntry[] = [
   {
     route: healthContract.check,
@@ -217,8 +201,7 @@ export const ROUTES: readonly RouteEntry[] = [
   // wins over the `/api/automations/:ref/...` params for that path shape.
   ...webhooksAutomationRoutes,
   // The unified Automation resource: one automation, N triggers of any kind.
-  // Mounted on /api/automations* plus the historical /api/v2/* alias paths.
-  ...withLegacyV2Alias(automationsV2Routes),
+  ...automationsV2Routes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,

@@ -27,7 +27,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../../../external/db";
 
-export interface ScheduleSeed {
+interface ScheduleSeed {
   readonly name: string;
   readonly prompt: string;
   readonly description?: string | null;

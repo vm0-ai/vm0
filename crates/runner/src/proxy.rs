@@ -574,6 +574,41 @@ impl MitmProxy {
         self.child = None;
         Ok(())
     }
+
+    /// Immediately kill and reap mitmdump without the graceful SIGTERM window.
+    pub async fn kill_now(&mut self) -> RunnerResult<()> {
+        self.stopping.store(true, Ordering::Release);
+        let Some(ref mut child) = self.child else {
+            return Ok(());
+        };
+        if child
+            .try_wait()
+            .map_err(|e| RunnerError::Internal(format!("check mitmdump process: {e}")))?
+            .is_some()
+        {
+            self.child = None;
+            return Ok(());
+        }
+        if let Err(kill_error) = child.start_kill() {
+            if child
+                .try_wait()
+                .map_err(|e| RunnerError::Internal(format!("recheck mitmdump process: {e}")))?
+                .is_some()
+            {
+                self.child = None;
+                return Ok(());
+            }
+            return Err(RunnerError::Internal(format!(
+                "kill mitmdump process after startup failure: {kill_error}"
+            )));
+        }
+        child
+            .wait()
+            .await
+            .map_err(|e| RunnerError::Internal(format!("wait for killed mitmdump process: {e}")))?;
+        self.child = None;
+        Ok(())
+    }
 }
 
 fn now_millis() -> u64 {
@@ -2511,6 +2546,23 @@ PY
         proxy.child = Some(child);
 
         assert!(proxy.usage_flush_target().is_none());
+        assert!(proxy.child.is_none());
+    }
+
+    #[tokio::test]
+    async fn kill_now_reaps_exited_child() {
+        let (mut proxy, _crash_rx) = MitmProxy::noop();
+        let mut child = tokio::process::Command::new("true")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        child.wait().await.unwrap();
+        proxy.child = Some(child);
+
+        proxy.kill_now().await.unwrap();
+
         assert!(proxy.child.is_none());
     }
 

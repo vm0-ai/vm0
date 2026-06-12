@@ -8,7 +8,6 @@ export enum FeatureSwitchKey {
   AhrefsConnector = "ahrefsConnector",
   BentomlConnector = "bentomlConnector",
   CanvaConnector = "canvaConnector",
-  CloudflareConnector = "cloudflareConnector",
   DeelConnector = "deelConnector",
   DocuSignConnector = "docusignConnector",
   DropboxConnector = "dropboxConnector",
@@ -61,6 +60,7 @@ export enum FeatureSwitchKey {
   ChatRecommendedFollowups = "chatRecommendedFollowups",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",
+  ChatSlashSkillCommands = "chatSlashSkillCommands",
   CreditUsageRecords = "creditUsageRecords",
   AutomationWebhookTriggers = "automationWebhookTriggers",
 }

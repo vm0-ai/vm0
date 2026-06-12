@@ -42,6 +42,5 @@ export const altium365 = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;

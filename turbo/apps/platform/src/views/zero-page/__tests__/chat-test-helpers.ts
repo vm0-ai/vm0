@@ -353,6 +353,7 @@ export function mockChatLifecycle(
       prompt?: string;
       clientMessageId?: string;
       computerUseHostId?: string | null;
+      revokesMessageId?: string;
     }) => void;
   },
 ): MockLifecycleControl {
@@ -492,6 +493,7 @@ export function mockChatLifecycle(
     prompt?: string;
     clientMessageId?: string;
     computerUseHostId?: string | null;
+    revokesMessageId?: string;
   }) => {
     if (options?.sendGate) {
       await options.sendGate;

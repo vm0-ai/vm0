@@ -1104,7 +1104,7 @@ function PermissionRow({
         className={`flex items-center gap-2.5 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors ${indent ? "pl-8" : ""}`}
       >
         <div className="min-w-0 flex-1">
-          <code className="text-xs font-medium text-foreground truncate block">
+          <code className="block whitespace-normal break-words text-xs font-medium text-foreground [overflow-wrap:anywhere]">
             {permission.name}
           </code>
           {permission.description && (

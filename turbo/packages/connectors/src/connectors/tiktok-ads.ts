@@ -49,6 +49,5 @@ export const tiktokAds = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;

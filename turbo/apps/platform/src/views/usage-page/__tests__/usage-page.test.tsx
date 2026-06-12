@@ -1,19 +1,19 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { zeroUsageInsightContract } from "@vm0/core";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   usageInsightLast7DaysAgentFixture,
   usageInsightLast7DaysSourceFixture,
   usageInsightTodayFixture,
 } from "./test-fixtures.ts";
-import { mockNow } from "../../../__tests__/time.ts";
 
 const context = testContext();
 
@@ -28,6 +28,10 @@ function tabByText(text: string): HTMLElement {
 }
 
 describe("/usage page", () => {
+  beforeEach(() => {
+    mockNow();
+  });
+
   it("shows a usage load error", async () => {
     context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
       return respond(500, {
@@ -86,6 +90,7 @@ describe("/usage page", () => {
 
   it("shows linked usage details and updates totals by date range and group", async () => {
     mockNow();
+
     context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
       if (query.range === "7d" && query.groupBy === "agent") {
         return respond(200, usageInsightLast7DaysAgentFixture);

@@ -47,6 +47,5 @@ export const docusign = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;

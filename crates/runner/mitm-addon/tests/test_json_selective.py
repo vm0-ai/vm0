@@ -613,7 +613,7 @@ def test_rejects_oversized_number_with_field_limit():
     assert result.error == "number limit exceeded"
 
 
-def test_skips_oversized_unselected_number_without_storing_value():
+def test_rejects_oversized_unselected_number():
     extractor = JsonSelectiveExtractor(
         scalar_fields={("usage", "input_tokens"): ScalarField("int")},
         max_number_bytes=3,
@@ -622,8 +622,59 @@ def test_skips_oversized_unselected_number_without_storing_value():
     extractor.feed(b'{"content":{"score":1234567890},"usage":{"input_tokens":7}}')
     result = _finish(extractor)
 
+    assert result.complete is False
+    assert result.error == "number limit exceeded"
+    assert result.values == {}
+
+
+def test_skips_unselected_number_at_limit_without_storing_value():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")},
+        max_number_bytes=3,
+    )
+
+    extractor.feed(b'{"content":{"score":123},"usage":{"input_tokens":7}}')
+    result = _finish(extractor)
+
     assert result.complete is True
     assert result.values == {("usage", "input_tokens"): 7}
+
+
+def test_rejects_oversized_unselected_root_number_at_eof():
+    extractor = JsonSelectiveExtractor(max_number_bytes=3)
+
+    extractor.feed(b"1234")
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == "number limit exceeded"
+    assert result.values == {}
+
+
+def test_rejects_oversized_unselected_number_across_chunks():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")},
+        max_number_bytes=3,
+    )
+
+    extractor.feed(b'{"content":{"score":12')
+    extractor.feed(b'34},"usage":{"input_tokens":7}}')
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == "number limit exceeded"
+    assert result.values == {}
+
+
+def test_rejects_invalid_unselected_number_before_limit_exceeded():
+    extractor = JsonSelectiveExtractor(max_number_bytes=3)
+
+    extractor.feed(b'{"content":{"score":12x}}')
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == "invalid number"
+    assert result.values == {}
 
 
 def test_rejects_invalid_unselected_number():

@@ -8,18 +8,13 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import {
-  chatMessages,
-  type ChatMessageAttachFileMetadata,
-  type ChatMessageGenerationTemplate,
-} from "@vm0/db/schema/chat-message";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
-import { nowDate } from "../../../external/time";
 
 export interface ZeroChatThreadFixture {
   readonly userId: string;
@@ -152,156 +147,6 @@ export const deleteZeroChatThread$ = command(
     await writeDb
       .delete(agentComposes)
       .where(eq(agentComposes.id, fixture.composeId));
-    signal.throwIfAborted();
-  },
-);
-
-interface SeedChatMessageOptions {
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly attachFiles?: readonly string[];
-  readonly attachFileMetadata?: readonly ChatMessageAttachFileMetadata[];
-  readonly createdAt?: Date;
-  readonly sequenceNumber?: number | null;
-  readonly runId?: string | null;
-  readonly generationTemplate?: ChatMessageGenerationTemplate;
-}
-
-export const seedZeroChatMessage$ = command(
-  async (
-    { set },
-    fixture: ZeroChatThreadFixture,
-    options: SeedChatMessageOptions,
-    signal: AbortSignal,
-  ): Promise<string> => {
-    const id = randomUUID();
-    const createdAt = options.createdAt ?? nowDate();
-    const writeDb = set(writeDb$);
-    await writeDb.insert(chatMessages).values({
-      id,
-      chatThreadId: fixture.threadId,
-      role: options.role,
-      content: options.content,
-      attachFiles: options.attachFiles ? [...options.attachFiles] : null,
-      attachFileMetadata: options.attachFileMetadata
-        ? [...options.attachFileMetadata]
-        : null,
-      generationTemplate: options.generationTemplate,
-      sequenceNumber: options.sequenceNumber ?? null,
-      runId: options.runId ?? null,
-      createdAt,
-    });
-    signal.throwIfAborted();
-    // Resync the denormalized recency column with the seeded message set so
-    // backdated test fixtures order deterministically instead of all bunching
-    // at the thread's defaultNow() lastMessageAt.
-    await writeDb
-      .update(chatThreads)
-      .set({
-        lastMessageAt: sql`COALESCE(
-          (SELECT MAX(${chatMessages.createdAt})
-             FROM ${chatMessages}
-            WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}),
-          ${chatThreads.lastMessageAt}
-        )`,
-      })
-      .where(eq(chatThreads.id, fixture.threadId));
-    signal.throwIfAborted();
-    return id;
-  },
-);
-
-// Mirrors web's addTestRunToThread: links a previously-seeded run to a thread
-// by inserting the user-side chat_message row and stamping zero_runs.chatThreadId.
-export const addRunToThread$ = command(
-  async (
-    { set },
-    args: {
-      readonly threadId: string;
-      readonly runId: string;
-      readonly prompt?: string;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb.insert(chatMessages).values({
-      chatThreadId: args.threadId,
-      role: "user",
-      content: args.prompt ?? "test prompt",
-      runId: args.runId,
-    });
-    signal.throwIfAborted();
-    await writeDb
-      .update(zeroRuns)
-      .set({ chatThreadId: args.threadId })
-      .where(eq(zeroRuns.id, args.runId));
-    signal.throwIfAborted();
-  },
-);
-
-// Mirrors web's insertTestAssistantEventMessages: bulk-insert assistant
-// chat_message rows backed by realtime events (runId + sequenceNumber). The
-// regression these guard (PR #12372) is that a later run-level error must NOT
-// mask the per-row content during the leftJoin in the read path.
-export const seedAssistantEventMessages$ = command(
-  async (
-    { set },
-    args: {
-      readonly threadId: string;
-      readonly runId: string;
-      readonly items: readonly {
-        readonly sequenceNumber: number;
-        readonly content: string;
-      }[];
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (args.items.length === 0) {
-      return;
-    }
-    const writeDb = set(writeDb$);
-    await writeDb
-      .insert(chatMessages)
-      .values(
-        args.items.map((item) => {
-          return {
-            chatThreadId: args.threadId,
-            runId: args.runId,
-            role: "assistant" as const,
-            content: item.content,
-            sequenceNumber: item.sequenceNumber,
-          };
-        }),
-      )
-      .onConflictDoNothing({
-        target: [chatMessages.runId, chatMessages.sequenceNumber],
-      });
-    signal.throwIfAborted();
-  },
-);
-
-// Mirrors web's updateTestChatThreadTitle (used by the AI title-generation
-// webhook). Tests that exercise post-completion title rewrite call this.
-export const updateChatThreadTitle$ = command(
-  async (
-    { set },
-    args: {
-      readonly threadId: string;
-      readonly userId: string;
-      readonly title: string;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .update(chatThreads)
-      .set({ title: args.title, renamedAt: nowDate() })
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      );
     signal.throwIfAborted();
   },
 );

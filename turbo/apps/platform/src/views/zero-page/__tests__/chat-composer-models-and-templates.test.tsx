@@ -24,11 +24,12 @@ import type {
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
+  zeroSkillsCollectionContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -182,7 +183,9 @@ function mockOrgModelRoutes(defaultSelectedModel: string): void {
 function mockAgent(options?: {
   selectedModel?: string | null;
   modelProviderId?: string | null;
+  customSkills?: string[];
 }): void {
+  const customSkills = options?.customSkills ?? [];
   context.mocks.data.team([
     {
       id: AGENT_ID,
@@ -190,6 +193,7 @@ function mockAgent(options?: {
       description: null,
       sound: null,
       avatarUrl: null,
+      customSkills,
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
@@ -202,7 +206,7 @@ function mockAgent(options?: {
       description: null,
       sound: null,
       avatarUrl: null,
-      customSkills: [],
+      customSkills,
       modelProviderId: options?.modelProviderId ?? null,
       selectedModel: options?.selectedModel ?? null,
       preferPersonalProvider: false,
@@ -464,6 +468,164 @@ beforeEach(() => {
 });
 
 describe("chat composer models", () => {
+  it("suggests current agent skills from slash input and highlights inserted skill tokens", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.5");
+    mockAgent({ customSkills: ["sales-research", "support-escalation"] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+        },
+        {
+          name: "support-escalation",
+          displayName: "Support Escalation",
+          description: "Summarize customer issues for handoff",
+        },
+        {
+          name: "deep-dive",
+          displayName: "Deep Dive",
+          description: "Seeded org skill",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(textarea).not.toHaveClass("text-transparent");
+    await user.click(textarea);
+    await user.keyboard("/");
+
+    await expect(
+      screen.findByText("/sales-research"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("/support-escalation")).toBeInTheDocument();
+    expect(screen.getByText("/deep-dive")).toBeInTheDocument();
+
+    await user.keyboard("sales");
+
+    expect(screen.getByText("/sales-research")).toBeInTheDocument();
+    expect(screen.queryByText("/support-escalation")).not.toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+
+    expect(textarea).toHaveValue("/sales-research ");
+    const highlightedSkill = screen
+      .getAllByText("/sales-research")
+      .find((element) => {
+        return element.tagName.toLowerCase() === "span";
+      });
+    expect(highlightedSkill).toHaveClass("text-primary");
+    expect(highlightedSkill).not.toHaveClass("font-medium");
+  });
+
+  it("suggests org skills when the agent has no custom skills", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.5");
+    mockAgent({ customSkills: [] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          name: "deep-dive",
+          displayName: "Deep Dive",
+          description: "Seeded org skill",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(textarea);
+    await user.keyboard("/");
+
+    await expect(screen.findByText("/deep-dive")).resolves.toBeInTheDocument();
+  });
+
+  it("hides slash skill suggestions when the feature switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.5");
+    mockAgent({ customSkills: ["sales-research"] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: null,
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: false },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(textarea);
+    await user.keyboard("/");
+
+    expect(screen.queryByText("/sales-research")).not.toBeInTheDocument();
+    expect(textarea).toHaveValue("/");
+  });
+
+  it("scrolls the slash picker with keyboard selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    mockOrgModelRoutes("kimi-k2.5");
+    const customSkills = Array.from({ length: 12 }, (_, index) => {
+      return `custom-skill-${index + 1}`;
+    });
+    mockAgent({ customSkills });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(
+        200,
+        customSkills.map((name) => {
+          return {
+            name,
+            displayName: null,
+            description: null,
+          };
+        }),
+      );
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(textarea);
+    await user.keyboard("/");
+    await expect(
+      screen.findByText("/custom-skill-1"),
+    ).resolves.toBeInTheDocument();
+
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    });
+  });
+
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
     mockOrgModelRoutes("kimi-k2.5");
     mockAgent();

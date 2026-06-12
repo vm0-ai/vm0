@@ -54,11 +54,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Canva design connector",
     enabled: false,
   },
-  [FeatureSwitchKey.CloudflareConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Cloudflare OAuth connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Deel HR connector",
@@ -342,6 +337,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatSlashSkillCommands]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable slash command suggestions for agent and org skills in the Zero chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

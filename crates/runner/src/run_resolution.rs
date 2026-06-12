@@ -1,43 +1,10 @@
-//! Resolve user-supplied run ids through live runner config and status state.
+//! Resolve user-supplied run ids through live runner registry and status state.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::process::RunnerProcessInfo;
-
-/// Load only the `base_dir` field from a runner config YAML (best-effort).
-///
-/// Read / parse failures log at `warn` level and return `None` so a single
-/// broken runner config doesn't stop resolution for the rest.
-async fn load_base_dir(config_path: &Path) -> Option<PathBuf> {
-    #[derive(serde::Deserialize)]
-    struct ConfigShape {
-        base_dir: PathBuf,
-    }
-    let content = match crate::config::read_diagnostic_config_to_string(config_path).await {
-        Ok(Some(c)) => c,
-        Ok(None) => {
-            tracing::warn!(path = %config_path.display(), "skipping runner: config is missing");
-            return None;
-        }
-        Err(e) => {
-            tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot read config");
-            return None;
-        }
-    };
-    let shape: ConfigShape = match serde_yaml_ng::from_str(&content) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot parse config");
-            return None;
-        }
-    };
-    if shape.base_dir.is_absolute() {
-        Some(shape.base_dir)
-    } else {
-        config_path.parent().map(|p| p.join(&shape.base_dir))
-    }
-}
+use crate::live_runner_instances::LiveRunnerInstance;
+use crate::paths::HomePaths;
 
 /// Read `{base_dir}/status.json` and extract `(run_id, sandbox_id)` for
 /// every active run. Returns `None` if the file is missing or unparseable
@@ -89,9 +56,9 @@ async fn read_active_runs(base_dir: &Path) -> Option<Vec<(String, String)>> {
 /// Result of collecting `(run_id, sandbox_id)` pairs from runners.
 pub(crate) struct ActiveRunMappings {
     pub entries: Vec<(String, String)>,
-    /// How many runners were discovered on the host.
+    /// How many trusted live runner registry entries were scanned.
     pub runners_total: usize,
-    /// How many runners had unreadable configs or status files.
+    /// How many trusted live runner status files were unreadable.
     pub runners_failed: usize,
 }
 
@@ -105,25 +72,32 @@ pub(crate) struct ResolvedRunMapping {
 /// `status.json`. Used by `kill --run` and `exec --run` to translate a
 /// user-supplied run_id into the sandbox_id that identifies the FC.
 pub(crate) async fn collect_active_run_mappings(
-    runners: &[RunnerProcessInfo],
+    runners: &[LiveRunnerInstance],
 ) -> ActiveRunMappings {
     let mut entries = Vec::new();
     let mut failed = 0usize;
+    let mut scanned = 0usize;
     for runner in runners {
-        let Some(base_dir) = load_base_dir(&runner.config_path).await else {
-            failed += 1;
+        if runner.subcommand != "start" {
             continue;
-        };
-        match read_active_runs(&base_dir).await {
+        }
+        scanned += 1;
+        match read_active_runs(&runner.base_dir).await {
             Some(runs) => entries.extend(runs),
             None => failed += 1,
         }
     }
     ActiveRunMappings {
         entries,
-        runners_total: runners.len(),
+        runners_total: scanned,
         runners_failed: failed,
     }
+}
+
+/// Collect active run mappings from the validated live runner registry.
+pub(crate) async fn collect_active_run_mappings_from_home(home: &HomePaths) -> ActiveRunMappings {
+    let runners = crate::live_runner_instances::list(home).await;
+    collect_active_run_mappings(&runners).await
 }
 
 /// Given a `run_id` prefix, find the unique matching active run from collected
@@ -158,12 +132,12 @@ pub(crate) fn resolve_run_mapping(
             let mut msg = format!("no active run matches '{input}'");
             if mappings.runners_failed > 0 {
                 msg.push_str(&format!(
-                    " ({} of {} runner(s) had unreadable config/status — \
+                    " ({} of {} trusted live runner status file(s) were unreadable — \
                      check warnings above)",
                     mappings.runners_failed, mappings.runners_total,
                 ));
             } else if mappings.runners_total == 0 {
-                msg.push_str(" (no runner processes found on this host)");
+                msg.push_str(" (no trusted live runner status found on this host)");
             }
             Err(RunnerError::Config(msg))
         }
@@ -193,6 +167,26 @@ pub(crate) fn resolve_run_to_sandbox(
 mod tests {
     use super::*;
 
+    fn live_runner(base_dir: &Path) -> LiveRunnerInstance {
+        LiveRunnerInstance {
+            pid: 1,
+            starttime: 1,
+            config_path: base_dir.join("runner.yaml"),
+            base_dir: base_dir.to_path_buf(),
+            runner_name: "test-runner".into(),
+            runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+        }
+    }
+
+    fn live_runner_with_subcommand(base_dir: &Path, subcommand: &str) -> LiveRunnerInstance {
+        LiveRunnerInstance {
+            subcommand: subcommand.into(),
+            ..live_runner(base_dir)
+        }
+    }
+
     fn mappings(entries: Vec<(String, String)>) -> ActiveRunMappings {
         let total = if entries.is_empty() { 0 } else { 1 };
         ActiveRunMappings {
@@ -200,38 +194,6 @@ mod tests {
             runners_total: total,
             runners_failed: 0,
         }
-    }
-
-    #[tokio::test]
-    async fn load_base_dir_absolute() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = dir.path().join("runner.yaml");
-        std::fs::write(&config, "base_dir: /data/runner-01\nname: test\n").unwrap();
-        let bd = load_base_dir(&config).await.unwrap();
-        assert_eq!(bd, Path::new("/data/runner-01"));
-    }
-
-    #[tokio::test]
-    async fn load_base_dir_relative() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = dir.path().join("runner.yaml");
-        std::fs::write(&config, "base_dir: ./data\nname: test\n").unwrap();
-        let bd = load_base_dir(&config).await.unwrap();
-        assert_eq!(bd, dir.path().join("./data"));
-    }
-
-    #[tokio::test]
-    async fn load_base_dir_missing_file() {
-        let result = load_base_dir(Path::new("/no/such/config.yaml")).await;
-        assert!(result.is_none());
-    }
-
-    #[tokio::test]
-    async fn load_base_dir_malformed_yaml() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = dir.path().join("runner.yaml");
-        std::fs::write(&config, "not: valid: yaml: [[[").unwrap();
-        assert!(load_base_dir(&config).await.is_none());
     }
 
     #[tokio::test]
@@ -298,6 +260,111 @@ mod tests {
 
         assert!(result.is_ok(), "FIFO read should not block");
         assert!(result.unwrap().is_none(), "FIFO status should be rejected");
+    }
+
+    #[tokio::test]
+    async fn collect_active_run_mappings_reads_registry_base_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_a = dir.path().join("runner-a");
+        let base_b = dir.path().join("runner-b");
+        std::fs::create_dir_all(&base_a).unwrap();
+        std::fs::create_dir_all(&base_b).unwrap();
+        std::fs::write(
+            base_a.join("status.json"),
+            r#"{"active_runs":[{"run_id":"run-a","sandbox_id":"sandbox-a"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            base_b.join("status.json"),
+            r#"{"active_runs":[{"run_id":"run-b","sandbox_id":"sandbox-b"}]}"#,
+        )
+        .unwrap();
+        let runners = vec![live_runner(&base_a), live_runner(&base_b)];
+
+        let mappings = collect_active_run_mappings(&runners).await;
+
+        assert_eq!(mappings.runners_total, 2);
+        assert_eq!(mappings.runners_failed, 0);
+        assert_eq!(
+            mappings.entries,
+            vec![
+                ("run-a".into(), "sandbox-a".into()),
+                ("run-b".into(), "sandbox-b".into()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn collect_active_run_mappings_counts_unreadable_status_without_config_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("runner");
+        std::fs::create_dir_all(&base).unwrap();
+        let config_path = base.join("runner.yaml");
+        std::fs::write(&config_path, "base_dir: /wrong\n").unwrap();
+        let runner = LiveRunnerInstance {
+            config_path,
+            ..live_runner(&base)
+        };
+
+        let mappings = collect_active_run_mappings(&[runner]).await;
+
+        assert!(mappings.entries.is_empty());
+        assert_eq!(mappings.runners_total, 1);
+        assert_eq!(mappings.runners_failed, 1);
+    }
+
+    #[tokio::test]
+    async fn collect_active_run_mappings_ignores_non_start_runners() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("benchmark-runner");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(
+            base.join("status.json"),
+            r#"{"active_runs":[{"run_id":"stale-run","sandbox_id":"stale-sandbox"}]}"#,
+        )
+        .unwrap();
+
+        let mappings =
+            collect_active_run_mappings(&[live_runner_with_subcommand(&base, "benchmark")]).await;
+
+        assert!(mappings.entries.is_empty());
+        assert_eq!(mappings.runners_total, 0);
+        assert_eq!(mappings.runners_failed, 0);
+    }
+
+    #[tokio::test]
+    async fn collect_active_run_mappings_from_home_reads_live_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let base = dir.path().join("runner-base");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(
+            base.join("status.json"),
+            r#"{"active_runs":[{"run_id":"run-live","sandbox_id":"sandbox-live"}]}"#,
+        )
+        .unwrap();
+        let handle = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: base.join("runner.yaml"),
+                base_dir: base,
+                runner_name: "test-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let mappings = collect_active_run_mappings_from_home(&home).await;
+
+        assert_eq!(mappings.runners_total, 1);
+        assert_eq!(mappings.runners_failed, 0);
+        assert_eq!(
+            mappings.entries,
+            vec![("run-live".into(), "sandbox-live".into())]
+        );
+        assert!(handle.remove_if_current().await.unwrap());
     }
 
     #[test]
@@ -405,6 +472,7 @@ mod tests {
         let err = resolve_run_to_sandbox("abc", &m).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("2 of 3"), "{msg}");
+        assert!(msg.contains("trusted live runner status"), "{msg}");
         assert!(msg.contains("unreadable"), "{msg}");
     }
 
@@ -417,6 +485,6 @@ mod tests {
         };
         let err = resolve_run_to_sandbox("abc", &m).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("no runner processes"), "{msg}");
+        assert!(msg.contains("no trusted live runner status"), "{msg}");
     }
 }

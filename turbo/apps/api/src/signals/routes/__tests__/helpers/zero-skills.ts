@@ -14,7 +14,6 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroSkills } from "@vm0/db/schema/zero-skill";
@@ -488,30 +487,5 @@ export const seedAgentForInstructions$ = command(
     }
 
     return { agentId, name };
-  },
-);
-
-export const seedUserConnector$ = command(
-  async (
-    { set },
-    args: {
-      orgId: string;
-      userId: string;
-      agentId: string;
-      connectorType: string;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    await db
-      .insert(userConnectors)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: args.agentId,
-        connectorType: args.connectorType,
-      })
-      .onConflictDoNothing();
-    signal.throwIfAborted();
   },
 );

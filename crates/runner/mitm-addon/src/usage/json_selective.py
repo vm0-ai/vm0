@@ -123,6 +123,7 @@ class _NumberState:
     selected: bool
     raw: bytearray | None
     max_bytes: int
+    bytes_seen: int = 0
     phase: str = "start"
 
 
@@ -758,10 +759,12 @@ class JsonSelectiveExtractor:
             self._error = "invalid number"
             return
 
+        state.bytes_seen += 1
+        if state.bytes_seen > state.max_bytes:
+            self._error = "number limit exceeded"
+            return
         if state.raw is not None:
             state.raw.append(b)
-            if len(state.raw) > state.max_bytes:
-                self._error = "number limit exceeded"
 
     def _finish_number(self) -> None:
         state = self._number

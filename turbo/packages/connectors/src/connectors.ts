@@ -491,6 +491,8 @@ export type ConnectorRevokeConfig =
 interface ConnectorAuthMethodConfigBase {
   label: string;
   helpText?: string;
+  /** When false, this auth method is unavailable for new connector actions. */
+  visible?: boolean;
   /** When set, this auth method is only available while the feature is enabled. */
   featureFlag?: FeatureSwitchKey;
   /** When false, feature-gated UI surfaces should not add an experimental label. */
@@ -666,7 +668,6 @@ type ConnectorConfigBase = {
   readonly label: string;
   readonly helpText: string;
   readonly category: ConnectorDisplayCategory;
-  readonly defaultAuthMethod?: ConnectorAuthMethodId;
   /**
    * Output categories this connector skill can generate. This is product
    * metadata for discovery and routing, not a permission/capability grant.
@@ -1479,22 +1480,6 @@ type TokenRevokeConnectorTypeWithNonConfidentialClient = {
 }[TokenRevokeConnectorType];
 export type TokenRevokeConnectorAuthMethodsUseConfidentialClients =
   AssertNever<TokenRevokeConnectorTypeWithNonConfidentialClient>;
-
-export type ConnectorInvalidDefaultAuthMethodType<
-  Configs extends Record<string, ConnectorConfig>,
-> = {
-  [Type in keyof Configs & string]: Configs[Type] extends {
-    readonly defaultAuthMethod: infer DefaultMethod;
-  }
-    ? DefaultMethod extends Extract<keyof Configs[Type]["authMethods"], string>
-      ? never
-      : Type
-    : never;
-}[keyof Configs & string];
-
-export type ConnectorDefaultAuthMethodsMatchConfig = AssertNever<
-  ConnectorInvalidDefaultAuthMethodType<typeof CONNECTOR_TYPES_DEF>
->;
 
 export const CONNECTOR_TYPES = CONNECTOR_TYPES_DEF;
 export const CONNECTOR_TYPE_KEYS = Object.freeze(

@@ -22,7 +22,6 @@ import {
   type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorExternalCodeGrantConfig,
-  type ConnectorInvalidDefaultAuthMethodType,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
@@ -315,7 +314,6 @@ const connectorAuthMethodFixture = {
     authMethods: {
       "api-token": manualAuthMethodConfig,
     },
-    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;
 
@@ -328,7 +326,6 @@ const multiAuthMethodFixture = {
       oauth: manualAuthMethodConfig,
       "api-token": manualAuthMethodConfig,
     },
-    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;
 
@@ -472,42 +469,12 @@ describe("connector auth method config", () => {
     expectTypeOf<"app-credential">().not.toMatchTypeOf<
       keyof ConnectorConfig["authMethods"]
     >();
-    expectTypeOf<"app-credential">().not.toMatchTypeOf<
-      ConnectorConfig["defaultAuthMethod"]
-    >();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<FixtureConfig>
     >().toEqualTypeOf<"api-token">();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<MultiFixtureConfig>
     >().toEqualTypeOf<"oauth" | "api-token">();
-    expectTypeOf<
-      FixtureConfig["defaultAuthMethod"]
-    >().toEqualTypeOf<"api-token">();
-    expectTypeOf<
-      MultiFixtureConfig["defaultAuthMethod"]
-    >().toEqualTypeOf<"api-token">();
-    expectTypeOf<
-      ConnectorInvalidDefaultAuthMethodType<typeof connectorAuthMethodFixture>
-    >().toEqualTypeOf<never>();
-    expectTypeOf<
-      ConnectorInvalidDefaultAuthMethodType<typeof multiAuthMethodFixture>
-    >().toEqualTypeOf<never>();
-
-    const missingDefaultMethodFixture = {
-      "missing-default-method-fixture": {
-        label: "Missing Default Method Fixture",
-        category: "data-automation-infrastructure",
-        helpText: "Fixture used for connector auth method type coverage.",
-        authMethods: {
-          "api-token": manualAuthMethodConfig,
-        },
-        defaultAuthMethod: "oauth",
-      },
-    } as const satisfies Record<string, ConnectorConfig>;
-    expectTypeOf<
-      ConnectorInvalidDefaultAuthMethodType<typeof missingDefaultMethodFixture>
-    >().toEqualTypeOf<"missing-default-method-fixture">();
   });
 
   it("returns a single auth method config when present", () => {
@@ -2463,6 +2430,74 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth", "cli", "api-token"]);
   });
 
+  it("treats statically hidden auth methods as unavailable", () => {
+    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
+    const originalOauth = authMethods.oauth;
+    const originalCli = authMethods.cli;
+    const originalApiToken = authMethods["api-token"];
+
+    Object.defineProperty(authMethods, "oauth", {
+      value: {
+        ...originalOauth,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+
+    try {
+      expect(getConfiguredConnectorAuthMethodIds("stripe")).toStrictEqual([
+        "oauth",
+        "cli",
+        "api-token",
+      ]);
+      expect(
+        getAvailableConnectorAuthMethodIds("stripe", {
+          [FeatureSwitchKey.StripeConnector]: true,
+        }),
+      ).toStrictEqual(["cli", "api-token"]);
+
+      Object.defineProperty(authMethods, "cli", {
+        value: {
+          ...originalCli,
+          visible: false,
+        } satisfies ConnectorAuthMethodConfig,
+        configurable: true,
+        enumerable: true,
+      });
+      Object.defineProperty(authMethods, "api-token", {
+        value: {
+          ...originalApiToken,
+          visible: false,
+        } satisfies ConnectorAuthMethodConfig,
+        configurable: true,
+        enumerable: true,
+      });
+
+      expect(
+        getAvailableConnectorAuthMethodIds("stripe", {
+          [FeatureSwitchKey.StripeConnector]: true,
+        }),
+      ).toStrictEqual([]);
+    } finally {
+      Object.defineProperty(authMethods, "oauth", {
+        value: originalOauth,
+        configurable: true,
+        enumerable: true,
+      });
+      Object.defineProperty(authMethods, "cli", {
+        value: originalCli,
+        configurable: true,
+        enumerable: true,
+      });
+      Object.defineProperty(authMethods, "api-token", {
+        value: originalApiToken,
+        configurable: true,
+        enumerable: true,
+      });
+    }
+  });
+
   it("exposes AWS CLI auth only when the AWS switch is enabled", () => {
     expect(getAvailableConnectorAuthMethodIds("aws", {})).toStrictEqual([]);
     expect(
@@ -2514,15 +2549,11 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes Cloudflare OAuth only when its switch is enabled", () => {
+  it("exposes Cloudflare auth methods by default", () => {
     expect(getAvailableConnectorAuthMethodIds("cloudflare", {})).toStrictEqual([
+      "oauth",
       "api-token",
     ]);
-    expect(
-      getAvailableConnectorAuthMethodIds("cloudflare", {
-        [FeatureSwitchKey.CloudflareConnector]: true,
-      }),
-    ).toStrictEqual(["oauth", "api-token"]);
   });
 
   it("exposes Google Maps API-token auth only when its switch is enabled", () => {
@@ -4145,7 +4176,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       ]),
     );
     expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
-      featureFlag: FeatureSwitchKey.CloudflareConnector,
       client: {
         clientRegistration: "static",
         clientType: "confidential",

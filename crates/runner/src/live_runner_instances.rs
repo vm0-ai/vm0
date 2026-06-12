@@ -17,12 +17,25 @@ pub(crate) struct LiveRunnerInstanceMetadata {
     pub base_dir: PathBuf,
     pub runner_name: String,
     pub runner_group: String,
+    pub subcommand: String,
 }
 
 #[derive(Debug)]
 pub(crate) struct LiveRunnerInstanceHandle {
     path: PathBuf,
     identity: ProcessIdentity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct LiveRunnerInstance {
+    pub pid: u32,
+    pub starttime: u64,
+    pub config_path: PathBuf,
+    pub base_dir: PathBuf,
+    pub runner_name: String,
+    pub runner_group: String,
+    pub subcommand: String,
+    pub started_at: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -49,6 +62,8 @@ struct LiveRunnerInstanceRecord {
     base_dir: PathBuf,
     runner_name: String,
     runner_group: String,
+    #[serde(default = "default_subcommand")]
+    subcommand: String,
     started_at: String,
 }
 
@@ -67,6 +82,7 @@ pub(crate) async fn publish(
         base_dir: metadata.base_dir,
         runner_name: metadata.runner_name,
         runner_group: metadata.runner_group,
+        subcommand: metadata.subcommand,
         started_at: chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
     };
     let content = serde_json::to_vec_pretty(&record)
@@ -87,6 +103,73 @@ pub(crate) async fn publish(
     crate::state_file::write_private_atomic(&path, &content).await?;
 
     Ok(LiveRunnerInstanceHandle { path, identity })
+}
+
+pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
+    remove_stale_records(home).await;
+
+    let dir = home.live_runner_instances_dir();
+    let mut entries = match tokio::fs::read_dir(&dir).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => {
+            tracing::debug!(path = %dir.display(), error = %e, "cannot scan live runner instances");
+            return Vec::new();
+        }
+    };
+
+    let mut instances = Vec::new();
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(e) => {
+                tracing::debug!(path = %dir.display(), error = %e, "cannot read live runner instance entry");
+                break;
+            }
+        };
+        let Some(identity) = stable_record_identity_from_file_name(&entry.file_name()) else {
+            continue;
+        };
+        let Some(record) = read_valid_record_for_identity(&entry.path(), identity).await else {
+            continue;
+        };
+        instances.push(LiveRunnerInstance {
+            pid: record.pid,
+            starttime: record.starttime,
+            config_path: record.config_path,
+            base_dir: record.base_dir,
+            runner_name: record.runner_name,
+            runner_group: record.runner_group,
+            subcommand: record.subcommand,
+            started_at: record.started_at,
+        });
+    }
+
+    instances.sort_by(|left, right| {
+        left.runner_name
+            .cmp(&right.runner_name)
+            .then_with(|| left.pid.cmp(&right.pid))
+            .then_with(|| left.config_path.cmp(&right.config_path))
+    });
+    instances
+}
+
+pub(crate) async fn is_current(home: &HomePaths, instance: &LiveRunnerInstance) -> bool {
+    let identity = FileProcessIdentity {
+        pid: instance.pid,
+        starttime: instance.starttime,
+    };
+    let path = home.live_runner_instance_record_path(identity.pid, identity.starttime);
+    let Some(record) = read_valid_record_for_identity(&path, identity).await else {
+        return false;
+    };
+    record.config_path == instance.config_path
+        && record.base_dir == instance.base_dir
+        && record.runner_name == instance.runner_name
+        && record.runner_group == instance.runner_group
+        && record.subcommand == instance.subcommand
+        && record.started_at == instance.started_at
 }
 
 impl LiveRunnerInstanceHandle {
@@ -142,6 +225,10 @@ async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
     }
 }
 
+fn default_subcommand() -> String {
+    "start".into()
+}
+
 async fn remove_stale_records(home: &HomePaths) {
     let dir = home.live_runner_instances_dir();
     let mut entries = match tokio::fs::read_dir(&dir).await {
@@ -163,10 +250,13 @@ async fn remove_stale_records(home: &HomePaths) {
         };
         let file_name = entry.file_name();
         let path = entry.path();
-        if stable_record_identity_from_file_name(&file_name).is_some()
-            && read_valid_record(&path).await.is_none()
-        {
-            remove_stale_file(&path, "stale live runner instance record").await;
+        if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
+            if read_valid_record_for_identity(&path, identity)
+                .await
+                .is_none()
+            {
+                remove_stale_file(&path, "stale live runner instance record").await;
+            }
             continue;
         }
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
@@ -175,6 +265,26 @@ async fn remove_stale_records(home: &HomePaths) {
         if !file_process_identity_is_live(identity).await {
             remove_stale_file(&path, "stale live runner instance tmp file").await;
         }
+    }
+}
+
+async fn read_valid_record_for_identity(
+    path: &Path,
+    identity: FileProcessIdentity,
+) -> Option<LiveRunnerInstanceRecord> {
+    let record = read_valid_record(path).await?;
+    if record.pid == identity.pid && record.starttime == identity.starttime {
+        Some(record)
+    } else {
+        tracing::debug!(
+            path = %path.display(),
+            record_pid = record.pid,
+            record_starttime = record.starttime,
+            file_pid = identity.pid,
+            file_starttime = identity.starttime,
+            "ignoring live runner instance record whose contents do not match file name"
+        );
+        None
     }
 }
 
@@ -327,6 +437,7 @@ mod tests {
             base_dir: root.join("base"),
             runner_name: "test-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
         }
     }
 
@@ -386,6 +497,137 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_returns_empty_when_registry_dir_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+
+        let instances = list(&home).await;
+
+        assert!(instances.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_returns_valid_live_instance_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+
+        let instances = list(&home).await;
+
+        assert_eq!(instances.len(), 1);
+        let instance = &instances[0];
+        assert_eq!(instance.pid, handle.identity.pid);
+        assert_eq!(instance.starttime, handle.identity.starttime);
+        assert_eq!(instance.config_path, dir.path().join("runner.yaml"));
+        assert_eq!(instance.base_dir, dir.path().join("base"));
+        assert_eq!(instance.runner_name, "test-runner");
+        assert_eq!(instance.runner_group, "vm0/test");
+        assert_eq!(instance.subcommand, "start");
+        assert!(!instance.started_at.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_defaults_legacy_records_to_start_subcommand() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let content = tokio::fs::read_to_string(&handle.path).await.unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        value.as_object_mut().unwrap().remove("subcommand").unwrap();
+        crate::state_file::write_private_atomic(
+            &handle.path,
+            &serde_json::to_vec_pretty(&value).unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let instances = list(&home).await;
+
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].subcommand, "start");
+    }
+
+    #[tokio::test]
+    async fn list_ignores_invalid_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        crate::host_file::ensure_dir(
+            &home.live_runner_instances_dir(),
+            crate::host_file::DirMode::Private,
+            "live runner instances",
+        )
+        .unwrap();
+        let stale_record = LiveRunnerInstanceRecord {
+            boot_id: current_boot_id().await.unwrap(),
+            pid: u32::MAX,
+            starttime: 1,
+            euid: current_euid(),
+            config_path: dir.path().join("stale-runner.yaml"),
+            base_dir: dir.path().join("stale-base"),
+            runner_name: "stale-runner".into(),
+            runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+        };
+        write_record(
+            &home.live_runner_instance_record_path(stale_record.pid, stale_record.starttime),
+            &stale_record,
+        )
+        .await;
+        crate::state_file::write_private_atomic(&home.live_runner_instance_record_path(1, 1), b"{")
+            .await
+            .unwrap();
+        crate::state_file::write_private_atomic(
+            &home.live_runner_instance_record_path(2, 2),
+            &vec![b'a'; (LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES + 1) as usize],
+        )
+        .await
+        .unwrap();
+        crate::state_file::write_private_atomic(
+            &home.live_runner_instances_dir().join("not-a-record.json"),
+            b"{}",
+        )
+        .await
+        .unwrap();
+
+        let instances = list(&home).await;
+
+        assert!(instances.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_ignores_records_with_mismatched_file_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let record = read_valid_record(&handle.path).await.unwrap();
+        tokio::fs::remove_file(&handle.path).await.unwrap();
+        write_record(
+            &home.live_runner_instance_record_path(record.pid, record.starttime + 1),
+            &record,
+        )
+        .await;
+
+        let instances = list(&home).await;
+
+        assert!(instances.is_empty());
+    }
+
+    #[tokio::test]
+    async fn is_current_tracks_the_exact_registry_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let instance = list(&home).await.into_iter().next().unwrap();
+
+        assert!(is_current(&home, &instance).await);
+
+        tokio::fs::remove_file(&handle.path).await.unwrap();
+
+        assert!(!is_current(&home, &instance).await);
+    }
+
+    #[tokio::test]
     async fn read_valid_record_ignores_stale_pid() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
@@ -404,6 +646,7 @@ mod tests {
             base_dir: dir.path().join("base"),
             runner_name: "test-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         let path = home.live_runner_instance_record_path(record.pid, record.starttime);
@@ -504,6 +747,7 @@ mod tests {
             base_dir: dir.path().join("stale-base"),
             runner_name: "stale-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         let stale_path =
@@ -518,6 +762,59 @@ mod tests {
 
         assert!(!stale_path.exists());
         assert!(!stale_tmp_path.exists());
+    }
+
+    #[tokio::test]
+    async fn list_removes_stale_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        crate::host_file::ensure_dir(
+            &home.live_runner_instances_dir(),
+            crate::host_file::DirMode::Private,
+            "live runner instances",
+        )
+        .unwrap();
+        let stale_record = LiveRunnerInstanceRecord {
+            boot_id: current_boot_id().await.unwrap(),
+            pid: u32::MAX,
+            starttime: 1,
+            euid: current_euid(),
+            config_path: dir.path().join("stale-runner.yaml"),
+            base_dir: dir.path().join("stale-base"),
+            runner_name: "stale-runner".into(),
+            runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+        };
+        let stale_path =
+            home.live_runner_instance_record_path(stale_record.pid, stale_record.starttime);
+        write_record(&stale_path, &stale_record).await;
+        let stale_tmp_path = home
+            .live_runner_instances_dir()
+            .join(".4294967295-1.json.test.tmp");
+        tokio::fs::write(&stale_tmp_path, b"partial").await.unwrap();
+
+        let instances = list(&home).await;
+
+        assert!(instances.is_empty());
+        assert!(!stale_path.exists());
+        assert!(!stale_tmp_path.exists());
+    }
+
+    #[tokio::test]
+    async fn publish_removes_records_with_mismatched_file_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        let record = read_valid_record(&handle.path).await.unwrap();
+        tokio::fs::remove_file(&handle.path).await.unwrap();
+        let mismatched_path =
+            home.live_runner_instance_record_path(record.pid, record.starttime + 1);
+        write_record(&mismatched_path, &record).await;
+
+        let _handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+
+        assert!(!mismatched_path.exists());
     }
 
     #[cfg(unix)]
@@ -557,6 +854,7 @@ mod tests {
             base_dir: dir.path().join("other-base"),
             runner_name: "other-runner".into(),
             runner_group: "vm0/test".into(),
+            subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
         };
         let live_path =

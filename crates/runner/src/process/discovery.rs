@@ -6,19 +6,16 @@ use super::types::{
     MitmproxyProcessInfo, ProcessStat, RunnerProcessInfo, process_stat_is_live,
 };
 
-/// Parse a runner argv for `start`/`benchmark` subcommand and `--config` path.
-///
-/// Returns `(config_path, subcommand)` or `None` if the argv doesn't match.
-fn parse_runner_cmdline(argv: &[String]) -> Option<(PathBuf, String)> {
-    let subcmd = argv
-        .iter()
-        .find(|t| *t == "start" || *t == "benchmark")?
-        .clone();
+/// Check whether argv looks like a runner `start`/`benchmark` command.
+fn is_runner_cmdline(argv: &[String]) -> bool {
+    if !argv.iter().any(|t| t == "start" || t == "benchmark") {
+        return false;
+    }
 
-    let config_pos = argv.iter().position(|t| t == "--config" || t == "-c")?;
-    let config_path = argv.get(config_pos + 1)?;
-
-    Some((PathBuf::from(config_path), subcmd))
+    let Some(config_pos) = argv.iter().position(|t| t == "--config" || t == "-c") else {
+        return false;
+    };
+    argv.get(config_pos + 1).is_some()
 }
 
 /// Check if an argv belongs to a firecracker process.
@@ -145,12 +142,8 @@ pub async fn discover_all() -> DiscoveredProcesses {
     let mut dnsmasqs = Vec::new();
 
     for (pid, argv) in &procs {
-        if let Some((config_path, subcommand)) = parse_runner_cmdline(argv) {
-            runners.push(RunnerProcessInfo {
-                pid: *pid,
-                config_path,
-                subcommand,
-            });
+        if is_runner_cmdline(argv) {
+            runners.push(RunnerProcessInfo { pid: *pid });
         }
         if is_firecracker_cmdline(argv) {
             firecrackers.push(*pid);
@@ -240,64 +233,58 @@ mod tests {
     }
 
     #[test]
-    fn parse_runner_start_cmdline() {
+    fn detect_runner_start_cmdline() {
         let a = argv(&[
             "/var/lib/vm0-runner/bin/runner",
             "start",
             "--config",
             "/data/runner-01/config.yaml",
         ]);
-        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
-        assert_eq!(config, Path::new("/data/runner-01/config.yaml"));
-        assert_eq!(subcmd, "start");
+        assert!(is_runner_cmdline(&a));
     }
 
     #[test]
-    fn parse_runner_benchmark_cmdline() {
+    fn detect_runner_benchmark_cmdline() {
         let a = argv(&[
             "/usr/local/bin/runner",
             "benchmark",
             "--config",
             "/etc/runner/bench.yaml",
         ]);
-        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
-        assert_eq!(config, Path::new("/etc/runner/bench.yaml"));
-        assert_eq!(subcmd, "benchmark");
+        assert!(is_runner_cmdline(&a));
     }
 
     #[test]
-    fn parse_runner_short_config_flag() {
+    fn detect_runner_short_config_flag() {
         let a = argv(&["runner", "start", "-c", "/data/runner.yaml"]);
-        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
-        assert_eq!(config, Path::new("/data/runner.yaml"));
-        assert_eq!(subcmd, "start");
+        assert!(is_runner_cmdline(&a));
     }
 
     #[test]
-    fn parse_runner_config_path_with_spaces() {
+    fn detect_runner_config_path_with_spaces() {
         // Regression for #10479: a path argument containing spaces must stay
         // as a single argv element, not be split into multiple tokens.
         let a = argv(&["runner", "start", "--config", "/data/my config/config.yaml"]);
-        let (config, subcmd) = parse_runner_cmdline(&a).unwrap();
-        assert_eq!(config, Path::new("/data/my config/config.yaml"));
-        assert_eq!(subcmd, "start");
+        assert!(is_runner_cmdline(&a));
     }
 
     #[test]
-    fn parse_runner_no_config_returns_none() {
-        assert!(parse_runner_cmdline(&argv(&["runner", "start"])).is_none());
+    fn detect_runner_no_config_returns_false() {
+        assert!(!is_runner_cmdline(&argv(&["runner", "start"])));
     }
 
     #[test]
-    fn parse_runner_no_subcommand_returns_none() {
-        assert!(
-            parse_runner_cmdline(&argv(&["runner", "--config", "/data/config.yaml"])).is_none()
-        );
+    fn detect_runner_no_subcommand_returns_false() {
+        assert!(!is_runner_cmdline(&argv(&[
+            "runner",
+            "--config",
+            "/data/config.yaml",
+        ])));
     }
 
     #[test]
-    fn parse_runner_empty_cmdline() {
-        assert!(parse_runner_cmdline(&[]).is_none());
+    fn detect_runner_empty_cmdline() {
+        assert!(!is_runner_cmdline(&[]));
     }
 
     #[test]

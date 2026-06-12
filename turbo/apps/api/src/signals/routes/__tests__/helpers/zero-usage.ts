@@ -20,24 +20,6 @@ import { eq, inArray } from "drizzle-orm";
 import { nowDate } from "../../../../lib/time";
 import { writeDb$ } from "../../../external/db";
 
-export const REALTIME_PROVIDER = "gpt-realtime-2";
-export const TRANSCRIPTION_PROVIDER = "gpt-4o-mini-transcribe";
-
-export const REALTIME_TOKEN_CATEGORIES = [
-  "tokens.input.text",
-  "tokens.input.audio",
-  "tokens.input.cached_text",
-  "tokens.input.cached_audio",
-  "tokens.output.text",
-  "tokens.output.audio",
-] as const;
-
-export const TRANSCRIPTION_TOKEN_CATEGORIES = [
-  "tokens.input.audio",
-  "tokens.input.text",
-  "tokens.output.text",
-] as const;
-
 export interface UsageFixture {
   readonly orgId: string;
   readonly userId: string;

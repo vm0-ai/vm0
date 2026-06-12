@@ -4,6 +4,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { now, nowDate } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { agentDetail$ } from "./detail.ts";
+import { userPreferences$ } from "../settings/user-preferences.ts";
 import {
   buildCronExpression,
   buildAtTime,
@@ -87,7 +88,11 @@ function cronToTimeString(cron: string, timezone = "UTC"): string {
   return `Every day at ${timeStr}`;
 }
 
-function scheduleToTimeString(s: ScheduleItem): string {
+function scheduleToTimeString(
+  s: ScheduleItem,
+  displayTimezone?: string,
+): string {
+  const tz = displayTimezone ?? s.timezone ?? "UTC";
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
     if (s.intervalSeconds % 60 === 0) {
       return `Every ${s.intervalSeconds / 60} minutes`;
@@ -95,16 +100,13 @@ function scheduleToTimeString(s: ScheduleItem): string {
     return `Every ${s.intervalSeconds} seconds`;
   }
   if (s.triggerType === "once" && s.atTime) {
-    const { date, hour, minute } = atTimeInTimezone(
-      s.atTime,
-      s.timezone ?? "UTC",
-    );
+    const { date, hour, minute } = atTimeInTimezone(s.atTime, tz);
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
   }
   if (s.cronExpression) {
-    return cronToTimeString(s.cronExpression, s.timezone);
+    return cronToTimeString(s.cronExpression, tz);
   }
   return "Scheduled";
 }
@@ -136,6 +138,9 @@ const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
 export const agentScheduleEntries$ = computed(
   async (get): Promise<ScheduleEntry[]> => {
     const items = await get(rawSchedules$);
+    const prefs = await get(userPreferences$);
+    const displayTz =
+      prefs?.timezone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
     return [...items]
       .sort((a, b) => {
         return b.createdAt.localeCompare(a.createdAt);
@@ -143,12 +148,12 @@ export const agentScheduleEntries$ = computed(
       .map((s): ScheduleEntry => {
         return {
           id: s.id,
-          time: scheduleToTimeString(s),
+          time: scheduleToTimeString(s, displayTz),
           prompt: s.prompt,
           description: s.description,
           enabled: s.enabled,
           name: s.name,
-          timezone: s.timezone,
+          timezone: displayTz,
           intervalSeconds: s.intervalSeconds,
         };
       });

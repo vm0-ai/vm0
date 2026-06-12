@@ -159,6 +159,5 @@ export const testOauth = {
         revoke: TEST_OAUTH_REVOKE,
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;

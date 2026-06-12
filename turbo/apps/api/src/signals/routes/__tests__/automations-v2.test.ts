@@ -223,34 +223,6 @@ describe("Automations v2 API", () => {
     });
   });
 
-  it("serves the historical /api/v2 alias paths during the transition", async () => {
-    // #17307 moved the resource API to /api/automations*; clients built
-    // before the move still call /api/v2/* and must keep working until they
-    // age out.
-    const fixture = await seedFixture();
-    await createAutomation({
-      name: "alias-check",
-      agentId: fixture.composeId,
-      trigger: { kind: "cron", cronExpression: "0 9 * * *" },
-    });
-
-    const v2AliasContract = {
-      list: {
-        ...automationsV2MainContract.list,
-        path: "/api/v2/automations",
-      },
-    } as const;
-    const aliasClient = setupApp({ context })(v2AliasContract);
-    const listed = await accept(
-      aliasClient.list({ headers: SESSION_HEADERS }),
-      [200],
-    );
-    const names = listed.body.automations.map((a) => {
-      return a.name;
-    });
-    expect(names).toContain("alias-check");
-  });
-
   it("creates an automation with a first cron trigger via sugar", async () => {
     const fixture = await seedFixture();
     await enableWebhookTriggers(fixture);

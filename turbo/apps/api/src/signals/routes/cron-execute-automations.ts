@@ -32,13 +32,4 @@ export const cronExecuteAutomationsRoutes: readonly RouteEntry[] = [
     route: cronExecuteAutomationsContract.execute,
     handler: executeAutomationsRoute$,
   },
-  // The Vercel cron config flips to /api/cron/execute-automations with this
-  // release; the old path stays mounted for the deploy overlap, then goes.
-  {
-    route: {
-      ...cronExecuteAutomationsContract.execute,
-      path: "/api/cron/execute-schedules",
-    },
-    handler: executeAutomationsRoute$,
-  },
 ];
