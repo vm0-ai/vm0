@@ -8,6 +8,8 @@ import {
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   chatThreadsContract,
+  type GenerationTemplateRequest,
+  type ModelSelectionRequest,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -76,6 +78,20 @@ interface QueuedMessageCapture {
   hasTextContent?: boolean;
   attachments?: PersistedAttachment[];
   clientMessageId: string;
+}
+
+interface RunCreateCapture {
+  prompt?: string;
+  attachFiles?: {
+    id: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[];
+  hasTextContent?: boolean;
+  generationTemplate?: GenerationTemplateRequest;
+  modelSelection?: ModelSelectionRequest | null;
+  clientMessageId?: string;
 }
 
 interface PushBrowserMock {
@@ -709,6 +725,16 @@ function buttonByText(text: string): HTMLElement {
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+function presentationTemplateLabel(
+  item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
+): string {
+  const label = item.templateId
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
+    .replace(/-/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function queryButtonByText(text: string): HTMLElement | null {
@@ -3084,6 +3110,135 @@ describe("chat lifecycle", () => {
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
+  });
+
+  it("sends inline feedback with selected template and draft attachments", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const templateChipLabel = presentationTemplateLabel(template);
+    const assistantReply = "The launch summary needs more source context.";
+    const sentBodies: RunCreateCapture[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      selectedModel: "claude-sonnet-4-6",
+      chatMessages: [
+        {
+          id: "msg-feedback-attachment-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-attachment",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-attachment-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-attachment",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentBodies.push(body);
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-feedback-brief",
+      filename: "feedback-brief.txt",
+      contentType: "text/plain",
+      size: 14,
+      url: "https://cdn.vm7.io/artifacts/test/upload-feedback-brief/feedback-brief.txt",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineFeedback]: true,
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+      },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+
+    await user.click(await screen.findByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText(`Select template ${template.title}`),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Remove template ${templateChipLabel}`),
+      ).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["feedback notes"], "feedback-brief.txt", {
+        type: "text/plain",
+      }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Remove feedback-brief.txt"),
+      ).toBeInTheDocument();
+    });
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Provide feedback"));
+    window.getSelection()?.removeAllRanges();
+
+    await fill(
+      await screen.findByPlaceholderText("What should change about this?"),
+      "Use the attached brief as supporting context.",
+    );
+    expect(
+      screen.getByLabelText(`Remove template ${templateChipLabel}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Remove feedback-brief.txt"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Send feedback"));
+
+    await waitFor(() => {
+      expect(sentBodies[0]).toMatchObject({
+        attachFiles: [
+          {
+            id: "upload-feedback-brief",
+            filename: "feedback-brief.txt",
+            contentType: "text/plain",
+            size: 14,
+          },
+        ],
+        generationTemplate: {
+          type: "presentation",
+          selection: {
+            designSystemId: template.designSystemId,
+            templateId: template.templateId,
+          },
+        },
+        modelSelection: {
+          modelProviderId: "00000000-0000-4000-8000-000000000000",
+          selectedModel: "claude-sonnet-4-6",
+        },
+      });
+    });
+    const sentBody = sentBodies[0];
+    if (!sentBody) {
+      throw new Error("feedback send body not captured");
+    }
+    expect(sentBody?.prompt).toContain(
+      "Use the attached brief as supporting context.",
+    );
   });
 
   it("keeps committed inline feedback while drafting another selected comment", async () => {

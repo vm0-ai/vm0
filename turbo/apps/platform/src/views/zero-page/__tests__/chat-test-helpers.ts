@@ -11,6 +11,7 @@ import {
   chatThreadMessagesContract,
   chatMessagesContract,
   type GenerationTemplateRequest,
+  type ModelSelectionRequest,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -322,6 +323,7 @@ export function mockChatLifecycle(
     historyMessages?: MockPagedMessage[];
     chatMessages?: MockPagedMessage[];
     threadTitle?: string | null;
+    selectedModel?: string | null;
     computerUseHostId?: string | null;
     activeRunIds?: string[];
     onQueuedMessageAppend?: (body: {
@@ -352,6 +354,15 @@ export function mockChatLifecycle(
     onRunCreate?: (body: {
       prompt?: string;
       clientMessageId?: string;
+      attachFiles?: {
+        id: string;
+        filename: string;
+        contentType: string;
+        size: number;
+      }[];
+      hasTextContent?: boolean;
+      generationTemplate?: GenerationTemplateRequest;
+      modelSelection?: ModelSelectionRequest | null;
       computerUseHostId?: string | null;
       revokesMessageId?: string;
     }) => void;
@@ -492,6 +503,15 @@ export function mockChatLifecycle(
   const startRunFromUserMessage = async (body: {
     prompt?: string;
     clientMessageId?: string;
+    attachFiles?: {
+      id: string;
+      filename: string;
+      contentType: string;
+      size: number;
+    }[];
+    hasTextContent?: boolean;
+    generationTemplate?: GenerationTemplateRequest;
+    modelSelection?: ModelSelectionRequest | null;
     computerUseHostId?: string | null;
     revokesMessageId?: string;
   }) => {
@@ -646,6 +666,7 @@ export function mockChatLifecycle(
       updatedAt: "2026-03-10T00:00:00Z",
       draftContent: null,
       draftAttachments: null,
+      selectedModel: options?.selectedModel ?? null,
       computerUseHostId: options?.computerUseHostId ?? null,
     });
   });

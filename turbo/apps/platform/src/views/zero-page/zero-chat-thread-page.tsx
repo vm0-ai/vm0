@@ -3376,6 +3376,7 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
 // Returns undefined when the feature is off, so the composer keeps its textarea.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
+  modelSelection: ModelProviderSelection | null,
 ): ComposerFeedback | undefined {
   const features = useLastResolved(featureSwitch$);
   const inlineFeedbackEnabled =
@@ -3420,7 +3421,7 @@ function useChatThreadComposerFeedback(
       detach(
         sendMessage(
           prompt,
-          null,
+          modelSelection,
           {
             includeDraftAttachments: true,
             ...(generationTemplate ? { generationTemplate } : {}),
@@ -3507,7 +3508,7 @@ function ChatThreadComposer({
     detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const feedback = useChatThreadComposerFeedback(thread);
+  const feedback = useChatThreadComposerFeedback(thread, modelSelection);
 
   return (
     <footer
