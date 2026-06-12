@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.424.0](https://github.com/vm0-ai/vm0/compare/web-v12.423.0...web-v12.424.0) (2026-06-12)
+
+
+### Features
+
+* **api:** drop the transition aliases for the automation paths ([#17388](https://github.com/vm0-ai/vm0/issues/17388)) ([7f34ec6](https://github.com/vm0-ai/vm0/commit/7f34ec674f4245c58204aa7fa1d509571712ab22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.86.1
+    * @vm0/core bumped to 8.332.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.70.0
+
 ## [12.423.0](https://github.com/vm0-ai/vm0/compare/web-v12.422.3...web-v12.423.0) (2026-06-11)
 
 

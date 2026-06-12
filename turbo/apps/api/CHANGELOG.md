@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.133.0](https://github.com/vm0-ai/vm0/compare/api-v1.132.2...api-v1.133.0) (2026-06-12)
+
+
+### Features
+
+* **api:** drop the transition aliases for the automation paths ([#17388](https://github.com/vm0-ai/vm0/issues/17388)) ([7f34ec6](https://github.com/vm0-ai/vm0/commit/7f34ec674f4245c58204aa7fa1d509571712ab22))
+
+
+### Bug Fixes
+
+* fold completed chat work per run ([#17369](https://github.com/vm0-ai/vm0/issues/17369)) ([a450d65](https://github.com/vm0-ai/vm0/commit/a450d6548926d6d1f6b9695e476cbf4d4d2868b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.86.1
+    * @vm0/connectors bumped to 1.70.0
+    * @vm0/core bumped to 8.332.0
+    * @vm0/db bumped to 1.46.1
+
 ## [1.132.2](https://github.com/vm0-ai/vm0/compare/api-v1.132.1...api-v1.132.2) (2026-06-12)
 
 

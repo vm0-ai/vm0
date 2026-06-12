@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.332.0](https://github.com/vm0-ai/vm0/compare/core-v8.331.0...core-v8.332.0) (2026-06-12)
+
+
+### Features
+
+* make cloudflare connector generally available ([#17361](https://github.com/vm0-ai/vm0/issues/17361)) ([2f189d1](https://github.com/vm0-ai/vm0/commit/2f189d189ebe4c176e5dbe1ed052899f7f483ead))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.86.1
+    * @vm0/connectors bumped to 1.70.0
+
 ## [8.331.0](https://github.com/vm0-ai/vm0/compare/core-v8.330.0...core-v8.331.0) (2026-06-11)
 
 

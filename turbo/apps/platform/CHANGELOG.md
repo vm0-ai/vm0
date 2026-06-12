@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.441.0](https://github.com/vm0-ai/vm0/compare/app-v0.440.1...app-v0.441.0) (2026-06-12)
+
+
+### Features
+
+* merge inline feedback into the chat composer ([#17371](https://github.com/vm0-ai/vm0/issues/17371)) ([2a3f1d1](https://github.com/vm0-ai/vm0/commit/2a3f1d1cf5caf3dc10d2148f97413491c3cdda52))
+
+
+### Bug Fixes
+
+* display agent schedule times in user's preferred timezone ([#17383](https://github.com/vm0-ai/vm0/issues/17383)) ([ea9bc8f](https://github.com/vm0-ai/vm0/commit/ea9bc8fd28f08ec20b9d3465163b43f782c2acd4))
+* fold completed chat work per run ([#17369](https://github.com/vm0-ai/vm0/issues/17369)) ([a450d65](https://github.com/vm0-ai/vm0/commit/a450d6548926d6d1f6b9695e476cbf4d4d2868b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.86.1
+    * @vm0/connectors bumped to 1.70.0
+    * @vm0/core bumped to 8.332.0
+
 ## [0.440.1](https://github.com/vm0-ai/vm0/compare/app-v0.440.0...app-v0.440.1) (2026-06-12)
 
 
