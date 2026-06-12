@@ -424,142 +424,11 @@ mod tests {
     use std::time::Duration;
 
     use crate::api::ApiError;
+    use crate::api::test_support::{MOCK_REQUEST_READ_TIMEOUT, MockFirecrackerApi, MockResponse};
     use crate::config::SnapshotConfig;
     use crate::snapshot::SnapshotError;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{UnixListener, UnixStream};
-    use tokio::sync::mpsc;
 
     use super::*;
-
-    const MOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
-
-    #[derive(Debug)]
-    struct RecordedRequest {
-        method: String,
-        path: String,
-    }
-
-    struct RecordingFirecrackerApi {
-        _dir: tempfile::TempDir,
-        socket_path: PathBuf,
-        requests: mpsc::UnboundedReceiver<RecordedRequest>,
-        server: tokio::task::JoinHandle<()>,
-    }
-
-    impl RecordingFirecrackerApi {
-        fn spawn() -> Self {
-            let dir = tempfile::tempdir().expect("tempdir");
-            let socket_path = dir.path().join("fc.sock");
-            let listener = UnixListener::bind(&socket_path).expect("bind mock Firecracker API");
-            let (tx, requests) = mpsc::unbounded_channel();
-            let server = tokio::spawn(async move {
-                serve_recording_api(listener, tx).await;
-            });
-
-            Self {
-                _dir: dir,
-                socket_path,
-                requests,
-                server,
-            }
-        }
-
-        fn socket_path(&self) -> &std::path::Path {
-            &self.socket_path
-        }
-
-        async fn next_request(&mut self) -> RecordedRequest {
-            tokio::time::timeout(MOCK_REQUEST_TIMEOUT, self.requests.recv())
-                .await
-                .expect("timed out waiting for Firecracker API request")
-                .expect("mock Firecracker API stopped before request")
-        }
-    }
-
-    impl Drop for RecordingFirecrackerApi {
-        fn drop(&mut self) {
-            self.server.abort();
-        }
-    }
-
-    async fn serve_recording_api(
-        listener: UnixListener,
-        tx: mpsc::UnboundedSender<RecordedRequest>,
-    ) {
-        loop {
-            let Ok((mut stream, _)) = listener.accept().await else {
-                break;
-            };
-            let Ok(request) = read_recorded_request(&mut stream).await else {
-                continue;
-            };
-            if tx.send(request).is_err() {
-                break;
-            }
-            let _ = stream
-                .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
-                .await;
-        }
-    }
-
-    async fn read_recorded_request(stream: &mut UnixStream) -> std::io::Result<RecordedRequest> {
-        let mut buf = Vec::with_capacity(4096);
-        while header_end(&buf).is_none() {
-            let read = stream.read_buf(&mut buf).await?;
-            if read == 0 {
-                break;
-            }
-        }
-        let header_end = header_end(&buf).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "request missing header terminator",
-            )
-        })?;
-        let headers = String::from_utf8_lossy(&buf[..header_end.saturating_sub(4)]);
-        let request_line = headers.lines().next().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "request missing request line",
-            )
-        })?;
-        let mut parts = request_line.split_whitespace();
-        let method = parts
-            .next()
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "missing method"))?
-            .to_owned();
-        let path = parts
-            .next()
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "missing path"))?
-            .to_owned();
-        let content_length = headers
-            .lines()
-            .find_map(|line| {
-                let (key, value) = line.split_once(':')?;
-                key.trim()
-                    .eq_ignore_ascii_case("content-length")
-                    .then(|| value.trim().parse::<usize>().ok())
-                    .flatten()
-            })
-            .unwrap_or(0);
-        let body_start = header_end;
-        let target_len = body_start + content_length;
-        while buf.len() < target_len {
-            let read = stream.read_buf(&mut buf).await?;
-            if read == 0 {
-                break;
-            }
-        }
-
-        Ok(RecordedRequest { method, path })
-    }
-
-    fn header_end(buf: &[u8]) -> Option<usize> {
-        buf.windows(4)
-            .position(|window| window == b"\r\n\r\n")
-            .map(|idx| idx + 4)
-    }
 
     fn snapshot_create_config(output_dir: PathBuf) -> SnapshotCreateConfig {
         SnapshotCreateConfig {
@@ -576,7 +445,7 @@ mod tests {
 
     #[tokio::test]
     async fn configure_snapshot_vm_orders_rootfs_before_workspace_drive() {
-        let mut api = RecordingFirecrackerApi::spawn();
+        let mut api = MockFirecrackerApi::repeating(MockResponse::no_content());
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = SandboxPaths::new(dir.path().join("work"));
         let sock_paths = SockPaths::new(dir.path().join("sock"));
@@ -585,7 +454,7 @@ mod tests {
         let inv = InvariantConfig::new();
 
         tokio::time::timeout(
-            MOCK_REQUEST_TIMEOUT,
+            MOCK_REQUEST_READ_TIMEOUT,
             configure_snapshot_vm(&client, &config, &paths, &sock_paths, &inv),
         )
         .await
