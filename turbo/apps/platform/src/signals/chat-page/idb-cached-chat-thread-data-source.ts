@@ -17,8 +17,18 @@ import type {
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
 const L = logger("ChatIdbCache");
+const MESSAGE_PAGE_SIZE = 50;
 
 type Stores = ReturnType<typeof createIdbMessageStores>;
+
+interface CachedMessageReadStore {
+  readBefore(
+    threadId: string,
+    beforeId: string,
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<PagedChatMessage[]>;
+}
 
 function reachedStart(
   cached: PagedChatMessage[],
@@ -30,6 +40,56 @@ function reachedStart(
   return cached.some((m) => {
     return m.id === startMessageId;
   });
+}
+
+export async function readCachedMessagesBeforeUntilMiss(
+  readStore: CachedMessageReadStore,
+  threadId: string,
+  beforeId: string,
+  startMessageId: string | null,
+  signal: AbortSignal,
+): Promise<{ messages: PagedChatMessage[]; hasMore: boolean; pages: number }> {
+  let cursorId = beforeId;
+  const messagePages: PagedChatMessage[][] = [];
+  const seenIds = new Set<string>([beforeId]);
+
+  while (true) {
+    const page = await readStore.readBefore(
+      threadId,
+      cursorId,
+      MESSAGE_PAGE_SIZE,
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const newMessages = page.filter((message) => {
+      return !seenIds.has(message.id);
+    });
+    if (newMessages.length === 0) {
+      break;
+    }
+
+    for (const message of newMessages) {
+      seenIds.add(message.id);
+    }
+    messagePages.unshift(newMessages);
+
+    if (
+      reachedStart(newMessages, startMessageId) ||
+      page.length < MESSAGE_PAGE_SIZE
+    ) {
+      break;
+    }
+
+    cursorId = newMessages[0]!.id;
+  }
+
+  const messages = messagePages.flat();
+  return {
+    messages,
+    hasMore: !reachedStart(messages, startMessageId),
+    pages: messagePages.length,
+  };
 }
 
 function createListMessagesBefore(
@@ -58,18 +118,24 @@ function createListMessagesBefore(
 
       const stores = getStores(userId, orgId);
       const readStore = stores.readStore;
-      const cached = await readStore.readBefore(tid, beforeId, 50, signal);
+      const meta = await readThreadMeta$(userId, orgId, tid, signal);
+      const cached = await readCachedMessagesBeforeUntilMiss(
+        readStore,
+        tid,
+        beforeId,
+        meta?.startMessageId ?? null,
+        signal,
+      );
 
-      if (cached.length > 0) {
-        const meta = await readThreadMeta$(userId, orgId, tid, signal);
-        const hasMore = !reachedStart(cached, meta?.startMessageId ?? null);
+      if (cached.messages.length > 0) {
         L.debug("listBefore:cacheHit", {
           threadId: tid,
           beforeId,
-          count: cached.length,
-          hasMore,
+          count: cached.messages.length,
+          pages: cached.pages,
+          hasMore: cached.hasMore,
         });
-        return { messages: cached, hasMore };
+        return { messages: cached.messages, hasMore: cached.hasMore };
       }
 
       L.debug("listBefore:cacheMiss", { threadId: tid, beforeId });
@@ -198,7 +264,7 @@ export function createIdbCachedDataSource(
 
     const stores = getStores(userId, orgId);
     const readStore = stores.readStore;
-    const cached = await readStore.readLatest(threadId, 50);
+    const cached = await readStore.readLatest(threadId, MESSAGE_PAGE_SIZE);
 
     if (cached.length > 0) {
       const meta = await readThreadMeta$(userId, orgId, threadId);
