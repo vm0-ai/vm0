@@ -244,7 +244,7 @@ class TestUsageWebhookDelivery:
         payload = {"error": "payload-error", "attempt": 99, "runId": "run-1", "events": []}
         payload_bytes = len(json.dumps(payload).encode())
 
-        usage.webhook._do_post_webhook_attempts(
+        outcome = usage.webhook._do_post_webhook_attempts(
             usage_webhook_server.url("/x"),
             "tok",
             payload,
@@ -253,6 +253,7 @@ class TestUsageWebhookDelivery:
             max_retries=0,
         )
 
+        assert outcome == "retryable_failure"
         [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
         assert entry["level"] == "error"
         assert entry["attempt"] == 1
@@ -263,6 +264,45 @@ class TestUsageWebhookDelivery:
             event_count=0,
             payload_bytes=payload_bytes,
         )
+
+    def test_http_429_is_retryable(self, tmp_path, usage_webhook_server):
+        proxy_log = tmp_path / "proxy.jsonl"
+        usage_webhook_server.queue_response(429)
+        usage_webhook_server.queue_response(429)
+
+        with patch.object(usage.webhook.time, "sleep") as mock_sleep:
+            outcome = usage.webhook._do_post_webhook_attempts(
+                usage_webhook_server.url("/x"),
+                "tok",
+                {"runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage",
+                max_retries=1,
+            )
+
+        assert outcome == "retryable_failure"
+        assert usage_webhook_server.request_count == 2
+        mock_sleep.assert_called_once_with(0.5)
+
+    def test_http_400_is_permanent(self, tmp_path, usage_webhook_server):
+        proxy_log = tmp_path / "proxy.jsonl"
+        usage_webhook_server.queue_response(400)
+
+        outcome = usage.webhook._do_post_webhook_attempts(
+            usage_webhook_server.url("/x"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage",
+            max_retries=1,
+        )
+
+        assert outcome == "permanent_failure"
+        assert usage_webhook_server.request_count == 1
+        [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert entry["level"] == "error"
+        assert entry["attempt"] == 1
+        assert "permanent HTTP error" in entry["message"]
 
     def test_sync_executor_worker_error_preserves_other_pending_reports(
         self, tmp_path, sync_usage_executor

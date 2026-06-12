@@ -12,12 +12,22 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from typing import Literal
 
 from auth import make_api_request
 from logging_utils import log_proxy_entry
 
 from .counters import decrement_pending_reports, increment_pending_reports
+
+WebhookDeliveryOutcome = Literal["success", "retryable_failure", "permanent_failure"]
+_DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
+_SUCCESS: WebhookDeliveryOutcome = "success"
+_RETRYABLE_FAILURE: WebhookDeliveryOutcome = "retryable_failure"
+_PERMANENT_FAILURE: WebhookDeliveryOutcome = "permanent_failure"
+_MIN_RETRYABLE_HTTP_STATUS_CODE = 500
+_RETRYABLE_HTTP_STATUS_CODES = {408, 429}
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -94,19 +104,27 @@ def _post_webhook_with_retry(
     proxy_log_path: str,
     log_type: str,
     max_retries: int = 1,
+    delivery_outcome_callback: _DeliveryOutcomeCallback | None = None,
 ) -> None:
     """POST with retry.
 
-    Swallows retryable network errors (``URLError``, ``OSError``,
-    ``TimeoutError``) after the final attempt.  Non-retryable errors
-    (``TypeError`` from a non-serializable payload, etc.) are logged
-    once via :func:`log_proxy_entry` and re-raised so callers see them
-    instead of silently losing the report.
+    Reports the final delivery outcome before decrementing pending reports.
+    Non-retryable programming errors (``TypeError`` from a non-serializable
+    payload, invalid request URLs, etc.) are logged and reported as permanent.
+    They are re-raised only when no outcome callback owns the failure.
     """
     try:
-        _do_post_webhook_attempts(
+        outcome = _do_post_webhook_attempts(
             url, sandbox_token, payload, proxy_log_path, log_type, max_retries
         )
+    except Exception:
+        if delivery_outcome_callback is not None:
+            delivery_outcome_callback(_PERMANENT_FAILURE)
+        else:
+            raise
+    else:
+        if delivery_outcome_callback is not None:
+            delivery_outcome_callback(outcome)
     finally:
         decrement_pending_reports()
 
@@ -118,7 +136,7 @@ def _do_post_webhook_attempts(
     proxy_log_path: str,
     log_type: str,
     max_retries: int,
-) -> None:
+) -> WebhookDeliveryOutcome:
     try:
         data = json.dumps(payload).encode()
     except Exception as exc:
@@ -148,7 +166,47 @@ def _do_post_webhook_attempts(
                 payload_bytes=payload_bytes,
                 attempt=attempt + 1,
             )
-            return
+            return _SUCCESS
+        except urllib.error.HTTPError as exc:
+            if not _is_retryable_http_error(exc):
+                _log_webhook_entry(
+                    proxy_log_path,
+                    "error",
+                    f"Webhook POST to {url} failed with permanent HTTP error: {exc}",
+                    url,
+                    log_type,
+                    payload,
+                    payload_bytes=payload_bytes,
+                    attempt=attempt + 1,
+                    error=str(exc),
+                )
+                return _PERMANENT_FAILURE
+            if attempt < max_retries:
+                _log_webhook_entry(
+                    proxy_log_path,
+                    "warn",
+                    f"Webhook POST to {url} attempt {attempt + 1} failed, retrying: {exc}",
+                    url,
+                    log_type,
+                    payload,
+                    payload_bytes=payload_bytes,
+                    attempt=attempt + 1,
+                    error=str(exc),
+                )
+                time.sleep(0.5)
+            else:
+                _log_webhook_entry(
+                    proxy_log_path,
+                    "error",
+                    f"Webhook POST to {url} failed after {attempt + 1} attempts: {exc}",
+                    url,
+                    log_type,
+                    payload,
+                    payload_bytes=payload_bytes,
+                    attempt=attempt + 1,
+                    error=str(exc),
+                )
+                return _RETRYABLE_FAILURE
         except (urllib.error.URLError, OSError, TimeoutError) as exc:
             if attempt < max_retries:
                 _log_webhook_entry(
@@ -167,7 +225,7 @@ def _do_post_webhook_attempts(
                 _log_webhook_entry(
                     proxy_log_path,
                     "error",
-                    f"Webhook POST to {url} failed after {attempt + 1} attempts, giving up: {exc}",
+                    f"Webhook POST to {url} failed after {attempt + 1} attempts: {exc}",
                     url,
                     log_type,
                     payload,
@@ -175,6 +233,7 @@ def _do_post_webhook_attempts(
                     attempt=attempt + 1,
                     error=str(exc),
                 )
+                return _RETRYABLE_FAILURE
         except Exception as exc:
             # Catch-all by design: non-retryable failures (TypeError on
             # non-serializable payload, AttributeError, ValueError, or any
@@ -194,6 +253,12 @@ def _do_post_webhook_attempts(
                 error=str(exc),
             )
             raise
+
+    return _RETRYABLE_FAILURE
+
+
+def _is_retryable_http_error(exc: urllib.error.HTTPError) -> bool:
+    return exc.code >= _MIN_RETRYABLE_HTTP_STATUS_CODE or exc.code in _RETRYABLE_HTTP_STATUS_CODES
 
 
 USAGE_WEBHOOK_WORKERS = 4
@@ -246,9 +311,17 @@ def _post_admitted_webhook_with_retry(
     payload: dict,
     proxy_log_path: str,
     log_type: str,
+    delivery_outcome_callback: _DeliveryOutcomeCallback | None,
 ) -> None:
     try:
-        _post_webhook_with_retry(url, sandbox_token, payload, proxy_log_path, log_type)
+        _post_webhook_with_retry(
+            url,
+            sandbox_token,
+            payload,
+            proxy_log_path,
+            log_type,
+            delivery_outcome_callback=delivery_outcome_callback,
+        )
     finally:
         _release_delivery_capacity()
 
@@ -259,6 +332,7 @@ def _enqueue_webhook(
     payload: dict,
     proxy_log_path: str,
     log_type: str,
+    delivery_outcome_callback: _DeliveryOutcomeCallback | None = None,
 ) -> bool:
     """Submit webhook POST to the thread pool.
 
@@ -269,14 +343,14 @@ def _enqueue_webhook(
     falls back to synchronous delivery so the report is not silently lost.
 
     Returns whether the payload was admitted to delivery.  ``False`` means
-    delivery was saturated and the caller still owns the payload.
+    delivery was saturated and the caller still owns retry handling.
     """
     admitted_count = _try_acquire_delivery_capacity()
     if admitted_count is None:
         _log_webhook_entry(
             proxy_log_path,
             "warn",
-            f"Webhook POST to {url} not admitted because usage delivery is saturated",
+            f"Webhook POST to {url} was not admitted because usage delivery is saturated",
             url,
             log_type,
             payload,
@@ -313,6 +387,7 @@ def _enqueue_webhook(
             payload,
             proxy_log_path,
             log_type,
+            delivery_outcome_callback,
         )
     except RuntimeError:
         # Executor shut down (done() already called during drain).
@@ -324,7 +399,14 @@ def _enqueue_webhook(
                 type=log_type,
                 url=url,
             )
-            _post_webhook_with_retry(url, sandbox_token, payload, proxy_log_path, log_type)
+            _post_webhook_with_retry(
+                url,
+                sandbox_token,
+                payload,
+                proxy_log_path,
+                log_type,
+                delivery_outcome_callback=delivery_outcome_callback,
+            )
         finally:
             _release_delivery_capacity()
     except Exception:

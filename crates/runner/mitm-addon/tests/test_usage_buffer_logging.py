@@ -28,10 +28,10 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
 
     enqueue.assert_called_once()
     entries = flush_log_entries(proxy_log_path)
-    assert [entry["phase"] for entry in entries] == ["started", "completed"]
+    assert [entry["phase"] for entry in entries] == ["started", "enqueued"]
     assert [entry["message"] for entry in entries] == [
         "Usage event buffer flush started",
-        "Usage event buffer flush completed",
+        "Usage event buffer flush enqueued",
     ]
     for entry in entries:
         assert entry["level"] == "info"
@@ -66,7 +66,7 @@ def test_flush_logs_retained_webhook_batches(tmp_path):
 
     enqueue.assert_called_once()
     entries = flush_log_entries(proxy_log_path)
-    assert [entry["phase"] for entry in entries] == ["started", "completed"]
+    assert [entry["phase"] for entry in entries] == ["started", "enqueued"]
     assert entries[0]["dropped_webhook_batch_count"] == 0
     assert entries[0]["retained_webhook_batch_count"] == 0
     assert entries[1]["level"] == "warn"
@@ -76,6 +76,7 @@ def test_flush_logs_retained_webhook_batches(tmp_path):
     assert entries[1]["retained_source_event_count"] == 1
     assert entries[1]["webhook_batch_count"] == 1
     assert "secret-token" not in json.dumps(entries)
+    assert usage.counters._buffered_usage_events == 1
 
 
 def test_flush_logs_failure_without_token(tmp_path):
