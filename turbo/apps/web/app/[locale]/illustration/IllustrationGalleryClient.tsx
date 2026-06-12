@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Footer } from "../../components/Footer";
 import {
-  ILLUSTRATION_ASSET_BASE,
+  illustrationAssetUrl,
   ILLUSTRATION_STYLES,
   type IllustrationStyle,
 } from "@vm0/core";
@@ -117,8 +117,8 @@ interface CardProps {
 
 function IllustrationCard({ style, onOpen }: CardProps) {
   const coverSrc = style.cover
-    ? `${ILLUSTRATION_ASSET_BASE}/${style.cover}`
-    : `${ILLUSTRATION_ASSET_BASE}/images/${style.image}`;
+    ? illustrationAssetUrl(style.cover)
+    : illustrationAssetUrl(`images/${style.image}`);
 
   return (
     <article className="illu-tile">
@@ -164,7 +164,7 @@ function IllustrationCard({ style, onOpen }: CardProps) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${ref}`}
+                src={illustrationAssetUrl(`refs/${style.slug}/${ref}`)}
                 loading="lazy"
                 alt=""
               />
@@ -190,7 +190,7 @@ function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
 
   const { style, activeRef } = state;
   const refCount = style.refs.length;
-  const activeSrc = `${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${activeRef}`;
+  const activeSrc = illustrationAssetUrl(`refs/${style.slug}/${activeRef}`);
 
   if (!mounted) {
     return null;
@@ -240,7 +240,7 @@ function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`${ILLUSTRATION_ASSET_BASE}/refs/${style.slug}/${ref}`}
+                src={illustrationAssetUrl(`refs/${style.slug}/${ref}`)}
                 loading="lazy"
                 alt=""
               />

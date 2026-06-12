@@ -23,6 +23,7 @@ export {
 } from "./presentation-template-items";
 export {
   ILLUSTRATION_ASSET_BASE,
+  illustrationAssetUrl,
   ILLUSTRATION_STYLES,
   ILLUSTRATION_TEMPLATE_ITEMS,
   type IllustrationStyle,
