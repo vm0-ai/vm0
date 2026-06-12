@@ -42,7 +42,6 @@ export interface VideoStylePreset {
   readonly sampleVideoUrl: string;
   readonly sampleVideoThumbnailUrl: string;
   readonly promptConstraints: string;
-  readonly negativePrompt: string;
 }
 
 export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -194,9 +193,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/82f84e4b-f5db-45b6-9089-598ec3077f56/thumbnail-symmetrical-pastel-quirky.jpg",
     promptConstraints:
-      "perfect bilateral symmetry, centered subject, flat studio lighting, pastel color palette, deadpan framing, production design foreground props, medium shot",
-    negativePrompt:
-      "asymmetric framing, naturalistic handheld, off-center composition, high contrast",
+      "perfect bilateral symmetry, centered subject, flat studio lighting, pastel color palette, deadpan framing, production design foreground props, medium shot, no asymmetric framing, no handheld shake",
   },
   {
     id: "imax-epic-cinematic",
@@ -218,8 +215,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2c0eb943-f65a-4225-beaa-78246f7c4a1b/thumbnail-imax-epic-cinematic.jpg",
     promptConstraints:
-      "anamorphic widescreen 2.39:1, sweeping aerial vista, massive environmental scale, lens flares on horizon, cinematic color grade, deep focus landscape",
-    negativePrompt: "close-up, indoor scene, handheld shake, flat lighting",
+      "anamorphic widescreen 2.39:1, sweeping aerial vista, massive environmental scale, lens flares on horizon, cinematic color grade, deep focus landscape, no close-up, no indoor scene, no handheld shake",
   },
   {
     id: "indie-naturalistic",
@@ -241,9 +237,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ec348839-82a8-490a-ab78-cf3616ae8348/thumbnail-indie-naturalistic.jpg",
     promptConstraints:
-      "available light only, muted desaturated color grade, handheld organic camera movement, shallow depth of field, real location, slightly underexposed",
-    negativePrompt:
-      "artificial lighting, saturated color grading, studio production, polished look",
+      "available light only, muted desaturated color grade, handheld organic camera movement, shallow depth of field, real location, slightly underexposed, no artificial lighting, no studio production",
   },
   {
     id: "film-noir",
@@ -265,8 +259,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c35f0520-a02b-4573-a9d8-b096ad8e245c/thumbnail-film-noir.jpg",
     promptConstraints:
-      "black and white only, monochrome, grayscale film stock, high-contrast chiaroscuro lighting, deep shadow pools, single harsh key light, venetian blind shadow patterns",
-    negativePrompt: "color, colorized, saturated, neo-noir color, chromatic",
+      "black and white only, monochrome, grayscale film stock, high-contrast chiaroscuro lighting, deep shadow pools, single harsh key light, venetian blind shadow patterns, no color, no colorized, avoid neo-noir color treatment",
   },
   {
     id: "tech-minimalist-reveal",
@@ -288,9 +281,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c3219368-a46b-43ce-9e98-5b5826fcaa8d/thumbnail-tech-minimalist-reveal.jpg",
     promptConstraints:
-      "white seamless backdrop, floating device on neutral surface, precise studio lighting, clean shadow, macro detail on screen, cool neutral color grade",
-    negativePrompt:
-      "cluttered background, lifestyle context, organic environment, warm tones",
+      "white seamless backdrop, floating device on neutral surface, precise studio lighting, clean shadow, macro detail on screen, cool neutral color grade, no cluttered background, no lifestyle context",
   },
   {
     id: "luxury-watch-product",
@@ -312,9 +303,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/016fd6d1-05d9-4709-a7d8-0799409fa1d9/thumbnail-luxury-watch-product.jpg",
     promptConstraints:
-      "premium material close-up, specular highlights on metal surface, dark studio with pinpoint lighting, ultra-shallow depth of field on mechanism, black background product reveal",
-    negativePrompt:
-      "lifestyle context, natural environment, flat lighting, cluttered scene",
+      "premium material close-up, specular highlights on metal surface, dark studio with pinpoint lighting, ultra-shallow depth of field on mechanism, black background product reveal, no lifestyle context, no natural environment, no flat lighting",
   },
   {
     id: "athletic-motivation",
@@ -336,9 +325,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5a95669a-b86c-4817-9d82-250da7509b54/thumbnail-athletic-motivation.jpg",
     promptConstraints:
-      "extreme close-up on muscle tension and sweat, fast cut every 1-2 seconds, Dutch angle framing, motion blur on action, high contrast desaturated grade, backlit silhouette at peak effort",
-    negativePrompt:
-      "calm atmosphere, static camera, slow pacing, soft lighting, pastel tones",
+      "extreme close-up on muscle tension and sweat, fast cut every 1-2 seconds, Dutch angle framing, motion blur on action, high contrast desaturated grade, backlit silhouette at peak effort, no calm atmosphere, no static camera, no soft lighting",
   },
   {
     id: "nature-documentary",
@@ -360,9 +347,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1dce66c7-a82e-4cc5-8da5-8e08d573d762/thumbnail-nature-documentary.jpg",
     promptConstraints:
-      "telephoto lens compression, tripod locked-off, diffused overcast natural light, behavioral moment composition, muted natural palette, shallow depth isolating subject",
-    negativePrompt:
-      "artificial lighting, urban environment, fast editing, saturated color grade",
+      "telephoto lens compression, tripod locked-off, diffused overcast natural light, behavioral moment composition, muted natural palette, shallow depth isolating subject, no artificial lighting, no urban environment, no fast editing",
   },
   {
     id: "shortform-viral",
@@ -384,9 +369,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/40ab801f-16bc-4e29-8370-6b10cd394e30/thumbnail-shortform-viral.jpg",
     promptConstraints:
-      "vertical 9:16 frame, fast hook in first second, authentic creator energy, bright saturated casual look, natural handheld movement, fast cut rhythm",
-    negativePrompt:
-      "horizontal frame, formal production, slow pacing, polished studio look",
+      "vertical 9:16 frame, fast hook in first second, authentic creator energy, bright saturated casual look, natural handheld movement, fast cut rhythm, no formal production look, no slow pacing",
   },
   {
     id: "hand-drawn-fantasy-anime",
@@ -408,8 +391,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ad08022e-5b28-4e80-a67f-cbe5d27cbc03/thumbnail-hand-drawn-fantasy-anime.jpg",
     promptConstraints:
-      "hand-drawn 2D animation, painterly background with visible brushwork, expressive character design, lush warm color palette, Ghibli-adjacent aesthetic, soft diffused light",
-    negativePrompt: "3D CGI, photorealistic, live action, flat cell shading",
+      "hand-drawn 2D animation, painterly background with visible brushwork, expressive character design, lush warm color palette, Ghibli-adjacent aesthetic, soft diffused light, no 3D CGI, no photorealistic, no live action",
   },
   {
     id: "chinese-ink-art",
@@ -431,9 +413,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/35a45e0a-095f-476c-9586-840b3e591947/thumbnail-chinese-ink-art.jpg",
     promptConstraints:
-      "Chinese ink wash painting style, monochrome with ink gradients, generous white space composition, visible brushstroke texture, mountain and mist aesthetic, classical poetry mood",
-    negativePrompt:
-      "color photography, photorealistic, Western painting style, modern graphic design",
+      "Chinese ink wash painting style, monochrome with ink gradients, generous white space composition, visible brushstroke texture, mountain and mist aesthetic, classical poetry mood, no color photography, no photorealistic, no Western painting style",
   },
   {
     id: "pop-art",
@@ -455,8 +435,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2b537d1a-694c-4d66-82f4-462eca749a28/thumbnail-pop-art.jpg",
     promptConstraints:
-      "bold flat primary colors, Ben-Day halftone dots, high-contrast black outlines, Andy Warhol color repetition, graphic comic panel framing",
-    negativePrompt: "naturalistic tones, soft gradients, photorealistic",
+      "bold flat primary colors, Ben-Day halftone dots, high-contrast black outlines, Andy Warhol color repetition, graphic comic panel framing, no naturalistic tones, no soft gradients, no photorealistic",
   },
   {
     id: "japanese-wabi-sabi",
@@ -478,9 +457,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a7a69fe3-9e6c-48fd-af55-62c8a57a0371/thumbnail-japanese-wabi-sabi.jpg",
     promptConstraints:
-      "natural imperfection textures, warm soft morning light, negative space composition, aged organic materials (wood, stone, moss), quiet unhurried pace",
-    negativePrompt:
-      "urban clutter, artificial light, saturated colors, new shiny surfaces",
+      "natural imperfection textures, warm soft morning light, negative space composition, aged organic materials (wood, stone, moss), quiet unhurried pace, no urban clutter, no artificial light, no saturated colors",
   },
   {
     id: "european-romance",
@@ -502,9 +479,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/048d44c7-cffc-48cf-8abc-5fdbc105185a/thumbnail-european-romance.jpg",
     promptConstraints:
-      "muted palette (dusty blue, warm ochre), slow deliberate long takes, urban street poetry composition, soft diffused window light, melancholic longing mood",
-    negativePrompt:
-      "saturated colors, fast editing, bright cheerful lighting, suburban setting",
+      "muted palette (dusty blue, warm ochre), slow deliberate long takes, urban street poetry composition, soft diffused window light, melancholic longing mood, no saturated colors, no fast editing, no bright cheerful lighting",
   },
   {
     id: "gourmet-documentary",
@@ -526,9 +501,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/30ab1733-bec0-4ddb-9e15-8f707377af7b/thumbnail-gourmet-documentary.jpg",
     promptConstraints:
-      "macro food texture close-up, visible steam rising, warm backlight on food surface, saturated rich food colors, shallow depth of field, artisan craft hands in frame",
-    negativePrompt:
-      "cold lighting, fast editing, empty plate, industrial food environment",
+      "macro food texture close-up, visible steam rising, warm backlight on food surface, saturated rich food colors, shallow depth of field, artisan craft hands in frame, no cold lighting, no fast editing, no industrial food environment",
   },
   {
     id: "fashion-editorial",
@@ -550,9 +523,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/31026908-c354-4cb5-a51b-8ac8e12ac910/thumbnail-fashion-editorial.jpg",
     promptConstraints:
-      "dramatic high-contrast lighting, model silhouette against clean backdrop, luxury material texture close-up, cold desaturated editorial color grade, deliberate slow pose",
-    negativePrompt:
-      "casual clothes, natural lighting, documentary style, warm color tones",
+      "dramatic high-contrast lighting, model silhouette against clean backdrop, luxury material texture close-up, cold desaturated editorial color grade, deliberate slow pose, no casual clothes, no natural lighting, no warm color tones",
   },
   {
     id: "summer-indie",
@@ -574,9 +545,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f677a74b-d30f-4be7-88fd-93d0ddcc4137/thumbnail-summer-indie.jpg",
     promptConstraints:
-      "golden hour backlight, handheld spontaneous movement, lens flares in frame, warm saturated film look, carefree outdoor subjects, natural setting",
-    negativePrompt:
-      "studio lighting, indoor setting, cold color tones, formal composition",
+      "golden hour backlight, handheld spontaneous movement, lens flares in frame, warm saturated film look, carefree outdoor subjects, natural setting, no studio lighting, no cold color tones, no formal composition",
   },
   {
     id: "super8-home-film",
@@ -598,9 +567,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c0b8e4fb-2f28-4c94-8247-dcb6e703c4e1/thumbnail-super8-home-film.jpg",
     promptConstraints:
-      "8mm film grain, light leak artifacts at frame edges, warm pushed yellow-orange color shift, soft focus edges, overexposed highlights, flickering exposure variation",
-    negativePrompt:
-      "clean digital video, sharp edges, 4K clarity, modern color grade",
+      "8mm film grain, light leak artifacts at frame edges, warm pushed yellow-orange color shift, soft focus edges, overexposed highlights, flickering exposure variation, no clean digital video, no sharp edges, no 4K clarity",
   },
   {
     id: "cottagecore",
@@ -622,8 +589,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/a1287b78-3f9a-4ae6-97af-47b818dda0be/thumbnail-cottagecore.jpg",
     promptConstraints:
-      "wildflower soft natural light, linen and natural textile textures, rural pastoral setting, warm cream and sage color palette, slow drifting camera movement",
-    negativePrompt: "urban environment, artificial lighting, modern materials",
+      "wildflower soft natural light, linen and natural textile textures, rural pastoral setting, warm cream and sage color palette, slow drifting camera movement, no urban environment, no artificial lighting, no modern materials",
   },
   {
     id: "wellness-yoga",
@@ -645,9 +611,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b96d56bc-e38e-4639-b0b9-c9854e9f6c59/thumbnail-wellness-yoga.jpg",
     promptConstraints:
-      "clean neutral studio space, soft diffused window light, minimal props, breath-paced slow movement, warm skin tones, quiet serene atmosphere",
-    negativePrompt:
-      "clutter, dramatic lighting, fast cut editing, bold saturated colors",
+      "clean neutral studio space, soft diffused window light, minimal props, breath-paced slow movement, warm skin tones, quiet serene atmosphere, no clutter, no dramatic lighting, no fast cut editing",
   },
   {
     id: "diy-maker",
@@ -669,9 +633,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e6e7934-9dc3-4f1b-afdd-3f3bd6f04c28/thumbnail-diy-maker.jpg",
     promptConstraints:
-      "extreme close-up on hands and materials, workshop grit and texture, warm practical lighting, process detail reveal, satisfying craft transformation",
-    negativePrompt:
-      "clean studio environment, polished product shot, no visible hands or tools",
+      "extreme close-up on hands and materials, workshop grit and texture, warm practical lighting, process detail reveal, satisfying craft transformation, no clean studio environment, no polished product shot",
   },
   {
     id: "extreme-sports",
@@ -693,9 +655,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/782af5b1-87bf-454a-8c8f-1bbd5a688853/thumbnail-extreme-sports.jpg",
     promptConstraints:
-      "first-person POV or extreme close-up on athlete, natural terrain background, rhythm-matched fast cuts, motion blur at peak speed, high contrast energetic color grade",
-    negativePrompt:
-      "slow motion, calm atmosphere, studio environment, soft lighting",
+      "first-person POV or extreme close-up on athlete, natural terrain background, rhythm-matched fast cuts, motion blur at peak speed, high contrast energetic color grade, no slow motion, no calm atmosphere, no studio environment",
   },
   {
     id: "music-video",
@@ -717,9 +677,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8a32883b-d99c-4010-ac7b-fb1ea12e355a/thumbnail-music-video.jpg",
     promptConstraints:
-      "neon practical lighting, Dutch angle framing, artist performance center frame, rhythm-matched cuts, high-contrast color, choreographed movement",
-    negativePrompt:
-      "static locked-off camera, natural documentary lighting, no performance",
+      "neon practical lighting, Dutch angle framing, artist performance center frame, rhythm-matched cuts, high-contrast color, choreographed movement, no static locked-off camera, no natural documentary lighting",
   },
   {
     id: "surrealist-dream",
@@ -741,9 +699,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/1733e889-84dc-4eec-a0eb-195e2ac4d1c6/thumbnail-surrealist-dream.jpg",
     promptConstraints:
-      "physically impossible spatial logic, objects defying gravity, seamless impossible transition, dreamlike color wash, slow floating camera, melting or morphing forms",
-    negativePrompt:
-      "realistic physics, grounded documentary look, harsh practical lighting",
+      "physically impossible spatial logic, objects defying gravity, seamless impossible transition, dreamlike color wash, slow floating camera, melting or morphing forms, no realistic physics, no grounded documentary look",
   },
   {
     id: "ai-digital-art",
@@ -765,9 +721,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/40437b39-5e15-4af2-92b3-5b20f07e90bf/thumbnail-ai-digital-art.jpg",
     promptConstraints:
-      "luminous particle systems, morphing geometric forms, neural network visualization aesthetic, deep space dark background, neon data flow lines, 3D CGI render quality",
-    negativePrompt:
-      "organic natural environment, live action footage, hand-drawn, warm earthy tones",
+      "luminous particle systems, morphing geometric forms, neural network visualization aesthetic, deep space dark background, neon data flow lines, 3D CGI render quality, no organic natural environment, no live action footage, no warm earthy tones",
   },
   {
     id: "space-documentary",
@@ -789,9 +743,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5dd538d2-627c-480c-879a-dff34a9869a9/thumbnail-space-documentary.jpg",
     promptConstraints:
-      "deep space void background, hard vacuum lighting (no atmosphere scatter), cosmic scale with planet or galaxy visible, scientific instrument aesthetic, silent grandeur",
-    negativePrompt:
-      "earthbound environment, warm indoor lighting, casual setting, fast cut editing",
+      "deep space void background, hard vacuum lighting (no atmosphere scatter), cosmic scale with planet or galaxy visible, scientific instrument aesthetic, silent grandeur, no earthbound environment, no warm indoor lighting, no fast cut editing",
   },
   {
     id: "street-documentary",
@@ -813,9 +765,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e1d22797-4586-4cf0-ac18-9e4fd46cf37d/thumbnail-street-documentary.jpg",
     promptConstraints:
-      "candid urban street framing, available city light (neon, street lamp), authentic passerby subjects, 35mm film look, social texture in background",
-    negativePrompt:
-      "posed subjects, studio lighting, rural environment, saturated color grade",
+      "candid urban street framing, available city light (neon, street lamp), authentic passerby subjects, 35mm film look, social texture in background, no posed subjects, no studio lighting, no rural environment",
   },
   {
     id: "synthwave-retro",
@@ -837,9 +787,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b87c4589-f735-44ab-bbbf-adba9cf253e4/thumbnail-synthwave-retro.jpg",
     promptConstraints:
-      "receding grid horizon perspective, neon pink and cyan glow, dark night environment, chrome and laser surfaces, 80s retrofuturist aesthetic, VHS scan line artifacts",
-    negativePrompt:
-      "daylight, natural environment, organic textures, muted tones, modern design",
+      "receding grid horizon perspective, neon pink and cyan glow, dark night environment, chrome and laser surfaces, 80s retrofuturist aesthetic, VHS scan line artifacts, no daylight, no natural environment, no organic textures, no modern design",
   },
   {
     id: "magical-girl",
@@ -861,9 +809,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2187de1b-b0ae-4e60-8539-dc9db380eecb/thumbnail-magical-girl.jpg",
     promptConstraints:
-      "2D cel animation, sparkle transformation sequence, pastel color explosion, ribbons and hearts in frame, Sailor Moon aesthetic, bright courage visual language",
-    negativePrompt:
-      "dark gritty tones, 3D render, photorealistic, violence, dark color palette",
+      "2D cel animation, sparkle transformation sequence, pastel color explosion, ribbons and hearts in frame, Sailor Moon aesthetic, bright courage visual language, no dark gritty tones, no 3D render, no photorealistic",
   },
   {
     id: "shonen-battle",
@@ -885,8 +831,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b4c37fb8-2f3e-4516-91fd-32d0d022e686/thumbnail-shonen-battle.jpg",
     promptConstraints:
-      "2D anime power-up visual effects, speed lines on dramatic pose, extreme close-up on determined eyes, Naruto/Dragon Ball Z aesthetic, kinetic energy aura",
-    negativePrompt: "peaceful scene, 3D CGI, photorealistic, slow pacing",
+      "2D anime power-up visual effects, speed lines on dramatic pose, extreme close-up on determined eyes, Naruto/Dragon Ball Z aesthetic, kinetic energy aura, no peaceful scene, no 3D CGI, no photorealistic, no slow pacing",
   },
   {
     id: "cyberpunk-anime",
@@ -908,9 +853,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b870f6c1-95a8-4ab6-aa0d-a125cb57dd3e/thumbnail-cyberpunk-anime.jpg",
     promptConstraints:
-      "2D anime with neon megacity backdrop, tech-augmented character design, rain-slicked streets, electric teal and magenta palette, Ghost in the Shell aesthetic",
-    negativePrompt:
-      "natural environment, warm tones, live action footage, 3D CGI",
+      "2D anime with neon megacity backdrop, tech-augmented character design, rain-slicked streets, electric teal and magenta palette, Ghost in the Shell aesthetic, no natural environment, no warm tones, no live action footage, no 3D CGI",
   },
   {
     id: "slice-of-life-anime",
@@ -932,8 +875,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ce926a5b-f5c6-4b5c-956c-799225987fbb/thumbnail-slice-of-life-anime.jpg",
     promptConstraints:
-      "2D anime soft school setting, golden afternoon light through windows, subtle character expression, everyday quiet moment, warm pastel palette, K-On aesthetic",
-    negativePrompt: "action sequence, dark tones, dramatic lighting, 3D CGI",
+      "2D anime soft school setting, golden afternoon light through windows, subtle character expression, everyday quiet moment, warm pastel palette, K-On aesthetic, no action sequence, no dark tones, no dramatic lighting, no 3D CGI",
   },
   {
     id: "wuxia-anime",
@@ -955,8 +897,6 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/972338da-9c16-4fe3-b4ab-2e97ca58ad89/thumbnail-wuxia-anime.jpg",
     promptConstraints:
-      "2D Chinese animation style, wire-fu sword movement, bamboo forest or mountain cliff setting, ink wash background blending into scene, honor duel composition",
-    negativePrompt:
-      "modern setting, firearms, photorealistic, 3D CGI, Western action style",
+      "2D Chinese animation style, wire-fu sword movement, bamboo forest or mountain cliff setting, ink wash background blending into scene, honor duel composition, no modern setting, no firearms, no photorealistic, no 3D CGI",
   },
 ];
