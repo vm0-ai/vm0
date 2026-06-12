@@ -62,6 +62,7 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)
         .spawn();
     let result = match result {
         Ok(mut child) => {
