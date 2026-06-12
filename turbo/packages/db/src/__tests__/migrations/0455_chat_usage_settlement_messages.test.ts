@@ -43,8 +43,6 @@ async function runInRollbackTransaction(
   }
 }
 
-type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
 describe("migration 0455 chat usage settlement messages", () => {
   it("appends a new immutable message for stale usage payloads and stays idempotent", async () => {
     await runInRollbackTransaction(async (tx) => {

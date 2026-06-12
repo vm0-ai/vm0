@@ -32,6 +32,15 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
+function toIsoString(value: Date | string): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  const normalized = value.replace(" ", "T");
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  return new Date(hasTimezone ? normalized : `${normalized}Z`).toISOString();
+}
+
 function buildUsageBreakdown(
   rows: readonly {
     readonly kind: string;
@@ -149,7 +158,7 @@ export const maybeEmitRunUsageMessage$ = command(
     const payload: ChatMessageUsagePayload = {
       version: 1,
       totalCredits: Math.max(0, toNumber(context.totalCredits)),
-      settledAt: context.settledAt.toISOString(),
+      settledAt: toIsoString(context.settledAt),
       breakdown: buildUsageBreakdown(breakdownRows),
     };
 

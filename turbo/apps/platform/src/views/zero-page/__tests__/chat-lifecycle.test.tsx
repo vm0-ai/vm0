@@ -1709,9 +1709,9 @@ describe("chat lifecycle", () => {
       },
     });
 
-    expect(
-      await screen.findByLabelText("Credit usage 108"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Credit usage 108"),
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByLabelText("Credit usage 12")).not.toBeInTheDocument();
   });
 
