@@ -826,16 +826,6 @@ describe("Automations API", () => {
       automationTitle: "fire-now",
       automationSnapshot: { id: created.automation.id, title: "fire-now" },
     });
-    const legacyRows = await db.execute<{
-      schedule_title: string | null;
-      schedule_snapshot: unknown;
-    }>(
-      sql`SELECT schedule_title, schedule_snapshot FROM chat_messages WHERE run_id = ${runId} AND role = 'user'`,
-    );
-    expect(legacyRows.rows).toStrictEqual([
-      { schedule_title: null, schedule_snapshot: null },
-    ]);
-
     // The manual run is stamped on the trigger, so a second fire conflicts
     // while it is still active (per-trigger skip-if-active semantics).
     const [trigger] = await findTriggerRows(created.automation.id);

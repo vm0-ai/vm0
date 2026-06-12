@@ -146,16 +146,9 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Deprecated (#17307 D3): never reference the schedule_* trio in queries —
-    // no SQL (reads, writes, or implicit full-column selects) may touch them;
-    // they are dropped in the next phase. The properties stay declared only so
-    // the schema matches the live table until the drop migration lands.
-    scheduleId: uuid("schedule_id"),
-    scheduleTitle: text("schedule_title"),
-    scheduleSnapshot:
-      jsonb("schedule_snapshot").$type<ChatMessageAutomationSnapshot>(),
-    // The automation_* columns supersede the schedule_* trio above (#17307)
-    // and are the only read/write source.
+    // Set when this user message was posted by a firing automation rather than
+    // typed by the user; the snapshot preserves the basic display details at
+    // send time so the bubble keeps its label after an edit/delete.
     automationId: uuid("automation_id"),
     automationTitle: text("automation_title"),
     automationSnapshot: jsonb(
