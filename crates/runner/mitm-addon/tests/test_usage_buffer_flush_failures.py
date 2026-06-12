@@ -503,7 +503,7 @@ def test_retryable_delivery_failure_retains_flush_and_retries_with_same_key(
     assert usage_webhook_server.request_count == drained_request_count
 
 
-def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
+def test_partial_delivery_failure_retains_only_failed_batch_with_same_key(
     tmp_path,
     sync_usage_executor,
     usage_webhook_server,
@@ -532,24 +532,128 @@ def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
         usage_webhook_server.requests[1].json_body(),
     ]
     assert [body["runId"] for body in first_attempts] == ["run-a", "run-b"]
+    assert usage.counters._buffered_usage_events == 1
 
     usage_webhook_server.queue_response(204)
-    usage_webhook_server.queue_response(204)
-    assert usage.flush_usage_events(trigger="test") == 2
+    assert usage.flush_usage_events(trigger="test") == 1
 
-    retry_bodies = [
-        usage_webhook_server.requests[3].json_body(),
-        usage_webhook_server.requests[4].json_body(),
-    ]
-    assert [body["runId"] for body in retry_bodies] == ["run-a", "run-b"]
-    assert [body["events"][0]["idempotencyKey"] for body in retry_bodies] == [
-        body["events"][0]["idempotencyKey"] for body in first_attempts
-    ]
+    retry_body = usage_webhook_server.requests[3].json_body()
+    assert retry_body["runId"] == "run-b"
+    assert (
+        retry_body["events"][0]["idempotencyKey"]
+        == first_attempts[1]["events"][0]["idempotencyKey"]
+    )
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
     drained_request_count = usage_webhook_server.request_count
     assert usage.flush_usage_events(trigger="test") == 0
     assert usage_webhook_server.request_count == drained_request_count
+
+
+def test_same_priority_retained_batches_retry_fifo(tmp_path):
+    callbacks: list[DeliveryOutcomeCallback] = []
+    first_attempt_runs: list[str] = []
+    retry_runs: list[str] = []
+    retrying = False
+
+    def enqueue_webhook(
+        url: str,
+        sandbox_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
+    ) -> bool:
+        del url, sandbox_token, path
+        assert log_type == "usage_event"
+        if retrying:
+            retry_runs.append(payload["runId"])
+            delivery_outcome_callback("success")
+        else:
+            first_attempt_runs.append(payload["runId"])
+            callbacks.append(delivery_outcome_callback)
+        return True
+
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_webhook)
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-a",
+        [event(source_key="source-a")],
+        str(proxy_log_path),
+    )
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-b",
+        [event(source_key="source-b")],
+        str(proxy_log_path),
+    )
+    assert usage.flush_usage_events(trigger="test") == 1
+    assert first_attempt_runs == ["run-a", "run-b"]
+
+    callbacks[0]("retryable_failure")
+    callbacks[1]("retryable_failure")
+    assert usage.counters._buffered_usage_events == 2
+
+    retrying = True
+    assert usage.flush_usage_events(trigger="test") == 2
+
+    assert retry_runs == ["run-a", "run-b"]
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_synchronous_retryable_delivery_before_admission_saturation_is_retained(
+    tmp_path,
+):
+    retrying = False
+    first_attempt_runs: list[str] = []
+    retry_runs: list[str] = []
+
+    def enqueue_webhook(
+        url: str,
+        sandbox_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
+    ) -> bool:
+        del url, sandbox_token, path
+        assert log_type == "usage_event"
+        run_id = payload["runId"]
+        if retrying:
+            retry_runs.append(run_id)
+            delivery_outcome_callback("success")
+            return True
+        first_attempt_runs.append(run_id)
+        if run_id == "run-a":
+            delivery_outcome_callback("retryable_failure")
+            return True
+        return False
+
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_webhook)
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    for run_id, source_key in (("run-a", "source-a"), ("run-b", "source-b")):
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            run_id,
+            [event(source_key=source_key)],
+            str(proxy_log_path),
+        )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    assert first_attempt_runs == ["run-a", "run-b"]
+    assert usage.counters._buffered_usage_events == 2
+
+    retrying = True
+    assert usage.flush_usage_events(trigger="test") == 2
+
+    assert retry_runs == ["run-a", "run-b"]
+    assert usage.counters._buffered_usage_events == 0
 
 
 def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
