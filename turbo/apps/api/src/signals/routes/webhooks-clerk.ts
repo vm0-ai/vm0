@@ -9,6 +9,7 @@ import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route";
 import { settle, tapError } from "../utils";
 import {
+  cleanupClerkBannedUser$,
   cleanupClerkDeletedOrg$,
   cleanupClerkDeletedUser$,
 } from "../services/webhooks-clerk-cleanup.service";
@@ -74,6 +75,21 @@ const postClerkWebhook$ = command(
       waitUntil(
         tapError(set(cleanupClerkDeletedUser$, userId, signal), (error) => {
           L.error("user.deleted cleanup failed", { userId, error });
+        }),
+      );
+      return new Response("OK", { status: 200 });
+    }
+
+    if (event.type === "user.banned") {
+      const userId = eventDataId(event.data);
+      if (!userId) {
+        L.error("user.banned event missing user ID", { data: event.data });
+        return new Response("OK", { status: 200 });
+      }
+
+      waitUntil(
+        tapError(set(cleanupClerkBannedUser$, userId, signal), (error) => {
+          L.error("user.banned cleanup failed", { userId, error });
         }),
       );
       return new Response("OK", { status: 200 });
