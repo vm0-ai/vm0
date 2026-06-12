@@ -157,12 +157,18 @@ class TestAuthQueryInjection:
         assert flow.request.headers["Authorization"] == "Bearer real-token"
         assert flow.request.query["key"] == "resolved-query-value"
 
-    async def test_query_params_merged_into_rewrite_url(self, real_flow, mitm_ctx):
+    async def test_query_params_merged_into_rewrite_url(self, real_flow, mitm_ctx, headers):
         """auth.query params are forwarded without mutating the placeholder request."""
         flow = real_flow(
             with_response=False,
             host="firewall-placeholder.vm3.ai",
             path="/hook?client=visible",
+            request_headers=headers(
+                ("Authorization", "Bearer agent"),
+                ("Cookie", "session=agent"),
+                ("X-Api-Key", "agent-api-key"),
+                ("X-Keep", "client"),
+            ),
         )
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
@@ -198,12 +204,20 @@ class TestAuthQueryInjection:
         # Verify the forwarded URL contains the auth.query params
         call_args = mock_forward.call_args
         forwarded_url = call_args[0][0]
+        req_headers = call_args[0][2]
+        forwarded_header_names = {name.lower() for name, _value in req_headers}
         query = parse_qs(urlparse(forwarded_url).query)
         assert query["api_key"] == ["resolved-key-456"]
         assert query["client"] == ["visible"]
         assert forwarded_url.startswith("https://real-api.com/webhook/secret")
+        assert "authorization" not in forwarded_header_names
+        assert "cookie" not in forwarded_header_names
+        assert "x-api-key" not in forwarded_header_names
+        assert ("X-Keep", "client") in req_headers
         assert "api_key" not in flow.request.query
         assert flow.request.query["client"] == "visible"
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert flow.request.headers["Cookie"] == "session=agent"
 
     async def test_query_params_overwrite_existing_rewrite_url_keys(self, real_flow, mitm_ctx):
         """auth.query overwrites duplicate keys while preserving other query values."""

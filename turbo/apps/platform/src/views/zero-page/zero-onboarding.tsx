@@ -424,7 +424,7 @@ const PRO_TRIAL_BENEFITS: readonly string[] = [
   "Slack-native agent in threads and @mentions",
   "Telegram and iMessage agents",
   "200+ integrations with real tool execution",
-  "Scheduled tasks that run on their own",
+  "Automations that run on their own",
   "Artifacts including slide decks, HTML pages, video and audio",
   "Voice input",
   "Unlimited workspace members",

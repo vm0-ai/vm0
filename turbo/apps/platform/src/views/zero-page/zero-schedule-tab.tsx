@@ -109,7 +109,7 @@ export function ZeroScheduleTab({
   return (
     <div className="mx-auto max-w-[900px]">
       <ZeroScheduleCard
-        title={`${displayName}'s scheduled tasks`}
+        title={`${displayName}'s automations`}
         subtitle={`Tasks you've scheduled with ${displayName} to run automatically.`}
         initialSchedule={entries}
         onSave={handleSave}

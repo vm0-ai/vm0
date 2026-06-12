@@ -23,6 +23,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { artifactPanelWidth$ } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -512,6 +513,72 @@ describe("zero artifact sidebar", () => {
     await user.click(screen.getByLabelText("Close artifact"));
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    });
+  });
+
+  it("resizes the artifact preview pane and persists the width", async () => {
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Release notes\n\nThe artifact is ready.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    setupChatThread({
+      artifactFiles: [artifactFile(markdownUrl)],
+      content: `[Release notes](${markdownUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+    });
+
+    const resizeHandle = screen.getByRole("separator", {
+      name: "Resize preview panel",
+    });
+    const splitContainer = resizeHandle.parentElement;
+    if (!splitContainer) {
+      throw new Error("Artifact split container not found");
+    }
+
+    splitContainer.getBoundingClientRect = () => {
+      return {
+        bottom: 800,
+        height: 800,
+        left: 0,
+        right: 1400,
+        top: 0,
+        width: 1400,
+        x: 0,
+        y: 0,
+        toJSON: () => {
+          return {};
+        },
+      };
+    };
+
+    expect(
+      splitContainer.style.getPropertyValue("--artifact-panel-width"),
+    ).toBe("min(760px, 48vw)");
+
+    fireEvent.pointerDown(resizeHandle, { clientX: 760 });
+    fireEvent.pointerMove(window, { clientX: 700 });
+
+    await waitFor(() => {
+      expect(
+        splitContainer.style.getPropertyValue("--artifact-panel-width"),
+      ).toBe("clamp(400px, 700px, calc(100% - 600px))");
+      expect(context.store.get(artifactPanelWidth$)).toBe(700);
+    });
+    expect(document.body.style.cursor).toBe("col-resize");
+    expect(document.body.style.userSelect).toBe("none");
+
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => {
+      expect(document.body.style.cursor).toBe("");
+      expect(document.body.style.userSelect).toBe("");
     });
   });
 

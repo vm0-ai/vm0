@@ -1254,6 +1254,33 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("opens video templates by default when only the video picker is enabled", async () => {
+    const videoStyle = VIDEO_STYLE_PRESETS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.VideoTemplatePicker]: true },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(tabByText("Video")).toBeInTheDocument();
+      expect(screen.getByText("VM0 video styles")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Select video style ${videoStyle.nameEn}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("PPT")).not.toBeInTheDocument();
+      expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
+    });
+  });
+
   it("queues a selected template during an active run and clears the picker state", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_ITEMS[0]!;

@@ -6,8 +6,6 @@ import type {
 import {
   IconArrowUp,
   IconCheck,
-  IconChevronDown,
-  IconChevronRight,
   IconCopy,
   IconMessageCircle,
   IconX,
@@ -15,7 +13,6 @@ import {
 import { useGet, useSet } from "ccstate-react";
 import {
   Button,
-  cn,
   Popover,
   PopoverAnchor,
   PopoverContent,
@@ -29,21 +26,15 @@ import {
   dismissFeedback$,
   dismissFeedbackOnScroll$,
   dismissFeedbackSelection$,
-  editFeedbackComment$,
-  feedbackActiveValue$,
-  feedbackCommentsValue$,
   feedbackCopiedValue$,
-  feedbackDraftValue$,
-  feedbackEditingIdValue$,
-  feedbackExpandedValue$,
+  feedbackItemsValue$,
   feedbackSelectionValue$,
   feedbackSendCountValue$,
-  removeFeedbackComment$,
-  setFeedbackDraftNote$,
+  removeFeedbackItem$,
+  setFeedbackItemNote$,
   startFeedback$,
   submitFeedback$,
-  toggleFeedbackExpanded$,
-  type FeedbackComment,
+  type FeedbackItem,
   type FeedbackSelection,
 } from "../../signals/zero-page/chat-feedback.ts";
 
@@ -138,107 +129,50 @@ function FeedbackToolbar({
   );
 }
 
-// A committed comment: its quoted passage above the note. Clicking reopens it
-// for editing; the × removes it.
-function FeedbackCommentCard({
-  comment,
-  editing,
-  onEdit,
+// One quoted fragment and its note. Every fragment renders identically — a
+// quote line above a borderless, composer-styled note input — so the tray reads
+// as a single stack of comments rather than a mix of cards and a bare field.
+function FeedbackRow({
+  item,
+  autoFocus,
+  onChangeNote,
   onRemove,
+  onKeyDown,
 }: {
-  comment: FeedbackComment;
-  editing: boolean;
-  onEdit: () => void;
+  item: FeedbackItem;
+  autoFocus: boolean;
+  onChangeNote: (note: string) => void;
   onRemove: () => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
 }) {
   return (
-    <div
-      className={cn(
-        "group relative rounded-lg border bg-background transition-colors",
-        editing
-          ? "border-[hsl(var(--gray-400))] bg-gray-50"
-          : "border-border hover:bg-gray-50",
-      )}
-    >
-      <button
-        type="button"
-        onClick={onEdit}
-        className="block w-full px-3 py-2 text-left"
-      >
-        <span className="mb-1 line-clamp-2 border-l-2 border-border pl-2 text-[11px] italic leading-snug text-muted-foreground">
-          {comment.quote}
+    <div className="border-b border-dashed border-border/60 pb-2 pt-1 last:border-b-0">
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-[3px] shrink-0 rounded-sm bg-primary" />
+        <span className="min-w-0 flex-1 truncate text-xs italic leading-snug text-muted-foreground">
+          {item.quote}
         </span>
-        <span className="block pr-6 text-[13px] leading-snug text-foreground">
-          {comment.note}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label="Remove comment"
-        title="Remove comment"
-        className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-      >
-        <IconX size={15} stroke={2} />
-      </button>
-    </div>
-  );
-}
-
-// Committed comments collapse to a one-line summary so the tray stays short and
-// the reply behind it stays visible. Expanding (or editing) reveals the bounded,
-// scrollable list.
-function FeedbackCommentSummary({
-  comments,
-  editingId,
-  expanded,
-  onToggle,
-  onEdit,
-  onRemove,
-}: {
-  comments: readonly FeedbackComment[];
-  editingId: number | null;
-  expanded: boolean;
-  onToggle: () => void;
-  onEdit: (id: number) => void;
-  onRemove: (id: number) => void;
-}) {
-  const showList = expanded || editingId !== null;
-  return (
-    <div className="mb-2">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
-      >
-        <span>
-          {comments.length === 1 ? "1 comment" : `${comments.length} comments`}
-        </span>
-        {showList ? (
-          <IconChevronDown size={15} stroke={2} />
-        ) : (
-          <IconChevronRight size={15} stroke={2} />
-        )}
-      </button>
-      {showList ? (
-        <div className="mt-2 flex max-h-44 flex-col gap-2 overflow-y-auto pr-0.5">
-          {comments.map((comment) => {
-            return (
-              <FeedbackCommentCard
-                key={comment.id}
-                comment={comment}
-                editing={editingId === comment.id}
-                onEdit={() => {
-                  return onEdit(comment.id);
-                }}
-                onRemove={() => {
-                  return onRemove(comment.id);
-                }}
-              />
-            );
-          })}
-        </div>
-      ) : null}
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove feedback"
+          title="Remove feedback"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <IconX size={15} stroke={2} />
+        </button>
+      </div>
+      <textarea
+        ref={autoFocus ? focusOnMountRef : undefined}
+        value={item.note}
+        onChange={(event) => {
+          return onChangeNote(event.target.value);
+        }}
+        onKeyDown={onKeyDown}
+        rows={1}
+        placeholder="What should change about this?"
+        className="mt-1 w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+      />
     </div>
   );
 }
@@ -283,28 +217,22 @@ export function ChatFeedbackSelection() {
   );
 }
 
-// The docked feedback tray: accumulated comment cards, the draft editor for the
-// current passage, and a single "Send" that dispatches them as one turn. Sits
-// above the composer and survives thread scrolling.
+// The docked feedback tray: a consistent stack of quoted fragments — newest on
+// top, each with its own note — and a single Send that dispatches them as one
+// turn. Sits flush above the composer and survives thread scrolling.
 export function ChatFeedbackTray({
   onSubmit,
 }: {
   onSubmit: (prompt: string) => void;
 }) {
-  const active = useGet(feedbackActiveValue$);
-  const comments = useGet(feedbackCommentsValue$);
-  const draft = useGet(feedbackDraftValue$);
-  const editingId = useGet(feedbackEditingIdValue$);
+  const items = useGet(feedbackItemsValue$);
   const sendCount = useGet(feedbackSendCountValue$);
-  const expanded = useGet(feedbackExpandedValue$);
-  const setNote = useSet(setFeedbackDraftNote$);
-  const editComment = useSet(editFeedbackComment$);
-  const removeComment = useSet(removeFeedbackComment$);
-  const toggleExpanded = useSet(toggleFeedbackExpanded$);
+  const setNote = useSet(setFeedbackItemNote$);
+  const removeItem = useSet(removeFeedbackItem$);
   const submit = useSet(submitFeedback$);
   const dismiss = useSet(dismissFeedback$);
 
-  if (!active) {
+  if (items.length === 0) {
     return null;
   }
 
@@ -329,57 +257,34 @@ export function ChatFeedbackTray({
     }
   };
 
+  // Oldest fragment sits on top; the stack runs down to the newest, which
+  // takes the composer position nearest the Send button and holds focus.
+  const newestId = items[items.length - 1]?.id;
+  const ordered = items;
+
   return (
-    <div className="shrink-0 px-4 pb-1 pt-2 sm:px-6">
+    <div className="shrink-0 px-4 pb-0 pt-2 sm:px-6">
       <div className="mx-auto max-w-[900px]">
-        <div className="rounded-xl border border-border bg-popover p-3 shadow-lg">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground">
-              Feedback on this reply
-            </span>
-            <button
-              type="button"
-              onClick={dismiss}
-              aria-label="Close"
-              title="Close"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <IconX size={18} stroke={1.8} />
-            </button>
+        <div className="rounded-t-xl border border-b-0 border-border bg-popover px-3 pb-1 pt-1.5 shadow-[0_-2px_12px_rgba(15,23,42,0.05)]">
+          <div className="flex flex-col">
+            {ordered.map((item) => {
+              return (
+                <FeedbackRow
+                  key={item.id}
+                  item={item}
+                  autoFocus={item.id === newestId}
+                  onChangeNote={(note) => {
+                    return setNote({ id: item.id, note });
+                  }}
+                  onRemove={() => {
+                    return removeItem(item.id);
+                  }}
+                  onKeyDown={handleKeyDown}
+                />
+              );
+            })}
           </div>
-
-          {comments.length > 0 ? (
-            <FeedbackCommentSummary
-              comments={comments}
-              editingId={editingId}
-              expanded={expanded}
-              onToggle={toggleExpanded}
-              onEdit={editComment}
-              onRemove={removeComment}
-            />
-          ) : null}
-
-          {draft ? (
-            <>
-              <blockquote className="mb-3 max-h-28 overflow-y-auto rounded-r-md border-l-[3px] border-border bg-muted/40 px-3 py-2 text-xs italic leading-5 text-muted-foreground">
-                {draft.quote}
-              </blockquote>
-              <textarea
-                key={draft.quote}
-                ref={focusOnMountRef}
-                value={draft.note}
-                onChange={(event) => {
-                  return setNote(event.target.value);
-                }}
-                onKeyDown={handleKeyDown}
-                rows={2}
-                placeholder="What should change about this?"
-                className="w-full resize-none rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:border-primary focus:outline-none focus:ring-[3px] focus:ring-primary/10"
-              />
-            </>
-          ) : null}
-
-          <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 pt-1.5">
             <span className="text-xs leading-snug text-muted-foreground">
               Select more text and click Provide feedback to add another comment
             </span>
@@ -387,14 +292,10 @@ export function ChatFeedbackTray({
               size="sm"
               onClick={handleSubmit}
               disabled={sendCount === 0}
-              className="shrink-0 gap-1.5"
+              aria-label="Send feedback"
+              className="h-9 w-9 shrink-0 rounded-lg p-0"
             >
-              <IconArrowUp size={14} stroke={2} />
-              {sendCount === 0
-                ? "Send"
-                : sendCount === 1
-                  ? "Send 1 comment"
-                  : `Send ${sendCount} comments`}
+              <IconArrowUp size={18} stroke={2} />
             </Button>
           </div>
         </div>

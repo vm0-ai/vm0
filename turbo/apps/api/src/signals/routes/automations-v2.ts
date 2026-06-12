@@ -32,7 +32,6 @@ import { webhookUrlForToken } from "../services/webhook-automations.service";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { automationsEnabled$ } from "./automations";
 import type { RouteEntry } from "../route";
 
 const NOT_FOUND_MESSAGE = "Resource not found";
@@ -113,7 +112,7 @@ function automationResponse(view: AutomationViewV2): AutomationResponseV2 {
 // surface itself (#17307): while off, automations stay feature-equivalent to
 // legacy schedules (time triggers only). Creating webhook triggers, rotating
 // their secrets, and the inbound dispatch all respect this switch.
-export const webhookTriggersEnabled$ = computed(async (get) => {
+const webhookTriggersEnabled$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const overrides = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),
@@ -129,10 +128,6 @@ const WEBHOOK_TRIGGERS_DISABLED_MESSAGE =
   "Webhook triggers are not enabled for this workspace";
 
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(bodyResultOf(automationsV2MainContract.create));
   signal.throwIfAborted();
@@ -172,10 +167,6 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const views = await set(
     listAutomationsV2$,
@@ -190,10 +181,6 @@ const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const showInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsV2ByRefContract.show));
 
@@ -217,10 +204,6 @@ const showInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsV2ByRefContract.update));
   const bodyResult = await get(bodyResultOf(automationsV2ByRefContract.update));
@@ -254,10 +237,6 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsV2ByRefContract.delete));
 
@@ -279,10 +258,6 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 function makeSetEnabledInner(enabled: boolean) {
   return command(async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(automationsEnabled$))) {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationsV2ByRefContract.enable));
 
@@ -310,10 +285,6 @@ const enableInner$ = makeSetEnabledInner(true);
 const disableInner$ = makeSetEnabledInner(false);
 
 const runInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsV2ByRefContract.run));
 
@@ -345,10 +316,6 @@ const runInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationsV2ByRefContract.addTrigger));
   const bodyResult = await get(
@@ -400,10 +367,6 @@ const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const listTriggersInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(automationsEnabled$))) {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationsV2ByRefContract.listTriggers));
 
@@ -431,10 +394,6 @@ const listTriggersInner$ = command(
 );
 
 const showTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(automationsEnabled$))) {
-    return notFound(NOT_FOUND_MESSAGE);
-  }
-  signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(automationTriggersV2Contract.show));
 
@@ -453,10 +412,6 @@ const showTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const removeTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(automationsEnabled$))) {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationTriggersV2Contract.remove));
 
@@ -476,10 +431,6 @@ const removeTriggerInner$ = command(
 
 function makeSetTriggerEnabledInner(enabled: boolean) {
   return command(async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(automationsEnabled$))) {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
-    signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationTriggersV2Contract.enable));
 
@@ -505,9 +456,6 @@ const disableTriggerInner$ = makeSetTriggerEnabledInner(false);
 
 const rotateSecretInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(automationsEnabled$))) {
-      return notFound(NOT_FOUND_MESSAGE);
-    }
     if (!(await get(webhookTriggersEnabled$))) {
       return badRequestMessage(WEBHOOK_TRIGGERS_DISABLED_MESSAGE);
     }
@@ -547,7 +495,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       createInner$,
     ),
@@ -558,7 +506,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:read",
+        requiredCapability: "automation:read",
       },
       listInner$,
     ),
@@ -569,7 +517,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:read",
+        requiredCapability: "automation:read",
       },
       showInner$,
     ),
@@ -580,7 +528,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       updateInner$,
     ),
@@ -591,7 +539,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:delete",
+        requiredCapability: "automation:delete",
       },
       deleteInner$,
     ),
@@ -602,7 +550,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       enableInner$,
     ),
@@ -613,7 +561,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       disableInner$,
     ),
@@ -634,7 +582,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       addTriggerInner$,
     ),
@@ -645,7 +593,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:read",
+        requiredCapability: "automation:read",
       },
       listTriggersInner$,
     ),
@@ -656,7 +604,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:read",
+        requiredCapability: "automation:read",
       },
       showTriggerInner$,
     ),
@@ -667,7 +615,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:delete",
+        requiredCapability: "automation:delete",
       },
       removeTriggerInner$,
     ),
@@ -678,7 +626,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       enableTriggerInner$,
     ),
@@ -689,7 +637,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       disableTriggerInner$,
     ),
@@ -700,7 +648,7 @@ export const automationsV2Routes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
+        requiredCapability: "automation:write",
       },
       rotateSecretInner$,
     ),

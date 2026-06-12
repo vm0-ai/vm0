@@ -19,7 +19,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
 
@@ -387,7 +387,6 @@ describe("zero sidebar", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadRename]: true },
       path: `/chats/${EXISTING_THREAD_ID}?sidebar=detached-thread`,
     });
 
@@ -442,7 +441,6 @@ describe("zero sidebar", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadRename]: true },
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
 
@@ -518,9 +516,11 @@ describe("zero sidebar", () => {
     click(menuItemByText("Delete chat"));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat and schedules?",
+      name: "Delete chat and automations?",
     });
-    expect(within(dialog).getByText(/2 linked schedules/u)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/2 linked automations/u),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText("Launch cadence")).toBeInTheDocument();
     expect(within(dialog).getByText("Release risk review")).toBeInTheDocument();
 
@@ -529,7 +529,7 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", {
-          name: "Delete chat and schedules?",
+          name: "Delete chat and automations?",
         }),
       ).not.toBeInTheDocument();
       expect(
@@ -541,9 +541,9 @@ describe("zero sidebar", () => {
     click(menuItemByText("Delete chat"));
 
     const confirmDialog = await screen.findByRole("dialog", {
-      name: "Delete chat and schedules?",
+      name: "Delete chat and automations?",
     });
-    click(buttonByText("Delete chat and schedules", confirmDialog));
+    click(buttonByText("Delete chat and automations", confirmDialog));
 
     await waitFor(() => {
       expect(

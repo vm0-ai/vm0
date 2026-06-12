@@ -28,6 +28,7 @@ import {
   type RunCreationErrorResponse,
 } from "./zero-schedules.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import { generateAutomationDescription } from "./automations/describe";
 
 /**
  * Interpreter key persisted for natively-created v2 automations (D1 on
@@ -441,10 +442,36 @@ export const createAutomationV2$ = command(
       triggerInsert = resolved.insert;
     }
 
+    // Parity with the legacy schedule deploy: an omitted description is
+    // generated (LLM with template fallback) so list views are never blank.
+    const effectiveBody =
+      body.description === undefined
+        ? {
+            ...body,
+            description: await generateAutomationDescription(
+              {
+                name: body.name,
+                instruction: body.instruction,
+                ...(body.trigger?.kind === "cron" && {
+                  cronExpression: body.trigger.cronExpression,
+                }),
+                ...(body.trigger?.kind === "once" && {
+                  atTime: body.trigger.atTime,
+                }),
+                ...(body.trigger?.kind === "loop" && {
+                  intervalSeconds: body.trigger.intervalSeconds,
+                }),
+              },
+              agent.name,
+            ),
+          }
+        : body;
+    signal.throwIfAborted();
+
     const view = await insertAutomationWithTrigger(db, {
       userId: args.userId,
       orgId: args.orgId,
-      body,
+      body: effectiveBody,
       displayName: agent.displayName,
       enabled,
       currentTime,

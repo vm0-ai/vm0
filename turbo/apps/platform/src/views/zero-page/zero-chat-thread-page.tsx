@@ -2,6 +2,7 @@ import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -132,6 +133,10 @@ import {
   artifactInboxQuery$,
   artifactInboxSearchOpen$,
   artifactInboxSection$,
+  ARTIFACT_PANEL_MIN_THREAD_WIDTH,
+  ARTIFACT_PANEL_MIN_WIDTH,
+  artifactPanelResizing$,
+  artifactPanelWidth$,
   backToArtifactInbox$,
   type ArtifactInboxSection,
   type ArtifactRef,
@@ -144,6 +149,8 @@ import {
   openArtifactInbox$,
   setArtifactInboxQuery$,
   setArtifactInboxSection$,
+  setArtifactPanelResizing$,
+  setArtifactPanelWidth$,
   openImageLightboxOrArtifact$ as openAttachmentImageLightbox$,
   openVideoLightboxOrArtifact$ as openAttachmentVideoLightbox$,
   toggleArtifactFullscreen$,
@@ -931,7 +938,7 @@ function GithubPrTrackingButton({
 // run time, or a note that the schedule is inactive when it has been disabled.
 function scheduleMenuSubline(schedule: HeaderScheduleEntry): string {
   if (!schedule.enabled) {
-    return "Schedule inactive";
+    return "Automation inactive";
   }
   if (!schedule.nextRunAt) {
     return "No upcoming run";
@@ -947,7 +954,7 @@ function scheduleMenuSubline(schedule: HeaderScheduleEntry): string {
 // schedule.
 export function ScheduleMenuButton({
   threadId,
-  ariaLabel = "Schedules",
+  ariaLabel = "Automations",
 }: {
   threadId: string;
   ariaLabel?: string;
@@ -989,7 +996,7 @@ export function ScheduleMenuButton({
             <DropdownMenuItem
               key={schedule.id}
               onClick={() => {
-                navigate("/schedules/:scheduleId", {
+                navigate("/automations/:scheduleId", {
                   pathParams: { scheduleId: schedule.id },
                 });
               }}
@@ -1885,7 +1892,7 @@ function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
       className={cn(
         fullscreen
           ? "fixed inset-0 z-[100] flex flex-col bg-background"
-          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background",
+          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
         "animate-in fade-in duration-[180ms] ease",
       )}
       data-testid="artifact-inbox"
@@ -1972,6 +1979,88 @@ function ChatThread({
   );
 }
 
+// Drag the divider to resize the artifact preview against the chat thread.
+// The preview panel is the right-most child, so its right edge coincides with
+// the container's right edge; the width is the gap from the pointer to it.
+function startArtifactPanelResize(
+  event: ReactPointerEvent<HTMLDivElement>,
+  setWidth: (width: number) => void,
+  setResizing: (resizing: boolean) => void,
+): void {
+  const container = event.currentTarget.parentElement;
+  if (!container) {
+    return;
+  }
+  event.preventDefault();
+  const rect = container.getBoundingClientRect();
+  const maxWidth = Math.max(
+    ARTIFACT_PANEL_MIN_WIDTH,
+    rect.width - ARTIFACT_PANEL_MIN_THREAD_WIDTH,
+  );
+  setResizing(true);
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+
+  function onMove(moveEvent: PointerEvent): void {
+    const next = Math.min(
+      Math.max(rect.right - moveEvent.clientX, ARTIFACT_PANEL_MIN_WIDTH),
+      maxWidth,
+    );
+    setWidth(next);
+  }
+  function onUp(): void {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    document.body.style.removeProperty("cursor");
+    document.body.style.removeProperty("user-select");
+    setResizing(false);
+  }
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+}
+
+// Resolve the artifact panel's CSS width and transition from the persisted
+// width and the live drag state. A null width means "never resized" -> keep
+// the responsive default; once resized, the stored px is clamped against the
+// live container so the chat thread always keeps ARTIFACT_PANEL_MIN_THREAD_WIDTH.
+// The transition is dropped mid-drag so the panel tracks the pointer 1:1.
+function artifactPanelLayout(
+  width: number | null,
+  resizing: boolean,
+): { style: CSSProperties; transition: string } {
+  const widthValue =
+    width === null
+      ? "min(760px, 48vw)"
+      : `clamp(${ARTIFACT_PANEL_MIN_WIDTH}px, ${width}px, calc(100% - ${ARTIFACT_PANEL_MIN_THREAD_WIDTH}px))`;
+  return {
+    style: { "--artifact-panel-width": widthValue } as CSSProperties,
+    transition: resizing
+      ? ""
+      : "transition-[flex-basis,width] duration-[240ms] ease",
+  };
+}
+
+function ArtifactResizeHandle() {
+  const setWidth = useSet(setArtifactPanelWidth$);
+  const setResizing = useSet(setArtifactPanelResizing$);
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize preview panel"
+      className="group relative hidden xl:flex w-1 shrink-0 cursor-col-resize items-stretch justify-center"
+      onPointerDown={(event) => {
+        startArtifactPanelResize(event, setWidth, setResizing);
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60 transition-colors group-hover:bg-border"
+      />
+    </div>
+  );
+}
+
 export function ZeroChatThreadPage() {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
@@ -1993,6 +2082,11 @@ export function ZeroChatThreadPage() {
     : null;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
+  const { style: artifactPanelStyle, transition: artifactTransition } =
+    artifactPanelLayout(
+      useGet(artifactPanelWidth$),
+      useGet(artifactPanelResizing$),
+    );
   // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
   // snapshot survives keyed ChatThread remounts during thread navigation.
   // Otherwise a second mod+shift+arrow press lands on a freshly mounted
@@ -2055,21 +2149,26 @@ export function ZeroChatThreadPage() {
           thread half hides so the sidebar fills the pane (no toggle, the
           50/50 split needs each half ~640px to clear the composer's sm:
           breakpoint, below which the model picker collapses to icons). */}
-      <div className="flex flex-1 min-h-0 bg-transparent">
+      <div
+        className="flex flex-1 min-h-0 bg-transparent"
+        style={artifactPanelStyle}
+      >
         <div
-          className={
-            artifactPanelOpen
-              ? "hidden xl:flex flex-1 basis-0 min-w-0 min-h-0 transition-[flex-basis,width] duration-[240ms] ease"
-              : "flex flex-1 min-w-0 min-h-0 transition-[flex-basis,width] duration-[240ms] ease"
-          }
+          className={cn(
+            "min-w-0 min-h-0",
+            artifactTransition,
+            artifactPanelOpen ? "hidden xl:flex flex-1 basis-0" : "flex flex-1",
+          )}
         >
           {threadArea}
         </div>
+        {artifactPanelOpen && <ArtifactResizeHandle />}
         <div
           className={cn(
-            "flex min-h-0 min-w-0 overflow-hidden transition-[flex-basis,width] duration-[240ms] ease",
+            "flex min-h-0 min-w-0 overflow-hidden",
+            artifactTransition,
             artifactPanelOpen
-              ? "flex-1 basis-0 xl:w-[min(760px,48vw)] xl:flex-none xl:basis-[min(760px,48vw)]"
+              ? "flex-1 basis-0 xl:w-[var(--artifact-panel-width)] xl:flex-none xl:basis-[var(--artifact-panel-width)]"
               : "pointer-events-none w-0 flex-none basis-0",
           )}
           aria-hidden={!artifactPanelOpen}
@@ -4941,10 +5040,10 @@ function ScheduleUserMessage({
         <div className="flex w-full flex-col items-end">
           {scheduleId ? (
             <Link
-              pathname="/schedules/:scheduleId"
+              pathname="/automations/:scheduleId"
               options={{ pathParams: { scheduleId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open schedule ${scheduleLabel}`}
+              aria-label={`Open automation ${scheduleLabel}`}
             >
               {body}
             </Link>

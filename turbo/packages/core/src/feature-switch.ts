@@ -249,12 +249,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the test-oauth connector, a synthetic OAuth 2.0 provider used only for automated tests. Off in prod.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatThreadRename]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
-    enabled: true,
-  },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Freshdesk helpdesk connector",
@@ -329,9 +323,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatCompletedWorkFolding]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Collapse earlier Zero chat work history after a run finishes, leaving the final message visible.",
+      "Collapse earlier Zero chat work history after a run finishes, leaving the final message visible. Users can opt in individually from Lab.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatRecommendedFollowups]: {
     maintainer: "linghan@vm0.ai",
@@ -357,13 +350,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show ranged personal credit usage records and team member usage aggregates in settings, and enable scoped/ranged /api/zero/usage/record queries.",
     enabled: true,
-  },
-  [FeatureSwitchKey.ZeroAutomations]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Expose the Automations API surface (/api/automations) over the shared automation service. When disabled, the new endpoints 404 and only the legacy /api/zero/schedules surface is reachable.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AutomationWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",

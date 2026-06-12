@@ -122,16 +122,8 @@ pub struct SecretConnectorMetadata {
 
 /// Execution firewall entry supplied by the API.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum FirewallEntry {
-    Tagged(TaggedFirewallEntry),
-    Legacy(LegacyFirewallEntry),
-}
-
-/// Compact execution firewall entry supplied by the API.
-#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
-pub enum TaggedFirewallEntry {
+pub enum FirewallEntry {
     /// Built-in firewall resolved by the Python addon from its generated catalog.
     #[serde(rename = "builtin", rename_all = "camelCase")]
     Builtin {
@@ -142,14 +134,6 @@ pub enum TaggedFirewallEntry {
     /// Inline firewall body for org custom connectors.
     #[serde(rename = "inline", rename_all = "camelCase")]
     Inline { firewall: Firewall },
-}
-
-/// Temporary compatibility for expanded firewall entries written before compact refs.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyFirewallEntry {
-    pub name: String,
-    pub apis: Vec<FirewallApi>,
 }
 
 /// A single firewall config with its name and API entries.
@@ -522,9 +506,7 @@ mod tests {
         assert!(ctx.debug_no_mock_claude.unwrap());
         assert!(ctx.debug_no_mock_codex.unwrap());
         assert_eq!(ctx.api_start_time, Some(1_700_000_000_000));
-        let FirewallEntry::Tagged(TaggedFirewallEntry::Builtin { name, .. }) =
-            &ctx.firewalls.as_ref().unwrap()[0]
-        else {
+        let FirewallEntry::Builtin { name, .. } = &ctx.firewalls.as_ref().unwrap()[0] else {
             panic!("expected builtin firewall entry");
         };
         assert_eq!(name, "github");
@@ -546,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_deserializes_legacy_expanded_firewall_entry() {
+    fn execution_context_rejects_legacy_expanded_firewall_entry() {
         let json = serde_json::json!({
             "runId": "11111111-1111-4111-8111-111111111111",
             "prompt": "hello",
@@ -565,12 +547,8 @@ mod tests {
             }]
         });
 
-        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        let FirewallEntry::Legacy(firewall) = &ctx.firewalls.as_ref().unwrap()[0] else {
-            panic!("expected legacy firewall entry");
-        };
-        assert_eq!(firewall.name, "github");
-        assert_eq!(firewall.apis[0].base, "https://api.github.com");
+        let result = serde_json::from_value::<ExecutionContext>(json);
+        assert!(result.is_err());
     }
 
     #[test]

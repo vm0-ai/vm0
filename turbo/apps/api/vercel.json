@@ -9,7 +9,7 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/execute-schedules",
+      "path": "/api/cron/execute-automations",
       "schedule": "* * * * *"
     },
     {

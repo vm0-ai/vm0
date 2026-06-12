@@ -783,6 +783,103 @@ describe("zero doctor check-connector command", () => {
       );
     });
 
+    it("should resolve compact built-in run context firewalls", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [{ kind: "builtin", name: "github" }],
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.github.com/repos/owner/repo",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the GitHub connector");
+      expect(output).toContain("Matched base URL: https://api.github.com");
+      expect(output).toContain("Relative path:    /repos/owner/repo");
+      expect(output).toContain(
+        "The GitHub connector is configured for this run with the following base URLs:",
+      );
+      expect(output).toContain("  - https://api.github.com");
+    });
+
+    it("should resolve compact built-in run context firewalls with base URL vars", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      vi.stubEnv("ZENDESK_API_TOKEN", "zk-placeholder");
+      server.use(
+        stubAvailableConnectors(["zendesk"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/zendesk", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "zendesk",
+            authMethod: "api-token",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["zendesk"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                kind: "builtin",
+                name: "zendesk",
+                baseUrlVars: { ZENDESK_SUBDOMAIN: "acme" },
+              },
+            ],
+            networkPolicies: {
+              zendesk: {
+                allow: [],
+                deny: [],
+                ask: [],
+                unknownPolicy: "allow" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://acme.zendesk.com/api/v2/tickets.json",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Zendesk connector");
+      expect(output).toContain("Matched base URL: https://acme.zendesk.com");
+      expect(output).toContain("Relative path:    /api/v2/tickets.json");
+      expect(output).toContain("  - https://acme.zendesk.com");
+    });
+
     it("should strip query and match permissions only on the resolved API base", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");

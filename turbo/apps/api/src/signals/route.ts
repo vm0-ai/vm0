@@ -3,7 +3,6 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
-import { automationsRoutes } from "./routes/automations";
 import { automationsV2Routes } from "./routes/automations-v2";
 import { agentComposesMetadataRoutes } from "./routes/agent-composes-metadata";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
@@ -24,7 +23,7 @@ import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
-import { cronExecuteSchedulesRoutes } from "./routes/cron-execute-schedules";
+import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
@@ -63,7 +62,6 @@ import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewal
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
-import { webhookAutomationsRoutes } from "./routes/webhook-automations";
 import { webhooksAutomationRoutes } from "./routes/webhooks-automation";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
@@ -124,7 +122,6 @@ import { zeroReportErrorRoutes } from "./routes/zero-report-error";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
-import { zeroSchedulesRoutes } from "./routes/zero-schedules";
 import { zeroMeModelProvidersDeleteRoutes } from "./routes/zero-me-model-providers-delete";
 import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
@@ -193,20 +190,35 @@ export interface RouteEntry {
   readonly handler: SignalRouteHandler<unknown>;
 }
 
+/**
+ * The automation resource API lived under /api/v2/* before #17307 moved it to
+ * the clean /api/automations* paths. Clients built before the move (deployed
+ * platform bundles, older CLI releases) still call the /v2 paths, so every
+ * resource route is also mounted under its historical alias. Drop this once
+ * those clients have aged out.
+ */
+function withLegacyV2Alias(
+  entries: readonly RouteEntry[],
+): readonly RouteEntry[] {
+  return entries.flatMap((entry) => {
+    const aliasPath = entry.route.path.replace(/^\/api\//, "/api/v2/");
+    return [entry, { ...entry, route: { ...entry.route, path: aliasPath } }];
+  });
+}
+
 export const ROUTES: readonly RouteEntry[] = [
   {
     route: healthContract.check,
     handler: apiHealth$,
   },
   ...authMeRoutes,
-  ...automationsRoutes,
-  // The unified Automations v2 resource (#16847 slice 2): one automation,
-  // N triggers of any kind.
-  ...automationsV2Routes,
-  // Webhook-automation management (create/list/delete) on the new tables. Listed
-  // before the inbound webhook route so the management collection/by-id paths
-  // resolve ahead of the catch-all `:token` dispatch.
-  ...webhookAutomationsRoutes,
+  // Inbound webhook dispatch (POST /api/automations/webhooks/:token) is
+  // registered before the resource routes so the static "webhooks" segment
+  // wins over the `/api/automations/:ref/...` params for that path shape.
+  ...webhooksAutomationRoutes,
+  // The unified Automation resource: one automation, N triggers of any kind.
+  // Mounted on /api/automations* plus the historical /api/v2/* alias paths.
+  ...withLegacyV2Alias(automationsV2Routes),
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
@@ -228,7 +240,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
-  ...webhooksAutomationRoutes,
   ...webhooksClerkRoutes,
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
@@ -254,7 +265,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronAggregateUsageRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronDrainEmailOutboxRoutes,
-  ...cronExecuteSchedulesRoutes,
+  ...cronExecuteAutomationsRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
@@ -320,7 +331,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
-  ...zeroSchedulesRoutes,
   ...zeroOnboardingSetupRoutes,
   ...zeroOnboardingStatusRoutes,
   ...zeroOrgInviteRoutes,

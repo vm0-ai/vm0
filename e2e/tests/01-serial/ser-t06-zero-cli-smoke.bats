@@ -4,10 +4,10 @@
 
 load '../../helpers/setup'
 
-@test "zero --help shows schedule, agent, org commands" {
+@test "zero --help shows automation, agent, org commands" {
     run $ZERO_CLI --help
     assert_success
-    assert_output --partial "schedule"
+    assert_output --partial "automation"
     assert_output --partial "agent"
     assert_output --partial "org"
 }
@@ -32,7 +32,7 @@ load '../../helpers/setup'
     assert_success
 }
 
-@test "zero schedule list returns successfully" {
-    run $ZERO_CLI schedule list
+@test "zero automation list returns successfully" {
+    run $ZERO_CLI automation list
     assert_success
 }

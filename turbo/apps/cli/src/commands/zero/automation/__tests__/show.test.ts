@@ -78,13 +78,10 @@ describe("zero automation show command", () => {
 
   it("should display automation fields and the triggers table", async () => {
     server.use(
-      http.get(
-        "http://localhost:3000/api/v2/automations/:ref",
-        ({ params }) => {
-          expect(params.ref).toBe("alerts");
-          return HttpResponse.json(mockAutomation);
-        },
-      ),
+      http.get("http://localhost:3000/api/automations/:ref", ({ params }) => {
+        expect(params.ref).toBe("alerts");
+        return HttpResponse.json(mockAutomation);
+      }),
     );
 
     await showCommand.parseAsync(["node", "cli", "alerts"]);
@@ -107,7 +104,7 @@ describe("zero automation show command", () => {
 
   it("should hint at adding a trigger when the automation has none", async () => {
     server.use(
-      http.get("http://localhost:3000/api/v2/automations/:ref", () => {
+      http.get("http://localhost:3000/api/automations/:ref", () => {
         return HttpResponse.json({ ...mockAutomation, triggers: [] });
       }),
     );
@@ -121,7 +118,7 @@ describe("zero automation show command", () => {
 
   it("should surface the ambiguous-name API error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/v2/automations/:ref", () => {
+      http.get("http://localhost:3000/api/automations/:ref", () => {
         return HttpResponse.json(
           {
             error: {

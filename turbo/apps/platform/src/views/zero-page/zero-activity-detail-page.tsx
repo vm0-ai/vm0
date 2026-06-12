@@ -242,7 +242,7 @@ export function ActivityHeaderCard({
                   triggerSource === "automation") &&
                 detail.scheduleId ? (
                   <Link
-                    pathname="/schedules/:scheduleId"
+                    pathname="/automations/:scheduleId"
                     options={{
                       pathParams: { scheduleId: detail.scheduleId },
                     }}

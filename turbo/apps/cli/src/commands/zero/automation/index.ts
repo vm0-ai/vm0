@@ -8,9 +8,6 @@ import { enableCommand } from "./enable";
 import { disableCommand } from "./disable";
 import { runCommand } from "./run";
 import { triggerCommand } from "./trigger";
-import { setupCommand } from "./setup";
-import { statusCommand } from "./status";
-import { webhookCommand } from "./webhook";
 
 export const zeroAutomationCommand = new Command()
   .name("automation")
@@ -26,9 +23,6 @@ export const zeroAutomationCommand = new Command()
   .addCommand(triggerCommand)
   // Deprecated aliases — fully functional, but print a stderr notice pointing
   // at the replacement command.
-  .addCommand(setupCommand, { hidden: true })
-  .addCommand(statusCommand, { hidden: true })
-  .addCommand(webhookCommand, { hidden: true })
   .addHelpText(
     "after",
     `

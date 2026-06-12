@@ -8,7 +8,19 @@ from urllib.parse import parse_qs, urlparse
 import auth
 import auth_base_forwarder as forwarder
 from aws_sigv4 import AwsSigV4Credentials
+from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
+
+
+def _templated_builtin_auth_header_names() -> list[str]:
+    names: set[str] = set()
+    for firewall in BUILTIN_FIREWALLS.values():
+        for api in firewall.get("apis", []):
+            auth_headers = api.get("auth", {}).get("headers", {})
+            for name, value in auth_headers.items():
+                if isinstance(name, str) and isinstance(value, str) and "${{" in value:
+                    names.add(name)
+    return sorted(names, key=str.lower)
 
 
 class TestAuthBaseUrlRewriteForwarding:
@@ -25,10 +37,12 @@ class TestAuthBaseUrlRewriteForwarding:
             request_headers=headers(
                 ("Host", "firewall-placeholder.vm3.ai"),
                 ("Authorization", "Bearer agent"),
+                ("X-Api-Key", "agent-api-key"),
             ),
         )
         token_meta["headers"] = {
             "Authorization": "Bearer real-token",
+            "X-Api-Key": "real-api-key",
             "X-Custom": "injected-value",
         }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
@@ -44,9 +58,117 @@ class TestAuthBaseUrlRewriteForwarding:
         req_headers = call_args[0][2]
         assert ("Authorization", "Bearer agent") not in req_headers
         assert ("Authorization", "Bearer real-token") in req_headers
+        assert ("X-Api-Key", "agent-api-key") not in req_headers
+        assert ("X-Api-Key", "real-api-key") in req_headers
         assert ("X-Custom", "injected-value") in req_headers
         assert flow.request.headers["Authorization"] == "Bearer agent"
         assert "X-Custom" not in flow.request.headers
+
+    async def test_forward_request_strips_client_credentials_without_resolved_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """auth.base forwarding must not leak placeholder-scoped credentials."""
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+                ("authorization", "Bearer lower-agent"),
+                ("AUTHORIZATION", "Bearer upper-agent"),
+                ("Cookie", "session=agent"),
+                ("X-Api-Key", "agent-api-key"),
+                ("X-Auth-Token", "agent-auth-token"),
+                ("Private-Token", "agent-private-token"),
+                ("X-Repeat", "one"),
+                ("X-Repeat", "two"),
+                ("X-Keep", "client"),
+            ),
+        )
+        token_meta["headers"] = {}
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        forwarded_names = {name.lower() for name, _value in req_headers}
+        stripped_names = {
+            "authorization",
+            "cookie",
+            "x-api-key",
+            "x-auth-token",
+            "private-token",
+        }
+        assert stripped_names.isdisjoint(forwarded_names)
+        assert req_headers.count(("X-Repeat", "one")) == 1
+        assert req_headers.count(("X-Repeat", "two")) == 1
+        assert ("X-Keep", "client") in req_headers
+        request_headers = list(flow.request.headers.items(multi=True))
+        assert ("Authorization", "Bearer agent") in request_headers
+        assert ("authorization", "Bearer lower-agent") in request_headers
+        assert ("AUTHORIZATION", "Bearer upper-agent") in request_headers
+        assert flow.request.headers["Cookie"] == "session=agent"
+
+    async def test_forward_request_strips_templated_builtin_auth_headers_without_resolved_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Client-provided templated builtin auth headers must not cross auth.base rewrites."""
+        auth_header_names = _templated_builtin_auth_header_names()
+        assert auth_header_names
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                *[(name, f"client-{index}") for index, name in enumerate(auth_header_names)],
+                ("X-Keep", "client"),
+            ),
+        )
+        token_meta["headers"] = {}
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        forwarded_names = {name.lower() for name, _value in req_headers}
+        assert {name.lower() for name in auth_header_names}.isdisjoint(forwarded_names)
+        assert ("X-Keep", "client") in req_headers
+
+    async def test_forward_request_preserves_client_static_metadata_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Client-provided non-secret metadata headers should still reach auth.base targets."""
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Reap-Version", "2025-02-14"),
+                ("X-Api-Version", "2025-11-01"),
+                ("X-Snowflake-Authorization-Token-Type", "PROGRAMMATIC_ACCESS_TOKEN"),
+            ),
+        )
+        token_meta["headers"] = {}
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        req_headers = mock_forward.call_args[0][2]
+        assert ("Reap-Version", "2025-02-14") in req_headers
+        assert ("X-Api-Version", "2025-11-01") in req_headers
+        assert ("X-Snowflake-Authorization-Token-Type", "PROGRAMMATIC_ACCESS_TOKEN") in req_headers
 
     async def test_forward_request_preserves_duplicate_headers_and_auth_override(
         self, headers, real_flow, mitm_ctx, tmp_path
@@ -209,6 +331,9 @@ class TestAuthBaseUrlRewriteForwarding:
                 ("Content-Type", "application/x-www-form-urlencoded"),
                 ("X-Amz-Date", "20260101T000000Z"),
                 ("Authorization", placeholder_authorization),
+                ("Cookie", "session=agent"),
+                ("X-Api-Key", "agent-api-key"),
+                ("X-Amz-Security-Token", "placeholder-session-token"),
             ),
             auth_overrides={
                 "awsSigv4": {
@@ -244,7 +369,76 @@ class TestAuthBaseUrlRewriteForwarding:
             in authorization
         )
         assert ("x-amz-security-token", "real-session-token") in req_headers
+        forwarded_names = {name.lower() for name, _value in req_headers}
+        assert "cookie" not in forwarded_names
+        assert "x-api-key" not in forwarded_names
+        assert ("X-Amz-Security-Token", "placeholder-session-token") not in req_headers
         assert flow.request.headers["Authorization"] == placeholder_authorization
+
+    async def test_forward_request_strips_unrelated_authorization_for_aws_query_sigv4(
+        self,
+        headers,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        """auth.base query SigV4 ignores unrelated client Authorization headers."""
+        placeholder_credential = ("PLACEHOLDER/20260101/us-east-1/sts/aws4_request").replace(
+            "/", "%2F"
+        )
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path=(
+                "/?Action=GetCallerIdentity&Version=2011-06-15"
+                "&X-Amz-Algorithm=AWS4-HMAC-SHA256"
+                f"&X-Amz-Credential={placeholder_credential}"
+                "&X-Amz-Date=20260101T000000Z"
+                "&X-Amz-Expires=60"
+                "&X-Amz-SignedHeaders=host"
+                "&X-Amz-Signature=placeholder"
+            ),
+            resolved_base="https://STS.AMAZONAWS.COM:443/",
+            method="GET",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+                ("Cookie", "session=agent"),
+                ("X-Amz-Security-Token", "placeholder-session-token"),
+            ),
+            auth_overrides={
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                },
+            },
+            token_overrides={
+                "aws_sigv4": AwsSigV4Credentials(
+                    "AKIDEXAMPLE",
+                    "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+                    "real-session-token",
+                ),
+            },
+        )
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        forwarded_url = mock_forward.call_args[0][0]
+        req_headers = mock_forward.call_args[0][2]
+        query = dict(parse_qs(urlparse(forwarded_url).query))
+        forwarded_names = {name.lower() for name, _value in req_headers}
+        assert query["X-Amz-Credential"] == ["AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"]
+        assert query["X-Amz-Security-Token"] == ["real-session-token"]
+        assert query["X-Amz-Signature"] != ["placeholder"]
+        assert "authorization" not in forwarded_names
+        assert "cookie" not in forwarded_names
+        assert "x-amz-security-token" not in forwarded_names
 
     async def test_forward_request_uses_raw_body_for_any_method(
         self, real_flow, mitm_ctx, tmp_path

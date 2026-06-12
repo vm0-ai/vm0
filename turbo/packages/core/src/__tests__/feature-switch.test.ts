@@ -101,7 +101,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatCompletedWorkFolding]).toBe(
+      false,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       true,
     );
@@ -111,7 +113,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ChatCompletedWorkFolding]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       true,
     );
@@ -124,6 +128,14 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
+  });
+
+  it("should let individuals opt in to completed work folding", () => {
+    const states = getAllFeatureStates({
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      overrides: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+    expect(states[FeatureSwitchKey.ChatCompletedWorkFolding]).toBe(true);
   });
 
   it("should apply overrides to disable enabled features", () => {

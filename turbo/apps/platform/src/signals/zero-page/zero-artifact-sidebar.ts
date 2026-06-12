@@ -4,6 +4,7 @@ import {
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
+import { localStorageSignals } from "../external/local-storage.ts";
 import {
   classifyChatAttachment,
   previewAttachmentFromUrl,
@@ -281,5 +282,45 @@ export const openDocumentLightboxOrArtifact$ = command(
     },
   ) => {
     set(openDocumentLightboxModal$, value);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Artifact panel width — user-resizable split between the chat thread and the
+// artifact preview at xl+ breakpoints. Persisted in localStorage as a pixel
+// width; clamping against the live viewport happens at render via CSS clamp().
+// `null` means "never resized" and falls back to the responsive default.
+// ---------------------------------------------------------------------------
+
+// Smallest the preview may shrink to before content stops being usable.
+export const ARTIFACT_PANEL_MIN_WIDTH = 400;
+// Width the chat thread is guaranteed to keep so its composer never collapses.
+export const ARTIFACT_PANEL_MIN_THREAD_WIDTH = 600;
+
+const { get$: artifactPanelWidthRaw$, set$: setArtifactPanelWidthRaw$ } =
+  localStorageSignals("artifactPanelWidth");
+
+export const artifactPanelWidth$ = computed<number | null>((get) => {
+  const raw = get(artifactPanelWidthRaw$);
+  if (raw === null) {
+    return null;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+});
+
+export const setArtifactPanelWidth$ = command(({ set }, width: number) => {
+  set(setArtifactPanelWidthRaw$, String(Math.round(width)));
+});
+
+// True while the user is dragging the divider, so the panels can drop their
+// width transition and track the pointer without lag.
+const internalArtifactPanelResizing$ = state(false);
+export const artifactPanelResizing$ = computed((get) => {
+  return get(internalArtifactPanelResizing$);
+});
+export const setArtifactPanelResizing$ = command(
+  ({ set }, resizing: boolean) => {
+    set(internalArtifactPanelResizing$, resizing);
   },
 );
