@@ -335,7 +335,7 @@ class TestUsagePendingCounter:
     def test_report_decrements_after_completion(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):
-        """Retry exhaustion still runs the decrement finally-block."""
+        """Retry exhaustion decrements reports but keeps the usage flush buffered."""
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
 
@@ -359,7 +359,7 @@ class TestUsagePendingCounter:
         assert usage.counters._pending_reports == 0
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1")
 
     def test_enqueue_increments_and_drains_reports(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api

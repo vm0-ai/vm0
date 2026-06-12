@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.37](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.36...nbd-cow-v0.4.37) (2026-06-12)
+
+
+### Refactoring
+
+* **nbd-cow:** split device pool actor and state ([#17446](https://github.com/vm0-ai/vm0/issues/17446)) ([789fc5d](https://github.com/vm0-ai/vm0/commit/789fc5d4c10cd1ef366bd859cc858dbffd080010))
+
 ## [0.4.36](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.35...nbd-cow-v0.4.36) (2026-06-11)
 
 

@@ -1,5 +1,6 @@
+use std::collections::HashSet;
 use std::fs;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
@@ -163,6 +164,43 @@ fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std
         events[4].get("is_error").and_then(Value::as_bool),
         Some(false)
     );
+    Ok(())
+}
+
+#[test]
+fn concurrent_stream_json_ids_are_unique() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let children = (0..16)
+        .map(|_| {
+            let mut command = mock_claude();
+            command
+                .env("HOME", home.path())
+                .args(["--output-format", "stream-json", "--", "true"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut session_ids = HashSet::new();
+
+    for child in children {
+        let output = child.wait_with_output()?;
+        assert!(
+            output.status.success(),
+            "expected success, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty());
+
+        let events = parse_jsonl(&output.stdout)?;
+        let session_id = init_session_id(&events)?;
+        assert!(
+            session_ids.insert(session_id.clone()),
+            "duplicate session id: {session_id}"
+        );
+        assert!(expected_history_path(home.path(), &session_id).exists());
+    }
+
     Ok(())
 }
 

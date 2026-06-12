@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateNextRun } from "../zero-schedules.service";
+import { calculateNextRun } from "../automations/run-compat";
 
 describe("calculateNextRun", () => {
   it("uses the supplied start date when finding the next cron run", () => {

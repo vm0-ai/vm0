@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.442.1](https://github.com/vm0-ai/vm0/compare/app-v0.442.0...app-v0.442.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* filter slash skills by current agent ([#17447](https://github.com/vm0-ai/vm0/issues/17447)) ([683f578](https://github.com/vm0-ai/vm0/commit/683f5788d397f5964399534b64d1015d5d840f4d))
+* place expanded work below fold header ([#17441](https://github.com/vm0-ai/vm0/issues/17441)) ([33344ad](https://github.com/vm0-ai/vm0/commit/33344ad9b01eca91d666413dc6ae1f83b7a56cea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.333.1
+
 ## [0.442.0](https://github.com/vm0-ai/vm0/compare/app-v0.441.0...app-v0.442.0) (2026-06-12)
 
 

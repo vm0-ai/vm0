@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import usage.buffer as usage_buffer
+from usage.webhook import WebhookDeliveryOutcome
 
 
 def event(
@@ -36,7 +38,8 @@ class RecordedEnqueueCall:
     log_type: str
 
 
-RecordingEnqueueSideEffect = Callable[[str, str, dict, str, str], bool | None]
+RecordingEnqueueSideEffect = Callable[..., bool | None]
+DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
 
 
 class RecordingEnqueue:
@@ -49,6 +52,9 @@ class RecordingEnqueue:
         self.return_value = return_value
         self.side_effect = side_effect
         self.calls: list[RecordedEnqueueCall] = []
+        self._side_effect_accepts_callback = (
+            side_effect is not None and len(inspect.signature(side_effect).parameters) >= 6
+        )
 
     @property
     def call_count(self) -> int:
@@ -69,6 +75,7 @@ class RecordingEnqueue:
         payload: dict,
         proxy_log_path: str,
         log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
     ) -> bool:
         self.calls.append(
             RecordedEnqueueCall(
@@ -80,9 +87,31 @@ class RecordingEnqueue:
             )
         )
         if self.side_effect is None:
+            if self.return_value:
+                delivery_outcome_callback("success")
             return self.return_value
-        result = self.side_effect(url, sandbox_token, payload, proxy_log_path, log_type)
-        return self.return_value if result is None else result
+        callback_called = False
+
+        def record_outcome(outcome: WebhookDeliveryOutcome) -> None:
+            nonlocal callback_called
+            callback_called = True
+            delivery_outcome_callback(outcome)
+
+        if self._side_effect_accepts_callback:
+            result = self.side_effect(
+                url,
+                sandbox_token,
+                payload,
+                proxy_log_path,
+                log_type,
+                record_outcome,
+            )
+        else:
+            result = self.side_effect(url, sandbox_token, payload, proxy_log_path, log_type)
+        admitted = self.return_value if result is None else result
+        if admitted and not callback_called:
+            delivery_outcome_callback("success")
+        return admitted
 
     def clear(self) -> None:
         self.calls.clear()

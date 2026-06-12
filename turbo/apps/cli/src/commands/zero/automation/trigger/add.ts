@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations-v2";
-import { addAutomationTriggerV2 } from "../../../../lib/api";
+import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
+import { addAutomationTrigger } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
 import { parseDurationSeconds } from "../duration";
 import { printTriggerDetails, printWebhookSecret } from "../trigger-display";
@@ -91,10 +91,7 @@ Notes:
 
       const body = buildTrigger(kind, options);
 
-      const { trigger, webhookSecret } = await addAutomationTriggerV2(
-        ref,
-        body,
-      );
+      const { trigger, webhookSecret } = await addAutomationTrigger(ref, body);
 
       console.log(chalk.green(`✓ Trigger added to automation "${ref}"`));
       printTriggerDetails(trigger);

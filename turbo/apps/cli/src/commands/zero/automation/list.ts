@@ -1,10 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import type { AutomationResponseV2 } from "@vm0/api-contracts/contracts/automations-v2";
-import { listAutomationsV2 } from "../../../lib/api";
+import type { AutomationResponse } from "@vm0/api-contracts/contracts/automations";
+import { listAutomations } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
-function formatTriggerSummary(automation: AutomationResponseV2): string {
+function formatTriggerSummary(automation: AutomationResponse): string {
   if (automation.triggers.length === 0) {
     return chalk.dim("-");
   }
@@ -27,7 +27,7 @@ Examples:
   )
   .action(
     withErrorHandler(async () => {
-      const { automations } = await listAutomationsV2();
+      const { automations } = await listAutomations();
 
       if (automations.length === 0) {
         console.log(chalk.dim("No automations found"));

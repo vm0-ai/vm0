@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.333.1](https://github.com/vm0-ai/vm0/compare/core-v8.333.0...core-v8.333.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* filter slash skills by current agent ([#17447](https://github.com/vm0-ai/vm0/issues/17447)) ([683f578](https://github.com/vm0-ai/vm0/commit/683f5788d397f5964399534b64d1015d5d840f4d))
+
 ## [8.333.0](https://github.com/vm0-ai/vm0/compare/core-v8.332.0...core-v8.333.0) (2026-06-12)
 
 

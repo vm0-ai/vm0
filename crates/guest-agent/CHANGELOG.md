@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.31](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.30...guest-agent-v0.34.31) (2026-06-12)
+
+
+### Bug Fixes
+
+* classify non-code runner job failures ([#17438](https://github.com/vm0-ai/vm0/issues/17438)) ([dcae0a6](https://github.com/vm0-ai/vm0/commit/dcae0a69924bbf34c4a31cea9fee74cbca9aa16d))
+
 ## [0.34.30](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.29...guest-agent-v0.34.30) (2026-06-11)
 
 ## [0.34.29](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.28...guest-agent-v0.34.29) (2026-06-11)

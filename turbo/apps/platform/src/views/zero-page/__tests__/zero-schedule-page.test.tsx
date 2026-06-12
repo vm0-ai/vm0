@@ -1,9 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
-  automationsV2ByRefContract,
-  automationsV2MainContract,
-} from "@vm0/api-contracts/contracts/automations-v2";
+  automationsByRefContract,
+  automationsMainContract,
+} from "@vm0/api-contracts/contracts/automations";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,7 +13,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
-import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
+import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
 import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -344,7 +344,7 @@ describe("zero schedule page", () => {
 
     const schedulesReady = context.mocks.deferred<void>();
 
-    context.mocks.api(automationsV2MainContract.list, async ({ respond }) => {
+    context.mocks.api(automationsMainContract.list, async ({ respond }) => {
       await schedulesReady.promise;
       return respond(200, {
         automations: [
@@ -509,7 +509,7 @@ describe("zero schedule page", () => {
 
   it("surfaces run-now failures from the schedule list", async () => {
     mockSchedulePageStory();
-    context.mocks.api(automationsV2ByRefContract.run, ({ respond }) => {
+    context.mocks.api(automationsByRefContract.run, ({ respond }) => {
       return respond(503, {
         error: {
           message: "Runner queue unavailable",

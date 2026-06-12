@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  automationsV2ByRefContract,
-  automationsV2MainContract,
-  automationTriggersV2Contract,
-} from "@vm0/api-contracts/contracts/automations-v2";
+  automationsByRefContract,
+  automationsMainContract,
+  automationTriggersContract,
+} from "@vm0/api-contracts/contracts/automations";
 import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -51,15 +51,15 @@ afterEach(() => {
 });
 
 function mainApi() {
-  return setupApp({ context })(automationsV2MainContract);
+  return setupApp({ context })(automationsMainContract);
 }
 
 function refApi() {
-  return setupApp({ context })(automationsV2ByRefContract);
+  return setupApp({ context })(automationsByRefContract);
 }
 
 function triggerApi() {
-  return setupApp({ context })(automationTriggersV2Contract);
+  return setupApp({ context })(automationTriggersContract);
 }
 
 function cronApi() {
@@ -172,7 +172,7 @@ async function findTriggerRows(automationId: string) {
     .orderBy(asc(automationTriggers.createdAt), asc(automationTriggers.id));
 }
 
-describe("Automations v2 API", () => {
+describe("Automations API", () => {
   it("creates a triggerless automation with a server-created chat thread", async () => {
     const fixture = await seedFixture();
     await enableWebhookTriggers(fixture);
@@ -202,7 +202,7 @@ describe("Automations v2 API", () => {
       })
       .from(automations)
       .where(eq(automations.id, automation.id));
-    // D1: natively-created v2 automations persist the default interpreter.
+    // D1: natively-created automations persist the default interpreter.
     expect(row).toStrictEqual({
       interpreterKind: "default",
       orgId: fixture.orgId,
@@ -749,9 +749,9 @@ describe("Automations v2 API", () => {
     const created = await createAutomation({
       name: "fire-now",
       agentId: fixture.composeId,
-      instruction: "Manual v2 run test",
+      instruction: "Manual run test",
       description: "Manual run description",
-      appendSystemPrompt: "Use the v2 context.",
+      appendSystemPrompt: "Use the run context.",
       trigger: { kind: "cron", cronExpression: "0 9 * * *" },
     });
 
@@ -791,9 +791,9 @@ describe("Automations v2 API", () => {
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, runId));
-    expect(run?.prompt).toBe("Manual v2 run test");
+    expect(run?.prompt).toBe("Manual run test");
     expect(run?.appendSystemPrompt).toContain("Trigger type: manual");
-    expect(run?.appendSystemPrompt).toContain("Use the v2 context.");
+    expect(run?.appendSystemPrompt).toContain("Use the run context.");
 
     // Only the chat callback: nothing was claimed, so there is no reschedule.
     const callbacks = await db
@@ -818,7 +818,7 @@ describe("Automations v2 API", () => {
       messages.some((message) => {
         return (
           message.role === "user" &&
-          message.content === "Manual v2 run test" &&
+          message.content === "Manual run test" &&
           message.scheduleSnapshot?.id === created.automation.id &&
           message.scheduleSnapshot.title === "fire-now"
         );

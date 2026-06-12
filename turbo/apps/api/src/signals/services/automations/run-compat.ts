@@ -1,3 +1,9 @@
+/**
+ * Run-model and side-effect helpers the automation service shares with run
+ * creation: the agent gate for automation create, the model-context
+ * resolution for manually-fired runs, and the post-create side effects
+ * (chat turn, model fields, trigger lastRunId stamps).
+ */
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import type { ChatMessageScheduleSnapshot } from "@vm0/db/schema/chat-message";
@@ -5,17 +11,17 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
-import type { Db } from "../external/db";
-import { calculateNextRun } from "./automations/time-trigger";
+import type { Db } from "../../external/db";
+import { calculateNextRun } from "./time-trigger";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
-} from "./zero-model-selection.service";
-import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
+} from "../zero-model-selection.service";
+import { visibleJoinedZeroAgentCondition } from "../zero-agent-data.service";
 import {
   postAutomationUserMessage,
   resolveScheduleChatThreadModelPin,
-} from "../routes/zero-chat-messages";
+} from "../../routes/zero-chat-messages";
 
 // The schedule chip on the run's chat bubble: the snapshot keeps the label
 // rendering after the automation is renamed, edited, or deleted.
@@ -29,8 +35,8 @@ function chatMessageScheduleSnapshot(
   };
 }
 
-// Re-exported from the time trigger so existing callers (the reschedule
-// callback route and the schedule tests) keep importing it from the service.
+// Re-exported from the time trigger so existing callers keep importing it
+// from this module.
 export { calculateNextRun };
 
 export type RunCreationErrorResponse = {
@@ -43,7 +49,7 @@ export type RunCreationErrorResponse = {
   };
 };
 
-interface AgentScheduleTarget {
+interface AgentAutomationTarget {
   readonly id: string;
   readonly name: string;
   readonly displayName: string | null;
@@ -51,8 +57,7 @@ interface AgentScheduleTarget {
 
 /**
  * Load an agent the user may target, scoped to the org and the user's
- * visibility: the agent gate shared by the schedule deploy and the v2
- * automation create.
+ * visibility: the agent gate for automation create.
  */
 export async function loadAgentForDeploy(
   db: Db,
@@ -61,7 +66,7 @@ export async function loadAgentForDeploy(
     readonly userId: string;
     readonly agentId: string;
   },
-): Promise<AgentScheduleTarget | null> {
+): Promise<AgentAutomationTarget | null> {
   const [agent] = await db
     .select({
       id: agentComposes.id,
@@ -82,7 +87,7 @@ export async function loadAgentForDeploy(
   return agent ?? null;
 }
 
-type ScheduleRunModelContext =
+type AutomationRunModelContext =
   | {
       readonly ok: true;
       readonly modelPin: ModelFirstPin;
@@ -99,15 +104,14 @@ type ScheduleRunModelContext =
 // Resolve the model context for a manually-fired automation run: the thread
 // model pin (org default if unpinned) and the admitted provider. No user is
 // present to receive a model-config / credits error, so failures surface as
-// run_error (normalized to 400) feeding the run-now response. Shared by the
-// schedule run-now and the v2 automation run-now.
-export async function resolveScheduleRunModelContext(args: {
+// run_error (normalized to 400) feeding the run-now response.
+export async function resolveAutomationRunModelContext(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
-}): Promise<ScheduleRunModelContext> {
+}): Promise<AutomationRunModelContext> {
   const threadModelPin = await resolveScheduleChatThreadModelPin({
     db: args.db,
     orgId: args.orgId,
@@ -151,10 +155,7 @@ export async function resolveScheduleRunModelContext(args: {
 // schedule chip), persist the resolved model fields, and stamp the run as
 // lastRunId on every trigger of the automation so the per-trigger
 // skip-if-active checks (the poller and the run-now conflict) see the active
-// manual run. Shared by the schedule run-now (whose automation carries a
-// single time trigger, so the stamp is identical to the historic per-trigger
-// one) and the v2 automation run-now (where a manual fire belongs to no
-// trigger in particular).
+// manual run: a manual fire belongs to no trigger in particular.
 export async function persistManualRunSideEffects(args: {
   readonly db: Db;
   readonly automation: typeof automations.$inferSelect;

@@ -5,7 +5,12 @@ import json
 import pytest
 
 import usage
-from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
+from tests.usage_buffer_helpers import (
+    DeliveryOutcomeCallback,
+    RecordingEnqueue,
+    event,
+    flush_log_entries,
+)
 
 
 def test_flush_logs_aggregate_summary_without_token(tmp_path):
@@ -28,10 +33,10 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
 
     enqueue.assert_called_once()
     entries = flush_log_entries(proxy_log_path)
-    assert [entry["phase"] for entry in entries] == ["started", "completed"]
+    assert [entry["phase"] for entry in entries] == ["started", "enqueued"]
     assert [entry["message"] for entry in entries] == [
         "Usage event buffer flush started",
-        "Usage event buffer flush completed",
+        "Usage event buffer flush enqueued",
     ]
     for entry in entries:
         assert entry["level"] == "info"
@@ -66,7 +71,7 @@ def test_flush_logs_retained_webhook_batches(tmp_path):
 
     enqueue.assert_called_once()
     entries = flush_log_entries(proxy_log_path)
-    assert [entry["phase"] for entry in entries] == ["started", "completed"]
+    assert [entry["phase"] for entry in entries] == ["started", "enqueued"]
     assert entries[0]["dropped_webhook_batch_count"] == 0
     assert entries[0]["retained_webhook_batch_count"] == 0
     assert entries[1]["level"] == "warn"
@@ -76,6 +81,52 @@ def test_flush_logs_retained_webhook_batches(tmp_path):
     assert entries[1]["retained_source_event_count"] == 1
     assert entries[1]["webhook_batch_count"] == 1
     assert "secret-token" not in json.dumps(entries)
+    assert usage.counters._buffered_usage_events == 1
+
+
+def test_flush_logs_delivery_retry_retained_counts(tmp_path):
+    callbacks: list[DeliveryOutcomeCallback] = []
+
+    def enqueue_webhook(
+        url: str,
+        sandbox_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
+    ) -> bool:
+        del url, sandbox_token, payload, path, log_type
+        callbacks.append(delivery_outcome_callback)
+        return True
+
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_webhook)
+    proxy_log_path = tmp_path / "proxy.jsonl"
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "secret-token",
+        "run-1",
+        [
+            event(source_key="source-1", category="tokens.input", quantity=10),
+            event(source_key="source-2", category="tokens.output", quantity=5),
+        ],
+        str(proxy_log_path),
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    callbacks[0]("retryable_failure")
+
+    entries = flush_log_entries(proxy_log_path)
+    assert [entry["phase"] for entry in entries] == ["started", "enqueued", "retained"]
+    retained_entry = entries[2]
+    assert retained_entry["level"] == "warn"
+    assert retained_entry["message"] == "Usage event buffer flush retained for retry"
+    assert retained_entry["source_event_count"] == 2
+    assert retained_entry["webhook_batch_count"] == 1
+    assert retained_entry["retained_webhook_batch_count"] == 1
+    assert retained_entry["retained_source_event_count"] == 2
+    assert "secret-token" not in json.dumps(entries)
+    assert usage.counters._buffered_usage_events == 2
 
 
 def test_flush_logs_failure_without_token(tmp_path):
