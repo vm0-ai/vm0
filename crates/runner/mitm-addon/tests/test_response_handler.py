@@ -74,6 +74,62 @@ class TestResponseHandler:
         assert proxy_entry["connector"] == "fal"
         assert proxy_entry["upstream_status"] == 401
 
+    async def test_buffers_unauthenticated_connector_401_before_response_replacement(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream",
+            )
+            mitm_addon.responseheaders(flow)
+            assert flow.response.stream is False
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        assert json.loads(content)["error"] == "connector_not_configured_for_run"
+
+    async def test_streams_connector_401_when_user_auth_is_present(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Authorization", "Key user-provided"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert response_stream(flow)(b"upstream auth error") == b"upstream auth error"
+            mitm_addon.response(flow)
+
+        assert flow.response.content == b"upstream auth error"
+
     async def test_preserves_connector_401_body_when_user_auth_is_present(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
