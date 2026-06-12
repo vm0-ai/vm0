@@ -438,7 +438,10 @@ pub async fn execute_cli(
                                 }
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
-                                    println!("{}", claude_result_for_stdout(result, masker));
+                                    // Guest-agent stdout is captured as
+                                    // system-stream logs, so mask before
+                                    // printing Claude's final result.
+                                    println!("{}", masker.mask_string(result));
                                 }
                                 // Arm the post-result reap deadline once per
                                 // run — see `TerminationState::should_arm_post_result`.
@@ -800,10 +803,6 @@ fn set_cli_current_dir(cmd: &mut tokio::process::Command, path: &str) -> Result<
     Ok(())
 }
 
-fn claude_result_for_stdout(result: &str, masker: &SecretMasker) -> String {
-    masker.mask_string(result)
-}
-
 fn select_failure_diagnostic(
     existing: Option<&CliFailureDiagnostic>,
     candidate: CliFailureDiagnostic,
@@ -854,8 +853,8 @@ fn with_carried_failure_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        CliFailureDiagnostic, chat_stream_delta_from_event, claude_result_for_stdout,
-        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
+        CliFailureDiagnostic, chat_stream_delta_from_event, select_failure_diagnostic,
+        set_cli_current_dir, with_carried_failure_reason,
     };
     use crate::events;
     use crate::masker::SecretMasker;
@@ -905,18 +904,6 @@ mod tests {
             .expect_err("non-directory cwd should fail");
 
         assert!(err.to_string().contains("is not a directory"));
-    }
-
-    #[test]
-    fn claude_result_stdout_masks_runtime_session_id() {
-        let session_id = "result-session-secret-123";
-        let masker = SecretMasker::from_raw("");
-        masker.add_sensitive_value(session_id);
-
-        assert_eq!(
-            claude_result_for_stdout(&format!("failed for {session_id}"), &masker),
-            "failed for ***"
-        );
     }
 
     #[test]
