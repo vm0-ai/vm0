@@ -178,6 +178,7 @@ import {
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
+import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
 
 import type {
   EnrichedChatMessage,
@@ -268,6 +269,7 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "shift+/", label: "Show shortcuts" },
       { key: "mod+b", label: "Toggle sidebar" },
       { key: "mod+shift+o", label: "New chat" },
+      { key: "f2", label: "Rename chat" },
     ],
   },
   {
@@ -1992,17 +1994,41 @@ function ChatThread({
   thread: ChatThreadSignals;
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
 }) {
+  const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (matchShortcut("f2", event)) {
+      event.preventDefault();
+      openRenameDialog();
+      return;
+    }
+    onKeyDown(event);
+  };
+
   return (
     <section
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
-      onKeyDown={onKeyDown}
+      onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
       <ChatThreadContent thread={thread} />
     </section>
   );
+}
+
+function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
+  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
+  const threadData = useLastResolved(thread.threadData$);
+  return () => {
+    openRenameChatThreadDialog({
+      threadId: thread.threadId,
+      title: threadData?.title,
+    });
+  };
 }
 
 // Drag the divider to resize the artifact preview against the chat thread.

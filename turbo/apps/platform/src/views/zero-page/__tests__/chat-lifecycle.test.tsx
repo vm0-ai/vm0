@@ -721,6 +721,14 @@ function chatScrollContainer(): HTMLElement {
   return element;
 }
 
+function chatComposerTextarea(): HTMLTextAreaElement {
+  const element = document.querySelector("[data-chat-composer] textarea");
+  if (!(element instanceof HTMLTextAreaElement)) {
+    throw new Error("Chat composer textarea not found");
+  }
+  return element;
+}
+
 function setScrollMetrics(
   element: HTMLElement,
   metrics: { scrollHeight: number; clientHeight: number },
@@ -2106,7 +2114,52 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
       expect(screen.getByText("Previous thread")).toBeInTheDocument();
       expect(screen.getByText("Next thread")).toBeInTheDocument();
+      expect(screen.getByText("Rename chat")).toBeInTheDocument();
+      expect(screen.getByText("F2")).toBeInTheDocument();
     });
+  });
+
+  it("opens the current chat rename dialog with F2", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "F2" });
+
+    let dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
+
+    click(buttonByText("Cancel"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Rename chat" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "F2" });
+
+    dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
   });
 
   it("opens run logs from assistant message actions", async () => {

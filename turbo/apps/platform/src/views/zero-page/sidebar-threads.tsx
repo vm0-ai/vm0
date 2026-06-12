@@ -81,6 +81,7 @@ import {
   schedulesForThread,
 } from "../../signals/chat-page/header-schedule-menu.ts";
 import {
+  openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
@@ -235,11 +236,13 @@ function handleChatThreadClick(
 
 function ChatThreadMenu({
   threadId,
+  title,
   isPinned,
   isHighlighted,
   hasOtherIndicator,
 }: {
   threadId: string;
+  title: string | null;
   isPinned: boolean;
   isHighlighted: boolean;
   hasOtherIndicator: boolean;
@@ -247,8 +250,7 @@ function ChatThreadMenu({
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
-  const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
-  const setRenameDialogInput = useSet(setRenameDialogInput$);
+  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
   const pageSignal = useGet(pageSignal$);
 
   function handleTogglePin() {
@@ -265,8 +267,7 @@ function ChatThreadMenu({
   }
 
   function openRenameDialog() {
-    setRenameDialogInput("");
-    setRenameDialogThreadId(threadId);
+    openRenameChatThreadDialog({ threadId, title });
   }
 
   return (
@@ -334,11 +335,13 @@ function ChatThreadMenu({
 
 function ChatThreadSideDecorator({
   threadId,
+  title,
   isPinned,
   isHighlighted,
   indicatorState,
 }: {
   threadId: string;
+  title: string | null;
   isPinned: boolean;
   isHighlighted: boolean;
   indicatorState: IndicatorState | null;
@@ -357,6 +360,7 @@ function ChatThreadSideDecorator({
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu
         threadId={threadId}
+        title={title}
         isPinned={isPinned}
         isHighlighted={isHighlighted}
         hasOtherIndicator={hasOtherIndicator}
@@ -496,6 +500,7 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
       <ChatThreadItemLink session={session} state={state} />
       <ChatThreadSideDecorator
         threadId={session.id}
+        title={session.title}
         isPinned={state.isPinned}
         isHighlighted={state.isHighlighted}
         indicatorState={state.indicatorState}
