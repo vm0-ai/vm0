@@ -719,6 +719,7 @@ jobs:
             "$pg_bin/initdb" -D /tmp/pgdata -A trust
             "$pg_bin/pg_ctl" -D /tmp/pgdata -l /tmp/pgdata/log -o "-c listen_addresses=localhost" start
             pg_isready -h localhost
+            [ "$(psql -h localhost -d postgres -Atc "select 1")" = "1" ]
             "$pg_bin/pg_ctl" -D /tmp/pgdata stop
           ' \
             || { sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL start"; }
