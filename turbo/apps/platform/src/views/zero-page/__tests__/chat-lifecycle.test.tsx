@@ -1396,6 +1396,7 @@ describe("chat lifecycle", () => {
 
     const expandButton = await screen.findByLabelText("Expand work history");
     expect(expandButton).toHaveTextContent("Worked for 55s");
+    expect(expandButton.closest('[data-role="assistant"]')).not.toBeNull();
     expect(screen.queryByText("Summarize the launch status")).toBeNull();
     expect(
       screen.getByText("Launch status is summarized."),
@@ -1421,6 +1422,110 @@ describe("chat lifecycle", () => {
         "aria-expanded",
         "false",
       );
+    });
+  });
+
+  it("folds each completed run independently", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-each-run",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the first launch",
+          runId: "run-work-folding-first",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "The first launch summary is ready.",
+          runId: "run-work-folding-first",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Summarize the second launch",
+          runId: "run-work-folding-second",
+          createdAt: "2026-06-09T10:05:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the second launch notes.",
+          runId: "run-work-folding-second",
+          createdAt: "2026-06-09T10:05:25Z",
+        },
+        {
+          role: "assistant",
+          content: "The second launch summary is ready.",
+          runId: "run-work-folding-second",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:05:55Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-each-run",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+
+    const expandButtons = await screen.findAllByLabelText(
+      "Expand work history",
+    );
+    expect(expandButtons).toHaveLength(2);
+    expect(expandButtons[0]).toHaveTextContent("Worked for 20s");
+    expect(expandButtons[1]).toHaveTextContent("Worked for 55s");
+    expect(screen.queryByText("Summarize the first launch")).toBeNull();
+    expect(
+      screen.getByText("The first launch summary is ready."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Summarize the second launch")).toBeNull();
+    expect(screen.queryByText("Checking the second launch notes.")).toBeNull();
+    expect(
+      screen.getByText("The second launch summary is ready."),
+    ).toBeInTheDocument();
+
+    click(expandButtons[1]!);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Summarize the first launch")).toBeNull();
+      expect(
+        screen.getByText("Summarize the second launch"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Checking the second launch notes."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+  });
+
+  it("does not fold a completed run with a single message", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-single-message",
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Standalone run result.",
+          runId: "run-work-folding-single",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-single-message",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Standalone run result.")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand work history")).toBeNull();
     });
   });
 

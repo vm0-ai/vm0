@@ -111,7 +111,7 @@ import {
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
 import {
-  completedWorkExpandedThreadIds$,
+  completedWorkExpandedKeys$,
   toggleCompletedWorkExpanded$,
 } from "../../signals/chat-page/completed-work-folding.ts";
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
@@ -2301,17 +2301,12 @@ function ChatThreadMessagesMain({
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const allFinished =
     allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
-  const completedWorkExpandedThreadIds = useGet(
-    completedWorkExpandedThreadIds$,
-  );
-  const workExpanded = completedWorkExpandedThreadIds.has(thread.threadId);
+  const completedWorkFolding = completedWorkFoldingEnabled
+    ? buildCompletedWorkFolding(activeGroups, allFinished)
+    : null;
+  const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
-  const shouldFoldCompletedWork =
-    completedWorkFoldingEnabled && allFinished && activeGroups.length > 1;
-  const hiddenGroups = shouldFoldCompletedWork ? activeGroups.slice(0, -1) : [];
-  const visibleGroups = shouldFoldCompletedWork
-    ? activeGroups.slice(-1)
-    : activeGroups;
+  const visibleGroups = completedWorkFolding?.visibleGroups ?? activeGroups;
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -2354,38 +2349,213 @@ function ChatThreadMessagesMain({
             </p>
           </div>
         )}
-        {shouldFoldCompletedWork && (
-          <CompletedWorkFoldRow
-            groups={activeGroups}
-            expanded={workExpanded}
-            onToggle={() => {
-              toggleCompletedWorkExpanded(thread.threadId);
-            }}
-          />
-        )}
-        {workExpanded &&
-          hiddenGroups.map((group) => {
-            return (
-              <PagedGroupRow
-                key={group.beginMessageId}
-                group={group}
-                thread={thread}
-              />
-            );
-          })}
-        {visibleGroups.map((group) => {
-          return (
-            <PagedGroupRow
-              key={group.beginMessageId}
-              group={group}
-              thread={thread}
-            />
-          );
-        })}
+        <ChatThreadMessageGroups
+          thread={thread}
+          groups={visibleGroups}
+          completedWorkFolding={completedWorkFolding}
+          completedWorkExpandedKeys={completedWorkExpandedKeys}
+          onToggleCompletedWork={toggleCompletedWorkExpanded}
+        />
         <ThinkingIndicator thread={thread} groups={activeGroups} />
       </div>
     </main>
   );
+}
+
+function ChatThreadMessageGroups({
+  thread,
+  groups,
+  completedWorkFolding,
+  completedWorkExpandedKeys,
+  onToggleCompletedWork,
+}: {
+  thread: ChatThreadSignals;
+  groups: readonly GroupedChatMessageGroup[];
+  completedWorkFolding: CompletedWorkFolding | null;
+  completedWorkExpandedKeys: ReadonlySet<string>;
+  onToggleCompletedWork: (key: string) => void;
+}) {
+  return (
+    <>
+      {groups.map((group) => {
+        const completedWorkFold =
+          completedWorkFolding !== null
+            ? (group.messages
+                .map((message) => {
+                  return completedWorkFolding.foldsByFinalMessageId.get(
+                    message.id,
+                  );
+                })
+                .find((fold) => {
+                  return fold !== undefined;
+                }) ?? null)
+            : null;
+        const completedWorkExpanded =
+          completedWorkFold !== null &&
+          completedWorkExpandedKeys.has(completedWorkFold.key);
+        return (
+          <div key={group.beginMessageId} className="contents">
+            {completedWorkFold !== null &&
+              completedWorkExpanded &&
+              completedWorkFold.hiddenGroups.map((hiddenGroup) => {
+                return (
+                  <PagedGroupRow
+                    key={hiddenGroup.beginMessageId}
+                    group={hiddenGroup}
+                    thread={thread}
+                  />
+                );
+              })}
+            <PagedGroupRow
+              group={group}
+              thread={thread}
+              completedWorkFold={
+                completedWorkFold !== null
+                  ? {
+                      groups: completedWorkFold.labelGroups,
+                      expanded: completedWorkExpanded,
+                      onToggle: () => {
+                        onToggleCompletedWork(completedWorkFold.key);
+                      },
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function groupMessagesByRole(
+  messages: readonly EnrichedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const groups: GroupedChatMessageGroup[] = [];
+  for (const message of messages) {
+    const last = groups[groups.length - 1];
+    if (last && last.role === message.role) {
+      last.messages.push(message);
+      continue;
+    }
+    groups.push({
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    });
+  }
+  return groups;
+}
+
+interface CompletedWorkFold {
+  key: string;
+  finalMessageId: string;
+  hiddenGroups: GroupedChatMessageGroup[];
+  labelGroups: GroupedChatMessageGroup[];
+}
+
+interface CompletedWorkFolding {
+  visibleGroups: GroupedChatMessageGroup[];
+  foldsByFinalMessageId: Map<string, CompletedWorkFold>;
+}
+
+function groupMessagesForCompletedWorkDisplay(
+  messages: readonly EnrichedChatMessage[],
+  foldFinalMessageIds: ReadonlySet<string>,
+): GroupedChatMessageGroup[] {
+  const groups: GroupedChatMessageGroup[] = [];
+  for (const message of messages) {
+    const forceStandalone = foldFinalMessageIds.has(message.id);
+    const last = groups[groups.length - 1];
+    const lastHasFoldFinal =
+      last?.messages.some((candidate) => {
+        return foldFinalMessageIds.has(candidate.id);
+      }) ?? false;
+
+    if (
+      !forceStandalone &&
+      last &&
+      last.role === message.role &&
+      !lastHasFoldFinal
+    ) {
+      last.messages.push(message);
+      continue;
+    }
+
+    groups.push({
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    });
+  }
+  return groups;
+}
+
+function buildCompletedWorkFolding(
+  groups: readonly GroupedChatMessageGroup[],
+  allFinished: boolean,
+): CompletedWorkFolding | null {
+  if (!allFinished) {
+    return null;
+  }
+
+  const messages = groups.flatMap((group) => {
+    return group.messages;
+  });
+  const visibleMessages: EnrichedChatMessage[] = [];
+  const folds: CompletedWorkFold[] = [];
+
+  for (let index = 0; index < messages.length; ) {
+    const runId = messages[index]!.runId;
+    if (runId === undefined) {
+      visibleMessages.push(messages[index]!);
+      index++;
+      continue;
+    }
+
+    let endIndex = index + 1;
+    while (endIndex < messages.length && messages[endIndex]!.runId === runId) {
+      endIndex++;
+    }
+
+    const runMessages = messages.slice(index, endIndex);
+    const finalMessage = runMessages[runMessages.length - 1]!;
+    if (runMessages.length > 1 && finalMessage.role === "assistant") {
+      const hiddenMessages = runMessages.slice(0, -1);
+      visibleMessages.push(finalMessage);
+      folds.push({
+        key: `${runId}:${finalMessage.id}`,
+        finalMessageId: finalMessage.id,
+        hiddenGroups: groupMessagesByRole(hiddenMessages),
+        labelGroups: groupMessagesByRole(runMessages),
+      });
+    } else {
+      visibleMessages.push(...runMessages);
+    }
+
+    index = endIndex;
+  }
+
+  if (folds.length === 0) {
+    return null;
+  }
+
+  const foldFinalMessageIds = new Set(
+    folds.map((fold) => {
+      return fold.finalMessageId;
+    }),
+  );
+  return {
+    visibleGroups: groupMessagesForCompletedWorkDisplay(
+      visibleMessages,
+      foldFinalMessageIds,
+    ),
+    foldsByFinalMessageId: new Map(
+      folds.map((fold) => {
+        return [fold.finalMessageId, fold];
+      }),
+    ),
+  };
 }
 
 function parseMessageTime(value: string): number | null {
@@ -2435,11 +2605,7 @@ function CompletedWorkFoldRow({
 }) {
   const label = completedWorkLabel(groups);
   return (
-    <div
-      data-chat-completed-work-fold
-      className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
-    >
-      <div className="hidden @[900px]:block" />
+    <div data-chat-completed-work-fold>
       <button
         type="button"
         aria-expanded={expanded}
@@ -4575,14 +4741,26 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
 function PagedGroupRow({
   group,
   thread,
+  completedWorkFold,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  completedWorkFold?: {
+    groups: readonly GroupedChatMessageGroup[];
+    expanded: boolean;
+    onToggle: () => void;
+  };
 }) {
   if (group.role === "user") {
     return <PagedUserGroup group={group} thread={thread} />;
   }
-  return <PagedAssistantGroup group={group} thread={thread} />;
+  return (
+    <PagedAssistantGroup
+      group={group}
+      thread={thread}
+      completedWorkFold={completedWorkFold}
+    />
+  );
 }
 
 function PagedUserGroup({
@@ -5154,9 +5332,15 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
+  completedWorkFold,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  completedWorkFold?: {
+    groups: readonly GroupedChatMessageGroup[];
+    expanded: boolean;
+    onToggle: () => void;
+  };
 }) {
   const groupElementId = `chat-message-group-${group.beginMessageId}`;
   const fullContent = group.messages
@@ -5175,6 +5359,13 @@ function PagedAssistantGroup({
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-3">
+          {completedWorkFold && (
+            <CompletedWorkFoldRow
+              groups={completedWorkFold.groups}
+              expanded={completedWorkFold.expanded}
+              onToggle={completedWorkFold.onToggle}
+            />
+          )}
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}
