@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.114.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.4...runner-rs-v0.114.5) (2026-06-12)
+
+
+### Bug Fixes
+
+* retain saturated usage webhook batches ([#17411](https://github.com/vm0-ai/vm0/issues/17411)) ([5592584](https://github.com/vm0-ai/vm0/commit/5592584fd684d3797f7666a2ca7dd7abd4eaa03f))
+
 ## [0.114.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.3...runner-rs-v0.114.4) (2026-06-12)
 
 

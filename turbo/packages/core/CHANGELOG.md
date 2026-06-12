@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.333.0](https://github.com/vm0-ai/vm0/compare/core-v8.332.0...core-v8.333.0) (2026-06-12)
+
+
+### Features
+
+* add chat slash skill commands ([#17406](https://github.com/vm0-ai/vm0/issues/17406)) ([7a5a85b](https://github.com/vm0-ai/vm0/commit/7a5a85b5fa5a8fc507ff8585cae82de2002f6ba1))
+* retire the schedule trigger source value ([#17401](https://github.com/vm0-ai/vm0/issues/17401)) ([87cd4b5](https://github.com/vm0-ai/vm0/commit/87cd4b50e1ba9c37bd2d59e74e936d3accb8988e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.0
+    * @vm0/connectors bumped to 1.71.0
+
 ## [8.332.0](https://github.com/vm0-ai/vm0/compare/core-v8.331.0...core-v8.332.0) (2026-06-12)
 
 
