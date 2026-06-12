@@ -805,6 +805,26 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("does not show skills in the sidebar manage navigation", async () => {
+    prepareDefaultAgent();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
+    });
+
+    const nav = await waitFor(() => {
+      return sidebar();
+    });
+
+    expect(within(nav).getByText("Agents")).toBeInTheDocument();
+    expect(within(nav).queryByText("Skills")).not.toBeInTheDocument();
+  });
+
   it("opens credit balance and export data from the account menu", async () => {
     mockAdminAccountSidebar();
     const openMock = context.mocks.browser.open(null);

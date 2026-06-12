@@ -553,6 +553,39 @@ describe("chat composer models", () => {
     await expect(screen.findByText("/deep-dive")).resolves.toBeInTheDocument();
   });
 
+  it("links to the skills page from the slash skill menu footer", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.5");
+    mockAgent({ customSkills: [] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          name: "deep-dive",
+          displayName: "Deep Dive",
+          description: "Seeded org skill",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
+        [FeatureSwitchKey.SkillsViewer]: true,
+      },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(textarea);
+    await user.keyboard("/");
+
+    await expect(screen.findByText("/deep-dive")).resolves.toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "View all skills" });
+    expect(link).toHaveAttribute("href", "/skills");
+    expect(link.parentElement).toHaveClass("shrink-0", "border-t");
+  });
+
   it("hides slash skill suggestions when the feature switch is off", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.5");
