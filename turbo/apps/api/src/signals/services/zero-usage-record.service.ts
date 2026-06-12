@@ -103,7 +103,9 @@ function usageKindExpr(kind: string): string {
 
 // Per-source usage for one user in one org. `record` is the shared CTE so the
 // row query and the count query stay in sync. Threaded sources collapse to one
-// row per source/thread; everything else is one row per run.
+// row per source/thread. Deleted threaded rows, whose thread FK has been set to
+// NULL, collapse to one synthetic row per source/user. Everything else is one
+// row per run.
 function recordWith(
   userIdLit: string,
   orgIdLit: string,
@@ -161,6 +163,22 @@ function recordWith(
         AND r.source IN (${threadedSourceList})
       GROUP BY r.source, r.user_id, r.chat_thread_id, ct.title
     ),
+    deleted_threaded AS (
+      SELECT
+        CONCAT(r.source, ':deleted-thread:user:', r.user_id) AS row_key,
+        r.source,
+        r.user_id,
+        NULL::text AS thread_id,
+        NULL::text AS run_id,
+        'Deleted chats'::text AS title,
+        COALESCE(SUM(r.credits), 0)::bigint AS credits,
+        COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
+        MAX(r.created_at) AS last_activity
+      FROM runs r
+      WHERE r.chat_thread_id IS NULL
+        AND r.source IN (${threadedSourceList})
+      GROUP BY r.source, r.user_id
+    ),
     unthreaded AS (
       SELECT
         CONCAT(r.source, ':run:', r.run_id::text, ':user:', r.user_id) AS row_key,
@@ -173,12 +191,13 @@ function recordWith(
         COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
         MAX(r.created_at) AS last_activity
       FROM runs r
-      WHERE r.chat_thread_id IS NULL
-        OR r.source NOT IN (${threadedSourceList})
+      WHERE r.source NOT IN (${threadedSourceList})
       GROUP BY r.run_id, r.source, r.user_id
     ),
     record AS (
       SELECT * FROM threaded
+      UNION ALL
+      SELECT * FROM deleted_threaded
       UNION ALL
       SELECT * FROM unthreaded
     )`;
@@ -253,6 +272,8 @@ function rowKeyExpr(
     CASE
       WHEN ${chatThreadId} IS NOT NULL AND ${source} IN (${threadedSourceList})
         THEN CONCAT(${source}, ':thread:', ${chatThreadId}::text, ':user:', ${userId})
+      WHEN ${chatThreadId} IS NULL AND ${source} IN (${threadedSourceList})
+        THEN CONCAT(${source}, ':deleted-thread:user:', ${userId})
       ELSE CONCAT(${source}, ':run:', ${runId}::text, ':user:', ${userId})
     END`;
 }

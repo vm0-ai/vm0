@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockNow, nowDate } from "../../../lib/time";
+import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -241,6 +244,147 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[2]?.source).toBe("chat");
     expect(response.body.rows[2]?.threadId).toBe(older.threadId);
     expect(response.body.rows[2]?.credits).toBe(80);
+  });
+
+  it("aggregates deleted chat threads into a synthetic usage row", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+
+    const deletedOlder = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Deleted older chat",
+        createdAt: createdAt(50),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: deletedOlder.runId,
+        inputTokens: 10,
+        outputTokens: 5,
+        creditsCharged: 20,
+      },
+      context.signal,
+    );
+
+    const current = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Current chat",
+        createdAt: createdAt(20),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: current.runId,
+        inputTokens: 20,
+        outputTokens: 20,
+        creditsCharged: 40,
+      },
+      context.signal,
+    );
+
+    const deletedNewer = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Deleted newer chat",
+        createdAt: createdAt(10),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: deletedNewer.runId,
+        inputTokens: 100,
+        outputTokens: 50,
+        creditsCharged: 80,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: deletedNewer.runId,
+        kind: "image",
+        provider: "gpt-image-2",
+        category: "tokens.output.image",
+        quantity: 1,
+        creditsCharged: 30,
+      },
+      context.signal,
+    );
+
+    const db = store.set(writeDb$);
+    await db
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, deletedOlder.threadId));
+    await db
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, deletedNewer.threadId));
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows).toHaveLength(2);
+    expect(response.body.pagination.total).toBe(2);
+    expect(response.body.totalCredits).toBe(170);
+
+    expect(response.body.rows[0]).toMatchObject({
+      source: "chat",
+      threadId: null,
+      runId: null,
+      title: "Deleted chats",
+      credits: 130,
+      tokens: 165,
+    });
+    expect(response.body.rows[0]?.breakdown).toStrictEqual([
+      {
+        kind: "model",
+        credits: 100,
+        providers: [{ provider: "claude-sonnet-4-6", credits: 100 }],
+      },
+      {
+        kind: "image",
+        credits: 30,
+        providers: [{ provider: "gpt-image-2", credits: 30 }],
+      },
+    ]);
+
+    expect(response.body.rows[1]).toMatchObject({
+      source: "chat",
+      threadId: current.threadId,
+      runId: null,
+      title: "Current chat",
+      credits: 40,
+      tokens: 40,
+    });
   });
 
   it("labels automation threads and filters by source", async () => {
