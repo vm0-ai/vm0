@@ -281,14 +281,15 @@ Don't render components directly—use `setupPage()` which mirrors `main.ts` sta
 
 ### App-Specific Guides
 
-| App                                         | Guide                                                    |
-| ------------------------------------------- | -------------------------------------------------------- |
-| CLI commands                                | [cli-testing.md](./testing/cli-testing.md)               |
-| CLI E2E (BATS)                              | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
-| API routes                                  | [api-testing.md](./testing/api-testing.md)               |
-| Web rewrite/middleware compatibility        | [api-testing.md](./testing/api-testing.md)               |
-| App UI                                      | [app-testing.md](./testing/app-testing.md)               |
-| Rust crates                                 | [rust-testing.md](./testing/rust-testing.md)             |
-| Python addon                                | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
+| App                                  | Guide                                                    |
+| ------------------------------------ | -------------------------------------------------------- |
+| CLI commands                         | [cli-testing.md](./testing/cli-testing.md)               |
+| CLI E2E (BATS)                       | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
+| API routes                           | [api-testing.md](./testing/api-testing.md)               |
+| Web rewrite/middleware compatibility | [api-testing.md](./testing/api-testing.md)               |
+| App UI                               | [app-testing.md](./testing/app-testing.md)               |
+| Desktop app                          | [desktop-testing.md](./testing/desktop-testing.md)       |
+| Rust crates                          | [rust-testing.md](./testing/rust-testing.md)             |
+| Python addon                         | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
 
 For general code quality rules (no `any`, no lint suppressions, etc.), see [bad-smell.md](./bad-smell.md).

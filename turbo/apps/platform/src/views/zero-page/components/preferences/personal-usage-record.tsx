@@ -100,8 +100,10 @@ const RANGE_OPTIONS = [
   label: string;
 }[];
 
+// Row divider is an inset hairline (pseudo-element with horizontal margin) so
+// it doesn't run edge-to-edge into the card border.
 const ROW_CLASS =
-  "block px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50";
+  "relative block px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
 
 type UsageRecordLoadable =
   | { readonly state: "loading" }
@@ -186,7 +188,7 @@ export function UsageRangeSelect({
   );
 }
 
-function UsageBreakdownBar({ row }: { row: UsageRecordRow }) {
+function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
   const segments = row.breakdown.filter((segment) => {
     return segment.credits > 0;
   });
@@ -194,56 +196,64 @@ function UsageBreakdownBar({ row }: { row: UsageRecordRow }) {
     return null;
   }
 
+  // Outer track is the full row width; the filled portion is scaled to this
+  // chat's size relative to the largest chat, so the bar reads as magnitude.
+  // The kind colors live inside the fill, so one bar carries both size and mix.
   return (
-    <div className="mt-2.5 flex h-2 w-full overflow-hidden rounded-full bg-muted/40">
-      {segments.map((segment) => {
-        const meta = KIND_META[segment.kind];
-        const width = `${(segment.credits / row.credits) * 100}%`;
-        return (
-          <Tooltip key={segment.kind}>
-            <TooltipTrigger asChild>
-              <div
-                className={`${meta.color} h-2 cursor-default first:rounded-l-full last:rounded-r-full transition-shadow hover:z-10 hover:ring-2 hover:ring-foreground/30`}
-                style={{ width }}
-                data-testid={`usage-kind-segment-${segment.kind}`}
-              />
-            </TooltipTrigger>
-            <TooltipContent
-              side="top"
-              sideOffset={8}
-              style={{
-                backgroundColor: "hsl(var(--popover))",
-                color: "hsl(var(--popover-foreground))",
-              }}
-              className="max-w-64 border shadow-md"
-            >
-              <div className="font-medium text-foreground">
-                {meta.label} - {segment.credits.toLocaleString()}
-              </div>
-              <div className="mt-1 flex flex-col gap-0.5">
-                {segment.providers.map((provider) => {
-                  return (
-                    <div
-                      key={provider.provider}
-                      className="flex min-w-0 justify-between gap-3 text-xs text-muted-foreground"
-                    >
-                      <span className="truncate">{provider.provider}</span>
-                      <span className="shrink-0 tabular-nums">
-                        {provider.credits.toLocaleString()}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
+    <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-[hsl(var(--gray-50))]">
+      <div
+        className="flex h-full overflow-hidden rounded-full"
+        style={{ width: `${(row.credits / max) * 100}%` }}
+      >
+        {segments.map((segment) => {
+          const meta = KIND_META[segment.kind];
+          const width = `${(segment.credits / row.credits) * 100}%`;
+          return (
+            <Tooltip key={segment.kind}>
+              <TooltipTrigger asChild>
+                <div
+                  className={`${meta.color} h-full cursor-default first:rounded-l-full last:rounded-r-full transition-shadow hover:z-10 hover:ring-2 hover:ring-foreground/30`}
+                  style={{ width }}
+                  data-testid={`usage-kind-segment-${segment.kind}`}
+                />
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                sideOffset={8}
+                style={{
+                  backgroundColor: "hsl(var(--popover))",
+                  color: "hsl(var(--popover-foreground))",
+                }}
+                className="max-w-64 border shadow-md"
+              >
+                <div className="font-medium text-foreground">
+                  {meta.label} - {segment.credits.toLocaleString()}
+                </div>
+                <div className="mt-1 flex flex-col gap-0.5">
+                  {segment.providers.map((provider) => {
+                    return (
+                      <div
+                        key={provider.provider}
+                        className="flex min-w-0 justify-between gap-3 text-xs text-muted-foreground"
+                      >
+                        <span className="truncate">{provider.provider}</span>
+                        <span className="shrink-0 tabular-nums">
+                          {provider.credits.toLocaleString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function UsageRow({ row }: { row: UsageRecordRow }) {
+function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
   const closeSettings = useSet(setSettingsDialogOpen$);
   const pageSignal = useGet(pageSignal$);
   const { label, Icon } = SOURCE_META[row.source];
@@ -255,7 +265,7 @@ function UsageRow({ row }: { row: UsageRecordRow }) {
     }
     detach(closeSettings(false, pageSignal), Reason.DomCallback);
   };
-  const credits = `${formatCredits(row.credits)} credits`;
+  const credits = formatCredits(row.credits);
   const inner = (
     <div className="flex min-w-0 items-start gap-3">
       <span
@@ -282,7 +292,7 @@ function UsageRow({ row }: { row: UsageRecordRow }) {
             {row.member.email}
           </span>
         ) : null}
-        <UsageBreakdownBar row={row} />
+        <UsageBreakdownBar row={row} max={max} />
       </span>
     </div>
   );
@@ -346,6 +356,95 @@ function emptyMessage(range: UsageRecordRange): string {
   return "No usage for this range yet.";
 }
 
+// Summary + type legend above the list. The credit total is range-wide (from
+// the server), so it stays correct as more pages load in.
+function UsageRecordSummary({
+  count,
+  totalCredits,
+}: {
+  count: number;
+  totalCredits: number;
+}) {
+  const kinds = Object.keys(KIND_META) as UsageRecordKind[];
+  return (
+    <div className="px-5 py-3.5">
+      <p className="text-sm text-muted-foreground">
+        <span className="font-medium text-foreground tabular-nums">
+          {count} {count === 1 ? "chat" : "chats"}
+        </span>{" "}
+        · {formatCredits(totalCredits)} credits
+      </p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
+        {kinds.map((kind) => {
+          return (
+            <span
+              key={kind}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <span
+                className={`${KIND_META[kind].color} h-2 w-2 shrink-0 rounded-full`}
+              />
+              {KIND_META[kind].label}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function UsageRecordList({
+  data,
+  scope,
+}: {
+  data: UsageRecordResponse;
+  scope: UsageRecordScope;
+}) {
+  const loadMore = useSet(loadMoreUsageRecord$);
+  const maxCredits = Math.max(
+    1,
+    ...data.rows.map((row) => {
+      return row.credits;
+    }),
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      <TooltipProvider delayDuration={100}>
+        <div
+          className="overflow-hidden rounded-xl bg-card"
+          style={{ border: CARD_BORDER }}
+        >
+          <UsageRecordSummary
+            count={data.pagination.total}
+            totalCredits={data.totalCredits}
+          />
+          {data.rows.map((row) => {
+            return (
+              <UsageRow key={usageRowKey(row)} row={row} max={maxCredits} />
+            );
+          })}
+        </div>
+      </TooltipProvider>
+      {data.rows.length < data.pagination.total && (
+        <div className="flex justify-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
+            onClick={() => {
+              loadMore(scope);
+            }}
+          >
+            Load more
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UsageRecordContent({
   loadable,
   range,
@@ -355,8 +454,6 @@ function UsageRecordContent({
   range: UsageRecordRange;
   scope: UsageRecordScope;
 }) {
-  const loadMore = useSet(loadMoreUsageRecord$);
-
   return (
     <section className="flex flex-col gap-4">
       {loadable.state === "loading" && <UsageRecordSkeleton />}
@@ -369,33 +466,7 @@ function UsageRecordContent({
         (loadable.data.rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>
         ) : (
-          <div className="flex flex-col gap-3">
-            <TooltipProvider delayDuration={100}>
-              <div
-                className="overflow-hidden rounded-xl bg-card"
-                style={{ border: CARD_BORDER }}
-              >
-                {loadable.data.rows.map((row) => {
-                  return <UsageRow key={usageRowKey(row)} row={row} />;
-                })}
-              </div>
-            </TooltipProvider>
-            {loadable.data.rows.length < loadable.data.pagination.total && (
-              <div className="flex justify-center">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 rounded-lg text-muted-foreground hover:bg-[hsl(var(--gray-50))] hover:text-foreground"
-                  onClick={() => {
-                    loadMore(scope);
-                  }}
-                >
-                  Load more
-                </Button>
-              </div>
-            )}
-          </div>
+          <UsageRecordList data={loadable.data} scope={scope} />
         ))}
     </section>
   );

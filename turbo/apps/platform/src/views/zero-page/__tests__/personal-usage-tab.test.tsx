@@ -114,6 +114,9 @@ function mockPersonalUsageStory(): string[] {
         end: "2026-04-01T00:00:00.000Z",
       },
       rows: rows.slice(offset, offset + query.pageSize),
+      totalCredits: rows.reduce((sum, row) => {
+        return sum + row.credits;
+      }, 0),
       pagination: {
         page: query.page,
         pageSize: query.pageSize,
@@ -141,7 +144,7 @@ describe("personal usage settings", () => {
       expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
       expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
     });
-    expect(screen.getByText("980 credits")).toBeInTheDocument();
+    expect(screen.getByText("980")).toBeInTheDocument();
     expect(screen.queryByText("Extended CLI audit")).not.toBeInTheDocument();
     expect(screen.queryByText("All sources")).not.toBeInTheDocument();
     expect(requestedRanges).toContain("today");
