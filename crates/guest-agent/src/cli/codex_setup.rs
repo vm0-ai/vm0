@@ -7,7 +7,6 @@
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use base64::Engine as _;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use tokio::io::AsyncWriteExt as _;
@@ -54,7 +53,6 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
     }
 
     let login_start = Instant::now();
-    let api_key_masker = setup_api_key_masker(api_key);
     let mut cmd = tokio::process::Command::new("codex");
     child_env::apply_to_tokio_command(&mut cmd);
     let result = cmd
@@ -103,12 +101,7 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
     } else {
         match &result {
             Ok((status, stderr_lines)) => {
-                let stderr_lines = mask_setup_diagnostic_lines(
-                    masker,
-                    api_key,
-                    &api_key_masker,
-                    stderr_lines.clone(),
-                );
+                let stderr_lines = masker.mask_diagnostic_lines(stderr_lines.clone());
                 if stderr_lines.is_empty() {
                     log_warn!(LOG_TAG, "codex login failed (non-fatal): {status}");
                 } else {
@@ -117,8 +110,11 @@ pub async fn setup_codex(masker: &SecretMasker) -> Result<(), AgentError> {
                 }
             }
             Err((stage, e)) => {
-                let error =
-                    mask_setup_diagnostic_text(masker, api_key, &api_key_masker, e.to_string());
+                let error = masker
+                    .mask_diagnostic_lines(vec![e.to_string()])
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
                 log_warn!(LOG_TAG, "codex login {stage} failed (non-fatal): {error}");
             }
         }
@@ -194,51 +190,6 @@ async fn drain_setup_stderr_after_wait(
     }
 }
 
-fn setup_api_key_masker(api_key: &str) -> SecretMasker {
-    let encoded = base64::engine::general_purpose::STANDARD.encode(api_key);
-    SecretMasker::from_raw(&encoded)
-}
-
-fn mask_setup_diagnostic_text(
-    masker: &SecretMasker,
-    api_key: &str,
-    api_key_masker: &SecretMasker,
-    text: String,
-) -> String {
-    mask_setup_diagnostic_lines(masker, api_key, api_key_masker, vec![text])
-        .into_iter()
-        .next()
-        .unwrap_or_default()
-}
-
-fn mask_setup_diagnostic_lines(
-    masker: &SecretMasker,
-    api_key: &str,
-    api_key_masker: &SecretMasker,
-    lines: Vec<String>,
-) -> Vec<String> {
-    let lines = mask_setup_api_key_plaintext_lines(api_key, lines);
-    let lines = api_key_masker.mask_diagnostic_lines(lines);
-    masker.mask_diagnostic_lines(lines)
-}
-
-fn mask_setup_api_key_plaintext_lines(api_key: &str, lines: Vec<String>) -> Vec<String> {
-    if api_key.is_empty() {
-        return lines;
-    }
-
-    lines
-        .into_iter()
-        .map(|line| {
-            if line.contains(api_key) {
-                line.replace(api_key, "***")
-            } else {
-                line
-            }
-        })
-        .collect()
-}
-
 /// Wrapper that calls `codex_auth::setup_codex_chatgpt_inner` with values
 /// read from env + the real clock, and records a telemetry op so failures
 /// surface in dashboards.
@@ -260,30 +211,4 @@ fn setup_codex_chatgpt() -> Result<(), AgentError> {
         log_info!(LOG_TAG, "Codex ChatGPT-OAuth auth.json written");
     }
     result
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn setup_plaintext_masking_masks_short_api_key() {
-        let lines = mask_setup_api_key_plaintext_lines(
-            "abcd",
-            vec![
-                "before".to_string(),
-                "stderr contains abcd".to_string(),
-                "after".to_string(),
-            ],
-        );
-
-        assert_eq!(
-            lines,
-            vec![
-                "before".to_string(),
-                "stderr contains ***".to_string(),
-                "after".to_string(),
-            ]
-        );
-    }
 }

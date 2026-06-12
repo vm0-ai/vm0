@@ -3,14 +3,12 @@
 //! This test lives in its own binary because `guest_agent::env` caches values
 //! in process-wide `LazyLock`s.
 
+use api_contracts::generated::constants::model_provider_env::placeholders::OPENAI_API_KEY as OPENAI_API_KEY_PLACEHOLDER;
 use base64::Engine as _;
 use guest_agent::masker::SecretMasker;
 use std::path::Path;
 use std::time::Duration;
 
-const API_KEY: &str = "sk-test-codex-setup-api-key";
-const API_KEY_OVERLAPPING_SECRET: &str = "sk-test-codex";
-const API_KEY_SUFFIX: &str = "setup-api-key";
 const OTHER_SECRET: &str = "codex-setup-env-secret";
 const STDERR_OMITTED_LONG_LINE: &str = "[stderr line omitted: exceeded diagnostic size limit]";
 
@@ -44,7 +42,7 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
     std::fs::write(
         &user_env_path,
         serde_json::to_vec(&serde_json::json!({
-            "OPENAI_API_KEY": API_KEY,
+            "OPENAI_API_KEY": OPENAI_API_KEY_PLACEHOLDER,
             "SETUP_OTHER_SECRET": OTHER_SECRET,
         }))?,
     )?;
@@ -52,10 +50,7 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
 
     let original_path = std::env::var("PATH").unwrap_or_default();
     let path = format!("{}:{original_path}", bin_dir.display());
-    let encoded_overlapping_secret =
-        base64::engine::general_purpose::STANDARD.encode(API_KEY_OVERLAPPING_SECRET);
     let encoded_other_secret = base64::engine::general_purpose::STANDARD.encode(OTHER_SECRET);
-    let encoded_secrets = format!("{encoded_overlapping_secret},{encoded_other_secret}");
 
     unsafe {
         std::env::set_var("CLI_AGENT_TYPE", "codex");
@@ -65,7 +60,7 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("VM0_PROMPT", "test prompt");
-        std::env::set_var("VM0_SECRET_VALUES", encoded_secrets);
+        std::env::set_var("VM0_SECRET_VALUES", encoded_other_secret);
         std::env::set_var("VM0_USER_ENV_FILE", &user_env_path);
         std::env::set_var(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV, &runtime_dir);
         std::env::set_var("HOME", tmp.path());
@@ -95,14 +90,6 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
         "system log should include bounded stderr omission marker: {system_log}"
     );
     assert!(
-        !system_log.contains(API_KEY),
-        "system log leaked raw API key: {system_log}"
-    );
-    assert!(
-        !system_log.contains(API_KEY_SUFFIX),
-        "system log leaked raw API key suffix after overlapping mask: {system_log}"
-    );
-    assert!(
         !system_log.contains(OTHER_SECRET),
         "system log leaked raw env secret: {system_log}"
     );
@@ -118,8 +105,7 @@ fn write_fake_codex(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write(
         path,
         r#"#!/bin/sh
-input=$(cat)
-printf 'stdin secret: %s\n' "$input" >&2
+cat >/dev/null
 printf 'env secret: %s\n' "$SETUP_OTHER_SECRET" >&2
 sh -c 'while :; do sleep 60; done' >&2 &
 printf 'overlong-start-' >&2
