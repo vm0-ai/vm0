@@ -89,6 +89,26 @@ async function cancelOrgRuns(db: Db, orgId: string): Promise<void> {
   );
 }
 
+async function cancelUserOrgsStripeSubscriptions(
+  db: Db,
+  userId: string,
+): Promise<void> {
+  const memberships = await db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId));
+
+  for (const { orgId } of memberships) {
+    await tapError(cancelStripeSubscription(db, orgId), (error) => {
+      L.warn("failed to cancel stripe subscription for banned user's org", {
+        userId,
+        orgId,
+        error,
+      });
+    });
+  }
+}
+
 async function disableUserAutomations(
   db: Db,
   userId: string,
@@ -617,5 +637,7 @@ export const cleanupClerkBannedUser$ = command(
     await cancelUserRuns(db, userId);
     signal.throwIfAborted();
     await disableUserAutomations(db, userId);
+    signal.throwIfAborted();
+    await cancelUserOrgsStripeSubscriptions(db, userId);
   },
 );
