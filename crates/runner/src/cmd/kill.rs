@@ -23,6 +23,7 @@ use sandbox::{RemoteKillResult, SandboxControl, SandboxControlError};
 use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::paths::HomePaths;
 use crate::process::{
     self, DiscoveredProcesses, FirecrackerProcessIdentity, FirecrackerProcessInfo, ProcessStat,
 };
@@ -227,7 +228,13 @@ impl KillOutcome {
 async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKillTarget> {
     let discovered = process::discover_all().await;
     let runner_pids: Vec<u32> = discovered.runners.iter().map(|r| r.pid).collect();
-    let resolved = resolve_target(args, &discovered).await?;
+    let run_mappings = if args.run.is_some() {
+        let home = HomePaths::new()?;
+        Some(run_resolution::collect_active_run_mappings_from_home(&home).await)
+    } else {
+        None
+    };
+    let resolved = resolve_target(args, &discovered, run_mappings.as_ref())?;
     let mut target = KillTarget::from(resolved.process);
     target.run_id = resolved.run_id;
 
@@ -237,13 +244,16 @@ async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKi
     })
 }
 
-async fn resolve_target<'a>(
+fn resolve_target<'a>(
     args: &KillArgs,
     discovered: &'a DiscoveredProcesses,
+    run_mappings: Option<&run_resolution::ActiveRunMappings>,
 ) -> RunnerResult<ResolvedProcessTarget<'a>> {
     if let Some(ref run_id) = args.run {
-        let mappings = run_resolution::collect_active_run_mappings(&discovered.runners).await;
-        let resolved = resolve_by_run_id(run_id, &mappings, &discovered.firecrackers)?;
+        let mappings = run_mappings.ok_or_else(|| {
+            RunnerError::Config("run mappings are required when resolving --run".into())
+        })?;
+        let resolved = resolve_by_run_id(run_id, mappings, &discovered.firecrackers)?;
         return Ok(ResolvedProcessTarget {
             process: resolved.process,
             run_id: Some(resolved.run_id),
@@ -1034,6 +1044,27 @@ mod tests {
         assert!(msg.contains("multiple firecracker processes"), "{msg}");
         assert!(msg.contains("200"), "{msg}");
         assert!(msg.contains("201"), "{msg}");
+    }
+
+    #[test]
+    fn resolve_target_uses_supplied_mappings_not_discovered_runner_candidates() {
+        let args = KillArgs {
+            run: Some("run-live".into()),
+            sandbox: None,
+            force: true,
+        };
+        let discovered = DiscoveredProcesses {
+            runners: vec![process::RunnerProcessInfo { pid: 999 }],
+            firecrackers: vec![make_fc(200, "sandbox-live")],
+            mitmdumps: vec![],
+            dnsmasqs: vec![],
+        };
+        let supplied_mappings = mappings(vec![("run-live-123".into(), "sandbox-live".into())]);
+
+        let resolved = resolve_target(&args, &discovered, Some(&supplied_mappings)).unwrap();
+
+        assert_eq!(resolved.process.pid, 200);
+        assert_eq!(resolved.run_id.as_deref(), Some("run-live-123"));
     }
 
     // -- resolve_by_sandbox_id tests -----------------------------------------

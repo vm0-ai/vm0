@@ -2156,7 +2156,6 @@ mod tests {
         let discovered = process::DiscoveredProcesses {
             runners: vec![process::RunnerProcessInfo {
                 pid: std::process::id(),
-                config_path: fixture.config_path,
             }],
             ..empty_discovered()
         };
