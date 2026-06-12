@@ -282,6 +282,51 @@ describe("connectors page", () => {
     });
   });
 
+  it("hides a fully feature-gated connector when its switch is disabled", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.AwsConnector]: false },
+    });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
+    await fill(searchInput, "aws");
+
+    await waitFor(() => {
+      expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
+  });
+
+  it("shows a partially gated connector with only ungated auth methods", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: false },
+    });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
+    await fill(searchInput, "stripe");
+    click(await screen.findByLabelText("Connect Stripe"));
+
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "Stripe",
+    });
+    expect(
+      within(connectDialog).getByText("Sign in with Stripe"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectDialog).getAllByText("API Key").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(connectDialog).queryByText("OAuth (Recommended)"),
+    ).not.toBeInTheDocument();
+  });
+
   it("completes a device-auth connector grant", async () => {
     mockConnectors([]);
 

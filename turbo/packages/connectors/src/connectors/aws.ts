@@ -72,6 +72,5 @@ export const aws = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "cli",
   },
 } as const satisfies Record<string, ConnectorConfig>;

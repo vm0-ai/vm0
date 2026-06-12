@@ -56,6 +56,5 @@ export const linear = {
         },
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;

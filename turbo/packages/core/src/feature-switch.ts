@@ -54,11 +54,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Canva design connector",
     enabled: false,
   },
-  [FeatureSwitchKey.CloudflareConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Cloudflare OAuth connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Deel HR connector",

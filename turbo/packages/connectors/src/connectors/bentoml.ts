@@ -45,6 +45,5 @@ export const bentoml = {
         revoke: { kind: "none" },
       },
     },
-    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;

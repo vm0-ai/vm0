@@ -43,6 +43,5 @@ export const github = {
         },
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;

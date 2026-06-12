@@ -1,4 +1,16 @@
-"""AWS SigV4 request re-signing for connector firewall auth."""
+"""AWS SigV4 placeholder-to-real re-signing for connector firewall auth.
+
+This module is the runner-side boundary between sandbox-generated placeholder
+AWS signatures and connector-resolved real AWS credentials. It does not sign
+arbitrary AWS requests from scratch: incoming requests must already contain
+placeholder SigV4 metadata in either the ``Authorization`` header or presigned
+``X-Amz-*`` query parameters.
+
+Unsupported, ambiguous, or malformed requests fail closed by raising
+``AwsSigV4SigningError``. The same contract is used by normal firewall auth
+injection in ``auth._sign_flow_request_with_aws_sigv4`` and by ``auth.base``
+forwarding in ``auth._sign_forwarded_request_with_aws_sigv4``.
+"""
 
 from __future__ import annotations
 
@@ -51,6 +63,12 @@ class _AuthLocation(Enum):
 
 @dataclass(frozen=True)
 class AwsSigV4Credentials:
+    """Connector-resolved real AWS credentials used after placeholder auth is found.
+
+    These are distinct from the placeholder credentials carried by the sandbox
+    request. ``session_token`` is present for temporary AWS credentials.
+    """
+
     access_key_id: str
     secret_access_key: str
     session_token: str | None = None
@@ -82,7 +100,27 @@ def sign_request(
     body: bytes | None,
     credentials: AwsSigV4Credentials,
 ) -> tuple[str, list[tuple[str, str]]]:
-    """Return a URL/header pair re-signed with real AWS credentials."""
+    """Return a URL/header pair re-signed with real AWS credentials.
+
+    The request must already include placeholder SigV4 auth metadata. Supported
+    forms are header auth (``Authorization: AWS4-HMAC-SHA256 ...`` plus a
+    single ``x-amz-date`` header) and presigned query auth with complete
+    ``X-Amz-*`` signing metadata, including ``X-Amz-Expires`` and
+    ``X-Amz-Signature``.
+
+    The source access key from the incoming credential scope is expected to be
+    a placeholder and must differ from ``credentials.access_key_id``. Header
+    auth remains header auth; query auth remains query auth.
+
+    The signer intentionally fails closed for SigV4A, wildcard-region signing,
+    S3 Express, AWS streaming payload signing, ambiguous header/query auth,
+    malformed or duplicate auth metadata, and signed headers that cannot be
+    reconstructed from the request.
+
+    S3-family services keep S3 canonical URI behavior. For presigned S3
+    requests without an explicit ``x-amz-content-sha256`` header, the payload
+    hash is ``UNSIGNED-PAYLOAD``.
+    """
     _validate_credentials(credentials)
     context = _classify_request(url, headers)
     if context.algorithm == _ASYMMETRIC_ALGORITHM:

@@ -89,6 +89,8 @@ describe("/usage page", () => {
   });
 
   it("shows linked usage details and updates totals by date range and group", async () => {
+    mockNow();
+
     context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
       if (query.range === "7d" && query.groupBy === "agent") {
         return respond(200, usageInsightLast7DaysAgentFixture);

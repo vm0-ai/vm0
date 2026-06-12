@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.24](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.23...sandbox-fc-v0.37.24) (2026-06-12)
+
+
+### Documentation
+
+* clarify sandbox-fc terminate protocol ([#17387](https://github.com/vm0-ai/vm0/issues/17387)) ([f3e83e2](https://github.com/vm0-ai/vm0/commit/f3e83e20757e29ebd9a0e5986e16cb9cb58c2194))
+
 ## [0.37.23](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.22...sandbox-fc-v0.37.23) (2026-06-11)
 
 ## [0.37.22](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.21...sandbox-fc-v0.37.22) (2026-06-11)

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.114.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.2...runner-rs-v0.114.3) (2026-06-12)
+
+
+### Bug Fixes
+
+* bound skipped json number tokens ([#17389](https://github.com/vm0-ai/vm0/issues/17389)) ([c618820](https://github.com/vm0-ai/vm0/commit/c618820016db52d08a3bd479c5c84fa10adaeeb4))
+
+
+### Documentation
+
+* document aws sigv4 re-signing contract ([#17386](https://github.com/vm0-ai/vm0/issues/17386)) ([72be756](https://github.com/vm0-ai/vm0/commit/72be756462e472c883b7a4e76910320d11ef1669))
+
+## [0.114.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.1...runner-rs-v0.114.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* **runner:** use live registry for doctor reports ([#17348](https://github.com/vm0-ai/vm0/issues/17348)) ([1f06b34](https://github.com/vm0-ai/vm0/commit/1f06b3406eb9b5248ca128cb5a84072ad02c83b9))
+
 ## [0.114.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.0...runner-rs-v0.114.1) (2026-06-11)
 
 

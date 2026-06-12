@@ -75,6 +75,5 @@ export const slack = {
         },
       },
     },
-    defaultAuthMethod: "oauth",
   },
 } as const satisfies Record<string, ConnectorConfig>;
