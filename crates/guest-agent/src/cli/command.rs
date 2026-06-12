@@ -62,7 +62,7 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
     ];
 
     if !config.resume_id.is_empty() {
-        log_info!(LOG_TAG, "Resuming session: {}", config.resume_id);
+        log_info!(LOG_TAG, "Resuming session");
         args.push("--resume".to_string());
         args.push(config.resume_id.to_string());
     } else {
@@ -215,7 +215,7 @@ fn build_codex_args(
     }
 
     if !resume_id.is_empty() {
-        log_info!(LOG_TAG, "Resuming codex session: {resume_id}");
+        log_info!(LOG_TAG, "Resuming codex session");
         args.push("resume".to_string());
         args.push(resume_id.to_string());
         args.push("--".to_string());
@@ -250,6 +250,9 @@ fn build_codex_command(use_mock: bool) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static SYSTEM_LOG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
@@ -263,6 +266,7 @@ mod tests {
         settings: &str,
         prompt: &str,
     ) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_claude_args(ClaudeArgsConfig {
             model: "",
@@ -277,6 +281,7 @@ mod tests {
     }
 
     fn build_claude_args_for_model_test(model: &str, prompt: &str) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_claude_args(ClaudeArgsConfig {
             model,
@@ -291,6 +296,7 @@ mod tests {
     }
 
     fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_claude_command(use_mock)
     }
@@ -377,6 +383,32 @@ mod tests {
     }
 
     #[test]
+    fn build_claude_args_resume_log_omits_resume_id() {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
+
+        let args = build_claude_args(ClaudeArgsConfig {
+            model: "",
+            resume_id: "sess-secret-123",
+            append_system_prompt: "",
+            disallowed_tools: "",
+            tools: "",
+            settings: "",
+            include_partial_messages: false,
+            prompt: "prompt",
+        });
+        guest_common::log::clear_system_log_file();
+        let system_log = std::fs::read_to_string(system_log_path).unwrap();
+
+        assert!(args.contains(&"--resume".to_string()));
+        assert!(args.contains(&"sess-secret-123".to_string()));
+        assert!(system_log.contains("Resuming session"));
+        assert!(!system_log.contains("sess-secret-123"));
+    }
+
+    #[test]
     fn build_claude_args_with_resume_and_append() {
         let args = build_claude_args_for_test("sess-123", "Be helpful.", "", "", "", "prompt");
         assert!(args.contains(&"--resume".to_string()));
@@ -403,6 +435,7 @@ mod tests {
     }
 
     fn build_codex_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_codex_args(model, resume_id, "", prompt)
     }
@@ -413,6 +446,7 @@ mod tests {
         append_system_prompt: &str,
         prompt: &str,
     ) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_codex_args(model, resume_id, append_system_prompt, prompt)
     }
@@ -423,8 +457,26 @@ mod tests {
     }
 
     fn build_codex_command_for_test(use_mock: bool) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_codex_command(use_mock)
+    }
+
+    #[test]
+    fn build_codex_args_resume_log_omits_resume_id() {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
+
+        let args = build_codex_args("", "thread-secret-123", "", "prompt");
+        guest_common::log::clear_system_log_file();
+        let system_log = std::fs::read_to_string(system_log_path).unwrap();
+
+        assert!(args.contains(&"resume".to_string()));
+        assert!(args.contains(&"thread-secret-123".to_string()));
+        assert!(system_log.contains("Resuming codex session"));
+        assert!(!system_log.contains("thread-secret-123"));
     }
 
     #[test]

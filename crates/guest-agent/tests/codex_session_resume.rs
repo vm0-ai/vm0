@@ -413,6 +413,10 @@ fn read_session_history_rejects_duplicate_codex_matches() {
         msg.contains("Multiple Codex session files found"),
         "expected duplicate-session error, got: {msg}"
     );
+    assert!(
+        !msg.contains(thread_id),
+        "duplicate-session error must not expose thread id, got: {msg}"
+    );
 }
 
 #[test]
@@ -454,6 +458,10 @@ fn read_session_history_rejects_duplicate_jsonl_and_zstd_matches() {
         msg.contains("Multiple Codex session files found"),
         "expected duplicate-session error, got: {msg}"
     );
+    assert!(
+        !msg.contains(thread_id),
+        "duplicate-session error must not expose thread id, got: {msg}"
+    );
 }
 
 #[test]
@@ -493,6 +501,47 @@ fn read_session_history_rejects_duplicate_before_reading_corrupt_zstd() {
     assert!(
         msg.contains("Multiple Codex session files found"),
         "expected duplicate-session error, got: {msg}"
+    );
+    assert!(
+        !msg.contains(thread_id),
+        "duplicate-session error must not expose thread id, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_corrupt_zstd_error_omits_thread_id() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{thread_id}.jsonl.zst"),
+        b"not zstd",
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("corrupt zstd codex session must fail clearly");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Failed to decompress zstd session history"),
+        "expected zstd decode error, got: {msg}"
+    );
+    assert!(
+        !msg.contains(thread_id),
+        "zstd decode error must not expose thread id, got: {msg}"
     );
 }
 
@@ -566,6 +615,10 @@ fn read_session_history_codex_marker_with_no_match_fails_fast() {
         msg.contains("Codex session file not found"),
         "expected fail-fast error, got: {msg}"
     );
+    assert!(
+        !msg.contains(unknown_id),
+        "missing-session error must not expose thread id, got: {msg}"
+    );
 }
 
 #[test]
@@ -623,6 +676,31 @@ fn read_session_history_codex_marker_rejects_short_thread_id() {
     assert!(
         msg.contains("Codex session file not found"),
         "expected malformed thread id to fail fast, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_read_error_omits_literal_session_path() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let session_id = "sess-secret-123";
+    let history = tmp.path().join(format!("{session_id}.jsonl"));
+    let path_file = tmp.path().join("path.txt");
+    std::fs::write(&path_file, history.to_string_lossy().as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("missing literal session history path must fail clearly");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Failed to read session history"),
+        "expected read error, got: {msg}"
+    );
+    assert!(
+        !msg.contains(session_id),
+        "history read error must not expose session id, got: {msg}"
     );
 }
 
