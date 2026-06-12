@@ -9,7 +9,7 @@ import { IconMenu2, IconPackage, IconUserPlus } from "@tabler/icons-react";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
-import { ScheduleMenuButton } from "./zero-chat-thread-page.tsx";
+import { AutomationMenuButton } from "./zero-chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import {
   currentLeftThread$,
@@ -134,7 +134,7 @@ function MobileArtifactsButtonLeaf() {
   return <MobileArtifactsButtonInner thread={thread} />;
 }
 
-function MobileScheduleButtonLeaf() {
+function MobileAutomationButtonLeaf() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const thread = leftThread ?? rightThread;
@@ -144,7 +144,7 @@ function MobileScheduleButtonLeaf() {
   }
 
   return (
-    <ScheduleMenuButton
+    <AutomationMenuButton
       threadId={thread.threadId}
       ariaLabel="Open mobile automations"
     />
@@ -156,7 +156,7 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const showInviteFallback = inChatRoute && activeId !== "chat";
   return (
     <>
-      {inChatRoute && <MobileScheduleButtonLeaf />}
+      {inChatRoute && <MobileAutomationButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {showInviteFallback && <InviteButtonLeaf />}
     </>

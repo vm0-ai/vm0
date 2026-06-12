@@ -49,7 +49,7 @@ export const setupAgentDetailPage$ = command(
       return;
     }
 
-    // Activate the agent to trigger dependent signals (detail, schedule, etc.)
+    // Activate the agent to trigger dependent signals (detail, automation, etc.)
     set(setActiveAgent$, agentId);
     set(setChatAgentId$, agentId);
     set(rememberLastUsedAgentId$, agentId);

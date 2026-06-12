@@ -48,7 +48,9 @@ export interface MemberCredits {
   agentCredits?: Record<string, number>;
 }
 
-export interface DaySchedule {
+// Mirrors the zero-insights wire schema (field names are part of the
+// contract and keep the legacy schedule* spelling).
+export interface DayAutomation {
   scheduleId: string;
   scheduleName: string;
   scheduleDescription: string | null;
@@ -73,7 +75,7 @@ export interface DayInsight {
   topTask: TopTask | null;
   services: ServiceUsage[];
   permissions: PermissionEntry[];
-  schedules: DaySchedule[];
+  schedules: DayAutomation[];
   chats: DayChat[];
 }
 
@@ -226,25 +228,25 @@ export const setInsightsActiveTab$ = command(({ set }, tab: InsightsTab) => {
 });
 
 // ---------------------------------------------------------------------------
-// "Show all" toggle for per-day schedules / chats cards (keyed by day date)
+// "Show all" toggle for per-day automations / chats cards (keyed by day date)
 // ---------------------------------------------------------------------------
 
-const internalExpandedSchedules$ = state<Set<string>>(new Set());
+const internalExpandedAutomations$ = state<Set<string>>(new Set());
 
-export const expandedScheduleDays$ = computed((get) => {
-  return get(internalExpandedSchedules$);
+export const expandedAutomationDays$ = computed((get) => {
+  return get(internalExpandedAutomations$);
 });
 
-export const toggleExpandedScheduleDay$ = command(
+export const toggleExpandedAutomationDay$ = command(
   ({ get, set }, dayDate: string) => {
-    const current = get(internalExpandedSchedules$);
+    const current = get(internalExpandedAutomations$);
     const next = new Set(current);
     if (next.has(dayDate)) {
       next.delete(dayDate);
     } else {
       next.add(dayDate);
     }
-    set(internalExpandedSchedules$, next);
+    set(internalExpandedAutomations$, next);
   },
 );
 

@@ -34,12 +34,14 @@
   --color-credit-plan-pro: #edc43e;
   --color-credit-plan-team: #6b8de3;
 
-  /* Usage record kind breakdown segment colors */
-  --color-usage-kind-model: #6b8de3;
-  --color-usage-kind-image: #e88033;
-  --color-usage-kind-video: #3eb7b8;
-  --color-usage-kind-connector: #97918a;
-  --color-usage-kind-other: #edc43e;
+  /* Usage record kind breakdown segment colors — drawn from the Insights
+     card-palette hues so usage and insights read as one system. Image and
+     video sit far apart on the wheel (pink vs teal) since they co-occur. */
+  --color-usage-kind-model: #e24b6a;
+  --color-usage-kind-image: #ec70a5;
+  --color-usage-kind-video: #358a8e;
+  --color-usage-kind-connector: #98928b;
+  --color-usage-kind-other: #e1c43c;
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline

@@ -31,17 +31,17 @@ export {
 } from "./connectors.ts";
 
 export {
-  agentScheduleEntries$,
-  saveAgentSchedule$,
-  toggleAgentScheduleEnabled$,
-  deleteAgentSchedule$,
-} from "./schedule.ts";
+  agentAutomationEntries$,
+  saveAgentAutomation$,
+  toggleAgentAutomationEnabled$,
+  deleteAgentAutomation$,
+} from "./automation.ts";
 
 export { deleteAgent$ } from "./delete.ts";
 
 // ---------------------------------------------------------------------------
 // Set active agent — sets the agent name and resets draft states.
-// All async data (detail, instructions, schedule, connectors, permissions) will
+// All async data (detail, instructions, automation, connectors, permissions) will
 // re-evaluate reactively through the async computed dependency chain.
 // ---------------------------------------------------------------------------
 

@@ -22,7 +22,7 @@ export const agentName$ = computed((get) => {
 function isValidTab(tab: string): boolean {
   return (
     tab === "authorization" ||
-    tab === "schedule" ||
+    tab === "automations" ||
     tab === "profile" ||
     tab === "instructions"
   );
@@ -31,6 +31,11 @@ function isValidTab(tab: string): boolean {
 function getInitialTab(): string {
   const params = new URLSearchParams(search());
   const tab = params.get("tab") ?? "";
+  // Legacy deep links predate the tab rename (#17307); keep them landing on
+  // the automations tab.
+  if (tab === "schedule") {
+    return "automations";
+  }
   return isValidTab(tab) ? tab : "authorization";
 }
 

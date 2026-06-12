@@ -9,11 +9,11 @@ import {
   currentChatThreadId$,
   currentChatAgentDisplayName$,
 } from "../agent-chat.ts";
-import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
+import { allOrgAutomationEntries$ } from "./zero-automations.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { scheduleTitleExcerpt } from "./schedule-title.ts";
+import { automationTitleExcerpt } from "./automation-title.ts";
 
 interface MobileBreadcrumb {
   section: string;
@@ -76,25 +76,27 @@ const activityDetailBreadcrumb$ = computed(
   },
 );
 
-const scheduleBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
-  const section = "Automations";
-  const params = get(pathParams$) as Params;
-  const scheduleId = getStringParam(params, "scheduleId");
-  if (scheduleId) {
-    const entries = await get(allOrgScheduleEntries$);
-    const entry = entries.find((e) => {
-      return e.id === scheduleId;
-    });
-    if (entry) {
-      return {
-        section,
-        sectionPath: ROUTES.schedules,
-        name: scheduleTitleExcerpt(entry),
-      };
+const automationBreadcrumb$ = computed(
+  async (get): Promise<MobileBreadcrumb> => {
+    const section = "Automations";
+    const params = get(pathParams$) as Params;
+    const scheduleId = getStringParam(params, "scheduleId");
+    if (scheduleId) {
+      const entries = await get(allOrgAutomationEntries$);
+      const entry = entries.find((e) => {
+        return e.id === scheduleId;
+      });
+      if (entry) {
+        return {
+          section,
+          sectionPath: ROUTES.automations,
+          name: automationTitleExcerpt(entry),
+        };
+      }
     }
-  }
-  return { section, sectionPath: ROUTES.schedules };
-});
+    return { section, sectionPath: ROUTES.automations };
+  },
+);
 
 const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   const params = get(pathParams$) as Params;
@@ -128,7 +130,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
 /**
  * Provides breadcrumb data for the MobileTopBar.
  * For chat: resolves the active agent name and avatar.
- * For schedule/activity/team detail pages: derives a sub-page name from signals.
+ * For automation/activity/team detail pages: derives a sub-page name from signals.
  * For other sections: returns a static label so the top bar has context on mobile
  * (page-level breadcrumbs use `hidden md:flex` and are invisible on mobile).
  */
@@ -136,8 +138,8 @@ export const mobileBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
     const route = get(activeRoute$);
 
-    if (route === "schedules" || route === "scheduleDetail") {
-      return await get(scheduleBreadcrumb$);
+    if (route === "automations" || route === "automationDetail") {
+      return await get(automationBreadcrumb$);
     }
 
     if (

@@ -17,14 +17,14 @@ import {
 } from "@vm0/ui";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
-import type { ScheduleEntry } from "./schedule-utils";
-import emptyScheduleImg from "./assets/empty-schedule.webp";
+import type { AutomationEntry } from "./automation-utils";
+import emptyAutomationImg from "./assets/empty-automation.webp";
 
 // ---------------------------------------------------------------------------
 // Row component (extracted to stay under ESLint complexity limit)
 // ---------------------------------------------------------------------------
 
-function ScheduleListRow<T extends ScheduleEntry>({
+function AutomationListRow<T extends AutomationEntry>({
   entry,
   toggling,
   running,
@@ -158,7 +158,7 @@ function ScheduleListRow<T extends ScheduleEntry>({
 // Shared actions dropdown
 // ---------------------------------------------------------------------------
 
-function RowActions<T extends ScheduleEntry>({
+function RowActions<T extends AutomationEntry>({
   entry,
   running,
   onEdit,
@@ -226,7 +226,7 @@ function RowActions<T extends ScheduleEntry>({
 // Mobile card row
 // ---------------------------------------------------------------------------
 
-function ScheduleListCard<T extends ScheduleEntry>({
+function AutomationListCard<T extends AutomationEntry>({
   entry,
   toggling,
   running,
@@ -326,10 +326,10 @@ function ScheduleListCard<T extends ScheduleEntry>({
 }
 
 // ---------------------------------------------------------------------------
-// Schedule list view (shared between schedule page and schedule card)
+// Automation list view (shared between automations page and automation card)
 // ---------------------------------------------------------------------------
 
-export function ScheduleListView<T extends ScheduleEntry>({
+export function AutomationListView<T extends AutomationEntry>({
   entries,
   togglingIds,
   runningIds,
@@ -356,7 +356,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-3">
         <img
-          src={emptyScheduleImg}
+          src={emptyAutomationImg}
           alt="No automations"
           className="h-24 w-24 object-contain opacity-80"
         />
@@ -365,7 +365,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
             No runs scheduled
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Set up a schedule and your agents will handle the rest.
+            Set up an automation and your agents will handle the rest.
           </p>
         </div>
         {onNew && (
@@ -393,7 +393,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
       <div className="sm:hidden pb-2" aria-hidden="true">
         {entries.map((entry) => {
           return (
-            <ScheduleListCard
+            <AutomationListCard
               key={entry.id}
               entry={entry}
               toggling={togglingIds.has(entry.id)}
@@ -451,7 +451,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
           <tbody>
             {entries.map((entry) => {
               return (
-                <ScheduleListRow
+                <AutomationListRow
                   key={entry.id}
                   entry={entry}
                   toggling={togglingIds.has(entry.id)}

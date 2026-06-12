@@ -16,6 +16,7 @@ const defaultResponse: UsageRecordResponse = {
     end: "2026-03-02T00:00:00.000Z",
   },
   rows: [],
+  totalCredits: 0,
   pagination: { page: 1, pageSize: 20, total: 0 },
 };
 
@@ -25,6 +26,7 @@ export function resetMockUsageRecord(): void {
   mockUsageRecordResponse = {
     period: defaultResponse.period,
     rows: [],
+    totalCredits: 0,
     pagination: { ...defaultResponse.pagination },
   };
 }
@@ -44,6 +46,9 @@ export const apiUsageRecordHandlers = [
     return respond(200, {
       period: mockUsageRecordResponse.period,
       rows: rows.slice(offset, offset + pageSize),
+      totalCredits: rows.reduce((sum, row) => {
+        return sum + row.credits;
+      }, 0),
       pagination: { page, pageSize, total: rows.length },
     });
   }),

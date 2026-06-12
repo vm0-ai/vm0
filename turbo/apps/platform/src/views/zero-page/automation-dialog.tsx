@@ -32,13 +32,13 @@ import {
   updateDialogForm$,
   showConfirm$,
   setShowConfirm$,
-} from "../../signals/schedule-page/schedule-form.ts";
+} from "../../signals/automation-page/automation-form.ts";
 
 // ---------------------------------------------------------------------------
-// Constants (moved from zero-schedule-card.tsx)
+// Constants (moved from zero-automation-card.tsx)
 // ---------------------------------------------------------------------------
 
-const SCHEDULE_FREQUENCY_OPTIONS = [
+const AUTOMATION_FREQUENCY_OPTIONS = [
   { value: "now", label: "Now" },
   { value: "once", label: "Once" },
   { value: "every_weekday", label: "Every weekday" },
@@ -48,7 +48,7 @@ const SCHEDULE_FREQUENCY_OPTIONS = [
   { value: "every_n_minutes", label: "Loop" },
 ] as const;
 
-const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
+const AUTOMATION_LOOP_MINUTES = [5, 15, 30, 60] as const;
 
 const HOUR_OPTIONS: readonly number[] = Array.from({ length: 24 }, (_, i) => {
   return i;
@@ -60,7 +60,7 @@ const MINUTE_OPTIONS: readonly number[] = Array.from({ length: 12 }, (_, i) => {
 
 /**
  * Build the minute dropdown options, inserting a non-standard value (e.g. an
- * existing schedule whose minute is not a multiple of 5) so the schedule
+ * existing automation whose minute is not a multiple of 5) so the automation
  * remains editable.
  */
 function getMinuteOptions(currentMinute?: number): readonly number[] {
@@ -93,10 +93,10 @@ const DAY_OF_WEEK_OPTIONS = [
 ] as const;
 
 function getLoopMinuteOptions(current: number): readonly number[] {
-  if ((SCHEDULE_LOOP_MINUTES as readonly number[]).includes(current)) {
-    return SCHEDULE_LOOP_MINUTES;
+  if ((AUTOMATION_LOOP_MINUTES as readonly number[]).includes(current)) {
+    return AUTOMATION_LOOP_MINUTES;
   }
-  return [...SCHEDULE_LOOP_MINUTES, current].sort((a, b) => {
+  return [...AUTOMATION_LOOP_MINUTES, current].sort((a, b) => {
     return a - b;
   });
 }
@@ -105,7 +105,7 @@ function getLoopMinuteOptions(current: number): readonly number[] {
 // Types
 // ---------------------------------------------------------------------------
 
-export interface ScheduleFormValues {
+export interface AutomationFormValues {
   prompt: string;
   description: string;
   agentId: string;
@@ -119,13 +119,13 @@ export interface ScheduleFormValues {
   dayOfMonth: string;
 }
 
-interface ScheduleFormDialogProps {
+interface AutomationFormDialogProps {
   open: boolean;
   onClose: () => void;
-  onSave: (values: ScheduleFormValues) => void;
+  onSave: (values: AutomationFormValues) => void;
   saving: boolean;
   mode: "create" | "edit";
-  initialValues?: Partial<ScheduleFormValues>;
+  initialValues?: Partial<AutomationFormValues>;
   /** When provided, renders an agent selector dropdown. */
   agents?: { id: string; displayName?: string | null }[];
 }
@@ -185,7 +185,7 @@ function ConfirmCloseOverlay({
 // Timing fields sub-component
 // ---------------------------------------------------------------------------
 
-function ScheduleTimingFields({
+function AutomationTimingFields({
   freq,
   setFreq,
   loopMinutes,
@@ -225,17 +225,17 @@ function ScheduleTimingFields({
       {/* Frequency */}
       <div className="flex flex-col gap-2">
         <label
-          htmlFor="schedule-dialog-freq"
+          htmlFor="automation-dialog-freq"
           className="text-sm font-medium text-foreground"
         >
           Time
         </label>
         <Select value={freq} onValueChange={setFreq}>
-          <SelectTrigger id="schedule-dialog-freq" className="h-9">
+          <SelectTrigger id="automation-dialog-freq" className="h-9">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => {
+            {AUTOMATION_FREQUENCY_OPTIONS.map((opt) => {
               return (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
@@ -250,7 +250,7 @@ function ScheduleTimingFields({
       {freq === "every_n_minutes" && (
         <div className="flex flex-col gap-2">
           <label
-            htmlFor="schedule-dialog-loop"
+            htmlFor="automation-dialog-loop"
             className="text-sm font-medium text-foreground"
           >
             Every
@@ -261,7 +261,7 @@ function ScheduleTimingFields({
               return setLoopMinutes(Number(v));
             }}
           >
-            <SelectTrigger id="schedule-dialog-loop" className="h-9">
+            <SelectTrigger id="automation-dialog-loop" className="h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -281,13 +281,13 @@ function ScheduleTimingFields({
       {freq === "once" && (
         <div className="flex flex-col gap-2">
           <label
-            htmlFor="schedule-dialog-date"
+            htmlFor="automation-dialog-date"
             className="text-sm font-medium text-foreground"
           >
             Date
           </label>
           <Input
-            id="schedule-dialog-date"
+            id="automation-dialog-date"
             type="date"
             value={date}
             min={getTodayDateLocal()}
@@ -308,13 +308,13 @@ function ScheduleTimingFields({
       {freq === "every_month" && (
         <div className="flex flex-col gap-2">
           <label
-            htmlFor="schedule-dialog-day-of-month"
+            htmlFor="automation-dialog-day-of-month"
             className="text-sm font-medium text-foreground"
           >
             Day of month
           </label>
           <Select value={dayOfMonth} onValueChange={setDayOfMonth}>
-            <SelectTrigger id="schedule-dialog-day-of-month" className="h-9">
+            <SelectTrigger id="automation-dialog-day-of-month" className="h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -342,7 +342,7 @@ function ScheduleTimingFields({
               }}
             >
               <SelectTrigger
-                id="schedule-dialog-hour"
+                id="automation-dialog-hour"
                 aria-label="Hour"
                 className="h-9 w-20"
               >
@@ -366,7 +366,7 @@ function ScheduleTimingFields({
               }}
             >
               <SelectTrigger
-                id="schedule-dialog-minute"
+                id="automation-dialog-minute"
                 aria-label="Minute"
                 className="h-9 w-20"
               >
@@ -390,13 +390,13 @@ function ScheduleTimingFields({
       {isCronFreq(freq) && (
         <div className="flex flex-col gap-2">
           <label
-            htmlFor="schedule-dialog-tz"
+            htmlFor="automation-dialog-tz"
             className="text-sm font-medium text-foreground"
           >
             Timezone
           </label>
           <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger id="schedule-dialog-tz" className="h-9">
+            <SelectTrigger id="automation-dialog-tz" className="h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -476,11 +476,11 @@ function DayOfWeekPicker({
 // ---------------------------------------------------------------------------
 
 function buildDefaults(
-  agents: ScheduleFormDialogProps["agents"],
-  initialValues: Partial<ScheduleFormValues> | undefined,
+  agents: AutomationFormDialogProps["agents"],
+  initialValues: Partial<AutomationFormValues> | undefined,
   preferredTimezone: string | null | undefined,
-): ScheduleFormValues {
-  const defaults: ScheduleFormValues = {
+): AutomationFormValues {
+  const defaults: AutomationFormValues = {
     prompt: "",
     description: "",
     agentId: agents?.[0]?.id ?? "",
@@ -498,8 +498,8 @@ function buildDefaults(
 }
 
 function checkDirty(
-  current: ScheduleFormValues,
-  init: ScheduleFormValues,
+  current: AutomationFormValues,
+  init: AutomationFormValues,
   mode: "create" | "edit",
   opts: { hasAgents: boolean },
 ): boolean {
@@ -532,7 +532,7 @@ function getSaveLabel(mode: "create" | "edit", saving: boolean): string {
 // Inner dialog (manages form state, mounted only when open)
 // ---------------------------------------------------------------------------
 
-function ScheduleFormDialogInner({
+function AutomationFormDialogInner({
   onClose,
   onSave,
   saving,
@@ -540,7 +540,7 @@ function ScheduleFormDialogInner({
   initialValues,
   agents,
   preferredTimezone,
-}: Omit<ScheduleFormDialogProps, "open"> & {
+}: Omit<AutomationFormDialogProps, "open"> & {
   preferredTimezone: string | null | undefined;
 }) {
   const baseInit = buildDefaults(agents, initialValues, preferredTimezone);
@@ -552,7 +552,7 @@ function ScheduleFormDialogInner({
 
   const init = baseInit;
 
-  const current: ScheduleFormValues = {
+  const current: AutomationFormValues = {
     prompt: form.prompt,
     description: form.description,
     agentId: form.agentId,
@@ -627,7 +627,7 @@ function ScheduleFormDialogInner({
           {agents && (
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="schedule-dialog-agent"
+                htmlFor="automation-dialog-agent"
                 className="text-sm font-medium text-foreground"
               >
                 Agent
@@ -638,7 +638,7 @@ function ScheduleFormDialogInner({
                   return updateForm({ agentId: v });
                 }}
               >
-                <SelectTrigger id="schedule-dialog-agent" className="h-9">
+                <SelectTrigger id="automation-dialog-agent" className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -657,13 +657,13 @@ function ScheduleFormDialogInner({
           {/* Prompt */}
           <div className="flex flex-col gap-2">
             <label
-              htmlFor="schedule-dialog-prompt"
+              htmlFor="automation-dialog-prompt"
               className="text-sm font-medium text-foreground"
             >
               Prompt
             </label>
             <textarea
-              id="schedule-dialog-prompt"
+              id="automation-dialog-prompt"
               value={form.prompt}
               onChange={(e) => {
                 return updateForm({ prompt: e.target.value });
@@ -678,7 +678,7 @@ function ScheduleFormDialogInner({
           {mode === "edit" && (
             <div className="flex flex-col gap-2">
               <label
-                htmlFor="schedule-dialog-description"
+                htmlFor="automation-dialog-description"
                 className="text-sm font-medium text-foreground"
               >
                 Description
@@ -687,7 +687,7 @@ function ScheduleFormDialogInner({
                 </span>
               </label>
               <Input
-                id="schedule-dialog-description"
+                id="automation-dialog-description"
                 value={form.description}
                 onChange={(e) => {
                   return updateForm({ description: e.target.value });
@@ -698,7 +698,7 @@ function ScheduleFormDialogInner({
             </div>
           )}
 
-          <ScheduleTimingFields
+          <AutomationTimingFields
             freq={form.freq}
             setFreq={(v) => {
               return updateForm({ freq: v });
@@ -771,13 +771,16 @@ function ScheduleFormDialogInner({
 // Public component
 // ---------------------------------------------------------------------------
 
-export function ScheduleFormDialog({ open, ...rest }: ScheduleFormDialogProps) {
+export function AutomationFormDialog({
+  open,
+  ...rest
+}: AutomationFormDialogProps) {
   const preferences = useLastResolved(userPreferences$);
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>
       {open && (
-        <ScheduleFormDialogInner
+        <AutomationFormDialogInner
           {...rest}
           preferredTimezone={preferences?.timezone}
         />

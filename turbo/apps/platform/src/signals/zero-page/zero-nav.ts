@@ -75,7 +75,7 @@ export type SidebarNavId =
   | "skills"
   | "memory"
   | "connectors"
-  | "schedules"
+  | "automations"
   | "activities"
   | "insights"
   | "works"
@@ -102,7 +102,7 @@ export const handleZeroNavSelect$ = command(
         skills: ROUTES.skills,
         memory: ROUTES.memory,
         connectors: ROUTES.connectors,
-        schedules: ROUTES.schedules,
+        automations: ROUTES.automations,
         activities: ROUTES.activities,
         insights: ROUTES.insights,
         works: ROUTES.works,

@@ -1,34 +1,37 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { Card, CardContent } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { ZeroScheduleCard, type ScheduleEntry } from "./zero-schedule-card.tsx";
+import {
+  ZeroAutomationCard,
+  type AutomationEntry,
+} from "./zero-automation-card.tsx";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import {
-  scheduleTabSaving$,
-  setScheduleTabSaving$,
-  type ZeroScheduleSaveParams,
-} from "../../signals/zero-page/zero-schedule.ts";
+  automationTabSaving$,
+  setAutomationTabSaving$,
+  type ZeroAutomationSaveParams,
+} from "../../signals/zero-page/zero-automations.ts";
 
-interface ZeroScheduleTabProps {
+interface ZeroAutomationTabProps {
   displayName: string;
-  entries: ScheduleEntry[];
+  entries: AutomationEntry[];
   loading?: boolean;
-  scheduleError?: string | null;
-  onSave: (params: ZeroScheduleSaveParams) => Promise<void>;
+  automationError?: string | null;
+  onSave: (params: ZeroAutomationSaveParams) => Promise<void>;
   onDelete: (name: string) => Promise<void>;
   onToggleEnabled: (params: {
     name: string;
     enabled: boolean;
   }) => Promise<void>;
-  onRunNow?: (entry: ScheduleEntry) => Promise<void>;
-  onOpenDetails?: (entry: ScheduleEntry) => void;
+  onRunNow?: (entry: AutomationEntry) => Promise<void>;
+  onOpenDetails?: (entry: AutomationEntry) => void;
 }
 
 const SKELETON_KEYS = ["s-0", "s-1", "s-2", "s-3", "s-4"] as const;
 
-function ScheduleTabSkeleton() {
+function AutomationTabSkeleton() {
   return (
-    <Card className="zero-card" data-testid="schedule-tab-skeleton">
+    <Card className="zero-card" data-testid="automation-tab-skeleton">
       <CardContent className="p-0 flex flex-col">
         <div className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50">
           <div className="min-w-0 flex flex-col gap-1.5">
@@ -62,44 +65,44 @@ function ScheduleTabSkeleton() {
   );
 }
 
-export function ZeroScheduleTab({
+export function ZeroAutomationTab({
   displayName,
   entries,
   loading,
-  scheduleError,
+  automationError,
   onSave,
   onDelete,
   onToggleEnabled,
   onRunNow,
   onOpenDetails,
-}: ZeroScheduleTabProps) {
+}: ZeroAutomationTabProps) {
   const prefsLoadable = useLoadable(userPreferences$);
   const userTimezone =
     prefsLoadable.state === "hasData" ? prefsLoadable.data.timezone : null;
-  const saving = useGet(scheduleTabSaving$);
-  const setSaving = useSet(setScheduleTabSaving$);
+  const saving = useGet(automationTabSaving$);
+  const setSaving = useSet(setAutomationTabSaving$);
 
   if (loading) {
     return (
       <div className="mx-auto max-w-[900px]">
-        <ScheduleTabSkeleton />
+        <AutomationTabSkeleton />
       </div>
     );
   }
 
-  if (scheduleError) {
+  if (automationError) {
     return (
       <div className="mx-auto max-w-[900px]">
         <Card className="zero-card">
           <CardContent className="px-6 py-6 text-center">
-            <p className="text-sm text-destructive">{scheduleError}</p>
+            <p className="text-sm text-destructive">{automationError}</p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  const handleSave = (params: ZeroScheduleSaveParams) => {
+  const handleSave = (params: ZeroAutomationSaveParams) => {
     setSaving(true);
     return onSave(params).finally(() => {
       setSaving(false);
@@ -108,10 +111,10 @@ export function ZeroScheduleTab({
 
   return (
     <div className="mx-auto max-w-[900px]">
-      <ZeroScheduleCard
+      <ZeroAutomationCard
         title={`${displayName}'s automations`}
         subtitle={`Tasks you've scheduled with ${displayName} to run automatically.`}
-        initialSchedule={entries}
+        initialAutomations={entries}
         onSave={handleSave}
         onDelete={onDelete}
         onToggleEnabled={onToggleEnabled}

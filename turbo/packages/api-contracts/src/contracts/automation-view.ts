@@ -1,12 +1,12 @@
 import { z } from "zod";
 
 /**
- * The flat single-trigger schedule projection. The interactive surfaces that
- * served it (/api/zero/schedules and the /api/automations alias) are gone
- * (#17307); the shape survives as the platform schedule pages' view model
- * over the automation resource API.
+ * The flat single-trigger automation projection. The interactive surfaces
+ * that served it (/api/zero/schedules and the /api/automations alias) are
+ * gone (#17307); the shape survives as the platform automation pages' view
+ * model over the automation resource API.
  */
-export const scheduleResponseSchema = z.object({
+export const automationViewSchema = z.object({
   id: z.string().uuid(),
   agentId: z.string().uuid(),
   displayName: z.string().nullable(),
@@ -26,11 +26,11 @@ export const scheduleResponseSchema = z.object({
   retryStartedAt: z.string().nullable(),
   consecutiveFailures: z.number(),
   // Linked chat thread. Set at creation and immutable after (any chatThreadId
-  // supplied on update is ignored). Every schedule is linked to a chat thread,
-  // so this is always present.
+  // supplied on update is ignored). Every automation is linked to a chat
+  // thread, so this is always present.
   chatThreadId: z.string().uuid(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
-export type ScheduleResponse = z.infer<typeof scheduleResponseSchema>;
+export type AutomationView = z.infer<typeof automationViewSchema>;

@@ -103,6 +103,10 @@ import {
   completeChatConnectorActionConnect$,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
+import {
+  completedWorkExpandedKeys$,
+  toggleCompletedWorkExpanded$,
+} from "../../signals/chat-page/completed-work-folding.ts";
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -159,11 +163,11 @@ import {
   setGithubPrTrackingOpenThreadId$,
 } from "../../signals/chat-page/github-pr-tracking.ts";
 import {
-  headerScheduleMenu$,
-  reloadHeaderScheduleMenu$,
-  schedulesForThread,
-  type HeaderScheduleEntry,
-} from "../../signals/chat-page/header-schedule-menu.ts";
+  headerAutomationMenu$,
+  reloadHeaderAutomationMenu$,
+  automationsForThread,
+  type HeaderAutomationEntry,
+} from "../../signals/chat-page/header-automation-menu.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
@@ -930,25 +934,25 @@ function GithubPrTrackingButton({
   );
 }
 
-// Second line shown under each schedule in the header menu: the next scheduled
-// run time, or a note that the schedule is inactive when it has been disabled.
-function scheduleMenuSubline(schedule: HeaderScheduleEntry): string {
-  if (!schedule.enabled) {
+// Second line shown under each automation in the header menu: the next scheduled
+// run time, or a note that the automation is inactive when it has been disabled.
+function automationMenuSubline(automation: HeaderAutomationEntry): string {
+  if (!automation.enabled) {
     return "Automation inactive";
   }
-  if (!schedule.nextRunAt) {
+  if (!automation.nextRunAt) {
     return "No upcoming run";
   }
-  const nextRun = new Date(schedule.nextRunAt).toLocaleString("en-US", {
+  const nextRun = new Date(automation.nextRunAt).toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   });
   return `Next run ${nextRun}`;
 }
 
-// Loads schedules and only renders once this thread has at least one linked
-// schedule.
-export function ScheduleMenuButton({
+// Loads automations and only renders once this thread has at least one linked
+// automation.
+export function AutomationMenuButton({
   threadId,
   ariaLabel = "Automations",
 }: {
@@ -956,16 +960,16 @@ export function ScheduleMenuButton({
   ariaLabel?: string;
 }) {
   const navigate = useSet(detachedNavigateTo$);
-  const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
-  const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
-  const lastResolvedSchedules = useLastResolved(headerScheduleMenu$);
-  const allSchedules =
-    schedulesLoadable.state === "hasData"
-      ? schedulesLoadable.data
-      : (lastResolvedSchedules ?? []);
-  const schedules = schedulesForThread(allSchedules, threadId);
+  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const automationsLoadable = useLastLoadable(headerAutomationMenu$);
+  const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const allAutomations =
+    automationsLoadable.state === "hasData"
+      ? automationsLoadable.data
+      : (lastResolvedAutomations ?? []);
+  const automations = automationsForThread(allAutomations, threadId);
 
-  if (schedules.length === 0) {
+  if (automations.length === 0) {
     return null;
   }
 
@@ -973,7 +977,7 @@ export function ScheduleMenuButton({
     <DropdownMenu
       onOpenChange={(open) => {
         if (open) {
-          reloadSchedules();
+          reloadAutomations();
         }
       }}
     >
@@ -987,13 +991,13 @@ export function ScheduleMenuButton({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        {schedules.map((schedule) => {
+        {automations.map((automation) => {
           return (
             <DropdownMenuItem
-              key={schedule.id}
+              key={automation.id}
               onClick={() => {
                 navigate("/automations/:scheduleId", {
-                  pathParams: { scheduleId: schedule.id },
+                  pathParams: { scheduleId: automation.id },
                 });
               }}
               className="items-start gap-2"
@@ -1003,9 +1007,9 @@ export function ScheduleMenuButton({
                 className="mt-0.5 shrink-0 text-muted-foreground"
               />
               <div className="flex min-w-0 flex-col">
-                <span className="truncate">{schedule.title}</span>
+                <span className="truncate">{automation.title}</span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {scheduleMenuSubline(schedule)}
+                  {automationMenuSubline(automation)}
                 </span>
               </div>
             </DropdownMenuItem>
@@ -1083,7 +1087,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <ScheduleMenuButton threadId={thread.threadId} />
+        <AutomationMenuButton threadId={thread.threadId} />
         <ArtifactsButton thread={thread} />
         {githubPrTrackingEnabled && agentId && (
           <GithubPrTrackingButton thread={thread} agentId={agentId} />
@@ -1416,6 +1420,12 @@ type ChatImagePreviewLinkProps = {
 
 const CHAT_INLINE_MEDIA_PREVIEW_CLASS =
   "inline-flex aspect-[16/10] w-[min(100%,400px)] items-center justify-center rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+
+// Images render at their natural aspect ratio so screenshots that are not 16:10
+// no longer letterbox against a muted fill (the gray edges). The hairline border
+// hugs the actual image; width and height are capped to keep the thread tidy.
+const CHAT_INLINE_IMAGE_PREVIEW_CLASS =
+  "max-h-[360px] max-w-[min(100%,400px)] rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
 function ChatImagePreviewLink({
   alt,
@@ -2280,6 +2290,10 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
+  const completedWorkFolding = buildCompletedWorkFolding(activeGroups);
+  const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
+  const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
+  const visibleGroups = completedWorkFolding?.visibleGroups ?? activeGroups;
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -2322,7 +2336,13 @@ function ChatThreadMessagesMain({
             </p>
           </div>
         )}
-        <ChatThreadMessageGroups thread={thread} groups={activeGroups} />
+        <ChatThreadMessageGroups
+          thread={thread}
+          groups={visibleGroups}
+          completedWorkFolding={completedWorkFolding}
+          completedWorkExpandedKeys={completedWorkExpandedKeys}
+          onToggleCompletedWork={toggleCompletedWorkExpanded}
+        />
         <ThinkingIndicator thread={thread} groups={activeGroups} />
       </div>
     </main>
@@ -2332,20 +2352,309 @@ function ChatThreadMessagesMain({
 function ChatThreadMessageGroups({
   thread,
   groups,
+  completedWorkFolding,
+  completedWorkExpandedKeys,
+  onToggleCompletedWork,
 }: {
   thread: ChatThreadSignals;
   groups: readonly GroupedChatMessageGroup[];
+  completedWorkFolding: CompletedWorkFolding | null;
+  completedWorkExpandedKeys: ReadonlySet<string>;
+  onToggleCompletedWork: (key: string) => void;
 }) {
   return (
     <>
       {groups.map((group) => {
+        const completedWorkFold =
+          completedWorkFolding !== null
+            ? (group.messages
+                .map((message) => {
+                  return completedWorkFolding.foldsByFinalMessageId.get(
+                    message.id,
+                  );
+                })
+                .find((fold) => {
+                  return fold !== undefined;
+                }) ?? null)
+            : null;
+        const completedWorkExpanded =
+          completedWorkFold !== null &&
+          completedWorkExpandedKeys.has(completedWorkFold.key);
         return (
           <div key={group.beginMessageId} className="contents">
-            <PagedGroupRow group={group} thread={thread} />
+            <PagedGroupRow
+              group={group}
+              thread={thread}
+              completedWorkFold={
+                completedWorkFold !== null
+                  ? {
+                      groups: completedWorkFold.labelGroups,
+                      hiddenGroups: completedWorkFold.hiddenGroups,
+                      expanded: completedWorkExpanded,
+                      onToggle: () => {
+                        onToggleCompletedWork(completedWorkFold.key);
+                      },
+                    }
+                  : undefined
+              }
+            />
           </div>
         );
       })}
     </>
+  );
+}
+
+function groupMessagesByRole(
+  messages: readonly EnrichedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const groups: GroupedChatMessageGroup[] = [];
+  for (const message of messages) {
+    const last = groups[groups.length - 1];
+    if (last && last.role === message.role) {
+      last.messages.push(message);
+      continue;
+    }
+    groups.push({
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    });
+  }
+  return groups;
+}
+
+interface CompletedWorkFold {
+  key: string;
+  finalMessageId: string;
+  hiddenGroups: GroupedChatMessageGroup[];
+  labelGroups: GroupedChatMessageGroup[];
+}
+
+interface CompletedWorkFolding {
+  visibleGroups: GroupedChatMessageGroup[];
+  foldsByFinalMessageId: Map<string, CompletedWorkFold>;
+}
+
+function groupMessagesForCompletedWorkDisplay(
+  messages: readonly EnrichedChatMessage[],
+  foldFinalMessageIds: ReadonlySet<string>,
+): GroupedChatMessageGroup[] {
+  const groups: GroupedChatMessageGroup[] = [];
+  for (const message of messages) {
+    const forceStandalone = foldFinalMessageIds.has(message.id);
+    const last = groups[groups.length - 1];
+    const lastHasFoldFinal =
+      last?.messages.some((candidate) => {
+        return foldFinalMessageIds.has(candidate.id);
+      }) ?? false;
+
+    if (
+      !forceStandalone &&
+      last &&
+      last.role === message.role &&
+      !lastHasFoldFinal
+    ) {
+      last.messages.push(message);
+      continue;
+    }
+
+    groups.push({
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    });
+  }
+  return groups;
+}
+
+function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    (Boolean(message.content) || Boolean(message.error))
+  );
+}
+
+function terminatedRunIdsForCompletedWork(
+  messages: readonly EnrichedChatMessage[],
+): Set<string> {
+  const terminatedRunIds = new Set<string>();
+  for (const message of messages) {
+    if (message.interruptsRunId !== undefined) {
+      terminatedRunIds.add(message.interruptsRunId);
+    }
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      terminatedRunIds.add(message.runId);
+    }
+  }
+  return terminatedRunIds;
+}
+
+function buildCompletedWorkFolding(
+  groups: readonly GroupedChatMessageGroup[],
+): CompletedWorkFolding | null {
+  const messages = groups.flatMap((group) => {
+    return group.messages;
+  });
+  const terminatedRunIds = terminatedRunIdsForCompletedWork(messages);
+  const visibleMessages: EnrichedChatMessage[] = [];
+  const folds: CompletedWorkFold[] = [];
+
+  for (let index = 0; index < messages.length; ) {
+    const runId = messages[index]!.runId;
+    if (runId === undefined) {
+      visibleMessages.push(messages[index]!);
+      index++;
+      continue;
+    }
+
+    let endIndex = index + 1;
+    while (endIndex < messages.length && messages[endIndex]!.runId === runId) {
+      endIndex++;
+    }
+
+    const runMessages = messages.slice(index, endIndex);
+    if (!terminatedRunIds.has(runId)) {
+      visibleMessages.push(...runMessages);
+      index = endIndex;
+      continue;
+    }
+
+    let finalMessageIndex = -1;
+    for (let offset = runMessages.length - 1; offset >= 0; offset--) {
+      if (isRenderableAssistantMessage(runMessages[offset]!)) {
+        finalMessageIndex = offset;
+        break;
+      }
+    }
+    const finalMessage =
+      finalMessageIndex >= 0 ? runMessages[finalMessageIndex]! : undefined;
+    const precedingMessages =
+      finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
+    const hiddenMessages = precedingMessages.filter((message) => {
+      return message.role !== "user";
+    });
+    const trailingMessages =
+      finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
+    const trailingMessagesAreMarkers = trailingMessages.every((message) => {
+      return (
+        message.role === "assistant" && !isRenderableAssistantMessage(message)
+      );
+    });
+    if (
+      finalMessage !== undefined &&
+      hiddenMessages.length > 0 &&
+      trailingMessagesAreMarkers
+    ) {
+      visibleMessages.push(
+        ...precedingMessages.filter((message) => {
+          return message.role === "user";
+        }),
+        finalMessage,
+      );
+      folds.push({
+        key: `${runId}:${finalMessage.id}`,
+        finalMessageId: finalMessage.id,
+        hiddenGroups: groupMessagesByRole(hiddenMessages),
+        labelGroups: groupMessagesByRole(runMessages),
+      });
+    } else {
+      visibleMessages.push(...runMessages);
+    }
+
+    index = endIndex;
+  }
+
+  if (folds.length === 0) {
+    return null;
+  }
+
+  const foldFinalMessageIds = new Set(
+    folds.map((fold) => {
+      return fold.finalMessageId;
+    }),
+  );
+  return {
+    visibleGroups: groupMessagesForCompletedWorkDisplay(
+      visibleMessages,
+      foldFinalMessageIds,
+    ),
+    foldsByFinalMessageId: new Map(
+      folds.map((fold) => {
+        return [fold.finalMessageId, fold];
+      }),
+    ),
+  };
+}
+
+function parseMessageTime(value: string): number | null {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function formatCompactDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+  const totalHours = Math.round(totalMinutes / 60);
+  return `${totalHours}h`;
+}
+
+function completedWorkLabel(
+  groups: readonly GroupedChatMessageGroup[],
+): string {
+  const timestamps = groups.flatMap((group) => {
+    return group.messages.flatMap((message) => {
+      const timestamp = parseMessageTime(message.createdAt);
+      return timestamp === null ? [] : [timestamp];
+    });
+  });
+  if (timestamps.length < 2) {
+    return "Worked";
+  }
+  const elapsedSeconds = Math.max(
+    1,
+    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 1000),
+  );
+  return `Worked for ${formatCompactDuration(elapsedSeconds)}`;
+}
+
+const RUN_SECTION_LABEL_CLASS =
+  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
+
+function CompletedWorkFoldRow({
+  groups,
+  expanded,
+  onToggle,
+}: {
+  groups: readonly GroupedChatMessageGroup[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const label = completedWorkLabel(groups);
+  return (
+    <div data-chat-completed-work-fold className="-mx-2">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={expanded ? "Collapse work history" : "Expand work history"}
+        onClick={onToggle}
+        className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
+      >
+        <span className="flex items-center gap-2">
+          <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
+          <span aria-hidden className="h-px flex-1 bg-border/40" />
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -3543,12 +3852,12 @@ function BodyContentBlocks({
               key={block.id}
               alt={block.preview.filename}
               ariaLabel={`Preview ${block.preview.filename}`}
-              imageClassName="h-full w-full object-contain"
-              linkClassName={`${CHAT_INLINE_MEDIA_PREVIEW_CLASS} bg-muted/30`}
+              imageClassName="block h-auto w-auto max-h-[360px] max-w-full object-contain"
+              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
               onPreview={() => {
                 openLightbox(block.preview.url);
               }}
-              placeholderClassName="h-full w-full"
+              placeholderClassName="aspect-[4/3] w-[min(100%,260px)]"
               url={block.preview.url}
             />
           );
@@ -4521,14 +4830,27 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
 function PagedGroupRow({
   group,
   thread,
+  completedWorkFold,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  completedWorkFold?: {
+    groups: readonly GroupedChatMessageGroup[];
+    hiddenGroups: readonly GroupedChatMessageGroup[];
+    expanded: boolean;
+    onToggle: () => void;
+  };
 }) {
   if (group.role === "user") {
     return <PagedUserGroup group={group} thread={thread} />;
   }
-  return <PagedAssistantGroup group={group} thread={thread} />;
+  return (
+    <PagedAssistantGroup
+      group={group}
+      thread={thread}
+      completedWorkFold={completedWorkFold}
+    />
+  );
 }
 
 function PagedUserGroup({
@@ -4547,7 +4869,7 @@ function PagedUserGroup({
   );
 }
 
-function isScheduleUserMessage(
+function isAutomationUserMessage(
   message: EnrichedChatMessage,
 ): message is EnrichedChatMessage & { role: "user" } {
   return (
@@ -4558,7 +4880,7 @@ function isScheduleUserMessage(
   );
 }
 
-function scheduleMessageLabel(
+function automationMessageLabel(
   message: EnrichedChatMessage & { role: "user" },
 ): string {
   return (
@@ -4771,12 +5093,12 @@ function UserMessageAttachments({
               key={a.url}
               alt={a.filename}
               ariaLabel={`Preview ${a.filename}`}
-              imageClassName="h-full w-full object-contain"
-              linkClassName={`${CHAT_INLINE_MEDIA_PREVIEW_CLASS} bg-muted/30`}
+              imageClassName="block h-auto w-auto max-h-[360px] max-w-full object-contain"
+              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
               onPreview={() => {
                 onImageClick(a.url);
               }}
-              placeholderClassName="h-full w-full"
+              placeholderClassName="aspect-[4/3] w-[min(100%,260px)]"
               url={a.url}
             />
           );
@@ -4962,12 +5284,12 @@ function UserMessageGenerationTemplate({
   );
 }
 
-function ScheduleUserMessage({
+function AutomationUserMessage({
   scheduleId,
-  scheduleLabel,
+  automationLabel,
 }: {
   scheduleId: string | undefined;
-  scheduleLabel: string;
+  automationLabel: string;
 }) {
   const cardClassName =
     "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
@@ -4975,7 +5297,7 @@ function ScheduleUserMessage({
     <>
       <IconClock size={15} className="shrink-0" />
       <span className="min-w-0 truncate font-medium text-foreground">
-        {scheduleLabel}
+        {automationLabel}
       </span>
     </>
   );
@@ -4989,7 +5311,7 @@ function ScheduleUserMessage({
               pathname="/automations/:scheduleId"
               options={{ pathParams: { scheduleId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open automation ${scheduleLabel}`}
+              aria-label={`Open automation ${automationLabel}`}
             >
               {body}
             </Link>
@@ -5054,11 +5376,11 @@ function PagedUserMessage({
     );
   };
 
-  if (isScheduleUserMessage(message)) {
+  if (isAutomationUserMessage(message)) {
     return (
-      <ScheduleUserMessage
+      <AutomationUserMessage
         scheduleId={message.scheduleId}
-        scheduleLabel={scheduleMessageLabel(message)}
+        automationLabel={automationMessageLabel(message)}
       />
     );
   }
@@ -5100,9 +5422,16 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
+  completedWorkFold,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  completedWorkFold?: {
+    groups: readonly GroupedChatMessageGroup[];
+    hiddenGroups: readonly GroupedChatMessageGroup[];
+    expanded: boolean;
+    onToggle: () => void;
+  };
 }) {
   const groupElementId = `chat-message-group-${group.beginMessageId}`;
   const fullContent = group.messages
@@ -5121,6 +5450,26 @@ function PagedAssistantGroup({
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-3">
+          {completedWorkFold && (
+            <CompletedWorkFoldRow
+              groups={completedWorkFold.groups}
+              expanded={completedWorkFold.expanded}
+              onToggle={completedWorkFold.onToggle}
+            />
+          )}
+          {completedWorkFold?.expanded
+            ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
+                return (
+                  <div key={hiddenGroup.beginMessageId} className="contents">
+                    {hiddenGroup.messages.map((msg) => {
+                      return (
+                        <PagedAssistantMessageItem key={msg.id} message={msg} />
+                      );
+                    })}
+                  </div>
+                );
+              })
+            : null}
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}

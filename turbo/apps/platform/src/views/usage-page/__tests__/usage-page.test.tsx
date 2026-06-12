@@ -58,9 +58,9 @@ describe("/usage page", () => {
     context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
       return respond(200, {
         buckets: [],
-        schedules: [],
-        scheduleOtherCount: 0,
-        scheduleOtherCredits: 0,
+        automations: [],
+        automationOtherCount: 0,
+        automationOtherCredits: 0,
         chats: [],
         chatOtherCount: 0,
         chatOtherCredits: 0,

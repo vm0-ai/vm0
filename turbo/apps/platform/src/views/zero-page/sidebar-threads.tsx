@@ -77,9 +77,9 @@ import {
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
-  headerScheduleMenu$,
-  schedulesForThread,
-} from "../../signals/chat-page/header-schedule-menu.ts";
+  headerAutomationMenu$,
+  automationsForThread,
+} from "../../signals/chat-page/header-automation-menu.ts";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
@@ -614,12 +614,12 @@ function DeleteChatThreadDialog() {
   const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
-  const lastResolvedSchedules = useLastResolved(headerScheduleMenu$);
-  const allSchedules =
-    schedulesLoadable.state === "hasData"
-      ? schedulesLoadable.data
-      : (lastResolvedSchedules ?? []);
+  const automationsLoadable = useLastLoadable(headerAutomationMenu$);
+  const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const allAutomations =
+    automationsLoadable.state === "hasData"
+      ? automationsLoadable.data
+      : (lastResolvedAutomations ?? []);
 
   const pendingDeleteThread = pendingDeleteThreadId
     ? chatThreads.find((thread) => {
@@ -627,9 +627,9 @@ function DeleteChatThreadDialog() {
       })
     : null;
   const scheduleCount = pendingDeleteThread?.scheduleCount ?? 0;
-  const hasSchedules = scheduleCount > 0;
-  const pendingDeleteSchedules = pendingDeleteThreadId
-    ? schedulesForThread(allSchedules, pendingDeleteThreadId)
+  const hasAutomations = scheduleCount > 0;
+  const pendingDeleteAutomations = pendingDeleteThreadId
+    ? automationsForThread(allAutomations, pendingDeleteThreadId)
     : [];
 
   function confirmDelete() {
@@ -653,29 +653,29 @@ function DeleteChatThreadDialog() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {hasSchedules ? "Delete chat and automations?" : "Delete chat?"}
+            {hasAutomations ? "Delete chat and automations?" : "Delete chat?"}
           </DialogTitle>
           <DialogDescription>
-            {hasSchedules
+            {hasAutomations
               ? `This will permanently delete this chat and its ${scheduleCount} linked ${
                   scheduleCount === 1 ? "automation" : "automations"
                 }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
               : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
           </DialogDescription>
         </DialogHeader>
-        {hasSchedules && pendingDeleteSchedules.length > 0 && (
+        {hasAutomations && pendingDeleteAutomations.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <p className="text-sm font-medium">
               These automations will be deleted
             </p>
             <ul className="flex list-disc flex-col gap-1 pl-5">
-              {pendingDeleteSchedules.map((schedule) => {
+              {pendingDeleteAutomations.map((automation) => {
                 return (
                   <li
-                    key={schedule.id}
+                    key={automation.id}
                     className="break-words text-sm text-muted-foreground"
                   >
-                    {schedule.title}
+                    {automation.title}
                   </li>
                 );
               })}
@@ -692,7 +692,7 @@ function DeleteChatThreadDialog() {
             Cancel
           </Button>
           <Button variant="destructive" onClick={confirmDelete}>
-            {hasSchedules ? "Delete chat and automations" : "Delete"}
+            {hasAutomations ? "Delete chat and automations" : "Delete"}
           </Button>
         </DialogFooter>
       </DialogContent>

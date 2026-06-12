@@ -223,19 +223,23 @@ async function queryUsageRecordRows(
   });
 }
 
-async function queryUsageRecordTotal(
+async function queryUsageRecordTotals(
   db: Db,
   recordCte: string,
   sourceFilterLit: string | null,
-): Promise<number> {
+): Promise<{ total: number; totalCredits: number }> {
   const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
-  const result = await db.execute<{ total: string }>(
+  const result = await db.execute<{ total: string; total_credits: string }>(
     sql.raw(`
       ${recordCte}
-      SELECT COUNT(*)::bigint AS total FROM record ${where}
+      SELECT COUNT(*)::bigint AS total, COALESCE(SUM(credits), 0)::bigint AS total_credits
+      FROM record ${where}
     `),
   );
-  return Number(result.rows[0]?.total ?? 0);
+  return {
+    total: Number(result.rows[0]?.total ?? 0),
+    totalCredits: Number(result.rows[0]?.total_credits ?? 0),
+  };
 }
 
 function rowKeyExpr(
@@ -372,6 +376,7 @@ export const zeroUsageRecord$ = command(
       return {
         period: null,
         rows: [],
+        totalCredits: 0,
         pagination: {
           page: args.page,
           pageSize: args.pageSize,
@@ -416,7 +421,11 @@ export const zeroUsageRecord$ = command(
       }),
     );
     signal.throwIfAborted();
-    const total = await queryUsageRecordTotal(db, recordCte, sourceFilterLit);
+    const { total, totalCredits } = await queryUsageRecordTotals(
+      db,
+      recordCte,
+      sourceFilterLit,
+    );
     signal.throwIfAborted();
 
     const emailMap =
@@ -462,6 +471,7 @@ export const zeroUsageRecord$ = command(
           lastActivityAt: row.lastActivityAt,
         };
       }),
+      totalCredits,
       pagination: {
         page: args.page,
         pageSize: args.pageSize,

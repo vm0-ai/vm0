@@ -314,17 +314,17 @@ function usageInsightResponse(): UsageInsightResponse {
         tokens: { chat: 800, slack: 500 },
       },
     ],
-    schedules: [
+    automations: [
       {
-        scheduleId: "d0000000-0000-4000-a000-000000000001",
-        scheduleName: "Morning Briefing",
-        scheduleDescription: null,
+        automationId: "d0000000-0000-4000-a000-000000000001",
+        automationName: "Morning Briefing",
+        automationDescription: null,
         credits: 300,
         tokens: 600,
       },
     ],
-    scheduleOtherCount: 0,
-    scheduleOtherCredits: 0,
+    automationOtherCount: 0,
+    automationOtherCredits: 0,
     chats: [
       {
         threadId: "b0000000-0000-4000-a000-000000000001",

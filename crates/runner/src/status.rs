@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use sandbox::SandboxId;
@@ -7,6 +7,7 @@ use serde::Serialize;
 use tokio::sync::Mutex;
 use tracing::warn;
 
+use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 
 /// Runner lifecycle state.
@@ -240,6 +241,21 @@ impl StatusTracker {
     }
 }
 
+/// Remove a status file from a previous runner process, if present.
+///
+/// Called only after the new process owns the runner base-dir lock. This clears
+/// stale `running` snapshots before startup has reached the main reactor.
+pub async fn remove_stale_status_file(path: &Path) -> RunnerResult<()> {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(RunnerError::Config(format!(
+            "remove stale status file {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
 fn apply_idle_info_at_revision(
     state: &mut MutableState,
     revision: u64,
@@ -300,6 +316,42 @@ mod tests {
         );
         let status = read_status(&path);
         assert_eq!(status["mode"], "running");
+    }
+
+    #[tokio::test]
+    async fn remove_stale_status_file_ignores_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+
+        remove_stale_status_file(&path).await.unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn remove_stale_status_file_removes_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        std::fs::write(&path, r#"{"mode":"running"}"#).unwrap();
+
+        remove_stale_status_file(&path).await.unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn remove_stale_status_file_removes_symlink_without_touching_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let target = dir.path().join("target-status");
+        std::fs::write(&target, b"keep me").unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+
+        remove_stale_status_file(&path).await.unwrap();
+
+        assert!(!path.exists());
+        assert_eq!(std::fs::read(&target).unwrap(), b"keep me");
     }
 
     #[tokio::test]

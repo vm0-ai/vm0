@@ -11,22 +11,22 @@ import {
   isAtTimePast,
   cronUtcToLocalTime,
   atTimeInTimezone,
-  type ScheduleBody,
+  type AutomationFormBody,
   type CronTimeOption,
 } from "../cron.ts";
 import {
-  listSchedules,
-  deploySchedule,
-  setScheduleEnabled,
-  deleteSchedule,
+  listAutomations,
+  deployAutomation,
+  setAutomationEnabled,
+  deleteAutomation,
 } from "../automations-api.ts";
-import type { ScheduleEntry } from "../../../views/zero-page/zero-schedule-card.tsx";
+import type { AutomationEntry } from "../../../views/zero-page/zero-automation-card.tsx";
 
 // ---------------------------------------------------------------------------
-// Agent schedule — reactive async computed
+// Agent automation — reactive async computed
 // ---------------------------------------------------------------------------
 
-interface ScheduleItem {
+interface AutomationItem {
   id: string;
   agentId: string;
   name: string;
@@ -42,7 +42,7 @@ interface ScheduleItem {
 }
 
 // ---------------------------------------------------------------------------
-// Schedule time string conversion
+// Automation time string conversion
 // ---------------------------------------------------------------------------
 
 function cronToTimeString(cron: string, timezone = "UTC"): string {
@@ -88,8 +88,8 @@ function cronToTimeString(cron: string, timezone = "UTC"): string {
   return `Every day at ${timeStr}`;
 }
 
-function scheduleToTimeString(
-  s: ScheduleItem,
+function automationToTimeString(
+  s: AutomationItem,
   displayTimezone?: string,
 ): string {
   const tz = displayTimezone ?? s.timezone ?? "UTC";
@@ -112,32 +112,32 @@ function scheduleToTimeString(
 }
 
 // ---------------------------------------------------------------------------
-// Schedule state
+// Automation state
 // ---------------------------------------------------------------------------
 
-const internalScheduleReload$ = state(0);
+const internalAutomationReload$ = state(0);
 
-const reloadAgentSchedule$ = command(({ set }) => {
-  set(internalScheduleReload$, (prev) => {
+const reloadAgentAutomation$ = command(({ set }) => {
+  set(internalAutomationReload$, (prev) => {
     return prev + 1;
   });
 });
 
-const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
-  get(internalScheduleReload$);
+const rawAutomations$ = computed(async (get): Promise<AutomationItem[]> => {
+  get(internalAutomationReload$);
   const detail = await get(agentDetail$);
   if (!detail) {
     return [];
   }
-  const schedules = await listSchedules(get(zeroClient$));
-  return schedules.filter((s) => {
+  const automations = await listAutomations(get(zeroClient$));
+  return automations.filter((s) => {
     return s.agentId === detail.agentId;
   });
 });
 
-export const agentScheduleEntries$ = computed(
-  async (get): Promise<ScheduleEntry[]> => {
-    const items = await get(rawSchedules$);
+export const agentAutomationEntries$ = computed(
+  async (get): Promise<AutomationEntry[]> => {
+    const items = await get(rawAutomations$);
     const prefs = await get(userPreferences$);
     const displayTz =
       prefs?.timezone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -145,10 +145,10 @@ export const agentScheduleEntries$ = computed(
       .sort((a, b) => {
         return b.createdAt.localeCompare(a.createdAt);
       })
-      .map((s): ScheduleEntry => {
+      .map((s): AutomationEntry => {
         return {
           id: s.id,
-          time: scheduleToTimeString(s, displayTz),
+          time: automationToTimeString(s, displayTz),
           prompt: s.prompt,
           description: s.description,
           enabled: s.enabled,
@@ -161,10 +161,10 @@ export const agentScheduleEntries$ = computed(
 );
 
 // ---------------------------------------------------------------------------
-// Schedule CRUD
+// Automation CRUD
 // ---------------------------------------------------------------------------
 
-interface AgentScheduleSaveParams {
+interface AgentAutomationSaveParams {
   prompt: string;
   description?: string;
   freq: string;
@@ -178,10 +178,10 @@ interface AgentScheduleSaveParams {
   editName?: string;
 }
 
-export const saveAgentSchedule$ = command(
+export const saveAgentAutomation$ = command(
   async (
     { get, set },
-    params: AgentScheduleSaveParams,
+    params: AgentAutomationSaveParams,
     signal: AbortSignal,
   ) => {
     const detail = await get(agentDetail$);
@@ -190,18 +190,18 @@ export const saveAgentSchedule$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const scheduleName = params.editName ?? `zero-${now().toString(36)}`;
+    const automationName = params.editName ?? `zero-${now().toString(36)}`;
 
     const base = {
       agentId: detail.agentId,
-      name: scheduleName,
+      name: automationName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
       ...(params.description && { description: params.description.trim() }),
       enabled: true,
     };
 
-    let body: ScheduleBody;
+    let body: AutomationFormBody;
 
     if (params.freq === "every_n_minutes") {
       body = { ...base, intervalSeconds: params.intervalSeconds };
@@ -228,7 +228,7 @@ export const saveAgentSchedule$ = command(
       };
       const timeOption = freqMap[params.freq];
       if (!timeOption) {
-        throw new Error(`Unknown schedule frequency: ${params.freq}`);
+        throw new Error(`Unknown automation frequency: ${params.freq}`);
       }
       const cronExpression = buildCronExpression({
         timeOption,
@@ -240,17 +240,21 @@ export const saveAgentSchedule$ = command(
       body = { ...base, cronExpression };
     }
 
-    await deploySchedule(get(zeroClient$), body, params.editName !== undefined);
+    await deployAutomation(
+      get(zeroClient$),
+      body,
+      params.editName !== undefined,
+    );
     signal.throwIfAborted();
 
     toast.success(
       params.editName ? "Automation updated" : "Automation created",
     );
-    set(reloadAgentSchedule$);
+    set(reloadAgentAutomation$);
   },
 );
 
-export const toggleAgentScheduleEnabled$ = command(
+export const toggleAgentAutomationEnabled$ = command(
   async (
     { get, set },
     params: { name: string; enabled: boolean },
@@ -262,32 +266,32 @@ export const toggleAgentScheduleEnabled$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    await setScheduleEnabled(get(zeroClient$), {
+    await setAutomationEnabled(get(zeroClient$), {
       name: params.name,
       agentId: detail.agentId,
       enabled: params.enabled,
     });
     signal.throwIfAborted();
 
-    set(reloadAgentSchedule$);
+    set(reloadAgentAutomation$);
   },
 );
 
-export const deleteAgentSchedule$ = command(
-  async ({ get, set }, scheduleName: string, signal: AbortSignal) => {
+export const deleteAgentAutomation$ = command(
+  async ({ get, set }, automationName: string, signal: AbortSignal) => {
     const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
     }
 
-    await deleteSchedule(get(zeroClient$), {
-      name: scheduleName,
+    await deleteAutomation(get(zeroClient$), {
+      name: automationName,
       agentId: detail.agentId,
     });
     signal.throwIfAborted();
 
     toast.success("Automation deleted");
-    set(reloadAgentSchedule$);
+    set(reloadAgentAutomation$);
   },
 );

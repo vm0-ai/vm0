@@ -2,9 +2,9 @@ use super::super::*;
 use super::support::{
     assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
     mock_run_config_with_api_url, mock_run_config_with_delay, mock_run_config_with_overrides,
-    push_job, shutdown, test_profiles, wait_budget_count, wait_budget_exhausted_reactor,
-    wait_cancel_token, wait_cancel_token_removed, wait_discover_entered, wait_parking_state,
-    wait_status_mode, wait_usage_flush_requested,
+    mock_run_config_with_runtime, push_job, shutdown, test_profiles, wait_budget_count,
+    wait_budget_exhausted_reactor, wait_cancel_token, wait_cancel_token_removed,
+    wait_discover_entered, wait_parking_state, wait_status_mode, wait_usage_flush_requested,
 };
 
 use super::super::signals::{SignalController, SignalHandlerTask, handle_resume_signal};
@@ -13,6 +13,7 @@ use crate::provider::{ClaimedJob, CompletionAuth, JobCandidate};
 use crate::types::{HeartbeatState, HeldSessionState, SandboxReuseResult};
 use async_trait::async_trait;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct ShutdownRecordingProvider {
@@ -68,6 +69,101 @@ impl sandbox::SandboxRuntime for ShutdownRecordingRuntime {
     }
 }
 
+struct FactoryFailingRuntime {
+    create_calls: Arc<AtomicUsize>,
+    shutdowns: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl sandbox::SandboxRuntime for FactoryFailingRuntime {
+    async fn create_factory(
+        &self,
+        _config: sandbox::FactoryConfig,
+    ) -> sandbox::Result<Box<dyn sandbox::SandboxFactory>> {
+        self.create_calls.fetch_add(1, Ordering::SeqCst);
+        Err(sandbox::SandboxError::Initialization {
+            phase: sandbox::SandboxInitializationPhase::Factory,
+            message: "factory failed".into(),
+        })
+    }
+
+    async fn shutdown(&mut self) {
+        self.shutdowns.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+struct CountingRuntimeProvider {
+    create_calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl sandbox::RuntimeProvider for CountingRuntimeProvider {
+    async fn create_runtime(
+        &self,
+        _config: sandbox::RuntimeConfig,
+    ) -> sandbox::Result<Box<dyn sandbox::SandboxRuntime>> {
+        self.create_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::new(ShutdownRecordingRuntime {
+            shutdowns: Arc::new(AtomicUsize::new(0)),
+        }))
+    }
+}
+
+struct BlockingFactoryRuntime {
+    entered: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    release: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+}
+
+impl BlockingFactoryRuntime {
+    fn new(
+        entered: tokio::sync::oneshot::Sender<()>,
+        release: tokio::sync::oneshot::Receiver<()>,
+    ) -> Self {
+        Self {
+            entered: Mutex::new(Some(entered)),
+            release: tokio::sync::Mutex::new(Some(release)),
+        }
+    }
+}
+
+#[async_trait]
+impl sandbox::SandboxRuntime for BlockingFactoryRuntime {
+    async fn create_factory(
+        &self,
+        _config: sandbox::FactoryConfig,
+    ) -> sandbox::Result<Box<dyn sandbox::SandboxFactory>> {
+        if let Some(entered) = self
+            .entered
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
+            let _ = entered.send(());
+        }
+        let release = {
+            let mut guard = self.release.lock().await;
+            guard.take().expect("factory release should be configured")
+        };
+        let _ = release.await;
+        Ok(Box::new(sandbox_mock::MockSandboxFactory::new()))
+    }
+
+    async fn shutdown(&mut self) {}
+}
+
+async fn status_mode_if_exists(status_path: &std::path::Path) -> Option<String> {
+    let raw = match tokio::fs::read_to_string(status_path).await {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => panic!("failed to read status file {}: {e}", status_path.display()),
+    };
+    let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    status
+        .get("mode")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
 fn usage_pending_path(base_dir: &std::path::Path) -> std::path::PathBuf {
     base_dir.join("mitm-addon").join("usage-pending")
 }
@@ -120,6 +216,8 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
     let mut runtime = ShutdownRecordingRuntime {
         shutdowns: Arc::clone(&runtime_shutdowns),
     };
+    let status_path = dir.path().join("status.json");
+    let status = StatusTracker::new(status_path.clone(), 4, None, None);
     let (mut mitm, _mitm_crash_rx) = crate::proxy::MitmProxy::noop();
     let mut ignore_term_child = tokio::process::Command::new("python3")
         .arg("-c")
@@ -178,6 +276,7 @@ while True:
                 kmsg_handle: crate::kmsg_log::KmsgHandle::noop(),
                 dns_handle: crate::dns::DnsProxy::noop(),
                 memory_prefetch: &mut memory_prefetch,
+                status: &status,
             },
         ),
     )
@@ -203,6 +302,160 @@ while True:
         !std::path::Path::new(&format!("/proc/{proxy_child_pid}")).exists(),
         "proxy child should be killed and reaped during cleanup"
     );
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
+async fn startup_does_not_publish_running_before_factories_are_ready() {
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let runtime = BlockingFactoryRuntime::new(entered_tx, release_rx);
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    tokio::time::timeout(Duration::from_secs(2), entered_rx)
+        .await
+        .expect("factory startup should be entered")
+        .expect("factory startup should report entry");
+    assert_ne!(
+        status_mode_if_exists(&status_path).await.as_deref(),
+        Some("running"),
+        "runner must not publish running before factories are ready",
+    );
+
+    release_tx
+        .send(())
+        .expect("runner should still be waiting for factory release");
+    wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn factory_startup_failure_stops_status_and_cleans_startup_resources() {
+    let create_calls = Arc::new(AtomicUsize::new(0));
+    let runtime_shutdowns = Arc::new(AtomicUsize::new(0));
+    let runtime = FactoryFailingRuntime {
+        create_calls: Arc::clone(&create_calls),
+        shutdowns: Arc::clone(&runtime_shutdowns),
+    };
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let status_path = env._temp_dir.path().join("status.json");
+
+    let error = run(config).await.expect_err("factory startup should fail");
+
+    assert!(
+        error.to_string().contains("factory failed"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(create_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime_shutdowns.load(Ordering::SeqCst), 1);
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
+async fn local_provider_setup_failure_does_not_create_runtime() {
+    const ROOTFS_HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const SNAPSHOT_HASH: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("home"));
+    let home_parent = home
+        .groups_dir()
+        .parent()
+        .expect("groups dir should have a parent")
+        .to_path_buf();
+    tokio::fs::create_dir_all(&home_parent).await.unwrap();
+    tokio::fs::write(home.groups_dir(), b"not a directory")
+        .await
+        .unwrap();
+
+    let rootfs = crate::paths::RootfsPaths::new(&home, ROOTFS_HASH);
+    let snapshot = rootfs.snapshot(SNAPSHOT_HASH);
+    tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
+    tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
+    for path in [
+        snapshot.snapshot_bin(),
+        snapshot.memory_bin(),
+        snapshot.cow_img(),
+        snapshot.cow_bitmap(),
+    ] {
+        tokio::fs::write(path, b"").await.unwrap();
+    }
+    tokio::fs::write(
+        snapshot.complete_marker(),
+        sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+    )
+    .await
+    .unwrap();
+
+    let ca_dir = dir.path().join("ca");
+    let firecracker = dir.path().join("firecracker");
+    let kernel = dir.path().join("vmlinux");
+    tokio::fs::create_dir_all(&ca_dir).await.unwrap();
+    tokio::fs::write(&firecracker, b"").await.unwrap();
+    tokio::fs::write(&kernel, b"").await.unwrap();
+
+    let base_dir = dir.path().join("base");
+    let config_path = dir.path().join("runner.yaml");
+    tokio::fs::write(
+        &config_path,
+        format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {firecracker}
+  kernel: {kernel}
+sandbox:
+  max_concurrent: 1
+profiles:
+  vm0/default:
+    rootfs_hash: {ROOTFS_HASH}
+    snapshot_hash: {SNAPSHOT_HASH}
+    vcpu: 2
+    memory_mb: 4096
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 10240
+server:
+  url: http://localhost:0
+  token: token
+"#,
+            base_dir = base_dir.display(),
+            ca_dir = ca_dir.display(),
+            firecracker = firecracker.display(),
+            kernel = kernel.display(),
+        ),
+    )
+    .await
+    .unwrap();
+
+    let create_calls = Arc::new(AtomicUsize::new(0));
+    let provider = CountingRuntimeProvider {
+        create_calls: Arc::clone(&create_calls),
+    };
+    let error = run_start_with_home(
+        StartArgs {
+            config: config_path,
+            api_url: None,
+            token: None,
+            local: true,
+        },
+        &provider,
+        || Ok(home),
+    )
+    .await
+    .expect_err("local provider setup should fail before runtime creation");
+
+    assert!(
+        error.to_string().contains("create group dir"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(create_calls.load(Ordering::SeqCst), 0);
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {

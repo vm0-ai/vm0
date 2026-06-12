@@ -79,8 +79,8 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     icon: IconPlug as NavIcon,
   },
   {
-    id: "schedules",
-    activeKeys: ["schedules", "scheduleDetail"],
+    id: "automations",
+    activeKeys: ["automations", "automationDetail"],
     pathname: "/automations",
     label: "Automations",
     icon: IconCalendar as NavIcon,

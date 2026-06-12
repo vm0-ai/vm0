@@ -6,7 +6,7 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { createElement } from "react";
 import { Link } from "../../views/router/link.tsx";
-import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { zeroClient$ } from "../api-client.ts";
 import {
   buildCronExpression,
@@ -14,44 +14,44 @@ import {
   isAtTimePast,
   cronUtcToLocalTime,
   atTimeInTimezone,
-  type ScheduleBody,
+  type AutomationFormBody,
   type CronTimeOption,
 } from "./cron.ts";
 import {
-  listSchedules,
-  deploySchedule,
-  setScheduleEnabled,
-  deleteSchedule,
-  runScheduleNow as runScheduleNowApi,
+  listAutomations,
+  deployAutomation,
+  setAutomationEnabled,
+  deleteAutomation,
+  runAutomationNow as runAutomationNowApi,
 } from "./automations-api.ts";
 import { ApiError } from "../../lib/accept.ts";
 import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
 import { userPreferences$ } from "./settings/user-preferences.ts";
 
-const SCHEDULE_TIME_PAST_MESSAGE = "Scheduled time must be in the future";
+const AUTOMATION_TIME_PAST_MESSAGE = "Scheduled time must be in the future";
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-// Schedule tab saving state (used by ZeroScheduleTab to show loading during save)
-const internalScheduleTabSaving$ = state(false);
+// Automation tab saving state (used by ZeroAutomationTab to show loading during save)
+const internalAutomationTabSaving$ = state(false);
 
-export const scheduleTabSaving$ = computed((get) => {
-  return get(internalScheduleTabSaving$);
+export const automationTabSaving$ = computed((get) => {
+  return get(internalAutomationTabSaving$);
 });
 
-export const setScheduleTabSaving$ = command(({ set }, value: boolean) => {
-  set(internalScheduleTabSaving$, value);
+export const setAutomationTabSaving$ = command(({ set }, value: boolean) => {
+  set(internalAutomationTabSaving$, value);
 });
 
 // ---------------------------------------------------------------------------
-// Convert ScheduleResponse to display time string
+// Convert AutomationView to display time string
 // ---------------------------------------------------------------------------
 
-function scheduleToTimeString(
-  s: ScheduleResponse,
+function automationToTimeString(
+  s: AutomationView,
   displayTimezone?: string,
 ): string {
   const tz = displayTimezone ?? s.timezone ?? "UTC";
@@ -121,15 +121,15 @@ function cronToTimeString(cron: string, timezone = "UTC"): string {
   return `Every day at ${timeStr}`;
 }
 
-function buildScheduleBody(
+function buildAutomationFormBody(
   agentId: string,
-  params: ZeroScheduleSaveParams,
-): ScheduleBody {
-  const scheduleName = params.editName ?? `zero-${now().toString(36)}`;
+  params: ZeroAutomationSaveParams,
+): AutomationFormBody {
+  const automationName = params.editName ?? `zero-${now().toString(36)}`;
 
   const base = {
     agentId,
-    name: scheduleName,
+    name: automationName,
     timezone: params.timezone,
     prompt: params.prompt.trim(),
     ...(params.description && { description: params.description.trim() }),
@@ -142,7 +142,7 @@ function buildScheduleBody(
 
   if (params.freq === "once") {
     if (isAtTimePast(params.date, String(params.hour), String(params.minute))) {
-      throw new Error(SCHEDULE_TIME_PAST_MESSAGE);
+      throw new Error(AUTOMATION_TIME_PAST_MESSAGE);
     }
     const atTime = buildAtTime(
       params.date,
@@ -164,7 +164,7 @@ function buildScheduleBody(
   };
   const timeOption = freqMap[params.freq];
   if (!timeOption) {
-    throw new Error(`Unknown schedule frequency: ${params.freq}`);
+    throw new Error(`Unknown automation frequency: ${params.freq}`);
   }
   const cronExpression = buildCronExpression({
     timeOption,
@@ -176,7 +176,7 @@ function buildScheduleBody(
   return { ...base, cronExpression };
 }
 
-export interface ZeroScheduleSaveParams {
+export interface ZeroAutomationSaveParams {
   prompt: string;
   description?: string;
   freq: string;
@@ -187,15 +187,15 @@ export interface ZeroScheduleSaveParams {
   intervalSeconds: number;
   dayOfWeek?: string;
   dayOfMonth?: string;
-  /** Schedule name when editing an existing schedule */
+  /** Automation name when editing an existing automation */
   editName?: string;
 }
 
 // ---------------------------------------------------------------------------
-// All-org schedule entries (for schedule page — no agent filter)
+// All-org automation entries (for automations page — no agent filter)
 // ---------------------------------------------------------------------------
 
-export interface OrgScheduleEntry {
+export interface OrgAutomationEntry {
   id: string;
   time: string;
   prompt: string;
@@ -212,27 +212,27 @@ export interface OrgScheduleEntry {
   chatThreadId: string;
 }
 
-const internalAllSchedules$ = state<ScheduleResponse[]>([]);
-const internalAllSchedulesLoaded$ = state(false);
+const internalAllAutomations$ = state<AutomationView[]>([]);
+const internalAllAutomationsLoaded$ = state(false);
 
-/** True after the first successful org schedule fetch has completed. */
-export const allOrgSchedulesLoaded$ = computed((get) => {
-  return get(internalAllSchedulesLoaded$);
+/** True after the first successful org automation fetch has completed. */
+export const allOrgAutomationsLoaded$ = computed((get) => {
+  return get(internalAllAutomationsLoaded$);
 });
 
-export const allOrgScheduleEntries$ = computed(async (get) => {
-  const schedules = get(internalAllSchedules$);
+export const allOrgAutomationEntries$ = computed(async (get) => {
+  const automations = get(internalAllAutomations$);
   const prefs = await get(userPreferences$);
   const displayTz =
     prefs?.timezone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return [...schedules]
+  return [...automations]
     .sort((a, b) => {
       return b.createdAt.localeCompare(a.createdAt);
     })
-    .map((s): OrgScheduleEntry => {
+    .map((s): OrgAutomationEntry => {
       return {
         id: s.id,
-        time: scheduleToTimeString(s, displayTz),
+        time: automationToTimeString(s, displayTz),
         prompt: s.prompt,
         description: s.description,
         enabled: s.enabled,
@@ -248,29 +248,29 @@ export const allOrgScheduleEntries$ = computed(async (get) => {
     });
 });
 
-export const fetchAllOrgSchedules$ = command(
+export const fetchAllOrgAutomations$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const schedules = await listSchedules(get(zeroClient$), {
+    const automations = await listAutomations(get(zeroClient$), {
       signal,
     }).finally(() => {
-      set(internalAllSchedulesLoaded$, true);
+      set(internalAllAutomationsLoaded$, true);
     });
     signal.throwIfAborted();
-    set(internalAllSchedules$, schedules);
+    set(internalAllAutomations$, automations);
   },
 );
 
-export const saveOrgSchedule$ = command(
+export const saveOrgAutomation$ = command(
   async (
     { get, set },
-    params: ZeroScheduleSaveParams & { agentId: string },
+    params: ZeroAutomationSaveParams & { agentId: string },
     signal: AbortSignal,
   ) => {
     let scheduleId: string;
     try {
-      const body = buildScheduleBody(params.agentId, params);
+      const body = buildAutomationFormBody(params.agentId, params);
 
-      const result = await deploySchedule(
+      const result = await deployAutomation(
         get(zeroClient$),
         body,
         params.editName !== undefined,
@@ -282,7 +282,7 @@ export const saveOrgSchedule$ = command(
       if (!(error instanceof ApiError)) {
         const message = error instanceof Error ? error.message : "Save failed";
         toast.error(message);
-        if (message === SCHEDULE_TIME_PAST_MESSAGE) {
+        if (message === AUTOMATION_TIME_PAST_MESSAGE) {
           throw markDetachedErrorHandled(error);
         }
       }
@@ -293,51 +293,51 @@ export const saveOrgSchedule$ = command(
     toast.success(
       params.editName ? "Automation updated" : "Automation created",
     );
-    await set(fetchAllOrgSchedules$, signal);
+    await set(fetchAllOrgAutomations$, signal);
 
     return scheduleId;
   },
 );
 
-export const toggleOrgScheduleEnabled$ = command(
+export const toggleOrgAutomationEnabled$ = command(
   async (
     { get, set },
     params: { name: string; enabled: boolean; agentId: string },
     signal: AbortSignal,
   ) => {
-    await setScheduleEnabled(get(zeroClient$), {
+    await setAutomationEnabled(get(zeroClient$), {
       name: params.name,
       agentId: params.agentId,
       enabled: params.enabled,
     });
     signal.throwIfAborted();
 
-    await set(fetchAllOrgSchedules$, signal);
+    await set(fetchAllOrgAutomations$, signal);
   },
 );
 
-export const deleteOrgSchedule$ = command(
+export const deleteOrgAutomation$ = command(
   async (
     { get, set },
     params: { name: string; agentId: string },
     signal: AbortSignal,
   ) => {
-    await deleteSchedule(get(zeroClient$), {
+    await deleteAutomation(get(zeroClient$), {
       name: params.name,
       agentId: params.agentId,
     });
     signal.throwIfAborted();
 
     toast.success("Automation deleted");
-    await set(fetchAllOrgSchedules$, signal);
+    await set(fetchAllOrgAutomations$, signal);
   },
 );
 
 /**
- * Execute a schedule immediately (same pipeline as the cron trigger).
+ * Execute an automation immediately (same pipeline as the cron trigger).
  * Returns the created run ID.
  */
-export const runScheduleNow$ = command(
+export const runAutomationNow$ = command(
   async ({ get }, scheduleId: string, signal: AbortSignal): Promise<string> => {
     const toastId = toast.loading("Starting run…");
     signal.addEventListener("abort", () => {
@@ -345,7 +345,7 @@ export const runScheduleNow$ = command(
     });
     let runId: string;
     try {
-      runId = await runScheduleNowApi(get(zeroClient$), scheduleId);
+      runId = await runAutomationNowApi(get(zeroClient$), scheduleId);
       signal.throwIfAborted();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Run failed";

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Shared schedule types and calendar utilities
+// Shared automation types and calendar utilities
 // ---------------------------------------------------------------------------
 
 export const WEEKDAY_LABELS = [
@@ -19,17 +19,17 @@ const CALENDAR_TIME_SLOTS = [
   "6:00 PM",
 ] as const;
 
-export interface ScheduleEntry {
+export interface AutomationEntry {
   id: string;
   time: string;
   prompt: string;
   description?: string | null;
-  /** Schedule name used for API operations (edit/delete). */
+  /** Automation name used for API operations (edit/delete). */
   name?: string;
   enabled?: boolean;
   /** IANA timezone from the server (not derivable from `time` alone). */
   timezone?: string;
-  /** Raw interval in seconds for loop schedules */
+  /** Raw interval in seconds for loop triggers */
   intervalSeconds?: number | null;
 }
 
@@ -37,7 +37,7 @@ export interface ScheduleEntry {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function parseScheduleTime(timeStr: string): {
+function parseAutomationTime(timeStr: string): {
   dayIndices: number[];
   timeLabel: string;
 } {
@@ -115,14 +115,14 @@ function timeLabelToMinutes(label: string): number {
  * sorted chronologically.
  */
 export function buildCalendarTimeSlots(
-  scheduleList: readonly Readonly<ScheduleEntry>[],
+  automationList: readonly Readonly<AutomationEntry>[],
 ): string[] {
   const slotSet = new Set<string>(CALENDAR_TIME_SLOTS);
-  for (const entry of scheduleList) {
+  for (const entry of automationList) {
     if (entry.enabled === false) {
       continue;
     }
-    const { timeLabel } = parseScheduleTime(entry.time);
+    const { timeLabel } = parseAutomationTime(entry.time);
     if (timeLabel) {
       slotSet.add(timeLabel);
     }
@@ -133,15 +133,15 @@ export function buildCalendarTimeSlots(
 }
 
 export function getEntriesInCell(
-  scheduleList: ScheduleEntry[],
+  automationList: AutomationEntry[],
   dayIndex: number,
   timeLabel: string,
-): ScheduleEntry[] {
-  return scheduleList.filter((entry) => {
+): AutomationEntry[] {
+  return automationList.filter((entry) => {
     if (entry.enabled === false) {
       return false;
     }
-    const { dayIndices, timeLabel: t } = parseScheduleTime(entry.time);
+    const { dayIndices, timeLabel: t } = parseAutomationTime(entry.time);
     return t === timeLabel && dayIndices.includes(dayIndex);
   });
 }

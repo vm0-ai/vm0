@@ -29,7 +29,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
-import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
+import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -150,8 +150,8 @@ function mockTeamAPIs(): void {
     createConnector("axiom", "workspace"),
     createConnector("slack", "ops"),
   ]);
-  context.mocks.data.schedules([
-    createMockScheduleResponse({
+  context.mocks.data.automations([
+    createMockAutomationView({
       id: "f0000001-0000-4000-a000-000000000401",
       agentId: researchAgentId,
       displayName: "Research Agent",
@@ -428,7 +428,7 @@ describe("team page navigation", () => {
     const deleteDialog = await screen.findByRole("dialog");
     expect(
       within(deleteDialog).getByText(
-        /instructions, schedules, and all associated data/u,
+        /instructions, automations, and all associated data/u,
       ),
     ).toBeInTheDocument();
 
@@ -442,7 +442,7 @@ describe("team page navigation", () => {
     });
   });
 
-  it("edits and creates schedules from an agent page", async () => {
+  it("edits and creates automations from an agent page", async () => {
     mockTeamAPIs();
     detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
 
@@ -451,7 +451,7 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
     });
-    click(tabByText("Scheduled"));
+    click(tabByText("Automations"));
 
     await waitFor(() => {
       expect(
@@ -481,12 +481,12 @@ describe("team page navigation", () => {
 
     click(buttonByText("Add automation"));
 
-    const createScheduleDialog = await screen.findByRole("dialog");
+    const createAutomationDialog = await screen.findByRole("dialog");
     expect(
-      within(createScheduleDialog).getByText("Add automation"),
+      within(createAutomationDialog).getByText("Add automation"),
     ).toBeInTheDocument();
     await fill(
-      within(createScheduleDialog).getByLabelText("Prompt"),
+      within(createAutomationDialog).getByLabelText("Prompt"),
       "Collect weekly research links",
     );
     click(buttonByText("Create"));
@@ -499,7 +499,7 @@ describe("team page navigation", () => {
     });
   });
 
-  it("runs an agent schedule and opens its detail page", async () => {
+  it("runs an agent automation and opens its detail page", async () => {
     mockTeamAPIs();
     detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
 
@@ -508,7 +508,7 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
     });
-    click(tabByText("Scheduled"));
+    click(tabByText("Automations"));
 
     await waitFor(() => {
       expect(
