@@ -131,6 +131,8 @@ fn proxy_register_failure_warns_with_error() {
     assert_event_field(event, "stage", "proxy_register");
     assert_event_field(event, "elapsed_ms", "25");
     assert_event_field(event, "success", "false");
+    assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");
     assert_event_field(event, "profile", "vm0/default");
     assert_event_field(event, "error", "registry failed");
 }
