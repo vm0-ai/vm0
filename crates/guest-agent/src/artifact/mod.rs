@@ -779,6 +779,176 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn uploaded_snapshot_fails_when_commit_reports_failure() -> Result<(), AgentError> {
+        disable_system_log();
+        let server = MockServer::start();
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files = file_json_values(&files);
+        let total_size: u64 = files.iter().map(|file| file.size).sum();
+        let archive_url = format!("{}/test/artifact-archive-upload", server.base_url());
+        let manifest_url = format!("{}/test/artifact-manifest-upload", server.base_url());
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-upload-failed-commit",
+                    "storageName": "storage-upload-failed-commit",
+                    "storageType": "artifact",
+                    "files": expected_files,
+                    "parentVersionId": "parent-v1",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-uploaded-failed-commit",
+                "existing": false,
+                "uploads": {
+                    "archive": {
+                        "key": "archive-key",
+                        "presignedUrl": archive_url,
+                    },
+                    "manifest": {
+                        "key": "manifest-key",
+                        "presignedUrl": manifest_url,
+                    },
+                },
+            }));
+        });
+        let archive_upload = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/test/artifact-archive-upload")
+                .header("Content-Type", "application/gzip");
+            then.status(200);
+        });
+        let manifest_files = expected_files.clone();
+        let manifest_upload = server.mock(|when, then| {
+            when.method(PUT).path("/test/artifact-manifest-upload");
+            then.respond_with(move |req| manifest_upload_response(req, &manifest_files));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit")
+                .json_body(serde_json::json!({
+                    "runId": "run-upload-failed-commit",
+                    "storageName": "storage-upload-failed-commit",
+                    "storageType": "artifact",
+                    "versionId": "v-uploaded-failed-commit",
+                    "parentVersionId": "parent-v1",
+                    "files": expected_files,
+                    "message": "snapshot message",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "success": false,
+                "versionId": "v-uploaded-failed-commit",
+                "storageName": "storage-upload-failed-commit",
+                "size": total_size,
+                "fileCount": expected_files.len(),
+            }));
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_name: "storage-upload-failed-commit",
+                storage_type: "artifact",
+                run_id: "run-upload-failed-commit",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await;
+
+        let Err(err) = result else {
+            panic!("create_snapshot unexpectedly succeeded");
+        };
+        assert!(err.to_string().contains("Commit failed"));
+        prepare.assert_calls(1);
+        archive_upload.assert_calls(1);
+        manifest_upload.assert_calls(1);
+        commit.assert_calls(1);
+        prepare.delete_async().await;
+        archive_upload.delete_async().await;
+        manifest_upload.delete_async().await;
+        commit.delete_async().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dedup_snapshot_fails_when_commit_response_is_malformed() -> Result<(), AgentError> {
+        disable_system_log();
+        let server = MockServer::start();
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        let expected_files = file_json_values(&files);
+
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare")
+                .json_body(serde_json::json!({
+                    "runId": "run-dedup-malformed-commit",
+                    "storageName": "storage-dedup-malformed-commit",
+                    "storageType": "artifact",
+                    "files": expected_files,
+                    "parentVersionId": "parent-v1",
+                }));
+            then.status(200).json_body(serde_json::json!({
+                "versionId": "v-dedup-malformed-commit",
+                "existing": true
+            }));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit")
+                .json_body(serde_json::json!({
+                    "runId": "run-dedup-malformed-commit",
+                    "storageName": "storage-dedup-malformed-commit",
+                    "storageType": "artifact",
+                    "versionId": "v-dedup-malformed-commit",
+                    "parentVersionId": "parent-v1",
+                    "files": expected_files,
+                }));
+            then.status(200)
+                .json_body(serde_json::json!({ "success": true }));
+        });
+
+        let http = test_http_client(&server)?;
+        let result = create_snapshot(
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_name: "storage-dedup-malformed-commit",
+                storage_type: "artifact",
+                run_id: "run-dedup-malformed-commit",
+                message: "snapshot message",
+                parent_version_id: "parent-v1",
+            },
+        )
+        .await;
+
+        let Err(err) = result else {
+            panic!("create_snapshot unexpectedly succeeded");
+        };
+        assert!(err.to_string().contains("Failed to update HEAD"));
+        prepare.assert_calls(1);
+        commit.assert_calls(1);
+        prepare.delete_async().await;
+        commit.delete_async().await;
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn snapshot_requires_upload_urls_for_new_version() -> Result<(), AgentError> {
         disable_system_log();
         let server = MockServer::start();
