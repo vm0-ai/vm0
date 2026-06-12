@@ -1402,7 +1402,13 @@ describe("chat lifecycle", () => {
 
     const expandButton = await screen.findByLabelText("Expand work history");
     expect(expandButton).toHaveTextContent("Worked for 55s");
-    expect(expandButton.closest('[data-role="assistant"]')).not.toBeNull();
+    const foldedAssistantGroup = expandButton.closest(
+      '[data-role="assistant"]',
+    ) as HTMLElement | null;
+    expect(foldedAssistantGroup).not.toBeNull();
+    expect(
+      within(foldedAssistantGroup!).getAllByLabelText("View agent profile"),
+    ).toHaveLength(1);
     expect(screen.getByText("Summarize the launch status")).toBeInTheDocument();
     expect(screen.queryByText("Checking launch status.")).toBeNull();
     expect(
@@ -1412,7 +1418,12 @@ describe("chat lifecycle", () => {
     click(expandButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Checking launch status.")).toBeInTheDocument();
+      expect(
+        within(foldedAssistantGroup!).getByText("Checking launch status."),
+      ).toBeInTheDocument();
+      expect(
+        within(foldedAssistantGroup!).getAllByLabelText("View agent profile"),
+      ).toHaveLength(1);
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -1550,6 +1561,10 @@ describe("chat lifecycle", () => {
     expect(expandButtons).toHaveLength(2);
     expect(expandButtons[0]).toHaveTextContent("Worked for 20s");
     expect(expandButtons[1]).toHaveTextContent("Worked for 55s");
+    const secondAssistantGroup = expandButtons[1]!.closest(
+      '[data-role="assistant"]',
+    ) as HTMLElement | null;
+    expect(secondAssistantGroup).not.toBeNull();
     expect(screen.getByText("Summarize the first launch")).toBeInTheDocument();
     expect(screen.queryByText("Checking the first launch notes.")).toBeNull();
     expect(
@@ -1572,8 +1587,13 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize the second launch"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Checking the second launch notes."),
+        within(secondAssistantGroup!).getByText(
+          "Checking the second launch notes.",
+        ),
       ).toBeInTheDocument();
+      expect(
+        within(secondAssistantGroup!).getAllByLabelText("View agent profile"),
+      ).toHaveLength(1);
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",

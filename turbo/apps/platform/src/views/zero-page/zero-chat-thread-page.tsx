@@ -2401,17 +2401,6 @@ function ChatThreadMessageGroups({
           completedWorkExpandedKeys.has(completedWorkFold.key);
         return (
           <div key={group.beginMessageId} className="contents">
-            {completedWorkFold !== null &&
-              completedWorkExpanded &&
-              completedWorkFold.hiddenGroups.map((hiddenGroup) => {
-                return (
-                  <PagedGroupRow
-                    key={hiddenGroup.beginMessageId}
-                    group={hiddenGroup}
-                    thread={thread}
-                  />
-                );
-              })}
             <PagedGroupRow
               group={group}
               thread={thread}
@@ -2419,6 +2408,7 @@ function ChatThreadMessageGroups({
                 completedWorkFold !== null
                   ? {
                       groups: completedWorkFold.labelGroups,
+                      hiddenGroups: completedWorkFold.hiddenGroups,
                       expanded: completedWorkExpanded,
                       onToggle: () => {
                         onToggleCompletedWork(completedWorkFold.key);
@@ -4843,6 +4833,7 @@ function PagedGroupRow({
   thread: ChatThreadSignals;
   completedWorkFold?: {
     groups: readonly GroupedChatMessageGroup[];
+    hiddenGroups: readonly GroupedChatMessageGroup[];
     expanded: boolean;
     onToggle: () => void;
   };
@@ -5434,6 +5425,7 @@ function PagedAssistantGroup({
   thread: ChatThreadSignals;
   completedWorkFold?: {
     groups: readonly GroupedChatMessageGroup[];
+    hiddenGroups: readonly GroupedChatMessageGroup[];
     expanded: boolean;
     onToggle: () => void;
   };
@@ -5455,6 +5447,19 @@ function PagedAssistantGroup({
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-3">
+          {completedWorkFold?.expanded
+            ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
+                return (
+                  <div key={hiddenGroup.beginMessageId} className="contents">
+                    {hiddenGroup.messages.map((msg) => {
+                      return (
+                        <PagedAssistantMessageItem key={msg.id} message={msg} />
+                      );
+                    })}
+                  </div>
+                );
+              })
+            : null}
           {completedWorkFold && (
             <CompletedWorkFoldRow
               groups={completedWorkFold.groups}
