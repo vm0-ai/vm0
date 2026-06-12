@@ -142,12 +142,34 @@ async fn idle_destroy_job_stop_error_still_attempts_destroy_and_releases_budget_
 
 #[tokio::test]
 async fn idle_destroy_job_unpark_error_skips_workspace_cache_and_still_destroys() {
-    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-unpark-error").await;
+    assert_idle_destroy_job_unpark_failure_skips_workspace_cache_and_still_destroys(
+        "sess-idle-destroy-unpark-error",
+        |overrides| {
+            overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+                transition: sandbox::SandboxIdleTransition::Unpark,
+                message: "simulated unpark failure".into(),
+            }));
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn idle_destroy_job_unpark_panic_skips_workspace_cache_and_still_destroys() {
+    assert_idle_destroy_job_unpark_failure_skips_workspace_cache_and_still_destroys(
+        "sess-idle-destroy-unpark-panic",
+        |overrides| overrides.push_unpark_panic("simulated unpark panic"),
+    )
+    .await;
+}
+
+async fn assert_idle_destroy_job_unpark_failure_skips_workspace_cache_and_still_destroys(
+    session_id: &str,
+    configure_overrides: impl FnOnce(&MockSandboxOverrides),
+) {
+    let fixture = WorkspacePromotionFixture::new(session_id).await;
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
-        transition: sandbox::SandboxIdleTransition::Unpark,
-        message: "simulated unpark failure".into(),
-    }));
+    configure_overrides(&overrides);
     let (budget, lease) = reserved_budget_lease();
     let job = make_idle_destroy_job_for(
         fixture.sandbox_id,
