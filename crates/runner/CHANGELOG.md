@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.114.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.1...runner-rs-v0.114.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* **runner:** use live registry for doctor reports ([#17348](https://github.com/vm0-ai/vm0/issues/17348)) ([1f06b34](https://github.com/vm0-ai/vm0/commit/1f06b3406eb9b5248ca128cb5a84072ad02c83b9))
+
 ## [0.114.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.0...runner-rs-v0.114.1) (2026-06-11)
 
 

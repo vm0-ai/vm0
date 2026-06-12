@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.132.2](https://github.com/vm0-ai/vm0/compare/api-v1.132.1...api-v1.132.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* send follow-ups without revoking messages ([#17367](https://github.com/vm0-ai/vm0/issues/17367)) ([ebcca89](https://github.com/vm0-ai/vm0/commit/ebcca8954e552c2c6e73254493494cd19d9b4c26))
+
 ## [1.132.1](https://github.com/vm0-ai/vm0/compare/api-v1.132.0...api-v1.132.1) (2026-06-11)
 
 

@@ -6,6 +6,7 @@ import type {
   DragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  RefCallback,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -60,6 +61,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
+  matchShortcut,
   processShortcut,
 } from "@vm0/ui";
 import {
@@ -183,6 +185,7 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
+import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -292,6 +295,23 @@ interface ZeroChatComposerProps {
   queuedItems?: QueuedComposerItem[];
   /** Cancels a queued message (routed to the recall flow by the caller). */
   onRemoveQueuedItem?: (id: string) => void;
+  /**
+   * Inline feedback drafted from selected assistant text. When at least one
+   * quoted fragment is present the composer swaps its textarea for the stacked
+   * quote + note rows and its Send button dispatches the feedback turn — so the
+   * feedback lives inside the composer instead of a separate panel above it.
+   */
+  feedback?: ComposerFeedback;
+}
+
+export interface ComposerFeedback {
+  items: readonly FeedbackItem[];
+  /** Fragments carrying a non-empty note — what Send will dispatch. */
+  sendCount: number;
+  onChangeNote: (id: number, note: string) => void;
+  onRemove: (id: number) => void;
+  onSubmit: () => void;
+  onDismiss: () => void;
 }
 
 export interface QueuedComposerItem {
@@ -471,6 +491,104 @@ function QueuedMessagesStrip({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline feedback rows — the docked feedback stack, rendered inside the
+// composer card in place of the textarea. Each selected passage is a quote line
+// above a borderless, composer-styled note input; fragments append to the
+// bottom so reading order matches selection order, and they share the
+// composer's toolbar and Send button.
+// ---------------------------------------------------------------------------
+
+function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
+  element?.focus();
+}
+
+function ComposerFeedbackRow({
+  item,
+  autoFocus,
+  onChangeNote,
+  onRemove,
+  onKeyDown,
+}: {
+  item: FeedbackItem;
+  autoFocus: boolean;
+  onChangeNote: (note: string) => void;
+  onRemove: () => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+}) {
+  return (
+    <div className="border-b border-dashed border-border/60 pb-2 pt-1 last:border-b-0">
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-[3px] shrink-0 rounded-sm bg-primary" />
+        <span className="min-w-0 flex-1 truncate text-xs italic leading-snug text-muted-foreground">
+          {item.quote}
+        </span>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove feedback"
+          title="Remove feedback"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <IconX size={15} stroke={2} />
+        </button>
+      </div>
+      <textarea
+        ref={autoFocus ? focusFeedbackNoteRef : undefined}
+        value={item.note}
+        onChange={(event) => {
+          return onChangeNote(event.target.value);
+        }}
+        onKeyDown={onKeyDown}
+        rows={1}
+        placeholder="What should change about this?"
+        className="mt-1 w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+      />
+    </div>
+  );
+}
+
+function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter sends, Shift+Enter inserts a newline — matching the main composer.
+    // Escape clears the drafted feedback.
+    if (matchShortcut("enter", event)) {
+      event.preventDefault();
+      feedback.onSubmit();
+    } else if (matchShortcut("escape", event)) {
+      event.preventDefault();
+      feedback.onDismiss();
+    }
+  };
+
+  // Newest fragment sits at the bottom (nearest Send) and takes focus.
+  const newestId = feedback.items[feedback.items.length - 1]?.id;
+
+  return (
+    <div className="flex flex-col px-3 pt-3">
+      {feedback.items.map((item) => {
+        return (
+          <ComposerFeedbackRow
+            key={item.id}
+            item={item}
+            autoFocus={item.id === newestId}
+            onChangeNote={(note) => {
+              return feedback.onChangeNote(item.id, note);
+            }}
+            onRemove={() => {
+              return feedback.onRemove(item.id);
+            }}
+            onKeyDown={handleKeyDown}
+          />
+        );
+      })}
+      <span className="px-1 pt-1.5 text-xs leading-snug text-muted-foreground">
+        Select more text and click Provide feedback to add another comment
+      </span>
     </div>
   );
 }
@@ -3116,6 +3234,82 @@ function resolveKeyboardSendAction({
   return sending ? "queue" : "send";
 }
 
+function resolveActiveFeedback(
+  feedback: ComposerFeedback | undefined,
+): ComposerFeedback | null {
+  if (feedback && feedback.items.length > 0) {
+    return feedback;
+  }
+  return null;
+}
+
+function composerTextareaRef(
+  autoFocus: boolean | undefined,
+  setInputRef: ((el: HTMLElement | null) => void) | undefined,
+): RefCallback<HTMLTextAreaElement> {
+  return (el) => {
+    if (el && autoFocus && !isIOSDevice()) {
+      el.focus();
+    }
+    setInputRef?.(el);
+  };
+}
+
+// Stop while an empty composer is mid-run; otherwise Send. In feedback mode the
+// same button dispatches the feedback turn and stays disabled until a note is
+// written.
+function ComposerSendButton({
+  showStopButton,
+  onCancel,
+  activeFeedback,
+  sendAction,
+  onSend,
+}: {
+  showStopButton: boolean;
+  onCancel: (() => void) | undefined;
+  activeFeedback: ComposerFeedback | null;
+  sendAction: KeyboardSendAction;
+  onSend: () => void;
+}) {
+  if (showStopButton && !activeFeedback) {
+    return (
+      <Button
+        size="sm"
+        variant="destructive"
+        className="rounded-lg h-9 w-9 p-0 shrink-0"
+        onClick={onCancel}
+        aria-label="Stop"
+      >
+        <IconPlayerStop size={16} />
+      </Button>
+    );
+  }
+  if (activeFeedback) {
+    return (
+      <Button
+        size="sm"
+        className="rounded-lg h-9 w-9 p-0 shrink-0"
+        onClick={activeFeedback.onSubmit}
+        disabled={activeFeedback.sendCount === 0}
+        aria-label="Send feedback"
+      >
+        <IconArrowUp size={18} stroke={2} />
+      </Button>
+    );
+  }
+  return (
+    <Button
+      size="sm"
+      className="rounded-lg h-9 w-9 p-0 shrink-0"
+      onClick={onSend}
+      disabled={sendAction === "none"}
+      aria-label="Send"
+    >
+      <IconArrowUp size={18} stroke={2} />
+    </Button>
+  );
+}
+
 function ModelConfigurationWarning({
   blocker,
 }: {
@@ -3227,6 +3421,7 @@ export function ZeroChatComposer({
   submitBlocker,
   queuedItems,
   onRemoveQueuedItem,
+  feedback,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -3270,6 +3465,11 @@ export function ZeroChatComposer({
         attachmentUploadSummary.data.attachmentCount,
   });
   const canSubmit = canSend && !submitBlocker;
+
+  // When feedback fragments are present the composer is in "feedback mode": the
+  // textarea is replaced by the stacked quote + note rows and Send dispatches
+  // the feedback turn instead of the draft.
+  const activeFeedback = resolveActiveFeedback(feedback);
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -3601,43 +3801,44 @@ export function ZeroChatComposer({
         >
           <CardContent className="p-0">
             <div className="flex flex-col">
-              <SelectedTemplateChipSlot
-                picker={templatePicker}
-                onDraftChange={onDraftChange}
-              />
-              {visibleAttachments.length > 0 && (
-                <AttachmentChips
-                  attachments={visibleAttachments}
-                  onRemove={(attachment) => {
-                    removeAttachment(attachment);
-                    onDraftChange?.();
-                  }}
-                />
+              {activeFeedback ? (
+                <ComposerFeedbackRows feedback={activeFeedback} />
+              ) : (
+                <>
+                  <SelectedTemplateChipSlot
+                    picker={templatePicker}
+                    onDraftChange={onDraftChange}
+                  />
+                  {visibleAttachments.length > 0 && (
+                    <AttachmentChips
+                      attachments={visibleAttachments}
+                      onRemove={(attachment) => {
+                        removeAttachment(attachment);
+                        onDraftChange?.();
+                      }}
+                    />
+                  )}
+                  <textarea
+                    ref={composerTextareaRef(autoFocus, setInputRef)}
+                    className={cn(
+                      "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px]",
+                    )}
+                    rows={3}
+                    placeholder={
+                      sending
+                        ? "Type your next message\u2026"
+                        : "Ask me to automate workflows, manage tasks..."
+                    }
+                    value={input}
+                    onChange={(e) => {
+                      return onInputChange(e.target.value);
+                    }}
+                    enterKeyHint="enter"
+                    onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
+                  />
+                </>
               )}
-              <textarea
-                ref={(el) => {
-                  if (el && autoFocus && !isIOSDevice()) {
-                    el.focus();
-                  }
-                  setInputRef?.(el);
-                }}
-                className={cn(
-                  "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-[0.9375rem] text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px]",
-                )}
-                rows={3}
-                placeholder={
-                  sending
-                    ? "Type your next message\u2026"
-                    : "Ask me to automate workflows, manage tasks..."
-                }
-                value={input}
-                onChange={(e) => {
-                  return onInputChange(e.target.value);
-                }}
-                enterKeyHint="enter"
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-              />
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                   <TooltipProvider delayDuration={300}>
@@ -3693,27 +3894,13 @@ export function ZeroChatComposer({
                           onDraftChange?.();
                         }}
                       />
-                      {showStopButton ? (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="rounded-lg h-9 w-9 p-0 shrink-0"
-                          onClick={onCancel}
-                          aria-label="Stop"
-                        >
-                          <IconPlayerStop size={16} />
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className="rounded-lg h-9 w-9 p-0 shrink-0"
-                          onClick={handleButtonSend}
-                          disabled={sendAction === "none"}
-                          aria-label="Send"
-                        >
-                          <IconArrowUp size={18} stroke={2} />
-                        </Button>
-                      )}
+                      <ComposerSendButton
+                        showStopButton={showStopButton}
+                        onCancel={onCancel}
+                        activeFeedback={activeFeedback}
+                        sendAction={sendAction}
+                        onSend={handleButtonSend}
+                      />
                     </>
                   )}
                 </div>
