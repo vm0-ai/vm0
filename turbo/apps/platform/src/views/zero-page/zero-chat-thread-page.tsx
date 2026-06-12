@@ -5479,7 +5479,7 @@ function PagedAssistantGroup({
     <div
       id={groupElementId}
       data-role="assistant"
-      className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />

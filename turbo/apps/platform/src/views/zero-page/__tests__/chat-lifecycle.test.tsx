@@ -1484,6 +1484,7 @@ describe("chat lifecycle", () => {
       '[data-role="assistant"]',
     ) as HTMLElement | null;
     expect(foldedAssistantGroup).not.toBeNull();
+    expect(foldedAssistantGroup).not.toHaveClass("group");
     expect(
       within(foldedAssistantGroup!).getAllByLabelText("View agent profile"),
     ).toHaveLength(1);
