@@ -8,6 +8,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
+import { settle } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -43,13 +44,9 @@ function isoOf(epoch: number): string {
 
 async function waitForExpectation(assertion: () => void): Promise<void> {
   await expect
-    .poll(() => {
-      try {
-        assertion();
-        return true;
-      } catch {
-        return false;
-      }
+    .poll(async () => {
+      const result = await settle(Promise.resolve().then(assertion));
+      return result.ok;
     })
     .toBe(true);
 }

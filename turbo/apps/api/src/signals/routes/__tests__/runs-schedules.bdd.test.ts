@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { settle } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -1403,13 +1404,14 @@ async function waitForCallbackDeliveryWithStatus(
 ): Promise<ReturnType<typeof callbackDeliveryWithStatus>> {
   let delivery: ReturnType<typeof callbackDeliveryWithStatus> | undefined;
   await expect
-    .poll(() => {
-      try {
-        delivery = callbackDeliveryWithStatus(deliveries, status);
-        return true;
-      } catch {
-        return false;
-      }
+    .poll(async () => {
+      const result = await settle(
+        Promise.resolve().then(() => {
+          return callbackDeliveryWithStatus(deliveries, status);
+        }),
+      );
+      delivery = result.ok ? result.value : undefined;
+      return delivery !== undefined;
     })
     .toBe(true);
   if (!delivery) {
@@ -1938,32 +1940,30 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     context.mocks.resend.send.mockResolvedValue({
       data: { id: "resend-bdd-1" },
     });
-    mockNow(now() + 2_000);
-    try {
-      const drain = await email.drainEmailOutboxCron(true);
-      if (drain.status !== 200) {
-        throw new Error("Expected drain email outbox cron to succeed");
-      }
-      expect(drain.body.success).toBeTruthy();
-      expect(drain.body.drained).toBeGreaterThanOrEqual(1);
-      expect(context.mocks.resend.send).toHaveBeenCalledWith(
-        expect.objectContaining({
-          from: "Zero <vm0@mail.example.com>",
-          to: from,
-          subject: `Re: ${subject}`,
-          html: expect.stringContaining("not associated with a VM0 account"),
-        }),
-      );
-      expect(resendSendCallsTo(from)).toBe(1);
+    mockNow(now() + 2000);
+    onTestFinished(clearMockNow);
 
-      const second = await email.drainEmailOutboxCron(true);
-      if (second.status !== 200) {
-        throw new Error("Expected drain email outbox cron to succeed");
-      }
-      expect(resendSendCallsTo(from)).toBe(1);
-    } finally {
-      clearMockNow();
+    const drain = await email.drainEmailOutboxCron(true);
+    if (drain.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
     }
+    expect(drain.body.success).toBeTruthy();
+    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
+    expect(context.mocks.resend.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: "Zero <vm0@mail.example.com>",
+        to: from,
+        subject: `Re: ${subject}`,
+        html: expect.stringContaining("not associated with a VM0 account"),
+      }),
+    );
+    expect(resendSendCallsTo(from)).toBe(1);
+
+    const second = await email.drainEmailOutboxCron(true);
+    if (second.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(resendSendCallsTo(from)).toBe(1);
   });
 
   it("retries failed sends with backoff and cleans up expired failed outbox rows", async () => {
@@ -1976,45 +1976,43 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
       error: { message: "smtp down" },
     });
     const realNow = now();
-    try {
-      mockNow(realNow + 2_000);
-      const firstRetry = await email.drainEmailOutboxCron(true);
-      if (firstRetry.status !== 200) {
-        throw new Error("Expected drain email outbox cron to succeed");
-      }
-      expect(firstRetry.body.drained).toBeGreaterThanOrEqual(1);
-      expect(resendSendCallsTo(from)).toBe(1);
+    onTestFinished(clearMockNow);
 
-      mockNow(realNow + 7_000);
-      const secondRetry = await email.drainEmailOutboxCron(true);
-      if (secondRetry.status !== 200) {
-        throw new Error("Expected drain email outbox cron to succeed");
-      }
-      expect(secondRetry.body.drained).toBeGreaterThanOrEqual(1);
-      expect(resendSendCallsTo(from)).toBe(2);
-
-      mockNow(realNow + 12_000);
-      const finalRetry = await email.drainEmailOutboxCron(true);
-      if (finalRetry.status !== 200) {
-        throw new Error("Expected drain email outbox cron to succeed");
-      }
-      expect(finalRetry.body.drained).toBeGreaterThanOrEqual(1);
-      expect(resendSendCallsTo(from)).toBe(3);
-
-      context.mocks.resend.send.mockReset();
-      context.mocks.resend.send.mockResolvedValue({
-        data: { id: "resend-bdd-clean" },
-      });
-      mockNow(realNow + 15 * 60 * 1000 + 30_000);
-      const cleaned = await email.drainEmailOutboxCron(true);
-      if (cleaned.status !== 200) {
-        throw new Error("Expected drain email outbox cron to succeed");
-      }
-      expect(cleaned.body.cleaned).toBeGreaterThanOrEqual(1);
-      expect(resendSendCallsTo(from)).toBe(0);
-    } finally {
-      clearMockNow();
+    mockNow(realNow + 2000);
+    const firstRetry = await email.drainEmailOutboxCron(true);
+    if (firstRetry.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
     }
+    expect(firstRetry.body.drained).toBeGreaterThanOrEqual(1);
+    expect(resendSendCallsTo(from)).toBe(1);
+
+    mockNow(realNow + 7000);
+    const secondRetry = await email.drainEmailOutboxCron(true);
+    if (secondRetry.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(secondRetry.body.drained).toBeGreaterThanOrEqual(1);
+    expect(resendSendCallsTo(from)).toBe(2);
+
+    mockNow(realNow + 12_000);
+    const finalRetry = await email.drainEmailOutboxCron(true);
+    if (finalRetry.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(finalRetry.body.drained).toBeGreaterThanOrEqual(1);
+    expect(resendSendCallsTo(from)).toBe(3);
+
+    context.mocks.resend.send.mockReset();
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-bdd-clean" },
+    });
+    mockNow(realNow + 15 * 60 * 1000 + 30_000);
+    const cleaned = await email.drainEmailOutboxCron(true);
+    if (cleaned.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(cleaned.body.cleaned).toBeGreaterThanOrEqual(1);
+    expect(resendSendCallsTo(from)).toBe(0);
   });
 
   it("does not deliver outbox emails to suppressed recipients", async () => {
@@ -2028,20 +2026,18 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     context.mocks.resend.send.mockResolvedValue({
       data: { id: "resend-bdd-unused" },
     });
-    mockNow(now() + 2_000);
-    try {
-      await expect
-        .poll(async () => {
-          const drain = await email.drainEmailOutboxCron(true);
-          if (drain.status !== 200) {
-            throw new Error("Expected drain email outbox cron to succeed");
-          }
-          return drain.body.drained;
-        })
-        .toBeGreaterThanOrEqual(1);
-      expect(resendSendCallsTo(from)).toBe(0);
-    } finally {
-      clearMockNow();
-    }
+    mockNow(now() + 2000);
+    onTestFinished(clearMockNow);
+
+    await expect
+      .poll(async () => {
+        const drain = await email.drainEmailOutboxCron(true);
+        if (drain.status !== 200) {
+          throw new Error("Expected drain email outbox cron to succeed");
+        }
+        return drain.body.drained;
+      })
+      .toBeGreaterThanOrEqual(1);
+    expect(resendSendCallsTo(from)).toBe(0);
   });
 });

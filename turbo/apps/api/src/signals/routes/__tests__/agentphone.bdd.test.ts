@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { settle } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -198,7 +199,7 @@ async function waitForSendMatching(
   await expect
     .poll(() => {
       matched = sends.messages.slice(startIndex).find(predicate);
-      return matched ? true : false;
+      return matched !== undefined;
     })
     .toBe(true);
   if (!matched) {
@@ -228,12 +229,9 @@ async function waitForRunSessionIdPresent(
   let sessionId: string | undefined;
   await expect
     .poll(async () => {
-      try {
-        sessionId = await ap.readRunSessionId(actor, runId);
-        return sessionId;
-      } catch {
-        return null;
-      }
+      const result = await settle(ap.readRunSessionId(actor, runId));
+      sessionId = result.ok ? result.value : undefined;
+      return sessionId ?? null;
     })
     .not.toBeNull();
   if (!sessionId) {

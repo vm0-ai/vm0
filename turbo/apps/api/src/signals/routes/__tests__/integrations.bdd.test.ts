@@ -8,6 +8,7 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { settle } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
 import {
   agentPhoneBddWebhookSecret,
@@ -172,13 +173,9 @@ function slackOrgCallbackDeliveries(
 
 async function waitForExpectation(assertion: () => void): Promise<void> {
   await expect
-    .poll(() => {
-      try {
-        assertion();
-        return true;
-      } catch {
-        return false;
-      }
+    .poll(async () => {
+      const result = await settle(Promise.resolve().then(assertion));
+      return result.ok;
     })
     .toBe(true);
 }

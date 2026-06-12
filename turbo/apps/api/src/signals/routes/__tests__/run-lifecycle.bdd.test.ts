@@ -19,6 +19,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { settle } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -144,13 +145,14 @@ async function waitForCallbackDeliveryWithStatus(
 ): Promise<ReturnType<typeof callbackDeliveryWithStatus>> {
   let delivery: ReturnType<typeof callbackDeliveryWithStatus> | undefined;
   await expect
-    .poll(() => {
-      try {
-        delivery = callbackDeliveryWithStatus(deliveries, status);
-        return true;
-      } catch {
-        return false;
-      }
+    .poll(async () => {
+      const result = await settle(
+        Promise.resolve().then(() => {
+          return callbackDeliveryWithStatus(deliveries, status);
+        }),
+      );
+      delivery = result.ok ? result.value : undefined;
+      return delivery !== undefined;
     })
     .toBe(true);
   if (!delivery) {
