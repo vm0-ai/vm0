@@ -423,7 +423,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         // Single /proc scan shared across all warning rechecks.
         let fresh = process::discover_all().await;
 
-        recheck_per_runner_warnings(&home, &fresh, &mut reports).await;
+        recheck_per_runner_warnings(&home, &fresh, &mut reports).await?;
 
         let rechecks_orphan_process = global_warnings.iter().any(|warning| {
             matches!(
@@ -463,12 +463,12 @@ async fn recheck_per_runner_warnings(
     home: &HomePaths,
     fresh: &process::DiscoveredProcesses,
     reports: &mut [RunnerReport],
-) {
+) -> RunnerResult<()> {
     for report in reports {
         if report.warnings.is_empty() {
             continue;
         }
-        if !crate::live_runner_instances::is_current(home, &report.live_runner).await {
+        if !crate::live_runner_instances::is_current(home, &report.live_runner).await? {
             report.warnings.clear();
             continue;
         }
@@ -481,6 +481,7 @@ async fn recheck_per_runner_warnings(
         }
         report.warnings = rechecked;
     }
+    Ok(())
 }
 
 async fn build_runner_reports(
@@ -2002,7 +2003,9 @@ mod tests {
             }],
         }];
 
-        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await;
+        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports)
+            .await
+            .unwrap();
 
         assert!(reports[0].warnings.is_empty());
     }
@@ -2060,9 +2063,71 @@ mod tests {
             }],
         }];
 
-        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await;
+        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports)
+            .await
+            .unwrap();
 
         assert_eq!(reports[0].warnings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn recheck_fails_when_live_registry_entry_becomes_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let base_dir = dir.path().join("runner");
+        let _handle = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: dir.path().join("runner.yaml"),
+                base_dir: base_dir.clone(),
+                runner_name: "test-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let runner = crate::live_runner_instances::try_list(&home)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        crate::state_file::write_private_atomic(
+            &home.live_runner_instance_record_path(runner.pid, runner.starttime),
+            b"{",
+        )
+        .await
+        .unwrap();
+        let mut reports = vec![RunnerReport {
+            live_runner: runner.clone(),
+            name: Some(runner.runner_name.clone()),
+            base_dir: Some(base_dir.clone()),
+            pid: runner.pid,
+            config_path: runner.config_path.clone(),
+            subcommand: "start".into(),
+            service_type: ServiceType::Bare,
+            status: None,
+            api_ok: None,
+            proxy_pid: None,
+            dns_pid: None,
+            jobs: vec![],
+            warnings: vec![Warning::NoMitmproxy {
+                port: 32821,
+                base_dir,
+            }],
+        }];
+
+        let error =
+            match recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await {
+                Ok(_) => panic!("expected invalid live registry entry to fail"),
+                Err(error) => error,
+            };
+
+        assert!(
+            error.to_string().contains("live process identity"),
+            "{error}"
+        );
     }
 
     #[tokio::test]

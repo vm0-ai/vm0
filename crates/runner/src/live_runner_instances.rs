@@ -73,6 +73,12 @@ enum RecordForIdentity {
     InvalidForStaleProcess,
 }
 
+enum RecordRead {
+    Valid(LiveRunnerInstanceRecord),
+    Missing,
+    Invalid,
+}
+
 pub(crate) async fn publish(
     home: &HomePaths,
     metadata: LiveRunnerInstanceMetadata,
@@ -173,21 +179,31 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
     Ok(instances)
 }
 
-pub(crate) async fn is_current(home: &HomePaths, instance: &LiveRunnerInstance) -> bool {
+pub(crate) async fn is_current(
+    home: &HomePaths,
+    instance: &LiveRunnerInstance,
+) -> RunnerResult<bool> {
     let identity = FileProcessIdentity {
         pid: instance.pid,
         starttime: instance.starttime,
     };
     let path = home.live_runner_instance_record_path(identity.pid, identity.starttime);
-    let Some(record) = read_valid_record_for_identity(&path, identity).await else {
-        return false;
+    let record = match read_record_for_identity(&path, identity).await {
+        RecordForIdentity::Valid(record) => record,
+        RecordForIdentity::InvalidForStaleProcess => return Ok(false),
+        RecordForIdentity::InvalidForLiveProcess => {
+            return Err(RunnerError::Internal(format!(
+                "live runner instance record {} is invalid for a live process identity",
+                path.display()
+            )));
+        }
     };
-    record.config_path == instance.config_path
+    Ok(record.config_path == instance.config_path
         && record.base_dir == instance.base_dir
         && record.runner_name == instance.runner_name
         && record.runner_group == instance.runner_group
         && record.subcommand == instance.subcommand
-        && record.started_at == instance.started_at
+        && record.started_at == instance.started_at)
 }
 
 impl LiveRunnerInstanceHandle {
@@ -215,6 +231,13 @@ impl LiveRunnerInstanceHandle {
 }
 
 async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
+    match read_record(path).await {
+        RecordRead::Valid(record) => Some(record),
+        RecordRead::Missing | RecordRead::Invalid => None,
+    }
+}
+
+async fn read_record(path: &Path) -> RecordRead {
     let content = match crate::state_file::read_to_string(
         path,
         LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES,
@@ -223,23 +246,23 @@ async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
     .await
     {
         Ok(Some(content)) => content,
-        Ok(None) => return None,
+        Ok(None) => return RecordRead::Missing,
         Err(e) => {
             tracing::debug!(path = %path.display(), error = %e, "ignoring unreadable live runner instance record");
-            return None;
+            return RecordRead::Invalid;
         }
     };
     let record: LiveRunnerInstanceRecord = match serde_json::from_str(&content) {
         Ok(record) => record,
         Err(e) => {
             tracing::debug!(path = %path.display(), error = %e, "ignoring malformed live runner instance record");
-            return None;
+            return RecordRead::Invalid;
         }
     };
     if record_is_live(&record).await {
-        Some(record)
+        RecordRead::Valid(record)
     } else {
-        None
+        RecordRead::Invalid
     }
 }
 
@@ -286,21 +309,11 @@ async fn remove_stale_records(home: &HomePaths) {
     }
 }
 
-async fn read_valid_record_for_identity(
-    path: &Path,
-    identity: FileProcessIdentity,
-) -> Option<LiveRunnerInstanceRecord> {
-    match read_record_for_identity(path, identity).await {
-        RecordForIdentity::Valid(record) => Some(record),
-        RecordForIdentity::InvalidForLiveProcess | RecordForIdentity::InvalidForStaleProcess => {
-            None
-        }
-    }
-}
-
 async fn read_record_for_identity(path: &Path, identity: FileProcessIdentity) -> RecordForIdentity {
-    let Some(record) = read_valid_record(path).await else {
-        return invalid_record_for_identity(identity).await;
+    let record = match read_record(path).await {
+        RecordRead::Valid(record) => record,
+        RecordRead::Missing => return RecordForIdentity::InvalidForStaleProcess,
+        RecordRead::Invalid => return invalid_record_for_identity(identity).await,
     };
     if record.pid == identity.pid && record.starttime == identity.starttime {
         RecordForIdentity::Valid(record)
@@ -678,11 +691,11 @@ mod tests {
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
         let instance = try_list(&home).await.unwrap().into_iter().next().unwrap();
 
-        assert!(is_current(&home, &instance).await);
+        assert!(is_current(&home, &instance).await.unwrap());
 
         tokio::fs::remove_file(&handle.path).await.unwrap();
 
-        assert!(!is_current(&home, &instance).await);
+        assert!(!is_current(&home, &instance).await.unwrap());
     }
 
     #[tokio::test]

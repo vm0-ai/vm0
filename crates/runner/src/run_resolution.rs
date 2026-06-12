@@ -126,10 +126,18 @@ pub(crate) fn resolve_run_mapping(
     matching.dedup();
 
     match matching.as_slice() {
-        [(run_id, sandbox_id)] => Ok(ResolvedRunMapping {
-            run_id: (*run_id).clone(),
-            sandbox_id: (*sandbox_id).clone(),
-        }),
+        [(run_id, sandbox_id)] => {
+            if mappings.runners_failed > 0 && run_id.as_str() != input {
+                return Err(RunnerError::Config(format!(
+                    "run prefix '{input}' matched run '{run_id}', but {} of {} trusted live runner status file(s) were unreadable; use the full run id or retry after checking warnings above",
+                    mappings.runners_failed, mappings.runners_total,
+                )));
+            }
+            Ok(ResolvedRunMapping {
+                run_id: (*run_id).clone(),
+                sandbox_id: (*sandbox_id).clone(),
+            })
+        }
         [] => {
             let mut msg = format!("no active run matches '{input}'");
             if mappings.runners_failed > 0 {
@@ -494,6 +502,32 @@ mod tests {
         assert!(msg.contains("2 of 3"), "{msg}");
         assert!(msg.contains("trusted live runner status"), "{msg}");
         assert!(msg.contains("unreadable"), "{msg}");
+    }
+
+    #[test]
+    fn run_prefix_unique_match_fails_when_some_runners_unreadable() {
+        let m = ActiveRunMappings {
+            entries: vec![("run-abcdef".into(), "sandbox-1".into())],
+            runners_total: 2,
+            runners_failed: 1,
+        };
+
+        let err = resolve_run_to_sandbox("run-abc", &m).unwrap_err();
+
+        assert!(err.to_string().contains("use the full run id"), "{err}");
+    }
+
+    #[test]
+    fn run_prefix_exact_match_succeeds_when_some_runners_unreadable() {
+        let m = ActiveRunMappings {
+            entries: vec![("run-abcdef".into(), "sandbox-1".into())],
+            runners_total: 2,
+            runners_failed: 1,
+        };
+
+        let sandbox_id = resolve_run_to_sandbox("run-abcdef", &m).unwrap();
+
+        assert_eq!(sandbox_id, "sandbox-1");
     }
 
     #[test]
