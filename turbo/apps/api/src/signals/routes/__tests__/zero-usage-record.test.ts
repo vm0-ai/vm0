@@ -894,6 +894,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body).toStrictEqual({
       period: null,
       rows: [],
+      totalCredits: 0,
       pagination: { page: 1, pageSize: 20, total: 0 },
     });
   });
