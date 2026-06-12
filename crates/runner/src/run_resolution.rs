@@ -224,6 +224,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_active_runs_ignores_phase_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let status = r#"{
+            "mode": "running",
+            "active_runs": [
+                {
+                    "run_id": "R1",
+                    "sandbox_id": "S1",
+                    "phase": "preparing",
+                    "phase_started_at": "2026-01-01T00:00:00.000Z"
+                },
+                {
+                    "run_id": "R2",
+                    "sandbox_id": "S2",
+                    "phase": "running",
+                    "phase_started_at": "2026-01-01T00:00:01.000Z"
+                }
+            ],
+            "started_at": "2026-01-01T00:00:00.000Z"
+        }"#;
+        std::fs::write(dir.path().join("status.json"), status).unwrap();
+
+        let runs = read_active_runs(dir.path()).await.unwrap();
+
+        assert_eq!(
+            runs,
+            vec![("R1".into(), "S1".into()), ("R2".into(), "S2".into())]
+        );
+    }
+
+    #[tokio::test]
     async fn read_active_runs_missing_field_defaults_empty() {
         let dir = tempfile::tempdir().unwrap();
         // status.json without active_runs field — serde(default) kicks in

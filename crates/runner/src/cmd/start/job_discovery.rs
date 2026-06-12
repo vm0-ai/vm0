@@ -134,7 +134,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     if let Some(snapshot) = idle_snapshot {
         add_run_with_idle_status_snapshot(ctx.status, run_id, sandbox_id, snapshot).await;
     } else {
-        ctx.status.add_run(run_id, sandbox_id).await;
+        ctx.status.add_preparing_run(run_id, sandbox_id).await;
     }
 
     let job_profile = JobProfile {

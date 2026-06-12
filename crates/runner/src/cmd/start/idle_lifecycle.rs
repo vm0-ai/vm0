@@ -110,7 +110,7 @@ pub(super) async fn add_run_with_idle_status_snapshot(
     snapshot: IdlePoolSnapshot,
 ) {
     let applied = status
-        .add_run_with_idle_info_at_revision(
+        .add_running_run_with_idle_info_at_revision(
             run_id,
             sandbox_id,
             snapshot.revision,

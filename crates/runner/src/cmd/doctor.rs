@@ -11,6 +11,7 @@ use crate::error::RunnerResult;
 use crate::live_runner_instances::LiveRunnerInstance;
 use crate::paths::HomePaths;
 use crate::process;
+use chrono::{DateTime, Utc};
 use clap::Args;
 use serde::Deserialize;
 
@@ -38,6 +39,10 @@ const RECHECK_DELAY: Duration = Duration::from_secs(3);
 /// Worst-case latency: `RECHECK_MAX_ATTEMPTS × RECHECK_DELAY` = 9 s (only
 /// when anomalies persist across all attempts; zero overhead when healthy).
 const RECHECK_MAX_ATTEMPTS: u32 = 3;
+
+/// Grace period where a freshly claimed new-sandbox run may not have spawned
+/// Firecracker yet.
+const PREPARING_NO_PROCESS_GRACE: Duration = Duration::from_secs(120);
 
 /// A detected anomaly that carries enough context to recheck itself.
 enum Warning {
@@ -205,11 +210,9 @@ impl Warning {
                 if fc_found {
                     return false;
                 }
-                // Resolved if the run itself is no longer active. We key on
-                // `run_id`, not `sandbox_id`: if the run finished and its
-                // sandbox got reused by another run, the reused sandbox is
-                // that other run's concern — this warning pertains to the
-                // original run and should clear.
+                // Resolved if the original run/sandbox mapping is no longer
+                // active. If the run finished or the same run id points at a
+                // replacement sandbox, this warning no longer applies.
                 //
                 // On status-read failure we clear (return `false`) rather
                 // than persist: if the runner's status.json is gone, any
@@ -217,7 +220,11 @@ impl Warning {
                 // instead, and keeping a stale run-centric warning would
                 // be noise.
                 match read_status(base_dir).await {
-                    Some(st) => st.active_runs.iter().any(|r| r.run_id == *run_id),
+                    Some(st) => st
+                        .active_runs
+                        .iter()
+                        .find(|r| r.run_id == *run_id && r.sandbox_id == *sandbox_id)
+                        .is_some_and(|active| missing_firecracker_should_warn(active, Utc::now())),
                     None => false,
                 }
             }
@@ -328,6 +335,8 @@ struct JobReport {
 enum JobStatus {
     /// Active run with a matching firecracker process.
     Running { run_id: String, pid: u32 },
+    /// Active run is preparing a fresh sandbox; Firecracker is not expected yet.
+    Preparing { run_id: String },
     /// Active run whose firecracker process is missing.
     NoProcess { run_id: String },
     /// Firecracker process present but not recorded in status.json.
@@ -811,6 +820,24 @@ struct StatusFile {
 struct ActiveRun {
     run_id: String,
     sandbox_id: String,
+    phase: Option<String>,
+    phase_started_at: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ActiveRunPhase {
+    Preparing,
+    Running,
+}
+
+impl ActiveRun {
+    fn phase(&self) -> ActiveRunPhase {
+        match self.phase.as_deref() {
+            Some("preparing") => ActiveRunPhase::Preparing,
+            Some("running") | None => ActiveRunPhase::Running,
+            Some(_) => ActiveRunPhase::Running,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -884,6 +911,27 @@ async fn check_api(config: &RunnerConfig) -> Option<bool> {
 // Job correlation
 // ---------------------------------------------------------------------------
 
+fn missing_firecracker_should_warn(active: &ActiveRun, now: DateTime<Utc>) -> bool {
+    match active.phase() {
+        ActiveRunPhase::Running => true,
+        ActiveRunPhase::Preparing => preparing_run_is_stale(active, now),
+    }
+}
+
+fn preparing_run_is_stale(active: &ActiveRun, now: DateTime<Utc>) -> bool {
+    let Some(phase_started_at) = active.phase_started_at.as_deref() else {
+        return true;
+    };
+    let Ok(started_at) = DateTime::parse_from_rfc3339(phase_started_at) else {
+        return true;
+    };
+    let elapsed = now.signed_duration_since(started_at.with_timezone(&Utc));
+    match elapsed.to_std() {
+        Ok(elapsed) => elapsed >= PREPARING_NO_PROCESS_GRACE,
+        Err(_) => false,
+    }
+}
+
 fn correlate_jobs(
     status: &StatusInfo,
     base_dir: &Path,
@@ -899,6 +947,7 @@ fn correlate_jobs(
         .collect();
 
     // For each active run, find the FC hosting its sandbox_id.
+    let now = Utc::now();
     for active in &status.active_runs {
         let fc = my_fcs.iter().find(|p| p.sandbox_id == active.sandbox_id);
         let status_variant = match fc {
@@ -907,13 +956,19 @@ fn correlate_jobs(
                 pid: p.pid,
             },
             None => {
-                warnings.push(Warning::NoFirecrackerForRun {
-                    run_id: active.run_id.clone(),
-                    sandbox_id: active.sandbox_id.clone(),
-                    base_dir: base_dir.to_path_buf(),
-                });
-                JobStatus::NoProcess {
-                    run_id: active.run_id.clone(),
+                if missing_firecracker_should_warn(active, now) {
+                    warnings.push(Warning::NoFirecrackerForRun {
+                        run_id: active.run_id.clone(),
+                        sandbox_id: active.sandbox_id.clone(),
+                        base_dir: base_dir.to_path_buf(),
+                    });
+                    JobStatus::NoProcess {
+                        run_id: active.run_id.clone(),
+                    }
+                } else {
+                    JobStatus::Preparing {
+                        run_id: active.run_id.clone(),
+                    }
                 }
             }
         };
@@ -1164,7 +1219,9 @@ fn print_report(
                 .filter(|j| {
                     matches!(
                         j.status,
-                        JobStatus::Running { .. } | JobStatus::NoProcess { .. }
+                        JobStatus::Running { .. }
+                            | JobStatus::Preparing { .. }
+                            | JobStatus::NoProcess { .. }
                     )
                 })
                 .count();
@@ -1173,6 +1230,9 @@ fn print_report(
                 match &job.status {
                     JobStatus::Running { run_id, pid } => {
                         println!("      - run {run_id} -> PID {pid}");
+                    }
+                    JobStatus::Preparing { run_id } => {
+                        println!("      - run {run_id} -> PREPARING");
                     }
                     JobStatus::NoProcess { run_id } => {
                         println!("      - run {run_id} -> NO PROCESS");
@@ -1322,17 +1382,54 @@ mod tests {
         assert_eq!(parse_netns_list_line("vm0-ns-ff-00"), None);
     }
 
+    fn legacy_active_run(run_id: &str, sandbox_id: &str) -> ActiveRun {
+        ActiveRun {
+            run_id: run_id.into(),
+            sandbox_id: sandbox_id.into(),
+            phase: None,
+            phase_started_at: None,
+        }
+    }
+
+    fn phased_active_run(
+        run_id: &str,
+        sandbox_id: &str,
+        phase: &str,
+        phase_started_at: Option<String>,
+    ) -> ActiveRun {
+        ActiveRun {
+            run_id: run_id.into(),
+            sandbox_id: sandbox_id.into(),
+            phase: Some(phase.into()),
+            phase_started_at,
+        }
+    }
+
+    fn phase_started_at_ago(age: Duration) -> String {
+        let age = chrono::Duration::from_std(age).unwrap();
+        (Utc::now() - age)
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string()
+    }
+
     fn status_info(active: Vec<(&str, &str)>, idle_sandboxes: Vec<&str>) -> StatusInfo {
+        status_info_with_active_runs(
+            active
+                .into_iter()
+                .map(|(run_id, sandbox_id)| legacy_active_run(run_id, sandbox_id))
+                .collect(),
+            idle_sandboxes,
+        )
+    }
+
+    fn status_info_with_active_runs(
+        active_runs: Vec<ActiveRun>,
+        idle_sandboxes: Vec<&str>,
+    ) -> StatusInfo {
         StatusInfo {
             mode: "running".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
-            active_runs: active
-                .into_iter()
-                .map(|(r, s)| ActiveRun {
-                    run_id: r.into(),
-                    sandbox_id: s.into(),
-                })
-                .collect(),
+            active_runs,
             // Tests only need sandbox_id lookup for idle VMs; synthesize a
             // placeholder session_id.
             idle_vms: idle_sandboxes
@@ -1422,6 +1519,80 @@ mod tests {
         assert!(msg.contains("no firecracker"), "{msg}");
         assert!(msg.contains("run-x"), "{msg}");
         assert!(msg.contains("sandbox-x"), "{msg}");
+    }
+
+    #[test]
+    fn correlate_preparing_active_without_fc_within_grace_does_not_warn() {
+        let status = status_info_with_active_runs(
+            vec![phased_active_run(
+                "run-prep",
+                "sandbox-prep",
+                "preparing",
+                Some(phase_started_at_ago(Duration::from_secs(5))),
+            )],
+            vec![],
+        );
+        let fc: Vec<process::FirecrackerProcessInfo> = vec![];
+
+        let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
+
+        assert_eq!(jobs.len(), 1);
+        assert!(warnings.is_empty());
+        assert!(matches!(
+            jobs.first().unwrap().status,
+            JobStatus::Preparing { .. }
+        ));
+    }
+
+    #[test]
+    fn correlate_preparing_active_without_fc_beyond_grace_warns() {
+        let status = status_info_with_active_runs(
+            vec![phased_active_run(
+                "run-stale",
+                "sandbox-stale",
+                "preparing",
+                Some(phase_started_at_ago(
+                    PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1),
+                )),
+            )],
+            vec![],
+        );
+        let fc: Vec<process::FirecrackerProcessInfo> = vec![];
+
+        let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
+
+        assert_eq!(jobs.len(), 1);
+        assert!(matches!(
+            jobs.first().unwrap().status,
+            JobStatus::NoProcess { .. }
+        ));
+        assert_eq!(warnings.len(), 1);
+        let msg = warnings[0].to_string();
+        assert!(msg.contains("run-stale"), "{msg}");
+        assert!(msg.contains("sandbox-stale"), "{msg}");
+    }
+
+    #[test]
+    fn correlate_preparing_active_without_timestamp_warns() {
+        let status = status_info_with_active_runs(
+            vec![phased_active_run(
+                "run-missing-ts",
+                "sandbox-missing-ts",
+                "preparing",
+                None,
+            )],
+            vec![],
+        );
+        let fc: Vec<process::FirecrackerProcessInfo> = vec![];
+
+        let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
+
+        assert_eq!(jobs.len(), 1);
+        assert!(matches!(
+            jobs.first().unwrap().status,
+            JobStatus::NoProcess { .. }
+        ));
+        assert_eq!(warnings.len(), 1);
     }
 
     #[test]
@@ -1553,6 +1724,98 @@ mod tests {
         };
         // R1 is still active and there's no FC in fresh. Warning persists.
         assert!(warning.persists(&empty_fresh(), &[]).await);
+    }
+
+    #[tokio::test]
+    async fn no_firecracker_for_run_clears_for_preparing_run_within_grace() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        let phase_started_at = phase_started_at_ago(Duration::from_secs(10));
+        write_status_json(
+            &base_dir.join("status.json"),
+            &format!(
+                r#"{{
+                    "mode": "running",
+                    "max_concurrent": 4,
+                    "active_runs": [
+                        {{
+                            "run_id": "R1",
+                            "sandbox_id": "S1",
+                            "phase": "preparing",
+                            "phase_started_at": "{phase_started_at}"
+                        }}
+                    ],
+                    "started_at": "2026-01-01T00:00:00.000Z",
+                    "updated_at": "2026-01-01T00:00:00.000Z"
+                }}"#
+            ),
+        );
+
+        let warning = Warning::NoFirecrackerForRun {
+            run_id: "R1".into(),
+            sandbox_id: "S1".into(),
+            base_dir: base_dir.clone(),
+        };
+        assert!(!warning.persists(&empty_fresh(), &[]).await);
+    }
+
+    #[tokio::test]
+    async fn no_firecracker_for_run_persists_for_stale_preparing_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        let phase_started_at =
+            phase_started_at_ago(PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1));
+        write_status_json(
+            &base_dir.join("status.json"),
+            &format!(
+                r#"{{
+                    "mode": "running",
+                    "max_concurrent": 4,
+                    "active_runs": [
+                        {{
+                            "run_id": "R1",
+                            "sandbox_id": "S1",
+                            "phase": "preparing",
+                            "phase_started_at": "{phase_started_at}"
+                        }}
+                    ],
+                    "started_at": "2026-01-01T00:00:00.000Z",
+                    "updated_at": "2026-01-01T00:00:00.000Z"
+                }}"#
+            ),
+        );
+
+        let warning = Warning::NoFirecrackerForRun {
+            run_id: "R1".into(),
+            sandbox_id: "S1".into(),
+            base_dir: base_dir.clone(),
+        };
+        assert!(warning.persists(&empty_fresh(), &[]).await);
+    }
+
+    #[tokio::test]
+    async fn no_firecracker_for_run_clears_when_same_run_points_to_new_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        write_status_json(
+            &base_dir.join("status.json"),
+            r#"{
+                "mode": "running",
+                "max_concurrent": 4,
+                "active_runs": [
+                    {"run_id": "R1", "sandbox_id": "S2"}
+                ],
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z"
+            }"#,
+        );
+
+        let warning = Warning::NoFirecrackerForRun {
+            run_id: "R1".into(),
+            sandbox_id: "S1".into(),
+            base_dir: base_dir.clone(),
+        };
+        assert!(!warning.persists(&empty_fresh(), &[]).await);
     }
 
     #[tokio::test]

@@ -33,10 +33,27 @@ pub enum RunnerMode {
 /// that identifies the Firecracker VM hosting it. After sandbox reuse these
 /// differ: the VM keeps its original `sandbox_id` while each successive job
 /// has a fresh `run_id`.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ActiveRunPhase {
+    Preparing,
+    Running,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ActiveRun {
     pub run_id: RunId,
     pub sandbox_id: SandboxId,
+    pub phase: ActiveRunPhase,
+    #[serde(serialize_with = "serialize_iso")]
+    pub phase_started_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+struct ActiveRunState {
+    sandbox_id: SandboxId,
+    phase: ActiveRunPhase,
+    phase_started_at: DateTime<Utc>,
 }
 
 /// One parked (idle) sandbox's identity: the `session_id` it's keyed by in
@@ -85,13 +102,13 @@ pub struct StatusTracker {
 
 struct MutableState {
     mode: RunnerMode,
-    /// Map of run_id → sandbox_id for all active runs. Keyed by run_id so
+    /// Map of run_id → active run state for all active runs. Keyed by run_id so
     /// conditional active-run removal stays O(log n); the paired `sandbox_id`
     /// is the join key used by doctor and kill to find the FC process.
     ///
     /// BTreeMap (not HashMap) for deterministic iteration order — status.json
     /// output should be stable across runs for readability and diffing.
-    active_runs: BTreeMap<RunId, SandboxId>,
+    active_runs: BTreeMap<RunId, ActiveRunState>,
     /// Monotonic idle pool mutation revision last reflected in `idle_vms`.
     ///
     /// Idle pool callers snapshot under the pool lock, drop it, then write
@@ -139,11 +156,44 @@ impl StatusTracker {
         self.write_status(&state).await;
     }
 
-    /// Register an active run and flush the status file. On duplicate
-    /// `run_id`, the previous `sandbox_id` is overwritten.
+    /// Register an active run as running and flush the status file.
+    ///
+    /// This preserves the old helper semantics for tests and cleanup fixtures.
+    /// Freshly claimed new-sandbox jobs should use [`add_preparing_run`].
+    #[cfg(test)]
     pub async fn add_run(&self, run_id: RunId, sandbox_id: SandboxId) {
+        self.add_running_run(run_id, sandbox_id).await;
+    }
+
+    /// Register an active run that has been claimed but whose Firecracker VM is
+    /// not expected to exist yet.
+    pub async fn add_preparing_run(&self, run_id: RunId, sandbox_id: SandboxId) {
+        self.add_run_with_phase(run_id, sandbox_id, ActiveRunPhase::Preparing)
+            .await;
+    }
+
+    /// Register an active run whose Firecracker VM should already exist.
+    #[cfg(test)]
+    pub async fn add_running_run(&self, run_id: RunId, sandbox_id: SandboxId) {
+        self.add_run_with_phase(run_id, sandbox_id, ActiveRunPhase::Running)
+            .await;
+    }
+
+    async fn add_run_with_phase(
+        &self,
+        run_id: RunId,
+        sandbox_id: SandboxId,
+        phase: ActiveRunPhase,
+    ) {
         let mut state = self.state.lock().await;
-        state.active_runs.insert(run_id, sandbox_id);
+        state.active_runs.insert(
+            run_id,
+            ActiveRunState {
+                sandbox_id,
+                phase,
+                phase_started_at: Utc::now(),
+            },
+        );
         self.write_status(&state).await;
     }
 
@@ -154,7 +204,9 @@ impl StatusTracker {
     /// This avoids a transient status.json gap during idle reuse where a sandbox
     /// has been removed from `idle_vms` but has not yet appeared in
     /// `active_runs`.
-    pub async fn add_run_with_idle_info_at_revision(
+    /// Register a running active run and replace the idle VM list in the same
+    /// status write if the idle snapshot is current.
+    pub async fn add_running_run_with_idle_info_at_revision(
         &self,
         run_id: RunId,
         sandbox_id: SandboxId,
@@ -162,10 +214,33 @@ impl StatusTracker {
         idle_vms: Vec<IdleVm>,
     ) -> bool {
         let mut state = self.state.lock().await;
-        state.active_runs.insert(run_id, sandbox_id);
+        state.active_runs.insert(
+            run_id,
+            ActiveRunState {
+                sandbox_id,
+                phase: ActiveRunPhase::Running,
+                phase_started_at: Utc::now(),
+            },
+        );
         let applied = apply_idle_info_at_revision(&mut state, revision, idle_vms);
         self.write_status(&state).await;
         applied
+    }
+
+    /// Transition a preparing active run to running only if it still points at
+    /// the expected sandbox.
+    pub async fn mark_run_running_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
+        let mut state = self.state.lock().await;
+        let Some(current) = state.active_runs.get_mut(&run_id) else {
+            return false;
+        };
+        if current.sandbox_id != sandbox_id {
+            return false;
+        }
+        current.phase = ActiveRunPhase::Running;
+        current.phase_started_at = Utc::now();
+        self.write_status(&state).await;
+        true
     }
 
     /// Drop an active run only if it still points at the expected sandbox.
@@ -174,8 +249,7 @@ impl StatusTracker {
     /// `run_id` with a different sandbox.
     pub async fn remove_run_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
         let mut state = self.state.lock().await;
-        let removed =
-            matches!(state.active_runs.get(&run_id), Some(current) if *current == sandbox_id);
+        let removed = matches!(state.active_runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
         if removed {
             state.active_runs.remove(&run_id);
             self.write_status(&state).await;
@@ -209,9 +283,11 @@ impl StatusTracker {
         let active_runs: Vec<ActiveRun> = state
             .active_runs
             .iter()
-            .map(|(rid, sid)| ActiveRun {
-                run_id: *rid,
-                sandbox_id: *sid,
+            .map(|(run_id, active)| ActiveRun {
+                run_id: *run_id,
+                sandbox_id: active.sandbox_id,
+                phase: active.phase,
+                phase_started_at: active.phase_started_at,
             })
             .collect();
 
@@ -332,6 +408,67 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0]["run_id"], run_id.to_string());
         assert_eq!(runs[0]["sandbox_id"], sandbox_id.to_string());
+        assert_eq!(runs[0]["phase"], "running");
+        assert!(runs[0]["phase_started_at"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn add_preparing_run_records_phase_and_timestamp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+
+        tracker.write_initial().await;
+        tracker.add_preparing_run(run_id, sandbox_id).await;
+
+        let status = read_status(&path);
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["run_id"], run_id.to_string());
+        assert_eq!(runs[0]["sandbox_id"], sandbox_id.to_string());
+        assert_eq!(runs[0]["phase"], "preparing");
+        let phase_started_at = runs[0]["phase_started_at"].as_str().unwrap();
+        assert!(chrono::DateTime::parse_from_rfc3339(phase_started_at).is_ok());
+    }
+
+    #[tokio::test]
+    async fn mark_run_running_if_matching_updates_only_matching_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+
+        let run_id = RunId::new_v4();
+        let stale_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+
+        tracker.write_initial().await;
+        tracker.add_preparing_run(run_id, stale_sandbox_id).await;
+        tracker.add_preparing_run(run_id, current_sandbox_id).await;
+
+        assert!(
+            !tracker
+                .mark_run_running_if_matching(run_id, stale_sandbox_id)
+                .await
+        );
+        let status = read_status(&path);
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["sandbox_id"], current_sandbox_id.to_string());
+        assert_eq!(runs[0]["phase"], "preparing");
+
+        assert!(
+            tracker
+                .mark_run_running_if_matching(run_id, current_sandbox_id)
+                .await
+        );
+        let status = read_status(&path);
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["sandbox_id"], current_sandbox_id.to_string());
+        assert_eq!(runs[0]["phase"], "running");
     }
 
     #[tokio::test]
@@ -587,7 +724,7 @@ mod tests {
         );
         assert!(
             !tracker
-                .add_run_with_idle_info_at_revision(
+                .add_running_run_with_idle_info_at_revision(
                     run_id,
                     active_id,
                     1,
@@ -604,6 +741,7 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0]["run_id"], run_id.to_string());
         assert_eq!(runs[0]["sandbox_id"], active_id.to_string());
+        assert_eq!(runs[0]["phase"], "running");
         let vms = status["idle_vms"].as_array().unwrap();
         assert_eq!(vms.len(), 1);
         assert_eq!(vms[0]["session_id"], "fresh");

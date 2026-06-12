@@ -17,7 +17,7 @@ use super::env::normalized_cli_agent_type;
 use super::telemetry::record_workspace_cache_result;
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
-    RunnerResult, SandboxReuseResult,
+    RunnerResult, SandboxReuseResult, SandboxStartNotifier,
 };
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
@@ -28,6 +28,7 @@ use crate::workspace_image_cache::{WorkspaceImageLease, WorkspaceImagePrepareReq
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
+#[cfg(test)]
 pub(super) async fn execute_new_sandbox(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
@@ -37,10 +38,38 @@ pub(super) async fn execute_new_sandbox(
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<ExecuteOutcome> {
+    execute_new_sandbox_with_start_notifier(
+        factory,
+        context,
+        dispatch,
+        config,
+        params,
+        telemetry,
+        NewSandboxHooks {
+            cancel,
+            sandbox_started: None,
+        },
+    )
+    .await
+}
+
+pub(super) async fn execute_new_sandbox_with_start_notifier(
+    factory: &dyn SandboxFactory,
+    context: &ExecutionContext,
+    dispatch: NewSandboxDispatch,
+    config: &ExecutorConfig,
+    params: &JobParams,
+    telemetry: &mut JobTelemetry,
+    hooks: NewSandboxHooks<'_>,
+) -> RunnerResult<ExecuteOutcome> {
     let NewSandboxDispatch {
         id: sandbox_id,
         reuse_result,
     } = dispatch;
+    let NewSandboxHooks {
+        cancel,
+        sandbox_started,
+    } = hooks;
     let mut workspace_image = prepare_workspace_image(
         context,
         sandbox_id,
@@ -57,7 +86,10 @@ pub(super) async fn execute_new_sandbox(
         config,
         params,
         telemetry,
-        workspace_image.as_ref(),
+        StartSandboxOptions {
+            workspace_image: workspace_image.as_ref(),
+            sandbox_started,
+        },
     )
     .await
     {
@@ -83,7 +115,16 @@ pub(super) async fn execute_new_sandbox(
             );
             workspace_image = None;
             create_started_sandbox(
-                factory, context, sandbox_id, config, params, telemetry, None,
+                factory,
+                context,
+                sandbox_id,
+                config,
+                params,
+                telemetry,
+                StartSandboxOptions {
+                    workspace_image: None,
+                    sandbox_started,
+                },
             )
             .await
             .map_err(|e| e.error)?
@@ -124,6 +165,16 @@ pub(super) struct PreparedSandboxRun {
 pub(super) struct SandboxPrepareError {
     error: RunnerError,
     retry_without_workspace_image: bool,
+}
+
+pub(super) struct NewSandboxHooks<'a> {
+    pub(super) cancel: CancellationToken,
+    pub(super) sandbox_started: Option<&'a SandboxStartNotifier>,
+}
+
+struct StartSandboxOptions<'a> {
+    workspace_image: Option<&'a WorkspaceImageLease>,
+    sandbox_started: Option<&'a SandboxStartNotifier>,
 }
 
 impl SandboxPrepareError {
@@ -175,15 +226,19 @@ pub(super) fn workspace_image_promotable(
         .is_some_and(|image| image.can_attempt_promotion(context.session_id().or(guest_session_id)))
 }
 
-pub(super) async fn create_started_sandbox(
+async fn create_started_sandbox(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
     sandbox_id: SandboxId,
     config: &ExecutorConfig,
     params: &JobParams,
     telemetry: &mut JobTelemetry,
-    workspace_image: Option<&WorkspaceImageLease>,
+    options: StartSandboxOptions<'_>,
 ) -> Result<PreparedSandboxRun, SandboxPrepareError> {
+    let StartSandboxOptions {
+        workspace_image,
+        sandbox_started,
+    } = options;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
@@ -236,6 +291,9 @@ pub(super) async fn create_started_sandbox(
             .await;
         destroy_sandbox_panic_safe(factory, sandbox).await;
         return Err(SandboxPrepareError::retry(e.into()));
+    }
+    if let Some(notifier) = sandbox_started {
+        notifier.notify(context.run_id, sandbox_id).await;
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
