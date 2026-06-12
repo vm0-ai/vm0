@@ -195,6 +195,7 @@ import {
 import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
   feedbackItemsValue$,
+  feedbackThreadIdValue$,
   feedbackSendCountValue$,
   setFeedbackItemNote$,
   removeFeedbackItem$,
@@ -3346,6 +3347,7 @@ function useChatThreadComposerFeedback(
   const inlineFeedbackEnabled =
     features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
   const items = useGet(feedbackItemsValue$);
+  const feedbackThreadId = useGet(feedbackThreadIdValue$);
   const sendCount = useGet(feedbackSendCountValue$);
   const setNote = useSet(setFeedbackItemNote$);
   const removeItem = useSet(removeFeedbackItem$);
@@ -3354,7 +3356,9 @@ function useChatThreadComposerFeedback(
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
 
-  if (!inlineFeedbackEnabled) {
+  // Feedback is owned by the thread it was drafted in; other threads keep their
+  // own composer textarea so a draft never bleeds across chats.
+  if (!inlineFeedbackEnabled || feedbackThreadId !== thread.threadId) {
     return undefined;
   }
   return {

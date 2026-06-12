@@ -2739,9 +2739,7 @@ describe("chat lifecycle", () => {
     expect(comments[0]).toHaveValue("Assign each risk to an owner.");
     expect(comments[1]).toHaveValue("");
     expect(
-      screen.getByText(
-        "Select more text and click Provide feedback to add another comment",
-      ),
+      screen.getByText("Select more text to add another comment"),
     ).toBeInTheDocument();
 
     // Removing the empty draft row leaves the noted fragment intact.
