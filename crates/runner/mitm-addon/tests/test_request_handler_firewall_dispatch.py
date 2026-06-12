@@ -47,7 +47,7 @@ async def test_firewall_match_calls_handler(
 
 
 async def test_inactive_builtin_connector_url_records_diagnostic_candidate(
-    tmp_path, real_flow, mitm_ctx, headers
+    tmp_path, real_flow, mitm_ctx
 ):
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
@@ -69,6 +69,34 @@ async def test_inactive_builtin_connector_url_records_diagnostic_candidate(
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == ("not_configured_for_run")
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["FAL_TOKEN"]
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://fal.run"
+
+
+async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidate(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="fal.run",
+        path="/fal-ai/nano-banana-pro",
+        method="POST",
+        request_headers=headers(
+            ("Host", "fal.run"),
+            (
+                "User-Agent",
+                "Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+            ),
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
 
 
 async def test_active_builtin_connector_url_uses_firewall_path(

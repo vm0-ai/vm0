@@ -42,7 +42,7 @@ def test_skips_dynamic_template_base_urls():
 
 def test_skips_model_provider_firewalls():
     candidate = builtin_connector_diagnostics.find_candidate(
-        "https://chatgpt.com/backend-api/codex/tasks",
+        "https://api.anthropic.com/v1/messages",
         "POST",
         active_firewall_names=set(),
     )

@@ -25,7 +25,8 @@ class ConnectorDiagnosticCandidate:
 
 @dataclass(frozen=True)
 class _DiagnosticCatalog:
-    compiled_firewalls: matching.CompiledFirewallSet | None
+    compiled_connector_firewalls: matching.CompiledFirewallSet | None
+    compiled_model_provider_firewalls: matching.CompiledFirewallSet | None
 
 
 _catalog: _DiagnosticCatalog | None = None
@@ -44,13 +45,19 @@ def find_candidate(
 ) -> ConnectorDiagnosticCandidate | None:
     """Classify a URL against static built-in connector bases without enforcing it."""
     catalog = _diagnostic_catalog()
-    if catalog.compiled_firewalls is None:
+    if catalog.compiled_connector_firewalls is None:
+        return None
+
+    # Some connector bases intentionally sit above model-provider paths on the
+    # same host, such as https://api.anthropic.com vs /v1/messages. Do not let
+    # the broader connector base diagnose model-provider requests.
+    if _matches_model_provider_url(url, method, catalog):
         return None
 
     match = matching.match_compiled_firewall_request(
         url,
         method,
-        catalog.compiled_firewalls,
+        catalog.compiled_connector_firewalls,
     )
     if not isinstance(match, matching.FirewallAllow):
         return None
@@ -86,14 +93,32 @@ def _diagnostic_catalog() -> _DiagnosticCatalog:
     if _catalog is not None:
         return _catalog
 
-    firewalls: list[dict] = []
+    connector_firewalls: list[dict] = []
+    model_provider_firewalls: list[dict] = []
     for firewall in BUILTIN_FIREWALLS.values():
         diagnostic_firewall = _diagnostic_firewall(firewall)
         if diagnostic_firewall is not None:
-            firewalls.append(diagnostic_firewall)
+            if diagnostic_firewall["name"].startswith(_MODEL_PROVIDER_PREFIX):
+                model_provider_firewalls.append(diagnostic_firewall)
+            else:
+                connector_firewalls.append(diagnostic_firewall)
 
-    _catalog = _DiagnosticCatalog(matching.compile_firewalls(firewalls))
+    _catalog = _DiagnosticCatalog(
+        compiled_connector_firewalls=matching.compile_firewalls(connector_firewalls),
+        compiled_model_provider_firewalls=matching.compile_firewalls(model_provider_firewalls),
+    )
     return _catalog
+
+
+def _matches_model_provider_url(url: str, method: str, catalog: _DiagnosticCatalog) -> bool:
+    if catalog.compiled_model_provider_firewalls is None:
+        return False
+    match = matching.match_compiled_firewall_request(
+        url,
+        method,
+        catalog.compiled_model_provider_firewalls,
+    )
+    return isinstance(match, matching.FirewallAllow)
 
 
 def _diagnostic_firewall(firewall: object) -> dict | None:
@@ -102,9 +127,6 @@ def _diagnostic_firewall(firewall: object) -> dict | None:
     raw_name = firewall.get("name")
     if not isinstance(raw_name, str) or raw_name == "":
         return None
-    if raw_name.startswith(_MODEL_PROVIDER_PREFIX):
-        return None
-
     raw_apis = firewall.get("apis")
     if not isinstance(raw_apis, list):
         return None

@@ -1125,13 +1125,14 @@ async def request(flow: http.HTTPFlow) -> None:
         # to a built-in connector that is not active in this run, record only a
         # diagnostic candidate. Response/error hooks decide whether a failed
         # request should expose an agent-visible diagnostic body.
-        candidate = builtin_connector_diagnostics.find_candidate(
-            original_url,
-            flow.request.method,
-            active_firewall_names=_active_firewall_names(vm_info),
-        )
-        if candidate is not None:
-            _record_connector_diagnostic_candidate(flow, candidate)
+        if not flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+            candidate = builtin_connector_diagnostics.find_candidate(
+                original_url,
+                flow.request.method,
+                active_firewall_names=_active_firewall_names(vm_info),
+            )
+            if candidate is not None:
+                _record_connector_diagnostic_candidate(flow, candidate)
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
