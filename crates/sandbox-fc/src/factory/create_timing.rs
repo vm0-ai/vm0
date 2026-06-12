@@ -200,7 +200,12 @@ fn optional_duration_ms(duration: Option<Duration>) -> u64 {
 fn sanitize_error_for_timing(error: &str) -> String {
     let first_line = error.lines().next().unwrap_or_default().trim();
     let command_redacted = if let Some((prefix, _)) = first_line.split_once("command failed:") {
-        format!("{} command failed", prefix.trim_end())
+        let prefix = prefix.trim_end();
+        if prefix.is_empty() {
+            "command failed".to_owned()
+        } else {
+            format!("{prefix} command failed")
+        }
     } else {
         first_line.to_owned()
     };
@@ -210,9 +215,27 @@ fn sanitize_error_for_timing(error: &str) -> String {
 fn redact_path_tokens(value: &str) -> String {
     value
         .split_whitespace()
-        .map(|token| if token.contains('/') { "<path>" } else { token })
+        .map(|token| {
+            if is_path_like_token(token) {
+                "<path>"
+            } else {
+                token
+            }
+        })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn is_path_like_token(token: &str) -> bool {
+    let token =
+        token.trim_matches(|c: char| matches!(c, ':' | ',' | ';' | ')' | '(' | '"' | '\'' | '`'));
+    token.contains('/')
+        || token.contains('\\')
+        || token.starts_with('.')
+        || token.ends_with(".ext4")
+        || token.ends_with(".img")
+        || token.ends_with(".qcow2")
+        || token.ends_with(".raw")
 }
 
 #[cfg(test)]
@@ -362,9 +385,28 @@ mod tests {
     }
 
     #[test]
+    fn stage_failure_redacts_command_argv_without_prefix() {
+        let error = sanitize_error_for_timing("command failed: cp /tmp/source /tmp/target");
+
+        assert_eq!(error, "command failed");
+    }
+
+    #[test]
     fn stage_failure_redacts_path_tokens() {
         let error = sanitize_error_for_timing(
             "workspace seed image size mismatch for /tmp/seed.ext4: expected 1 bytes, got 0 bytes",
+        );
+
+        assert_eq!(
+            error,
+            "workspace seed image size mismatch for <path> expected 1 bytes, got 0 bytes"
+        );
+    }
+
+    #[test]
+    fn stage_failure_redacts_relative_image_path_tokens() {
+        let error = sanitize_error_for_timing(
+            "workspace seed image size mismatch for seed.ext4: expected 1 bytes, got 0 bytes",
         );
 
         assert_eq!(
