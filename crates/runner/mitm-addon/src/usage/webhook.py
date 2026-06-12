@@ -391,6 +391,7 @@ def _enqueue_webhook(
         )
     except RuntimeError:
         # Executor shut down (done() already called during drain).
+        fallback_started = False
         try:
             log_proxy_entry(
                 proxy_log_path,
@@ -399,6 +400,7 @@ def _enqueue_webhook(
                 type=log_type,
                 url=url,
             )
+            fallback_started = True
             _post_webhook_with_retry(
                 url,
                 sandbox_token,
@@ -407,6 +409,10 @@ def _enqueue_webhook(
                 log_type,
                 delivery_outcome_callback=delivery_outcome_callback,
             )
+        except Exception:
+            if not fallback_started:
+                decrement_pending_reports()
+            raise
         finally:
             _release_delivery_capacity()
     except Exception:
