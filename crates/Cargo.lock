@@ -2810,6 +2810,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "tracing-test-support",
  "uuid",
  "vsock-host",
  "vsock-proto",
