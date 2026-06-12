@@ -405,12 +405,19 @@ pub(crate) fn capture_session_metadata(event: &Value, masker: &SecretMasker) {
 
 fn register_event_session_identifier(event: &Value, masker: &SecretMasker) {
     let id = match Framework::from_env() {
-        Framework::ClaudeCode => raw_claude_session_id(event),
-        Framework::Codex => raw_codex_thread_id(event),
+        Framework::ClaudeCode => string_field(event, "session_id"),
+        Framework::Codex => string_field(event, "thread_id"),
     };
     if let Some(id) = id {
         masker.add_sensitive_value(id);
     }
+}
+
+fn string_field<'a>(event: &'a Value, field: &str) -> Option<&'a str> {
+    event
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
 }
 
 fn repair_missing_session_history_marker_from_existing_session(masker: &SecretMasker) {
@@ -508,11 +515,7 @@ fn raw_claude_session_id(event: &Value) -> Option<&str> {
     if event_type != "system" || subtype != "init" {
         return None;
     }
-    let session_id = event.get("session_id").and_then(|v| v.as_str())?;
-    if session_id.is_empty() {
-        return None;
-    }
-    Some(session_id)
+    string_field(event, "session_id")
 }
 
 fn claude_history_path_payload(session_id: &str) -> Option<String> {
@@ -560,11 +563,7 @@ fn raw_codex_thread_id(event: &Value) -> Option<&str> {
     if event_type != "thread.started" {
         return None;
     }
-    let thread_id = event.get("thread_id").and_then(|v| v.as_str())?;
-    if thread_id.is_empty() {
-        return None;
-    }
-    Some(thread_id)
+    string_field(event, "thread_id")
 }
 
 fn codex_history_marker_payload(thread_id: &str) -> String {

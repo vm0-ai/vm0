@@ -412,6 +412,10 @@ pub async fn execute_cli(
                             if seq == 0 {
                                 timing::record_e2e_from_api("api_to_cli_init");
                             }
+                            // Capture checkpoint metadata and register any
+                            // event-local session identifier before logging
+                            // terminal diagnostics from the same event.
+                            events::capture_session_metadata(&event, masker);
                             // Print Claude Code final result to stdout if applicable.
                             if behavior.handles_claude_result_event(&event) {
                                 claude_result = Some(ClaudeResultSummary::from_event(&event));
@@ -473,10 +477,6 @@ pub async fn execute_cli(
                                     failure_diagnostic = Some(selected);
                                 }
                             }
-                            // Capture checkpoint metadata before event payload preparation
-                            // consumes and masks the event.
-                            events::capture_session_metadata(&event, masker);
-
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
                             if should_send_events {
