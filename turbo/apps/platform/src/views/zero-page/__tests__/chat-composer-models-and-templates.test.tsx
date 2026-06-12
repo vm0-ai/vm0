@@ -513,11 +513,15 @@ describe("chat composer models", () => {
     await user.click(textarea);
     await user.keyboard("/");
 
-    await expect(
-      screen.findByText("/sales-research"),
-    ).resolves.toBeInTheDocument();
+    const salesSuggestion = await screen.findByText("/sales-research");
+    expect(salesSuggestion).toBeInTheDocument();
     expect(screen.getByText("/support-escalation")).toBeInTheDocument();
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+    const slashSkillMenu = screen.getByTestId("slash-skill-menu");
+    expect(composerElementFrom(textarea)).toContain(slashSkillMenu);
+    expect(slashSkillMenu).toHaveClass("absolute");
+    expect(slashSkillMenu.style.left).not.toBe("");
+    expect(slashSkillMenu.style.top).not.toBe("");
 
     await user.keyboard("sales");
 

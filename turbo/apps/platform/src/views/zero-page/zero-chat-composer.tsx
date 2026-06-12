@@ -170,6 +170,9 @@ import {
   setSlashSkillCaretIndex$,
   selectedSlashSkillIndex$,
   setSelectedSlashSkillIndex$,
+  slashSkillMenuStyle$,
+  setSlashSkillAnchorRef$,
+  setSlashSkillMenuRef$,
   type TemplatePickerVideoGroup,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
@@ -3090,12 +3093,15 @@ function SlashSkillMenu({
   readonly showSkillsPageLink: boolean;
   readonly onSelect: (skill: ComposerSlashSkill) => void;
 }) {
+  const menuStyle = useGet(slashSkillMenuStyle$);
+  const setMenuRef = useSet(setSlashSkillMenuRef$);
+
   return (
     <div
-      ref={(element) => {
-        placeSlashSkillMenu(element);
-      }}
-      className="fixed z-50 flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
+      ref={setMenuRef}
+      className="absolute z-50 flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
+      data-testid="slash-skill-menu"
+      style={menuStyle}
     >
       <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
         Skills
@@ -3162,37 +3168,6 @@ function SlashSkillMenu({
 
 function slashSkillOptionId(skillName: string): string {
   return `slash-skill-option-${skillName}`;
-}
-
-function placeSlashSkillMenu(element: HTMLDivElement | null): void {
-  if (!element) {
-    return;
-  }
-
-  const container = element.parentElement;
-  if (!container) {
-    return;
-  }
-
-  const rect = container.getBoundingClientRect();
-  const spaceAbove = rect.top;
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const menuHeight = Math.min(element.offsetHeight, 320);
-  const placement =
-    spaceAbove >= menuHeight + 8 || spaceAbove >= spaceBelow
-      ? "above"
-      : "below";
-  const left = Math.min(
-    Math.max(rect.left + 12, 12),
-    Math.max(window.innerWidth - 272, 12),
-  );
-  const top =
-    placement === "below"
-      ? rect.bottom + 8
-      : Math.max(rect.top - menuHeight - 8, 8);
-
-  element.style.left = `${left}px`;
-  element.style.top = `${top}px`;
 }
 
 function scrollSlashSkillIntoView(skill: ComposerSlashSkill | undefined): void {
@@ -3313,6 +3288,7 @@ function SlashSkillComposerInput({
   const setCaretIndex = useSet(setSlashSkillCaretIndex$);
   const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
   const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
+  const setSlashSkillAnchorRef = useSet(setSlashSkillAnchorRef$);
   const currentAgent = useLastResolved(currentChatAgent$);
   const features = useLastResolved(featureSwitch$);
   const orgSkillsLoadable = useLastLoadable(orgSkills$);
@@ -3404,7 +3380,7 @@ function SlashSkillComposerInput({
   };
 
   return (
-    <div className="relative">
+    <div ref={setSlashSkillAnchorRef} className="relative">
       {showSlashSkillMenu && (
         <SlashSkillMenu
           skills={slashSkillSuggestions}
