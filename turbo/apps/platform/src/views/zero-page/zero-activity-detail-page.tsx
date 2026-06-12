@@ -238,9 +238,7 @@ export function ActivityHeaderCard({
             <>
               <div className="flex items-center gap-1.5 px-3">
                 <span className="text-muted-foreground shrink-0">Source</span>
-                {(triggerSource === "schedule" ||
-                  triggerSource === "automation") &&
-                detail.scheduleId ? (
+                {triggerSource === "automation" && detail.scheduleId ? (
                   <Link
                     pathname="/automations/:scheduleId"
                     options={{

@@ -5,9 +5,9 @@ import {
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import {
-  automationsV2ByRefContract,
-  automationsV2MainContract,
-} from "@vm0/api-contracts/contracts/automations-v2";
+  automationsByRefContract,
+  automationsMainContract,
+} from "@vm0/api-contracts/contracts/automations";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import {
   agentComposes,
@@ -62,11 +62,11 @@ function agentsByIdClient() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(automationsV2MainContract);
+  return setupApp({ context })(automationsMainContract);
 }
 
 function automationsByRefClient() {
-  return setupApp({ context })(automationsV2ByRefContract);
+  return setupApp({ context })(automationsByRefContract);
 }
 
 async function seedDefaultAnthropicProvider(

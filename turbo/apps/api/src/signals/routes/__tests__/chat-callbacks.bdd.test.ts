@@ -512,6 +512,22 @@ describe("CHAT-02: completed chat callback", () => {
         })
         .sort(),
     ).toStrictEqual([queued.id, claimed.id].sort());
+    // The auto-send publishes happen in background callback processing, so
+    // poll until each expected channel has been published before asserting.
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadMessageCreated:${first.threadId}`;
+        });
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadRunCreated:${first.threadId}`;
+        });
+      })
+      .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${first.threadId}`,
       null,
@@ -558,6 +574,26 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       prompt: "progress probe",
     });
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return (
+            call[0] === `chatThreadMessageCreated:${first.threadId}` &&
+            call[1] === null
+          );
+        });
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return (
+            call[0] === `chatThreadRunCreated:${first.threadId}` &&
+            call[1] === null
+          );
+        });
+      })
+      .toBe(true);
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
     await webhooks.requestAgentHeartbeat(
@@ -926,6 +962,16 @@ describe("CHAT-02: failed chat callbacks", () => {
       threadId = run.threadId;
       runIds.push(run.runId);
       const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+      await expect
+        .poll(() => {
+          return context.mocks.ably.publish.mock.calls.some((call) => {
+            return (
+              call[0] === `chatThreadRunCreated:${run.threadId}` &&
+              call[1] === null
+            );
+          });
+        })
+        .toBe(true);
       context.mocks.ably.publish.mockClear();
       await failChatRun(run.runId, sandboxHeaders, round.error);
       expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(

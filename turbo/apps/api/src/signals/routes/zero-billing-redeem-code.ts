@@ -146,6 +146,25 @@ async function atomRedeemErrorMessage(
   return atomRedeemFallbackMessage(response.status);
 }
 
+async function primaryEmailForUser(
+  clerk: ReturnType<typeof clerk$.read>,
+  userId: string,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const users = await clerk.users.getUserList({ userId: [userId], limit: 1 });
+  signal.throwIfAborted();
+  const user = users.data[0];
+  if (!user) {
+    return undefined;
+  }
+
+  return (
+    user.emailAddresses.find((emailAddress) => {
+      return emailAddress.id === user.primaryEmailAddressId;
+    })?.emailAddress ?? user.emailAddresses[0]?.emailAddress
+  );
+}
+
 const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
@@ -166,13 +185,24 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
     return providerUnavailable("Redeem service not configured");
   }
 
+  const clerk = get(clerk$);
+  const emailResult = await settle(
+    primaryEmailForUser(clerk, auth.userId, signal),
+    signal,
+  );
+  signal.throwIfAborted();
+  if (!emailResult.ok || !emailResult.value) {
+    return providerUnavailable("Redeem service user unavailable");
+  }
+  const email = emailResult.value;
+
   const machineSecretKey = optionalEnv("VM0_MACHINE_SECRET_KEY");
   if (!machineSecretKey) {
     return providerUnavailable("Redeem service not configured");
   }
 
   const m2mTokenResult = await settle(
-    get(clerk$).m2m.createToken({
+    clerk.m2m.createToken({
       machineSecretKey,
       secondsUntilExpiration: ATOM_M2M_TOKEN_TTL_SECONDS,
       minRemainingTtlSeconds: ATOM_M2M_TOKEN_MIN_REMAINING_TTL_SECONDS,
@@ -199,6 +229,7 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
       },
       body: JSON.stringify({
         code: bodyResult.data.code,
+        email,
         org_id: auth.orgId,
       }),
       signal,

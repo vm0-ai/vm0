@@ -348,7 +348,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(completionReply.body).toBe(EXPECTED_PLAIN_RUN_OUTPUT);
     expect(completionReply.body).not.toContain("Audit:");
     expect(completionReply.body).not.toContain("Responded by");
-    const session1 = await ap.readRunSessionId(actor, run1.runId);
+    // Session persistence happens in background callback processing, so
+    // wait for the session id to be saved before reading it.
+    const session1 = await waitForRunSessionIdPresent(actor, run1.runId);
 
     // The follow-up DM reuses the saved session and carries stored context.
     await ap.postAgentPhoneInboundMessage({
@@ -392,9 +394,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     const run3 = await claimDispatchedRun(runnerGroup);
     await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
-    await expect(ap.readRunSessionId(actor, run3.runId)).resolves.not.toBe(
-      session1,
-    );
+    const session3 = await waitForRunSessionIdPresent(actor, run3.runId);
+    expect(session3).not.toBe(session1);
 
     // A failed run replies with the Web-style generic failure text.
     await ap.postAgentPhoneInboundMessage({

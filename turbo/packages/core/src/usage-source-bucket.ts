@@ -4,7 +4,7 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
  * Source bucket for per-user usage insight grouping.
  * Maps TriggerSource values to one of 5 display buckets.
  */
-export type SourceBucket = "chat" | "slack" | "email" | "schedule" | "others";
+export type SourceBucket = "chat" | "slack" | "email" | "automation" | "others";
 
 /**
  * Map a TriggerSource (or null for deleted runs) to a display bucket.
@@ -21,9 +21,8 @@ export function triggerSourceToBucket(
       return "slack";
     case "email":
       return "email";
-    case "schedule":
     case "automation":
-      return "schedule";
+      return "automation";
     default:
       // telegram, github, cli, agent, phone, agentphone, null
       return "others";
@@ -37,6 +36,6 @@ export const SOURCE_BUCKET_COLORS: Record<SourceBucket, string> = {
   chat: "hsl(var(--primary))",
   slack: "#4ade80",
   email: "#f59e0b",
-  schedule: "#8b5cf6",
+  automation: "#8b5cf6",
   others: "hsl(var(--muted-foreground))",
 };

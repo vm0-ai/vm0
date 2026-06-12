@@ -357,7 +357,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     let installed_services = find_installed_services().await;
 
     // Phase 3: Build runner reports
-    let live_runners = crate::live_runner_instances::list(&home).await;
+    let live_runners = crate::live_runner_instances::try_list(&home).await?;
     let reports = build_runner_reports(&live_runners, &discovered, &installed_services).await;
 
     // Phase 4: Find stopped services (installed but no matching running process)
@@ -423,7 +423,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         // Single /proc scan shared across all warning rechecks.
         let fresh = process::discover_all().await;
 
-        recheck_per_runner_warnings(&home, &fresh, &mut reports).await;
+        recheck_per_runner_warnings(&home, &fresh, &mut reports).await?;
 
         let rechecks_orphan_process = global_warnings.iter().any(|warning| {
             matches!(
@@ -432,8 +432,8 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
             )
         });
         let fresh_runner_pids: Vec<u32> = if rechecks_orphan_process {
-            crate::live_runner_instances::list(&home)
-                .await
+            crate::live_runner_instances::try_list(&home)
+                .await?
                 .into_iter()
                 .map(|runner| runner.pid)
                 .collect()
@@ -463,12 +463,12 @@ async fn recheck_per_runner_warnings(
     home: &HomePaths,
     fresh: &process::DiscoveredProcesses,
     reports: &mut [RunnerReport],
-) {
+) -> RunnerResult<()> {
     for report in reports {
         if report.warnings.is_empty() {
             continue;
         }
-        if !crate::live_runner_instances::is_current(home, &report.live_runner).await {
+        if !crate::live_runner_instances::is_current(home, &report.live_runner).await? {
             report.warnings.clear();
             continue;
         }
@@ -481,6 +481,7 @@ async fn recheck_per_runner_warnings(
         }
         report.warnings = rechecked;
     }
+    Ok(())
 }
 
 async fn build_runner_reports(
@@ -1490,7 +1491,6 @@ mod tests {
 
     fn empty_fresh() -> process::DiscoveredProcesses {
         process::DiscoveredProcesses {
-            runners: vec![],
             firecrackers: vec![],
             mitmdumps: vec![],
             dnsmasqs: vec![],
@@ -1952,7 +1952,6 @@ mod tests {
 
     fn empty_discovered() -> process::DiscoveredProcesses {
         process::DiscoveredProcesses {
-            runners: vec![],
             firecrackers: vec![],
             mitmdumps: vec![],
             dnsmasqs: vec![],
@@ -2004,7 +2003,9 @@ mod tests {
             }],
         }];
 
-        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await;
+        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports)
+            .await
+            .unwrap();
 
         assert!(reports[0].warnings.is_empty());
     }
@@ -2037,8 +2038,9 @@ mod tests {
         )
         .await
         .unwrap();
-        let runner = crate::live_runner_instances::list(&home)
+        let runner = crate::live_runner_instances::try_list(&home)
             .await
+            .unwrap()
             .into_iter()
             .next()
             .unwrap();
@@ -2061,9 +2063,71 @@ mod tests {
             }],
         }];
 
-        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await;
+        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports)
+            .await
+            .unwrap();
 
         assert_eq!(reports[0].warnings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn recheck_fails_when_live_registry_entry_becomes_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let base_dir = dir.path().join("runner");
+        let _handle = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: dir.path().join("runner.yaml"),
+                base_dir: base_dir.clone(),
+                runner_name: "test-runner".into(),
+                runner_group: "vm0/test".into(),
+                subcommand: "start".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let runner = crate::live_runner_instances::try_list(&home)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        crate::state_file::write_private_atomic(
+            &home.live_runner_instance_record_path(runner.pid, runner.starttime),
+            b"{",
+        )
+        .await
+        .unwrap();
+        let mut reports = vec![RunnerReport {
+            live_runner: runner.clone(),
+            name: Some(runner.runner_name.clone()),
+            base_dir: Some(base_dir.clone()),
+            pid: runner.pid,
+            config_path: runner.config_path.clone(),
+            subcommand: "start".into(),
+            service_type: ServiceType::Bare,
+            status: None,
+            api_ok: None,
+            proxy_pid: None,
+            dns_pid: None,
+            jobs: vec![],
+            warnings: vec![Warning::NoMitmproxy {
+                port: 32821,
+                base_dir,
+            }],
+        }];
+
+        let error =
+            match recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await {
+                Ok(_) => panic!("expected invalid live registry entry to fail"),
+                Err(error) => error,
+            };
+
+        assert!(
+            error.to_string().contains("live process identity"),
+            "{error}"
+        );
     }
 
     #[tokio::test]
@@ -2115,7 +2179,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_runner_reports_ignores_discovered_runner_candidates() {
+    async fn build_runner_reports_requires_live_registry_entries() {
         let server = MockServer::start_async().await;
         let api = server
             .mock_async(|when, then| {
@@ -2153,12 +2217,7 @@ mod tests {
             serde_yaml_ng::to_string(&config).unwrap(),
         )
         .unwrap();
-        let discovered = process::DiscoveredProcesses {
-            runners: vec![process::RunnerProcessInfo {
-                pid: std::process::id(),
-            }],
-            ..empty_discovered()
-        };
+        let discovered = empty_discovered();
 
         let reports = build_runner_reports(&[], &discovered, &[]).await;
 

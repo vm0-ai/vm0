@@ -40,6 +40,7 @@ import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-s
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
+import { setupPromptPage$ } from "./prompt-page/prompt-page-setup.ts";
 import { setupOnboardingPage$ } from "./onboarding-page/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
@@ -127,6 +128,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.chat,
     setup: setupAuthSidebarPageWrapper(setupChatPage$),
+  },
+  {
+    path: ROUTES.prompt,
+    setup: setupAuthPageWrapper(setupPromptPage$),
   },
   {
     path: ROUTES.ideas,

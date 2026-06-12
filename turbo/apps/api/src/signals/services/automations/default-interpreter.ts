@@ -103,7 +103,7 @@ interface AutomationTimeTriggerEvent {
 }
 
 /**
- * Trigger event for a manual fire (the v2 run-now endpoint): instruction-only
+ * Trigger event for a manual fire (the run-now endpoint): instruction-only
  * like a time fire, but no trigger row was claimed, so the run carries neither
  * a trigger provenance tag nor a reschedule callback — only the chat callback.
  */
@@ -190,7 +190,7 @@ export function automationRowToTimeAutomation(row: {
 
 /**
  * Maps an `automations` row to the Automation view the interpreter consumes for
- * a manual fire (the v2 run-now endpoint). A manual fire is keyed off no
+ * a manual fire (the run-now endpoint). A manual fire is keyed off no
  * trigger row, so the recurrence fields collapse to their inert values and the
  * `triggerType` renders as "manual" in the schedule integration context.
  */

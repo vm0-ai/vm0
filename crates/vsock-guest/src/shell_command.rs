@@ -1,3 +1,38 @@
+//! Builds and spawns guest shell commands while preserving the command-launch
+//! security contract.
+//!
+//! Commands without environment variables are executed directly through the
+//! configured shell wrapper. Commands with environment variables use a
+//! transient env script: the outer command only references the script path, and
+//! the script exports the environment before `exec`ing the requested command.
+//! This keeps environment values out of the outer argv and start-failure
+//! diagnostics. Command text is still caller-provided command text and is not
+//! treated as secret material by this module.
+//!
+//! The wrapper depends on build mode and `sudo`. Production non-`sudo` commands
+//! run through the sandbox user, production `sudo` commands run as root, and
+//! debug/test-support builds run as the current user unless `sudo` requests the
+//! local `sudo sh -c` wrapper.
+//!
+//! The env-script path is one security boundary. Env keys must be shell
+//! identifiers, command/env values reject NUL bytes, the parent directory must
+//! have trusted ownership and must not be group/world-writable, and each launch
+//! uses a random per-run directory with a newly-created script opened with
+//! `O_NOFOLLOW`. In production non-`sudo` execution, the per-run directory and
+//! script stay root-owned while the sandbox group only receives the read/traverse
+//! access needed for bash to open the script. That prevents an existing
+//! same-UID sandbox process from replacing the script after its path appears in
+//! argv but before bash opens it.
+//!
+//! Cleanup is intentionally layered. The generated script removes its own file
+//! and directory before exporting env values, stale env-script entries are
+//! cleaned on later launches, and `EnvScriptGuard` removes the script path on
+//! drop. `PreparedShellCommand` and `SpawnedShellCommand` carry that guard so
+//! the script stays available through the prepare-to-spawn handoff and for the
+//! spawned operation. Callers must retain the guard while the shell wrapper may
+//! still need to open the script; dropping it too early can remove the script
+//! before bash reads it.
+
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};

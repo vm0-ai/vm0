@@ -164,24 +164,24 @@ export {
   completePhoneFileUpload,
 } from "./domains/integrations-phone";
 
-// Domain modules - Automations v2 (unified automations + triggers)
+// Domain modules - Automations (unified automations + triggers)
 export {
-  createAutomationV2,
-  listAutomationsV2,
-  showAutomationV2,
-  updateAutomationV2,
-  deleteAutomationV2,
-  enableAutomationV2,
-  disableAutomationV2,
-  runAutomationV2,
-  addAutomationTriggerV2,
-  listAutomationTriggersV2,
-  showAutomationTriggerV2,
-  removeAutomationTriggerV2,
-  enableAutomationTriggerV2,
-  disableAutomationTriggerV2,
-  rotateAutomationTriggerSecretV2,
-} from "./domains/automations-v2";
+  createAutomation,
+  listAutomations,
+  showAutomation,
+  updateAutomation,
+  deleteAutomation,
+  enableAutomation,
+  disableAutomation,
+  runAutomation,
+  addAutomationTrigger,
+  listAutomationTriggers,
+  showAutomationTrigger,
+  removeAutomationTrigger,
+  enableAutomationTrigger,
+  disableAutomationTrigger,
+  rotateAutomationTriggerSecret,
+} from "./domains/automations";
 
 // Domain modules - Zero Runs
 export { getZeroRunAgentEvents } from "./domains/zero-runs";

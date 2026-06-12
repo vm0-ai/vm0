@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { showAutomationV2 } from "../../../lib/api";
+import { showAutomation } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { printTriggersTable } from "./trigger-display";
 
@@ -20,7 +20,7 @@ Notes:
   )
   .action(
     withErrorHandler(async (ref: string) => {
-      const automation = await showAutomationV2(ref);
+      const automation = await showAutomation(ref);
 
       const status = automation.enabled
         ? chalk.green("enabled")

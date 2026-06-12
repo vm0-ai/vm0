@@ -9,7 +9,7 @@ const c = initContract();
 // grouped as `other`.
 export const usageRecordSourceSchema = z.enum([
   "chat",
-  "schedule",
+  "automation",
   "slack",
   "telegram",
   "email",
@@ -59,13 +59,13 @@ const usageRecordMemberSchema = z.object({
   email: z.string(),
 });
 
-// One usage row. Threaded sources (chat, schedule) aggregate every run in the
+// One usage row. Threaded sources (chat, automation) aggregate every run in the
 // thread into a single row that links to the thread; unthreaded sources are one
 // row per run that links to the run's activity detail. Ordered by most recent
 // activity so the list reads as a chronological record.
 const usageRecordRowSchema = z.object({
   source: usageRecordSourceSchema,
-  // Set for threaded sources (web chat, schedule) — links to the chat thread.
+  // Set for threaded sources (web chat, automation) — links to the chat thread.
   threadId: z.string().nullable(),
   // Set for unthreaded sources (slack, telegram, …) — links to the run.
   runId: z.string().nullable(),

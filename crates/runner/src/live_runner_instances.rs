@@ -67,6 +67,19 @@ struct LiveRunnerInstanceRecord {
     started_at: String,
 }
 
+enum RecordForIdentity {
+    Valid(LiveRunnerInstanceRecord),
+    InvalidForLiveProcess,
+    InvalidForStaleProcess,
+}
+
+enum RecordRead {
+    Valid(LiveRunnerInstanceRecord),
+    Missing,
+    InvalidFile,
+    NotLive,
+}
+
 pub(crate) async fn publish(
     home: &HomePaths,
     metadata: LiveRunnerInstanceMetadata,
@@ -105,16 +118,21 @@ pub(crate) async fn publish(
     Ok(LiveRunnerInstanceHandle { path, identity })
 }
 
-pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
+pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerInstance>> {
+    if !validate_existing_live_runner_instances_dir(home)? {
+        return Ok(Vec::new());
+    }
     remove_stale_records(home).await;
 
     let dir = home.live_runner_instances_dir();
     let mut entries = match tokio::fs::read_dir(&dir).await {
         Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => {
-            tracing::debug!(path = %dir.display(), error = %e, "cannot scan live runner instances");
-            return Vec::new();
+            return Err(RunnerError::Internal(format!(
+                "scan live runner instances {}: {e}",
+                dir.display()
+            )));
         }
     };
 
@@ -124,15 +142,25 @@ pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
             Ok(Some(entry)) => entry,
             Ok(None) => break,
             Err(e) => {
-                tracing::debug!(path = %dir.display(), error = %e, "cannot read live runner instance entry");
-                break;
+                return Err(RunnerError::Internal(format!(
+                    "read live runner instance entry in {}: {e}",
+                    dir.display()
+                )));
             }
         };
         let Some(identity) = stable_record_identity_from_file_name(&entry.file_name()) else {
             continue;
         };
-        let Some(record) = read_valid_record_for_identity(&entry.path(), identity).await else {
-            continue;
+        let path = entry.path();
+        let record = match read_record_for_identity(&path, identity).await? {
+            RecordForIdentity::Valid(record) => record,
+            RecordForIdentity::InvalidForStaleProcess => continue,
+            RecordForIdentity::InvalidForLiveProcess => {
+                return Err(RunnerError::Internal(format!(
+                    "live runner instance record {} is invalid for a live process identity",
+                    path.display()
+                )));
+            }
         };
         instances.push(LiveRunnerInstance {
             pid: record.pid,
@@ -152,37 +180,73 @@ pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
             .then_with(|| left.pid.cmp(&right.pid))
             .then_with(|| left.config_path.cmp(&right.config_path))
     });
-    instances
+    Ok(instances)
 }
 
-pub(crate) async fn is_current(home: &HomePaths, instance: &LiveRunnerInstance) -> bool {
+fn validate_existing_live_runner_instances_dir(home: &HomePaths) -> RunnerResult<bool> {
+    let dir = home.live_runner_instances_dir();
+    match std::fs::symlink_metadata(&dir) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "stat live runner instances {}: {e}",
+                dir.display()
+            )));
+        }
+    }
+
+    crate::host_file::validate_dir(
+        &dir,
+        crate::host_file::DirMode::Private,
+        "live runner instances",
+    )
+    .map_err(|e| {
+        RunnerError::Internal(format!(
+            "validate live runner instances {}: {e}",
+            dir.display()
+        ))
+    })?;
+    Ok(true)
+}
+
+pub(crate) async fn is_current(
+    home: &HomePaths,
+    instance: &LiveRunnerInstance,
+) -> RunnerResult<bool> {
     let identity = FileProcessIdentity {
         pid: instance.pid,
         starttime: instance.starttime,
     };
     let path = home.live_runner_instance_record_path(identity.pid, identity.starttime);
-    let Some(record) = read_valid_record_for_identity(&path, identity).await else {
-        return false;
+    let record = match read_record_for_identity(&path, identity).await? {
+        RecordForIdentity::Valid(record) => record,
+        RecordForIdentity::InvalidForStaleProcess => return Ok(false),
+        RecordForIdentity::InvalidForLiveProcess => {
+            return Err(RunnerError::Internal(format!(
+                "live runner instance record {} is invalid for a live process identity",
+                path.display()
+            )));
+        }
     };
-    record.config_path == instance.config_path
+    Ok(record.config_path == instance.config_path
         && record.base_dir == instance.base_dir
         && record.runner_name == instance.runner_name
         && record.runner_group == instance.runner_group
         && record.subcommand == instance.subcommand
-        && record.started_at == instance.started_at
+        && record.started_at == instance.started_at)
 }
 
 impl LiveRunnerInstanceHandle {
     pub(crate) async fn remove_if_current(&self) -> RunnerResult<bool> {
-        let Some(record) = read_valid_record(&self.path).await else {
-            return Ok(false);
-        };
-        if record.boot_id != self.identity.boot_id
-            || record.pid != self.identity.pid
-            || record.starttime != self.identity.starttime
-            || record.euid != self.identity.euid
-        {
-            return Ok(false);
+        match read_record(&self.path).await? {
+            RecordRead::Valid(record)
+                if record.boot_id == self.identity.boot_id
+                    && record.pid == self.identity.pid
+                    && record.starttime == self.identity.starttime
+                    && record.euid == self.identity.euid => {}
+            RecordRead::InvalidFile => {}
+            RecordRead::Missing | RecordRead::NotLive | RecordRead::Valid(_) => return Ok(false),
         }
 
         match tokio::fs::remove_file(&self.path).await {
@@ -196,7 +260,15 @@ impl LiveRunnerInstanceHandle {
     }
 }
 
+#[cfg(test)]
 async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
+    match read_record(path).await.expect("read live runner record") {
+        RecordRead::Valid(record) => Some(record),
+        RecordRead::Missing | RecordRead::InvalidFile | RecordRead::NotLive => None,
+    }
+}
+
+async fn read_record(path: &Path) -> RunnerResult<RecordRead> {
     let content = match crate::state_file::read_to_string(
         path,
         LIVE_RUNNER_INSTANCE_RECORD_MAX_BYTES,
@@ -205,23 +277,23 @@ async fn read_valid_record(path: &Path) -> Option<LiveRunnerInstanceRecord> {
     .await
     {
         Ok(Some(content)) => content,
-        Ok(None) => return None,
+        Ok(None) => return Ok(RecordRead::Missing),
         Err(e) => {
             tracing::debug!(path = %path.display(), error = %e, "ignoring unreadable live runner instance record");
-            return None;
+            return Ok(RecordRead::InvalidFile);
         }
     };
     let record: LiveRunnerInstanceRecord = match serde_json::from_str(&content) {
         Ok(record) => record,
         Err(e) => {
             tracing::debug!(path = %path.display(), error = %e, "ignoring malformed live runner instance record");
-            return None;
+            return Ok(RecordRead::InvalidFile);
         }
     };
-    if record_is_live(&record).await {
-        Some(record)
+    if record_is_live(&record).await? {
+        Ok(RecordRead::Valid(record))
     } else {
-        None
+        Ok(RecordRead::NotLive)
     }
 }
 
@@ -251,30 +323,53 @@ async fn remove_stale_records(home: &HomePaths) {
         let file_name = entry.file_name();
         let path = entry.path();
         if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
-            if read_valid_record_for_identity(&path, identity)
-                .await
-                .is_none()
-            {
-                remove_stale_file(&path, "stale live runner instance record").await;
+            match read_record_for_identity(&path, identity).await {
+                Err(e) => {
+                    tracing::debug!(
+                        path = %path.display(),
+                        error = %e,
+                        "preserving live runner instance record after liveness check failed"
+                    );
+                }
+                Ok(RecordForIdentity::Valid(_)) | Ok(RecordForIdentity::InvalidForLiveProcess) => {}
+                Ok(RecordForIdentity::InvalidForStaleProcess) => {
+                    remove_stale_file(&path, "stale live runner instance record").await;
+                }
             }
             continue;
         }
         let Some(identity) = atomic_tmp_record_identity_from_file_name(&file_name) else {
             continue;
         };
-        if !file_process_identity_is_live(identity).await {
-            remove_stale_file(&path, "stale live runner instance tmp file").await;
+        match file_process_identity_is_live(identity).await {
+            Ok(true) => {}
+            Ok(false) => {
+                remove_stale_file(&path, "stale live runner instance tmp file").await;
+            }
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "preserving live runner instance tmp file after liveness check failed"
+                );
+            }
         }
     }
 }
 
-async fn read_valid_record_for_identity(
+async fn read_record_for_identity(
     path: &Path,
     identity: FileProcessIdentity,
-) -> Option<LiveRunnerInstanceRecord> {
-    let record = read_valid_record(path).await?;
+) -> RunnerResult<RecordForIdentity> {
+    let record = match read_record(path).await? {
+        RecordRead::Valid(record) => record,
+        RecordRead::Missing => return Ok(RecordForIdentity::InvalidForStaleProcess),
+        RecordRead::InvalidFile | RecordRead::NotLive => {
+            return invalid_record_for_identity(identity).await;
+        }
+    };
     if record.pid == identity.pid && record.starttime == identity.starttime {
-        Some(record)
+        Ok(RecordForIdentity::Valid(record))
     } else {
         tracing::debug!(
             path = %path.display(),
@@ -284,7 +379,17 @@ async fn read_valid_record_for_identity(
             file_starttime = identity.starttime,
             "ignoring live runner instance record whose contents do not match file name"
         );
-        None
+        invalid_record_for_identity(identity).await
+    }
+}
+
+async fn invalid_record_for_identity(
+    identity: FileProcessIdentity,
+) -> RunnerResult<RecordForIdentity> {
+    if file_process_identity_is_live(identity).await? {
+        Ok(RecordForIdentity::InvalidForLiveProcess)
+    } else {
+        Ok(RecordForIdentity::InvalidForStaleProcess)
     }
 }
 
@@ -320,7 +425,7 @@ fn atomic_tmp_record_identity_from_file_name(name: &OsStr) -> Option<FileProcess
     stable_record_identity_from_str(stable_name)
 }
 
-async fn record_is_live(record: &LiveRunnerInstanceRecord) -> bool {
+async fn record_is_live(record: &LiveRunnerInstanceRecord) -> RunnerResult<bool> {
     process_identity_is_live(ProcessIdentity {
         boot_id: record.boot_id.clone(),
         pid: record.pid,
@@ -330,24 +435,20 @@ async fn record_is_live(record: &LiveRunnerInstanceRecord) -> bool {
     .await
 }
 
-async fn file_process_identity_is_live(identity: FileProcessIdentity) -> bool {
-    let Ok(boot_id) = current_boot_id().await else {
-        return false;
-    };
+async fn file_process_identity_is_live(identity: FileProcessIdentity) -> RunnerResult<bool> {
+    let boot_id = current_boot_id().await?;
     let identity = ProcessIdentity {
         boot_id: boot_id.clone(),
         pid: identity.pid,
         starttime: identity.starttime,
         euid: current_euid(),
     };
-    process_identity_is_live_for_boot(&identity, &boot_id).await
+    Ok(process_identity_is_live_for_boot(&identity, &boot_id).await)
 }
 
-async fn process_identity_is_live(identity: ProcessIdentity) -> bool {
-    let Ok(boot_id) = current_boot_id().await else {
-        return false;
-    };
-    process_identity_is_live_for_boot(&identity, &boot_id).await
+async fn process_identity_is_live(identity: ProcessIdentity) -> RunnerResult<bool> {
+    let boot_id = current_boot_id().await?;
+    Ok(process_identity_is_live_for_boot(&identity, &boot_id).await)
 }
 
 async fn process_identity_is_live_for_boot(identity: &ProcessIdentity, boot_id: &str) -> bool {
@@ -497,22 +598,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_returns_empty_when_registry_dir_is_missing() {
+    async fn try_list_returns_empty_when_registry_dir_is_missing() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
-    async fn list_returns_valid_live_instance_metadata() {
+    async fn try_list_rejects_symlinked_registry_dir() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        std::fs::create_dir_all(dir.path().join("target")).unwrap();
+        std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
+        symlink(dir.path().join("target"), home.live_runner_instances_dir()).unwrap();
+
+        let error = match try_list(&home).await {
+            Ok(_) => panic!("expected symlinked registry dir to fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("validate live runner instances"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_list_returns_valid_live_instance_metadata() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert_eq!(instances.len(), 1);
         let instance = &instances[0];
@@ -527,7 +650,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_defaults_legacy_records_to_start_subcommand() {
+    async fn try_list_defaults_legacy_records_to_start_subcommand() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
@@ -541,14 +664,14 @@ mod tests {
         .await
         .unwrap();
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].subcommand, "start");
     }
 
     #[tokio::test]
-    async fn list_ignores_invalid_records() {
+    async fn try_list_ignores_invalid_records_for_stale_file_identities() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
@@ -590,13 +713,34 @@ mod tests {
         .await
         .unwrap();
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
     }
 
     #[tokio::test]
-    async fn list_ignores_records_with_mismatched_file_identity() {
+    async fn try_list_fails_closed_for_invalid_record_with_live_file_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        crate::state_file::write_private_atomic(&handle.path, b"{")
+            .await
+            .unwrap();
+
+        let error = match try_list(&home).await {
+            Ok(_) => panic!("expected invalid live record to fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("live process identity"),
+            "{error}"
+        );
+        assert!(handle.path.exists());
+    }
+
+    #[tokio::test]
+    async fn try_list_ignores_records_with_mismatched_stale_file_identity() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
@@ -608,7 +752,7 @@ mod tests {
         )
         .await;
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
     }
@@ -618,13 +762,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
-        let instance = list(&home).await.into_iter().next().unwrap();
+        let instance = try_list(&home).await.unwrap().into_iter().next().unwrap();
 
-        assert!(is_current(&home, &instance).await);
+        assert!(is_current(&home, &instance).await.unwrap());
 
         tokio::fs::remove_file(&handle.path).await.unwrap();
 
-        assert!(!is_current(&home, &instance).await);
+        assert!(!is_current(&home, &instance).await.unwrap());
     }
 
     #[tokio::test]
@@ -765,7 +909,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_removes_stale_records() {
+    async fn try_list_removes_stale_records() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
@@ -794,7 +938,7 @@ mod tests {
             .join(".4294967295-1.json.test.tmp");
         tokio::fs::write(&stale_tmp_path, b"partial").await.unwrap();
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
         assert!(!stale_path.exists());
@@ -897,5 +1041,20 @@ mod tests {
 
         assert!(!removed);
         assert!(handle.path.exists());
+    }
+
+    #[tokio::test]
+    async fn remove_if_current_removes_invalid_current_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
+        crate::state_file::write_private_atomic(&handle.path, b"{")
+            .await
+            .unwrap();
+
+        let removed = handle.remove_if_current().await.unwrap();
+
+        assert!(removed);
+        assert!(!handle.path.exists());
     }
 }

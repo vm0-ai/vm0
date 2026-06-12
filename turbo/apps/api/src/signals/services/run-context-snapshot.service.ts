@@ -93,23 +93,6 @@ function stringRecordValue(value: unknown): Record<string, string> | undefined {
   return Object.fromEntries(entries);
 }
 
-function booleanRecordValue(
-  value: unknown,
-): Record<string, boolean> | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const entries = Object.entries(value).filter(
-    (entry): entry is [string, boolean] => {
-      return typeof entry[1] === "boolean";
-    },
-  );
-  if (entries.length === 0) {
-    return undefined;
-  }
-  return Object.fromEntries(entries);
-}
-
 function networkPolicyValue(value: unknown): NetworkPolicyValue | undefined {
   return value === "allow" || value === "deny" || value === "ask"
     ? value
@@ -130,24 +113,6 @@ function networkPolicyFromUnknown(value: unknown): NetworkPolicy | undefined {
     ask: stringArrayValue(value.ask) ?? [],
     unknownPolicy,
   };
-}
-
-function networkPoliciesFromUnknown(
-  value: unknown,
-): RunContextResponse["networkPolicies"] {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const policies: NetworkPolicies = {};
-  for (const [name, rawPolicy] of Object.entries(value)) {
-    const policy = networkPolicyFromUnknown(rawPolicy);
-    if (policy) {
-      policies[name] = policy;
-    }
-  }
-
-  return Object.keys(policies).length > 0 ? policies : null;
 }
 
 function environmentFromEntries(value: unknown): Record<string, string> {
@@ -374,17 +339,6 @@ export function featureFlagsRecordToEntries(
 export function normalizeRunContextSnapshot(
   snapshot: Record<string, unknown>,
 ): NormalizedRunContextSnapshot {
-  // Temporary legacy map fallback for #17222; remove after June 18, 2026.
-  const environment = Array.isArray(snapshot.environmentEntries)
-    ? environmentFromEntries(snapshot.environmentEntries)
-    : (stringRecordValue(snapshot.environment) ?? {});
-  const networkPolicies = Array.isArray(snapshot.networkPolicyEntries)
-    ? networkPoliciesFromEntries(snapshot.networkPolicyEntries)
-    : networkPoliciesFromUnknown(snapshot.networkPolicies);
-  const featureFlags = Array.isArray(snapshot.featureFlagEntries)
-    ? featureFlagsFromEntries(snapshot.featureFlagEntries)
-    : (booleanRecordValue(snapshot.featureFlags) ?? null);
-
   return {
     runId: stringValue(snapshot.runId),
     userId: stringValue(snapshot.userId),
@@ -396,11 +350,11 @@ export function normalizeRunContextSnapshot(
         : undefined,
     sessionId: stringValue(snapshot.sessionId) ?? null,
     secretNames: stringArrayFromUnknown(snapshot.secretNames),
-    environment,
+    environment: environmentFromEntries(snapshot.environmentEntries),
     firewalls: firewallsFromUnknown(snapshot.firewalls),
-    networkPolicies,
+    networkPolicies: networkPoliciesFromEntries(snapshot.networkPolicyEntries),
     volumes: volumesFromUnknown(snapshot.volumes),
     artifact: artifactFromUnknown(snapshot.artifact),
-    featureFlags,
+    featureFlags: featureFlagsFromEntries(snapshot.featureFlagEntries),
   };
 }

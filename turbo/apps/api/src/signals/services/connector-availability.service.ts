@@ -17,11 +17,12 @@ const USER_CONNECTOR_AUTH_METHOD_OPTIONS = {
 } as const satisfies AvailableConnectorAuthMethodsOptions;
 
 /**
- * Feature-aware user availability for new connector actions.
+ * User availability for new connector actions.
  *
- * This is intentionally separate from runtime availability: disabling a
- * feature switch should block new connect/authorize/write entry points, while
- * existing runtime connector use remains a separate product policy.
+ * This is intentionally separate from runtime availability: disabling a feature
+ * switch or static auth-method visibility should block new
+ * connect/authorize/write entry points, while existing runtime connector use
+ * remains a separate product policy.
  */
 interface UserConnectorAvailability {
   readonly isAuthMethodAvailable: (

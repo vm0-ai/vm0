@@ -421,7 +421,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
         userId,
         composeId,
         scheduleId,
-        triggerSource: "schedule",
+        triggerSource: "automation",
       },
       context.signal,
     );

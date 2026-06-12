@@ -1,5 +1,5 @@
 /**
- * Tests for `zero automation list` (v2 unified automations).
+ * Tests for `zero automation list` (unified automations).
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()

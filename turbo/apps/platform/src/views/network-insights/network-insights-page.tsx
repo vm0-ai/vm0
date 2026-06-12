@@ -1041,7 +1041,7 @@ function DaySchedulesCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Schedules
+        Automations
       </p>
       <div className="flex items-center mb-3">
         <span className="text-3xl font-black tabular-nums font-serif">
@@ -1049,7 +1049,7 @@ function DaySchedulesCard({
         </span>
       </div>
       <p className="text-sm opacity-60">
-        {schedules.length === 1 ? "schedule" : "schedules"} used{" "}
+        {schedules.length === 1 ? "automation" : "automations"} used{" "}
         {formatCardValue(totalCredits)}{" "}
         {totalCredits === 1 ? "credit" : "credits"}
       </p>
@@ -1109,7 +1109,7 @@ function DaySchedulesCard({
               >
                 {showAll
                   ? "Show less"
-                  : `+${overflow} more ${overflow === 1 ? "schedule" : "schedules"}`}
+                  : `+${overflow} more ${overflow === 1 ? "automation" : "automations"}`}
               </button>
             </li>
           )}

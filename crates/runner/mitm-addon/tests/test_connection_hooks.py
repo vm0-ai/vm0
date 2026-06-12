@@ -785,6 +785,70 @@ class TestRunnerUsageFlushSignal:
         log.warn.assert_called_once()
         assert flush_triggers == ["runner", "runner"]
 
+    def test_signal_retryable_delivery_failure_recovers_on_later_signal(
+        self,
+        tmp_path,
+        sync_usage_executor,
+        usage_webhook_server,
+    ):
+        del sync_usage_executor
+        reset_runner_usage_flush_state()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        proxy_log_path = str(tmp_path / "proxy.jsonl")
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+        usage.buffer_usage_events(
+            usage_webhook_server.url("/usage"),
+            "token-a",
+            "run-1",
+            [event(source_key="source-1")],
+            proxy_log_path,
+        )
+
+        try:
+            usage_webhook_server.queue_response(500)
+            usage_webhook_server.queue_response(500)
+            with patch.object(usage.webhook.time, "sleep"):
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                wait_for_usage_flush_worker_to_stop()
+
+            assert usage_webhook_server.request_count == 2
+            failed_key = usage_webhook_server.requests[0].json_body()["events"][0]["idempotencyKey"]
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=1,
+                reports=0,
+                flush_request_id="request-1",
+            )
+
+            usage_webhook_server.queue_response(204)
+            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            wait_for_usage_flush_worker_to_stop()
+
+            assert usage_webhook_server.request_count == 3
+            retry_key = usage_webhook_server.requests[2].json_body()["events"][0]["idempotencyKey"]
+            assert retry_key == failed_key
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+        finally:
+            wait_for_usage_flush_worker_to_stop()
+            usage.set_pending_path("")
+
 
 class TestTlsClienthello:
     def test_unregistered_vm_ignored(self, registry_file, make_tls_data, mitm_ctx):

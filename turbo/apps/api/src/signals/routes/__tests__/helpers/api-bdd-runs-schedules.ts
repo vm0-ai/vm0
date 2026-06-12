@@ -17,12 +17,12 @@ import {
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
-  automationsV2ByRefContract,
-  automationsV2MainContract,
-  automationTriggersV2Contract,
-  type AutomationResponseV2,
+  automationsByRefContract,
+  automationsMainContract,
+  automationTriggersContract,
+  type AutomationResponse,
   type AutomationTriggerResponse,
-} from "@vm0/api-contracts/contracts/automations-v2";
+} from "@vm0/api-contracts/contracts/automations";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -73,14 +73,14 @@ type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
 type ComposeContent = z.infer<
   (typeof composesMainContract.create)["body"]
 >["content"];
-type V2CreateAutomationRequest = z.infer<
-  (typeof automationsV2MainContract.create)["body"]
+type ContractCreateAutomationRequest = z.infer<
+  (typeof automationsMainContract.create)["body"]
 >;
-type V2UpdateAutomationRequest = z.infer<
-  (typeof automationsV2ByRefContract.update)["body"]
+type ContractUpdateAutomationRequest = z.infer<
+  (typeof automationsByRefContract.update)["body"]
 >;
 type CreateTriggerRequest = z.infer<
-  (typeof automationsV2ByRefContract.addTrigger)["body"]
+  (typeof automationsByRefContract.addTrigger)["body"]
 >;
 type DeployScheduleRequest = {
   readonly name: string;
@@ -120,15 +120,14 @@ type DeployScheduleResponse = {
 type ScheduleListResponse = {
   readonly schedules: readonly ScheduleResponse[];
 };
-type AutomationResponse = ScheduleResponse;
 type AutomationMutationResponse = {
-  readonly automation: AutomationResponse;
+  readonly automation: ScheduleResponse;
   readonly created: boolean;
 };
 type AutomationListResponse = {
-  readonly automations: readonly AutomationResponse[];
+  readonly automations: readonly ScheduleResponse[];
 };
-type WebhookAutomationResponse = AutomationResponseV2 & {
+type WebhookAutomationResponse = AutomationResponse & {
   readonly webhookToken: string;
   readonly webhookUrl: string;
 };
@@ -253,7 +252,7 @@ function isTimeTrigger(
   );
 }
 
-function timeTriggerFor(automation: AutomationResponseV2): TimeTriggerResponse {
+function timeTriggerFor(automation: AutomationResponse): TimeTriggerResponse {
   const trigger = automation.triggers.find(isTimeTrigger);
   if (!trigger) {
     throw new Error(`Automation ${automation.id} has no time trigger`);
@@ -262,7 +261,7 @@ function timeTriggerFor(automation: AutomationResponseV2): TimeTriggerResponse {
 }
 
 function webhookTriggerFor(
-  automation: AutomationResponseV2,
+  automation: AutomationResponse,
 ): WebhookTriggerResponse {
   const trigger = automation.triggers.find((item) => {
     return item.kind === "webhook";
@@ -273,18 +272,18 @@ function webhookTriggerFor(
   return trigger;
 }
 
-function hasTimeTrigger(automation: AutomationResponseV2): boolean {
+function hasTimeTrigger(automation: AutomationResponse): boolean {
   return automation.triggers.some(isTimeTrigger);
 }
 
-function hasWebhookTrigger(automation: AutomationResponseV2): boolean {
+function hasWebhookTrigger(automation: AutomationResponse): boolean {
   return automation.triggers.some((trigger) => {
     return trigger.kind === "webhook";
   });
 }
 
 function scheduleResponseFromAutomation(
-  automation: AutomationResponseV2,
+  automation: AutomationResponse,
 ): ScheduleResponse {
   const trigger = timeTriggerFor(automation);
   return {
@@ -313,7 +312,7 @@ function scheduleResponseFromAutomation(
 }
 
 function webhookResponseFromAutomation(
-  automation: AutomationResponseV2,
+  automation: AutomationResponse,
 ): WebhookAutomationResponse {
   const trigger = webhookTriggerFor(automation);
   return {
@@ -349,9 +348,9 @@ function createTimeTriggerRequest(
   return null;
 }
 
-function createV2AutomationBody(
+function contractCreateAutomationBody(
   body: CreateAutomationRequest,
-): V2CreateAutomationRequest {
+): ContractCreateAutomationRequest {
   const trigger = createTimeTriggerRequest(body);
   if (!trigger) {
     throw new Error("Time-trigger automation requires a trigger");
@@ -374,9 +373,9 @@ function createV2AutomationBody(
   };
 }
 
-function createV2AutomationBodyUnchecked(
+function contractCreateAutomationBodyUnchecked(
   body: unknown,
-): V2CreateAutomationRequest {
+): ContractCreateAutomationRequest {
   if (
     typeof body === "object" &&
     body !== null &&
@@ -385,14 +384,14 @@ function createV2AutomationBodyUnchecked(
     "agentId" in body &&
     createTimeTriggerRequest(body as DeployScheduleRequest) !== null
   ) {
-    return createV2AutomationBody(body as CreateAutomationRequest);
+    return contractCreateAutomationBody(body as CreateAutomationRequest);
   }
-  return body as V2CreateAutomationRequest;
+  return body as ContractCreateAutomationRequest;
 }
 
-function createV2WebhookAutomationBody(
+function contractCreateWebhookAutomationBody(
   body: CreateWebhookAutomationRequest,
-): V2CreateAutomationRequest {
+): ContractCreateAutomationRequest {
   return {
     name: body.name,
     agentId: body.agentId,
@@ -411,9 +410,9 @@ function createV2WebhookAutomationBody(
   };
 }
 
-function createV2WebhookAutomationBodyUnchecked(
+function contractCreateWebhookAutomationBodyUnchecked(
   body: unknown,
-): V2CreateAutomationRequest {
+): ContractCreateAutomationRequest {
   if (
     typeof body === "object" &&
     body !== null &&
@@ -421,16 +420,16 @@ function createV2WebhookAutomationBodyUnchecked(
     "name" in body &&
     "agentId" in body
   ) {
-    return createV2WebhookAutomationBody(
+    return contractCreateWebhookAutomationBody(
       body as CreateWebhookAutomationRequest,
     );
   }
-  return body as V2CreateAutomationRequest;
+  return body as ContractCreateAutomationRequest;
 }
 
-function updateV2AutomationBody(
+function contractUpdateAutomationBody(
   body: UpdateAutomationRequest,
-): V2UpdateAutomationRequest {
+): ContractUpdateAutomationRequest {
   return {
     ...(body.name === undefined ? {} : { name: body.name }),
     ...(body.prompt === undefined ? {} : { instruction: body.prompt }),
@@ -1071,9 +1070,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       body: CreateAutomationRequest,
     ): Promise<AutomationMutationResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2MainContract).create({
+        setupApp({ context })(automationsMainContract).create({
           headers: authenticate(context, actor),
-          body: createV2AutomationBody(body),
+          body: contractCreateAutomationBody(body),
         }),
         [201],
       );
@@ -1089,9 +1088,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2MainContract).create({
+        setupApp({ context })(automationsMainContract).create({
           headers: authenticate(context, actor),
-          body: createV2AutomationBodyUnchecked(body),
+          body: contractCreateAutomationBodyUnchecked(body),
         }),
         statuses,
       );
@@ -1099,7 +1098,7 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async listAutomations(actor: ApiTestUser): Promise<AutomationListResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2MainContract).list({
+        setupApp({ context })(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -1116,7 +1115,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2MainContract).list({
+        setupApp({ context })(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -1129,10 +1128,10 @@ export function createRunsSchedulesApi(context: TestContext) {
       body: UpdateAutomationRequest,
     ): Promise<AutomationMutationResponse> {
       const updated = await accept(
-        setupApp({ context })(automationsV2ByRefContract).update({
+        setupApp({ context })(automationsByRefContract).update({
           headers: authenticate(context, actor),
           params: { ref: name },
-          body: updateV2AutomationBody(body),
+          body: contractUpdateAutomationBody(body),
         }),
         [200],
       );
@@ -1140,7 +1139,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       const trigger = createTimeTriggerRequest(body);
       if (trigger !== null) {
         const triggers = await accept(
-          setupApp({ context })(automationsV2ByRefContract).listTriggers({
+          setupApp({ context })(automationsByRefContract).listTriggers({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
           }),
@@ -1149,7 +1148,7 @@ export function createRunsSchedulesApi(context: TestContext) {
         for (const existing of triggers.body.triggers) {
           if (isTimeTrigger(existing)) {
             await accept(
-              setupApp({ context })(automationTriggersV2Contract).remove({
+              setupApp({ context })(automationTriggersContract).remove({
                 headers: authenticate(context, actor),
                 params: { id: existing.id },
               }),
@@ -1158,7 +1157,7 @@ export function createRunsSchedulesApi(context: TestContext) {
           }
         }
         await accept(
-          setupApp({ context })(automationsV2ByRefContract).addTrigger({
+          setupApp({ context })(automationsByRefContract).addTrigger({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
             body: trigger,
@@ -1168,7 +1167,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       }
 
       const shown = await accept(
-        setupApp({ context })(automationsV2ByRefContract).show({
+        setupApp({ context })(automationsByRefContract).show({
           headers: authenticate(context, actor),
           params: { ref: updated.body.id },
         }),
@@ -1183,9 +1182,9 @@ export function createRunsSchedulesApi(context: TestContext) {
     async enableAutomation(
       actor: ApiTestUser,
       automation: AutomationResourceRef,
-    ): Promise<AutomationResponse> {
+    ): Promise<ScheduleResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2ByRefContract).enable({
+        setupApp({ context })(automationsByRefContract).enable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
           body: {},
@@ -1198,9 +1197,9 @@ export function createRunsSchedulesApi(context: TestContext) {
     async disableAutomation(
       actor: ApiTestUser,
       automation: AutomationResourceRef,
-    ): Promise<AutomationResponse> {
+    ): Promise<ScheduleResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2ByRefContract).disable({
+        setupApp({ context })(automationsByRefContract).disable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
           body: {},
@@ -1226,7 +1225,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       )[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).run({
+        setupApp({ context })(automationsByRefContract).run({
           headers: authenticate(context, actor),
           params: { ref: automationId },
           body: {},
@@ -1240,7 +1239,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       automation: AutomationResourceRef,
     ): Promise<void> {
       await accept(
-        setupApp({ context })(automationsV2ByRefContract).delete({
+        setupApp({ context })(automationsByRefContract).delete({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
         }),
@@ -1254,7 +1253,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).delete({
+        setupApp({ context })(automationsByRefContract).delete({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
         }),
@@ -1269,10 +1268,10 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).update({
+        setupApp({ context })(automationsByRefContract).update({
           headers: authenticate(context, actor),
           params: { ref: name },
-          body: updateV2AutomationBody(body as UpdateAutomationRequest),
+          body: contractUpdateAutomationBody(body as UpdateAutomationRequest),
         }),
         statuses,
       );
@@ -1284,7 +1283,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).enable({
+        setupApp({ context })(automationsByRefContract).enable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
           body: {},
@@ -1299,7 +1298,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).disable({
+        setupApp({ context })(automationsByRefContract).disable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
           body: {},
@@ -1330,9 +1329,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       body: CreateWebhookAutomationRequest,
     ): Promise<WebhookAutomationCreateResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2MainContract).create({
+        setupApp({ context })(automationsMainContract).create({
           headers: authenticate(context, actor),
-          body: createV2WebhookAutomationBody(body),
+          body: contractCreateWebhookAutomationBody(body),
         }),
         [201],
       );
@@ -1354,9 +1353,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2MainContract).create({
+        setupApp({ context })(automationsMainContract).create({
           headers: authenticate(context, actor),
-          body: createV2WebhookAutomationBodyUnchecked(body),
+          body: contractCreateWebhookAutomationBodyUnchecked(body),
         }),
         statuses,
       );
@@ -1366,7 +1365,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<WebhookAutomationListResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2MainContract).list({
+        setupApp({ context })(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -1383,7 +1382,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2MainContract).list({
+        setupApp({ context })(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -1395,7 +1394,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       id: string,
     ): Promise<void> {
       await accept(
-        setupApp({ context })(automationsV2ByRefContract).delete({
+        setupApp({ context })(automationsByRefContract).delete({
           headers: authenticate(context, actor),
           params: { ref: id },
         }),
@@ -1409,7 +1408,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).delete({
+        setupApp({ context })(automationsByRefContract).delete({
           headers: authenticate(context, actor),
           params: { ref: id },
         }),
@@ -1455,7 +1454,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       body: DeployScheduleRequest,
     ): Promise<DeployScheduleResponse> {
       const existingList = await accept(
-        setupApp({ context })(automationsV2MainContract).list({
+        setupApp({ context })(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -1470,15 +1469,15 @@ export function createRunsSchedulesApi(context: TestContext) {
 
       if (existing !== undefined) {
         const updated = await accept(
-          setupApp({ context })(automationsV2ByRefContract).update({
+          setupApp({ context })(automationsByRefContract).update({
             headers: authenticate(context, actor),
             params: { ref: existing.id },
-            body: updateV2AutomationBody(body),
+            body: contractUpdateAutomationBody(body),
           }),
           [200],
         );
         const triggers = await accept(
-          setupApp({ context })(automationsV2ByRefContract).listTriggers({
+          setupApp({ context })(automationsByRefContract).listTriggers({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
           }),
@@ -1487,7 +1486,7 @@ export function createRunsSchedulesApi(context: TestContext) {
         for (const trigger of triggers.body.triggers) {
           if (isTimeTrigger(trigger)) {
             await accept(
-              setupApp({ context })(automationTriggersV2Contract).remove({
+              setupApp({ context })(automationTriggersContract).remove({
                 headers: authenticate(context, actor),
                 params: { id: trigger.id },
               }),
@@ -1500,7 +1499,7 @@ export function createRunsSchedulesApi(context: TestContext) {
           throw new Error("Schedule deployment requires a time trigger");
         }
         await accept(
-          setupApp({ context })(automationsV2ByRefContract).addTrigger({
+          setupApp({ context })(automationsByRefContract).addTrigger({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
             body: nextTrigger,
@@ -1509,7 +1508,7 @@ export function createRunsSchedulesApi(context: TestContext) {
         );
         if (body.enabled === true && !updated.body.enabled) {
           await accept(
-            setupApp({ context })(automationsV2ByRefContract).enable({
+            setupApp({ context })(automationsByRefContract).enable({
               headers: authenticate(context, actor),
               params: { ref: updated.body.id },
               body: {},
@@ -1519,7 +1518,7 @@ export function createRunsSchedulesApi(context: TestContext) {
         }
         if (body.enabled === false && updated.body.enabled) {
           await accept(
-            setupApp({ context })(automationsV2ByRefContract).disable({
+            setupApp({ context })(automationsByRefContract).disable({
               headers: authenticate(context, actor),
               params: { ref: updated.body.id },
               body: {},
@@ -1528,7 +1527,7 @@ export function createRunsSchedulesApi(context: TestContext) {
           );
         }
         const shown = await accept(
-          setupApp({ context })(automationsV2ByRefContract).show({
+          setupApp({ context })(automationsByRefContract).show({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
           }),
@@ -1541,9 +1540,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       }
 
       const response = await accept(
-        setupApp({ context })(automationsV2MainContract).create({
+        setupApp({ context })(automationsMainContract).create({
           headers: authenticate(context, actor),
-          body: createV2AutomationBody(body),
+          body: contractCreateAutomationBody(body),
         }),
         [201],
       );
@@ -1559,9 +1558,9 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2MainContract).create({
+        setupApp({ context })(automationsMainContract).create({
           headers: authenticate(context, actor),
-          body: createV2AutomationBodyUnchecked(body),
+          body: contractCreateAutomationBodyUnchecked(body),
         }),
         statuses,
       );
@@ -1569,7 +1568,7 @@ export function createRunsSchedulesApi(context: TestContext) {
 
     async listSchedules(actor: ApiTestUser): Promise<ScheduleListResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2MainContract).list({
+        setupApp({ context })(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -1586,7 +1585,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2MainContract).list({
+        setupApp({ context })(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -1598,7 +1597,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       schedule: AutomationResourceRef,
     ): Promise<ScheduleResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2ByRefContract).enable({
+        setupApp({ context })(automationsByRefContract).enable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(schedule) },
           body: {},
@@ -1613,7 +1612,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       schedule: AutomationResourceRef,
     ): Promise<ScheduleResponse> {
       const response = await accept(
-        setupApp({ context })(automationsV2ByRefContract).disable({
+        setupApp({ context })(automationsByRefContract).disable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(schedule) },
           body: {},
@@ -1629,7 +1628,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).enable({
+        setupApp({ context })(automationsByRefContract).enable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(schedule) },
           body: {},
@@ -1654,7 +1653,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       )[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).run({
+        setupApp({ context })(automationsByRefContract).run({
           headers: authenticate(context, actor),
           params: { ref: scheduleId },
           body: {},
@@ -1668,7 +1667,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       schedule: AutomationResourceRef,
     ): Promise<void> {
       await accept(
-        setupApp({ context })(automationsV2ByRefContract).delete({
+        setupApp({ context })(automationsByRefContract).delete({
           headers: authenticate(context, actor),
           params: { ref: automationRef(schedule) },
         }),
@@ -1682,7 +1681,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).delete({
+        setupApp({ context })(automationsByRefContract).delete({
           headers: authenticate(context, actor),
           params: { ref: automationRef(schedule) },
         }),
@@ -1696,7 +1695,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsV2ByRefContract).delete({
+        setupApp({ context })(automationsByRefContract).delete({
           headers: authorization === undefined ? {} : { authorization },
           params: { ref: automationRef(schedule) },
         }),

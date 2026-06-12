@@ -257,6 +257,83 @@ describe("ComputerUseHostRuntime", () => {
     });
   });
 
+  it("deactivates for restart when command polling rejects the host token", async () => {
+    vi.useFakeTimers();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return new Response("{}", { status: 401 });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+      errorLog: [
+        {
+          source: "command_poll",
+          hostId: null,
+          message:
+            "Desktop host could not authenticate with the API session. Sign in and retry.",
+          status: "error",
+        },
+      ],
+    });
+  });
+
+  it("deactivates for restart when command completion rejects the host token", async () => {
+    vi.useFakeTimers();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return jsonResponse({
+          status: "command",
+          command: {
+            id: "cmd-1",
+            kind: "app.state",
+            payload: { app: "Safari" },
+          },
+        });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        return new Response("{}", { status: 401 });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastCommandAt: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+      errorLog: [
+        {
+          source: "command_poll",
+          hostId: null,
+          message:
+            "Desktop host could not authenticate with the API session. Sign in and retry.",
+          status: "error",
+        },
+      ],
+    });
+  });
+
   it("records local native command payloads and results", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T08:00:00.000Z"));

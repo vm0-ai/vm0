@@ -5,9 +5,8 @@ interface DesktopLaunchComputerUseOptions {
   readonly consumeAuthCallback: (
     callback: DesktopAuthCallback,
   ) => Promise<void>;
-  readonly autoStartComputerUse: () => Promise<void>;
+  readonly requestAutoStartComputerUse: () => void;
   readonly logAuthError: (error: unknown) => void;
-  readonly logAutoStartError: (error: unknown) => void;
 }
 
 export function startDesktopLaunchComputerUse(
@@ -20,5 +19,5 @@ export function startDesktopLaunchComputerUse(
     return;
   }
 
-  void options.autoStartComputerUse().catch(options.logAutoStartError);
+  options.requestAutoStartComputerUse();
 }

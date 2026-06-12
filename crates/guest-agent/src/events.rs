@@ -18,6 +18,7 @@ use std::path::{Component, Path};
 const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
 const FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
+const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CodexFailureDiagnostic {
@@ -197,11 +198,34 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     if error.get("code").and_then(Value::as_str) == Some("invalid_api_key") {
         return Some(FailureReason::InvalidApiKey);
     }
+    if codex_refresh_error_code(error) == Some("TOKEN_REFRESH_FAILED")
+        && error.get("failureReason").and_then(Value::as_str) == Some("reconnect_required")
+        && has_exact_codex_oauth_connector(error)
+    {
+        return Some(FailureReason::ReconnectRequired);
+    }
     None
 }
 
 fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<FailureReason> {
     codex_error_failure_reason(error).or_else(|| codex_error_failure_reason(Some(event)))
+}
+
+fn codex_refresh_error_code(value: &Value) -> Option<&str> {
+    value
+        .get("code")
+        .or_else(|| value.get("error"))
+        .and_then(Value::as_str)
+}
+
+fn has_exact_codex_oauth_connector(value: &Value) -> bool {
+    value
+        .get("connectors")
+        .and_then(Value::as_array)
+        .is_some_and(|connectors| {
+            connectors.len() == 1
+                && connectors.first().and_then(Value::as_str) == Some(CODEX_OAUTH_TOKEN_CONNECTOR)
+        })
 }
 
 fn raw_message_from_field(value: Option<&Value>) -> Option<String> {
@@ -717,6 +741,107 @@ mod tests {
     }
 
     #[test]
+    fn codex_error_event_error_string_invalid_api_key_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "error",
+            "error": "invalid_api_key",
+            "message": "Provider reported invalid_api_key in an error field"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Provider reported invalid_api_key in an error field".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_top_level_reconnect_required_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "TOKEN_REFRESH_FAILED",
+            "message": "Access token expired and refresh failed for: codex-oauth-token.",
+            "connectors": ["codex-oauth-token"],
+            "failureReason": "reconnect_required"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token expired and refresh failed for: codex-oauth-token."
+                    .to_string(),
+                failure_reason: Some(FailureReason::ReconnectRequired),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_top_level_error_string_reconnect_required_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "error": "TOKEN_REFRESH_FAILED",
+            "message": "Access token expired and refresh failed for: codex-oauth-token.",
+            "connectors": ["codex-oauth-token"],
+            "failureReason": "reconnect_required"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token expired and refresh failed for: codex-oauth-token."
+                    .to_string(),
+                failure_reason: Some(FailureReason::ReconnectRequired),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_upstream_provider_refresh_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "TOKEN_REFRESH_FAILED",
+            "message": "Access token refresh failed for: codex-oauth-token.",
+            "connectors": ["codex-oauth-token"],
+            "failureReason": "upstream_provider"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token refresh failed for: codex-oauth-token.".to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_multi_connector_reconnect_remains_unclassified() {
+        let event = serde_json::json!({
+            "type": "error",
+            "code": "TOKEN_REFRESH_FAILED",
+            "message": "Access token expired and refresh failed for: notion, codex-oauth-token.",
+            "connectors": ["notion", "codex-oauth-token"],
+            "failureReason": "reconnect_required"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token expired and refresh failed for: notion, codex-oauth-token."
+                    .to_string(),
+                failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
     fn codex_turn_failed_event_yields_failure_diagnostic() {
         let event = serde_json::json!({
             "type": "turn.failed",
@@ -729,6 +854,29 @@ mod tests {
                 event_type: "turn.failed",
                 message: "turn failed from server".to_string(),
                 failure_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn codex_turn_failed_reconnect_required_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "turn.failed",
+            "error": {
+                "code": "TOKEN_REFRESH_FAILED",
+                "message": "Access token expired and refresh failed for: codex-oauth-token.",
+                "connectors": ["codex-oauth-token"],
+                "failureReason": "reconnect_required"
+            }
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "turn.failed",
+                message: "Access token expired and refresh failed for: codex-oauth-token."
+                    .to_string(),
+                failure_reason: Some(FailureReason::ReconnectRequired),
             })
         );
     }

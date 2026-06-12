@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { VideoStyleCategory } from "@vm0/core";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -18,12 +19,12 @@ export const setShowAddDialog$ = command(({ set }, open: boolean) => {
 
 // -- Pending OAuth connection type ------------------------------------------
 
-const internalPendingConnectType$ = state<string | null>(null);
+const internalPendingConnectType$ = state<ConnectorType | null>(null);
 export const pendingConnectType$ = computed((get) => {
   return get(internalPendingConnectType$);
 });
 export const setPendingConnectType$ = command(
-  ({ set }, type: string | null) => {
+  ({ set }, type: ConnectorType | null) => {
     set(internalPendingConnectType$, type);
   },
 );
@@ -39,6 +40,26 @@ export const setComposerSavingType$ = command(
     set(internalComposerSavingType$, type);
   },
 );
+
+// -- Slash skill picker -----------------------------------------------------
+
+const internalSlashSkillCaretIndex$ = state(0);
+export const slashSkillCaretIndex$ = computed((get) => {
+  return get(internalSlashSkillCaretIndex$);
+});
+export const setSlashSkillCaretIndex$ = command(
+  ({ set }, caretIndex: number) => {
+    set(internalSlashSkillCaretIndex$, caretIndex);
+  },
+);
+
+const internalSelectedSlashSkillIndex$ = state(0);
+export const selectedSlashSkillIndex$ = computed((get) => {
+  return get(internalSelectedSlashSkillIndex$);
+});
+export const setSelectedSlashSkillIndex$ = command(({ set }, index: number) => {
+  set(internalSelectedSlashSkillIndex$, index);
+});
 
 // -- Add-connectors dialog search filter ------------------------------------
 
@@ -62,12 +83,12 @@ export const setPopoverSearch$ = command(({ set }, value: string) => {
 
 // -- Connector popover sort order snapshot ----------------------------------
 
-const internalPopoverSortOrder$ = state<string[] | null>(null);
+const internalPopoverSortOrder$ = state<ConnectorType[] | null>(null);
 export const popoverSortOrder$ = computed((get) => {
   return get(internalPopoverSortOrder$);
 });
 export const setPopoverSortOrder$ = command(
-  ({ set }, order: string[] | null) => {
+  ({ set }, order: ConnectorType[] | null) => {
     set(internalPopoverSortOrder$, order);
   },
 );

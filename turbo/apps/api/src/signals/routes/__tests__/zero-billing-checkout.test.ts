@@ -637,6 +637,38 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
+  it("accepts successUrl on the configured paid-onboarding origin", async () => {
+    mockEnv("PAID_ONBOARDING_URL", "https://so.vm7.ai:8441");
+
+    const fixture = await trackedPendingSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/so-vm7-trial",
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          trialDays: 7,
+          successUrl: "https://so.vm7.ai:8441/onboarding?billing=pro",
+          cancelUrl: "https://so.vm7.ai:8441/onboarding?billing=canceled",
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/so-vm7-trial",
+    });
+  });
+
   it("returns 401 when caller has no org", async () => {
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, null);
