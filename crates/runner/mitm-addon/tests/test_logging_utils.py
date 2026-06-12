@@ -118,7 +118,6 @@ class TestAddFirewallMetadata:
         flow.metadata.update(
             {
                 metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE: "fal",
-                metadata_keys.CONNECTOR_DIAGNOSTIC_LABEL: "fal.ai",
                 metadata_keys.CONNECTOR_DIAGNOSTIC_REASON: "not_configured_for_run",
                 metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES: ["FAL_TOKEN"],
                 metadata_keys.CONNECTOR_DIAGNOSTIC_BASE: "https://fal.run",
@@ -135,7 +134,6 @@ class TestAddFirewallMetadata:
             "firewall_rule_match": "",
             "firewall_billable": False,
             "connector_diagnostic_type": "fal",
-            "connector_diagnostic_label": "fal.ai",
             "connector_diagnostic_reason": "not_configured_for_run",
             "connector_diagnostic_env_names": ["FAL_TOKEN"],
             "connector_diagnostic_base": "https://fal.run",
@@ -216,7 +214,6 @@ class TestAddFirewallMetadata:
                 metadata_keys.AUTH_CACHE_HIT: "false",
                 metadata_keys.AUTH_URL_REWRITE: 1,
                 metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE: 1,
-                metadata_keys.CONNECTOR_DIAGNOSTIC_LABEL: ["fal.ai"],
                 metadata_keys.CONNECTOR_DIAGNOSTIC_REASON: None,
                 metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES: ["FAL_TOKEN", None],
                 metadata_keys.CONNECTOR_DIAGNOSTIC_BASE: False,

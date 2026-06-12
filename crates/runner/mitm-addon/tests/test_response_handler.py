@@ -52,10 +52,9 @@ class TestResponseHandler:
         assert body == {
             "error": "connector_not_configured_for_run",
             "connector": "fal",
-            "label": "fal.ai",
             "reason": "not_configured_for_run",
             "message": (
-                "fal.ai is not configured for this run. FAL_TOKEN is unavailable, "
+                "fal is not configured for this run. FAL_TOKEN is unavailable, "
                 "so credentials cannot be injected."
             ),
             "envNames": ["FAL_TOKEN"],
@@ -67,7 +66,6 @@ class TestResponseHandler:
         assert entry["status"] == 401
         assert entry["firewall_error"] == "connector_not_configured_for_run"
         assert entry["connector_diagnostic_type"] == "fal"
-        assert entry["connector_diagnostic_label"] == "fal.ai"
         assert entry["connector_diagnostic_reason"] == "not_configured_for_run"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert entry["connector_diagnostic_base"] == "https://fal.run"

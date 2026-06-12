@@ -66,8 +66,6 @@ Firewall and auth context
 - ``CONNECTOR_DIAGNOSTIC_TYPE``: optional ``str`` connector type for a generic
   connector availability diagnostic. Written when an inactive built-in
   connector URL match later produces an agent-visible diagnostic response.
-- ``CONNECTOR_DIAGNOSTIC_LABEL``: optional ``str`` human-readable connector
-  label for the diagnostic. Read by network-log metadata.
 - ``CONNECTOR_DIAGNOSTIC_REASON``: optional ``str`` generic diagnostic reason.
   First-version diagnostics use ``not_configured_for_run``.
 - ``CONNECTOR_DIAGNOSTIC_ENV_NAMES``: optional ``list[str]`` env aliases that
@@ -153,7 +151,6 @@ FIREWALL_BILLABLE: Final = "firewall_billable"
 FIREWALL_ACTION: Final = "firewall_action"
 FIREWALL_ERROR: Final = "firewall_error"
 CONNECTOR_DIAGNOSTIC_TYPE: Final = "connector_diagnostic_type"
-CONNECTOR_DIAGNOSTIC_LABEL: Final = "connector_diagnostic_label"
 CONNECTOR_DIAGNOSTIC_REASON: Final = "connector_diagnostic_reason"
 CONNECTOR_DIAGNOSTIC_ENV_NAMES: Final = "connector_diagnostic_env_names"
 CONNECTOR_DIAGNOSTIC_BASE: Final = "connector_diagnostic_base"

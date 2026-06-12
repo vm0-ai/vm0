@@ -65,7 +65,6 @@ async def test_inactive_builtin_connector_url_records_diagnostic_candidate(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] == "fal"
-    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_LABEL] == "fal.ai"
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == ("not_configured_for_run")
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["FAL_TOKEN"]
     assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://fal.run"

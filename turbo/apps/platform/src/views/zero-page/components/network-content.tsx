@@ -337,12 +337,6 @@ function addConnectorDiagnosticFields(
   );
   addField(
     out,
-    "Connector Label",
-    entry.connector_diagnostic_label,
-    formatValue(entry.connector_diagnostic_label),
-  );
-  addField(
-    out,
     "Connector Reason",
     entry.connector_diagnostic_reason,
     formatValue(entry.connector_diagnostic_reason),

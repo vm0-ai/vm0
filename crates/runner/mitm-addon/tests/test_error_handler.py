@@ -41,7 +41,6 @@ class TestErrorHandler:
         body = json.loads(content)
         assert body["error"] == "connector_not_configured_for_run"
         assert body["connector"] == "fal"
-        assert body["label"] == "fal.ai"
         assert body["envNames"] == ["FAL_TOKEN"]
         assert body["base"] == "https://fal.run"
         assert body["upstreamStatus"] == 0
@@ -51,7 +50,6 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
         assert entry["connector_diagnostic_type"] == "fal"
-        assert entry["connector_diagnostic_label"] == "fal.ai"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert entry["connector_diagnostic_base"] == "https://fal.run"
 

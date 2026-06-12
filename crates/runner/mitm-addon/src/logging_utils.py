@@ -150,10 +150,6 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
             _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE),
         ),
         (
-            "connector_diagnostic_label",
-            _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_LABEL),
-        ),
-        (
             "connector_diagnostic_reason",
             _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_REASON),
         ),

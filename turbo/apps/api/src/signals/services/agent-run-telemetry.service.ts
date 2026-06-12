@@ -203,9 +203,6 @@ function networkLogFromAxiom(event: AxiomNetworkEvent) {
     connector_diagnostic_type: optionalAxiomField(
       event.connector_diagnostic_type,
     ),
-    connector_diagnostic_label: optionalAxiomField(
-      event.connector_diagnostic_label,
-    ),
     connector_diagnostic_reason: optionalAxiomField(
       event.connector_diagnostic_reason,
     ),

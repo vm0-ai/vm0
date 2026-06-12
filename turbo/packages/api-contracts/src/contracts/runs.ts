@@ -471,7 +471,6 @@ const networkLogEntrySchema = z.object({
   firewall_billable: z.boolean().optional(),
   firewall_error: z.string().optional(),
   connector_diagnostic_type: z.string().optional(),
-  connector_diagnostic_label: z.string().optional(),
   connector_diagnostic_reason: z.string().optional(),
   connector_diagnostic_env_names: z.array(z.string()).optional(),
   connector_diagnostic_base: z.string().optional(),

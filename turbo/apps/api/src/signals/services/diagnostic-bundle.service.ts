@@ -784,7 +784,6 @@ function mapNetworkLogs(
       firewall_billable: event.firewall_billable,
       firewall_error: event.firewall_error,
       connector_diagnostic_type: event.connector_diagnostic_type,
-      connector_diagnostic_label: event.connector_diagnostic_label,
       connector_diagnostic_reason: event.connector_diagnostic_reason,
       connector_diagnostic_env_names: event.connector_diagnostic_env_names,
       connector_diagnostic_base: event.connector_diagnostic_base,

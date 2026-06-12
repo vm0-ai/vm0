@@ -12,7 +12,6 @@ def test_classifies_static_builtin_connector_url():
 
     assert candidate is not None
     assert candidate.connector_type == "fal"
-    assert candidate.label == "fal.ai"
     assert candidate.reason == "not_configured_for_run"
     assert candidate.base == "https://fal.run"
     assert candidate.env_names == ("FAL_TOKEN",)
@@ -41,10 +40,29 @@ def test_skips_dynamic_template_base_urls():
 
 
 def test_skips_model_provider_firewalls():
-    candidate = builtin_connector_diagnostics.find_candidate(
+    for url in (
         "https://api.anthropic.com/v1/messages",
-        "POST",
+        "https://api.openai.com/v1/responses",
+        "https://openrouter.ai/api/v1/chat/completions",
+        "https://api.deepseek.com/anthropic/v1/messages",
+        "https://api.minimax.io/anthropic/v1/messages",
+    ):
+        candidate = builtin_connector_diagnostics.find_candidate(
+            url,
+            "POST",
+            active_firewall_names=set(),
+        )
+
+        assert candidate is None
+
+
+def test_classifies_connector_permission_path_on_model_provider_host():
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://api.anthropic.com/v1/agents",
+        "GET",
         active_firewall_names=set(),
     )
 
-    assert candidate is None
+    assert candidate is not None
+    assert candidate.connector_type == "anthropic-managed-agents"
+    assert candidate.env_names == ("ANTHROPIC_MANAGED_AGENTS_TOKEN",)
