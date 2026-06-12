@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.135.0](https://github.com/vm0-ai/vm0/compare/api-v1.134.3...api-v1.135.0) (2026-06-12)
+
+
+### Features
+
+* add web chat run usage messages ([#17368](https://github.com/vm0-ai/vm0/issues/17368)) ([57abb19](https://github.com/vm0-ai/vm0/commit/57abb19caa4829b682478a94b4781d818d7047ea))
+* **video-preset:** add promptConstraints and negativePrompt to all 33 video style presets ([#17405](https://github.com/vm0-ai/vm0/issues/17405)) ([7045867](https://github.com/vm0-ai/vm0/commit/70458677e2bade872e9e97e467e2731e181e3750))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.0
+    * @vm0/connectors bumped to 1.72.0
+    * @vm0/core bumped to 8.334.0
+    * @vm0/db bumped to 1.47.0
+
 ## [1.134.3](https://github.com/vm0-ai/vm0/compare/api-v1.134.2...api-v1.134.3) (2026-06-12)
 
 

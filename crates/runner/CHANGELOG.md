@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.114.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.8...runner-rs-v0.114.9) (2026-06-12)
+
+
+### Bug Fixes
+
+* bound retained usage webhook retries ([#17477](https://github.com/vm0-ai/vm0/issues/17477)) ([0b6b7c3](https://github.com/vm0-ai/vm0/commit/0b6b7c3d2b5672709a10f283f0c1b7780a8ab294))
+* distinguish preparing runner jobs from running sandboxes ([#17482](https://github.com/vm0-ai/vm0/issues/17482)) ([90ec9bc](https://github.com/vm0-ai/vm0/commit/90ec9bc40be26ac4a7d9f5128fc092e09d23c00a))
+
 ## [0.114.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.7...runner-rs-v0.114.8) (2026-06-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.11.2...desktop-v0.12.0) (2026-06-12)
+
+
+### Features
+
+* add desktop dmg release artifact ([#17497](https://github.com/vm0-ai/vm0/issues/17497)) ([8463eae](https://github.com/vm0-ai/vm0/commit/8463eae9b2831267bf9ed94517f3665e0c1e69dd))
+
 ## [0.11.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.11.1...desktop-v0.11.2) (2026-06-12)
 
 

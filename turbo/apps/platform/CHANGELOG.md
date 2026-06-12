@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.444.0](https://github.com/vm0-ai/vm0/compare/app-v0.443.1...app-v0.444.0) (2026-06-12)
+
+
+### Features
+
+* add chat rename shortcut ([#17501](https://github.com/vm0-ai/vm0/issues/17501)) ([f891f0a](https://github.com/vm0-ai/vm0/commit/f891f0a7e3775a69fcd4f142ab9657f00f281044))
+* add web chat run usage messages ([#17368](https://github.com/vm0-ai/vm0/issues/17368)) ([57abb19](https://github.com/vm0-ai/vm0/commit/57abb19caa4829b682478a94b4781d818d7047ea))
+
+
+### Bug Fixes
+
+* improve credit usage legend layout, kind colors, and bar hover ([#17506](https://github.com/vm0-ai/vm0/issues/17506)) ([37087c3](https://github.com/vm0-ai/vm0/commit/37087c391742af98141abe3306f827cd5b3ab5b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.0
+    * @vm0/connectors bumped to 1.72.0
+    * @vm0/core bumped to 8.334.0
+
 ## [0.443.1](https://github.com/vm0-ai/vm0/compare/app-v0.443.0...app-v0.443.1) (2026-06-12)
 
 
