@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.191.0](https://github.com/vm0-ai/vm0/compare/cli-v9.190.10...cli-v9.191.0) (2026-06-12)
+
+
+### Features
+
+* stop touching the schedule columns and rename the wire fields ([#17535](https://github.com/vm0-ai/vm0/issues/17535)) ([7ffec48](https://github.com/vm0-ai/vm0/commit/7ffec48d24efa30899a74026d2593ec52e4cc9a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.90.0
+    * @vm0/core bumped to 8.335.2
+
 ## [9.190.10](https://github.com/vm0-ai/vm0/compare/cli-v9.190.9...cli-v9.190.10) (2026-06-12)
 
 
