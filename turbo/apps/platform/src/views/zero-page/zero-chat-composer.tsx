@@ -584,12 +584,9 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
 
   // Newest fragment sits at the bottom (nearest Send) and takes focus.
   const newestId = feedback.items[feedback.items.length - 1]?.id;
-  // The dashed separator and the "select more" hint only earn their space once a
-  // second comment exists; a single comment reads as one clean note. min-h keeps
-  // the card from shrinking below the textarea's resting height.
-  const hasMultipleComments = feedback.items.length > 1;
 
   return (
+    // min-h keeps the card from shrinking below the textarea's resting height.
     <div className="flex min-h-[96px] flex-col px-3 pb-2 pt-3">
       {feedback.items.map((item, index) => {
         return (
@@ -608,11 +605,6 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      {hasMultipleComments && (
-        <span className="px-1 pt-1.5 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
-          Select more text to add another comment
-        </span>
-      )}
     </div>
   );
 }
