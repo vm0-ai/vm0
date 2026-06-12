@@ -187,6 +187,32 @@ class TestUsagePendingCounter:
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
+    def test_sync_fallback_log_failure_rolls_back_pending_report(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        with (
+            patch.object(
+                usage.webhook.usage_executor, "submit", side_effect=RuntimeError("shutdown")
+            ),
+            patch.object(
+                usage.webhook, "log_proxy_entry", side_effect=[None, OSError("disk full")]
+            ),
+            pytest.raises(OSError, match="disk full"),
+        ):
+            usage.webhook._enqueue_webhook(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
+                str(tmp_path / "proxy.jsonl"),
+                "usage_event",
+            )
+
+        assert usage.counters._pending_reports == 0
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+
     def test_saturated_usage_flush_keeps_buffered_pending_snapshot(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))

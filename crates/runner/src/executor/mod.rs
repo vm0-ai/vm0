@@ -4,20 +4,22 @@
 //! budget reservation. The executor owns the sandbox-side run flow, while the
 //! caller owns provider completion and the final sandbox lifecycle decision.
 //!
-//! There are two public entry points:
-//! - `execute_job` starts a fresh Firecracker VM.
-//! - `execute_job_reuse` runs in a kept-alive idle VM.
+//! The fresh path starts and prepares a new Firecracker VM and can notify the
+//! caller once the VM is ready to run the job. The reuse path runs in a
+//! kept-alive idle VM.
 //!
-//! Both entry points return `ExecuteOutcome` plus a pending `JobTelemetry`
+//! Both paths return `ExecuteOutcome` plus a pending `JobTelemetry`
 //! buffer. When `ExecuteOutcome::sandbox` is `Some`, the sandbox is still alive
 //! and the caller decides whether to park it for reuse or destroy it. The
 //! caller also flushes telemetry after firing `provider.complete`, so the
 //! user-visible completion signal is not blocked on best-effort uploads.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use agent_diagnostics::FailureDiagnostic;
+use futures_util::future::BoxFuture;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 use tokio_util::sync::CancellationToken;
 
@@ -34,7 +36,10 @@ pub(crate) use guest_state::{fix_guest_clock, reseed_guest_entropy};
 
 use agent_run::ProcessCancelTimeouts;
 use env::validate_execution_context_before_sandbox;
-use sandbox_run::{execute_new_sandbox, execute_reused_sandbox, workspace_image_promotable};
+use sandbox_run::{
+    NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
+    workspace_image_promotable,
+};
 use telemetry::{record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;
@@ -146,6 +151,25 @@ pub struct JobParams {
     pub workspace_disk_mb: u32,
     pub restore_guest_state: bool,
     pub device_rate_limits: Option<sandbox::DeviceRateLimits>,
+}
+
+#[derive(Clone)]
+pub(crate) struct SandboxPreparedNotifier {
+    callback: Arc<dyn Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync>,
+}
+
+impl SandboxPreparedNotifier {
+    pub(crate) fn new(
+        callback: impl Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            callback: Arc::new(callback),
+        }
+    }
+
+    async fn notify(&self, run_id: RunId, sandbox_id: SandboxId) {
+        (self.callback)(run_id, sandbox_id).await;
+    }
 }
 
 /// Outcome of a job execution, including the sandbox for possible reuse.
@@ -274,6 +298,7 @@ fn agent_exit_failure_message(exit_code: i32) -> String {
 }
 
 /// uploads (~383 ms saved per job).
+#[cfg(test)]
 pub async fn execute_job(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
@@ -281,6 +306,19 @@ pub async fn execute_job(
     config: &ExecutorConfig,
     params: &JobParams,
     cancel: CancellationToken,
+) -> (ExecuteOutcome, JobTelemetry) {
+    execute_job_with_prepared_notifier(factory, context, dispatch, config, params, cancel, None)
+        .await
+}
+
+pub(crate) async fn execute_job_with_prepared_notifier(
+    factory: &dyn SandboxFactory,
+    context: ExecutionContext,
+    dispatch: NewSandboxDispatch,
+    config: &ExecutorConfig,
+    params: &JobParams,
+    cancel: CancellationToken,
+    sandbox_prepared: Option<SandboxPreparedNotifier>,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
@@ -300,14 +338,17 @@ pub async fn execute_job(
             guest_session_id: None,
         }
     } else {
-        match execute_new_sandbox(
+        match execute_new_sandbox_with_prepared_notifier(
             factory,
             &context,
             dispatch,
             config,
             params,
             &mut telemetry,
-            cancel,
+            NewSandboxHooks {
+                cancel,
+                sandbox_prepared: sandbox_prepared.as_ref(),
+            },
         )
         .await
         {
@@ -332,8 +373,8 @@ pub async fn execute_job(
 /// Skips create + start. Re-registers proxy, fixes clock, then runs the agent.
 /// Returns [`ExecuteOutcome`] with the sandbox still alive plus the pending
 /// [`JobTelemetry`] buffer — the caller (`spawn_job` in `cmd/start/job_spawn.rs`)
-/// must flush telemetry after firing `provider.complete` (see [`execute_job`] for
-/// rationale).
+/// must flush telemetry after firing `provider.complete`, matching the fresh
+/// sandbox path's completion ordering.
 pub async fn execute_job_reuse(
     idle_sandbox: ReusableIdleSandbox,
     context: ExecutionContext,

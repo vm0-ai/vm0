@@ -105,8 +105,8 @@ const chatThreadListItemSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   /**
-   * Read state of the thread's last message. `false` when the thread has no
-   * messages yet or the last message has not been marked read.
+   * Read state of the thread's last message, derived from
+   * `lastReadAt >= lastMessageAt`.
    */
   isRead: z.boolean(),
   /**
@@ -140,6 +140,24 @@ const chatThreadListItemSchema = z.object({
    * Optional for back-compat with fixtures that predate the field.
    */
   renamedAt: z.string().nullable().optional(),
+});
+
+const chatMessageUsageProviderBreakdownSchema = z.object({
+  provider: z.string(),
+  credits: z.number().int().nonnegative(),
+});
+
+const chatMessageUsageKindBreakdownSchema = z.object({
+  kind: z.string(),
+  credits: z.number().int().nonnegative(),
+  providers: z.array(chatMessageUsageProviderBreakdownSchema),
+});
+
+const chatMessageUsagePayloadSchema = z.object({
+  version: z.literal(1),
+  totalCredits: z.number().int().nonnegative(),
+  settledAt: z.string(),
+  breakdown: z.array(chatMessageUsageKindBreakdownSchema),
 });
 
 const toolSummaryEntrySchema = z.object({
@@ -192,6 +210,7 @@ const pagedChatMessageBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   runEventId: z.string().optional(),
+  usage: chatMessageUsagePayloadSchema.optional(),
   revokesMessageId: z.string().optional(),
   interruptsRunId: z.string().optional(),
   error: z.string().optional(),
@@ -253,6 +272,16 @@ const chatThreadDetailSchema = z.object({
    * back-compat with fixtures/tests that predate the read marker field.
    */
   lastReadMessageId: z.string().nullable().optional(),
+  /**
+   * Primary read-state watermark. `lastReadMessageId` remains for legacy
+   * clients only and should not be used for new read-state logic.
+   */
+  lastReadAt: z.string().nullable().optional(),
+  /**
+   * ISO timestamp of the latest assistant text result that should affect
+   * unread state and sidebar recency.
+   */
+  lastMessageAt: z.string().optional(),
   activeRunIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -451,6 +480,7 @@ export const chatThreadMarkReadContract = c.router({
     responses: {
       200: z.object({
         lastReadMessageId: z.string().nullable(),
+        lastReadAt: z.string().nullable(),
         changed: z.boolean(),
       }),
       400: apiErrorSchema,
@@ -839,6 +869,7 @@ export {
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
+  chatMessageUsagePayloadSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   attachFileSchema,
@@ -868,6 +899,9 @@ export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
+export type ChatMessageUsagePayload = z.infer<
+  typeof chatMessageUsagePayloadSchema
+>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;

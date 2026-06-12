@@ -16,6 +16,10 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
+  runUsagePopoverOpenRunId$,
+  setRunUsagePopoverOpenRunId$,
+} from "../../signals/chat-page/run-usage-popover.ts";
+import {
   IconAlertCircle,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
@@ -39,6 +43,7 @@ import {
   IconTag,
   IconX,
   IconClock,
+  IconCoins,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -49,6 +54,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -57,6 +65,7 @@ import {
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
   ChatThreadArtifactFile,
+  ChatMessageUsagePayload,
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -65,6 +74,7 @@ import {
   PRESENTATION_TEMPLATE_ITEMS,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -3691,6 +3701,53 @@ function WaitingForAssistantResponse({
   );
 }
 
+function AssistantThinkingStatusRow({
+  running,
+  blockStyle,
+  isQueued,
+  rotatingLabel,
+  thread,
+  doneLabel,
+  recommendedFollowupSource,
+}: {
+  running: boolean;
+  blockStyle: CSSProperties;
+  isQueued: boolean;
+  rotatingLabel: string;
+  thread: ChatThreadSignals;
+  doneLabel: string;
+  recommendedFollowupSource: RecommendedFollowupSource | null;
+}) {
+  const thinkingIndicatorProps = running
+    ? { "data-thinking-indicator": true }
+    : {};
+
+  return (
+    <div
+      {...thinkingIndicatorProps}
+      data-role="assistant-thinking"
+      className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
+    >
+      <div className="hidden @[900px]:block" />
+      <div className="min-w-0">
+        {running ? (
+          <InlineThinkingRow
+            blockStyle={blockStyle}
+            isQueued={isQueued}
+            rotatingLabel={rotatingLabel}
+          />
+        ) : (
+          <FinishedRunRow
+            thread={thread}
+            label={doneLabel}
+            source={recommendedFollowupSource}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ThinkingIndicator({
   thread,
   groups,
@@ -3752,28 +3809,15 @@ function ThinkingIndicator({
   // Shared inline row with fixed h-5 to prevent layout jump on transition
   if (lastIsAssistant || !running) {
     return (
-      <div
-        data-thinking-indicator
-        data-role="assistant-thinking"
-        className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
-      >
-        <div className="hidden @[900px]:block" />
-        <div className="min-w-0">
-          {running ? (
-            <InlineThinkingRow
-              blockStyle={blockStyle}
-              isQueued={isQueued}
-              rotatingLabel={rotatingLabel}
-            />
-          ) : (
-            <FinishedRunRow
-              thread={thread}
-              label={doneLabel}
-              source={recommendedFollowupSource}
-            />
-          )}
-        </div>
-      </div>
+      <AssistantThinkingStatusRow
+        running={running}
+        blockStyle={blockStyle}
+        isQueued={isQueued}
+        rotatingLabel={rotatingLabel}
+        thread={thread}
+        doneLabel={doneLabel}
+        recommendedFollowupSource={recommendedFollowupSource}
+      />
     );
   }
 
@@ -5516,19 +5560,205 @@ function PagedAssistantMessageItem({
   return null;
 }
 
+function formatCredits(value: number): string {
+  return value.toLocaleString("en-US");
+}
+
+interface RunUsageDisplayRow {
+  readonly key: string;
+  readonly label: string;
+  readonly credits: number;
+}
+
+function titleCaseUsageToken(token: string): string {
+  const upper = token.toUpperCase();
+  if (["AI", "API", "GLM", "GPT", "ID", "SQL", "URL", "VM0"].includes(upper)) {
+    return upper;
+  }
+
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+
+function formatUsageIdentifier(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    return "Usage";
+  }
+
+  return normalized
+    .split(/[/._-]+/)
+    .filter((token) => {
+      return token.length > 0;
+    })
+    .map(titleCaseUsageToken)
+    .join(" ");
+}
+
+function usageDisplayLabel(kind: string, provider: string): string {
+  if (kind === "model") {
+    return getModelDisplayName(provider);
+  }
+
+  if (provider && provider !== "unknown") {
+    return formatUsageIdentifier(provider);
+  }
+
+  return formatUsageIdentifier(kind);
+}
+
+function parseUsageKind(kind: string): {
+  readonly kind: string;
+  readonly provider?: string;
+} {
+  const parts = kind.split("/");
+  const parsedKind = parts[0];
+  if (parsedKind === "model" && parts.length >= 3) {
+    const categoryIndex = parts.findIndex((part, index) => {
+      return index > 1 && part.startsWith("tokens.");
+    });
+    const providerParts =
+      categoryIndex > 1 ? parts.slice(1, categoryIndex) : parts.slice(1, 2);
+    const provider = providerParts.join("/");
+    if (provider) {
+      return { kind: parsedKind, provider };
+    }
+  }
+
+  return { kind };
+}
+
+function buildRunUsageDisplayRows(
+  usage: ChatMessageUsagePayload,
+): readonly RunUsageDisplayRow[] {
+  const rows = new Map<string, RunUsageDisplayRow>();
+
+  for (const kindBreakdown of usage.breakdown) {
+    const parsed = parseUsageKind(kindBreakdown.kind);
+    for (const providerBreakdown of kindBreakdown.providers) {
+      const provider = parsed.provider ?? providerBreakdown.provider;
+      const key = `${parsed.kind}:${provider}`;
+      const existing = rows.get(key);
+      const credits = Math.max(0, providerBreakdown.credits);
+      rows.set(key, {
+        key,
+        label: existing?.label ?? usageDisplayLabel(parsed.kind, provider),
+        credits: (existing?.credits ?? 0) + credits,
+      });
+    }
+  }
+
+  return Array.from(rows.values());
+}
+
+function RunUsageChip({
+  runId,
+  usage,
+}: {
+  runId: string;
+  usage: ChatMessageUsagePayload;
+}) {
+  const openRunId = useGet(runUsagePopoverOpenRunId$);
+  const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
+  const open = openRunId === runId;
+  const setOpen = (nextOpen: boolean) => {
+    setOpenRunId(nextOpen ? runId : null);
+  };
+  const total = formatCredits(usage.totalCredits);
+  const displayRows = buildRunUsageDisplayRows(usage);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
+          aria-label={`Credit usage ${total}`}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          onClick={() => {
+            setOpen(true);
+          }}
+          onFocus={() => {
+            setOpen(true);
+          }}
+          onBlur={() => {
+            setOpen(false);
+          }}
+          onMouseEnter={() => {
+            setOpen(true);
+          }}
+          onMouseLeave={() => {
+            setOpen(false);
+          }}
+          onPointerEnter={() => {
+            setOpen(true);
+          }}
+          onPointerLeave={() => {
+            setOpen(false);
+          }}
+        >
+          <IconCoins size={17} stroke={1.5} />
+          <span>{total}</span>
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        side="bottom"
+        align="start"
+        className="w-72 p-3"
+        onPointerEnter={() => {
+          setOpen(true);
+        }}
+        onPointerLeave={() => {
+          setOpen(false);
+        }}
+        onMouseEnter={() => {
+          setOpen(true);
+        }}
+        onMouseLeave={() => {
+          setOpen(false);
+        }}
+      >
+        <div className="flex items-center justify-between gap-3 text-sm font-medium">
+          <span>Credit usage</span>
+          <span>{total}</span>
+        </div>
+        <div className="mt-3 flex flex-col gap-1.5">
+          {displayRows.map((row) => {
+            return (
+              <div
+                key={row.key}
+                className="flex items-center justify-between gap-3 text-xs"
+              >
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {row.label}
+                </span>
+                <span className="shrink-0 text-foreground">
+                  {formatCredits(row.credits)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function PagedGroupPrimaryActions({
   firstRunId,
   hasContent,
+  usage,
   copied,
   onCopy,
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
+  usage: ChatMessageUsagePayload | undefined;
   copied: boolean;
   onCopy: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" data-testid="chat-message-actions">
       {firstRunId && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>
@@ -5571,6 +5801,7 @@ function PagedGroupPrimaryActions({
           </Tooltip>
         </TooltipProvider>
       )}
+      {usage && firstRunId && <RunUsageChip runId={firstRunId} usage={usage} />}
     </div>
   );
 }
@@ -5589,9 +5820,12 @@ function PagedGroupActions({
   const copied = copiedId === group.beginMessageId;
   const copyMessage = useSet(thread.copyMessage$);
 
+  const features = useLastResolved(featureSwitch$);
+  const usageEnabled = features?.[FeatureSwitchKey.ChatRunUsage] ?? false;
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
+  const usage = usageEnabled ? group.usage : undefined;
   const hasContent = content.length > 0;
 
   if (group.role === "user") {
@@ -5619,6 +5853,7 @@ function PagedGroupActions({
         <PagedGroupPrimaryActions
           firstRunId={firstRunId}
           hasContent={hasContent}
+          usage={usage}
           copied={copied}
           onCopy={handleCopy}
         />

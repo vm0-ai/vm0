@@ -1,4 +1,5 @@
 import type { ChatThread } from "../agent-chat.ts";
+import { nowDate } from "../../lib/time.ts";
 
 export function createPendingChatThread(
   threadId: string,
@@ -12,6 +13,8 @@ export function createPendingChatThread(
     title: null,
     agentId,
     lastReadMessageId: null,
+    lastReadAt: null,
+    lastMessageAt: nowDate().toISOString(),
     activeRunIds,
     isLegacySession: false,
     draftContent: null,

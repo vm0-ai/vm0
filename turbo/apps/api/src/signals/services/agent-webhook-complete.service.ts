@@ -15,6 +15,7 @@ import { writeDb$, type Db } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
 import { tapError } from "../utils";
 import { dispatchRunCallbacks } from "./agent-run-callback.service";
+import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 
@@ -412,6 +413,18 @@ export const dispatchCompleteSideEffects$ = command(
     signal.throwIfAborted();
 
     await set(processOrgUsageEvents$, input.orgId, signal);
+    signal.throwIfAborted();
+
+    await tapError(
+      set(maybeEmitRunUsageMessage$, input.runId, signal),
+      (error) => {
+        L.error("Failed to emit chat usage message after run completion", {
+          runId: input.runId,
+          orgId: input.orgId,
+          error,
+        });
+      },
+    );
     signal.throwIfAborted();
   },
 );

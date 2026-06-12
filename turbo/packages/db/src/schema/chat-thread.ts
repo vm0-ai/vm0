@@ -54,13 +54,13 @@ export const chatThreads = pgTable(
      * Slack-style watermark: the last timestamp up to which the user has read
      * messages in this thread. Forward-only — never rewound.
      * NULL means the thread has never been explicitly marked read.
-     * Kept for compatibility with existing data; new read state is derived
-     * from `lastReadMessageId`.
+     * Primary read-state cursor; `lastReadMessageId` is retained only for
+     * legacy client compatibility during the migration window.
      */
     lastReadAt: timestamp("last_read_at"),
     /**
      * ID of the latest message the user has marked read in this thread.
-     * NULL means the thread has never been explicitly marked read.
+     * Deprecated: read state is derived from `lastReadAt`.
      */
     lastReadMessageId: uuid("last_read_message_id"),
     /**
@@ -95,11 +95,10 @@ export const chatThreads = pgTable(
     renamedAt: timestamp("renamed_at"),
     /**
      * Most recent message timestamp, denormalized from chat_messages.
-     * Maintained app-side at every chat_messages insert via GREATEST() —
-     * monotonic, never rewound. Backfilled from MAX(chat_messages.created_at)
-     * and falls back to chat_threads.created_at for empty threads.
-     * Powers the sidebar "recency" ordering with an index-driven LIMIT
-     * instead of scanning every thread + LATERAL last-message lookup.
+     * Maintained app-side for terminal runs with visible assistant text via
+     * GREATEST() — monotonic, never rewound. Billing rows and pure lifecycle
+     * markers do not advance it. Powers the sidebar recency and unread
+     * watermark comparisons with index-driven thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

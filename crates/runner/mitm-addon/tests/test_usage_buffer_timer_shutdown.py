@@ -2,12 +2,14 @@
 
 import threading
 from collections.abc import Callable
+from unittest.mock import patch
 
 import pytest
 
 import usage
 import usage.buffer as usage_buffer
-from tests.usage_buffer_helpers import RecordingEnqueue, event
+from tests.pending_helpers import assert_pending
+from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
 from tests.usage_helpers import RecordingTimer, install_recording_usage_timer
 
 
@@ -570,6 +572,93 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
 
     assert enqueued_keys == [enqueued_keys[0], enqueued_keys[0]]
     assert usage.counters._buffered_usage_events == 0
+
+
+def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
+    pending_path = tmp_path / "usage-pending"
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
+
+    def enqueue_retryable_failure(
+        url: str,
+        sandbox_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: Callable[[usage.webhook.WebhookDeliveryOutcome], None],
+    ) -> bool:
+        del url, sandbox_token, payload, path
+        assert log_type == "usage_event"
+        delivery_outcome_callback("retryable_failure")
+        return True
+
+    with patch.object(usage_buffer, "MAX_RETAINED_USAGE_BATCH_RETRIES", 1):
+        timers = install_recording_usage_timer(enqueue_webhook=enqueue_retryable_failure)
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "secret-token",
+            "run-1",
+            [event(source_key="source-1", quantity=10)],
+            str(proxy_log_path),
+        )
+
+        timers[0].callback()
+
+        assert usage.counters._buffered_usage_events == 1
+        assert len(timers) == 2
+        assert timers[1].started is True
+
+        timers[1].callback()
+
+    assert usage.counters._buffered_usage_events == 0
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
+    assert len(timers) == 2
+    entries = flush_log_entries(proxy_log_path)
+    dropped_entries = [entry for entry in entries if entry["phase"] == "dropped"]
+    assert len(dropped_entries) == 1
+    assert dropped_entries[0]["level"] == "error"
+    assert dropped_entries[0]["reason"] == "retry_budget_exhausted"
+    assert dropped_entries[0]["source_event_count"] == 1
+    assert dropped_entries[0]["dropped_source_event_count"] == 1
+    assert dropped_entries[0]["dropped_webhook_batch_count"] == 1
+    assert dropped_entries[0]["retained_retry_count"] == 1
+    assert "secret-token" not in str(dropped_entries)
+
+
+def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_timer(
+    tmp_path,
+):
+    proxy_log_path = tmp_path / "proxy.jsonl"
+
+    with patch.object(usage_buffer, "MAX_RETAINED_USAGE_BATCH_RETRIES", 1):
+        enqueue = RecordingEnqueue(return_value=False)
+        timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "secret-token",
+            "run-1",
+            [event(source_key="source-1")],
+            str(proxy_log_path),
+        )
+
+        assert usage.flush_usage_events(trigger="shutdown") == 0
+        assert usage.counters._buffered_usage_events == 1
+        assert len(timers) == 1
+        assert timers[0].cancelled is True
+
+        enqueue.clear()
+        assert usage.flush_usage_events(trigger="shutdown") == 0
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == 0
+    assert len(timers) == 1
+    dropped_entries = [
+        entry for entry in flush_log_entries(proxy_log_path) if entry["phase"] == "dropped"
+    ]
+    assert len(dropped_entries) == 1
+    assert dropped_entries[0]["trigger"] == "shutdown"
+    assert dropped_entries[0]["reason"] == "retry_budget_exhausted"
 
 
 def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):

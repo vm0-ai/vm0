@@ -29,6 +29,7 @@ interface SeedChatThreadOptions {
   readonly title?: string | null;
   readonly pinnedAt?: Date | null;
   readonly renamedAt?: Date | null;
+  readonly lastReadAt?: Date | null;
   readonly lastReadMessageId?: string | null;
   readonly draftContent?: string | null;
   readonly draftAttachments?: readonly PersistedAttachment[] | null;
@@ -72,6 +73,9 @@ export const seedZeroChatThread$ = command(
       title: options.title ?? "chat thread",
       pinnedAt: options.pinnedAt ?? null,
       renamedAt: options.renamedAt ?? null,
+      ...(options.lastReadAt !== undefined
+        ? { lastReadAt: options.lastReadAt }
+        : {}),
       ...(options.lastReadMessageId !== undefined
         ? { lastReadMessageId: options.lastReadMessageId }
         : {}),

@@ -260,7 +260,7 @@ jobs:
           chmod 600 "$api_key_path"
           echo "path=$api_key_path" >> "$GITHUB_OUTPUT"
 
-      - name: Build signed and notarized macOS artifact
+      - name: Build signed and notarized macOS artifacts
         id: build-desktop
         env:
           VM0_DESKTOP_NOTARIZE: "true"
@@ -272,29 +272,69 @@ jobs:
           rm -rf apps/desktop/out
 
           pnpm -F @vm0/desktop build
-          node apps/desktop/scripts/run-forge-make-with-retry.js --platform darwin --arch arm64
+          node apps/desktop/scripts/run-forge-make-with-retry.js \
+            --platform darwin \
+            --arch arm64 \
+            --targets @electron-forge/maker-zip
 
           desktop_dir="$PWD/apps/desktop"
+          app_dir="$desktop_dir/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
           forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Computer Use-darwin-arm64-$DESKTOP_VERSION.zip"
-          artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+          zip_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+          dmg_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.dmg"
+          dmg_source="$RUNNER_TEMP/zero-desktop-dmg-source"
+          unsigned_dmg="$RUNNER_TEMP/Zero-darwin-arm64-$DESKTOP_VERSION.unsigned.dmg"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge zip artifact found: $forge_zip"
             find "$desktop_dir/out" -maxdepth 6 -type f -print || true
             exit 1
           fi
+          if [ ! -d "$app_dir" ]; then
+            echo "No packaged app found: $app_dir"
+            find "$desktop_dir/out" -maxdepth 4 -type d -print || true
+            exit 1
+          fi
 
-          cp "$forge_zip" "$artifact_path"
-          echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
+          cp "$forge_zip" "$zip_artifact_path"
 
-      - name: Verify signed and notarized macOS artifact
+          rm -rf "$dmg_source" "$unsigned_dmg" "$dmg_artifact_path"
+          mkdir -p "$dmg_source"
+          ditto "$app_dir" "$dmg_source/Zero Computer Use.app"
+          ln -s /Applications "$dmg_source/Applications"
+          hdiutil create \
+            -volname "Zero Computer Use" \
+            -srcfolder "$dmg_source" \
+            -ov \
+            -format UDZO \
+            "$unsigned_dmg"
+          cp "$unsigned_dmg" "$dmg_artifact_path"
+          codesign --force --sign "$VM0_DESKTOP_SIGNING_IDENTITY" --timestamp "$dmg_artifact_path"
+          xcrun notarytool submit "$dmg_artifact_path" \
+            --key "$VM0_DESKTOP_NOTARIZE_API_KEY_PATH" \
+            --key-id "$VM0_DESKTOP_NOTARIZE_API_KEY_ID" \
+            --issuer "$VM0_DESKTOP_NOTARIZE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$dmg_artifact_path"
+
+          echo "zip_path=$zip_artifact_path" >> "$GITHUB_OUTPUT"
+          echo "dmg_path=$dmg_artifact_path" >> "$GITHUB_OUTPUT"
+
+      - name: Verify signed and notarized macOS artifacts
         run: |
-          artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+          zip_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+          dmg_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.dmg"
           app_dir="apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
           plist="$app_dir/Contents/Info.plist"
+          dmg_mount="$RUNNER_TEMP/zero-desktop-dmg"
 
-          if [ ! -f "$artifact_path" ]; then
+          if [ ! -f "$zip_artifact_path" ]; then
             echo "No desktop zip artifact found"
+            find apps/desktop/out -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+          if [ ! -f "$dmg_artifact_path" ]; then
+            echo "No desktop dmg artifact found"
             find apps/desktop/out -maxdepth 5 -type f -print || true
             exit 1
           fi
@@ -315,12 +355,47 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$app_dir"
           codesign --display --verbose=4 "$app_dir" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
           xcrun stapler validate "$app_dir"
-          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/MacOS/Zero Computer Use"
+          unzip -l "$zip_artifact_path" | grep -q "Zero Computer Use.app/Contents/MacOS/Zero Computer Use"
+          codesign --verify --verbose=2 "$dmg_artifact_path"
+          codesign --display --verbose=4 "$dmg_artifact_path" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
+          xcrun stapler validate "$dmg_artifact_path"
+          hdiutil verify "$dmg_artifact_path"
 
-      - name: Upload Desktop artifact to GitHub Release
+          rm -rf "$dmg_mount"
+          mkdir -p "$dmg_mount"
+          hdiutil attach "$dmg_artifact_path" -nobrowse -readonly -mountpoint "$dmg_mount"
+          cleanup_dmg_mount() {
+            hdiutil detach "$dmg_mount"
+          }
+          trap cleanup_dmg_mount EXIT
+
+          if [ ! -d "$dmg_mount/Zero Computer Use.app" ]; then
+            echo "DMG should contain Zero Computer Use.app"
+            find "$dmg_mount" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ ! -L "$dmg_mount/Applications" ]; then
+            echo "DMG should contain an Applications symlink"
+            find "$dmg_mount" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ "$(readlink "$dmg_mount/Applications")" != "/Applications" ]; then
+            echo "DMG Applications symlink should point to /Applications"
+            readlink "$dmg_mount/Applications" || true
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$dmg_mount/Zero Computer Use.app"
+          xcrun stapler validate "$dmg_mount/Zero Computer Use.app"
+
+      - name: Upload Desktop artifacts to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$RELEASE_TAG" "${{ steps.build-desktop.outputs.path }}" --repo "${{ github.repository }}" --clobber
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "${{ steps.build-desktop.outputs.zip_path }}" \
+            "${{ steps.build-desktop.outputs.dmg_path }}" \
+            --repo "${{ github.repository }}" \
+            --clobber
 
       - name: Publish Desktop update manifest
         env:
@@ -388,7 +463,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Desktop App* ✅ Published signed macOS release\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>\n⬇️ <${{ github.server_url }}/${{ github.repository }}/releases/download/desktop-v${{ needs.release-please.outputs.desktop_version }}/Zero-darwin-arm64-${{ needs.release-please.outputs.desktop_version }}.zip|Download macOS app>"
+                  text: "*Desktop App* ✅ Published signed macOS release\n📦 Version: `${{ needs.release-please.outputs.desktop_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/desktop-v${{ needs.release-please.outputs.desktop_version }}|View Release>\n⬇️ <${{ github.server_url }}/${{ github.repository }}/releases/download/desktop-v${{ needs.release-please.outputs.desktop_version }}/Zero-darwin-arm64-${{ needs.release-please.outputs.desktop_version }}.dmg|Download macOS DMG>\n🔄 <${{ github.server_url }}/${{ github.repository }}/releases/download/desktop-v${{ needs.release-please.outputs.desktop_version }}/Zero-darwin-arm64-${{ needs.release-please.outputs.desktop_version }}.zip|Auto-update ZIP>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}

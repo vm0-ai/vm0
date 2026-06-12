@@ -2505,8 +2505,18 @@ mod tests {
             "mode": "running",
             "max_concurrent": 4,
             "active_runs": [
-                {"run_id":"0191c4e0-0000-7000-8000-000000000001","sandbox_id":"aaaaaaaa-0000-7000-8000-000000000001"},
-                {"run_id":"0191c4e0-0000-7000-8000-000000000002","sandbox_id":"aaaaaaaa-0000-7000-8000-000000000002"}
+                {
+                    "run_id":"0191c4e0-0000-7000-8000-000000000001",
+                    "sandbox_id":"aaaaaaaa-0000-7000-8000-000000000001",
+                    "phase":"preparing",
+                    "phase_started_at":"2026-04-13T00:00:01.000Z"
+                },
+                {
+                    "run_id":"0191c4e0-0000-7000-8000-000000000002",
+                    "sandbox_id":"aaaaaaaa-0000-7000-8000-000000000002",
+                    "phase":"running",
+                    "phase_started_at":"2026-04-13T00:00:02.000Z"
+                }
             ],
             "idle_vms": [
                 {"session_id":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}

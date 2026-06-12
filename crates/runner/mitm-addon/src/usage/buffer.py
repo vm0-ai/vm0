@@ -43,6 +43,7 @@ MAX_AGGREGATE_BUCKETS = 100
 MAX_BUFFERED_WEBHOOK_BATCHES = 4
 MAX_SOURCE_IDEMPOTENCY_KEYS = 10_000
 USAGE_EVENT_BATCH_SIZE = 100
+MAX_RETAINED_USAGE_BATCH_RETRIES = 20
 _jitter_rng = random.SystemRandom()
 
 
@@ -121,6 +122,12 @@ class _FlushBatch:
     source_event_count: int
 
 
+@dataclass(frozen=True)
+class _PendingBatch:
+    batch: _FlushBatch
+    retained_retry_count: int = 0
+
+
 @dataclass
 class _FlushSummary:
     proxy_log_path: str
@@ -136,11 +143,14 @@ class _FlushSummary:
 
 @dataclass
 class _PendingFlush:
-    source_event_count: int
     flush_sequence: int
-    batches: list[_FlushBatch]
+    batches: list[_PendingBatch]
     summaries: list[_FlushSummary]
     retry_after_flush_generation: int = 0
+
+    @property
+    def source_event_count(self) -> int:
+        return sum(pending_batch.batch.source_event_count for pending_batch in self.batches)
 
 
 @dataclass
@@ -149,20 +159,34 @@ class _DeliveringFlush:
     trigger: UsageFlushTrigger
     flush_generation: int
     remaining_batch_count: int
-    retryable_failure: bool = False
+    retryable_batches: list[_PendingBatch] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class _DeliveryCompletion:
     pending_flush: _PendingFlush
     trigger: UsageFlushTrigger
-    retryable: bool
+    retained_batches: list[_PendingBatch]
+    dropped_batches: list[_PendingBatch]
 
 
 @dataclass(frozen=True)
 class _BatchAdmissionResult:
     admitted_batch_count: int
-    retained_batches: list[_FlushBatch]
+    retained_batches: list[_PendingBatch]
+
+
+class _BatchEnqueueError(Exception):
+    def __init__(self, original: Exception, admission_result: _BatchAdmissionResult) -> None:
+        super().__init__(str(original))
+        self.original = original
+        self.admission_result = admission_result
+
+
+@dataclass(frozen=True)
+class _RetainBatchesResult:
+    retained_batches: list[_PendingBatch]
+    dropped_batches: list[_PendingBatch]
 
 
 class _UsageBufferState:
@@ -327,15 +351,24 @@ class _UsageBufferState:
     def complete_enqueue(self) -> None:
         self._active_enqueue_count = max(0, self._active_enqueue_count - 1)
 
-    def fail_enqueue(self, pending_flush: _PendingFlush) -> None:
+    def fail_enqueue(
+        self, pending_flush: _PendingFlush, flush_generation: int
+    ) -> _RetainBatchesResult:
         if self._delivering_flushes.pop(id(pending_flush), None) is not None:
-            pending_flush.retry_after_flush_generation = 0
-            self._pending_flushes.insert(0, pending_flush)
+            retain_result = self._retain_batches_for_retry(
+                pending_flush.flush_sequence,
+                pending_flush.batches,
+                flush_generation,
+            )
+        else:
+            retain_result = _RetainBatchesResult(retained_batches=[], dropped_batches=[])
         self.complete_enqueue()
+        return retain_result
 
     def record_delivery_outcome(
         self,
         pending_flush: _PendingFlush,
+        pending_batch: _PendingBatch,
         outcome: WebhookDeliveryOutcome,
     ) -> _DeliveryCompletion | None:
         delivering_flush = self._delivering_flushes.get(id(pending_flush))
@@ -343,37 +376,39 @@ class _UsageBufferState:
             return None
 
         if outcome == "retryable_failure":
-            delivering_flush.retryable_failure = True
+            delivering_flush.retryable_batches.append(pending_batch)
         delivering_flush.remaining_batch_count -= 1
         if delivering_flush.remaining_batch_count > 0:
             return None
 
         del self._delivering_flushes[id(pending_flush)]
         completed_flush = delivering_flush.pending_flush
-        if delivering_flush.retryable_failure:
-            completed_flush.retry_after_flush_generation = delivering_flush.flush_generation
-            self._pending_flushes.insert(0, completed_flush)
+        retryable_batch_ids = {
+            id(pending_batch) for pending_batch in delivering_flush.retryable_batches
+        }
+        retryable_batches = [
+            pending_batch
+            for pending_batch in completed_flush.batches
+            if id(pending_batch) in retryable_batch_ids
+        ]
+        retain_result = self._retain_batches_for_retry(
+            completed_flush.flush_sequence,
+            retryable_batches,
+            delivering_flush.flush_generation,
+        )
         return _DeliveryCompletion(
             pending_flush=completed_flush,
             trigger=delivering_flush.trigger,
-            retryable=delivering_flush.retryable_failure,
+            retained_batches=retain_result.retained_batches,
+            dropped_batches=retain_result.dropped_batches,
         )
 
     def complete_admission(
         self, pending_flush: _PendingFlush, admission_result: _BatchAdmissionResult
-    ) -> None:
+    ) -> _RetainBatchesResult:
         delivering_flush = self._delivering_flushes.get(id(pending_flush))
+        retain_result = _RetainBatchesResult(retained_batches=[], dropped_batches=[])
         if delivering_flush is not None and admission_result.retained_batches:
-            retained_flush = _pending_flush_from_batches(
-                pending_flush.flush_sequence,
-                admission_result.retained_batches,
-            )
-            retained_flush.retry_after_flush_generation = delivering_flush.flush_generation
-            self._pending_flushes.insert(
-                0,
-                retained_flush,
-            )
-
             admitted_batches = pending_flush.batches[: admission_result.admitted_batch_count]
             completed_outcome_count = (
                 len(pending_flush.batches) - delivering_flush.remaining_batch_count
@@ -382,21 +417,61 @@ class _UsageBufferState:
                 admission_result.admitted_batch_count - completed_outcome_count
             )
             if admitted_batches and remaining_admitted_count > 0:
-                delivering_flush.pending_flush = _pending_flush_from_batches(
+                retain_result = self._retain_batches_for_retry(
+                    pending_flush.flush_sequence,
+                    admission_result.retained_batches,
+                    delivering_flush.flush_generation,
+                )
+                delivering_flush.pending_flush = _pending_flush_from_pending_batches(
                     pending_flush.flush_sequence,
                     admitted_batches,
                 )
                 delivering_flush.remaining_batch_count = remaining_admitted_count
             else:
+                retryable_batch_ids = {
+                    id(pending_batch) for pending_batch in delivering_flush.retryable_batches
+                }
+                batches_to_retain = [
+                    pending_batch
+                    for index, pending_batch in enumerate(pending_flush.batches)
+                    if index >= admission_result.admitted_batch_count
+                    or id(pending_batch) in retryable_batch_ids
+                ]
+                retain_result = self._retain_batches_for_retry(
+                    pending_flush.flush_sequence,
+                    batches_to_retain,
+                    delivering_flush.flush_generation,
+                )
                 del self._delivering_flushes[id(pending_flush)]
-                if admitted_batches and delivering_flush.retryable_failure:
-                    admitted_flush = _pending_flush_from_batches(
-                        pending_flush.flush_sequence,
-                        admitted_batches,
-                    )
-                    admitted_flush.retry_after_flush_generation = delivering_flush.flush_generation
-                    self._pending_flushes.insert(0, admitted_flush)
         self.complete_enqueue()
+        return retain_result
+
+    def _retain_batches_for_retry(
+        self,
+        flush_sequence: int,
+        pending_batches: list[_PendingBatch],
+        flush_generation: int,
+    ) -> _RetainBatchesResult:
+        retained_batches: list[_PendingBatch] = []
+        dropped_batches: list[_PendingBatch] = []
+        for pending_batch in pending_batches:
+            if pending_batch.retained_retry_count >= MAX_RETAINED_USAGE_BATCH_RETRIES:
+                dropped_batches.append(pending_batch)
+            else:
+                retained_batches.append(
+                    _PendingBatch(
+                        batch=pending_batch.batch,
+                        retained_retry_count=pending_batch.retained_retry_count + 1,
+                    )
+                )
+        if retained_batches:
+            retained_flush = _pending_flush_from_pending_batches(flush_sequence, retained_batches)
+            retained_flush.retry_after_flush_generation = flush_generation
+            self._pending_flushes.append(retained_flush)
+        return _RetainBatchesResult(
+            retained_batches=retained_batches,
+            dropped_batches=dropped_batches,
+        )
 
     def buffered_source_event_count(self) -> int:
         return (
@@ -647,13 +722,37 @@ class UsageEventBuffer:
 
             try:
                 admission_result = self._enqueue_pending_flush(pending_flush, trigger)
+            except _BatchEnqueueError as exc:
+                timer_to_start = None
+                with self._lock:
+                    retain_result = self._state.complete_admission(
+                        pending_flush, exc.admission_result
+                    )
+                    if retain_result.retained_batches and trigger != "shutdown":
+                        timer_to_start = self._schedule_timer_if_buffered_locked()
+                    self._sync_buffered_counter_locked()
+                if retain_result.dropped_batches:
+                    _log_dropped_batches(
+                        trigger,
+                        pending_flush.flush_sequence,
+                        retain_result.dropped_batches,
+                    )
+                if timer_to_start is not None:
+                    timer_to_start.start()
+                raise exc.original from exc
             except Exception:
                 timer_to_start = None
                 with self._lock:
-                    self._state.fail_enqueue(pending_flush)
+                    retain_result = self._state.fail_enqueue(pending_flush, flush_generation)
                     if trigger != "shutdown":
                         timer_to_start = self._schedule_timer_if_buffered_locked()
                     self._sync_buffered_counter_locked()
+                if retain_result.dropped_batches:
+                    _log_dropped_batches(
+                        trigger,
+                        pending_flush.flush_sequence,
+                        retain_result.dropped_batches,
+                    )
                 if timer_to_start is not None:
                     timer_to_start.start()
                 raise
@@ -661,10 +760,16 @@ class UsageEventBuffer:
             flushed_batch_count += admission_result.admitted_batch_count
             timer_to_start = None
             with self._lock:
-                self._state.complete_admission(pending_flush, admission_result)
-                if admission_result.retained_batches and trigger != "shutdown":
+                retain_result = self._state.complete_admission(pending_flush, admission_result)
+                if retain_result.retained_batches and trigger != "shutdown":
                     timer_to_start = self._schedule_timer_if_buffered_locked()
                 self._sync_buffered_counter_locked()
+            if retain_result.dropped_batches:
+                _log_dropped_batches(
+                    trigger,
+                    pending_flush.flush_sequence,
+                    retain_result.dropped_batches,
+                )
             if timer_to_start is not None:
                 timer_to_start.start()
             if admission_result.retained_batches:
@@ -683,7 +788,9 @@ class UsageEventBuffer:
             admission_result = _enqueue_batches(
                 pending_flush.batches,
                 self._enqueue_webhook if self._enqueue_webhook is not None else _enqueue_webhook,
-                self._make_delivery_outcome_callback(pending_flush),
+                lambda pending_batch: self._make_delivery_outcome_callback(
+                    pending_flush, pending_batch
+                ),
             )
             _apply_retained_batch_counts(pending_flush.summaries, admission_result.retained_batches)
             _log_flush_summaries(
@@ -695,44 +802,63 @@ class UsageEventBuffer:
             )
             return admission_result
         except Exception as exc:
+            error_type = (
+                type(exc.original).__name__
+                if isinstance(exc, _BatchEnqueueError)
+                else type(exc).__name__
+            )
             _log_flush_summaries(
                 "failed",
                 trigger,
                 pending_flush.flush_sequence,
                 pending_flush.summaries,
                 duration_ms=_elapsed_ms(started_at),
-                error_type=type(exc).__name__,
+                error_type=error_type,
             )
             raise
 
     def _make_delivery_outcome_callback(
         self,
         pending_flush: _PendingFlush,
+        pending_batch: _PendingBatch,
     ) -> _DeliveryOutcomeCallback:
         def callback(outcome: WebhookDeliveryOutcome) -> None:
-            self._record_delivery_outcome(pending_flush, outcome)
+            self._record_delivery_outcome(pending_flush, pending_batch, outcome)
 
         return callback
 
     def _record_delivery_outcome(
         self,
         pending_flush: _PendingFlush,
+        pending_batch: _PendingBatch,
         outcome: WebhookDeliveryOutcome,
     ) -> None:
         timer_to_start: _TimerHandle | None = None
         completion: _DeliveryCompletion | None = None
         with self._lock:
-            completion = self._state.record_delivery_outcome(pending_flush, outcome)
-            if completion is not None and completion.retryable and completion.trigger != "shutdown":
+            completion = self._state.record_delivery_outcome(pending_flush, pending_batch, outcome)
+            if (
+                completion is not None
+                and completion.retained_batches
+                and completion.trigger != "shutdown"
+            ):
                 timer_to_start = self._schedule_timer_if_buffered_locked()
             self._sync_buffered_counter_locked()
 
-        if completion is not None and completion.retryable:
+        if completion is not None and completion.retained_batches:
             _log_flush_summaries(
                 "retained",
                 completion.trigger,
                 completion.pending_flush.flush_sequence,
-                completion.pending_flush.summaries,
+                _build_flush_summaries(
+                    [pending_batch.batch for pending_batch in completion.retained_batches]
+                ),
+            )
+        if completion is not None and completion.dropped_batches:
+            _log_dropped_batches(
+                completion.trigger,
+                completion.pending_flush.flush_sequence,
+                completion.dropped_batches,
             )
         if timer_to_start is not None:
             timer_to_start.start()
@@ -797,19 +923,29 @@ class UsageEventBuffer:
 
 
 def _enqueue_batches(
-    batches: list[_FlushBatch],
+    batches: list[_PendingBatch],
     enqueue_webhook: _EnqueueWebhook,
-    delivery_outcome_callback: _DeliveryOutcomeCallback,
+    delivery_outcome_callback: Callable[[_PendingBatch], _DeliveryOutcomeCallback],
 ) -> _BatchAdmissionResult:
-    for index, batch in enumerate(batches):
-        admitted = enqueue_webhook(
-            batch.url,
-            batch.sandbox_token,
-            batch.payload,
-            batch.proxy_log_path,
-            batch.log_type,
-            delivery_outcome_callback,
-        )
+    for index, pending_batch in enumerate(batches):
+        batch = pending_batch.batch
+        try:
+            admitted = enqueue_webhook(
+                batch.url,
+                batch.sandbox_token,
+                batch.payload,
+                batch.proxy_log_path,
+                batch.log_type,
+                delivery_outcome_callback(pending_batch),
+            )
+        except Exception as exc:
+            raise _BatchEnqueueError(
+                exc,
+                _BatchAdmissionResult(
+                    admitted_batch_count=index,
+                    retained_batches=batches[index:],
+                ),
+            ) from exc
         if admitted is False:
             return _BatchAdmissionResult(
                 admitted_batch_count=index,
@@ -823,11 +959,12 @@ def _enqueue_batches(
 
 def _apply_retained_batch_counts(
     summaries: Iterable[_FlushSummary],
-    retained_batches: Iterable[_FlushBatch],
+    retained_batches: Iterable[_PendingBatch],
 ) -> None:
     retained_batch_counts: dict[str, int] = {}
     retained_source_counts: dict[str, int] = {}
-    for batch in retained_batches:
+    for pending_batch in retained_batches:
+        batch = pending_batch.batch
         retained_batch_counts[batch.proxy_log_path] = (
             retained_batch_counts.get(batch.proxy_log_path, 0) + 1
         )
@@ -860,11 +997,19 @@ def _build_flush_summaries(batches: Iterable[_FlushBatch]) -> list[_FlushSummary
 
 
 def _pending_flush_from_batches(flush_sequence: int, batches: list[_FlushBatch]) -> _PendingFlush:
+    return _pending_flush_from_pending_batches(
+        flush_sequence,
+        [_PendingBatch(batch=batch) for batch in batches],
+    )
+
+
+def _pending_flush_from_pending_batches(
+    flush_sequence: int, batches: list[_PendingBatch]
+) -> _PendingFlush:
     return _PendingFlush(
-        source_event_count=sum(batch.source_event_count for batch in batches),
         flush_sequence=flush_sequence,
         batches=batches,
-        summaries=_build_flush_summaries(batches),
+        summaries=_build_flush_summaries([pending_batch.batch for pending_batch in batches]),
     )
 
 
@@ -875,7 +1020,7 @@ def _destination_priority(destination: _DestinationKey) -> int:
 def _pending_flush_priority(pending_flush: _PendingFlush) -> int:
     if not pending_flush.batches:
         return 1
-    return min(_batch_priority(batch) for batch in pending_flush.batches)
+    return min(_batch_priority(pending_batch.batch) for pending_batch in pending_flush.batches)
 
 
 def _batch_priority(batch: _FlushBatch) -> int:
@@ -888,6 +1033,25 @@ def _log_type_priority(log_type: str) -> int:
     return 1
 
 
+def _log_dropped_batches(
+    trigger: UsageFlushTrigger,
+    flush_sequence: int,
+    dropped_batches: list[_PendingBatch],
+) -> None:
+    if not dropped_batches:
+        return
+    _log_flush_summaries(
+        "dropped",
+        trigger,
+        flush_sequence,
+        _build_flush_summaries([pending_batch.batch for pending_batch in dropped_batches]),
+        reason="retry_budget_exhausted",
+        retained_retry_count=max(
+            pending_batch.retained_retry_count for pending_batch in dropped_batches
+        ),
+    )
+
+
 def _log_flush_summaries(
     phase: str,
     trigger: UsageFlushTrigger,
@@ -896,6 +1060,8 @@ def _log_flush_summaries(
     *,
     duration_ms: int | None = None,
     error_type: str | None = None,
+    reason: str | None = None,
+    retained_retry_count: int | None = None,
 ) -> None:
     for summary in summaries:
         if not summary.proxy_log_path:
@@ -919,15 +1085,25 @@ def _log_flush_summaries(
             "run_count": len(summary.run_ids),
             "destination_count": len(summary.destinations),
         }
+        if phase == "dropped":
+            extra["dropped_webhook_batch_count"] = summary.webhook_batch_count
+            extra["dropped_source_event_count"] = summary.source_event_count
         if duration_ms is not None:
             extra["duration_ms"] = duration_ms
         if error_type is not None:
             extra["error_type"] = error_type
+        if reason is not None:
+            extra["reason"] = reason
+        if retained_retry_count is not None:
+            extra["retained_retry_count"] = retained_retry_count
         level = "error" if phase == "failed" else "info"
         message = f"Usage event buffer flush {phase}"
         if phase == "retained":
             level = "warn"
             message = "Usage event buffer flush retained for retry"
+        elif phase == "dropped":
+            level = "error"
+            message = "Usage event buffer flush dropped retained batches"
         elif phase == "enqueued" and summary.retained_webhook_batch_count:
             level = "warn"
             message = "Usage event buffer flush retained webhook batches for retry"
