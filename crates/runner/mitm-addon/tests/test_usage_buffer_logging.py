@@ -49,7 +49,7 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
     assert entries[1]["duration_ms"] >= 0
 
 
-def test_flush_logs_dropped_webhook_batches(tmp_path):
+def test_flush_logs_retained_webhook_batches(tmp_path):
     enqueue = RecordingEnqueue(return_value=False)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
     proxy_log_path = tmp_path / "proxy.jsonl"
@@ -62,17 +62,18 @@ def test_flush_logs_dropped_webhook_batches(tmp_path):
         str(proxy_log_path),
     )
 
-    assert usage.flush_usage_events(trigger="test") == 1
+    assert usage.flush_usage_events(trigger="test") == 0
 
     enqueue.assert_called_once()
     entries = flush_log_entries(proxy_log_path)
     assert [entry["phase"] for entry in entries] == ["started", "completed"]
     assert entries[0]["dropped_webhook_batch_count"] == 0
+    assert entries[0]["retained_webhook_batch_count"] == 0
     assert entries[1]["level"] == "warn"
-    assert entries[1]["message"] == (
-        "Usage event buffer flush completed with dropped webhook batches"
-    )
-    assert entries[1]["dropped_webhook_batch_count"] == 1
+    assert entries[1]["message"] == "Usage event buffer flush retained webhook batches for retry"
+    assert entries[1]["dropped_webhook_batch_count"] == 0
+    assert entries[1]["retained_webhook_batch_count"] == 1
+    assert entries[1]["retained_source_event_count"] == 1
     assert entries[1]["webhook_batch_count"] == 1
     assert "secret-token" not in json.dumps(entries)
 

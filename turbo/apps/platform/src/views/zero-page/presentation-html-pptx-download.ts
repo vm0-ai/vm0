@@ -86,14 +86,11 @@ function pptxFilename(filename: string): string {
 }
 
 function domToPptxScriptUrl(): string {
-  const origin = URL.canParse(window.location.origin)
-    ? window.location.origin
-    : "http://localhost";
-  return new URL(domToPptxBundleUrl, origin).toString();
+  return new URL(domToPptxBundleUrl, window.location.origin).toString();
 }
 
 function canUseDevArtifactFetchProxy(): boolean {
-  if (!import.meta.env.DEV || typeof window === "undefined") {
+  if (!import.meta.env.DEV) {
     return false;
   }
   return ["app.vm7.ai", "localhost", "127.0.0.1"].includes(

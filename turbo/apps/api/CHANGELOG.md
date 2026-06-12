@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.134.0](https://github.com/vm0-ai/vm0/compare/api-v1.133.0...api-v1.134.0) (2026-06-12)
+
+
+### Features
+
+* add connector auth method visibility ([#17409](https://github.com/vm0-ai/vm0/issues/17409)) ([0f4f707](https://github.com/vm0-ai/vm0/commit/0f4f707535b225eb141b93df698f81e9b0b29969))
+* retire the schedule trigger source value ([#17401](https://github.com/vm0-ai/vm0/issues/17401)) ([87cd4b5](https://github.com/vm0-ai/vm0/commit/87cd4b50e1ba9c37bd2d59e74e936d3accb8988e))
+
+
+### Bug Fixes
+
+* keep expanded work in assistant group ([#17410](https://github.com/vm0-ai/vm0/issues/17410)) ([65ec61e](https://github.com/vm0-ai/vm0/commit/65ec61ef9dd01001ea82172a98e10ad8167757a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.0
+    * @vm0/connectors bumped to 1.71.0
+    * @vm0/core bumped to 8.333.0
+    * @vm0/db bumped to 1.46.2
+
 ## [1.133.0](https://github.com/vm0-ai/vm0/compare/api-v1.132.2...api-v1.133.0) (2026-06-12)
 
 

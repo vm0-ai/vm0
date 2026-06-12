@@ -38,7 +38,7 @@ function usageRows(): UsageRecordRow[] {
     ...Array.from({ length: 18 }, (_, index) => {
       const day = String(index + 1).padStart(2, "0");
       return {
-        source: "schedule",
+        source: "automation",
         threadId: `thread-scheduled-${index}`,
         runId: null,
         title: `Scheduled digest ${index + 1}`,

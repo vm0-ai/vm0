@@ -1880,13 +1880,32 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(contextRead.body.firewalls).toHaveLength(1);
     expect(contextRead.body.volumes).toHaveLength(1);
 
-    // Sparse snapshots drop non-string and null values entirely.
-    dispatchAxiomQueries({ [runId]: { runContext: [{ runId }] } });
-    const sparseContext = await api.requestRunContext(actor, runId, [200]);
-    if (sparseContext.status !== 200) {
-      throw new Error("Expected the sparse run context read to succeed");
+    // Legacy dynamic map fields are ignored now that run context snapshots
+    // are entries-only.
+    dispatchAxiomQueries({
+      [runId]: {
+        runContext: [
+          {
+            runId,
+            environment: { LEGACY_IGNORED: "legacy-map" },
+            networkPolicies: {
+              legacyIgnored: {
+                allow: ["legacy"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "allow",
+              },
+            },
+            featureFlags: { legacyIgnored: true },
+          },
+        ],
+      },
+    });
+    const legacyOnlyContext = await api.requestRunContext(actor, runId, [200]);
+    if (legacyOnlyContext.status !== 200) {
+      throw new Error("Expected the legacy-only run context read to succeed");
     }
-    expect(sparseContext.body).toMatchObject({
+    expect(legacyOnlyContext.body).toMatchObject({
       runId,
       sessionId: null,
       environment: {},
@@ -2139,24 +2158,6 @@ function captureScheduleRunCallbacks(): void {
   );
 }
 
-async function expectSingleLogSourceMatch(args: {
-  readonly actor: ApiTestUser;
-  readonly triggerSource: "schedule" | "automation";
-  readonly runId: string;
-}): Promise<void> {
-  const response = await reads.requestListLogs(
-    args.actor,
-    { triggerSource: args.triggerSource },
-    [200],
-  );
-  mustOk(response, `${args.triggerSource}-source log list`);
-  expect(
-    response.body.data.map((entry) => {
-      return entry.id;
-    }),
-  ).toStrictEqual([args.runId]);
-}
-
 describe("RUN-04/OPS-01: zero run logs", () => {
   it("lists run logs with filters, paging, zero tokens, and detail residue", async () => {
     const actor = await entitledActor();
@@ -2368,16 +2369,17 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         .sort(),
     ).toStrictEqual([webRun.runId, secondAgentRun.runId].sort());
 
-    await expectSingleLogSourceMatch({
+    const automationSourceList = await reads.requestListLogs(
       actor,
-      triggerSource: "schedule",
-      runId: scheduleRun.body.runId,
-    });
-    await expectSingleLogSourceMatch({
-      actor,
-      triggerSource: "automation",
-      runId: scheduleRun.body.runId,
-    });
+      { triggerSource: "automation" },
+      [200],
+    );
+    mustOk(automationSourceList, "automation-source log list");
+    expect(
+      automationSourceList.body.data.map((entry) => {
+        return entry.id;
+      }),
+    ).toStrictEqual([scheduleRun.body.runId]);
 
     const noSourceMatch = await reads.requestListLogs(
       actor,

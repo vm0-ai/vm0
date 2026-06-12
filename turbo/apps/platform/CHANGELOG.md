@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.442.0](https://github.com/vm0-ai/vm0/compare/app-v0.441.0...app-v0.442.0) (2026-06-12)
+
+
+### Features
+
+* add chat slash skill commands ([#17406](https://github.com/vm0-ai/vm0/issues/17406)) ([7a5a85b](https://github.com/vm0-ai/vm0/commit/7a5a85b5fa5a8fc507ff8585cae82de2002f6ba1))
+* add connector auth method visibility ([#17409](https://github.com/vm0-ai/vm0/issues/17409)) ([0f4f707](https://github.com/vm0-ai/vm0/commit/0f4f707535b225eb141b93df698f81e9b0b29969))
+* retire the schedule trigger source value ([#17401](https://github.com/vm0-ai/vm0/issues/17401)) ([87cd4b5](https://github.com/vm0-ai/vm0/commit/87cd4b50e1ba9c37bd2d59e74e936d3accb8988e))
+
+
+### Bug Fixes
+
+* keep completed chat work folded during active runs ([#17427](https://github.com/vm0-ai/vm0/issues/17427)) ([a31e3aa](https://github.com/vm0-ai/vm0/commit/a31e3aabcce1446c32c774e881cff6413a77650b))
+* keep expanded work in assistant group ([#17410](https://github.com/vm0-ai/vm0/issues/17410)) ([65ec61e](https://github.com/vm0-ai/vm0/commit/65ec61ef9dd01001ea82172a98e10ad8167757a8))
+* support chromium in browser gate ([#17417](https://github.com/vm0-ai/vm0/issues/17417)) ([4eed153](https://github.com/vm0-ai/vm0/commit/4eed1536c22dcc187da997e2e46feaa7a1536b88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.87.0
+    * @vm0/connectors bumped to 1.71.0
+    * @vm0/core bumped to 8.333.0
+
 ## [0.441.0](https://github.com/vm0-ai/vm0/compare/app-v0.440.1...app-v0.441.0) (2026-06-12)
 
 

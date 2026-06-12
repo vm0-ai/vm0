@@ -4,6 +4,7 @@ import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  type ConnectorAuthMethodConfig,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
@@ -49,8 +50,12 @@ describe("GET /api/zero/connectors/search", () => {
     readonly userId: string;
   }[] = [];
   const seededOrgs: OrgMembershipFixture[] = [];
+  const restoreConnectorRegistry: (() => void)[] = [];
 
   afterEach(async () => {
+    while (restoreConnectorRegistry.length > 0) {
+      restoreConnectorRegistry.pop()?.();
+    }
     const writeDb = store.set(writeDb$);
     while (seededFeatureSwitches.length > 0) {
       const fixture = seededFeatureSwitches.pop();
@@ -232,6 +237,94 @@ describe("GET /api/zero/connectors/search", () => {
     });
     expect(connector).toBeDefined();
     expect(connector?.authMethods).toStrictEqual(["oauth", "api"]);
+  });
+
+  it("applies static auth method visibility to connector search", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFeatureSwitches.push({ orgId, userId });
+    await enableFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.StripeConnector]: true,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const authMethods = CONNECTOR_TYPES.stripe.authMethods;
+    const originalOauth = authMethods.oauth;
+    const originalCli = authMethods.cli;
+    const originalApiToken = authMethods["api-token"];
+
+    restoreConnectorRegistry.push(() => {
+      Object.defineProperty(authMethods, "oauth", {
+        value: originalOauth,
+        configurable: true,
+        enumerable: true,
+      });
+    });
+    Object.defineProperty(authMethods, "oauth", {
+      value: {
+        ...originalOauth,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const partial = await accept(
+      client.search({
+        query: { keyword: "stripe" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const visibleStripe = partial.body.connectors.find((connector) => {
+      return connector.id === "stripe";
+    });
+    expect(visibleStripe?.authMethods).toStrictEqual(["cli", "api-token"]);
+
+    restoreConnectorRegistry.push(() => {
+      Object.defineProperty(authMethods, "cli", {
+        value: originalCli,
+        configurable: true,
+        enumerable: true,
+      });
+    });
+    Object.defineProperty(authMethods, "cli", {
+      value: {
+        ...originalCli,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+    restoreConnectorRegistry.push(() => {
+      Object.defineProperty(authMethods, "api-token", {
+        value: originalApiToken,
+        configurable: true,
+        enumerable: true,
+      });
+    });
+    Object.defineProperty(authMethods, "api-token", {
+      value: {
+        ...originalApiToken,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
+
+    const fullyHidden = await accept(
+      client.search({
+        query: { keyword: "stripe" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      fullyHidden.body.connectors.find((connector) => {
+        return connector.id === "stripe";
+      }),
+    ).toBeUndefined();
   });
 
   it("matches connector tags while preserving feature-switch visibility", async () => {

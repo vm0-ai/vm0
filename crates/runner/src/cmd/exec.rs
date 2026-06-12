@@ -8,7 +8,7 @@ use clap::Args;
 use sandbox::{SandboxControl, SandboxControlError};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::process;
+use crate::paths::HomePaths;
 use crate::run_resolution;
 
 // ---------------------------------------------------------------------------
@@ -84,7 +84,7 @@ fn shell_quote(arg: &str) -> String {
 /// Executes the requested command inside a running sandbox.
 ///
 /// `--sandbox` targets are used directly as sandbox identifiers. `--run`
-/// targets are resolved through the current runner process state before
+/// targets are resolved through trusted live runner status before
 /// dispatching to [`SandboxControl::exec_remote`].
 ///
 /// Guest stdout and stderr are forwarded to local stdout and stderr. The guest
@@ -99,8 +99,8 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
     let sandbox_id = if let Some(ref sid) = args.sandbox {
         sid.clone()
     } else if let Some(ref rid) = args.run {
-        let discovered = process::discover_all().await;
-        let mappings = run_resolution::collect_active_run_mappings(&discovered.runners).await;
+        let home = HomePaths::new()?;
+        let mappings = run_resolution::collect_active_run_mappings_from_home(&home).await;
         run_resolution::resolve_run_to_sandbox(rid, &mappings)?
     } else {
         // clap group guarantees one is set — this branch is unreachable.

@@ -45,8 +45,10 @@ import {
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
+import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
+import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
 import {
   DesktopQuitConfirmationController,
   buildDesktopQuitConfirmationOptions,
@@ -125,6 +127,13 @@ let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend();
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
+const computerUseAutoStart = new DesktopComputerUseAutoStartSupervisor({
+  getState: getComputerUseBridgeState,
+  start: async () => {
+    await startComputerUseRuntime();
+  },
+  logError: logComputerUseAutoStartError,
+});
 const quitConfirmation = new DesktopQuitConfirmationController({
   confirmQuit: confirmDesktopQuit,
   quit: () => {
@@ -143,6 +152,7 @@ function refreshDesktopTrayAuth(): void {
 function notifyComputerUseChanged(): void {
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
+  computerUseAutoStart.restartRecoverableRuntimeState();
 }
 
 function notifyAuthChanged(): void {
@@ -599,6 +609,10 @@ function logDesktopAuthError(error: unknown): void {
   console.error("Desktop auth flow failed", error);
 }
 
+function logComputerUseAutoStartError(error: unknown): void {
+  console.error("Desktop Computer Use auto-start failed", error);
+}
+
 async function loadAuthUrl(window: BrowserWindow, url: string): Promise<void> {
   try {
     await window.loadURL(url);
@@ -1008,12 +1022,15 @@ if (!hasSingleInstanceLock) {
     installTray();
     queueDesktopAuthCallbackArgv(process.argv);
 
-    const pendingCallback = desktopAuthSession.takePendingCallback();
-    if (pendingCallback) {
-      void desktopAuthSession
-        .consumeCode(pendingCallback.code, pendingCallback.handoffId)
-        .catch(logDesktopAuthError);
-    }
+    startDesktopLaunchComputerUse({
+      pendingCallback: desktopAuthSession.takePendingCallback(),
+      consumeAuthCallback: (callback) =>
+        desktopAuthSession.consumeCode(callback.code, callback.handoffId),
+      requestAutoStartComputerUse: () => {
+        computerUseAutoStart.requestStart();
+      },
+      logAuthError: logDesktopAuthError,
+    });
 
     app.on("activate", () => {
       void createMainWindow();

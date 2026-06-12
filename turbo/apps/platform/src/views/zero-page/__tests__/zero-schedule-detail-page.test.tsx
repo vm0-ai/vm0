@@ -88,7 +88,7 @@ function mockScheduleDetailStory(): void {
       agentId,
       displayName: "Zero",
       framework: "claude-code",
-      triggerSource: "schedule",
+      triggerSource: "automation",
       triggerAgentName: null,
       scheduleId,
       status: "completed",
@@ -103,7 +103,7 @@ function mockScheduleDetailStory(): void {
       agentId,
       displayName: "Zero",
       framework: "claude-code",
-      triggerSource: "schedule",
+      triggerSource: "automation",
       triggerAgentName: null,
       scheduleId,
       status: "failed",
@@ -141,7 +141,7 @@ function mockScheduleDetailStory(): void {
       pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
       filters: {
         statuses: ["completed", "failed"],
-        sources: ["schedule"],
+        sources: ["automation"],
         agents: [agentId],
       },
     });
@@ -367,7 +367,7 @@ describe("zero schedule detail page", () => {
             agentId,
             displayName: "Zero",
             framework: "claude-code",
-            triggerSource: "schedule",
+            triggerSource: "automation",
             triggerAgentName: null,
             scheduleId,
             status: cursor === "page-2" ? "failed" : "completed",
@@ -384,7 +384,7 @@ describe("zero schedule detail page", () => {
         },
         filters: {
           statuses: ["completed", "failed"],
-          sources: ["schedule"],
+          sources: ["automation"],
           agents: [agentId],
         },
       });

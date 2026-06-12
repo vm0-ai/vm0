@@ -358,6 +358,126 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
     assert usage.counters._buffered_usage_events == 0
 
 
+def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1")],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert len(timers) == 1
+
+    assert usage.flush_usage_events(trigger="shutdown") == 0
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 1
+    assert timers[0].cancelled is True
+
+    enqueue.return_value = True
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["runId"] == "run-1"
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1")],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert len(timers) == 1
+    assert timers[0].started is True
+
+    timers[0].callback()
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 2
+    assert timers[0].cancelled is True
+    assert timers[1].started is True
+
+    enqueue.return_value = True
+    enqueue.clear()
+    timers[1].callback()
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["runId"] == "run-1"
+    assert usage.counters._buffered_usage_events == 0
+    assert timers[1].cancelled is True
+
+
+def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [event(source_key="observation-source")],
+        proxy_log_path,
+    )
+    assert len(timers) == 1
+
+    assert usage.flush_usage_events(trigger="test") == 0
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.log_type == "model_usage_observation"
+    assert len(timers) == 2
+    assert timers[0].cancelled is True
+    assert timers[1].started is True
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="usage-source-1")],
+        proxy_log_path,
+    )
+    attempted_log_types = []
+
+    def enqueue_and_buffer_later_usage(url, sandbox_token, payload, path, log_type):
+        attempted_log_types.append(log_type)
+        if log_type == "usage_event" and payload["runId"] == "run-1":
+            usage.buffer_usage_events(
+                url,
+                sandbox_token,
+                "run-2",
+                [event(source_key="usage-source-2")],
+                path,
+            )
+            assert len(timers) == 3
+        return True
+
+    enqueue.side_effect = enqueue_and_buffer_later_usage
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 2
+
+    assert attempted_log_types == ["usage_event", "model_usage_observation"]
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 4
+    assert timers[2].cancelled is True
+    assert timers[3].started is True
+
+    enqueue.clear()
+    timers[3].callback()
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["runId"] == "run-2"
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
     enqueue = RecordingEnqueue()
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)

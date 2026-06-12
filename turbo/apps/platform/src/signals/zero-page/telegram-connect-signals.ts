@@ -33,14 +33,12 @@ export const telegramConnectLinkStatus$ = computed(
     }
 
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
-    const origin =
-      typeof location === "undefined" ? undefined : location.origin;
     const result = await accept(
       client.getLinkStatus({
         headers: {},
         query: {
           botId: parsed.params.telegramBotId,
-          ...(origin ? { origin } : {}),
+          origin: location.origin,
         },
       }),
       [200],

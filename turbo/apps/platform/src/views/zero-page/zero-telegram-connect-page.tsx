@@ -206,9 +206,6 @@ function AlreadyConnectedState({
 }
 
 function getTelegramLoginDomain(): string {
-  if (typeof location === "undefined" || !location.hostname) {
-    return "your app domain";
-  }
   return location.hostname;
 }
 

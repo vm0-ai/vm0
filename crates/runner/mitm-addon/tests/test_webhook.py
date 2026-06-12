@@ -386,7 +386,7 @@ class TestUsageWebhookDelivery:
         assert body["events"][0]["quantity"] == 42
         assert body["events"][0]["category"] == "tokens.input"
 
-    def test_drops_when_delivery_capacity_is_saturated(self, tmp_path):
+    def test_does_not_admit_when_delivery_capacity_is_saturated(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
         executor = _QueuedUsageExecutor()
 
@@ -400,7 +400,7 @@ class TestUsageWebhookDelivery:
                     "usage_event",
                 )
 
-            dropped = usage.webhook._enqueue_webhook(
+            admitted = usage.webhook._enqueue_webhook(
                 "https://api.vm0.ai/api/webhooks/agent/usage-event",
                 "tok",
                 {
@@ -412,23 +412,25 @@ class TestUsageWebhookDelivery:
                 "usage_event",
             )
 
-        assert dropped is False
+        assert admitted is False
         assert len(executor.submissions) == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
         assert usage.counters._pending_reports == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
 
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
-        dropped_entry = entries[-1]
-        assert dropped_entry["level"] == "warn"
-        assert "saturated" in dropped_entry["message"]
-        assert dropped_entry["webhook_delivery_capacity"] == (
+        saturated_entry = entries[-1]
+        assert saturated_entry["level"] == "warn"
+        assert "not admitted" in saturated_entry["message"]
+        assert "saturated" in saturated_entry["message"]
+        assert "dropped" not in saturated_entry["message"]
+        assert saturated_entry["webhook_delivery_capacity"] == (
             usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
         )
-        assert dropped_entry["webhook_delivery_pending"] == (
+        assert saturated_entry["webhook_delivery_pending"] == (
             usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
         )
-        _assert_body_free_webhook_entry(dropped_entry, run_id="run-drop", event_count=1)
-        assert "payload_bytes" not in dropped_entry
-        assert "secret-payload" not in json.dumps(dropped_entry)
+        _assert_body_free_webhook_entry(saturated_entry, run_id="run-drop", event_count=1)
+        assert "payload_bytes" not in saturated_entry
+        assert "secret-payload" not in json.dumps(saturated_entry)
 
     def test_delivery_capacity_released_after_success(
         self, tmp_path, sync_usage_executor, usage_webhook_server
