@@ -35,7 +35,9 @@ describe("illustration template items", () => {
       const paths = [
         `images/${style.image}`,
         ...(style.cover ? [style.cover] : []),
-        ...style.refs.map((ref) => `refs/${style.slug}/${ref}`),
+        ...style.refs.map((ref) => {
+          return `refs/${style.slug}/${ref}`;
+        }),
       ];
 
       for (const path of paths) {
