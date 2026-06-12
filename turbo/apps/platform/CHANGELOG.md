@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.445.0](https://github.com/vm0-ai/vm0/compare/app-v0.444.0...app-v0.445.0) (2026-06-12)
+
+
+### Features
+
+* backfill cached chat history ([#17513](https://github.com/vm0-ai/vm0/issues/17513)) ([f44691f](https://github.com/vm0-ai/vm0/commit/f44691f4bba2c6b52385c6562e8e3f0f3d15c0a8))
+* polish inline feedback composer spacing and support attachments ([#17507](https://github.com/vm0-ai/vm0/issues/17507)) ([51e42ae](https://github.com/vm0-ai/vm0/commit/51e42ae9690a82b61da4efc50a3b5ab3ad8ababe))
+
+
+### Refactoring
+
+* retire obsolete feature switches ([#17496](https://github.com/vm0-ai/vm0/issues/17496)) ([b37964a](https://github.com/vm0-ai/vm0/commit/b37964aa0c45ad3feb291762fdbaaf2fc457cc20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.1
+    * @vm0/connectors bumped to 1.72.1
+    * @vm0/core bumped to 8.334.1
+
 ## [0.444.0](https://github.com/vm0-ai/vm0/compare/app-v0.443.1...app-v0.444.0) (2026-06-12)
 
 

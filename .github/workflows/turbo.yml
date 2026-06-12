@@ -1019,6 +1019,16 @@ jobs:
           # Create test users + orgs (browser is created via UI sign-up flow)
           for variant in serial runner; do
             email="${JOB_REF}+clerk_test+${variant}@vm0-e2e.ai"
+            encoded_email=$(jq -rn --arg email "$email" '$email|@uri')
+            existing_users=$(curl -sS -X GET \
+              "https://api.clerk.com/v1/users?email_address%5B%5D=${encoded_email}&limit=100" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
+            existing_ids=$(echo "$existing_users" | jq -r --arg email "$email" '.[] | select(.email_addresses[]?.email_address == $email) | .id' 2>/dev/null || true)
+            for uid in $existing_ids; do
+              curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
+                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null
+            done
+
             user=$(curl -sS -X POST "https://api.clerk.com/v1/users" \
               -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
               -H "Content-Type: application/json" \

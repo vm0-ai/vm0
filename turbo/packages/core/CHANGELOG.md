@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.334.1](https://github.com/vm0-ai/vm0/compare/core-v8.334.0...core-v8.334.1) (2026-06-12)
+
+
+### Refactoring
+
+* retire obsolete feature switches ([#17496](https://github.com/vm0-ai/vm0/issues/17496)) ([b37964a](https://github.com/vm0-ai/vm0/commit/b37964aa0c45ad3feb291762fdbaaf2fc457cc20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.1
+    * @vm0/connectors bumped to 1.72.1
+
 ## [8.334.0](https://github.com/vm0-ai/vm0/compare/core-v8.333.3...core-v8.334.0) (2026-06-12)
 
 
