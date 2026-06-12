@@ -678,7 +678,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         to: ["sender@example.com", "teammate@example.com"],
         cc: ["cc@example.com"],
         replyTo: `reply+${thread.replyToken}@mail.example.com`,
-        subject: `Re: VM0 - Scheduled run for "${fx.agentName}" completed`,
+        subject: `Re: VM0 - Automation run for "${fx.agentName}" completed`,
         headers: expect.objectContaining({
           "In-Reply-To": "<inbound@example.com>",
           References: "<root@example.com> <inbound@example.com>",
@@ -824,7 +824,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
     expect(email.subject).toBe(
-      `Re: VM0 - Scheduled run for "${fx.agentName}" completed`,
+      `Re: VM0 - Automation run for "${fx.agentName}" completed`,
     );
     expect(email.html).toContain("Agent crashed");
   });

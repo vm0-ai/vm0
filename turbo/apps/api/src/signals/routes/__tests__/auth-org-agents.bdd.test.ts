@@ -8,7 +8,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 /*
 helper gap:
@@ -26,7 +26,7 @@ helper gap:
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const bdd = createBddApi(context);
-const runsApi = createRunsSchedulesApi(context);
+const runsApi = createRunsAutomationsApi(context);
 
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);

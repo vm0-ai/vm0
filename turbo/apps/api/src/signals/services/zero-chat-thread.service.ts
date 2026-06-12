@@ -1486,10 +1486,10 @@ const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
 /**
  * Delete a chat thread after winding down everything attached to it. Deleting a
- * thread on its own leaves the linked schedules firing and any in-flight runs
+ * thread on its own leaves the linked automations firing and any in-flight runs
  * executing: `zero_runs.chatThreadId` is `ON DELETE SET NULL`, so a running run
  * simply loses its thread reference and keeps consuming credits. We therefore
- * follow the order: stop related schedules, cancel related active runs, then
+ * follow the order: stop related automations, cancel related active runs, then
  * delete the thread.
  *
  * Run cancellation has side effects that cannot participate in the thread's

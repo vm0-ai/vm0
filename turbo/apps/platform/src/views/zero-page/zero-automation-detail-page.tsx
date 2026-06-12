@@ -377,7 +377,7 @@ function AutomationSettingsForm({
           </InlineSettingsRow>
 
           <InlineSettingsRow
-            label="Schedule"
+            label="Runs at"
             description="How often this task runs and at what local time."
           >
             <fieldset

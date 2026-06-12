@@ -31,11 +31,6 @@ function isValidTab(tab: string): boolean {
 function getInitialTab(): string {
   const params = new URLSearchParams(search());
   const tab = params.get("tab") ?? "";
-  // Legacy deep links predate the tab rename (#17307); keep them landing on
-  // the automations tab.
-  if (tab === "schedule") {
-    return "automations";
-  }
   return isValidTab(tab) ? tab : "authorization";
 }
 

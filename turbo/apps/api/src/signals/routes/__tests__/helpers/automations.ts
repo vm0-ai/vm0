@@ -27,7 +27,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../../../external/db";
 
-interface ScheduleSeed {
+interface AutomationSeed {
   readonly name: string;
   readonly prompt: string;
   readonly description?: string | null;
@@ -43,8 +43,8 @@ interface ScheduleSeed {
   readonly consecutiveFailures?: number;
 }
 
-interface SchedulesScenarioValues {
-  readonly schedules: readonly ScheduleSeed[];
+interface AutomationsScenarioValues {
+  readonly automations: readonly AutomationSeed[];
   readonly displayName?: string;
   readonly agentName?: string;
   readonly userName?: string | null;
@@ -53,7 +53,7 @@ interface SchedulesScenarioValues {
   readonly framework?: "claude-code" | "codex";
 }
 
-function resolveTriggerType(seed: ScheduleSeed): "cron" | "once" | "loop" {
+function resolveTriggerType(seed: AutomationSeed): "cron" | "once" | "loop" {
   if (seed.triggerType) {
     return seed.triggerType;
   }
@@ -66,11 +66,11 @@ function resolveTriggerType(seed: ScheduleSeed): "cron" | "once" | "loop" {
   return "loop";
 }
 
-export interface SchedulesFixture {
+export interface AutomationsFixture {
   readonly orgId: string;
   readonly userId: string;
   readonly composeId: string;
-  readonly scheduleIds: readonly string[];
+  readonly automationIds: readonly string[];
 }
 
 function agentEnvironment(
@@ -81,13 +81,13 @@ function agentEnvironment(
     : { ANTHROPIC_API_KEY: "test-key" };
 }
 
-// Schedules live on the events-first tables (phase 3 of #16847): seed an
+// Automations live on the events-first tables (phase 3 of #16847): seed an
 // automation (identity + intent) plus its single time trigger (recurrence +
 // runtime state). The returned id is the automation id.
-async function seedSchedule(
+async function seedAutomation(
   writeDb: Db,
   args: {
-    readonly seed: ScheduleSeed;
+    readonly seed: AutomationSeed;
     readonly composeId: string;
     readonly userId: string;
     readonly orgId: string;
@@ -98,7 +98,7 @@ async function seedSchedule(
     .values({ userId: args.userId, agentComposeId: args.composeId })
     .returning({ id: chatThreads.id });
   if (!thread) {
-    throw new Error("seedSchedule: chat thread insert returned no row");
+    throw new Error("seedAutomation: chat thread insert returned no row");
   }
   const enabled = args.seed.enabled ?? true;
   const [automation] = await writeDb
@@ -117,7 +117,7 @@ async function seedSchedule(
     })
     .returning({ id: automations.id });
   if (!automation) {
-    throw new Error("seedSchedule: automation insert returned no row");
+    throw new Error("seedAutomation: automation insert returned no row");
   }
   await writeDb.insert(automationTriggers).values({
     automationId: automation.id,
@@ -134,12 +134,12 @@ async function seedSchedule(
   return automation.id;
 }
 
-export const seedSchedulesScenario$ = command(
+export const seedAutomationsScenario$ = command(
   async (
     { set },
-    values: SchedulesScenarioValues,
+    values: AutomationsScenarioValues,
     signal: AbortSignal,
-  ): Promise<SchedulesFixture> => {
+  ): Promise<AutomationsFixture> => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     const composeId = randomUUID();
@@ -210,26 +210,26 @@ export const seedSchedulesScenario$ = command(
     });
     signal.throwIfAborted();
 
-    const scheduleIds: string[] = [];
-    for (const seed of values.schedules) {
-      const scheduleId = await seedSchedule(writeDb, {
+    const automationIds: string[] = [];
+    for (const seed of values.automations) {
+      const automationId = await seedAutomation(writeDb, {
         seed,
         composeId,
         userId,
         orgId,
       });
       signal.throwIfAborted();
-      scheduleIds.push(scheduleId);
+      automationIds.push(automationId);
     }
 
-    return { orgId, userId, composeId, scheduleIds };
+    return { orgId, userId, composeId, automationIds };
   },
 );
 
-export const deleteSchedulesScenario$ = command(
+export const deleteAutomationsScenario$ = command(
   async (
     { set },
-    fixture: SchedulesFixture,
+    fixture: AutomationsFixture,
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
@@ -259,11 +259,11 @@ export const deleteSchedulesScenario$ = command(
       signal.throwIfAborted();
     }
 
-    if (fixture.scheduleIds.length > 0) {
+    if (fixture.automationIds.length > 0) {
       // Trigger rows are removed by the FK cascade.
       await writeDb
         .delete(automations)
-        .where(inArray(automations.id, [...fixture.scheduleIds]));
+        .where(inArray(automations.id, [...fixture.automationIds]));
       signal.throwIfAborted();
     }
     if (runIds.length > 0) {

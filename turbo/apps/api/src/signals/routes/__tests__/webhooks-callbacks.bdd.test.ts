@@ -19,9 +19,9 @@ import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import {
-  createRunsSchedulesApi,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -1380,7 +1380,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
 describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in the run organization", () => {
   it("prepares, commits, dedups, and bounds sandbox storage writes for the run org", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const storages = createStoragesBddApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -1571,7 +1571,7 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
   it("replays, expires, and auto-recharges subscription invoice credits", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -1861,7 +1861,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("upgrades to team, drains the queue, and cancels the replaced pro subscription", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -2479,7 +2479,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("restores and schedules cancellations through setup checkouts and schedule webhooks", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -2805,7 +2805,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("processes preview Stripe events only for the matching job ref", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
@@ -2890,7 +2890,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
   it("cleans up organization state after a verified organization.deleted event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -2919,15 +2919,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         githubUserId: newGithubUserId(),
       },
     });
-    const schedule = await runs.deploySchedule(actor, {
-      name: uniqueScheduleName("teardown"),
+    const schedule = await runs.deployAutomation(actor, {
+      name: uniqueAutomationName("teardown"),
       agentId: agent.agentId,
       intervalSeconds: 3600,
       prompt: "scheduled teardown probe",
       timezone: "UTC",
       enabled: false,
     });
-    expect(schedule.schedule.name).toContain("teardown");
+    expect(schedule.automation.name).toContain("teardown");
     const botToken = await registerTelegramBot(actor, agent.agentId);
     await runs.upsertUserPermissionGrant(actor, {
       agentId: agent.agentId,
@@ -2938,7 +2938,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     await expect(
       runs.listUserPermissionGrants(actor, agent.agentId),
     ).resolves.toHaveLength(1);
-    expect((await runs.listSchedules(actor)).schedules).toHaveLength(1);
+    expect((await runs.listAutomations(actor)).automations).toHaveLength(1);
 
     // The first delivery hits a failing Stripe cancellation (a per-step
     // failure the cleanup continues over) and then a failing org S3 listing,
@@ -3017,7 +3017,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
     });
     await waitForExpectation(async () => {
-      expect((await runs.listSchedules(actor)).schedules).toStrictEqual([]);
+      expect((await runs.listAutomations(actor)).automations).toStrictEqual([]);
     });
 
     // An org without a live subscription skips the Stripe cancellation.
@@ -3045,7 +3045,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
   it("cleans up user state after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();

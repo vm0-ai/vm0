@@ -518,7 +518,7 @@ export interface ChatThreadSignals {
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
   // ── Draft sync ────────────────────────────────────────────────────────────
-  scheduleDraftSync$: Command<Promise<void>, [AbortSignal]>;
+  queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // ── Paged messages (sole rendering path) ─────────────────────────────────
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
@@ -855,7 +855,7 @@ function createDraftSync(
     },
   );
 
-  const scheduleDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
+  const queueDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
     const debouncedSignal = set(draftSyncReset$, signal);
     await set(debouncedSyncDraft$, debouncedSignal);
   });
@@ -873,7 +873,7 @@ function createDraftSync(
     );
   });
 
-  return { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ };
+  return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -2432,7 +2432,7 @@ export function createChatThreadSignals(
     loadPagedHistory$,
   );
 
-  const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
+  const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
   const runTracking = createRunTracking({
     threadId,
@@ -2499,7 +2499,7 @@ export function createChatThreadSignals(
     ...threadUi,
     setInputRef$,
     focusInput$,
-    scheduleDraftSync$,
+    queueDraftSync$,
     earliestChatMessageId$,
     latestChatMessageId$,
     latestAssistantTextCreatedAt$,

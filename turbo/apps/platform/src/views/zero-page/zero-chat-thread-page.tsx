@@ -946,7 +946,7 @@ function GithubPrTrackingButton({
   );
 }
 
-// Second line shown under each automation in the header menu: the next scheduled
+// Second line shown under each automation in the header menu: the next upcoming
 // run time, or a note that the automation is inactive when it has been disabled.
 function automationMenuSubline(automation: HeaderAutomationEntry): string {
   if (!automation.enabled) {
@@ -3446,7 +3446,7 @@ function ChatThreadComposer({
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
   const setInputRef = useSet(thread.setInputRef$);
-  const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
+  const queueDraftSync = useSet(thread.queueDraftSync$);
   const pageSignal = useGet(pageSignal$);
   const { selectedComputerUseHostId, computerUse } =
     useChatThreadComputerUse(thread);
@@ -3485,11 +3485,11 @@ function ChatThreadComposer({
 
   const handleInputChange = (text: string) => {
     setInput(text);
-    detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
 
   const handleDraftChange = () => {
-    detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
 
   const feedback = useChatThreadComposerFeedback(thread, modelSelection);
@@ -4967,7 +4967,7 @@ function automationMessageLabel(
     message.scheduleSnapshot?.description?.trim() ||
     message.scheduleSnapshot?.title?.trim() ||
     message.scheduleTitle?.trim() ||
-    "Scheduled run"
+    "Automation run"
   );
 }
 

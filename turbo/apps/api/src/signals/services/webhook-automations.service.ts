@@ -34,7 +34,7 @@ export function mintWebhookSecret(): string {
  * A chat thread may be linked to a webhook automation only if it exists, is
  * owned by the same user, and belongs to the same agent. (Chat threads carry
  * only a userId, so org isolation is enforced via the user — same rule the
- * schedule surface applies.)
+ * automation surface applies.)
  */
 export async function isChatThreadLinkable(
   db: Db,

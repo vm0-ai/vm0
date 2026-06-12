@@ -20,10 +20,10 @@ import {
 import { visibleJoinedZeroAgentCondition } from "../zero-agent-data.service";
 import {
   postAutomationUserMessage,
-  resolveScheduleChatThreadModelPin,
+  resolveAutomationChatThreadModelPin,
 } from "../../routes/zero-chat-messages";
 
-// The schedule chip on the run's chat bubble: the snapshot keeps the label
+// The automation chip on the run's chat bubble: the snapshot keeps the label
 // rendering after the automation is renamed, edited, or deleted.
 function chatMessageScheduleSnapshot(
   automation: typeof automations.$inferSelect,
@@ -112,7 +112,7 @@ export async function resolveAutomationRunModelContext(args: {
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<AutomationRunModelContext> {
-  const threadModelPin = await resolveScheduleChatThreadModelPin({
+  const threadModelPin = await resolveAutomationChatThreadModelPin({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
@@ -152,7 +152,7 @@ export async function resolveAutomationRunModelContext(args: {
 }
 
 // After a manual run is created: render it as a web-chat turn (with the
-// schedule chip), persist the resolved model fields, and stamp the run as
+// automation chip), persist the resolved model fields, and stamp the run as
 // lastRunId on every trigger of the automation so the per-trigger
 // skip-if-active checks (the poller and the run-now conflict) see the active
 // manual run: a manual fire belongs to no trigger in particular.

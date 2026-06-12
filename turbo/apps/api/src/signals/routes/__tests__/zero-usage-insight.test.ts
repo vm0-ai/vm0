@@ -18,8 +18,8 @@ import {
   seedChatThread$,
   seedCompose$,
   seedRun$,
-  seedSchedule$,
-  seedScheduleBatch$,
+  seedAutomation$,
+  seedAutomationBatch$,
   seedUsageInsightFixture$,
   setUsageEventCreatedAt$,
   type UsageInsightFixture,
@@ -787,8 +787,8 @@ describe("GET /api/zero/usage/insight", () => {
       context.signal,
     );
 
-    const { scheduleIds } = await store.set(
-      seedScheduleBatch$,
+    const { automationIds } = await store.set(
+      seedAutomationBatch$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
@@ -813,7 +813,7 @@ describe("GET /api/zero/usage/insight", () => {
       },
       context.signal,
     );
-    const eventBoostedAutomationId = scheduleIds[0];
+    const eventBoostedAutomationId = automationIds[0];
     expect(eventBoostedAutomationId).toBeDefined();
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -856,8 +856,8 @@ describe("GET /api/zero/usage/insight", () => {
       context.signal,
     );
 
-    const describedScheduleId = await store.set(
-      seedSchedule$,
+    const describedAutomationId = await store.set(
+      seedAutomation$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
@@ -867,8 +867,8 @@ describe("GET /api/zero/usage/insight", () => {
       },
       context.signal,
     );
-    const undescribedScheduleId = await store.set(
-      seedSchedule$,
+    const undescribedAutomationId = await store.set(
+      seedAutomation$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
@@ -878,9 +878,9 @@ describe("GET /api/zero/usage/insight", () => {
       context.signal,
     );
 
-    for (const [agentId, scheduleId] of [
-      [agentA, describedScheduleId],
-      [agentB, undescribedScheduleId],
+    for (const [agentId, automationId] of [
+      [agentA, describedAutomationId],
+      [agentB, undescribedAutomationId],
     ] as const) {
       const { runId } = await store.set(
         seedRun$,
@@ -889,7 +889,7 @@ describe("GET /api/zero/usage/insight", () => {
           userId: fixture.userId,
           composeId: agentId,
           triggerSource: "automation",
-          scheduleId,
+          automationId,
           status: "completed",
         },
         context.signal,
@@ -917,10 +917,10 @@ describe("GET /api/zero/usage/insight", () => {
     );
 
     const described = response.body.automations.find((s) => {
-      return s.automationId === describedScheduleId;
+      return s.automationId === describedAutomationId;
     });
     const undescribed = response.body.automations.find((s) => {
-      return s.automationId === undescribedScheduleId;
+      return s.automationId === undescribedAutomationId;
     });
     expect(described?.automationDescription).toBe("Daily morning brief");
     expect(undescribed?.automationDescription).toBeNull();
@@ -1398,7 +1398,7 @@ describe("GET /api/zero/usage/insight", () => {
     );
 
     await store.set(
-      seedScheduleBatch$,
+      seedAutomationBatch$,
       {
         orgId: fixture.orgId,
         userId: fixture.userId,

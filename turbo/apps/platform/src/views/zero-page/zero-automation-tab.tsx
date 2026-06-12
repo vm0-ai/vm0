@@ -113,7 +113,7 @@ export function ZeroAutomationTab({
     <div className="mx-auto max-w-[900px]">
       <ZeroAutomationCard
         title={`${displayName}'s automations`}
-        subtitle={`Tasks you've scheduled with ${displayName} to run automatically.`}
+        subtitle={`Tasks you've set up with ${displayName} to run automatically.`}
         initialAutomations={entries}
         onSave={handleSave}
         onDelete={onDelete}

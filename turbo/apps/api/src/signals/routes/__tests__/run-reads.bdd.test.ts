@@ -15,9 +15,9 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
-  createRunsSchedulesApi,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -42,7 +42,7 @@ const UTF8_ENCODING = ["utf", "8"].join("-");
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsSchedulesApi(context);
+const api = createRunsAutomationsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const reads = createRunReadsApi(context);
 
@@ -2205,8 +2205,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
 
     // A far-future yearly cron keeps the global execute-schedules sweep from
     // ever considering this schedule due; only run-now fires it.
-    const schedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-log-sched"),
+    const schedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-log-sched"),
       agentId: agentOne.agentId,
       cronExpression: "0 0 1 1 *",
       prompt: "scheduled run for logs",
@@ -2214,9 +2214,9 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       timezone: "UTC",
       enabled: true,
     });
-    const scheduleRun = await api.runScheduleNow(
+    const scheduleRun = await api.requestRunAutomation(
       actor,
-      schedule.schedule.id,
+      schedule.automation.id,
       [201],
     );
     if (scheduleRun.status !== 201) {
@@ -2270,7 +2270,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
     expect(scheduleEntry).toMatchObject({
       triggerSource: "automation",
-      scheduleId: schedule.schedule.id,
+      scheduleId: schedule.automation.id,
     });
 
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
@@ -2393,7 +2393,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
 
     const byScheduleId = await reads.requestListLogs(
       actor,
-      { scheduleId: schedule.schedule.id, limit: 1 },
+      { scheduleId: schedule.automation.id, limit: 1 },
       [200],
     );
     if (byScheduleId.status !== 200) {
@@ -2422,7 +2422,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(scheduleDetail.body).toMatchObject({
       id: scheduleRun.body.runId,
       triggerSource: "automation",
-      scheduleId: schedule.schedule.id,
+      scheduleId: schedule.automation.id,
     });
 
     const pendingRun = await api.createRun(actor, {

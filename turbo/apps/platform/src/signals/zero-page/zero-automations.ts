@@ -29,7 +29,7 @@ import { now, nowDate } from "../../lib/time.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
 import { userPreferences$ } from "./settings/user-preferences.ts";
 
-const AUTOMATION_TIME_PAST_MESSAGE = "Scheduled time must be in the future";
+const AUTOMATION_TIME_PAST_MESSAGE = "The selected time must be in the future";
 
 // ---------------------------------------------------------------------------
 // State
@@ -75,7 +75,7 @@ function automationToTimeString(
     return cronToTimeString(s.cronExpression, tz);
   }
 
-  return "Scheduled";
+  return "Upcoming";
 }
 
 function cronToTimeString(cron: string, timezone = "UTC"): string {

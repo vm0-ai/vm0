@@ -517,9 +517,7 @@ describe("zero jobs page", () => {
       },
     );
 
-    // Legacy deep link: ?tab=schedule predates the tab rename (#17307) and
-    // must still land on the automations tab.
-    detachedSetupPage({ context, path: `/agents/${agentId}?tab=schedule` });
+    detachedSetupPage({ context, path: `/agents/${agentId}?tab=automations` });
 
     await waitFor(() => {
       expect(

@@ -160,7 +160,7 @@ describe("zero automation detail page", () => {
     context.mocks.data.team([createZeroAgent()]);
     context.mocks.data.automations([]);
 
-    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+    detachedSetupPage({ context, path: `/automations/${scheduleId}` });
 
     await waitFor(() => {
       expect(screen.getByText("Automation not found")).toBeInTheDocument();
@@ -175,7 +175,7 @@ describe("zero automation detail page", () => {
     const user = userEvent.setup({ delay: null });
     mockAutomationDetailStory();
 
-    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+    detachedSetupPage({ context, path: `/automations/${scheduleId}` });
 
     await waitFor(() => {
       expect(
@@ -244,7 +244,7 @@ describe("zero automation detail page", () => {
   it("discards automation settings changes", async () => {
     mockAutomationDetailStory();
 
-    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+    detachedSetupPage({ context, path: `/automations/${scheduleId}` });
 
     await waitFor(() => {
       expect(
@@ -276,7 +276,7 @@ describe("zero automation detail page", () => {
   it("updates automation schedule settings", async () => {
     mockAutomationDetailStory();
 
-    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+    detachedSetupPage({ context, path: `/automations/${scheduleId}` });
 
     await waitFor(() => {
       expect(
@@ -326,7 +326,7 @@ describe("zero automation detail page", () => {
   it("filters automation run history", async () => {
     mockAutomationDetailStory();
 
-    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+    detachedSetupPage({ context, path: `/automations/${scheduleId}` });
 
     await waitFor(() => {
       expect(
@@ -413,7 +413,7 @@ describe("zero automation detail page", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+    detachedSetupPage({ context, path: `/automations/${scheduleId}` });
 
     await waitFor(() => {
       expect(
@@ -450,7 +450,7 @@ describe("zero automation detail page", () => {
     const user = userEvent.setup({ delay: null });
     mockAutomationDetailStory();
 
-    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+    detachedSetupPage({ context, path: `/automations/${scheduleId}` });
 
     await waitFor(() => {
       expect(
@@ -495,7 +495,7 @@ describe("zero automation detail page", () => {
   it("runs and deletes an automation", async () => {
     mockAutomationDetailStory();
 
-    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+    detachedSetupPage({ context, path: `/automations/${scheduleId}` });
 
     await waitFor(() => {
       expect(

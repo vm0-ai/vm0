@@ -10,7 +10,7 @@ import { now, nowDate } from "../../external/time";
 import { settle } from "../../utils";
 import {
   postAutomationUserMessage,
-  resolveScheduleChatThreadModelPin,
+  resolveAutomationChatThreadModelPin,
 } from "../../routes/zero-chat-messages";
 import {
   resolveModelFirstProviderAdmission,
@@ -35,8 +35,8 @@ type TriggerRow = typeof automationTriggers.$inferSelect;
 /**
  * The trigger row joined with its owning automation: everything the poller needs
  * to claim the recurrence (trigger columns) and build the run (automation
- * identity + instruction + linked thread). Mirrors the schedule row the live
- * poller reads, split across the two events-first tables.
+ * identity + instruction + linked thread), split across the two
+ * events-first tables.
  */
 interface DueTrigger {
   readonly trigger: TriggerRow;
@@ -120,7 +120,7 @@ function isInsufficientCreditsFailure(error: unknown): boolean {
 // Resolve the model context for a triggered run: the linked thread's model pin
 // (org default if unpinned) and the admitted provider. No user is present to
 // receive a model-config / credits error, so failures surface as run_error
-// (normalized to 400) feeding consecutiveFailures — the schedule poller's policy.
+// (normalized to 400) feeding consecutiveFailures.
 async function resolveTriggerRunModelContext(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -128,7 +128,7 @@ async function resolveTriggerRunModelContext(args: {
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<TriggerRunModelContext> {
-  const threadModelPin = await resolveScheduleChatThreadModelPin({
+  const threadModelPin = await resolveAutomationChatThreadModelPin({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
@@ -319,7 +319,7 @@ const runTriggerNow$ = command(
       return { kind: "run_error", response: result };
     }
 
-    // The schedule chip: the snapshot keeps the label rendering after edits
+    // The automation chip: the snapshot keeps the label rendering after edits
     // or deletes.
     await postAutomationUserMessage({
       db,
@@ -359,16 +359,13 @@ const runTriggerNow$ = command(
 );
 
 /**
- * Dormant time poller over `automation_triggers` — the events-first counterpart
- * of `executeDueSchedules$`, built for the (later, gated) cutover and NOT wired
- * to any live cron route in this slice. It mirrors the schedule poller's
- * semantics 1:1: scan enabled time triggers whose `next_run_at` is due, skip any
+ * Time poller over `automation_triggers`, run from the execute-automations
+ * cron route: scan enabled time triggers whose `next_run_at` is due, skip any
  * whose previous run is still active, optimistic-lock claim the due row (clears
  * `next_run_at`; disables once-triggers), then create the run via the default
  * interpreter (tagged with automation + trigger provenance, carrying the
  * trigger completion callback that advances the recurrence) and auto-disable a
- * trigger after consecutive pre-run failures. Nothing here changes live
- * execution; `executeDueSchedules$` remains the only schedule executor.
+ * trigger after consecutive pre-run failures.
  */
 export const executeDueTriggers$ = command(
   async ({ set }, signal: AbortSignal): Promise<ExecuteDueTriggersResult> => {
