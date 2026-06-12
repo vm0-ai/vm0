@@ -30,7 +30,7 @@ pub(crate) fn parse_args(args: &[String]) -> ParsedArgs {
                     i += 1;
                 }
             }
-            "--resume" | "--append-system-prompt" => {
+            "--resume" | "--append-system-prompt" | "--effort" => {
                 // Parsed for CLI compat but not used by mock-claude
                 skip_flag_value(args, &mut i);
             }
@@ -178,6 +178,16 @@ mod tests {
     #[test]
     fn parse_args_settings_skipped() {
         let args: Vec<String> = vec!["--settings", r#"{"permissions":{}}"#, "echo hi"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.prompt, "echo hi");
+    }
+
+    #[test]
+    fn parse_args_effort_skipped() {
+        let args: Vec<String> = vec!["--effort", "low", "echo hi"]
             .into_iter()
             .map(String::from)
             .collect();

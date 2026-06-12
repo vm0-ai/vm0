@@ -479,6 +479,10 @@ pub fn openai_api_key() -> &'static str {
 pub fn openai_model() -> &'static str {
     user_env_value("OPENAI_MODEL")
 }
+/// Anthropic model from loaded user env; empty string means unset.
+pub fn anthropic_model() -> &'static str {
+    user_env_value("ANTHROPIC_MODEL")
+}
 /// ChatGPT workspace account id from loaded user env; empty string
 /// means unset. Presence is the signal that the sandbox is running in
 /// codex-oauth mode (see `is_codex_oauth_mode`); the value itself is

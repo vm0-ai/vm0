@@ -42,6 +42,7 @@ fn push_comma_separated_flag_values(args: &mut Vec<String>, flag: &str, values: 
 
 /// Build the argument list from explicit parameters (testable).
 fn build_claude_args(
+    model: &str,
     resume_id: &str,
     append_system_prompt: &str,
     disallowed_tools: &str,
@@ -78,6 +79,11 @@ fn build_claude_args(
         args.push(settings.to_string());
     }
 
+    if let Some(effort) = default_claude_effort_for_model(model) {
+        args.push("--effort".to_string());
+        args.push(effort.to_string());
+    }
+
     // "--" terminates option parsing so Commander.js variadic options
     // (--disallowed-tools, --tools) do not consume the prompt.
     args.push("--".to_string());
@@ -85,8 +91,18 @@ fn build_claude_args(
     args
 }
 
+/// Per-model default for Claude Code's `--effort` flag.
+fn default_claude_effort_for_model(model: &str) -> Option<&'static str> {
+    let bare = model.strip_prefix("anthropic/").unwrap_or(model);
+    match bare {
+        "claude-fable-5" | "fable" => Some("low"),
+        _ => None,
+    }
+}
+
 fn build_claude_command(use_mock: bool) -> Vec<String> {
     let args = build_claude_args(
+        env::anthropic_model(),
         env::resume_session_id(),
         env::append_system_prompt(),
         env::disallowed_tools(),
@@ -241,6 +257,7 @@ mod tests {
     ) -> Vec<String> {
         disable_system_log();
         build_claude_args(
+            "",
             resume_id,
             append_system_prompt,
             disallowed_tools,
@@ -248,6 +265,11 @@ mod tests {
             settings,
             prompt,
         )
+    }
+
+    fn build_claude_args_for_model_test(model: &str, prompt: &str) -> Vec<String> {
+        disable_system_log();
+        build_claude_args(model, "", "", "", "", "", prompt)
     }
 
     fn build_claude_command_for_test(use_mock: bool) -> Vec<String> {
@@ -570,6 +592,32 @@ mod tests {
     fn build_claude_args_empty_settings_omitted() {
         let args = build_claude_args_for_test("", "", "", "", "", "test");
         assert!(!args.contains(&"--settings".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_fable_defaults_effort_low() {
+        for model in ["claude-fable-5", "anthropic/claude-fable-5", "fable"] {
+            let args = build_claude_args_for_model_test(model, "p");
+            let effort_idx = args.iter().position(|a| a == "--effort").unwrap();
+            assert_eq!(args[effort_idx + 1], "low");
+            assert_prompt_with_separator(&args, "p");
+        }
+    }
+
+    #[test]
+    fn build_claude_args_non_fable_omits_effort() {
+        for model in [
+            "",
+            "claude-sonnet-4-6",
+            "anthropic/claude-sonnet-4.6",
+            "claude-opus-4-8",
+        ] {
+            let args = build_claude_args_for_model_test(model, "p");
+            assert!(
+                !args.iter().any(|arg| arg == "--effort"),
+                "unexpected effort default for model {model:?}: {args:?}"
+            );
+        }
     }
 
     #[test]
