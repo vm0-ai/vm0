@@ -5,6 +5,10 @@ import { writeToClipboard } from "./clipboard.ts";
 // inside one of them is what we offer feedback on.
 const ASSISTANT_BUBBLE_SELECTOR = ".zero-chat-bubble-assistant";
 
+// Each chat thread renders inside a container tagged with its thread id. We
+// read it off the selection so a feedback draft stays bound to its own thread.
+const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
+
 export interface FeedbackSelectionRect {
   readonly top: number;
   readonly left: number;
@@ -15,6 +19,9 @@ export interface FeedbackSelectionRect {
 export interface FeedbackSelection {
   readonly text: string;
   readonly rect: FeedbackSelectionRect;
+  // The thread the selected passage belongs to. Feedback stays with this
+  // thread, so switching chats never carries the draft across.
+  readonly threadId: string | null;
 }
 
 // A quoted passage together with the note the user is writing about it. Every
@@ -28,6 +35,7 @@ export interface FeedbackItem {
 
 const feedbackSelection$ = state<FeedbackSelection | null>(null);
 const feedbackItems$ = state<readonly FeedbackItem[]>([]);
+const feedbackThreadId$ = state<string | null>(null);
 const feedbackNextId$ = state<number>(1);
 const feedbackCopied$ = state<boolean>(false);
 const feedbackCopiedTimerId$ = state<number | null>(null);
@@ -38,6 +46,12 @@ export const feedbackSelectionValue$ = computed((get) => {
 
 export const feedbackItemsValue$ = computed((get) => {
   return get(feedbackItems$);
+});
+
+// Which thread the docked feedback belongs to. The composer compares this to
+// its own thread id so a draft only ever shows in the thread it came from.
+export const feedbackThreadIdValue$ = computed((get) => {
+  return get(feedbackThreadId$);
 });
 
 export const feedbackCopiedValue$ = computed((get) => {
@@ -57,8 +71,22 @@ function resolveSelectionBubble(range: Range): Element | null {
   return element?.closest(ASSISTANT_BUBBLE_SELECTOR) ?? null;
 }
 
+// The id of the thread that owns the selected passage, or null when it sits
+// outside any thread container.
+function resolveSelectionThreadId(bubble: Element): string | null {
+  return (
+    bubble
+      .closest(THREAD_CONTAINER_SELECTOR)
+      ?.getAttribute("data-chat-thread-container-id") ?? null
+  );
+}
+
 // Read the live document selection when it sits inside an assistant message.
-function readAssistantSelection(): { text: string; range: Range } | null {
+function readAssistantSelection(): {
+  text: string;
+  range: Range;
+  bubble: Element;
+} | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     return null;
@@ -68,10 +96,11 @@ function readAssistantSelection(): { text: string; range: Range } | null {
     return null;
   }
   const range = selection.getRangeAt(0);
-  if (!resolveSelectionBubble(range)) {
+  const bubble = resolveSelectionBubble(range);
+  if (!bubble) {
     return null;
   }
-  return { text, range };
+  return { text, range, bubble };
 }
 
 // Compose every noted fragment into a single follow-up turn, each passage
@@ -107,6 +136,7 @@ export const captureFeedbackSelection$ = command(({ get, set }) => {
   const rect = found.range.getBoundingClientRect();
   set(feedbackSelection$, {
     text: found.text,
+    threadId: resolveSelectionThreadId(found.bubble),
     rect: {
       top: rect.top,
       left: rect.left,
@@ -124,12 +154,18 @@ export const startFeedback$ = command(({ get, set }) => {
   if (!selection) {
     return;
   }
+  // A feedback stack belongs to a single thread. Picking a passage from a
+  // different thread starts a fresh stack instead of mixing comments across
+  // threads.
+  const activeThreadId = get(feedbackThreadId$);
+  const existing =
+    activeThreadId !== null && activeThreadId !== selection.threadId
+      ? []
+      : get(feedbackItems$);
   const id = get(feedbackNextId$);
   set(feedbackNextId$, id + 1);
-  set(feedbackItems$, [
-    ...get(feedbackItems$),
-    { id, quote: selection.text, note: "" },
-  ]);
+  set(feedbackThreadId$, selection.threadId);
+  set(feedbackItems$, [...existing, { id, quote: selection.text, note: "" }]);
   set(feedbackSelection$, null);
 });
 
@@ -173,6 +209,7 @@ export const dismissFeedback$ = command(({ get, set }) => {
   }
   set(feedbackSelection$, null);
   set(feedbackItems$, []);
+  set(feedbackThreadId$, null);
   set(feedbackCopied$, false);
 });
 
