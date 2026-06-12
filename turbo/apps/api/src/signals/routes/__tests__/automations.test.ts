@@ -806,10 +806,6 @@ describe("Automations API", () => {
     ).toBeTruthy();
 
     // The prompt renders as a user chat message with the automation chip.
-    // #17307 D3: only the automation_* columns are written; the legacy
-    // schedule_* columns stay NULL on new rows and drop in the next phase.
-    // The schedule_* assertion uses raw SQL because no drizzle query may
-    // reference the doomed columns.
     const messages = await db
       .select({
         role: chatMessages.role,
