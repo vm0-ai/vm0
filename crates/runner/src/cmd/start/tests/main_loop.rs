@@ -92,6 +92,23 @@ impl sandbox::SandboxRuntime for FactoryFailingRuntime {
     }
 }
 
+struct CountingRuntimeProvider {
+    create_calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl sandbox::RuntimeProvider for CountingRuntimeProvider {
+    async fn create_runtime(
+        &self,
+        _config: sandbox::RuntimeConfig,
+    ) -> sandbox::Result<Box<dyn sandbox::SandboxRuntime>> {
+        self.create_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::new(ShutdownRecordingRuntime {
+            shutdowns: Arc::new(AtomicUsize::new(0)),
+        }))
+    }
+}
+
 struct BlockingFactoryRuntime {
     entered: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     release: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
@@ -336,6 +353,109 @@ async fn factory_startup_failure_stops_status_and_cleans_startup_resources() {
     assert_eq!(create_calls.load(Ordering::SeqCst), 1);
     assert_eq!(runtime_shutdowns.load(Ordering::SeqCst), 1);
     wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
+async fn local_provider_setup_failure_does_not_create_runtime() {
+    const ROOTFS_HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const SNAPSHOT_HASH: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("home"));
+    let home_parent = home
+        .groups_dir()
+        .parent()
+        .expect("groups dir should have a parent")
+        .to_path_buf();
+    tokio::fs::create_dir_all(&home_parent).await.unwrap();
+    tokio::fs::write(home.groups_dir(), b"not a directory")
+        .await
+        .unwrap();
+
+    let rootfs = crate::paths::RootfsPaths::new(&home, ROOTFS_HASH);
+    let snapshot = rootfs.snapshot(SNAPSHOT_HASH);
+    tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
+    tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
+    for path in [
+        snapshot.snapshot_bin(),
+        snapshot.memory_bin(),
+        snapshot.cow_img(),
+        snapshot.cow_bitmap(),
+    ] {
+        tokio::fs::write(path, b"").await.unwrap();
+    }
+    tokio::fs::write(
+        snapshot.complete_marker(),
+        sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+    )
+    .await
+    .unwrap();
+
+    let ca_dir = dir.path().join("ca");
+    let firecracker = dir.path().join("firecracker");
+    let kernel = dir.path().join("vmlinux");
+    tokio::fs::create_dir_all(&ca_dir).await.unwrap();
+    tokio::fs::write(&firecracker, b"").await.unwrap();
+    tokio::fs::write(&kernel, b"").await.unwrap();
+
+    let base_dir = dir.path().join("base");
+    let config_path = dir.path().join("runner.yaml");
+    tokio::fs::write(
+        &config_path,
+        format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {firecracker}
+  kernel: {kernel}
+sandbox:
+  max_concurrent: 1
+profiles:
+  vm0/default:
+    rootfs_hash: {ROOTFS_HASH}
+    snapshot_hash: {SNAPSHOT_HASH}
+    vcpu: 2
+    memory_mb: 4096
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 10240
+server:
+  url: http://localhost:0
+  token: token
+"#,
+            base_dir = base_dir.display(),
+            ca_dir = ca_dir.display(),
+            firecracker = firecracker.display(),
+            kernel = kernel.display(),
+        ),
+    )
+    .await
+    .unwrap();
+
+    let create_calls = Arc::new(AtomicUsize::new(0));
+    let provider = CountingRuntimeProvider {
+        create_calls: Arc::clone(&create_calls),
+    };
+    let error = run_start_with_home(
+        StartArgs {
+            config: config_path,
+            api_url: None,
+            token: None,
+            local: true,
+        },
+        &provider,
+        || Ok(home),
+    )
+    .await
+    .expect_err("local provider setup should fail before runtime creation");
+
+    assert!(
+        error.to_string().contains("create group dir"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(create_calls.load(Ordering::SeqCst), 0);
 }
 
 async fn install_usage_flush_child(config: &mut RunConfig) {

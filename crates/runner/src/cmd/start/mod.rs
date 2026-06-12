@@ -225,6 +225,14 @@ pub async fn run_start(
     args: StartArgs,
     runtime_provider: &dyn RuntimeProvider,
 ) -> RunnerResult<()> {
+    run_start_with_home(args, runtime_provider, HomePaths::new).await
+}
+
+async fn run_start_with_home(
+    args: StartArgs,
+    runtime_provider: &dyn RuntimeProvider,
+    load_home: impl FnOnce() -> RunnerResult<HomePaths>,
+) -> RunnerResult<()> {
     // Register lifecycle signals (SIGTERM/SIGINT/SIGUSR1/SIGUSR2) before
     // any slow startup work. Tokio's `signal()` installs the process-wide
     // `sigaction` handler on first call; until then the default disposition
@@ -298,7 +306,7 @@ pub async fn run_start(
             runner_config.base_dir.display()
         ))
     })?;
-    let home = HomePaths::new()?;
+    let home = load_home()?;
     let mut base_dir_lock = lock::try_acquire(home.base_dir_lock(&base_dir_canonical))
         .await
         .map_err(|e| {
@@ -356,6 +364,27 @@ pub async fn run_start(
             log_paths.dir().display()
         ))
     })?;
+
+    // Create provider inputs before startup resources are allocated. These
+    // checks can fail due to config/filesystem state and should not leave
+    // runtime-owned pools behind.
+    let cancel = CancellationToken::new();
+    let http = HttpClient::new(HttpClientConfig {
+        api_url: server.url.clone(),
+        vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+    })?;
+    let name = runner_config.name;
+    let group = runner_config.group;
+    let cancel_tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let local_group_dir = if args.local {
+        let group_dir = home.groups_dir().join(&group);
+        std::fs::create_dir_all(&group_dir).map_err(|e| {
+            RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
+        })?;
+        Some(group_dir)
+    } else {
+        None
+    };
 
     // Start background prefetch of snapshot memory for all profiles.
     let mut memory_prefetch =
@@ -499,44 +528,33 @@ pub async fn run_start(
     ));
 
     // Create provider — handles discovery + claim + complete
-    let cancel = CancellationToken::new();
-    let http = HttpClient::new(HttpClientConfig {
-        api_url: server.url.clone(),
-        vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
-    })?;
-    let name = runner_config.name;
-    let group = runner_config.group;
-    let cancel_tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
-    let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
-        let group_dir = home.groups_dir().join(&group);
-        std::fs::create_dir_all(&group_dir).map_err(|e| {
-            RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
-        })?;
-        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-        let provider = LocalProvider::new(
-            group_dir,
-            profiles,
-            cancel.clone(),
-            Arc::clone(&cancel_tokens),
-        );
-        (provider, group)
-    } else {
-        let group_name = group.clone();
-        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-        let provider = ApiProvider::new(
-            http.clone(),
-            server.token,
-            group,
-            profiles,
-            runner_id.clone(),
-            cancel.clone(),
-            Arc::clone(&cancel_tokens),
-        )
-        .await;
-        (provider, group_name)
-    };
+    let (provider, group_name): (Arc<dyn JobProvider>, String) =
+        if let Some(group_dir) = local_group_dir {
+            let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+            let provider = LocalProvider::new(
+                group_dir,
+                profiles,
+                cancel.clone(),
+                Arc::clone(&cancel_tokens),
+            );
+            (provider, group)
+        } else {
+            let group_name = group.clone();
+            let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+            let provider = ApiProvider::new(
+                http.clone(),
+                server.token,
+                group,
+                profiles,
+                runner_id.clone(),
+                cancel.clone(),
+                Arc::clone(&cancel_tokens),
+            )
+            .await;
+            (provider, group_name)
+        };
 
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
