@@ -105,6 +105,39 @@ class TestResponseHandler:
         assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
 
+    async def test_replaces_connector_401_body_when_proxy_auth_is_present(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+            request_headers=headers(
+                ("Host", "fal.run"),
+                ("Proxy-Authorization", "Basic proxy-secret"),
+            ),
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.response(flow)
+
+        assert flow.response.status_code == 401
+        content = flow.response.content
+        assert content is not None
+        assert json.loads(content)["error"] == "connector_not_configured_for_run"
+        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+        assert entry["connector_diagnostic_type"] == "fal"
+
     async def test_preserves_model_provider_401_body_without_connector_diagnostic(
         self, tmp_path, real_flow, mitm_ctx
     ):
