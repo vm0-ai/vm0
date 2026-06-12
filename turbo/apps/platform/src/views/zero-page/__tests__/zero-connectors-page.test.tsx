@@ -282,6 +282,51 @@ describe("connectors page", () => {
     });
   });
 
+  it("hides a fully feature-gated connector when its switch is disabled", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.AwsConnector]: false },
+    });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
+    await fill(searchInput, "aws");
+
+    await waitFor(() => {
+      expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
+  });
+
+  it("shows a partially gated connector with only ungated auth methods", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.CloudflareConnector]: false },
+    });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
+    await fill(searchInput, "cloudflare");
+    click(await screen.findByLabelText("Connect Cloudflare"));
+
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "Cloudflare",
+    });
+    expect(within(connectDialog).getByText("API Token")).toBeInTheDocument();
+    expect(within(connectDialog).queryByText("OAuth")).not.toBeInTheDocument();
+    const buttonLabels = queryAllByRoleFast("button", connectDialog).map(
+      (button) => {
+        return button.textContent?.replace(/\s+/g, " ").trim();
+      },
+    );
+    expect(buttonLabels).not.toContain("Connect");
+    expect(buttonLabels).toContain("Save");
+  });
+
   it("completes a device-auth connector grant", async () => {
     mockConnectors([]);
 

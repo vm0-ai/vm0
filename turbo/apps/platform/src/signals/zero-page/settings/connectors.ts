@@ -16,7 +16,7 @@ import {
 import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
-  getConfiguredConnectorAuthMethodIds,
+  getAvailableConnectorAuthMethodIds,
   getConnectorTags,
   hasRequiredConnectorAuthMethodScopes,
   hasConnectorDeviceAuthGrant,
@@ -103,36 +103,6 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
-
-function getAvailableConnectorConnectAuthMethods(
-  type: ConnectorType,
-  featureStates: Record<string, boolean> | null | undefined,
-  options: {
-    readonly includeManagedForTypes: readonly ConnectorType[];
-  },
-): ConnectorAuthMethodId[] {
-  return getConfiguredConnectorAuthMethodIds(type).filter((authMethod) => {
-    const method = getConnectorAuthMethod(type, authMethod);
-    switch (method?.grant.kind) {
-      case "managed": {
-        if (!options.includeManagedForTypes.includes(type)) {
-          return false;
-        }
-        break;
-      }
-      case "auth-code":
-      case "external-code":
-      case "device-auth":
-      case "manual": {
-        break;
-      }
-      case undefined: {
-        return false;
-      }
-    }
-    return !method.featureFlag || !!featureStates?.[method.featureFlag];
-  });
-}
 
 export function getConnectorConnectLaunchMode({
   type,
@@ -258,12 +228,9 @@ function buildConnectorTypeStatus(params: {
   readonly features: Record<string, boolean> | null | undefined;
 }): ConnectorTypeWithStatus {
   const config = CONNECTOR_TYPES[params.type];
-  const availableAuthMethods = getAvailableConnectorConnectAuthMethods(
+  const availableAuthMethods = getAvailableConnectorAuthMethodIds(
     params.type,
     params.features,
-    {
-      includeManagedForTypes: [],
-    },
   );
   const hasManualGrant = availableAuthMethods.some((authMethod) => {
     return (
@@ -365,11 +332,7 @@ export const allConnectorTypes$ = computed(async (get) => {
   );
 
   const items = CONNECTOR_TYPE_KEYS.filter((type) => {
-    return (
-      getAvailableConnectorConnectAuthMethods(type, features, {
-        includeManagedForTypes: [],
-      }).length > 0
-    );
+    return getAvailableConnectorAuthMethodIds(type, features).length > 0;
   }).map((type) => {
     return buildConnectorTypeStatus({
       type,
