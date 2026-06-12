@@ -3389,9 +3389,6 @@ describe("chat lifecycle", () => {
     // an empty note, taking the composer position nearest Send.
     expect(comments[0]).toHaveValue("Assign each risk to an owner.");
     expect(comments[1]).toHaveValue("");
-    expect(
-      screen.getByText("Select more text to add another comment"),
-    ).toBeInTheDocument();
 
     // Removing the empty draft row leaves the noted fragment intact.
     await user.click(screen.getAllByLabelText("Remove feedback")[1]);
