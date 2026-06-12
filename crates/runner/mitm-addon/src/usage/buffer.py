@@ -527,13 +527,9 @@ class UsageEventBuffer:
                 )
                 if live_snapshot_attempted and trigger != "shutdown":
                     snapshot_live = False
-                if (
-                    trigger != "shutdown"
-                    and self._state.has_active_enqueue()
-                    and pending_flush is None
-                ):
-                    timer_to_start = self._schedule_timer_if_buffered_locked()
                 if pending_flush is None:
+                    if trigger != "shutdown":
+                        timer_to_start = self._schedule_timer_if_buffered_locked()
                     self._sync_buffered_counter_locked()
                 else:
                     self._state.begin_enqueue(pending_flush)
