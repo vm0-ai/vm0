@@ -142,6 +142,24 @@ const chatThreadListItemSchema = z.object({
   renamedAt: z.string().nullable().optional(),
 });
 
+const chatMessageBillingProviderBreakdownSchema = z.object({
+  provider: z.string(),
+  credits: z.number().int().nonnegative(),
+});
+
+const chatMessageBillingKindBreakdownSchema = z.object({
+  kind: z.string(),
+  credits: z.number().int().nonnegative(),
+  providers: z.array(chatMessageBillingProviderBreakdownSchema),
+});
+
+const chatMessageBillingPayloadSchema = z.object({
+  version: z.literal(1),
+  totalCredits: z.number().int().nonnegative(),
+  settledAt: z.string(),
+  breakdown: z.array(chatMessageBillingKindBreakdownSchema),
+});
+
 const toolSummaryEntrySchema = z.object({
   kind: z.literal("tool"),
   name: z.string(),
@@ -192,6 +210,8 @@ const pagedChatMessageBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   runEventId: z.string().optional(),
+  billingRunId: z.string().optional(),
+  billing: chatMessageBillingPayloadSchema.optional(),
   revokesMessageId: z.string().optional(),
   interruptsRunId: z.string().optional(),
   error: z.string().optional(),
@@ -253,6 +273,16 @@ const chatThreadDetailSchema = z.object({
    * back-compat with fixtures/tests that predate the read marker field.
    */
   lastReadMessageId: z.string().nullable().optional(),
+  /**
+   * Primary read-state watermark. `lastReadMessageId` remains for legacy
+   * clients only and should not be used for new read-state logic.
+   */
+  lastReadAt: z.string().nullable().optional(),
+  /**
+   * ISO timestamp of the latest assistant text result that should affect
+   * unread state and sidebar recency.
+   */
+  lastMessageAt: z.string().optional(),
   activeRunIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -451,6 +481,7 @@ export const chatThreadMarkReadContract = c.router({
     responses: {
       200: z.object({
         lastReadMessageId: z.string().nullable(),
+        lastReadAt: z.string().nullable(),
         changed: z.boolean(),
       }),
       400: apiErrorSchema,
@@ -839,6 +870,7 @@ export {
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
+  chatMessageBillingPayloadSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   attachFileSchema,
@@ -868,6 +900,9 @@ export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
+export type ChatMessageBillingPayload = z.infer<
+  typeof chatMessageBillingPayloadSchema
+>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;

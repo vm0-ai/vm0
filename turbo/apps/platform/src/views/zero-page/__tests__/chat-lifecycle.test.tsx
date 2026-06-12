@@ -479,6 +479,8 @@ function mockServerQueuedThreadStories(): void {
       title: thread.title,
       agentId: AGENT_ID,
       activeRunIds: thread.activeRunIds,
+      lastReadAt: "2026-06-09T10:00:00Z",
+      lastMessageAt: "2026-06-09T10:00:00Z",
       createdAt: "2026-06-09T10:00:00Z",
       updatedAt: "2026-06-09T10:00:00Z",
       draftContent: null,
@@ -498,7 +500,11 @@ function mockServerQueuedThreadStories(): void {
     },
   );
   context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, { lastReadMessageId: null, changed: false });
+    return respond(200, {
+      lastReadMessageId: null,
+      lastReadAt: null,
+      changed: false,
+    });
   });
 }
 
@@ -1218,6 +1224,129 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("ignores billing-only pages for rendering and thinking state", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-billing-only",
+      chatMessages: [
+        {
+          id: "msg-billing-only",
+          role: "assistant",
+          content: null,
+          runId: undefined,
+          billingRunId: "run-billing-only",
+          billing: {
+            version: 1,
+            totalCredits: 0,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model",
+                credits: 0,
+                providers: [{ provider: "vm0", credits: 0 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-billing-only",
+      featureSwitches: { [FeatureSwitchKey.ChatRunBilling]: true },
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-role='assistant']")).toBeNull();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("shows run credit usage after read aloud with thousands formatting and popover details", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, {
+      threadId: "thread-billing-chip",
+      chatMessages: [
+        {
+          id: "msg-billing-chip-user",
+          role: "user",
+          content: "Summarize usage",
+          runId: "run-billing-chip",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-billing-chip-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-billing-chip",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-billing-chip",
+          role: "assistant",
+          content: null,
+          runId: undefined,
+          billingRunId: "run-billing-chip",
+          billing: {
+            version: 1,
+            totalCredits: 23_123,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model",
+                credits: 23_000,
+                providers: [{ provider: "claude-sonnet-4-6", credits: 23_000 }],
+              },
+              {
+                kind: "image",
+                credits: 123,
+                providers: [{ provider: "gpt-image-2", credits: 123 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-billing-chip",
+      featureSwitches: {
+        [FeatureSwitchKey.AudioOutput]: true,
+        [FeatureSwitchKey.ChatRunBilling]: true,
+      },
+    });
+
+    const credit = await screen.findByLabelText("Credit usage 23,123");
+    const actions = credit.closest('[data-testid="chat-message-actions"]');
+    expect(actions).not.toBeNull();
+    const copy = within(actions as HTMLElement).getByLabelText("Copy message");
+    const readAloud = within(actions as HTMLElement).getByLabelText(
+      "Read aloud",
+    );
+    expect(
+      copy.compareDocumentPosition(readAloud) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      readAloud.compareDocumentPosition(credit) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.hover(credit);
+
+    await waitFor(() => {
+      expect(screen.getByText("Credit usage")).toBeInTheDocument();
+      expect(screen.getAllByText("23,123").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("claude-sonnet-4-6")).toBeInTheDocument();
+      expect(screen.getAllByText("23,000").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("gpt-image-2")).toBeInTheDocument();
+      expect(screen.getAllByText("123").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it("stops a server-queued run and recalls queued follow-up messages", async () => {
     const interrupts: string[] = [];
     const recalls: string[] = [];
@@ -1891,7 +2020,11 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-      return respond(200, { lastReadMessageId: null, changed: false });
+      return respond(200, {
+        lastReadMessageId: null,
+        lastReadAt: null,
+        changed: false,
+      });
     });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });

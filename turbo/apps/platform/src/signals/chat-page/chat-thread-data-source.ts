@@ -73,7 +73,6 @@ export interface CancelRunsArgs {
 
 export interface MarkReadArgs {
   threadId: string;
-  latestMessageId: string;
 }
 
 export interface SubscribeRealtimeArgs {

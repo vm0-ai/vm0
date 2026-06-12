@@ -57,6 +57,24 @@ export interface ChatMessageRecommendedFollowup {
 
 export type ChatMessageRecommendedFollowups = ChatMessageRecommendedFollowup[];
 
+export interface ChatMessageBillingProviderBreakdown {
+  readonly provider: string;
+  readonly credits: number;
+}
+
+export interface ChatMessageBillingKindBreakdown {
+  readonly kind: string;
+  readonly credits: number;
+  readonly providers: readonly ChatMessageBillingProviderBreakdown[];
+}
+
+export interface ChatMessageBillingPayload {
+  readonly version: 1;
+  readonly totalCredits: number;
+  readonly settledAt: string;
+  readonly breakdown: readonly ChatMessageBillingKindBreakdown[];
+}
+
 export interface ChatMessageAttachFileMetadata {
   readonly id: string;
   readonly filename: string;
@@ -115,6 +133,13 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
+    billingRunId: uuid("billing_run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "set null" },
+    ),
+    billingPayload: jsonb("billing_payload").$type<ChatMessageBillingPayload>(),
     revokesMessageId: uuid("revokes_message_id").references(
       (): AnyPgColumn => {
         return chatMessages.id;
@@ -162,6 +187,9 @@ export const chatMessages = pgTable(
         table.createdAt,
       ),
       index("idx_chat_messages_run_id").on(table.runId),
+      uniqueIndex("chat_messages_billing_run_id_unique")
+        .on(table.billingRunId)
+        .where(sql`${table.billingRunId} IS NOT NULL`),
       uniqueIndex("chat_messages_revokes_message_id_unique").on(
         table.revokesMessageId,
       ),

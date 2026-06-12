@@ -23,6 +23,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
+  type ChatMessageBillingPayload,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowupGenerationType,
@@ -106,6 +107,8 @@ type ChatMessageRow = {
   readonly role: string;
   readonly content: string | null;
   readonly runId: string | null;
+  readonly billingRunId: string | null;
+  readonly billingPayload: ChatMessageBillingPayload | null;
   readonly runEventId: string | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
@@ -144,7 +147,9 @@ type ChatThreadRow = {
   readonly selectedModel: string | null;
   readonly computerUseHostId: string | null;
   readonly orgId: string | null;
+  readonly lastReadAt: Date | null;
   readonly lastReadMessageId: string | null;
+  readonly lastMessageAt: Date;
   readonly renamedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -166,13 +171,11 @@ function effectiveChatMessageRunId() {
  * guards against an out-of-order write rewinding the column and silently
  * pulling a thread back down the sidebar.
  *
- * The sidebar orders threads by this column, and we deliberately bump it ONLY
- * when a run reaches a terminal state (completed / failed / cancelled) — not on
- * user sends or mid-stream assistant events. So a thread surfaces to the top
- * when its run finishes, not the moment you hit send. Call inside the same
- * transaction as the terminal run-lifecycle marker insert so the recency index
- * stays accurate. Despite the historical column name, this now tracks
- * last-run-finished time.
+ * The sidebar orders threads by this column, and we deliberately bump it only
+ * for terminal runs that produce visible assistant text (including failure
+ * text), not on user sends, billing rows, pure lifecycle markers, or mid-stream
+ * assistant events. So a thread surfaces to the top when there is new text for
+ * the user to read, not the moment they hit send.
  */
 export async function touchChatThreadLastMessageAt(
   tx: Pick<Db, "update">,
@@ -211,6 +214,8 @@ const messageColumns = {
   role: chatMessages.role,
   content: chatMessages.content,
   runId: effectiveChatMessageRunId(),
+  billingRunId: chatMessages.billingRunId,
+  billingPayload: chatMessages.billingPayload,
   runEventId: chatMessages.runEventId,
   error: chatMessages.error,
   runLifecycleEvent: chatMessages.runLifecycleEvent,
@@ -287,7 +292,9 @@ function ownedChatThread(
         computerUseHostId: chatThreads.computerUseHostId,
         selectedModel: chatThreads.selectedModel,
         orgId: zeroAgents.orgId,
+        lastReadAt: chatThreads.lastReadAt,
         lastReadMessageId: chatThreads.lastReadMessageId,
+        lastMessageAt: chatThreads.lastMessageAt,
         renamedAt: chatThreads.renamedAt,
         createdAt: chatThreads.createdAt,
         updatedAt: chatThreads.updatedAt,
@@ -316,7 +323,9 @@ function ownedChatThread(
       modelProviderCredentialScope: null,
       selectedModel: thread.selectedModel ?? null,
       orgId: thread.orgId ?? null,
+      lastReadAt: thread.lastReadAt ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
+      lastMessageAt: thread.lastMessageAt,
       renamedAt: thread.renamedAt ?? null,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
@@ -586,6 +595,8 @@ function toPagedMessage(
       role,
       content: row.content,
       runId: row.runId ?? undefined,
+      billingRunId: row.billingRunId ?? undefined,
+      billing: row.billingPayload ?? undefined,
       runEventId: row.runEventId ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
@@ -673,6 +684,8 @@ export function zeroChatThreadDetail(args: {
       title: thread.title,
       agentId: thread.agentComposeId,
       lastReadMessageId: thread.lastReadMessageId,
+      lastReadAt: thread.lastReadAt?.toISOString() ?? null,
+      lastMessageAt: thread.lastMessageAt.toISOString(),
       activeRunIds: [...pickActiveRunIds(runSummaries)],
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
@@ -741,27 +754,7 @@ interface ChatThreadListPage {
   readonly totalCount: number;
 }
 
-function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
-  return db
-    .select({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreads.id),
-        visibleChatMessageCondition(),
-      ),
-    )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-    .limit(1)
-    .as("last_message");
-}
-
-type LastMessageSubquery = ReturnType<typeof lastVisibleMessageSubquery>;
-
-function chatThreadListProjection(lastMessage: LastMessageSubquery) {
+function chatThreadListProjection() {
   return {
     id: chatThreads.id,
     title: chatThreads.title,
@@ -772,10 +765,7 @@ function chatThreadListProjection(lastMessage: LastMessageSubquery) {
     pinnedAt: chatThreads.pinnedAt,
     renamedAt: chatThreads.renamedAt,
     lastMessageAt: chatThreads.lastMessageAt,
-    isRead: sql<boolean>`CASE
-      WHEN ${lastMessage.id} IS NULL THEN true
-      ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
-    END`,
+    isRead: sql<boolean>`COALESCE(${chatThreads.lastReadAt} >= ${chatThreads.lastMessageAt}, false)`,
     running: sql<boolean>`EXISTS (
       SELECT 1
       FROM ${zeroRuns}
@@ -857,8 +847,7 @@ export function zeroChatThreadList(args: {
     const limit = args.limit ?? SIDEBAR_CHAT_THREAD_LIMIT;
     const cursor = decodeChatThreadListCursor(args.cursor);
 
-    const lastMessage = lastVisibleMessageSubquery(db);
-    const projection = chatThreadListProjection(lastMessage);
+    const projection = chatThreadListProjection();
 
     const scopedFilters = [
       eq(chatThreads.userId, args.userId),
@@ -877,7 +866,6 @@ export function zeroChatThreadList(args: {
           .select(projection)
           .from(chatThreads)
           .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-          .leftJoinLateral(lastMessage, sql`true`)
           .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
           .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id));
 
@@ -890,7 +878,6 @@ export function zeroChatThreadList(args: {
       .select(projection)
       .from(chatThreads)
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .leftJoinLateral(lastMessage, sql`true`)
       .where(and(...nonPinnedFilters))
       .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
       .limit(limit + 1);
@@ -1260,6 +1247,7 @@ export const createChatThread$ = command(
         userId: args.userId,
         agentComposeId: args.agentComposeId,
         title: args.title ?? null,
+        lastReadAt: sql`NOW()`,
       })
       .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
     signal.throwIfAborted();

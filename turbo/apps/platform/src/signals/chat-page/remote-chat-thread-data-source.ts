@@ -238,7 +238,7 @@ const cancelRuns$ = command(
 const markRead$ = command(
   async (
     { get },
-    { threadId, latestMessageId }: MarkReadArgs,
+    { threadId }: MarkReadArgs,
     signal: AbortSignal,
   ): Promise<string | null> => {
     const client = get(zeroClient$)(chatThreadMarkReadContract);
@@ -250,7 +250,7 @@ const markRead$ = command(
       [200],
     );
     signal.throwIfAborted();
-    return result.body.lastReadMessageId ?? latestMessageId;
+    return result.body.lastReadAt ?? null;
   },
 );
 
@@ -312,6 +312,8 @@ export function createRemoteChatThreadDataSource(
       title: body.title ?? null,
       agentId: body.agentId,
       lastReadMessageId: body.lastReadMessageId ?? null,
+      lastReadAt: body.lastReadAt ?? null,
+      lastMessageAt: body.lastMessageAt ?? body.updatedAt,
       activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,

@@ -16,6 +16,10 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
+  runBillingPopoverOpenRunId$,
+  setRunBillingPopoverOpenRunId$,
+} from "../../signals/chat-page/run-billing-popover.ts";
+import {
   IconAlertCircle,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
@@ -41,6 +45,7 @@ import {
   IconTag,
   IconX,
   IconClock,
+  IconCoins,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -51,6 +56,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -59,6 +67,7 @@ import {
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
   ChatThreadArtifactFile,
+  ChatMessageBillingPayload,
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -5527,9 +5536,96 @@ function PagedAssistantMessageItem({
   return null;
 }
 
+function formatCredits(value: number): string {
+  return value.toLocaleString("en-US");
+}
+
+function BillingKindLabel({ kind }: { kind: string }) {
+  return <span>{kind}</span>;
+}
+
+function RunBillingChip({
+  runId,
+  billing,
+}: {
+  runId: string;
+  billing: ChatMessageBillingPayload;
+}) {
+  const openRunId = useGet(runBillingPopoverOpenRunId$);
+  const setOpenRunId = useSet(setRunBillingPopoverOpenRunId$);
+  const open = openRunId === runId;
+  const setOpen = (nextOpen: boolean) => {
+    setOpenRunId(nextOpen ? runId : null);
+  };
+  const total = formatCredits(billing.totalCredits);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
+          aria-label={`Credit usage ${total}`}
+          onMouseEnter={() => {
+            setOpen(true);
+          }}
+          onMouseLeave={() => {
+            setOpen(false);
+          }}
+          onFocus={() => {
+            setOpen(true);
+          }}
+          onBlur={() => {
+            setOpen(false);
+          }}
+        >
+          <IconCoins size={17} stroke={1.5} />
+          <span>{total}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="start" className="w-72 p-3">
+        <div className="flex items-center justify-between gap-3 text-sm font-medium">
+          <span>Credit usage</span>
+          <span>{total}</span>
+        </div>
+        <div className="mt-3 flex flex-col gap-3">
+          {billing.breakdown.map((kind) => {
+            return (
+              <div key={kind.kind} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
+                  <BillingKindLabel kind={kind.kind} />
+                  <span>{formatCredits(kind.credits)}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {kind.providers.map((provider) => {
+                    return (
+                      <div
+                        key={`${kind.kind}:${provider.provider}`}
+                        className="flex items-center justify-between gap-3 text-xs"
+                      >
+                        <span className="min-w-0 truncate text-muted-foreground">
+                          {provider.provider}
+                        </span>
+                        <span className="shrink-0 text-foreground">
+                          {formatCredits(provider.credits)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function PagedGroupPrimaryActions({
   firstRunId,
   hasContent,
+  billing,
   copied,
   audioOutputEnabled,
   isPlayingThis,
@@ -5538,6 +5634,7 @@ function PagedGroupPrimaryActions({
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
+  billing: ChatMessageBillingPayload | undefined;
   copied: boolean;
   audioOutputEnabled: boolean;
   isPlayingThis: boolean;
@@ -5545,7 +5642,7 @@ function PagedGroupPrimaryActions({
   onTts: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" data-testid="chat-message-actions">
       {firstRunId && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>
@@ -5611,6 +5708,9 @@ function PagedGroupPrimaryActions({
           </Tooltip>
         </TooltipProvider>
       )}
+      {billing && firstRunId && (
+        <RunBillingChip runId={firstRunId} billing={billing} />
+      )}
     </div>
   );
 }
@@ -5631,9 +5731,13 @@ function PagedGroupActions({
 
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
+  const billingEnabled = features?.[FeatureSwitchKey.ChatRunBilling] ?? false;
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
+  const runBillingById = useLastResolved(thread.runBillingById$);
+  const billing =
+    billingEnabled && firstRunId ? runBillingById?.get(firstRunId) : undefined;
   const hasContent = content.length > 0;
   const [ttsLoadable, playTts] = useLoadableSet(playTts$);
   const isPlayingThis = ttsLoadable.state === "loading";
@@ -5675,6 +5779,7 @@ function PagedGroupActions({
         <PagedGroupPrimaryActions
           firstRunId={firstRunId}
           hasContent={hasContent}
+          billing={billing}
           copied={copied}
           audioOutputEnabled={audioOutputEnabled}
           isPlayingThis={isPlayingThis}
