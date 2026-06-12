@@ -109,14 +109,14 @@ export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   whimsical: "quirky, imaginative, fairy-tale whimsy",
   symmetrical_pastel_quirky:
     "deadpan symmetrical framing with pastel palette and flat graphic staging",
-  imax_epic_cinematic: "IMAX-scale epic with sweeping aerial scope",
+  imax_epic_cinematic: "large-format epic with sweeping aerial scope and vast environmental scale",
   indie_naturalistic:
     "indie naturalistic — raw handheld authenticity, available light",
   film_noir: "classic film noir — shadow, silhouette, moral ambiguity",
   tech_minimalist_reveal:
     "clean tech product reveal — white space, precision camera",
   apple_product:
-    "Apple-style product commercial — premium materials, restrained motion, precise lighting",
+    "premium tech product commercial — clean white space, restrained motion, precision lighting on material surface",
   athletic_motivation_ad:
     "athletic motivation ad — kinetic energy, raw sweat, triumph",
   nature_documentary:
@@ -325,7 +325,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/5a95669a-b86c-4817-9d82-250da7509b54/thumbnail-athletic-motivation.jpg",
     promptConstraints:
-      "extreme close-up on muscle tension and sweat, fast cut every 1-2 seconds, Dutch angle framing, motion blur on action, high contrast desaturated grade, backlit silhouette at peak effort, no calm atmosphere, no static camera, no soft lighting",
+      "extreme close-up on muscle tension and sweat, fast cut every 1-2 seconds, Dutch angle framing, motion blur on action, high contrast desaturated grade, dramatic backlit rim lighting at peak effort, no calm atmosphere, no static camera, no soft lighting",
   },
   {
     id: "nature-documentary",
@@ -787,7 +787,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b87c4589-f735-44ab-bbbf-adba9cf253e4/thumbnail-synthwave-retro.jpg",
     promptConstraints:
-      "receding grid horizon perspective, neon pink and cyan glow, dark night environment, chrome and laser surfaces, 80s retrofuturist aesthetic, VHS scan line artifacts, no daylight, no natural environment, no organic textures, no modern design",
+      "receding grid horizon perspective, neon pink and cyan glow, dark night environment, chrome and laser surfaces, 80s retrofuturist aesthetic, analog tape scan line artifacts, no daylight, no natural environment, no organic textures, no modern design",
   },
   {
     id: "magical-girl",
