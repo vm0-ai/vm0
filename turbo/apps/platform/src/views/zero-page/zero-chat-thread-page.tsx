@@ -190,11 +190,17 @@ import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-a
 import {
   ZeroChatComposer,
   type QueuedComposerItem,
+  type ComposerFeedback,
 } from "./zero-chat-composer.tsx";
+import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
-  ChatFeedbackSelection,
-  ChatFeedbackTray,
-} from "./zero-chat-feedback-selection.tsx";
+  feedbackItemsValue$,
+  feedbackSendCountValue$,
+  setFeedbackItemNote$,
+  removeFeedbackItem$,
+  submitFeedback$,
+  dismissFeedback$,
+} from "../../signals/zero-page/chat-feedback.ts";
 import {
   setThreadGenerationTemplate$,
   threadGenerationTemplate$,
@@ -2563,17 +2569,9 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
-  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
-  const rootSignal = useGet(rootSignal$);
   const features = useLastResolved(featureSwitch$);
   const inlineFeedbackEnabled =
     features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
-  const onSubmitFeedback = (prompt: string) => {
-    detach(
-      sendMessage(prompt, null, { includeDraftAttachments: false }, rootSignal),
-      Reason.DomCallback,
-    );
-  };
   const onLoadHistory = onDomEventFn(() => {
     return loadHistory(pageSignal);
   });
@@ -2621,9 +2619,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
             />
           </div>
 
-          {inlineFeedbackEnabled && (
-            <ChatFeedbackTray onSubmit={onSubmitFeedback} />
-          )}
           <ChatThreadComposer thread={thread} />
         </div>
 
@@ -3135,6 +3130,57 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
   };
 }
 
+// Bridges the global inline-feedback signals to the composer's `feedback` prop.
+// Returns undefined when the feature is off, so the composer keeps its textarea.
+function useChatThreadComposerFeedback(
+  thread: ChatThreadSignals,
+): ComposerFeedback | undefined {
+  const features = useLastResolved(featureSwitch$);
+  const inlineFeedbackEnabled =
+    features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
+  const items = useGet(feedbackItemsValue$);
+  const sendCount = useGet(feedbackSendCountValue$);
+  const setNote = useSet(setFeedbackItemNote$);
+  const removeItem = useSet(removeFeedbackItem$);
+  const compose = useSet(submitFeedback$);
+  const dismiss = useSet(dismissFeedback$);
+  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
+  const rootSignal = useGet(rootSignal$);
+
+  if (!inlineFeedbackEnabled) {
+    return undefined;
+  }
+  return {
+    items,
+    sendCount,
+    onChangeNote: (id, note) => {
+      setNote({ id, note });
+    },
+    onRemove: (id) => {
+      removeItem(id);
+    },
+    onSubmit: () => {
+      const prompt = compose();
+      if (prompt === null) {
+        return;
+      }
+      detach(
+        sendMessage(
+          prompt,
+          null,
+          { includeDraftAttachments: false },
+          rootSignal,
+        ),
+        Reason.DomCallback,
+      );
+      dismiss();
+    },
+    onDismiss: () => {
+      dismiss();
+    },
+  };
+}
+
 function ChatThreadComposer({
   thread,
   autoFocus: autoFocusProp = true,
@@ -3204,6 +3250,8 @@ function ChatThreadComposer({
     detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
   };
 
+  const feedback = useChatThreadComposerFeedback(thread);
+
   return (
     <footer
       data-chat-composer
@@ -3246,6 +3294,7 @@ function ChatThreadComposer({
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
             onRemoveQueuedItem={onRemoveQueuedItem}
+            feedback={feedback}
           />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
