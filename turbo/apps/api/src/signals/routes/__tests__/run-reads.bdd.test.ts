@@ -2252,7 +2252,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       displayName: "BDD logs agent one",
       framework: "claude-code",
       triggerSource: "web",
-      scheduleId: null,
+      automationId: null,
       status: "cancelled",
       prompt: "web run on agent one",
     });
@@ -2263,14 +2263,14 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       agentId: null,
       displayName: null,
       triggerSource: "cli",
-      scheduleId: null,
+      automationId: null,
     });
     const scheduleEntry = listed.body.data.find((entry) => {
       return entry.id === scheduleRun.body.runId;
     });
     expect(scheduleEntry).toMatchObject({
       triggerSource: "automation",
-      scheduleId: schedule.automation.id,
+      automationId: schedule.automation.id,
     });
 
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
@@ -2391,18 +2391,18 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     }
     expect(noSourceMatch.body.data).toStrictEqual([]);
 
-    const byScheduleId = await reads.requestListLogs(
+    const byAutomationId = await reads.requestListLogs(
       actor,
-      { scheduleId: schedule.automation.id, limit: 1 },
+      { automationId: schedule.automation.id, limit: 1 },
       [200],
     );
-    if (byScheduleId.status !== 200) {
-      throw new Error("Expected the schedule-filtered list to succeed");
+    if (byAutomationId.status !== 200) {
+      throw new Error("Expected the automation-filtered list to succeed");
     }
-    expect(byScheduleId.body.data).toStrictEqual([
+    expect(byAutomationId.body.data).toStrictEqual([
       expect.objectContaining({ id: scheduleRun.body.runId }),
     ]);
-    expect(byScheduleId.body.pagination.totalPages).toBe(1);
+    expect(byAutomationId.body.pagination.totalPages).toBe(1);
 
     expect(listed.body.filters.statuses).toContain("cancelled");
     expect([...listed.body.filters.sources].sort()).toStrictEqual([
@@ -2422,7 +2422,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(scheduleDetail.body).toMatchObject({
       id: scheduleRun.body.runId,
       triggerSource: "automation",
-      scheduleId: schedule.automation.id,
+      automationId: schedule.automation.id,
     });
 
     const pendingRun = await api.createRun(actor, {

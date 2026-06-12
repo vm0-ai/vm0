@@ -29,9 +29,11 @@ export const zeroRuns = pgTable(
         { onDelete: "cascade" },
       ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
-    // Historical column: pre-cutover schedule fires recorded the (now dropped)
-    // zero_agent_schedules id here. New runs carry automation provenance below;
-    // the drop migration backfilled automation_id for these legacy rows.
+    // Deprecated (#17307 D3): never reference schedule_id in queries — no SQL
+    // (reads, writes, or implicit full-column selects) may touch it; it drops
+    // in the next phase. automation_id carries run provenance (legacy rows
+    // were backfilled). The property stays declared only so the schema matches
+    // the live table until the drop migration lands.
     scheduleId: uuid("schedule_id"),
     // Run provenance: the automation and the trigger that fired this run.
     automationId: uuid("automation_id").references(

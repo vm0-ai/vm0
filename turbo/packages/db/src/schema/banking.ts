@@ -134,12 +134,16 @@ export const bankingAgentEnablements = pgTable(
       .$type<BankingOperationScope[]>()
       .notNull()
       .default(["accounts.read", "balances.read", "transactions.read"]),
+    // Deprecated (#17307 D3): never reference allow_scheduled_runs in queries
+    // — no SQL (reads, writes, or implicit full-column selects) may touch it;
+    // it drops in the next phase (NOT NULL with default, so inserts simply
+    // omit it). The property stays declared only so the schema matches the
+    // live table until the drop migration lands.
     allowScheduledRuns: boolean("allow_scheduled_runs")
       .notNull()
       .default(false),
-    // Supersedes `allow_scheduled_runs` (#17307). During the transition both
-    // columns are dual-written; reads come from this column and
-    // `allow_scheduled_runs` drops in the final phase.
+    // Supersedes `allow_scheduled_runs` (#17307) and is the only read/write
+    // source.
     allowAutomationRuns: boolean("allow_automation_runs")
       .notNull()
       .default(false),

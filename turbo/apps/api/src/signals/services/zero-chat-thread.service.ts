@@ -118,11 +118,11 @@ type ChatMessageRow = {
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
-  readonly scheduleSnapshot: ChatMessageAutomationSnapshot | null;
+  readonly automationSnapshot: ChatMessageAutomationSnapshot | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
-  readonly scheduleId: string | null;
-  readonly scheduleTitle: string | null;
+  readonly automationId: string | null;
+  readonly automationTitle: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -224,14 +224,11 @@ const messageColumns = {
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
-  // #17307 D2 read switch: storage moved to the automation_* columns
-  // (backfilled + dual-written), but the wire keeps the schedule* field names
-  // until the D3 wire rename.
-  scheduleSnapshot: chatMessages.automationSnapshot,
+  automationSnapshot: chatMessages.automationSnapshot,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  scheduleId: chatMessages.automationId,
-  scheduleTitle: chatMessages.automationTitle,
+  automationId: chatMessages.automationId,
+  automationTitle: chatMessages.automationTitle,
 } as const;
 
 const searchMessageColumns = {
@@ -636,9 +633,9 @@ function toPagedMessage(
       return {
         ...message,
         role: "user" as const,
-        scheduleId: row.scheduleId ?? undefined,
-        scheduleTitle: row.scheduleTitle ?? undefined,
-        scheduleSnapshot: row.scheduleSnapshot ?? undefined,
+        automationId: row.automationId ?? undefined,
+        automationTitle: row.automationTitle ?? undefined,
+        automationSnapshot: row.automationSnapshot ?? undefined,
       };
     }
     return {

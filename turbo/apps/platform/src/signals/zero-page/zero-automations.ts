@@ -266,7 +266,7 @@ export const saveOrgAutomation$ = command(
     params: ZeroAutomationSaveParams & { agentId: string },
     signal: AbortSignal,
   ) => {
-    let scheduleId: string;
+    let automationId: string;
     try {
       const body = buildAutomationFormBody(params.agentId, params);
 
@@ -276,7 +276,7 @@ export const saveOrgAutomation$ = command(
         params.editName !== undefined,
       );
       signal.throwIfAborted();
-      scheduleId = result.id;
+      automationId = result.id;
     } catch (error: unknown) {
       throwIfAbort(error);
       if (!(error instanceof ApiError)) {
@@ -295,7 +295,7 @@ export const saveOrgAutomation$ = command(
     );
     await set(fetchAllOrgAutomations$, signal);
 
-    return scheduleId;
+    return automationId;
   },
 );
 
@@ -338,14 +338,18 @@ export const deleteOrgAutomation$ = command(
  * Returns the created run ID.
  */
 export const runAutomationNow$ = command(
-  async ({ get }, scheduleId: string, signal: AbortSignal): Promise<string> => {
+  async (
+    { get },
+    automationId: string,
+    signal: AbortSignal,
+  ): Promise<string> => {
     const toastId = toast.loading("Starting run…");
     signal.addEventListener("abort", () => {
       return toast.dismiss(toastId);
     });
     let runId: string;
     try {
-      runId = await runAutomationNowApi(get(zeroClient$), scheduleId);
+      runId = await runAutomationNowApi(get(zeroClient$), automationId);
       signal.throwIfAborted();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Run failed";

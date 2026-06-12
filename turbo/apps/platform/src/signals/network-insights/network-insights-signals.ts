@@ -48,12 +48,11 @@ export interface MemberCredits {
   agentCredits?: Record<string, number>;
 }
 
-// Mirrors the zero-insights wire schema (field names are part of the
-// contract and keep the legacy schedule* spelling).
+// Mirrors the zero-insights wire schema.
 export interface DayAutomation {
-  scheduleId: string;
-  scheduleName: string;
-  scheduleDescription: string | null;
+  automationId: string;
+  automationName: string;
+  automationDescription: string | null;
   credits: number;
   tokens: number;
 }
@@ -75,7 +74,7 @@ export interface DayInsight {
   topTask: TopTask | null;
   services: ServiceUsage[];
   permissions: PermissionEntry[];
-  schedules: DayAutomation[];
+  automations: DayAutomation[];
   chats: DayChat[];
 }
 

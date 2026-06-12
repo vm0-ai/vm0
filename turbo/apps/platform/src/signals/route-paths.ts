@@ -13,7 +13,7 @@ export const ROUTES = {
   chat: "/chats/:threadId",
   prompt: "/prompt",
   automations: "/automations",
-  automationDetail: "/automations/:scheduleId",
+  automationDetail: "/automations/:automationId",
   works: "/works",
   ideas: "/ideas",
   connectors: "/connectors",

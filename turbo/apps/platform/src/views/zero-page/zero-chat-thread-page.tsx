@@ -1008,8 +1008,8 @@ export function AutomationMenuButton({
             <DropdownMenuItem
               key={automation.id}
               onClick={() => {
-                navigate("/automations/:scheduleId", {
-                  pathParams: { scheduleId: automation.id },
+                navigate("/automations/:automationId", {
+                  pathParams: { automationId: automation.id },
                 });
               }}
               className="items-start gap-2"
@@ -4954,9 +4954,9 @@ function isAutomationUserMessage(
 ): message is EnrichedChatMessage & { role: "user" } {
   return (
     message.role === "user" &&
-    (message.scheduleSnapshot !== undefined ||
-      message.scheduleTitle !== undefined ||
-      message.scheduleId !== undefined)
+    (message.automationSnapshot !== undefined ||
+      message.automationTitle !== undefined ||
+      message.automationId !== undefined)
   );
 }
 
@@ -4964,9 +4964,9 @@ function automationMessageLabel(
   message: EnrichedChatMessage & { role: "user" },
 ): string {
   return (
-    message.scheduleSnapshot?.description?.trim() ||
-    message.scheduleSnapshot?.title?.trim() ||
-    message.scheduleTitle?.trim() ||
+    message.automationSnapshot?.description?.trim() ||
+    message.automationSnapshot?.title?.trim() ||
+    message.automationTitle?.trim() ||
     "Automation run"
   );
 }
@@ -5365,10 +5365,10 @@ function UserMessageGenerationTemplate({
 }
 
 function AutomationUserMessage({
-  scheduleId,
+  automationId,
   automationLabel,
 }: {
-  scheduleId: string | undefined;
+  automationId: string | undefined;
   automationLabel: string;
 }) {
   const cardClassName =
@@ -5386,10 +5386,10 @@ function AutomationUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          {scheduleId ? (
+          {automationId ? (
             <Link
-              pathname="/automations/:scheduleId"
-              options={{ pathParams: { scheduleId } }}
+              pathname="/automations/:automationId"
+              options={{ pathParams: { automationId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
               aria-label={`Open automation ${automationLabel}`}
             >
@@ -5459,7 +5459,7 @@ function PagedUserMessage({
   if (isAutomationUserMessage(message)) {
     return (
       <AutomationUserMessage
-        scheduleId={message.scheduleId}
+        automationId={message.automationId}
         automationLabel={automationMessageLabel(message)}
       />
     );

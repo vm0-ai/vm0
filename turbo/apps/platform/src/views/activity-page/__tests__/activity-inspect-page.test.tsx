@@ -30,7 +30,7 @@ function inspectFile(): File {
     selectedModel: null,
     triggerSource: "cli",
     triggerAgentName: null,
-    scheduleId: null,
+    automationId: null,
     status: "completed",
     prompt: "Inspect the latest OAuth trace",
     appendSystemPrompt: "Prefer concise findings",

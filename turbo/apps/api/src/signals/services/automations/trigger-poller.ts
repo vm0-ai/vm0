@@ -328,8 +328,8 @@ const runTriggerNow$ = command(
       runId: result.body.runId,
       prompt: runInput.prompt,
       appendQueueMarker: result.body.status === "queued",
-      scheduleTitle: automation.name,
-      scheduleSnapshot: {
+      automationTitle: automation.name,
+      automationSnapshot: {
         id: automation.id,
         title: automation.name,
         description: automation.description,

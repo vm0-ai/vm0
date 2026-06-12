@@ -24,9 +24,35 @@ interface StoredTeamUsageEntry {
   readonly agentCredits?: Record<string, number>;
 }
 
-type StoredDayInsightData = DayInsightData & {
+// Historical day blobs persist automation rows under the legacy `schedules`
+// key with schedule* entry keys; nothing writes the key anymore. The wire
+// schema uses the automation* spelling, so reads translate on the way out.
+interface StoredDayAutomationEntry {
+  readonly scheduleId: string;
+  readonly scheduleName: string;
+  readonly scheduleDescription: string | null;
+  readonly credits: number;
+  readonly tokens: number;
+}
+
+type StoredDayInsightData = Omit<DayInsightData, "automations"> & {
   readonly teamUsage?: readonly StoredTeamUsageEntry[];
+  readonly schedules?: readonly StoredDayAutomationEntry[];
 };
+
+function toDayAutomations(
+  entries: readonly StoredDayAutomationEntry[],
+): DayInsight["automations"] {
+  return entries.map((entry) => {
+    return {
+      automationId: entry.scheduleId,
+      automationName: entry.scheduleName,
+      automationDescription: entry.scheduleDescription,
+      credits: entry.credits,
+      tokens: entry.tokens,
+    };
+  });
+}
 
 interface ClerkOrganizationMembership {
   readonly publicUserData?: {
@@ -155,7 +181,7 @@ export function zeroInsights(args: {
         topTask: data.topTask ?? null,
         services: data.services ?? [],
         permissions: data.permissions ?? [],
-        schedules: data.schedules ?? [],
+        automations: toDayAutomations(data.schedules ?? []),
         chats: data.chats ?? [],
       };
     });

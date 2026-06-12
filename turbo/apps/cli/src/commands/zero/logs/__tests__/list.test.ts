@@ -23,7 +23,7 @@ const mockLogEntry = {
   framework: "claude",
   triggerSource: "cli",
   triggerAgentName: null,
-  scheduleId: null,
+  automationId: null,
   status: "completed",
   createdAt: "2026-04-01T10:30:00Z",
   startedAt: "2026-04-01T10:30:01Z",

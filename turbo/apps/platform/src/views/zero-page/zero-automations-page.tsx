@@ -574,8 +574,8 @@ export function ZeroAutomationsPage() {
   ] as const;
 
   const openAutomationDetail = (entry: CombinedEntry) => {
-    navigate("/automations/:scheduleId", {
-      pathParams: { scheduleId: entry.id },
+    navigate("/automations/:automationId", {
+      pathParams: { automationId: entry.id },
     });
   };
 

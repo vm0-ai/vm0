@@ -75,8 +75,8 @@ function AutomationListRow<T extends AutomationEntry>({
       <td className="py-2.5 pr-4 align-middle min-w-0 max-w-[1px]">
         {clickable ? (
           <Link
-            pathname="/automations/:scheduleId"
-            options={{ pathParams: { scheduleId: entry.id } }}
+            pathname="/automations/:automationId"
+            options={{ pathParams: { automationId: entry.id } }}
             aria-label={`Open automation ${entry.prompt}`}
             onClick={(e) => {
               e.stopPropagation();
@@ -262,8 +262,8 @@ function AutomationListCard<T extends AutomationEntry>({
     >
       {clickable && (
         <Link
-          pathname="/automations/:scheduleId"
-          options={{ pathParams: { scheduleId: entry.id } }}
+          pathname="/automations/:automationId"
+          options={{ pathParams: { automationId: entry.id } }}
           aria-label={`Open automation ${entry.prompt}`}
           className="absolute inset-0 z-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring rounded-sm"
         >

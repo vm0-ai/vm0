@@ -1246,7 +1246,7 @@ describe("POST /api/zero/email/inbound", () => {
     expect(runs[0]?.prompt).toContain("Run a report");
 
     const [zeroRun] = await db
-      .select()
+      .select({ triggerSource: zeroRuns.triggerSource })
       .from(zeroRuns)
       .where(eq(zeroRuns.id, runs[0]!.id));
     expect(zeroRun?.triggerSource).toBe("email");

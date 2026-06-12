@@ -180,7 +180,7 @@ describe("GET /api/zero/insights", () => {
     expect(day?.date).toBe(yesterday);
     expect(day?.agents).toHaveLength(1);
     expect(day?.agents[0]?.agentName).toBe("Test Agent");
-    expect(day?.schedules).toStrictEqual([]);
+    expect(day?.automations).toStrictEqual([]);
     expect(day?.chats).toStrictEqual([]);
     expect(day?.creditsUsed).toBe(100);
     expect(response.body.totalCredits).toBe(100);
@@ -189,6 +189,51 @@ describe("GET /api/zero/insights", () => {
     expect(
       Number.isNaN(new Date(response.body.lastUpdated ?? "").getTime()),
     ).toBeFalsy();
+  });
+
+  it("translates legacy stored schedule entries to wire automations", async () => {
+    const fixture = await track(
+      store.set(seedInsightsFixture$, undefined, context.signal),
+    );
+    const yesterday = daysAgo(1);
+    // Historical day blobs persist automation rows under the legacy
+    // `schedules` key with schedule* entry keys; the wire renames them.
+    await store.set(
+      seedInsightsDaily$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: yesterday,
+        data: defaultInsightData({
+          schedules: [
+            {
+              scheduleId: "legacy-automation-1",
+              scheduleName: "Morning Briefing",
+              scheduleDescription: "Daily market briefing",
+              credits: 12,
+              tokens: 3400,
+            },
+          ],
+        }),
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({ query: {}, headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.days[0]?.automations).toStrictEqual([
+      {
+        automationId: "legacy-automation-1",
+        automationName: "Morning Briefing",
+        automationDescription: "Daily market briefing",
+        credits: 12,
+        tokens: 3400,
+      },
+    ]);
   });
 
   it("filters stale team usage entries for users no longer in the org", async () => {
@@ -279,7 +324,7 @@ describe("GET /api/zero/insights", () => {
         topTask: null,
         services: [],
         permissions: [],
-        schedules: [],
+        automations: [],
         chats: [],
       },
     ]);

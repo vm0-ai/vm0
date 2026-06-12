@@ -54,7 +54,7 @@ interface BankingFixture extends UsageInsightFixture {
 interface SeedBankingFixtureArgs {
   readonly triggerSource?: string;
   readonly operationScopes?: readonly BankingOperationScope[];
-  readonly allowScheduledRuns?: boolean;
+  readonly allowAutomationRuns?: boolean;
   readonly connectionStatus?: BankingConnectionStatus;
   readonly accountProviderIds?: readonly string[];
   readonly featureSwitchEnabled?: boolean;
@@ -180,11 +180,10 @@ async function seedBankingFixture(
         "transactions.read",
       ]),
     ],
-    // #17307 D2: seed both columns, mirroring the production dual-write. The
-    // gate reads allow_automation_runs; allow_scheduled_runs drops in the
+    // #17307 D3: only allow_automation_runs is seeded; the legacy
+    // allow_scheduled_runs column is NOT NULL with a default and drops in the
     // final phase.
-    allowScheduledRuns: args.allowScheduledRuns ?? false,
-    allowAutomationRuns: args.allowScheduledRuns ?? false,
+    allowAutomationRuns: args.allowAutomationRuns ?? false,
   });
 
   return {
@@ -522,14 +521,14 @@ describe("POST /api/zero/banking/*", () => {
     );
 
     expect(response.body.error.message).toBe(
-      "Banking is not enabled for scheduled runs",
+      "Banking is not enabled for automation runs",
     );
     expect(authRequestCount).toBe(0);
     await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
       {
         action: "accounts.read",
         status: "denied",
-        failureCode: "SCHEDULE_NOT_ALLOWED",
+        failureCode: "AUTOMATION_NOT_ALLOWED",
       },
     ]);
   });

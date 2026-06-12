@@ -16,7 +16,7 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -806,14 +806,14 @@ describe("Automations API", () => {
     ).toBeTruthy();
 
     // The prompt renders as a user chat message with the automation chip.
-    // #17307 D2: the chip is dual-written to both the legacy schedule_* and
-    // the superseding automation_* columns, so both sets must be populated.
+    // #17307 D3: only the automation_* columns are written; the legacy
+    // schedule_* columns stay NULL on new rows and drop in the next phase.
+    // The schedule_* assertion uses raw SQL because no drizzle query may
+    // reference the doomed columns.
     const messages = await db
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
-        scheduleTitle: chatMessages.scheduleTitle,
-        scheduleSnapshot: chatMessages.scheduleSnapshot,
         automationTitle: chatMessages.automationTitle,
         automationSnapshot: chatMessages.automationSnapshot,
       })
@@ -823,11 +823,18 @@ describe("Automations API", () => {
       return message.role === "user" && message.content === "Manual run test";
     });
     expect(chipMessage).toMatchObject({
-      scheduleTitle: "fire-now",
-      scheduleSnapshot: { id: created.automation.id, title: "fire-now" },
       automationTitle: "fire-now",
       automationSnapshot: { id: created.automation.id, title: "fire-now" },
     });
+    const legacyRows = await db.execute<{
+      schedule_title: string | null;
+      schedule_snapshot: unknown;
+    }>(
+      sql`SELECT schedule_title, schedule_snapshot FROM chat_messages WHERE run_id = ${runId} AND role = 'user'`,
+    );
+    expect(legacyRows.rows).toStrictEqual([
+      { schedule_title: null, schedule_snapshot: null },
+    ]);
 
     // The manual run is stamped on the trigger, so a second fire conflicts
     // while it is still active (per-trigger skip-if-active semantics).

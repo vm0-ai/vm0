@@ -1021,9 +1021,9 @@ function AutomationActionsContainer({
 
 export function ZeroAutomationDetailPage() {
   const params = useGet(pathParams$);
-  const scheduleId =
-    params && typeof params === "object" && "scheduleId" in params
-      ? String(params.scheduleId)
+  const automationId =
+    params && typeof params === "object" && "automationId" in params
+      ? String(params.automationId)
       : null;
 
   const entriesLoadable = useLastLoadable(allOrgAutomationEntries$);
@@ -1038,7 +1038,7 @@ export function ZeroAutomationDetailPage() {
 
   const combinedAutomations = buildCombinedAutomations(entries);
 
-  if (!scheduleId) {
+  if (!automationId) {
     return <AutomationNotFound />;
   }
 
@@ -1051,7 +1051,7 @@ export function ZeroAutomationDetailPage() {
   }
 
   const entry = combinedAutomations.find((e) => {
-    return e.id === scheduleId;
+    return e.id === automationId;
   });
 
   if (!entry) {

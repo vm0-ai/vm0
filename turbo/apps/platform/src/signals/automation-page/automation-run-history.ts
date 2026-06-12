@@ -50,14 +50,14 @@ export const {
   resetPaginationState$: resetAutomationRunPagination$,
 } = createCursorPagination({
   buildFetchParams: (limit, cursor, get) => {
-    const scheduleId = get(runHistoryAutomationId$);
-    if (!scheduleId) {
+    const automationId = get(runHistoryAutomationId$);
+    if (!automationId) {
       return null;
     }
 
     const params = new URLSearchParams({
       limit: String(limit),
-      scheduleId,
+      automationId,
     });
 
     if (cursor) {

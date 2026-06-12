@@ -25,7 +25,7 @@ import {
 
 // The automation chip on the run's chat bubble: the snapshot keeps the label
 // rendering after the automation is renamed, edited, or deleted.
-function chatMessageScheduleSnapshot(
+function chatMessageAutomationSnapshot(
   automation: typeof automations.$inferSelect,
 ): ChatMessageAutomationSnapshot {
   return {
@@ -173,8 +173,8 @@ export async function persistManualRunSideEffects(args: {
     runId: args.runId,
     prompt: args.prompt,
     appendQueueMarker: args.queued,
-    scheduleTitle: automation.name,
-    scheduleSnapshot: chatMessageScheduleSnapshot(automation),
+    automationTitle: automation.name,
+    automationSnapshot: chatMessageAutomationSnapshot(automation),
   });
 
   await args.db

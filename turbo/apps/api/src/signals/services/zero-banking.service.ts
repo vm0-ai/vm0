@@ -89,8 +89,6 @@ interface BankingGrantContext {
   readonly providerCustomerId: string;
   readonly accountProviderIds: readonly string[];
   readonly operationScopes: readonly BankingOperationScope[];
-  // #17307 D2 read switch: backed by the allow_automation_runs column, which
-  // supersedes allow_scheduled_runs.
   readonly allowAutomationRuns: boolean;
 }
 
@@ -535,11 +533,13 @@ async function authorizeBankingAccess(
   }
 
   if (run.triggerSource === "automation" && !grant.allowAutomationRuns) {
+    // Historical audit rows persist the former "SCHEDULE_NOT_ALLOWED" code;
+    // nothing filters on the literal, so new denials emit the automation name.
     return await denyBankingAccess(db, auth, action, providerAccountId, {
       agentId: run.agentId,
       connectionId: grant.connectionId,
-      failureCode: "SCHEDULE_NOT_ALLOWED",
-      message: "Banking is not enabled for scheduled runs",
+      failureCode: "AUTOMATION_NOT_ALLOWED",
+      message: "Banking is not enabled for automation runs",
     });
   }
 

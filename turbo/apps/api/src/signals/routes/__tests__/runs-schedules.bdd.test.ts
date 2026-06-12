@@ -191,18 +191,21 @@ async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
 
 function findSchedule<
   TSchedule extends { readonly id: string; readonly name: string },
->(schedules: readonly TSchedule[], scheduleId: string): TSchedule | undefined {
+>(
+  schedules: readonly TSchedule[],
+  automationId: string,
+): TSchedule | undefined {
   return schedules.find((schedule) => {
-    return schedule.id === scheduleId;
+    return schedule.id === automationId;
   });
 }
 
 function mustFindSchedule<
   TSchedule extends { readonly id: string; readonly name: string },
->(schedules: readonly TSchedule[], scheduleId: string): TSchedule {
-  const schedule = findSchedule(schedules, scheduleId);
+>(schedules: readonly TSchedule[], automationId: string): TSchedule {
+  const schedule = findSchedule(schedules, automationId);
   if (!schedule) {
-    throw new Error(`Expected schedule ${scheduleId} to be visible in list`);
+    throw new Error(`Expected schedule ${automationId} to be visible in list`);
   }
   return schedule;
 }
@@ -823,14 +826,14 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
     });
     expect(userMessage).toMatchObject({
       content: "Manual run test",
-      scheduleTitle: deployed.automation.name,
-      scheduleSnapshot: {
+      automationTitle: deployed.automation.name,
+      automationSnapshot: {
         id: deployed.automation.id,
         title: deployed.automation.name,
         description: "Run-now schedule description",
       },
     });
-    expect(userMessage?.scheduleId).toBeUndefined();
+    expect(userMessage?.automationId).toBeUndefined();
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
@@ -1704,7 +1707,7 @@ describe("HOOK-01: schedule reschedule callbacks through replayed deliveries", (
         body: JSON.stringify({
           runId: randomUUID(),
           status: "completed",
-          payload: { scheduleId: deployed.automation.id },
+          payload: { automationId: deployed.automation.id },
         }),
         headers: {
           "content-type": "application/json",

@@ -1669,13 +1669,13 @@ async function appendAssociatedUserMessage(params: {
   // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
-  // Set when this message is posted by a firing automation. `scheduleSnapshot`
+  // Set when this message is posted by a firing automation. `automationSnapshot`
   // snapshots the automation's basic display details at send time so the bubble
-  // keeps its label even after an edit/delete. `scheduleTitle` is retained for
+  // keeps its label even after an edit/delete. `automationTitle` is retained for
   // legacy fallback display.
-  readonly scheduleId?: string;
-  readonly scheduleTitle?: string;
-  readonly scheduleSnapshot?: ChatMessageAutomationSnapshot;
+  readonly automationId?: string;
+  readonly automationTitle?: string;
+  readonly automationSnapshot?: ChatMessageAutomationSnapshot;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     if (params.clearDraft) {
@@ -1696,15 +1696,11 @@ async function appendAssociatedUserMessage(params: {
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
         generationTemplate: params.generationTemplate,
-        // #17307 D2 dual-write: the schedule_* columns keep receiving writes
-        // so rolling back to the previous release loses nothing; the
-        // automation_* columns supersede them and are the read source.
-        scheduleId: params.scheduleId,
-        scheduleTitle: params.scheduleTitle,
-        scheduleSnapshot: params.scheduleSnapshot,
-        automationId: params.scheduleId,
-        automationTitle: params.scheduleTitle,
-        automationSnapshot: params.scheduleSnapshot,
+        // #17307 D3: only the automation_* columns receive writes; the legacy
+        // schedule_* columns are frozen and drop in the next phase.
+        automationId: params.automationId,
+        automationTitle: params.automationTitle,
+        automationSnapshot: params.automationSnapshot,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -2254,8 +2250,9 @@ function scheduleAssociatedUserMessage(params: {
  * thread and publish the realtime signals so the client surfaces the run.
  * Posts the chat bubble for an automation-fired run: the prompt is the
  * automation `instruction`. A time-automation fire passes the chip fields
- * (`scheduleId` links the source automation for navigation; `scheduleSnapshot`
- * keeps the label rendering after edits/deletes); a webhook fire omits them.
+ * (`automationId` links the source automation for navigation;
+ * `automationSnapshot` keeps the label rendering after edits/deletes); a
+ * webhook fire omits them.
  * Like a time fire it preserves the thread draft (the
  * post is not user-initiated typing) and is awaited so the caller sees it
  * persisted.
@@ -2267,8 +2264,8 @@ export async function postAutomationUserMessage(params: {
   readonly runId: string;
   readonly prompt: string;
   readonly appendQueueMarker: boolean;
-  readonly scheduleTitle?: string;
-  readonly scheduleSnapshot?: ChatMessageAutomationSnapshot;
+  readonly automationTitle?: string;
+  readonly automationSnapshot?: ChatMessageAutomationSnapshot;
 }): Promise<void> {
   await appendAssociatedUserMessage({
     db: params.db,
@@ -2282,8 +2279,8 @@ export async function postAutomationUserMessage(params: {
     generationTemplate: undefined,
     appendQueueMarker: params.appendQueueMarker,
     clearDraft: false,
-    scheduleTitle: params.scheduleTitle,
-    scheduleSnapshot: params.scheduleSnapshot,
+    automationTitle: params.automationTitle,
+    automationSnapshot: params.automationSnapshot,
   });
   await publishUserSignal(
     [params.userId],
