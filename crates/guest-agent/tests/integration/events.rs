@@ -176,6 +176,46 @@ async fn prepare_event_does_not_capture_session_metadata() {
 }
 
 #[tokio::test]
+async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+    let _session_files = SessionCheckpointFilesGuard::new();
+
+    let sid_file = guest_agent::paths::session_id_file();
+    let hist_file = guest_agent::paths::session_history_path_file();
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""session_id":"***""#);
+        then.status(200);
+    });
+
+    let session_id = "bad/session-secret";
+    let masker = SecretMasker::from_raw("");
+    let event = json!({
+        "type": "system",
+        "subtype": "init",
+        "session_id": session_id
+    });
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+
+    assert!(result.is_ok());
+    mock.assert_calls_async(1).await;
+    assert_eq!(masker.mask_string(session_id), "***");
+    assert!(
+        !std::path::Path::new(sid_file).exists(),
+        "invalid session id must not be persisted"
+    );
+    assert!(
+        !std::path::Path::new(hist_file).exists(),
+        "invalid session id must not create a history marker"
+    );
+
+    mock.delete_async().await;
+}
+
+#[tokio::test]
 async fn send_event_keeps_existing_session_metadata() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;

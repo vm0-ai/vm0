@@ -307,6 +307,11 @@ fn send_event_codex_ignores_malformed_thread_id() {
             !Path::new(guest_agent::paths::session_id_file()).exists(),
             "malformed thread_id must not be persisted: {thread_id}"
         );
+        if thread_id.len() >= 5 {
+            assert_eq!(masker.mask_string(thread_id), "***");
+        } else {
+            assert_eq!(masker.mask_string(thread_id), thread_id);
+        }
     }
 }
 

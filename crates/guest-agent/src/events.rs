@@ -350,6 +350,8 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 ///   doesn't write the session file until turn-completion, so resolution
 ///   is deferred to checkpoint time.
 pub(crate) fn capture_session_metadata(event: &Value, masker: &SecretMasker) {
+    register_event_session_identifier(event, masker);
+
     let parsed = match Framework::from_env() {
         Framework::ClaudeCode => extract_claude_session_id(event),
         Framework::Codex => extract_codex_thread_id(event),
@@ -399,6 +401,16 @@ pub(crate) fn capture_session_metadata(event: &Value, masker: &SecretMasker) {
         ),
     }
     write_session_history_marker(&history_path_payload);
+}
+
+fn register_event_session_identifier(event: &Value, masker: &SecretMasker) {
+    let id = match Framework::from_env() {
+        Framework::ClaudeCode => raw_claude_session_id(event),
+        Framework::Codex => raw_codex_thread_id(event),
+    };
+    if let Some(id) = id {
+        masker.add_sensitive_value(id);
+    }
 }
 
 fn repair_missing_session_history_marker_from_existing_session(masker: &SecretMasker) {
@@ -484,6 +496,13 @@ fn history_path_payload_for_session_id(session_id: &str) -> Option<String> {
 /// Claude variant — matches `system/init` and computes the project-scoped
 /// jsonl path under `$HOME/.claude/projects/-{cwd}/`.
 fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
+    let session_id = raw_claude_session_id(event)?;
+    let history_path_payload = claude_history_path_payload(session_id)?;
+
+    Some((session_id.to_string(), history_path_payload))
+}
+
+fn raw_claude_session_id(event: &Value) -> Option<&str> {
     let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
     let subtype = event.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
     if event_type != "system" || subtype != "init" {
@@ -493,9 +512,7 @@ fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
     if session_id.is_empty() {
         return None;
     }
-    let history_path_payload = claude_history_path_payload(session_id)?;
-
-    Some((session_id.to_string(), history_path_payload))
+    Some(session_id)
 }
 
 fn claude_history_path_payload(session_id: &str) -> Option<String> {
@@ -531,15 +548,23 @@ fn is_valid_session_history_id(session_id: &str) -> bool {
 /// Codex variant — matches `thread.started` and emits a `CODEX_SEARCH:`
 /// marker pointing at `${HOME}/.codex/sessions` plus the thread_id.
 fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
+    let thread_id = raw_codex_thread_id(event)?;
+    let thread_id = crate::session_history::canonical_codex_thread_id(thread_id)?;
+    let marker = codex_history_marker_payload(&thread_id);
+
+    Some((thread_id, marker))
+}
+
+fn raw_codex_thread_id(event: &Value) -> Option<&str> {
     let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
     if event_type != "thread.started" {
         return None;
     }
     let thread_id = event.get("thread_id").and_then(|v| v.as_str())?;
-    let thread_id = crate::session_history::canonical_codex_thread_id(thread_id)?;
-    let marker = codex_history_marker_payload(&thread_id);
-
-    Some((thread_id, marker))
+    if thread_id.is_empty() {
+        return None;
+    }
+    Some(thread_id)
 }
 
 fn codex_history_marker_payload(thread_id: &str) -> String {
