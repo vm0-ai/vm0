@@ -1001,6 +1001,8 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/computer-use/write-commands",
   ],
   ["/api/zero/chat/search", "/api/zero/chat/search"],
+  ["/api/zero/chat-thread-drafts", "/api/zero/chat-thread-drafts"],
+  ["/api/zero/chat-thread-unreads", "/api/zero/chat-thread-unreads"],
   [
     ZERO_CHAT_THREADS_REWRITE_SOURCE,
     "/api/zero/chat-threads",

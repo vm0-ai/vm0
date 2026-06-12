@@ -28,7 +28,6 @@ function mockAPIs(): void {
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
   });
 }

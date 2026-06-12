@@ -2437,7 +2437,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       [200],
     );
     const threadsAfter = await chat.listThreads(actor);
-    expect(threadsAfter.totalCount).toBe(threadsBefore.totalCount);
+    expect(threadsAfter.threads).toHaveLength(threadsBefore.threads.length);
 
     await api.requestCancelRun(actor, detachedRun.runId, [200]);
     await api.requestCancelRun(actor, runId, [200]);

@@ -15,7 +15,6 @@ import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
-import { zeroComposeExists } from "../services/zero-compose-data.service";
 import {
   applyGoogleDriveArtifactSyncStatuses,
   googleDriveArtifactStatusLookup,
@@ -24,8 +23,10 @@ import {
   zeroChatSearch,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
+  zeroChatThreadDraftIds,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
+  zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
 import { zeroChatThreadGithubPrs$ } from "../services/chat-thread-github-prs.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
@@ -113,15 +114,8 @@ const listChatThreadsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatThreadsContract.list));
 
-  if (query.agentId) {
-    const exists = await get(
-      zeroComposeExists({ orgId: auth.orgId, composeId: query.agentId }),
-    );
-    if (!exists) {
-      return notFound("Agent not found");
-    }
-  }
-
+  // No existence check on agentId: the list query already scopes by
+  // org + agentComposeId, so an unknown agent yields an empty list.
   const page = await get(
     zeroChatThreadList({
       userId: auth.userId,
@@ -139,9 +133,37 @@ const listChatThreadsInner$ = computed(async (get) => {
       threads: [...page.threads],
       hasMore: page.hasMore,
       nextCursor: page.nextCursor,
-      totalCount: page.totalCount,
     },
   };
+});
+
+const listChatThreadDraftsInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const query = get(queryOf(chatThreadsContract.drafts));
+
+  const threadIds = query.threadIds.split(",").filter(isValidChatThreadId);
+  const draftThreadIds = await get(
+    zeroChatThreadDraftIds({ userId: auth.userId, threadIds }),
+  );
+
+  return {
+    status: 200 as const,
+    body: { draftThreadIds: [...draftThreadIds] },
+  };
+});
+
+const listChatThreadUnreadsInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const query = get(queryOf(chatThreadsContract.unreads));
+
+  const unreads = await get(
+    zeroChatThreadUnreads({
+      userId: auth.userId,
+      agentComposeId: query.agentId,
+    }),
+  );
+
+  return { status: 200 as const, body: { unreads: [...unreads] } };
 });
 
 const listChatThreadArtifactsInner$ = computed(async (get) => {
@@ -248,6 +270,14 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listChatThreadsInner$,
     ),
+  },
+  {
+    route: chatThreadsContract.drafts,
+    handler: authRoute({}, listChatThreadDraftsInner$),
+  },
+  {
+    route: chatThreadsContract.unreads,
+    handler: authRoute({}, listChatThreadUnreadsInner$),
   },
   {
     route: chatThreadByIdContract.get,

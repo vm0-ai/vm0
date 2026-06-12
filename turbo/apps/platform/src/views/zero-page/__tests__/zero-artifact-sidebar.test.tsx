@@ -118,7 +118,6 @@ function setupChatThread({
       threads: [],
       hasMore: false,
       nextCursor: null,
-      totalCount: 0,
     });
   });
   if (artifactFiles) {

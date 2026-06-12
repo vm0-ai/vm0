@@ -1177,3 +1177,31 @@ details[open] > summary > span:first-child {
 .mic-eq-dot:nth-child(3) {
   animation-delay: 0.4s;
 }
+
+/* Slash skill menu — a native popover anchored to the composer input. The
+   top layer keeps it above any overflow/stacking ancestor and the browser
+   owns all placement math (including scroll/resize tracking). */
+.slash-skill-anchor {
+  anchor-name: --slash-skill-anchor;
+  /* Several composers can be mounted at once (side-by-side chat threads);
+     scoping makes each menu resolve to its own composer's anchor. */
+  anchor-scope: --slash-skill-anchor;
+}
+
+.slash-skill-popover {
+  position-anchor: --slash-skill-anchor;
+  /* Reset the UA popover centering (inset: 0 + margin: auto). */
+  inset: auto;
+  margin: 0;
+  margin-block: 8px;
+  padding: 0;
+  position-area: top span-right;
+  position-try-fallbacks: flip-block;
+  position-visibility: anchors-visible;
+}
+
+/* Tailwind's display utilities would otherwise override the UA rule that
+   hides a popover before showPopover() is called. */
+.slash-skill-popover:not(:popover-open) {
+  display: none;
+}

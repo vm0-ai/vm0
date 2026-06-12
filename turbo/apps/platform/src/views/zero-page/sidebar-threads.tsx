@@ -3,6 +3,7 @@ import {
   useSet,
   useLastResolved,
   useLastLoadable,
+  useLoadable,
 } from "ccstate-react";
 import {
   IconPlus,
@@ -10,6 +11,7 @@ import {
   IconTrash,
   IconPencil,
   IconDots,
+  IconLoader2,
   IconPin,
   IconPinnedOff,
 } from "@tabler/icons-react";
@@ -79,7 +81,10 @@ import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   headerAutomationMenu$,
   automationsForThread,
+  reloadHeaderAutomationMenu$,
 } from "../../signals/chat-page/header-automation-menu.ts";
+import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
+import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
@@ -248,6 +253,7 @@ function ChatThreadMenu({
   hasOtherIndicator: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
+  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
   const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
@@ -320,6 +326,9 @@ function ChatThreadMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
+              // Refetch automations so the delete confirmation reflects the
+              // thread's current linked automations.
+              reloadAutomations();
               setPendingDeleteThreadId(threadId);
             }}
             className="text-destructive focus:text-destructive"
@@ -410,6 +419,8 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const loadRightThread = useSet(loadRightThread$);
   const unloadRightThread = useSet(unloadRightThread$);
   const pageSignal = useGet(pageSignal$);
+  const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
+  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -420,10 +431,12 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     sidebarThreadId: urlSidebarThreadId,
     threadId: session.id,
   });
+  const isUnread =
+    (unreadThreadIds?.has(session.id) ?? false) && !isHighlighted;
   const indicatorState = getIndicatorState({
-    hasDraft: (session.hasDraft ?? false) && !isHighlighted,
+    hasDraft: (draftThreadIds?.has(session.id) ?? false) && !isHighlighted,
     isRunning: session.running,
-    isUnread: !session.isRead && !isHighlighted,
+    isUnread,
   });
 
   return {
@@ -432,7 +445,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     isCurrentPage,
     isHighlighted,
     isPinned,
-    isUnread: !session.isRead && !isHighlighted,
+    isUnread,
     loadLeftThread,
     loadRightThread,
     onChatPage,
@@ -618,24 +631,19 @@ function DeleteChatThreadDialog() {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
-  const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  const automationsLoadable = useLastLoadable(headerAutomationMenu$);
-  const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  // useLoadable (not useLastLoadable): the delete menu item bumps a refetch,
+  // and the dialog must reflect that in-flight check rather than render a
+  // stale automation list as if it were current.
+  const automationsLoadable = useLoadable(headerAutomationMenu$);
+  const checkingAutomations = automationsLoadable.state === "loading";
   const allAutomations =
-    automationsLoadable.state === "hasData"
-      ? automationsLoadable.data
-      : (lastResolvedAutomations ?? []);
+    automationsLoadable.state === "hasData" ? automationsLoadable.data : [];
 
-  const pendingDeleteThread = pendingDeleteThreadId
-    ? chatThreads.find((thread) => {
-        return thread.id === pendingDeleteThreadId;
-      })
-    : null;
-  const scheduleCount = pendingDeleteThread?.scheduleCount ?? 0;
-  const hasAutomations = scheduleCount > 0;
   const pendingDeleteAutomations = pendingDeleteThreadId
     ? automationsForThread(allAutomations, pendingDeleteThreadId)
     : [];
+  const scheduleCount = pendingDeleteAutomations.length;
+  const hasAutomations = !checkingAutomations && scheduleCount > 0;
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -668,7 +676,16 @@ function DeleteChatThreadDialog() {
               : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
           </DialogDescription>
         </DialogHeader>
-        {hasAutomations && pendingDeleteAutomations.length > 0 && (
+        {checkingAutomations && (
+          <div
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+            data-testid="delete-chat-thread-checking"
+          >
+            <IconLoader2 size={16} className="animate-spin" />
+            Checking thread content…
+          </div>
+        )}
+        {hasAutomations && (
           <div className="flex flex-col gap-1.5">
             <p className="text-sm font-medium">
               These automations will be deleted
@@ -696,7 +713,11 @@ function DeleteChatThreadDialog() {
           >
             Cancel
           </Button>
-          <Button variant="destructive" onClick={confirmDelete}>
+          <Button
+            variant="destructive"
+            disabled={checkingAutomations}
+            onClick={confirmDelete}
+          >
             {hasAutomations ? "Delete chat and automations" : "Delete"}
           </Button>
         </DialogFooter>
