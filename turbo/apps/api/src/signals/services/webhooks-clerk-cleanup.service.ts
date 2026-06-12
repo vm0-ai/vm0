@@ -30,10 +30,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
-import {
-  automations,
-  automationTriggers,
-} from "@vm0/db/schema/automation";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
 import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
@@ -125,10 +122,7 @@ async function cancelLastAdminOrgsStripeSubscriptions(
   }
 }
 
-async function disableUserAutomations(
-  db: Db,
-  userId: string,
-): Promise<void> {
+async function disableUserAutomations(db: Db, userId: string): Promise<void> {
   await db
     .update(automations)
     .set({ enabled: false })

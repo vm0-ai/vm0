@@ -80,7 +80,7 @@ const postClerkWebhook$ = command(
       return new Response("OK", { status: 200 });
     }
 
-    if (event.type === "user.banned") {
+    if ((event.type as string) === "user.banned") {
       const userId = eventDataId(event.data);
       if (!userId) {
         L.error("user.banned event missing user ID", { data: event.data });
