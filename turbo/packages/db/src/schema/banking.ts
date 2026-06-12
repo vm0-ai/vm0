@@ -137,6 +137,12 @@ export const bankingAgentEnablements = pgTable(
     allowScheduledRuns: boolean("allow_scheduled_runs")
       .notNull()
       .default(false),
+    // Supersedes `allow_scheduled_runs` (#17307). During the transition both
+    // columns are dual-written; reads come from this column and
+    // `allow_scheduled_runs` drops in the final phase.
+    allowAutomationRuns: boolean("allow_automation_runs")
+      .notNull()
+      .default(false),
     revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -89,7 +89,9 @@ interface BankingGrantContext {
   readonly providerCustomerId: string;
   readonly accountProviderIds: readonly string[];
   readonly operationScopes: readonly BankingOperationScope[];
-  readonly allowScheduledRuns: boolean;
+  // #17307 D2 read switch: backed by the allow_automation_runs column, which
+  // supersedes allow_scheduled_runs.
+  readonly allowAutomationRuns: boolean;
 }
 
 const finicityAppTokenCache = singleton(
@@ -421,7 +423,7 @@ async function findBankingGrant(
       providerCustomerId: bankingConnections.providerCustomerId,
       accountProviderIds: bankingAgentEnablements.accountProviderIds,
       operationScopes: bankingAgentEnablements.operationScopes,
-      allowScheduledRuns: bankingAgentEnablements.allowScheduledRuns,
+      allowAutomationRuns: bankingAgentEnablements.allowAutomationRuns,
     })
     .from(bankingConnections)
     .innerJoin(
@@ -532,7 +534,7 @@ async function authorizeBankingAccess(
     });
   }
 
-  if (run.triggerSource === "automation" && !grant.allowScheduledRuns) {
+  if (run.triggerSource === "automation" && !grant.allowAutomationRuns) {
     return await denyBankingAccess(db, auth, action, providerAccountId, {
       agentId: run.agentId,
       connectionId: grant.connectionId,

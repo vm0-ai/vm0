@@ -6,7 +6,7 @@
  */
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
-import type { ChatMessageScheduleSnapshot } from "@vm0/db/schema/chat-message";
+import type { ChatMessageAutomationSnapshot } from "@vm0/db/schema/chat-message";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
@@ -27,7 +27,7 @@ import {
 // rendering after the automation is renamed, edited, or deleted.
 function chatMessageScheduleSnapshot(
   automation: typeof automations.$inferSelect,
-): ChatMessageScheduleSnapshot {
+): ChatMessageAutomationSnapshot {
   return {
     id: automation.id,
     title: automation.name,

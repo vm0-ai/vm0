@@ -180,7 +180,11 @@ async function seedBankingFixture(
         "transactions.read",
       ]),
     ],
+    // #17307 D2: seed both columns, mirroring the production dual-write. The
+    // gate reads allow_automation_runs; allow_scheduled_runs drops in the
+    // final phase.
     allowScheduledRuns: args.allowScheduledRuns ?? false,
+    allowAutomationRuns: args.allowScheduledRuns ?? false,
   });
 
   return {

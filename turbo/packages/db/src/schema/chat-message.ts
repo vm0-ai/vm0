@@ -85,7 +85,7 @@ export interface ChatMessageAttachFileMetadata {
 
 export type ChatMessageAttachFileMetadataList = ChatMessageAttachFileMetadata[];
 
-export interface ChatMessageScheduleSnapshot {
+export interface ChatMessageAutomationSnapshot {
   readonly id: string;
   readonly title: string;
   readonly description: string | null;
@@ -154,7 +154,16 @@ export const chatMessages = pgTable(
     scheduleId: uuid("schedule_id"),
     scheduleTitle: text("schedule_title"),
     scheduleSnapshot:
-      jsonb("schedule_snapshot").$type<ChatMessageScheduleSnapshot>(),
+      jsonb("schedule_snapshot").$type<ChatMessageAutomationSnapshot>(),
+    // The automation_* columns supersede the schedule_* trio above (#17307).
+    // During the transition both column sets are dual-written; reads come from
+    // the automation_* columns and the schedule_* columns drop in the final
+    // phase.
+    automationId: uuid("automation_id"),
+    automationTitle: text("automation_title"),
+    automationSnapshot: jsonb(
+      "automation_snapshot",
+    ).$type<ChatMessageAutomationSnapshot>(),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     error: text("error"),

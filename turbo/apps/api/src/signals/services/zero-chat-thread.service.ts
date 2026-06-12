@@ -28,7 +28,7 @@ import {
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageScheduleSnapshot,
+  type ChatMessageAutomationSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -118,7 +118,7 @@ type ChatMessageRow = {
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
-  readonly scheduleSnapshot: ChatMessageScheduleSnapshot | null;
+  readonly scheduleSnapshot: ChatMessageAutomationSnapshot | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
   readonly scheduleId: string | null;
@@ -224,11 +224,14 @@ const messageColumns = {
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
-  scheduleSnapshot: chatMessages.scheduleSnapshot,
+  // #17307 D2 read switch: storage moved to the automation_* columns
+  // (backfilled + dual-written), but the wire keeps the schedule* field names
+  // until the D3 wire rename.
+  scheduleSnapshot: chatMessages.automationSnapshot,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  scheduleId: chatMessages.scheduleId,
-  scheduleTitle: chatMessages.scheduleTitle,
+  scheduleId: chatMessages.automationId,
+  scheduleTitle: chatMessages.automationTitle,
 } as const;
 
 const searchMessageColumns = {

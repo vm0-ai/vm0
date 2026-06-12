@@ -806,24 +806,28 @@ describe("Automations API", () => {
     ).toBeTruthy();
 
     // The prompt renders as a user chat message with the automation chip.
+    // #17307 D2: the chip is dual-written to both the legacy schedule_* and
+    // the superseding automation_* columns, so both sets must be populated.
     const messages = await db
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
+        scheduleTitle: chatMessages.scheduleTitle,
         scheduleSnapshot: chatMessages.scheduleSnapshot,
+        automationTitle: chatMessages.automationTitle,
+        automationSnapshot: chatMessages.automationSnapshot,
       })
       .from(chatMessages)
       .where(eq(chatMessages.runId, runId));
-    expect(
-      messages.some((message) => {
-        return (
-          message.role === "user" &&
-          message.content === "Manual run test" &&
-          message.scheduleSnapshot?.id === created.automation.id &&
-          message.scheduleSnapshot.title === "fire-now"
-        );
-      }),
-    ).toBeTruthy();
+    const chipMessage = messages.find((message) => {
+      return message.role === "user" && message.content === "Manual run test";
+    });
+    expect(chipMessage).toMatchObject({
+      scheduleTitle: "fire-now",
+      scheduleSnapshot: { id: created.automation.id, title: "fire-now" },
+      automationTitle: "fire-now",
+      automationSnapshot: { id: created.automation.id, title: "fire-now" },
+    });
 
     // The manual run is stamped on the trigger, so a second fire conflicts
     // while it is still active (per-trigger skip-if-active semantics).

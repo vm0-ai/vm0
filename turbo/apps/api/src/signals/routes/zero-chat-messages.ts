@@ -12,7 +12,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
-  type ChatMessageScheduleSnapshot,
+  type ChatMessageAutomationSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
@@ -1675,7 +1675,7 @@ async function appendAssociatedUserMessage(params: {
   // legacy fallback display.
   readonly scheduleId?: string;
   readonly scheduleTitle?: string;
-  readonly scheduleSnapshot?: ChatMessageScheduleSnapshot;
+  readonly scheduleSnapshot?: ChatMessageAutomationSnapshot;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     if (params.clearDraft) {
@@ -1696,9 +1696,15 @@ async function appendAssociatedUserMessage(params: {
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
         generationTemplate: params.generationTemplate,
+        // #17307 D2 dual-write: the schedule_* columns keep receiving writes
+        // so rolling back to the previous release loses nothing; the
+        // automation_* columns supersede them and are the read source.
         scheduleId: params.scheduleId,
         scheduleTitle: params.scheduleTitle,
         scheduleSnapshot: params.scheduleSnapshot,
+        automationId: params.scheduleId,
+        automationTitle: params.scheduleTitle,
+        automationSnapshot: params.scheduleSnapshot,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -2262,7 +2268,7 @@ export async function postAutomationUserMessage(params: {
   readonly prompt: string;
   readonly appendQueueMarker: boolean;
   readonly scheduleTitle?: string;
-  readonly scheduleSnapshot?: ChatMessageScheduleSnapshot;
+  readonly scheduleSnapshot?: ChatMessageAutomationSnapshot;
 }): Promise<void> {
   await appendAssociatedUserMessage({
     db: params.db,
