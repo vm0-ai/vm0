@@ -70,6 +70,15 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
+function selectOptionByLabel(
+  label: string,
+  option: string,
+  container: HTMLElement,
+): void {
+  click(within(container).getByLabelText(label));
+  click(screen.getByRole("option", { name: option }));
+}
+
 function mockSchedulePageStory(): void {
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
