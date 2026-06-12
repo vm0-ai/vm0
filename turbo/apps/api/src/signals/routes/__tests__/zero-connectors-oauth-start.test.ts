@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConnectorAuthMethodId } from "@vm0/connectors/connectors";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorAuthMethodConfig,
+  type ConnectorAuthMethodId,
+} from "@vm0/connectors/connectors";
 import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
@@ -111,6 +115,7 @@ async function requestOauthStart(
 describe("POST /api/zero/connectors/:type/oauth/start", () => {
   const orgIds: string[] = [];
   const stateIds: string[] = [];
+  const restoreConnectorRegistry: (() => void)[] = [];
 
   beforeEach(() => {
     mockEnv("VM0_API_URL", API_ORIGIN);
@@ -119,6 +124,9 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
   });
 
   afterEach(async () => {
+    while (restoreConnectorRegistry.length > 0) {
+      restoreConnectorRegistry.pop()?.();
+    }
     const db = store.set(writeDb$);
     while (stateIds.length > 0) {
       const stateId = stateIds.pop();
@@ -159,6 +167,49 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     const orgId = `org_${randomUUID()}`;
     orgIds.push(orgId);
     mocks.clerk.session(userId, orgId);
+
+    const response = await requestOauthStart("google-cloud", {
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "google-cloud connector is not available",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("rejects OAuth start when the auth method is statically hidden", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.GoogleCloudConnector]: true },
+    });
+
+    const authMethods = CONNECTOR_TYPES["google-cloud"].authMethods;
+    const originalOauth = authMethods.oauth;
+    restoreConnectorRegistry.push(() => {
+      Object.defineProperty(authMethods, "oauth", {
+        value: originalOauth,
+        configurable: true,
+        enumerable: true,
+      });
+    });
+    Object.defineProperty(authMethods, "oauth", {
+      value: {
+        ...originalOauth,
+        visible: false,
+      } satisfies ConnectorAuthMethodConfig,
+      configurable: true,
+      enumerable: true,
+    });
 
     const response = await requestOauthStart("google-cloud", {
       headers: { authorization: "Bearer clerk-session" },

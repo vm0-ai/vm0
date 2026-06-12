@@ -73,7 +73,7 @@ function connectorAuthMethodPriority(
 export function getConfiguredConnectorAuthMethodIds(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
-  // Configured methods are raw registry entries; callers apply feature flags.
+  // Configured methods are raw registry entries; callers apply availability filters.
   return Object.keys(CONNECTOR_TYPES[type].authMethods)
     .map((authMethod) => {
       return connectorAuthMethodIdSchema.parse(authMethod);
@@ -1103,6 +1103,9 @@ export function isConnectorAuthMethodAvailable(
   if (!method) {
     return false;
   }
+  if (method.visible === false) {
+    return false;
+  }
   return !method.featureFlag || !!featureStates?.[method.featureFlag];
 }
 
@@ -1123,7 +1126,8 @@ function shouldIncludeApiAuthMethod(
 /**
  * Return user-selectable connector connection flows for a surface.
  *
- * This does not describe persisted connected state.
+ * This includes static visibility, feature-switch, and surface policy filtering.
+ * It does not describe persisted connected state.
  */
 export function getAvailableConnectorAuthMethodIds(
   type: ConnectorType,

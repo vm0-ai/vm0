@@ -491,6 +491,8 @@ export type ConnectorRevokeConfig =
 interface ConnectorAuthMethodConfigBase {
   label: string;
   helpText?: string;
+  /** When false, this auth method is unavailable for new connector actions. */
+  visible?: boolean;
   /** When set, this auth method is only available while the feature is enabled. */
   featureFlag?: FeatureSwitchKey;
   /** When false, feature-gated UI surfaces should not add an experimental label. */
