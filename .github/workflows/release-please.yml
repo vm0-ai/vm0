@@ -27,6 +27,7 @@ jobs:
       cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
       web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
       api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
+      db_release_created: ${{ steps.release.outputs['turbo/packages/db--release_created'] }}
       app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
       desktop_release_created: ${{ steps.release.outputs['turbo/apps/desktop--release_created'] }}
       host_worker_release_created: ${{ steps.release.outputs['turbo/apps/host-worker--release_created'] }}
@@ -55,21 +56,74 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_HEAD=$(gh pr view release-please--branches--main --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")
-          if [ -z "$PR_HEAD" ]; then
+          PR_JSON=$(gh pr view release-please--branches--main --repo "${{ github.repository }}" --json number,headRefOid 2>/dev/null || echo "")
+          if [ -z "$PR_JSON" ]; then
             echo "No release PR found, skipping"
             exit 0
           fi
-          for gate in ci-gate-turbo ci-gate-crates ci-gate-security; do
+
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r .number)
+          PR_HEAD=$(echo "$PR_JSON" | jq -r .headRefOid)
+          CHANGED_FILES=$(gh pr diff "$PR_NUMBER" --repo "${{ github.repository }}" --name-only)
+
+          create_gate_check() {
+            local gate="$1"
+            local conclusion="$2"
+            local title="$3"
+            local summary="$4"
+
             gh api repos/${{ github.repository }}/check-runs -X POST \
               -f name="$gate" \
               -f head_sha="$PR_HEAD" \
               -f status="completed" \
-              -f conclusion="success" \
-              -f "output[title]=Release PR — CI skipped" \
-              -f "output[summary]=Release-please PRs only contain version bumps and changelogs."
-            echo "✅ Created $gate check run on $PR_HEAD"
+              -f conclusion="$conclusion" \
+              -f "output[title]=$title" \
+              -f "output[summary]=$summary"
+            echo "✅ Created $gate check run on $PR_HEAD with conclusion $conclusion"
+          }
+
+          db_release_in_pr=false
+          api_release_in_pr=false
+          if printf '%s\n' "$CHANGED_FILES" | grep -qx "turbo/packages/db/package.json"; then
+            db_release_in_pr=true
+          fi
+          if printf '%s\n' "$CHANGED_FILES" | grep -qx "turbo/apps/api/package.json"; then
+            api_release_in_pr=true
+          fi
+
+          if [ "$db_release_in_pr" = "true" ] && [ "$api_release_in_pr" != "true" ]; then
+            create_gate_check \
+              ci-gate-turbo \
+              failure \
+              "DB release requires API release" \
+              "Release PRs that bump turbo/packages/db must also bump turbo/apps/api because production migrations are owned by the API release lifecycle."
+            create_gate_check ci-gate-crates success "Release PR — CI skipped" "Release-please PRs only contain version bumps and changelogs."
+            create_gate_check ci-gate-security success "Release PR — CI skipped" "Release-please PRs only contain version bumps and changelogs."
+            echo "::error::turbo/packages/db release PR changes must ship with turbo/apps/api."
+            exit 1
+          fi
+
+          for gate in ci-gate-turbo ci-gate-crates ci-gate-security; do
+            create_gate_check "$gate" success "Release PR — CI skipped" "Release-please PRs only contain version bumps and changelogs."
           done
+
+  validate-db-release-coupling:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure DB releases ship with API
+        env:
+          API_RELEASE_CREATED: ${{ needs.release-please.outputs.api_release_created }}
+          DB_RELEASE_CREATED: ${{ needs.release-please.outputs.db_release_created }}
+        run: |
+          if [ "$DB_RELEASE_CREATED" = "true" ] && [ "$API_RELEASE_CREATED" != "true" ]; then
+            echo "::error::turbo/packages/db releases must ship with a turbo/apps/api release."
+            echo "DB migrations are owned by the API production release lifecycle."
+            exit 1
+          fi
+
+          echo "DB/API release coupling validated."
 
   build-desktop-release:
     name: build-desktop-release
@@ -356,8 +410,8 @@ jobs:
         if: ${{ always() && steps.signing-certificate.outputs.keychain_path != '' }}
         run: security delete-keychain "${{ steps.signing-certificate.outputs.keychain_path }}" || true
 
-  # Run database migrations in production (runs after builds-complete to reduce
-  # downtime: builds stage first, then migrate, then promote traffic.)
+  # Run database migrations in production for API releases only. The API staged
+  # deployment is built first, then migrations run, then API traffic is promoted.
   migrate-production:
     needs: [release-please, builds-complete]
     # always() prevents GitHub Actions from propagating "skipped" when upstream
@@ -365,7 +419,7 @@ jobs:
     # builds-complete.result check gates on actual build success.
     if: >-
       always() &&
-      needs.release-please.outputs.releases_created == 'true' &&
+      needs.release-please.outputs.api_release_created == 'true' &&
       needs.builds-complete.result == 'success'
     runs-on: ubuntu-latest
     container:
@@ -395,7 +449,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Database Migration* starting...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+                  text: "*Database Migration* starting...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
 
       - name: Record start time
         id: timer
@@ -511,7 +565,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+                  text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
 
       - name: Notify Slack - Smoke Failure
         if: >-
@@ -536,7 +590,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Database Migration Smoke* ❌ Smoke check failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n⚠️ Production database migration was not run. The failure happened before the real production DB migration, on the Neon smoke branch `release-smoke/production-migration` or its cleanup.\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Database Migration Smoke* ❌ Smoke check failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n⚠️ Production database migration was not run. The failure happened before the real production DB migration, on the Neon smoke branch `release-smoke/production-migration` or its cleanup.\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
       - name: Notify Slack - Failure
         if: >-
@@ -559,7 +613,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Build web app production deployment (Staged - prod-eligible, not serving traffic)
   build-web-production:
@@ -577,9 +631,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-
-      - name: Install neonctl
-        run: npm install -g neonctl@2.15.0
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -601,15 +652,6 @@ jobs:
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Get Production Database URL
-        id: get-db-url
-        run: |
-          # Get the main branch database URL (production)
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
-          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-
       - name: Fetch production Doppler OAuth config
         id: doppler-oauth
         uses: dopplerhq/secrets-fetch-action@v2.0.0
@@ -625,7 +667,6 @@ jobs:
         with:
           app: web
           environment: production
-          database-url: ${{ steps.get-db-url.outputs.database-url }}
           web-url: https://www.vm0.ai
           app-url: https://app.vm0.ai
           api-url: ${{ vars.VM0_API_URL }}
@@ -977,12 +1018,14 @@ jobs:
                   text: "*Host Worker* ❌ Deploy failed\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Promote web staged deployment to production (traffic switch)
-  # Fan-in barrier: all build-phase jobs must finish (success or skipped) before
-  # any promote-phase job starts. If any build fails, this job fails, which in
-  # turn blocks every promote via their `needs: builds-complete` edge.
+  # Fan-in barrier: all build-phase and release validation jobs must finish
+  # (success or skipped) before any promote-phase job starts. If any build or
+  # validation fails, this job fails, which in turn blocks every promote via
+  # their `needs: builds-complete` edge.
   builds-complete:
     needs:
       - release-please
+      - validate-db-release-coupling
       - build-web-production
       - build-api-production
       - build-app-production
@@ -1020,17 +1063,10 @@ jobs:
           echo "✅ All build-phase jobs succeeded or were skipped."
 
   promote-web-production:
-    needs:
-      [
-        release-please,
-        builds-complete,
-        build-web-production,
-        migrate-production,
-      ]
+    needs: [release-please, builds-complete, build-web-production]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.web_release_created == 'true' &&
-      needs.migrate-production.result == 'success'
+      needs.release-please.outputs.web_release_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -1143,7 +1179,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Web App* ❌ Promote failed — DB at new schema, traffic on old code\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Web App* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Promote API staged deployment to production (vm0-api project only; no api.vm0.ai alias)
   promote-api-production:
@@ -1386,12 +1422,10 @@ jobs:
         builds-complete,
         build-app-production,
         promote-web-production,
-        migrate-production,
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.app_release_created == 'true' &&
-      needs.migrate-production.result == 'success'
+      needs.release-please.outputs.app_release_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -1782,7 +1816,7 @@ jobs:
           echo "Updated rollback dashboard issue #${ISSUE_NUMBER}"
 
   publish-npm:
-    needs: [release-please, builds-complete, migrate-production]
+    needs: [release-please, builds-complete]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.cli_release_created == 'true'
@@ -2147,9 +2181,8 @@ jobs:
 
   # Promote runner: install systemd service (traffic cutover), drain
   # old runners, garbage-collect old artifacts, global health check.
-  # Waits for build-runner-production plus migrate-production and
-  # promote-web-production so the new runner only serves traffic after
-  # the schema and API it targets are live. Host-level prep
+  # Waits for build-runner-production plus promote-web-production so the new
+  # runner only serves traffic after web is live. Host-level prep
   # (provision-runner, provision-monitoring) already ran in build.
   promote-runner-production:
     needs:
@@ -2159,12 +2192,10 @@ jobs:
         promote-web-production,
         resolve-image-cache,
         build-runner-production,
-        migrate-production,
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.runner_rs_release_created == 'true' &&
-      needs.migrate-production.result == 'success'
+      needs.release-please.outputs.runner_rs_release_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525

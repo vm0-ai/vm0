@@ -287,7 +287,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[2]?.credits).toBe(80);
   });
 
-  it("labels schedule threads and filters by source", async () => {
+  it("labels automation threads and filters by source", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
@@ -322,7 +322,7 @@ describe("GET /api/zero/usage/record", () => {
         orgId: fixture.orgId,
         userId: fixture.userId,
         title: "Daily brief",
-        triggerSource: "schedule",
+        triggerSource: "automation",
         createdAt: createdAt(10),
       },
       context.signal,
@@ -344,7 +344,7 @@ describe("GET /api/zero/usage/record", () => {
 
     const response = await accept(
       apiClient().get({
-        query: { source: "schedule" },
+        query: { source: "automation" },
         headers: authHeaders(),
       }),
       [200],
@@ -352,13 +352,13 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body.rows).toHaveLength(1);
     expect(response.body.pagination.total).toBe(1);
-    expect(response.body.rows[0]?.source).toBe("schedule");
+    expect(response.body.rows[0]?.source).toBe("automation");
     expect(response.body.rows[0]?.threadId).toBe(schedule.threadId);
     expect(response.body.rows[0]?.title).toBe("Daily brief");
     expect(response.body.rows[0]?.credits).toBe(120);
   });
 
-  it("keeps chat and schedule usage separate within the same thread", async () => {
+  it("keeps chat and automation usage separate within the same thread", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
@@ -420,7 +420,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(allResponse.body.rows).toHaveLength(2);
     expect(allResponse.body.pagination.total).toBe(2);
     expect(allResponse.body.rows[0]).toMatchObject({
-      source: "schedule",
+      source: "automation",
       threadId: chat.threadId,
       runId: null,
       title: "Shared thread",

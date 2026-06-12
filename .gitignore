@@ -170,6 +170,9 @@ settings.local.json
 .pnpm-store
 .vercel
 
+# Turbo
+.turbo/
+
 # Local HTTPS certificates
 .certs/
 

@@ -55,7 +55,7 @@ export const selectedSkillName$ = computed((get) => {
   return get(internalSelectedSkillName$);
 });
 
-const orgSkills$ = computed(
+export const orgSkills$ = computed(
   async (get): Promise<readonly ZeroAgentCustomSkill[]> => {
     const client = get(zeroClient$)(zeroSkillsCollectionContract);
     const result = await accept(client.list(), [200], { toast: false });

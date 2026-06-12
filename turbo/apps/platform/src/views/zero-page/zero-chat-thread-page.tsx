@@ -195,6 +195,7 @@ import {
 import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
   feedbackItemsValue$,
+  feedbackThreadIdValue$,
   feedbackSendCountValue$,
   setFeedbackItemNote$,
   removeFeedbackItem$,
@@ -1634,39 +1635,58 @@ function ChatArtifactInboxHeader({
           </span>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onToggleSearch}
-        aria-label="Search artifacts"
-        aria-pressed={searchOpen}
-        className={cn(
-          "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
-          searchOpen && "bg-muted/60 text-foreground",
-        )}
-      >
-        <IconSearch size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={onToggleFullscreen}
-        aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-        data-testid="artifact-inbox-fullscreen-toggle"
-        className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
-      >
-        {fullscreen ? (
-          <IconArrowsDiagonalMinimize2 size={16} />
-        ) : (
-          <IconArrowsDiagonal size={16} />
-        )}
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close artifacts"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        <IconX size={16} />
-      </button>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleSearch}
+              aria-label="Search artifacts"
+              aria-pressed={searchOpen}
+              className={cn(
+                "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+                searchOpen && "bg-muted/60 text-foreground",
+              )}
+            >
+              <IconSearch size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Search artifacts</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              data-testid="artifact-inbox-fullscreen-toggle"
+              className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
+            >
+              {fullscreen ? (
+                <IconArrowsDiagonalMinimize2 size={16} />
+              ) : (
+                <IconArrowsDiagonal size={16} />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close artifacts"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <IconX size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Close artifacts</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
@@ -2304,11 +2324,8 @@ function ChatThreadMessagesMain({
   const features = useLastResolved(featureSwitch$);
   const completedWorkFoldingEnabled =
     features?.[FeatureSwitchKey.ChatCompletedWorkFolding] ?? false;
-  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinished =
-    allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
   const completedWorkFolding = completedWorkFoldingEnabled
-    ? buildCompletedWorkFolding(activeGroups, allFinished)
+    ? buildCompletedWorkFolding(activeGroups)
     : null;
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
@@ -2401,17 +2418,6 @@ function ChatThreadMessageGroups({
           completedWorkExpandedKeys.has(completedWorkFold.key);
         return (
           <div key={group.beginMessageId} className="contents">
-            {completedWorkFold !== null &&
-              completedWorkExpanded &&
-              completedWorkFold.hiddenGroups.map((hiddenGroup) => {
-                return (
-                  <PagedGroupRow
-                    key={hiddenGroup.beginMessageId}
-                    group={hiddenGroup}
-                    thread={thread}
-                  />
-                );
-              })}
             <PagedGroupRow
               group={group}
               thread={thread}
@@ -2419,6 +2425,7 @@ function ChatThreadMessageGroups({
                 completedWorkFold !== null
                   ? {
                       groups: completedWorkFold.labelGroups,
+                      hiddenGroups: completedWorkFold.hiddenGroups,
                       expanded: completedWorkExpanded,
                       onToggle: () => {
                         onToggleCompletedWork(completedWorkFold.key);
@@ -2504,17 +2511,32 @@ function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   );
 }
 
+function terminatedRunIdsForCompletedWork(
+  messages: readonly EnrichedChatMessage[],
+): Set<string> {
+  const terminatedRunIds = new Set<string>();
+  for (const message of messages) {
+    if (message.interruptsRunId !== undefined) {
+      terminatedRunIds.add(message.interruptsRunId);
+    }
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      terminatedRunIds.add(message.runId);
+    }
+  }
+  return terminatedRunIds;
+}
+
 function buildCompletedWorkFolding(
   groups: readonly GroupedChatMessageGroup[],
-  allFinished: boolean,
 ): CompletedWorkFolding | null {
-  if (!allFinished) {
-    return null;
-  }
-
   const messages = groups.flatMap((group) => {
     return group.messages;
   });
+  const terminatedRunIds = terminatedRunIdsForCompletedWork(messages);
   const visibleMessages: EnrichedChatMessage[] = [];
   const folds: CompletedWorkFold[] = [];
 
@@ -2532,6 +2554,12 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
+    if (!terminatedRunIds.has(runId)) {
+      visibleMessages.push(...runMessages);
+      index = endIndex;
+      continue;
+    }
+
     let finalMessageIndex = -1;
     for (let offset = runMessages.length - 1; offset >= 0; offset--) {
       if (isRenderableAssistantMessage(runMessages[offset]!)) {
@@ -2635,6 +2663,9 @@ function completedWorkLabel(
   return `Worked for ${formatCompactDuration(elapsedSeconds)}`;
 }
 
+const RUN_SECTION_LABEL_CLASS =
+  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
+
 function CompletedWorkFoldRow({
   groups,
   expanded,
@@ -2646,24 +2677,19 @@ function CompletedWorkFoldRow({
 }) {
   const label = completedWorkLabel(groups);
   return (
-    <div data-chat-completed-work-fold>
+    <div data-chat-completed-work-fold className="-mx-2">
       <button
         type="button"
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="group flex h-9 w-full items-center gap-2 rounded-lg px-1 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
       >
-        <span className="min-w-0 shrink-0">{label}</span>
-        <IconChevronRight
-          size={17}
-          stroke={1.7}
-          className={cn(
-            "shrink-0 transition-transform duration-150",
-            expanded && "rotate-90",
-          )}
-        />
-        <span className="h-px min-w-8 flex-1 bg-border/50 transition-colors group-hover:bg-border" />
+        <span className="block h-px w-full bg-border/40" />
+        <span className="flex items-center gap-2">
+          <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
+          <span className="h-px flex-1 bg-border/40" />
+        </span>
       </button>
     </div>
   );
@@ -3340,6 +3366,7 @@ function useChatThreadComposerFeedback(
   const inlineFeedbackEnabled =
     features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
   const items = useGet(feedbackItemsValue$);
+  const feedbackThreadId = useGet(feedbackThreadIdValue$);
   const sendCount = useGet(feedbackSendCountValue$);
   const setNote = useSet(setFeedbackItemNote$);
   const removeItem = useSet(removeFeedbackItem$);
@@ -3348,7 +3375,9 @@ function useChatThreadComposerFeedback(
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
 
-  if (!inlineFeedbackEnabled) {
+  // Feedback is owned by the thread it was drafted in; other threads keep their
+  // own composer textarea so a draft never bleeds across chats.
+  if (!inlineFeedbackEnabled || feedbackThreadId !== thread.threadId) {
     return undefined;
   }
   return {
@@ -3644,9 +3673,7 @@ function FinishedRunRow({
       <div className="flex h-5 flex-col justify-center gap-1.5">
         <div className="h-px w-full bg-border/40" />
         <div className="flex items-center gap-2">
-          <p className="text-[13px] italic text-muted-foreground/50 font-serif shrink-0">
-            {label}
-          </p>
+          <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
           <div className="h-px flex-1 bg-border/40" />
         </div>
       </div>
@@ -4843,6 +4870,7 @@ function PagedGroupRow({
   thread: ChatThreadSignals;
   completedWorkFold?: {
     groups: readonly GroupedChatMessageGroup[];
+    hiddenGroups: readonly GroupedChatMessageGroup[];
     expanded: boolean;
     onToggle: () => void;
   };
@@ -5434,6 +5462,7 @@ function PagedAssistantGroup({
   thread: ChatThreadSignals;
   completedWorkFold?: {
     groups: readonly GroupedChatMessageGroup[];
+    hiddenGroups: readonly GroupedChatMessageGroup[];
     expanded: boolean;
     onToggle: () => void;
   };
@@ -5462,6 +5491,19 @@ function PagedAssistantGroup({
               onToggle={completedWorkFold.onToggle}
             />
           )}
+          {completedWorkFold?.expanded
+            ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
+                return (
+                  <div key={hiddenGroup.beginMessageId} className="contents">
+                    {hiddenGroup.messages.map((msg) => {
+                      return (
+                        <PagedAssistantMessageItem key={msg.id} message={msg} />
+                      );
+                    })}
+                  </div>
+                );
+              })
+            : null}
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}

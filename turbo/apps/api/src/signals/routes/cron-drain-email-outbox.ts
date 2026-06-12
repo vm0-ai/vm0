@@ -1,6 +1,7 @@
 import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
+import { now } from "../../lib/time";
 import type { RouteEntry } from "../route";
 import {
   cleanupExpiredEmailOutbox$,
@@ -14,9 +15,10 @@ const drainEmailOutboxRoute$ = command(
       return cronUnauthorized();
     }
 
-    const drained = await set(drainEmailOutboxBatch$, signal);
+    const drainContext = { currentTimeMs: now(), signal };
+    const drained = await set(drainEmailOutboxBatch$, drainContext);
     signal.throwIfAborted();
-    const cleaned = await set(cleanupExpiredEmailOutbox$, signal);
+    const cleaned = await set(cleanupExpiredEmailOutbox$, drainContext);
     signal.throwIfAborted();
 
     return {

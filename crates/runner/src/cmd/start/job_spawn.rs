@@ -704,6 +704,8 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
             Some(
                 FailureReason::InsufficientCredits
                     | FailureReason::InvalidApiKey
+                    | FailureReason::InvalidCredentials
+                    | FailureReason::ReconnectRequired
                     | FailureReason::UsageLimit
             )
         ),
@@ -865,6 +867,8 @@ mod tests {
         for reason in [
             FailureReason::InsufficientCredits,
             FailureReason::InvalidApiKey,
+            FailureReason::InvalidCredentials,
+            FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
         ] {
             let diagnostic = job_failure_diagnostic(Some(reason));
@@ -916,7 +920,12 @@ mod tests {
 
     #[test]
     fn info_level_reason_on_non_cli_failure_logs_job_execution_failed_at_error() {
-        for reason in [FailureReason::InvalidApiKey, FailureReason::UsageLimit] {
+        for reason in [
+            FailureReason::InvalidApiKey,
+            FailureReason::InvalidCredentials,
+            FailureReason::ReconnectRequired,
+            FailureReason::UsageLimit,
+        ] {
             let diagnostic = FailureDiagnostic::new(
                 FailureClass::CheckpointFailed,
                 AgentFramework::Codex,

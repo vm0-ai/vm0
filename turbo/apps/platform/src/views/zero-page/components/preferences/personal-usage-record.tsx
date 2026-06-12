@@ -52,7 +52,7 @@ const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
 
 const SOURCE_META = {
   chat: { label: "Chat", Icon: IconMessageCircle },
-  schedule: { label: "Schedule", Icon: IconClock },
+  automation: { label: "Automation", Icon: IconClock },
   slack: { label: "Slack", Icon: IconBrandSlack },
   telegram: { label: "Telegram", Icon: IconBrandTelegram },
   email: { label: "Email", Icon: IconMail },

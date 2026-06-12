@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.114.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.6...runner-rs-v0.114.7) (2026-06-12)
+
+
+### Refactoring
+
+* **runner:** remove argv-derived runner identity ([#17418](https://github.com/vm0-ai/vm0/issues/17418)) ([f25341e](https://github.com/vm0-ai/vm0/commit/f25341ea7b4f4b69250a4332e50697558d360513))
+
+## [0.114.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.5...runner-rs-v0.114.6) (2026-06-12)
+
+
+### Bug Fixes
+
+* classify non-code runner job failures ([#17438](https://github.com/vm0-ai/vm0/issues/17438)) ([dcae0a6](https://github.com/vm0-ai/vm0/commit/dcae0a69924bbf34c4a31cea9fee74cbca9aa16d))
+* **runner:** enforce global workspace cache budget ([#17437](https://github.com/vm0-ai/vm0/issues/17437)) ([c2e9a49](https://github.com/vm0-ai/vm0/commit/c2e9a49801481150acf73ad31eeb6e5edb08aa33))
+
+## [0.114.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.4...runner-rs-v0.114.5) (2026-06-12)
+
+
+### Bug Fixes
+
+* retain saturated usage webhook batches ([#17411](https://github.com/vm0-ai/vm0/issues/17411)) ([5592584](https://github.com/vm0-ai/vm0/commit/5592584fd684d3797f7666a2ca7dd7abd4eaa03f))
+
+## [0.114.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.3...runner-rs-v0.114.4) (2026-06-12)
+
+
+### Bug Fixes
+
+* **runner:** resolve runs from live registry status ([#17392](https://github.com/vm0-ai/vm0/issues/17392)) ([3bfd39b](https://github.com/vm0-ai/vm0/commit/3bfd39b4aa2fa918485f36bc9b05a4657a4c10c9))
+
 ## [0.114.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.2...runner-rs-v0.114.3) (2026-06-12)
 
 

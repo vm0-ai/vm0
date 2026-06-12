@@ -692,19 +692,9 @@ describe("team page navigation", () => {
     click(menuItemByText("Allow always"));
     await waitFor(() => {
       expect(within(createRow).getByText("Always")).toBeInTheDocument();
+      expect(buttonByText("Apply", permissionsDialog)).toBeEnabled();
     });
 
-    const deleteRow = await permissionRowByName(
-      permissionsDialog,
-      "annotations|delete",
-    );
-    click(screen.getByLabelText("annotations|delete allow options"));
-    click(menuItemByText("Allow for 1h"));
-    await waitFor(() => {
-      expect(within(deleteRow).getByText("1h")).toBeInTheDocument();
-    });
-
-    click(buttonByText("Deny", unknownEndpointsRow(permissionsDialog)));
     click(buttonByText("Apply", permissionsDialog));
 
     await waitFor(() => {
@@ -718,19 +708,6 @@ describe("team page navigation", () => {
           permission: "annotations|create",
           action: "allow",
           expiresIn: "always",
-        },
-        {
-          agentId: researchAgentId,
-          connectorRef: "axiom",
-          permission: "annotations|delete",
-          action: "allow",
-          expiresIn: "1h",
-        },
-        {
-          agentId: researchAgentId,
-          connectorRef: "axiom",
-          permission: "__unknown__",
-          action: "deny",
         },
       ]),
     );

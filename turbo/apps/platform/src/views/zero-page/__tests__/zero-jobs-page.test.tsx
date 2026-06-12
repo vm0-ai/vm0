@@ -13,13 +13,13 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { automationsV2ByRefContract } from "@vm0/api-contracts/contracts/automations-v2";
+import { automationsByRefContract } from "@vm0/api-contracts/contracts/automations";
 import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
-import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations-v2.ts";
+import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
 import { createMockScheduleResponse } from "../../../mocks/handlers/schedules-store.ts";
 
 const context = testContext();
@@ -137,6 +137,100 @@ function dialogCreateButton(dialog: HTMLElement): HTMLElement {
     throw new Error("dialog create button not found");
   }
   return createButton;
+}
+
+function mockAgentDetailStory(): string {
+  const agentId = "a0000000-0000-4000-a000-000000000301";
+  mockAgentsPage([
+    createDefaultAgent(),
+    {
+      id: agentId,
+      ownerId: "test-user-123",
+      displayName: "Research Agent",
+      description: "Finds launch risks",
+      sound: "professional",
+      avatarUrl: null,
+      customSkills: [],
+      visibility: "public",
+      headVersionId: "version_4",
+      updatedAt: "2026-03-10T00:00:00Z",
+    },
+  ]);
+  context.mocks.data.schedules([
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000301",
+      agentId,
+      name: "weekday-risk-digest",
+      cronExpression: "30 14 * * 1-5",
+      description: "Research digest",
+      prompt: "Summarize launch risks",
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000302",
+      agentId,
+      name: "office-climate-loop",
+      triggerType: "loop",
+      cronExpression: null,
+      intervalSeconds: 2700,
+      description: "Office AC",
+      prompt: "Turn on the office air conditioning",
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000303",
+      agentId,
+      name: "wednesday-risk-review",
+      cronExpression: "15 14 * * 3",
+      description: "Wednesday risks",
+      prompt: "Review launch risks every Wednesday",
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000304",
+      agentId,
+      name: "monthly-risk-audit",
+      cronExpression: "5 12 12 * *",
+      description: "Billing audit",
+      prompt: "Review monthly billing anomalies",
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000305",
+      agentId,
+      name: "launch-readiness-check",
+      triggerType: "once",
+      cronExpression: null,
+      atTime: "2026-06-12T18:45:00Z",
+      description: "Release checklist",
+      prompt: "Run the launch readiness checklist",
+    }),
+  ]);
+  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+    return respond(200, {
+      content: "Summarize risks with concise bullets.",
+      filename: "AGENTS.md",
+    });
+  });
+  return agentId;
+}
+
+async function openAgentScheduleList(agentId: string): Promise<void> {
+  detachedSetupPage({ context, path: `/agents/${agentId}` });
+
+  await waitFor(() => {
+    expect(
+      screen.getByLabelText("Chat with Research Agent"),
+    ).toBeInTheDocument();
+  });
+
+  click(tabByText("Scheduled"));
+  await waitFor(() => {
+    expect(screen.getAllByText("Research digest").length).toBeGreaterThan(0);
+    expect(screen.getByText("Add automation")).toBeInTheDocument();
+  });
+
+  click(tabByText("List"));
+  await waitFor(() => {
+    expect(screen.getByText("Instruction")).toBeInTheDocument();
+    expect(screen.getAllByText("Research digest").length).toBeGreaterThan(0);
+  });
 }
 
 describe("zero jobs page", () => {
@@ -374,30 +468,27 @@ describe("zero jobs page", () => {
     let capturedTriggerBody: unknown = null;
     context.mocks.data.schedules(schedules);
     context.mocks.data.userPreferences({ timezone: "Asia/Kolkata" });
+    context.mocks.api(automationsByRefContract.update, ({ body, respond }) => {
+      capturedUpdateBody = body;
+      const currentSchedule = schedules[0];
+      if (!currentSchedule) {
+        throw new Error("schedule fixture not found");
+      }
+      const updated = createMockScheduleResponse({
+        ...currentSchedule,
+        prompt: body.instruction ?? currentSchedule.prompt,
+        description:
+          body.description === undefined
+            ? currentSchedule.description
+            : body.description,
+        updatedAt: "2026-03-10T00:05:00Z",
+      });
+      schedules = [updated];
+      context.mocks.data.schedules(schedules);
+      return respond(200, toMockAutomationResponse(updated));
+    });
     context.mocks.api(
-      automationsV2ByRefContract.update,
-      ({ body, respond }) => {
-        capturedUpdateBody = body;
-        const currentSchedule = schedules[0];
-        if (!currentSchedule) {
-          throw new Error("schedule fixture not found");
-        }
-        const updated = createMockScheduleResponse({
-          ...currentSchedule,
-          prompt: body.instruction ?? currentSchedule.prompt,
-          description:
-            body.description === undefined
-              ? currentSchedule.description
-              : body.description,
-          updatedAt: "2026-03-10T00:05:00Z",
-        });
-        schedules = [updated];
-        context.mocks.data.schedules(schedules);
-        return respond(200, toMockAutomationResponse(updated));
-      },
-    );
-    context.mocks.api(
-      automationsV2ByRefContract.addTrigger,
+      automationsByRefContract.addTrigger,
       ({ body, respond }) => {
         capturedTriggerBody = body;
         const currentSchedule = schedules[0];
@@ -493,75 +584,8 @@ describe("zero jobs page", () => {
     });
   });
 
-  it("switches through agent detail tabs from a loaded agent page", async () => {
-    const agentId = "a0000000-0000-4000-a000-000000000301";
-    mockAgentsPage([
-      createDefaultAgent(),
-      {
-        id: agentId,
-        ownerId: "test-user-123",
-        displayName: "Research Agent",
-        description: "Finds launch risks",
-        sound: "professional",
-        avatarUrl: null,
-        customSkills: [],
-        visibility: "public",
-        headVersionId: "version_4",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ]);
-    context.mocks.data.schedules([
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000301",
-        agentId,
-        name: "weekday-risk-digest",
-        cronExpression: "30 14 * * 1-5",
-        description: "Research digest",
-        prompt: "Summarize launch risks",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000302",
-        agentId,
-        name: "office-climate-loop",
-        triggerType: "loop",
-        cronExpression: null,
-        intervalSeconds: 2700,
-        description: "Office AC",
-        prompt: "Turn on the office air conditioning",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000303",
-        agentId,
-        name: "wednesday-risk-review",
-        cronExpression: "15 14 * * 3",
-        description: "Wednesday risks",
-        prompt: "Review launch risks every Wednesday",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000304",
-        agentId,
-        name: "monthly-risk-audit",
-        cronExpression: "5 12 12 * *",
-        description: "Billing audit",
-        prompt: "Review monthly billing anomalies",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000305",
-        agentId,
-        name: "launch-readiness-check",
-        triggerType: "once",
-        cronExpression: null,
-        atTime: "2026-06-12T18:45:00Z",
-        description: "Release checklist",
-        prompt: "Run the launch readiness checklist",
-      }),
-    ]);
-    context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
-      return respond(200, {
-        content: "Summarize risks with concise bullets.",
-        filename: "AGENTS.md",
-      });
-    });
+  it("loads the schedule tab and switches between calendar and list views", async () => {
+    const agentId = mockAgentDetailStory();
 
     detachedSetupPage({ context, path: `/agents/${agentId}` });
 
@@ -608,6 +632,12 @@ describe("zero jobs page", () => {
     await waitFor(() => {
       expect(screen.getByText("Instruction")).toBeInTheDocument();
     });
+  });
+
+  it("creates a schedule from the agent schedule list", async () => {
+    const agentId = mockAgentDetailStory();
+
+    await openAgentScheduleList(agentId);
 
     click(screen.getByText("Add automation"));
     const createScheduleDialog = await screen.findByRole("dialog", {
@@ -619,6 +649,12 @@ describe("zero jobs page", () => {
     await waitFor(() => {
       expect(screen.getByText("Prepare launch summary")).toBeInTheDocument();
     });
+  });
+
+  it("edits a schedule from the agent schedule list", async () => {
+    const agentId = mockAgentDetailStory();
+
+    await openAgentScheduleList(agentId);
 
     click(
       screen.getAllByLabelText(
@@ -629,9 +665,11 @@ describe("zero jobs page", () => {
     const editScheduleDialog = await screen.findByRole("dialog", {
       name: "Edit automation",
     });
-    expect(
-      within(editScheduleDialog).getByText("Day of week"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(editScheduleDialog).getByText("Day of week"),
+      ).toBeInTheDocument();
+    });
     await fill(
       screen.getByLabelText(/Description/u),
       "Updated Wednesday risks",
@@ -643,6 +681,12 @@ describe("zero jobs page", () => {
         screen.getAllByText("Updated Wednesday risks")[0],
       ).toBeInTheDocument();
     });
+  });
+
+  it("runs, toggles, and deletes schedules from the agent schedule list", async () => {
+    const agentId = mockAgentDetailStory();
+
+    await openAgentScheduleList(agentId);
 
     click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
     click(menuItemByText("Run now"));
@@ -690,6 +734,18 @@ describe("zero jobs page", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Billing audit")).not.toBeInTheDocument();
+    });
+  });
+
+  it("navigates the Profile and Instructions agent detail tabs", async () => {
+    const agentId = mockAgentDetailStory();
+
+    detachedSetupPage({ context, path: `/agents/${agentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Chat with Research Agent"),
+      ).toBeInTheDocument();
     });
 
     click(tabByText("Profile"));

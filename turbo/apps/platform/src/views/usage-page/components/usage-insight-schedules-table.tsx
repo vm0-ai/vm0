@@ -43,7 +43,7 @@ export function UsageInsightSchedulesTable({
           Schedules
         </p>
         <p className="text-sm text-muted-foreground">
-          No schedules used in this period
+          No automations used in this period
         </p>
       </section>
     );
@@ -72,7 +72,7 @@ export function UsageInsightSchedulesTable({
         {totalCount}
       </p>
       <p className="text-sm opacity-60 mt-2">
-        {totalCount === 1 ? "schedule" : "schedules"} used{" "}
+        {totalCount === 1 ? "automation" : "automations"} used{" "}
         {formatValue(totalCredits)} {totalCredits === 1 ? "credit" : "credits"}
       </p>
       <TooltipProvider delayDuration={300}>
@@ -138,7 +138,7 @@ export function UsageInsightSchedulesTable({
             >
               <span className="text-sm text-muted-foreground truncate col-span-2">
                 +{scheduleOtherCount} more{" "}
-                {scheduleOtherCount === 1 ? "schedule" : "schedules"}
+                {scheduleOtherCount === 1 ? "automation" : "automations"}
               </span>
               <span className="text-xs tabular-nums text-muted-foreground text-right">
                 {formatValue(scheduleOtherCredits)}

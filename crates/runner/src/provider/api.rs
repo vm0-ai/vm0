@@ -471,9 +471,11 @@ async fn check_api_status(resp: Response, label: &str) -> RunnerResult<Response>
 }
 
 async fn decode_api_json<T: DeserializeOwned>(resp: Response, label: &str) -> RunnerResult<T> {
-    resp.json()
+    let body = resp
+        .bytes()
         .await
-        .map_err(|e| RunnerError::Api(format!("{label} decode: {e}")))
+        .map_err(|e| RunnerError::Api(format!("{label} decode read body: {e}")))?;
+    decode_api_json_bytes(&body).map_err(|e| RunnerError::Api(format!("{label} decode: {e}")))
 }
 
 async fn read_api_error(resp: Response) -> (StatusCode, String) {
@@ -484,6 +486,222 @@ async fn read_api_error(resp: Response) -> (StatusCode, String) {
 
 fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError {
     RunnerError::Api(format!("{label} {status}: {body}"))
+}
+
+fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
+    let mut deserializer = serde_json::Deserializer::from_slice(body);
+    let value = serde_path_to_error::deserialize(&mut deserializer)
+        .map_err(|e| format_json_decode_error(format_json_decode_path(e.path()), e.inner()))?;
+    deserializer
+        .end()
+        .map_err(|e| format_json_decode_error(".".to_string(), &e))?;
+    Ok(value)
+}
+
+fn format_json_decode_path(path: &serde_path_to_error::Path) -> String {
+    let mut formatted = String::new();
+    let mut redact_next_map_key = false;
+
+    for segment in path {
+        match segment {
+            serde_path_to_error::Segment::Seq { index } => {
+                formatted.push('[');
+                formatted.push_str(&index.to_string());
+                formatted.push(']');
+            }
+            serde_path_to_error::Segment::Map { key } => {
+                push_json_path_map_segment(&mut formatted, key, redact_next_map_key);
+                redact_next_map_key = !redact_next_map_key && is_dynamic_json_map_field(key);
+            }
+            serde_path_to_error::Segment::Enum { .. } => {
+                push_json_path_segment(&mut formatted, "<variant>");
+                redact_next_map_key = false;
+            }
+            serde_path_to_error::Segment::Unknown => {
+                push_json_path_segment(&mut formatted, "?");
+                redact_next_map_key = false;
+            }
+        }
+    }
+
+    if formatted.is_empty() {
+        ".".to_string()
+    } else {
+        formatted
+    }
+}
+
+fn push_json_path_map_segment(formatted: &mut String, key: &str, redact: bool) {
+    let segment = if redact {
+        "<map-key>"
+    } else if is_static_json_field(key) {
+        key
+    } else {
+        "<field>"
+    };
+    push_json_path_segment(formatted, segment);
+}
+
+fn push_json_path_segment(formatted: &mut String, segment: &str) {
+    if !formatted.is_empty() {
+        formatted.push('.');
+    }
+    formatted.push_str(segment);
+}
+
+fn is_dynamic_json_map_field(field: &str) -> bool {
+    matches!(
+        field,
+        "vars"
+            | "environment"
+            | "secretConnectorMap"
+            | "secretConnectorMetadataMap"
+            | "baseUrlVars"
+            | "headers"
+            | "query"
+            | "networkPolicies"
+            | "featureFlags"
+    )
+}
+
+// serde_path_to_error reports both struct fields and runtime map keys as Map
+// segments, so only known response schema fields are safe to print verbatim.
+fn is_static_json_field(field: &str) -> bool {
+    matches!(
+        field,
+        "allow"
+            | "apiStartTime"
+            | "apis"
+            | "archiveUrl"
+            | "artifacts"
+            | "ask"
+            | "auth"
+            | "base"
+            | "baseUrlVars"
+            | "billableFirewalls"
+            | "cached"
+            | "capability"
+            | "captureNetworkBodies"
+            | "checkpointId"
+            | "cliAgentType"
+            | "clientId"
+            | "debugNoMockClaude"
+            | "debugNoMockCodex"
+            | "deny"
+            | "description"
+            | "disallowedTools"
+            | "encryptedSecrets"
+            | "environment"
+            | "experimentalProfile"
+            | "expires"
+            | "featureFlags"
+            | "firewall"
+            | "firewalls"
+            | "headers"
+            | "issued"
+            | "job"
+            | "keyName"
+            | "kind"
+            | "mac"
+            | "manifestUrl"
+            | "metadataKey"
+            | "missingRootPolicy"
+            | "modelUsageProvider"
+            | "mountPath"
+            | "name"
+            | "networkPolicies"
+            | "nonce"
+            | "permissions"
+            | "prompt"
+            | "query"
+            | "resumeSession"
+            | "rules"
+            | "runId"
+            | "sandboxToken"
+            | "secretConnectorMap"
+            | "secretConnectorMetadataMap"
+            | "secretValues"
+            | "sessionHistory"
+            | "sessionId"
+            | "settings"
+            | "sourceType"
+            | "sourceUserId"
+            | "storageManifest"
+            | "storages"
+            | "timestamp"
+            | "token"
+            | "tools"
+            | "ttl"
+            | "unknownPolicy"
+            | "userTimezone"
+            | "vars"
+            | "vasStorageId"
+            | "vasStorageName"
+            | "vasVersionId"
+    )
+}
+
+fn format_json_decode_error(mut path: String, error: &serde_json::Error) -> String {
+    let category = match error.classify() {
+        serde_json::error::Category::Io => "io",
+        serde_json::error::Category::Syntax => "syntax",
+        serde_json::error::Category::Data => "data",
+        serde_json::error::Category::Eof => "eof",
+    };
+    let location = format!("line {} column {}", error.line(), error.column());
+    let detail = sanitized_json_error_detail(error);
+    if detail == "unknown variant" && is_firewall_entry_decode_path(&path) {
+        path.push_str(".kind");
+    }
+    if path == "." {
+        format!("failed at <root>: {detail}; {category} error at {location}")
+    } else {
+        format!("failed at {path}: {detail}; {category} error at {location}")
+    }
+}
+
+fn is_firewall_entry_decode_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("firewalls[") else {
+        return false;
+    };
+    let Some((index, suffix)) = rest.split_once(']') else {
+        return false;
+    };
+    !index.is_empty() && index.chars().all(|c| c.is_ascii_digit()) && suffix.is_empty()
+}
+
+fn sanitized_json_error_detail(error: &serde_json::Error) -> String {
+    let message = error.to_string();
+    let location_suffix = format!(" at line {} column {}", error.line(), error.column());
+    let detail = message
+        .strip_suffix(&location_suffix)
+        .unwrap_or(message.as_str());
+    if detail.starts_with("missing field `") || detail.starts_with("duplicate field `") {
+        return detail.to_string();
+    }
+
+    if detail.starts_with("unknown field `") {
+        return "unknown field".to_string();
+    }
+    if detail.starts_with("trailing characters") {
+        return "trailing characters".to_string();
+    }
+    if detail.starts_with("invalid type:") {
+        return "invalid type".to_string();
+    }
+    if detail.starts_with("invalid value:") {
+        return "invalid value".to_string();
+    }
+    if detail.starts_with("unknown variant `") {
+        return "unknown variant".to_string();
+    }
+    if detail.starts_with("expected value") {
+        return "expected value".to_string();
+    }
+    if detail.starts_with("EOF while parsing") {
+        return "unexpected end of input".to_string();
+    }
+    "invalid JSON".to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -943,6 +1161,241 @@ mod tests {
             assert!(matches!(err, RunnerError::AlreadyClaimed));
             mock.assert_async().await;
         }
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_error_includes_json_path_without_body_values() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "firewalls": [{
+                        "kind": "secret-kind-value",
+                        "name": "github"
+                    }],
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("claim decode: failed at firewalls[0].kind"),
+            "decode error should include JSON path, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
+            "decode error must not include response body values, got: {message}"
+        );
+        assert!(
+            !message.contains("secret-kind-value"),
+            "decode error must not include invalid field values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_error_redacts_values_that_look_like_field_errors() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "firewalls": [{
+                        "kind": "missing field `secret-kind-value`",
+                        "name": "github"
+                    }],
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("claim decode: failed at firewalls[0].kind"),
+            "decode error should include JSON path, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
+            "decode error must not include response body values, got: {message}"
+        );
+        assert!(
+            !message.contains("secret-kind-value"),
+            "decode error must not include invalid field values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_error_includes_missing_field_name() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "firewalls": [{
+                        "name": "github",
+                        "apis": []
+                    }],
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("claim decode: failed at firewalls[0]"),
+            "decode error should include JSON path, got: {message}"
+        );
+        assert!(
+            message.contains("missing field `kind`"),
+            "decode error should include the missing field name, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
+            "decode error must not include response body values, got: {message}"
+        );
+        assert!(
+            !message.contains("github"),
+            "decode error must not include response body values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_decode_error_redacts_dynamic_map_keys() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "hello",
+                    "sandboxToken": "claim-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "environment": {
+                        "OPENAI_API_KEY": 123
+                    },
+                    "billableFirewalls": []
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .claim(&JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("claim decode: failed at environment.<map-key>"),
+            "decode error should include a redacted dynamic map path, got: {message}"
+        );
+        assert!(
+            !message.contains("OPENAI_API_KEY"),
+            "decode error must not include dynamic map keys, got: {message}"
+        );
+        assert!(
+            !message.contains("claim-sandbox-token"),
+            "decode error must not include response body values, got: {message}"
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_decode_rejects_trailing_response_body() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(r#"{"job":null} trailing-response-value"#);
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .poll(
+                "default",
+                &[crate::profile::DEFAULT_PROFILE.to_string()],
+                &[],
+            )
+            .await
+            .unwrap_err();
+
+        let RunnerError::Api(message) = err else {
+            panic!("expected RunnerError::Api");
+        };
+        assert!(
+            message.contains("poll decode: failed at <root>: trailing characters"),
+            "decode error should reject trailing response content, got: {message}"
+        );
+        assert!(
+            !message.contains("trailing-response-value"),
+            "decode error must not include trailing response values, got: {message}"
+        );
+        mock.assert_async().await;
     }
 
     #[tokio::test]

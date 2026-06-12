@@ -213,6 +213,27 @@ export function ArtifactActionSeparator() {
   return <span className="mx-0.5 h-5 w-px shrink-0 bg-border/70" />;
 }
 
+export function ArtifactActionTooltip({
+  children,
+  label,
+  side = "bottom",
+}: {
+  children: ReactNode;
+  label: string;
+  side?: "top" | "right" | "bottom" | "left";
+}) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side={side} className={ARTIFACT_FLOATING_LAYER_CLASS}>
+          <p className="text-xs">{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export function ArtifactShareButton({
   ariaLabel = "Share",
   className,
@@ -225,33 +246,19 @@ export function ArtifactShareButton({
   url: string;
 }) {
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => {
-              detach(
-                shareArtifactUrl(url),
-                Reason.DomCallback,
-                "artifact share",
-              );
-            }}
-            aria-label={ariaLabel}
-            title={publicAttachmentUrl(url)}
-            className={iconButtonClassName(className)}
-          >
-            <IconShare size={iconSize} stroke={1.5} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent
-          side="top"
-          className={cn("!z-[10000]", ARTIFACT_FLOATING_LAYER_CLASS)}
-        >
-          <p className="text-xs">Share</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <ArtifactActionTooltip label={ariaLabel}>
+      <button
+        type="button"
+        onClick={() => {
+          detach(shareArtifactUrl(url), Reason.DomCallback, "artifact share");
+        }}
+        aria-label={ariaLabel}
+        title={publicAttachmentUrl(url)}
+        className={iconButtonClassName(className)}
+      >
+        <IconShare size={iconSize} stroke={1.5} />
+      </button>
+    </ArtifactActionTooltip>
   );
 }
 
@@ -440,22 +447,24 @@ export function ArtifactDownloadMenu({
         closeMenu();
       }}
     >
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={ariaLabel}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          className={iconButtonClassName(
-            cn(
-              "data-[state=open]:bg-muted/60 data-[state=open]:text-foreground",
-              className,
-            ),
-          )}
-        >
-          <IconDownload size={iconSize} stroke={1.5} />
-        </button>
-      </PopoverTrigger>
+      <ArtifactActionTooltip label={ariaLabel}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={ariaLabel}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            className={iconButtonClassName(
+              cn(
+                "data-[state=open]:bg-muted/60 data-[state=open]:text-foreground",
+                className,
+              ),
+            )}
+          >
+            <IconDownload size={iconSize} stroke={1.5} />
+          </button>
+        </PopoverTrigger>
+      </ArtifactActionTooltip>
       {open && (
         <PopoverOverlay
           data-testid="artifact-download-menu-dismiss-layer"

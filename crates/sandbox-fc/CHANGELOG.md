@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.25](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.24...sandbox-fc-v0.37.25) (2026-06-12)
+
+
+### Refactoring
+
+* **sandbox-fc:** split firecracker api client modules ([#17445](https://github.com/vm0-ai/vm0/issues/17445)) ([366ca04](https://github.com/vm0-ai/vm0/commit/366ca04ce6151a61513f4c92a2efadc2fcc27100))
+
 ## [0.37.24](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.23...sandbox-fc-v0.37.24) (2026-06-12)
 
 

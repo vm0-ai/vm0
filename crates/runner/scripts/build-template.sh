@@ -330,9 +330,15 @@ install_packages() {
   chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     > /etc/apt/sources.list.d/github-cli.list
+
+  # PostgreSQL Global Development Group repository (PostgreSQL 18)
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
+  echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list
   '
 
-  # Step 3: Install all Ubuntu packages in single pass.
+  # Step 3: Install all APT packages in single pass.
   sudo chroot "$ROOTFS_DIR" bash -c 'set -e
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
@@ -345,7 +351,7 @@ install_packages() {
     php php-cli php-common php-curl php-mbstring php-xml php-zip \
     default-jdk maven gradle \
     gcc g++ clang make cmake \
-    postgresql-16 postgresql-contrib \
+    postgresql-18 postgresql-contrib-18 \
     redis-server \
     gh
 
@@ -354,7 +360,9 @@ install_packages() {
        /etc/apt/preferences.d/nodesource \
        /usr/share/keyrings/nodesource.gpg \
        /etc/apt/sources.list.d/github-cli.list \
-       /usr/share/keyrings/githubcli-archive-keyring.gpg
+       /usr/share/keyrings/githubcli-archive-keyring.gpg \
+       /etc/apt/sources.list.d/pgdg.list \
+       /usr/share/keyrings/postgresql.gpg
   rm -rf /var/lib/apt/lists/* /var/cache/apt/*
   '
 

@@ -231,6 +231,9 @@ if [[ -f "${MOUNT_DIR}/usr/bin/psql" ]]; then
 else
   errors+=("psql not found at /usr/bin/psql")
 fi
+check_bin "/usr/lib/postgresql/*/bin/postgres" "PostgreSQL server"
+check_bin "/usr/lib/postgresql/*/bin/initdb"   "PostgreSQL initdb"
+check_bin "/usr/lib/postgresql/*/bin/pg_ctl"   "PostgreSQL pg_ctl"
 
 if [[ -f "${MOUNT_DIR}/usr/bin/redis-server" ]]; then
   echo "  redis-server: found"

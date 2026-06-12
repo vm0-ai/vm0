@@ -162,6 +162,7 @@
         };
         var iosPattern = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/;
         var iosMatch = iosPattern.exec(ua);
+        var chromiumMatch = /\bChromium\/(\d+)/.exec(ua);
         var chromeMatch = /\b(?:Chrome|CriOS|HeadlessChrome)\/(\d+)/.exec(ua);
 
         if (iosMatch) {
@@ -177,15 +178,29 @@
           if (!isNaN(iosMajor) && !isNaN(iosMinor)) {
             supported = iosMajor > 16 || (iosMajor === 16 && iosMinor >= 4);
           }
-        } else if (chromeMatch && !/\b(?:Edg|OPR|SamsungBrowser)\//.test(ua)) {
+        } else if (
+          (chromiumMatch || chromeMatch) &&
+          !/\b(?:Edg|OPR|SamsungBrowser)\//.test(ua)
+        ) {
+          var chromiumBrowser = !!chromiumMatch;
           upgradeTarget = {
-            actionLabel: "Update Chrome",
-            actionUrl: "https://www.google.com/chrome/",
+            actionLabel: chromiumBrowser ? "Update Chromium" : "Update Chrome",
+            actionUrl: chromiumBrowser
+              ? "https://www.chromium.org/getting-involved/download-chromium/"
+              : "https://www.google.com/chrome/",
             description:
-              "Zero does not support your current browser version. Update Chrome to continue.",
-            title: "Update Chrome to continue",
+              "Zero does not support your current browser version. Update " +
+              (chromiumBrowser ? "Chromium" : "Chrome") +
+              " to continue.",
+            title:
+              "Update " +
+              (chromiumBrowser ? "Chromium" : "Chrome") +
+              " to continue",
           };
-          var chromeMajor = parseInt(chromeMatch[1], 10);
+          var chromeMajor = parseInt(
+            chromiumBrowser ? chromiumMatch[1] : chromeMatch[1],
+            10,
+          );
           if (!isNaN(chromeMajor)) {
             supported = chromeMajor >= 111;
           }

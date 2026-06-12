@@ -77,7 +77,7 @@ describe("/usage page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("No schedules used in this period"),
+        screen.getByText("No automations used in this period"),
       ).toBeInTheDocument();
       expect(screen.getByText("No chats in this period")).toBeInTheDocument();
     });
@@ -118,10 +118,12 @@ describe("/usage page", () => {
     const creditsTotals = () => {
       return screen.getByRole("region", { name: "Credits totals" });
     };
-    expect(within(creditsTotals()).getByText("1.3K")).toBeInTheDocument();
-    expect(within(creditsTotals()).getByText("Today")).toBeInTheDocument();
-    expect(within(creditsTotals()).getByText("Chat")).toBeInTheDocument();
-    expect(within(creditsTotals()).getByText("Slack")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(creditsTotals()).getByText("1.3K")).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Today")).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Chat")).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Slack")).toBeInTheDocument();
+    });
 
     await waitFor(() => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();

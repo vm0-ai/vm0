@@ -21,7 +21,8 @@ use crate::ids::RunId;
 #[cfg(test)]
 use crate::paths::session_workspace_cache_key;
 use crate::paths::{
-    HomePaths, RunnerPaths, scoped_session_workspace_cache_key, workspace_image_cache_lock_path,
+    HomePaths, RunnerPaths, scoped_session_workspace_cache_key,
+    workspace_image_cache_capacity_lock_path, workspace_image_cache_lock_path,
 };
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES};
@@ -447,10 +448,6 @@ impl SessionWorkspaceCache {
             &metadata.working_dir,
             metadata.logical_image_size_bytes,
         ) == cache_key
-    }
-
-    fn can_collect_metadata_scope(&self, metadata: &WorkspaceCacheMetadata) -> bool {
-        self.inner.cache_scope.is_empty() || metadata.cache_scope == self.inner.cache_scope
     }
 
     pub(crate) async fn lease_active(
@@ -1113,6 +1110,11 @@ impl SessionWorkspaceCache {
     }
 
     pub(crate) async fn gc(&self, dry_run: bool) -> RunnerResult<u64> {
+        let _capacity_lock = crate::lock::acquire(self.capacity_lock_path()).await?;
+        self.gc_locked(dry_run).await
+    }
+
+    async fn gc_locked(&self, dry_run: bool) -> RunnerResult<u64> {
         let stale_cleanup = self.gc_entries_without_current_image(dry_run).await?;
         let unusable_cleanup = self.gc_unusable_current_entries(dry_run).await?;
         let mut removed_entry_keys = stale_cleanup.removed_entry_keys;
@@ -1529,12 +1531,7 @@ impl SessionWorkspaceCache {
             return None;
         }
         let last_used_at = match self.read_metadata_file(&metadata_path).await {
-            Ok(metadata) => {
-                if !self.can_collect_metadata_scope(&metadata) {
-                    return None;
-                }
-                metadata.last_used_at
-            }
+            Ok(metadata) => metadata.last_used_at,
             Err(_) if self.inner.cache_scope.is_empty() => String::new(),
             Err(_) => return None,
         };
@@ -1549,6 +1546,10 @@ impl SessionWorkspaceCache {
 
     fn entry_lock_path(&self, cache_key: &str) -> PathBuf {
         workspace_image_cache_lock_path(&self.inner.lock_dir, cache_key)
+    }
+
+    fn capacity_lock_path(&self) -> PathBuf {
+        workspace_image_cache_capacity_lock_path(&self.inner.lock_dir)
     }
 
     async fn read_valid_metadata(
@@ -1703,10 +1704,32 @@ impl SessionWorkspaceCache {
             ),
         }
 
+        let _capacity_lock = match crate::lock::try_acquire_or_busy(self.capacity_lock_path()).await
+        {
+            Ok(crate::lock::TryLock::Acquired(lock)) => lock,
+            Ok(crate::lock::TryLock::Busy) => {
+                info!(
+                    run_id = %input.run_id,
+                    cache_key = input.cache_key,
+                    "workspace image cache promotion skipped: capacity lock busy"
+                );
+                return Ok(false);
+            }
+            Err(e) => {
+                warn!(
+                    run_id = %input.run_id,
+                    cache_key = input.cache_key,
+                    error = %e,
+                    "workspace image cache promotion skipped: capacity lock unavailable"
+                );
+                return Ok(false);
+            }
+        };
+
         let mut stats = self.fs_stats().await?;
         let mut budget = CacheBudget::from_fs_stats(stats);
         if stats.available_bytes < budget.min_free_bytes {
-            match self.gc(false).await {
+            match self.gc_locked(false).await {
                 Ok(freed) if freed > 0 => {
                     stats = self.fs_stats().await?;
                     budget = CacheBudget::from_fs_stats(stats);
@@ -1752,7 +1775,7 @@ impl SessionWorkspaceCache {
             return Ok(false);
         }
         if !has_copy_headroom(stats, budget, active_allocated) {
-            match self.gc(false).await {
+            match self.gc_locked(false).await {
                 Ok(freed) if freed > 0 => {
                     stats = self.fs_stats().await?;
                     budget = CacheBudget::from_fs_stats(stats);
@@ -1885,7 +1908,7 @@ impl SessionWorkspaceCache {
             allocated_bytes = allocated,
             "workspace image cache promoted"
         );
-        if let Err(e) = self.gc(false).await {
+        if let Err(e) = self.gc_locked(false).await {
             warn!(
                 run_id = %input.run_id,
                 cache_key = input.cache_key,
@@ -2819,7 +2842,6 @@ mod tests {
 
     async fn write_current_cache_entry(
         cache: &SessionWorkspaceCache,
-        paths: &RunnerPaths,
         run_id: RunId,
         session_id: &str,
         working_dir: &str,
@@ -2833,10 +2855,10 @@ mod tests {
             working_dir,
             image.len() as u64,
         );
-        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+        fs::create_dir_all(cache.session_workspace_cache_entry_dir(&key))
             .await
             .unwrap();
-        let current = paths.session_workspace_cache_current_image(&key);
+        let current = cache.session_workspace_cache_current_image(&key);
         fs::write(&current, image).await.unwrap();
         let current_metadata = fs::metadata(&current).await.unwrap();
         cache
@@ -3403,7 +3425,6 @@ mod tests {
         let cache = SessionWorkspaceCache::new(paths.clone());
         let key = write_current_cache_entry(
             &cache,
-            &paths,
             RunId::new_v4(),
             "sess-1",
             "/workspace",
@@ -4192,7 +4213,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scoped_gc_preserves_other_group_cache_entries() {
+    async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
         tokio::fs::create_dir_all(home.workspace_image_cache_dir().parent().unwrap())
@@ -4247,7 +4268,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scoped_gc_candidates_ignore_other_group_cache_entries() {
+    async fn global_gc_candidates_include_other_group_cache_entries() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
         tokio::fs::create_dir_all(home.workspace_image_cache_dir().parent().unwrap())
@@ -4275,14 +4296,14 @@ mod tests {
 
         assert!(
             cache_a.gc_candidate(group_a_key.clone()).await.is_some(),
-            "own group entries should remain eligible for scoped GC"
+            "own group entries should remain eligible for GC"
         );
         assert!(
-            cache_b.gc_candidates().await.unwrap().is_empty(),
-            "scoped GC must not budget-evict entries owned by another group"
+            cache_b.gc_candidate(group_a_key.clone()).await.is_some(),
+            "GC budget candidates should include valid entries from other groups"
         );
 
-        promote_current_cache_entry(
+        let group_b_key = promote_current_cache_entry(
             &cache_b,
             &runner_b,
             "sess-b",
@@ -4292,8 +4313,175 @@ mod tests {
         .await;
 
         let candidates = cache_b.gc_candidates().await.unwrap();
-        assert_eq!(candidates.len(), 1);
-        assert_ne!(candidates[0].cache_key, group_a_key);
+        let candidate_keys: Vec<_> = candidates
+            .into_iter()
+            .map(|candidate| candidate.cache_key)
+            .collect();
+        assert_eq!(candidate_keys.len(), 2);
+        assert!(candidate_keys.contains(&group_a_key));
+        assert!(candidate_keys.contains(&group_b_key));
+    }
+
+    #[tokio::test]
+    async fn global_gc_evicts_old_entry_from_other_group_under_free_space_pressure() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let runner_a = RunnerPaths::new(dir.path().join("runner-a"));
+        let runner_b = RunnerPaths::new(dir.path().join("runner-b"));
+        tokio::fs::create_dir_all(runner_a.base_dir())
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(runner_b.base_dir())
+            .await
+            .unwrap();
+
+        let budget = CacheBudget::from_fs_stats(FsStats {
+            total_bytes: TEST_FS_TOTAL_BYTES,
+            available_bytes: TEST_FS_AVAILABLE_BYTES,
+        });
+        let pressure_stats = FsStats {
+            total_bytes: TEST_FS_TOTAL_BYTES,
+            available_bytes: budget.min_free_bytes.saturating_sub(1),
+        };
+        let cache_dir = home.workspace_image_cache_dir();
+        let lock_dir = home.locks_dir();
+        let cache_a = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+            runner_a.clone(),
+            cache_dir.clone(),
+            lock_dir.clone(),
+            "group-a",
+            pressure_stats,
+        );
+        let cache_b = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+            runner_b.clone(),
+            cache_dir,
+            lock_dir,
+            "group-b",
+            pressure_stats,
+        );
+        let run_id = RunId::new_v4();
+        let old_key = write_current_cache_entry(
+            &cache_a,
+            run_id,
+            "sess-a",
+            "/workspace",
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        let new_key = write_current_cache_entry(
+            &cache_b,
+            run_id,
+            "sess-b",
+            "/workspace",
+            "2026-05-01T00:01:00.000Z",
+            "2026-05-01T00:01:00.000Z",
+        )
+        .await;
+
+        let freed = cache_b.gc(false).await.unwrap();
+
+        assert!(freed > 0);
+        assert!(
+            !cache_a
+                .session_workspace_cache_current_image(&old_key)
+                .exists(),
+            "oldest global candidate can be evicted even when it belongs to another group"
+        );
+        assert!(
+            cache_b
+                .session_workspace_cache_current_image(&new_key)
+                .exists(),
+            "newer candidate from the current group should be retained once pressure is relieved"
+        );
+        assert!(cache_a.held_session_states().await.is_empty());
+        assert_eq!(cache_b.held_session_states().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn global_gc_prunes_oldest_entries_above_limit_across_runner_groups() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let runner_a = RunnerPaths::new(dir.path().join("runner-a"));
+        let runner_b = RunnerPaths::new(dir.path().join("runner-b"));
+        tokio::fs::create_dir_all(runner_a.base_dir())
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(runner_b.base_dir())
+            .await
+            .unwrap();
+        let cache_dir = home.workspace_image_cache_dir();
+        let lock_dir = home.locks_dir();
+        let fs_stats = FsStats {
+            total_bytes: TEST_FS_TOTAL_BYTES,
+            available_bytes: TEST_FS_AVAILABLE_BYTES,
+        };
+        let cache_a = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+            runner_a.clone(),
+            cache_dir.clone(),
+            lock_dir.clone(),
+            "group-a",
+            fs_stats,
+        );
+        let cache_b = SessionWorkspaceCache::with_cache_dirs_and_fs_stats(
+            runner_b.clone(),
+            cache_dir,
+            lock_dir,
+            "group-b",
+            fs_stats,
+        );
+        let run_id = RunId::new_v4();
+        let oldest_key = write_current_cache_entry(
+            &cache_a,
+            run_id,
+            "sess-a-0000",
+            "/workspace",
+            &timestamp_for_index(0),
+            &timestamp_for_index(0),
+        )
+        .await;
+        let mut newest_key = String::new();
+        for index in 1..=MAX_HELD_SESSION_STATES {
+            let session_id = format!("sess-b-{index:04}");
+            let timestamp = timestamp_for_index(index);
+            let key = write_current_cache_entry(
+                &cache_b,
+                run_id,
+                &session_id,
+                "/workspace",
+                &timestamp,
+                &timestamp,
+            )
+            .await;
+            if index == MAX_HELD_SESSION_STATES {
+                newest_key = key;
+            }
+        }
+
+        let freed = cache_b.gc(false).await.unwrap();
+
+        assert!(freed > 0);
+        assert!(
+            !cache_a
+                .session_workspace_cache_current_image(&oldest_key)
+                .exists(),
+            "oldest global candidate should be removed when the shared cache exceeds the entry cap"
+        );
+        assert!(
+            cache_b
+                .session_workspace_cache_current_image(&newest_key)
+                .exists(),
+            "newest candidate should be retained"
+        );
+        assert_eq!(
+            cache_b.gc_candidates().await.unwrap().len(),
+            MAX_HELD_SESSION_STATES
+        );
+        assert!(cache_a.held_session_states().await.is_empty());
+        assert_eq!(
+            cache_b.held_session_states().await.len(),
+            MAX_HELD_SESSION_STATES
+        );
     }
 
     #[tokio::test]
@@ -5198,7 +5386,6 @@ mod tests {
             let timestamp = timestamp_for_index(index);
             let key = write_current_cache_entry(
                 &cache,
-                &paths,
                 run_id,
                 &session_id,
                 "/workspace",
@@ -5254,7 +5441,6 @@ mod tests {
         let run_id = RunId::new_v4();
         let key = write_current_cache_entry(
             &cache,
-            &paths,
             run_id,
             "sess-1",
             "/workspace",
@@ -5388,7 +5574,6 @@ mod tests {
         let run_id = RunId::new_v4();
         let key = write_current_cache_entry(
             &setup_cache,
-            &paths,
             run_id,
             "sess-1",
             "/workspace",
@@ -5576,7 +5761,6 @@ mod tests {
         let run_id = RunId::new_v4();
         let key = write_current_cache_entry(
             &cache,
-            &paths,
             run_id,
             "sess-1",
             "/workspace",
@@ -5636,7 +5820,6 @@ mod tests {
         let run_id = RunId::new_v4();
         let cache_key = write_current_cache_entry(
             &cache,
-            &paths,
             run_id,
             "sess-1",
             "/workspace",
@@ -5678,7 +5861,6 @@ mod tests {
         let run_id = RunId::new_v4();
         let cache_key = write_current_cache_entry(
             &cache,
-            &paths,
             run_id,
             "sess-1",
             "/workspace",
@@ -6072,6 +6254,56 @@ mod tests {
                 .await
                 .unwrap()
         );
+        assert!(
+            !paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists()
+        );
+        assert!(cache.held_session_states().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn promote_skips_when_capacity_lock_is_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some("sess-capacity-lock"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let cache_key = session_workspace_cache_key("sess-capacity-lock", "/workspace");
+        let _capacity_lock = crate::lock::acquire(cache.capacity_lock_path())
+            .await
+            .unwrap();
+
+        let promoted = lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-05-01T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap();
+
+        assert!(!promoted);
         assert!(
             !paths
                 .session_workspace_cache_current_image(&cache_key)

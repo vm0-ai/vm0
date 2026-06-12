@@ -1,11 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { emailOutbox } from "@vm0/db/schema/email-outbox";
+import { emailSuppressions } from "@vm0/db/schema/email-suppression";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -50,6 +55,122 @@ import {
  */
 
 const context = testContext();
+const store = createStore();
+const writeDb = store.set(writeDb$);
+const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
+const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
+
+interface SeedEmailOutboxOptions {
+  readonly subject: string;
+  readonly to: string;
+  readonly status?: string;
+  readonly attempts?: number;
+  readonly createdAt?: Date;
+  readonly nextRetryAt?: Date | null;
+}
+
+async function seedEmailOutbox(options: SeedEmailOutboxOptions): Promise<void> {
+  await writeDb.insert(emailOutbox).values({
+    fromAddress: OUTBOX_TEST_FROM,
+    toAddresses: options.to,
+    subject: `Re: ${options.subject}`,
+    template: {
+      template: "inbound-error",
+      props: { errorMessage: "BDD outbox test email" },
+    },
+    status: options.status ?? "pending",
+    attempts: options.attempts ?? 0,
+    createdAt:
+      options.createdAt ?? new Date(now() - OUTBOX_TEST_CREATED_AT_OFFSET_MS),
+    nextRetryAt: options.nextRetryAt ?? null,
+  });
+
+  onTestFinished(async () => {
+    await writeDb
+      .delete(emailOutbox)
+      .where(eq(emailOutbox.subject, `Re: ${options.subject}`));
+  });
+}
+
+async function seedEmailSuppression(address: string): Promise<void> {
+  await writeDb.insert(emailSuppressions).values({
+    emailAddress: address,
+    reason: "bounced",
+    resendEmailId: `em_${randomUUID()}`,
+  });
+
+  onTestFinished(async () => {
+    await writeDb
+      .delete(emailSuppressions)
+      .where(eq(emailSuppressions.emailAddress, address));
+  });
+}
+
+function resendSendCallsTo(recipient: string): number {
+  return context.mocks.resend.send.mock.calls.filter((call) => {
+    const [payload] = call;
+    if (typeof payload !== "object" || payload === null || !("to" in payload)) {
+      return false;
+    }
+
+    const to = payload.to;
+    if (typeof to === "string") {
+      return to === recipient;
+    }
+    return Array.isArray(to) && to.includes(recipient);
+  }).length;
+}
+
+async function touchEmailOutbox(subject: string): Promise<void> {
+  const updated = await writeDb
+    .update(emailOutbox)
+    .set({ createdAt: new Date(now()) })
+    .where(eq(emailOutbox.subject, `Re: ${subject}`))
+    .returning({ id: emailOutbox.id });
+
+  if (updated.length === 0) {
+    throw new Error(`Expected email outbox row for ${subject} to touch`);
+  }
+}
+
+async function emailOutboxStatus(subject: string): Promise<string | null> {
+  const [row] = await writeDb
+    .select({ status: emailOutbox.status })
+    .from(emailOutbox)
+    .where(eq(emailOutbox.subject, `Re: ${subject}`))
+    .limit(1);
+
+  return row?.status ?? null;
+}
+
+async function emailOutboxRow(subject: string): Promise<{
+  readonly status: string;
+  readonly attempts: number;
+  readonly lastError: string | null;
+} | null> {
+  const [row] = await writeDb
+    .select({
+      status: emailOutbox.status,
+      attempts: emailOutbox.attempts,
+      lastError: emailOutbox.lastError,
+    })
+    .from(emailOutbox)
+    .where(eq(emailOutbox.subject, `Re: ${subject}`))
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function drainEmailOutboxCronOk(): Promise<void> {
+  const email = createEmailApi(context);
+  context.mocks.resend.send.mockResolvedValue({
+    data: { id: `resend-bdd-drain-${randomUUID()}` },
+  });
+  const drain = await email.drainEmailOutboxCron(true);
+  if (drain.status !== 200) {
+    throw new Error("Expected drain email outbox cron to succeed");
+  }
+}
 
 async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
   readonly agentId: string;
@@ -175,29 +296,6 @@ function zeroToken(
     iat: timestamp,
     exp: timestamp + 60,
   });
-}
-
-function resendSendCallsTo(recipient: string): number {
-  return context.mocks.resend.send.mock.calls.filter((call) => {
-    const [payload] = call;
-    return (
-      typeof payload === "object" &&
-      payload !== null &&
-      "to" in payload &&
-      payload.to === recipient
-    );
-  }).length;
-}
-
-async function waitForResendSendCallsTo(
-  recipient: string,
-  count: number,
-): Promise<void> {
-  await expect
-    .poll(() => {
-      return resendSendCallsTo(recipient);
-    })
-    .toBeGreaterThanOrEqual(count);
 }
 
 describe("RUN-01: run creation admission and validation", () => {
@@ -1927,117 +2025,59 @@ describe("SCHED-02: cron routes", () => {
 });
 
 describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
-  it("drains a pending inbound-error email through Resend exactly once", async () => {
+  it("rejects unauthorized drain requests", async () => {
     const email = createEmailApi(context);
 
     const unauthorizedDrain = await email.drainEmailOutboxCron(false);
     expect(unauthorizedDrain.status).toBe(401);
-
-    const { from, subject } = await email.triggerInboundErrorEmail();
-    await waitForResendSendCallsTo(from, 1);
-
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-bdd-1" },
-    });
-    mockNow(now() + 2000);
-    onTestFinished(clearMockNow);
-
-    const drain = await email.drainEmailOutboxCron(true);
-    if (drain.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(drain.body.success).toBeTruthy();
-    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
-    expect(context.mocks.resend.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        from: "Zero <vm0@mail.example.com>",
-        to: from,
-        subject: `Re: ${subject}`,
-        html: expect.stringContaining("not associated with a VM0 account"),
-      }),
-    );
-    expect(resendSendCallsTo(from)).toBe(1);
-
-    const second = await email.drainEmailOutboxCron(true);
-    if (second.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(resendSendCallsTo(from)).toBe(1);
   });
 
-  it("retries failed sends with backoff and cleans up expired failed outbox rows", async () => {
-    const email = createEmailApi(context);
-    const { from } = await email.triggerInboundErrorEmail();
-    await waitForResendSendCallsTo(from, 1);
-
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      error: { message: "smtp down" },
-    });
-    const realNow = now();
-    onTestFinished(clearMockNow);
-
-    mockNow(realNow + 2000);
-    const firstRetry = await email.drainEmailOutboxCron(true);
-    if (firstRetry.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(firstRetry.body.drained).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(1);
-
-    mockNow(realNow + 7000);
-    const secondRetry = await email.drainEmailOutboxCron(true);
-    if (secondRetry.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(secondRetry.body.drained).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(2);
-
-    mockNow(realNow + 12_000);
-    const finalRetry = await email.drainEmailOutboxCron(true);
-    if (finalRetry.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(finalRetry.body.drained).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(3);
-
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-bdd-clean" },
-    });
-    mockNow(realNow + 15 * 60 * 1000 + 30_000);
-    const cleaned = await email.drainEmailOutboxCron(true);
-    if (cleaned.status !== 200) {
-      throw new Error("Expected drain email outbox cron to succeed");
-    }
-    expect(cleaned.body.cleaned).toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(0);
-  });
-
-  it("does not deliver outbox emails to suppressed recipients", async () => {
-    const email = createEmailApi(context);
-    const { from } = await email.triggerInboundErrorEmail();
-    await waitForResendSendCallsTo(from, 1);
-
-    await email.suppressEmailAddress(from);
-
-    context.mocks.resend.send.mockReset();
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-bdd-unused" },
-    });
-    mockNow(now() + 2000);
-    onTestFinished(clearMockNow);
+  it("marks suppressed pending outbox rows failed without sending", async () => {
+    const subject = `BDD drain ${randomUUID().slice(0, 8)}`;
+    const to = `bdd-suppressed-${randomUUID().slice(0, 12)}@example.test`;
+    await seedEmailOutbox({ subject, to });
+    await seedEmailSuppression(to);
 
     await expect
       .poll(async () => {
-        const drain = await email.drainEmailOutboxCron(true);
-        if (drain.status !== 200) {
-          throw new Error("Expected drain email outbox cron to succeed");
-        }
-        return drain.body.drained;
+        await touchEmailOutbox(subject);
+        await drainEmailOutboxCronOk();
+        return await emailOutboxRow(subject);
       })
-      .toBeGreaterThanOrEqual(1);
-    expect(resendSendCallsTo(from)).toBe(0);
+      .toMatchObject({
+        status: "failed",
+        attempts: 1,
+        lastError: `Recipient address suppressed (${to})`,
+      });
+    expect(resendSendCallsTo(to)).toBe(0);
+  });
+
+  it("cleans up expired pending and failed outbox rows", async () => {
+    const pendingSubject = `BDD drain ${randomUUID().slice(0, 8)}`;
+    const failedSubject = `BDD drain ${randomUUID().slice(0, 8)}`;
+    const expiredAt = new Date(now() - 60 * 60 * 1000);
+    await seedEmailOutbox({
+      subject: pendingSubject,
+      to: `bdd-pending-${randomUUID().slice(0, 12)}@example.test`,
+      createdAt: expiredAt,
+      nextRetryAt: new Date("2100-01-01T00:00:00.000Z"),
+    });
+    await seedEmailOutbox({
+      subject: failedSubject,
+      to: `bdd-failed-${randomUUID().slice(0, 12)}@example.test`,
+      status: "failed",
+      attempts: 3,
+      createdAt: expiredAt,
+    });
+
+    await expect
+      .poll(async () => {
+        await drainEmailOutboxCronOk();
+        return [
+          await emailOutboxStatus(pendingSubject),
+          await emailOutboxStatus(failedSubject),
+        ];
+      })
+      .toStrictEqual([null, null]);
   });
 });

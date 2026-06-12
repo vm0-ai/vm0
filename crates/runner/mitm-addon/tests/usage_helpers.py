@@ -14,7 +14,8 @@ from typing import Any, Protocol
 
 import usage
 
-_EnqueueWebhook = Callable[[str, str, dict, str, str], bool]
+_DeliveryOutcomeCallback = Callable[[usage.webhook.WebhookDeliveryOutcome], None]
+_EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
 
 
 class _FlushOwnerLock(Protocol):

@@ -332,6 +332,27 @@ export class ComputerUseHostRuntime {
     });
   }
 
+  private deactivateInvalidHostToken(
+    source: ComputerUseRuntimeErrorSource,
+  ): void {
+    this.hostToken = null;
+    this.running = false;
+    this.clearHeartbeatTimer();
+    this.clearCommandTimer();
+    this.clearRecoveryTimer();
+    const entry = this.appendRuntimeErrorLog(
+      source,
+      COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
+      null,
+    );
+    this.setState({
+      status: "unauthenticated",
+      hostId: null,
+      lastError: entry.message,
+      recovery: null,
+    });
+  }
+
   private setRuntimeRecoveryState(
     phase: ComputerUseRuntimeRecoveryPhase,
     error: unknown,
@@ -670,13 +691,7 @@ export class ComputerUseHostRuntime {
       body: JSON.stringify(await this.runtimeBody()),
     });
     if (response.status === 401) {
-      this.hostToken = null;
-      this.setState({
-        status: "unauthenticated",
-        hostId: null,
-        lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
-        recovery: null,
-      });
+      this.deactivateInvalidHostToken("heartbeat");
       return false;
     }
     if (response.status === 409) {
@@ -749,6 +764,10 @@ export class ComputerUseHostRuntime {
         }),
       },
     );
+    if (next.status === 401) {
+      this.deactivateInvalidHostToken("command_poll");
+      return;
+    }
     if (!next.ok) {
       throw new ComputerUseHttpError(
         `Computer Use command claim failed: ${next.status}`,
@@ -790,6 +809,9 @@ export class ComputerUseHostRuntime {
       return;
     }
     await this.completeCommandWithRetry(body.command.id, completed);
+    if (!this.running || !this.hostToken) {
+      return;
+    }
     this.setState({
       status: "online",
       lastCommandAt: new Date().toISOString(),
@@ -818,6 +840,10 @@ export class ComputerUseHostRuntime {
           },
         );
         if (response.ok) {
+          return;
+        }
+        if (response.status === 401) {
+          this.deactivateInvalidHostToken("command_poll");
           return;
         }
         lastError = new ComputerUseHttpError(

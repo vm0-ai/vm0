@@ -3,38 +3,43 @@ import { posthog } from "posthog-js";
 
 const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY as string | undefined;
 
-export function initPostHog(): void {
+function runPostHog(action: (key: string) => void): void {
   if (!POSTHOG_KEY) {
     return;
   }
+  action(POSTHOG_KEY);
+}
 
-  posthog.init(POSTHOG_KEY, {
-    // First-party reverse proxy (Cloudflare-fronted): forwards /static assets,
-    // /flags, ingest and replay (/s) to PostHog US so ad blockers do not drop
-    // events. Shared with so.vm0.ai for one ingest domain. The legacy /ingest
-    // vercel.json rewrite is now unused (kept as fallback for now).
-    api_host: "https://j.vm0.ai",
-    ui_host: "https://us.posthog.com",
-    autocapture: false,
-    capture_pageview: false,
-    // Replay is off app-wide; it is enabled only for scoped flows (currently
-    // onboarding) via startOnboardingSessionRecording(). When it runs, this
-    // config masks all inputs and text so we capture behavior, not content.
-    disable_session_recording: true,
-    session_recording: {
-      maskAllInputs: true,
-      maskTextSelector: "*",
-    },
-    persistence: "localStorage+cookie",
-    sanitize_properties(properties, _event) {
-      if (properties?.$current_url) {
-        properties["$current_url"] = properties["$current_url"].replace(
-          /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
-          "/:id",
-        );
-      }
-      return properties;
-    },
+export function initPostHog(): void {
+  runPostHog((key) => {
+    posthog.init(key, {
+      // First-party reverse proxy (Cloudflare-fronted): forwards /static assets,
+      // /flags, ingest and replay (/s) to PostHog US so ad blockers do not drop
+      // events. Shared with so.vm0.ai for one ingest domain. The legacy /ingest
+      // vercel.json rewrite is now unused (kept as fallback for now).
+      api_host: "https://j.vm0.ai",
+      ui_host: "https://us.posthog.com",
+      autocapture: false,
+      capture_pageview: false,
+      // Replay is off app-wide; it is enabled only for scoped flows (currently
+      // onboarding) via startOnboardingSessionRecording(). When it runs, this
+      // config masks all inputs and text so we capture behavior, not content.
+      disable_session_recording: true,
+      session_recording: {
+        maskAllInputs: true,
+        maskTextSelector: "*",
+      },
+      persistence: "localStorage+cookie",
+      sanitize_properties(properties, _event) {
+        if (properties?.$current_url) {
+          properties["$current_url"] = properties["$current_url"].replace(
+            /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+            "/:id",
+          );
+        }
+        return properties;
+      },
+    });
   });
 }
 
@@ -45,17 +50,15 @@ interface PostHogUser {
 }
 
 export function setPostHogUser(user: PostHogUser): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.identify(user.id, { email: user.email, name: user.name });
+  runPostHog(() => {
+    posthog.identify(user.id, { email: user.email, name: user.name });
+  });
 }
 
 export function clearPostHogUser(): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.reset();
+  runPostHog(() => {
+    posthog.reset();
+  });
 }
 
 // ── Onboarding step funnel ─────────────────────────────────────────
@@ -64,17 +67,15 @@ export function clearPostHogUser(): void {
 // setZeroStep$ in zero-onboarding.ts, so one capture there gives us a
 // per-step funnel to see which onboarding step has the highest drop-off.
 export function captureOnboardingStep(step: string): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.capture("onboarding_step_viewed", { step });
+  runPostHog(() => {
+    posthog.capture("onboarding_step_viewed", { step });
+  });
 }
 
 export function captureTaskCompletedSuccessfully(): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.capture("task_completed_successfully", { surface: "chat_thread" });
+  runPostHog(() => {
+    posthog.capture("task_completed_successfully", { surface: "chat_thread" });
+  });
 }
 
 // ── Scoped session replay ──────────────────────────────────────────
@@ -86,17 +87,15 @@ export function captureTaskCompletedSuccessfully(): void {
 // onboarding route setup starts recording on enter and stops it on unmount.
 
 export function startOnboardingSessionRecording(): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.startSessionRecording();
+  runPostHog(() => {
+    posthog.startSessionRecording();
+  });
 }
 
 export function stopOnboardingSessionRecording(): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.stopSessionRecording();
+  runPostHog(() => {
+    posthog.stopSessionRecording();
+  });
 }
 
 // ── Navigation timing (ccstate-based) ──────────────────────────────
@@ -110,55 +109,59 @@ const navigationPushStateTime$ = state<number | null>(null);
 const navigationSetupTime$ = state<number | null>(null);
 
 export const startChatNavigationTiming$ = command(({ set }) => {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  set(navigationEnterTime$, performance.now());
-  set(navigationPushStateTime$, null);
-  set(navigationSetupTime$, null);
+  runPostHog(() => {
+    set(navigationEnterTime$, performance.now());
+    set(navigationPushStateTime$, null);
+    set(navigationSetupTime$, null);
+  });
 });
 
 export const markNavigationPushState$ = command(({ get, set }) => {
-  if (!POSTHOG_KEY || get(navigationEnterTime$) === null) {
+  if (get(navigationEnterTime$) === null) {
     return;
   }
-  set(navigationPushStateTime$, performance.now());
+  runPostHog(() => {
+    set(navigationPushStateTime$, performance.now());
+  });
 });
 
 export const markRouteSetupBegin$ = command(({ get, set }) => {
-  if (!POSTHOG_KEY || get(navigationEnterTime$) === null) {
+  if (get(navigationEnterTime$) === null) {
     return;
   }
-  set(navigationSetupTime$, performance.now());
+  runPostHog(() => {
+    set(navigationSetupTime$, performance.now());
+  });
 });
 
 export const captureNavigationTiming$ = command(({ get, set }) => {
   const enterTime = get(navigationEnterTime$);
-  if (!POSTHOG_KEY || enterTime === null) {
+  if (enterTime === null) {
     return;
   }
-  const now = performance.now();
-  const pushStateTime = get(navigationPushStateTime$);
-  const setupTime = get(navigationSetupTime$);
-  posthog.capture("chat_navigation_timing", {
-    total_ms: Math.round(now - enterTime),
-    push_state_ms:
-      pushStateTime !== null
-        ? Math.round(pushStateTime - enterTime)
-        : undefined,
-    setup_begin_ms:
-      setupTime !== null ? Math.round(setupTime - enterTime) : undefined,
+  runPostHog(() => {
+    const now = performance.now();
+    const pushStateTime = get(navigationPushStateTime$);
+    const setupTime = get(navigationSetupTime$);
+    posthog.capture("chat_navigation_timing", {
+      total_ms: Math.round(now - enterTime),
+      push_state_ms:
+        pushStateTime !== null
+          ? Math.round(pushStateTime - enterTime)
+          : undefined,
+      setup_begin_ms:
+        setupTime !== null ? Math.round(setupTime - enterTime) : undefined,
+    });
+    set(navigationEnterTime$, null);
+    set(navigationPushStateTime$, null);
+    set(navigationSetupTime$, null);
   });
-  set(navigationEnterTime$, null);
-  set(navigationPushStateTime$, null);
-  set(navigationSetupTime$, null);
 });
 
 export function capturePageView(): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.capture("$pageview");
+  runPostHog(() => {
+    posthog.capture("$pageview");
+  });
 }
 
 const firstSkeletonHideReported$ = state(false);
@@ -175,15 +178,14 @@ export const captureFirstSkeletonHide$ = command(({ get, set }) => {
   }
   set(firstSkeletonHideReported$, true);
 
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  const startMark = window.__appBootstrapStart;
-  if (typeof startMark !== "number") {
-    return;
-  }
-  posthog.capture("app_first_skeleton_hide", {
-    duration_ms: Math.round(performance.now() - startMark),
+  runPostHog(() => {
+    const startMark = window.__appBootstrapStart;
+    if (typeof startMark !== "number") {
+      return;
+    }
+    posthog.capture("app_first_skeleton_hide", {
+      duration_ms: Math.round(performance.now() - startMark),
+    });
   });
 });
 
@@ -204,16 +206,15 @@ export function captureRecommendedFollowupsShown(args: {
   readonly messageId: string;
   readonly followups: readonly RecommendedFollowupTelemetryItem[];
 }): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.capture("chat_recommended_followups_shown", {
-    assistant_message_id: args.messageId,
-    followup_count: args.followups.length,
-    followup_kinds: args.followups.map((followup) => {
-      return followup.kind;
-    }),
-    generation_types: recommendedFollowupGenerationTypes(args.followups),
+  runPostHog(() => {
+    posthog.capture("chat_recommended_followups_shown", {
+      assistant_message_id: args.messageId,
+      followup_count: args.followups.length,
+      followup_kinds: args.followups.map((followup) => {
+        return followup.kind;
+      }),
+      generation_types: recommendedFollowupGenerationTypes(args.followups),
+    });
   });
 }
 
@@ -223,14 +224,13 @@ export function captureRecommendedFollowupSelected(args: {
   readonly followupCount: number;
   readonly followup: RecommendedFollowupTelemetryItem;
 }): void {
-  if (!POSTHOG_KEY) {
-    return;
-  }
-  posthog.capture("chat_recommended_followup_selected", {
-    assistant_message_id: args.messageId,
-    followup_index: args.followupIndex,
-    followup_count: args.followupCount,
-    followup_kind: args.followup.kind,
-    generation_type: args.followup.generationType,
+  runPostHog(() => {
+    posthog.capture("chat_recommended_followup_selected", {
+      assistant_message_id: args.messageId,
+      followup_index: args.followupIndex,
+      followup_count: args.followupCount,
+      followup_kind: args.followup.kind,
+      generation_type: args.followup.generationType,
+    });
   });
 }

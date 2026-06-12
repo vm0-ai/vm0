@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.31](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.30...vsock-guest-v0.18.31) (2026-06-12)
+
+
+### Documentation
+
+* document shell command env script invariants ([#17439](https://github.com/vm0-ai/vm0/issues/17439)) ([943b09d](https://github.com/vm0-ai/vm0/commit/943b09d75bc456a7f5bc91fa47b46220d648f609))
+
 ## [0.18.30](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.29...vsock-guest-v0.18.30) (2026-06-11)
 
 

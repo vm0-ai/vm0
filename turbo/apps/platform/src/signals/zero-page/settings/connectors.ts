@@ -85,7 +85,7 @@ export interface ConnectorTypeWithStatus {
   tags: readonly string[];
   connected: boolean;
   connector: ConnectorResponse | null;
-  /** Auth methods available for this connector (considering feature flags). */
+  /** Auth methods available for this connector after availability filtering. */
   availableAuthMethods: ConnectorAuthMethodId[];
   /** True if at least one agent references this connector (env mapping). */
   usedByAgent?: boolean;

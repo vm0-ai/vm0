@@ -4,16 +4,10 @@ import type {
   DesktopAuthState,
   DesktopComputerUseApi,
 } from "../desktop-bridge";
-import { hasReadyDesktopAuth } from "../computer-use-startup-gate";
-import {
-  hasRequiredComputerUsePermissions,
-  type DesktopComputerUseState,
-} from "../computer-use-types";
+import type { DesktopComputerUseState } from "../computer-use-types";
 
 const reloadComputerUseState$ = state(0);
 const reloadDesktopAuthState$ = state(0);
-const autoStartAttempted$ = state(false);
-const autoStartSuppressed$ = state(false);
 
 function desktopComputerUseApi(): DesktopComputerUseApi {
   const api = window.vm0DesktopComputerUse;
@@ -37,21 +31,6 @@ export function hasDesktopComputerUseBridge(): boolean {
 
 export function hasDesktopAuthBridge(): boolean {
   return Boolean(window.vm0DesktopAuth);
-}
-
-export function shouldAutoStartComputerUse(
-  stateValue: DesktopComputerUseState,
-  authState: DesktopAuthState | null,
-  autoStartSuppressed = false,
-): boolean {
-  return (
-    !autoStartSuppressed &&
-    stateValue.supported &&
-    hasReadyDesktopAuth(authState) &&
-    hasRequiredComputerUsePermissions(stateValue.permissions) &&
-    (stateValue.host.status === "offline" ||
-      stateValue.host.status === "unauthenticated")
-  );
 }
 
 export const computerUseData$ = computed(
@@ -89,8 +68,6 @@ export const setupComputerUseBridge$ = command(
       set(reloadComputerUse$);
     });
     const unsubscribeAuth = window.vm0DesktopAuth?.subscribe(() => {
-      set(autoStartAttempted$, false);
-      set(autoStartSuppressed$, false);
       set(refreshDesktopAuth$);
       set(reloadComputerUse$);
     });
@@ -109,38 +86,14 @@ export const setupComputerUseBridge$ = command(
 );
 
 export const startComputerUse$ = command(async ({ set }) => {
-  set(autoStartSuppressed$, false);
   await desktopComputerUseApi().start({ userInitiated: true });
   set(reloadComputerUse$);
 });
 
 export const stopComputerUse$ = command(async ({ set }) => {
-  set(autoStartSuppressed$, true);
   await desktopComputerUseApi().stop();
   set(reloadComputerUse$);
 });
-
-export const maybeAutoStartComputerUse$ = command(
-  async (
-    { get, set },
-    stateValue: DesktopComputerUseState,
-    authState: DesktopAuthState | null,
-  ) => {
-    if (
-      get(autoStartAttempted$) ||
-      !shouldAutoStartComputerUse(
-        stateValue,
-        authState,
-        get(autoStartSuppressed$),
-      )
-    ) {
-      return;
-    }
-    set(autoStartAttempted$, true);
-    await desktopComputerUseApi().start({ userInitiated: false });
-    set(reloadComputerUse$);
-  },
-);
 
 export const requestAccessibilityPermission$ = command(async ({ set }) => {
   await desktopComputerUseApi().requestAccessibilityPermission();
@@ -173,15 +126,12 @@ export const openDesktopSignIn$ = command(async () => {
 
 export const openDesktopOrgSelection$ = command(async ({ set }) => {
   await desktopAuthApi().openOrgSelection();
-  set(autoStartAttempted$, false);
-  set(autoStartSuppressed$, false);
   set(refreshDesktopAuth$);
   set(reloadComputerUse$);
 });
 
 export const signOutDesktop$ = command(async ({ set }) => {
   await desktopAuthApi().signOut();
-  set(autoStartAttempted$, false);
   set(refreshDesktopAuth$);
   set(reloadComputerUse$);
 });

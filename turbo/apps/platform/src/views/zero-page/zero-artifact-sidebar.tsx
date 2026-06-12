@@ -51,6 +51,7 @@ import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thre
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   ArtifactActionSeparator,
+  ArtifactActionTooltip,
   ArtifactDownloadMenu,
   ArtifactShareButton,
   type ArtifactDownloadSyncTarget,
@@ -378,14 +379,16 @@ function ArtifactSidebarHeader({
   return (
     <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
       {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Back to all artifacts"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-        >
-          <IconArrowLeft size={16} />
-        </button>
+        <ArtifactActionTooltip label="Back to all artifacts">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to all artifacts"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <IconArrowLeft size={16} />
+          </button>
+        </ArtifactActionTooltip>
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-foreground">
@@ -479,29 +482,33 @@ function ArtifactSidebarActions({
 
 function ArtifactEditPresentationAction({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Edit presentation"
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-    >
-      <IconPencil size={16} stroke={1.5} />
-    </button>
+    <ArtifactActionTooltip label="Edit presentation">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Edit presentation"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      >
+        <IconPencil size={16} stroke={1.5} />
+      </button>
+    </ArtifactActionTooltip>
   );
 }
 
 function ArtifactOpenExternalAction({ url }: { url: string }) {
   return (
-    <a
-      href={publicAttachmentUrl(url)}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label="Open in new tab"
-      data-testid="artifact-sidebar-open-external"
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-    >
-      <IconExternalLink size={16} />
-    </a>
+    <ArtifactActionTooltip label="Open in new tab">
+      <a
+        href={publicAttachmentUrl(url)}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Open in new tab"
+        data-testid="artifact-sidebar-open-external"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      >
+        <IconExternalLink size={16} />
+      </a>
+    </ArtifactActionTooltip>
   );
 }
 
@@ -513,34 +520,40 @@ function ArtifactFullscreenAction({
   onToggleFullscreen: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onToggleFullscreen}
-      aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-      data-testid="artifact-sidebar-fullscreen-toggle"
-      className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+    <ArtifactActionTooltip
+      label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
     >
-      {fullscreen ? (
-        <IconArrowsDiagonalMinimize2 size={16} />
-      ) : (
-        <IconArrowsDiagonal size={16} />
-      )}
-    </button>
+      <button
+        type="button"
+        onClick={onToggleFullscreen}
+        aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+        data-testid="artifact-sidebar-fullscreen-toggle"
+        className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      >
+        {fullscreen ? (
+          <IconArrowsDiagonalMinimize2 size={16} />
+        ) : (
+          <IconArrowsDiagonal size={16} />
+        )}
+      </button>
+    </ArtifactActionTooltip>
   );
 }
 
 function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label="More artifact actions"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        >
-          <IconDots size={16} />
-        </button>
-      </DropdownMenuTrigger>
+      <ArtifactActionTooltip label="More artifact actions">
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="More artifact actions"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          >
+            <IconDots size={16} />
+          </button>
+        </DropdownMenuTrigger>
+      </ArtifactActionTooltip>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={onClose}>Close preview</DropdownMenuItem>
       </DropdownMenuContent>
@@ -550,15 +563,17 @@ function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
 
 function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClose}
-      aria-label="Close artifact"
-      data-testid="artifact-sidebar-close"
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-    >
-      <IconX size={16} />
-    </button>
+    <ArtifactActionTooltip label="Close artifact">
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close artifact"
+        data-testid="artifact-sidebar-close"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      >
+        <IconX size={16} />
+      </button>
+    </ArtifactActionTooltip>
   );
 }
 

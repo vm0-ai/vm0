@@ -259,7 +259,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["chat"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["slack"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["email"]).toBeGreaterThanOrEqual(50);
-    expect(totalByBucket["schedule"]).toBeGreaterThanOrEqual(50);
+    expect(totalByBucket["automation"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 
@@ -888,7 +888,7 @@ describe("GET /api/zero/usage/insight", () => {
           orgId: fixture.orgId,
           userId: fixture.userId,
           composeId: agentId,
-          triggerSource: "schedule",
+          triggerSource: "automation",
           scheduleId,
           status: "completed",
         },

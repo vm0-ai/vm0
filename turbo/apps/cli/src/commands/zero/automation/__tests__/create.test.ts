@@ -1,5 +1,5 @@
 /**
- * Tests for `zero automation create` (v2 unified automations).
+ * Tests for `zero automation create` (unified automations).
  *
  * Tests command-level behavior via parseAsync() following CLI testing
  * principles:

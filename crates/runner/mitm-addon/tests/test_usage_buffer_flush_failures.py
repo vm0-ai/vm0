@@ -1,10 +1,13 @@
 """Tests for usage-buffer retry and overlapping flush behavior."""
 
+from unittest.mock import patch
+
 import pytest
 
 import usage
 import usage.buffer as usage_buffer
-from tests.usage_buffer_helpers import RecordingEnqueue, event
+from tests.pending_helpers import assert_pending
+from tests.usage_buffer_helpers import DeliveryOutcomeCallback, RecordingEnqueue, event
 
 
 def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp_path):
@@ -139,6 +142,199 @@ def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempoten
     assert usage.counters._buffered_usage_events == 0
 
 
+def test_saturated_flush_retains_retryable_payload_with_same_idempotency_key(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        proxy_log_path,
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 0
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == 1
+    retained_key = enqueue.last_call.payload["events"][0]["idempotencyKey"]
+
+    enqueue.return_value = True
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    retry_payload = enqueue.last_call.payload
+    assert retry_payload["runId"] == "run-1"
+    assert retry_payload["events"][0]["quantity"] == 10
+    assert retry_payload["events"][0]["idempotencyKey"] == retained_key
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_partial_saturated_flush_retries_only_unadmitted_batches(tmp_path):
+    attempted_payloads = []
+
+    def saturate_second_batch(url, sandbox_token, payload, path, log_type):
+        del url, sandbox_token, path, log_type
+        attempted_payloads.append(payload)
+        return len(attempted_payloads) != 2
+
+    enqueue = RecordingEnqueue(side_effect=saturate_second_batch)
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1")],
+        proxy_log_path,
+    )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-2",
+        [event(source_key="source-2")],
+        proxy_log_path,
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert [payload["runId"] for payload in attempted_payloads] == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 1
+    retained_key = attempted_payloads[1]["events"][0]["idempotencyKey"]
+
+    enqueue.side_effect = None
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    retry_payload = enqueue.last_call.payload
+    assert retry_payload["runId"] == "run-2"
+    assert retry_payload["events"][0]["idempotencyKey"] == retained_key
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_retained_aggregate_batch_keeps_source_event_count(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [
+            event(source_key="source-1", quantity=10),
+            event(source_key="source-2", quantity=5),
+            event(source_key="source-3", quantity=7),
+        ],
+        proxy_log_path,
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 0
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["events"][0]["quantity"] == 22
+    assert usage.counters._buffered_usage_events == 3
+
+    enqueue.return_value = True
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload["events"][0]["quantity"] == 22
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
+    attempted_log_types = []
+
+    def admit_one_batch(url, sandbox_token, payload, path, log_type):
+        del url, sandbox_token, payload, path
+        attempted_log_types.append(log_type)
+        return len(attempted_log_types) == 1
+
+    enqueue = RecordingEnqueue(side_effect=admit_one_batch)
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [event(source_key="observation-source")],
+        proxy_log_path,
+    )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="usage-source")],
+        proxy_log_path,
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert attempted_log_types == ["usage_event", "model_usage_observation"]
+    assert usage.counters._buffered_usage_events == 1
+
+    enqueue.side_effect = None
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.log_type == "model_usage_observation"
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "token-a",
+        "run-1",
+        [event(source_key="observation-source")],
+        proxy_log_path,
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 0
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.log_type == "model_usage_observation"
+    assert usage.counters._buffered_usage_events == 1
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="usage-source")],
+        proxy_log_path,
+    )
+    attempted_log_types = []
+
+    def admit_usage_then_saturate_observation(url, sandbox_token, payload, path, log_type):
+        del url, sandbox_token, payload, path
+        attempted_log_types.append(log_type)
+        return log_type == "usage_event"
+
+    enqueue.side_effect = admit_usage_then_saturate_observation
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert attempted_log_types == ["usage_event", "model_usage_observation"]
+    assert usage.counters._buffered_usage_events == 1
+
+    enqueue.side_effect = None
+    enqueue.return_value = True
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.last_call.log_type == "model_usage_observation"
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
     def fail_first_flush(url, sandbox_token, payload, path, log_type):
         del url, sandbox_token, payload, path, log_type
@@ -264,3 +460,184 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
 
     enqueue.assert_called_once()
     assert usage.counters._buffered_usage_events == 0
+
+
+def test_retryable_delivery_failure_retains_flush_and_retries_with_same_key(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    del sync_usage_executor
+    pending_path = tmp_path / "usage-pending"
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
+
+    usage.buffer_usage_events(
+        usage_webhook_server.url("/usage"),
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(proxy_log_path),
+    )
+    usage_webhook_server.queue_response(500)
+    usage_webhook_server.queue_response(500)
+
+    with patch.object(usage.webhook.time, "sleep"):
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    assert usage_webhook_server.request_count == 2
+    failed_key = usage_webhook_server.requests[0].json_body()["events"][0]["idempotencyKey"]
+    assert usage.counters._pending_reports == 0
+    assert usage.counters._buffered_usage_events == 1
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1")
+
+    usage_webhook_server.queue_response(204)
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert usage_webhook_server.request_count == 3
+    retry_body = usage_webhook_server.requests[2].json_body()
+    assert retry_body["runId"] == "run-1"
+    assert retry_body["events"][0]["quantity"] == 10
+    assert retry_body["events"][0]["idempotencyKey"] == failed_key
+    assert usage.counters._buffered_usage_events == 0
+    usage.write_pending_snapshot(flush_request_id="request-2")
+    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
+
+
+def test_partial_delivery_failure_retains_whole_flush_with_same_keys(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    del sync_usage_executor
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    for run_id, source_key in (("run-a", "source-a"), ("run-b", "source-b")):
+        usage.buffer_usage_events(
+            usage_webhook_server.url("/usage"),
+            "token-a",
+            run_id,
+            [event(source_key=source_key)],
+            str(proxy_log_path),
+        )
+
+    usage_webhook_server.queue_response(204)
+    usage_webhook_server.queue_response(500)
+    usage_webhook_server.queue_response(500)
+    with patch.object(usage.webhook.time, "sleep"):
+        assert usage.flush_usage_events(trigger="test") == 2
+
+    first_attempts = [
+        usage_webhook_server.requests[0].json_body(),
+        usage_webhook_server.requests[1].json_body(),
+    ]
+    assert [body["runId"] for body in first_attempts] == ["run-a", "run-b"]
+    assert usage.counters._buffered_usage_events == 2
+
+    usage_webhook_server.queue_response(204)
+    usage_webhook_server.queue_response(204)
+    assert usage.flush_usage_events(trigger="test") == 2
+
+    retry_bodies = [
+        usage_webhook_server.requests[3].json_body(),
+        usage_webhook_server.requests[4].json_body(),
+    ]
+    assert [body["runId"] for body in retry_bodies] == ["run-a", "run-b"]
+    assert [body["events"][0]["idempotencyKey"] for body in retry_bodies] == [
+        body["events"][0]["idempotencyKey"] for body in first_attempts
+    ]
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_delivery_in_progress_does_not_block_live_usage_snapshot(tmp_path):
+    callbacks: list[DeliveryOutcomeCallback] = []
+    payloads: list[dict] = []
+
+    def enqueue_without_completion(
+        url: str,
+        sandbox_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
+    ) -> bool:
+        del url, sandbox_token, path, log_type
+        payloads.append(payload)
+        callbacks.append(delivery_outcome_callback)
+        return True
+
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_without_completion)
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1")],
+        str(proxy_log_path),
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    assert usage.counters._buffered_usage_events == 1
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-2",
+        [event(source_key="source-2")],
+        str(proxy_log_path),
+    )
+    assert usage.counters._buffered_usage_events == 2
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert [payload["runId"] for payload in payloads] == ["run-1", "run-2"]
+    callbacks[0]("success")
+    assert usage.counters._buffered_usage_events == 1
+    callbacks[1]("success")
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_permanent_sync_fallback_failure_does_not_requeue(tmp_path, fresh_usage_executor):
+    del fresh_usage_executor
+    usage.webhook.usage_executor.shutdown(wait=True)
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.buffer_usage_events(
+        "not-a-url",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1")],
+        str(proxy_log_path),
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert usage.counters._pending_reports == 0
+    assert usage.counters._buffered_usage_events == 0
+    assert "non-retryable" in proxy_log_path.read_text()
+
+
+def test_permanent_http_delivery_failure_completes_flush(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    del sync_usage_executor
+    pending_path = tmp_path / "usage-pending"
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
+
+    usage.buffer_usage_events(
+        usage_webhook_server.url("/usage"),
+        "token-a",
+        "run-1",
+        [event(source_key="source-1")],
+        str(proxy_log_path),
+    )
+    usage_webhook_server.queue_response(400)
+
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert usage_webhook_server.request_count == 1
+    assert usage.counters._pending_reports == 0
+    assert usage.counters._buffered_usage_events == 0
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")

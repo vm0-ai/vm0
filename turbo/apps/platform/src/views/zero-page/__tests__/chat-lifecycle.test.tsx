@@ -58,6 +58,19 @@ const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
+function expectTextBefore(
+  container: HTMLElement,
+  before: string,
+  after: string,
+) {
+  const text = container.textContent ?? "";
+  const beforeIndex = text.indexOf(before);
+  const afterIndex = text.indexOf(after);
+  expect(beforeIndex).toBeGreaterThanOrEqual(0);
+  expect(afterIndex).toBeGreaterThanOrEqual(0);
+  expect(beforeIndex).toBeLessThan(afterIndex);
+}
+
 interface QueuedMessageCapture {
   content?: string;
   hasTextContent?: boolean;
@@ -1368,6 +1381,71 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps completed chat work folded while a later run is active", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-completed-before-active",
+      activeRunIds: ["run-work-folding-active-later"],
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the earlier launch",
+          runId: "run-work-folding-completed-before-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the earlier launch notes.",
+          runId: "run-work-folding-completed-before-active",
+          createdAt: "2026-06-09T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "The earlier launch summary is ready.",
+          runId: "run-work-folding-completed-before-active",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+        {
+          role: "user",
+          content: "Investigate the current launch",
+          runId: "run-work-folding-active-later",
+          createdAt: "2026-06-09T10:05:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the current launch notes.",
+          runId: "run-work-folding-active-later",
+          createdAt: "2026-06-09T10:05:10Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-completed-before-active",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+
+    const expandButtons = await screen.findAllByLabelText(
+      "Expand work history",
+    );
+    expect(expandButtons).toHaveLength(1);
+    expect(expandButtons[0]).toHaveTextContent("Worked for 20s");
+    expect(
+      screen.getByText("Summarize the earlier launch"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Checking the earlier launch notes.")).toBeNull();
+    expect(
+      screen.getByText("The earlier launch summary is ready."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Investigate the current launch"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Checking the current launch notes."),
+    ).toBeInTheDocument();
+  });
+
   it("folds completed chat work and toggles the hidden history", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completed",
@@ -1402,7 +1480,13 @@ describe("chat lifecycle", () => {
 
     const expandButton = await screen.findByLabelText("Expand work history");
     expect(expandButton).toHaveTextContent("Worked for 55s");
-    expect(expandButton.closest('[data-role="assistant"]')).not.toBeNull();
+    const foldedAssistantGroup = expandButton.closest(
+      '[data-role="assistant"]',
+    ) as HTMLElement | null;
+    expect(foldedAssistantGroup).not.toBeNull();
+    expect(
+      within(foldedAssistantGroup!).getAllByLabelText("View agent profile"),
+    ).toHaveLength(1);
     expect(screen.getByText("Summarize the launch status")).toBeInTheDocument();
     expect(screen.queryByText("Checking launch status.")).toBeNull();
     expect(
@@ -1412,7 +1496,22 @@ describe("chat lifecycle", () => {
     click(expandButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Checking launch status.")).toBeInTheDocument();
+      expect(
+        within(foldedAssistantGroup!).getByText("Checking launch status."),
+      ).toBeInTheDocument();
+      expect(
+        within(foldedAssistantGroup!).getAllByLabelText("View agent profile"),
+      ).toHaveLength(1);
+      expectTextBefore(
+        foldedAssistantGroup!,
+        "Worked for 55s",
+        "Checking launch status.",
+      );
+      expectTextBefore(
+        foldedAssistantGroup!,
+        "Checking launch status.",
+        "Launch status is summarized.",
+      );
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -1550,6 +1649,10 @@ describe("chat lifecycle", () => {
     expect(expandButtons).toHaveLength(2);
     expect(expandButtons[0]).toHaveTextContent("Worked for 20s");
     expect(expandButtons[1]).toHaveTextContent("Worked for 55s");
+    const secondAssistantGroup = expandButtons[1]!.closest(
+      '[data-role="assistant"]',
+    ) as HTMLElement | null;
+    expect(secondAssistantGroup).not.toBeNull();
     expect(screen.getByText("Summarize the first launch")).toBeInTheDocument();
     expect(screen.queryByText("Checking the first launch notes.")).toBeNull();
     expect(
@@ -1572,8 +1675,23 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize the second launch"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Checking the second launch notes."),
+        within(secondAssistantGroup!).getByText(
+          "Checking the second launch notes.",
+        ),
       ).toBeInTheDocument();
+      expect(
+        within(secondAssistantGroup!).getAllByLabelText("View agent profile"),
+      ).toHaveLength(1);
+      expectTextBefore(
+        secondAssistantGroup!,
+        "Worked for 55s",
+        "Checking the second launch notes.",
+      );
+      expectTextBefore(
+        secondAssistantGroup!,
+        "Checking the second launch notes.",
+        "The second launch summary is ready.",
+      );
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -2621,9 +2739,7 @@ describe("chat lifecycle", () => {
     expect(comments[0]).toHaveValue("Assign each risk to an owner.");
     expect(comments[1]).toHaveValue("");
     expect(
-      screen.getByText(
-        "Select more text and click Provide feedback to add another comment",
-      ),
+      screen.getByText("Select more text to add another comment"),
     ).toBeInTheDocument();
 
     // Removing the empty draft row leaves the noted fragment intact.
