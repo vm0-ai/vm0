@@ -27,9 +27,6 @@ export const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
 export const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
 export const SPEECH_CONTENT_TYPE = "audio/wav";
 export const SPEECH_RESPONSE_FORMAT = "wav";
-export const TTS_RESPONSE_FORMAT = "pcm";
-export const TTS_CONTENT_TYPE = "application/octet-stream";
-export const TTS_MAX_TEXT_LENGTH = 4096;
 export const SPEECH_MAX_INPUT_TOKENS = 2000;
 export const MAX_STT_FILE_SIZE = 25 * 1024 * 1024;
 export const MAX_STT_REQUEST_DURATION_SECONDS = 5 * 60;
@@ -149,10 +146,6 @@ function errorBody(message: string, code: string): ErrorBody {
 
 export function badRequest(message: string, code = "BAD_REQUEST") {
   return { status: 400 as const, body: errorBody(message, code) };
-}
-
-export function forbidden(message: string) {
-  return { status: 403 as const, body: errorBody(message, "FORBIDDEN") };
 }
 
 export function internalError(message: string) {

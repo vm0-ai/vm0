@@ -184,6 +184,18 @@ async function expectQueuedMessages(contents: string[]): Promise<void> {
   });
 }
 
+function expectTextBefore(
+  container: HTMLElement,
+  beforeText: string,
+  afterText: string,
+): void {
+  const before = within(container).getByText(beforeText);
+  const after = within(container).getByText(afterText);
+  expect(
+    before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+}
+
 function makeMessage(id: string, text: string): PagedChatMessage {
   return {
     id,
@@ -1570,8 +1582,7 @@ describe("chat lifecycle", () => {
     expect(actions).not.toBeNull();
     const copy = within(actions as HTMLElement).getByLabelText("Copy message");
     expect(
-      copy.compareDocumentPosition(credit) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      copy.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
     fireEvent.pointerEnter(credit);

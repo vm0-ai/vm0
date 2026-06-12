@@ -3632,9 +3632,6 @@ function InlineThinkingRow({
   );
 }
 
-const RUN_SECTION_LABEL_CLASS =
-  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
-
 function FinishedRunRow({
   thread,
   label,
