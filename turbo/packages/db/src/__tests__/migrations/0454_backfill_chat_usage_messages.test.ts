@@ -329,6 +329,11 @@ describe("migration 0454 backfill chat usage messages", () => {
         })
         .returning({ id: chatMessages.id });
 
+      await tx.execute(sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS "chat_messages_usage_run_id_unique"
+        ON "chat_messages" USING btree ("run_id")
+        WHERE "chat_messages"."usage_payload" IS NOT NULL
+      `);
       await tx.execute(sql.raw(migrationSql));
       await tx.execute(sql.raw(migrationSql));
 

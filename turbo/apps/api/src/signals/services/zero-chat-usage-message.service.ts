@@ -94,6 +94,21 @@ function usagePayloadEquals(
   return usagePayloadKey(left) === usagePayloadKey(right);
 }
 
+function usageMessageMatchesPayload(
+  message: {
+    readonly createdAt: Date;
+    readonly usagePayload: ChatMessageUsagePayload | null;
+  },
+  payload: ChatMessageUsagePayload,
+): boolean {
+  const payloadCreatedAt = new Date(payload.settledAt);
+  return (
+    message.createdAt.getTime() === payloadCreatedAt.getTime() ||
+    (message.usagePayload !== null &&
+      usagePayloadEquals(message.usagePayload, payload))
+  );
+}
+
 export const maybeEmitRunUsageMessage$ = command(
   async ({ set }, runId: string, signal: AbortSignal): Promise<boolean> => {
     const db = set(writeDb$);
@@ -170,7 +185,10 @@ export const maybeEmitRunUsageMessage$ = command(
       };
 
       const existingUsageMessages = await tx
-        .select({ usagePayload: chatMessages.usagePayload })
+        .select({
+          createdAt: chatMessages.createdAt,
+          usagePayload: chatMessages.usagePayload,
+        })
         .from(chatMessages)
         .where(
           and(
@@ -181,10 +199,7 @@ export const maybeEmitRunUsageMessage$ = command(
       signal.throwIfAborted();
 
       const hasExistingPayload = existingUsageMessages.some((message) => {
-        return (
-          message.usagePayload !== null &&
-          usagePayloadEquals(message.usagePayload, payload)
-        );
+        return usageMessageMatchesPayload(message, payload);
       });
       if (hasExistingPayload) {
         return null;
