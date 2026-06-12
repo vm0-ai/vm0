@@ -8,6 +8,7 @@ import {
   completeDesktopAuth,
   completeDesktopAuthHandoff,
 } from "../completeDesktopAuth";
+import { DesktopAuthStatusPage } from "../DesktopAuthStatusPage";
 
 const DESKTOP_AUTH_START_PATH = "/desktop-auth/start";
 const DESKTOP_AUTH_SELECT_ORG_PATH = "/desktop-auth/select-org";
@@ -79,11 +80,18 @@ export function DesktopAuthTokenClient() {
 
   if (error) {
     return (
-      <p style={{ padding: "2rem", fontFamily: "monospace" }}>Error: {error}</p>
+      <DesktopAuthStatusPage
+        title="Desktop sign-in failed"
+        description={error}
+        tone="error"
+      />
     );
   }
 
   return (
-    <p style={{ padding: "2rem", fontFamily: "monospace" }}>Signing in...</p>
+    <DesktopAuthStatusPage
+      title="Signing in to Zero"
+      description="Finishing the secure handoff to Zero Computer Use."
+    />
   );
 }
