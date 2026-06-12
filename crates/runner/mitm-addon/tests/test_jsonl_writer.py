@@ -24,7 +24,8 @@ def test_full_write_queue_warns_and_does_not_track_dropped_path_state(tmp_path):
     assert log_path not in jsonl_writer._accepted_by_path
     assert log_path not in jsonl_writer._completed_by_path
     assert log_path not in jsonl_writer._flush_waiters_by_path
-    assert not (tmp_path / "net.jsonl").exists()
+    assert jsonl_writer._pending_bytes == 0
+    assert not (tmp_path / "net.jsonl").is_file()
 
 
 def test_completed_write_prunes_path_state_without_explicit_flush(tmp_path):
@@ -36,6 +37,7 @@ def test_completed_write_prunes_path_state_without_explicit_flush(tmp_path):
     assert log_path not in jsonl_writer._accepted_by_path
     assert log_path not in jsonl_writer._completed_by_path
     assert log_path not in jsonl_writer._flush_waiters_by_path
+    assert jsonl_writer._pending_bytes == 0
     assert (tmp_path / "proxy.jsonl").read_bytes().splitlines()
 
 
@@ -47,6 +49,7 @@ def test_flush_prunes_completed_path_state(tmp_path):
 
     assert log_path not in jsonl_writer._accepted_by_path
     assert log_path not in jsonl_writer._completed_by_path
+    assert jsonl_writer._pending_bytes == 0
 
 
 def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
@@ -89,3 +92,4 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
     assert log_path not in jsonl_writer._accepted_by_path
     assert log_path not in jsonl_writer._completed_by_path
     assert log_path not in jsonl_writer._flush_waiters_by_path
+    assert jsonl_writer._pending_bytes == 0
