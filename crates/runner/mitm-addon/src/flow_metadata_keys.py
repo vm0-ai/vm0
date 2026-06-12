@@ -64,8 +64,9 @@ Firewall and auth context
   registry failures. It is orthogonal to ``FIREWALL_ACTION``: an ``ALLOW``
   decision can still have an auth or forwarding error.
 - ``CONNECTOR_DIAGNOSTIC_TYPE``: optional ``str`` connector type for a generic
-  connector availability diagnostic. Written when an inactive built-in
-  connector URL match later produces an agent-visible diagnostic response.
+  connector availability diagnostic. The request hook records this for an
+  inactive built-in connector candidate; network logs expose it only after the
+  response/error hook turns the candidate into an agent-visible diagnostic.
 - ``CONNECTOR_DIAGNOSTIC_REASON``: optional ``str`` generic diagnostic reason.
   First-version diagnostics use ``not_configured_for_run``.
 - ``CONNECTOR_DIAGNOSTIC_ENV_NAMES``: optional ``list[str]`` env aliases that

@@ -28,6 +28,7 @@ from mitmproxy.test import tflow, tutils
 
 import auth
 import auth_base_forwarder
+import builtin_connector_diagnostics
 import logging_utils
 import mitm_addon
 import registry
@@ -49,6 +50,7 @@ def _reset_module_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     it before and after each case to avoid cross-test callbacks.
     """
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     clear_auth_state()
@@ -80,6 +82,7 @@ def _reset_module_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     yield
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
+    builtin_connector_diagnostics.reset_cache_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     usage.reset_usage_buffer_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
