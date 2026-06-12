@@ -76,7 +76,12 @@ pub(crate) async fn collect_active_run_mappings(
 ) -> ActiveRunMappings {
     let mut entries = Vec::new();
     let mut failed = 0usize;
+    let mut scanned = 0usize;
     for runner in runners {
+        if runner.subcommand != "start" {
+            continue;
+        }
+        scanned += 1;
         match read_active_runs(&runner.base_dir).await {
             Some(runs) => entries.extend(runs),
             None => failed += 1,
@@ -84,7 +89,7 @@ pub(crate) async fn collect_active_run_mappings(
     }
     ActiveRunMappings {
         entries,
-        runners_total: runners.len(),
+        runners_total: scanned,
         runners_failed: failed,
     }
 }
@@ -172,6 +177,13 @@ mod tests {
             runner_group: "vm0/test".into(),
             subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
+        }
+    }
+
+    fn live_runner_with_subcommand(base_dir: &Path, subcommand: &str) -> LiveRunnerInstance {
+        LiveRunnerInstance {
+            subcommand: subcommand.into(),
+            ..live_runner(base_dir)
         }
     }
 
@@ -299,6 +311,25 @@ mod tests {
         assert!(mappings.entries.is_empty());
         assert_eq!(mappings.runners_total, 1);
         assert_eq!(mappings.runners_failed, 1);
+    }
+
+    #[tokio::test]
+    async fn collect_active_run_mappings_ignores_non_start_runners() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("benchmark-runner");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(
+            base.join("status.json"),
+            r#"{"active_runs":[{"run_id":"stale-run","sandbox_id":"stale-sandbox"}]}"#,
+        )
+        .unwrap();
+
+        let mappings =
+            collect_active_run_mappings(&[live_runner_with_subcommand(&base, "benchmark")]).await;
+
+        assert!(mappings.entries.is_empty());
+        assert_eq!(mappings.runners_total, 0);
+        assert_eq!(mappings.runners_failed, 0);
     }
 
     #[tokio::test]
