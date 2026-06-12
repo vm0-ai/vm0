@@ -45,6 +45,7 @@ import {
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
+import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
 import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
@@ -126,6 +127,13 @@ let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend();
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
+const computerUseAutoStart = new DesktopComputerUseAutoStartSupervisor({
+  getState: getComputerUseBridgeState,
+  start: async () => {
+    await startComputerUseRuntime();
+  },
+  logError: logComputerUseAutoStartError,
+});
 const quitConfirmation = new DesktopQuitConfirmationController({
   confirmQuit: confirmDesktopQuit,
   quit: () => {
@@ -144,6 +152,7 @@ function refreshDesktopTrayAuth(): void {
 function notifyComputerUseChanged(): void {
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
+  computerUseAutoStart.restartRecoverableRuntimeState();
 }
 
 function notifyAuthChanged(): void {
@@ -1017,11 +1026,10 @@ if (!hasSingleInstanceLock) {
       pendingCallback: desktopAuthSession.takePendingCallback(),
       consumeAuthCallback: (callback) =>
         desktopAuthSession.consumeCode(callback.code, callback.handoffId),
-      autoStartComputerUse: async () => {
-        await startComputerUseRuntime();
+      requestAutoStartComputerUse: () => {
+        computerUseAutoStart.requestStart();
       },
       logAuthError: logDesktopAuthError,
-      logAutoStartError: logComputerUseAutoStartError,
     });
 
     app.on("activate", () => {
