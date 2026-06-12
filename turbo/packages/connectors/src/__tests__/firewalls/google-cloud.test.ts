@@ -149,18 +149,40 @@ describe("google-cloud firewall", () => {
     const base = "https://storage.googleapis.com";
 
     expect(
-      findPermissions(base, "GET", "/storage/v1/b/bucket/o/folder/object.txt"),
+      findPermissions(
+        base,
+        "GET",
+        "/storage/v1/b/bucket/o/folder%2Fobject.txt",
+      ),
     ).toEqual(["storage.objects.get"]);
     expect(
       findPermissions(
         base,
         "PATCH",
-        "/storage/v1/b/bucket/o/folder/object.txt",
+        "/storage/v1/b/bucket/o/folder%2Fobject.txt",
       ),
     ).toEqual(["storage.objects.update"]);
     expect(
-      findPermissions(base, "PUT", "/storage/v1/b/bucket/o/folder/object.txt"),
+      findPermissions(
+        base,
+        "PUT",
+        "/storage/v1/b/bucket/o/folder%2Fobject.txt",
+      ),
     ).toEqual(["storage.objects.update"]);
+    expect(
+      findPermissions(
+        base,
+        "GET",
+        "/storage/v1/b/bucket/o/folder%2Fobject.txt/iam",
+      ),
+    ).toEqual(["storage.objects.getIamPolicy"]);
+    expect(
+      findPermissions(
+        base,
+        "GET",
+        "/storage/v1/b/bucket/o/folder/object.txt/iam",
+      ),
+    ).toEqual([]);
     expect(
       findPermissions(base, "POST", "/upload/storage/v1/b/bucket/o"),
     ).toEqual(["storage.objects.create"]);

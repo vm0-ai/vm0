@@ -902,18 +902,6 @@ function mediaUploadPathForMethod(
   return `${uploadPrefix}${methodPathWithServicePath(discovery, method.flatPath)}`;
 }
 
-function adjustRulePath(methodId: string, path: string): string {
-  if (
-    methodId === "storage.objects.delete" ||
-    methodId === "storage.objects.get" ||
-    methodId === "storage.objects.patch" ||
-    methodId === "storage.objects.update"
-  ) {
-    return path.replace("/o/{object}", "/o/{object+}");
-  }
-  return path;
-}
-
 function rulePathsForMethod(
   discovery: DiscoveryDocument,
   method: DiscoveryMethod,
@@ -924,23 +912,13 @@ function rulePathsForMethod(
   const paths = new Set<string>();
   const methodPath = method.flatPath ?? method.path;
   if (methodPath) {
-    paths.add(
-      adjustRulePath(
-        method.id,
-        methodPathWithServicePath(discovery, methodPath),
-      ),
-    );
+    paths.add(methodPathWithServicePath(discovery, methodPath));
   }
 
   const protocols = method.mediaUpload?.protocols;
   for (const protocol of [protocols?.simple, protocols?.resumable]) {
     if (protocol?.path) {
-      paths.add(
-        adjustRulePath(
-          method.id,
-          mediaUploadPathForMethod(discovery, method, protocol.path),
-        ),
-      );
+      paths.add(mediaUploadPathForMethod(discovery, method, protocol.path));
     }
   }
 
