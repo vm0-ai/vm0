@@ -119,6 +119,9 @@ pub(crate) async fn publish(
 }
 
 pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerInstance>> {
+    if !validate_existing_live_runner_instances_dir(home)? {
+        return Ok(Vec::new());
+    }
     remove_stale_records(home).await;
 
     let dir = home.live_runner_instances_dir();
@@ -178,6 +181,33 @@ pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerIns
             .then_with(|| left.config_path.cmp(&right.config_path))
     });
     Ok(instances)
+}
+
+fn validate_existing_live_runner_instances_dir(home: &HomePaths) -> RunnerResult<bool> {
+    let dir = home.live_runner_instances_dir();
+    match std::fs::symlink_metadata(&dir) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "stat live runner instances {}: {e}",
+                dir.display()
+            )));
+        }
+    }
+
+    crate::host_file::validate_dir(
+        &dir,
+        crate::host_file::DirMode::Private,
+        "live runner instances",
+    )
+    .map_err(|e| {
+        RunnerError::Internal(format!(
+            "validate live runner instances {}: {e}",
+            dir.display()
+        ))
+    })?;
+    Ok(true)
 }
 
 pub(crate) async fn is_current(
@@ -575,6 +605,28 @@ mod tests {
         let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn try_list_rejects_symlinked_registry_dir() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        std::fs::create_dir_all(dir.path().join("target")).unwrap();
+        std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
+        symlink(dir.path().join("target"), home.live_runner_instances_dir()).unwrap();
+
+        let error = match try_list(&home).await {
+            Ok(_) => panic!("expected symlinked registry dir to fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("validate live runner instances"),
+            "{error}"
+        );
     }
 
     #[tokio::test]

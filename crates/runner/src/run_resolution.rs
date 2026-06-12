@@ -378,7 +378,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn collect_active_run_mappings_from_home_fails_when_registry_cannot_be_scanned() {
+    async fn collect_active_run_mappings_from_home_fails_when_registry_cannot_be_validated() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
         std::fs::create_dir_all(dir.path().join("home")).unwrap();
@@ -390,7 +390,7 @@ mod tests {
         };
 
         assert!(
-            error.to_string().contains("scan live runner instances"),
+            error.to_string().contains("validate live runner instances"),
             "{error}"
         );
     }

@@ -1062,7 +1062,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn live_runner_context_fails_when_registry_cannot_be_scanned() {
+    async fn live_runner_context_fails_when_registry_cannot_be_validated() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         std::fs::create_dir_all(dir.path().join("vm0-runner")).unwrap();
@@ -1074,7 +1074,7 @@ mod tests {
         };
 
         assert!(
-            error.to_string().contains("scan live runner instances"),
+            error.to_string().contains("validate live runner instances"),
             "{error}"
         );
     }
