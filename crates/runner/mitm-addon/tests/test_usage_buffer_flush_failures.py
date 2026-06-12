@@ -613,3 +613,31 @@ def test_permanent_sync_fallback_failure_does_not_requeue(tmp_path, fresh_usage_
     assert usage.counters._pending_reports == 0
     assert usage.counters._buffered_usage_events == 0
     assert "non-retryable" in proxy_log_path.read_text()
+
+
+def test_permanent_http_delivery_failure_completes_flush(
+    tmp_path,
+    sync_usage_executor,
+    usage_webhook_server,
+):
+    del sync_usage_executor
+    pending_path = tmp_path / "usage-pending"
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
+
+    usage.buffer_usage_events(
+        usage_webhook_server.url("/usage"),
+        "token-a",
+        "run-1",
+        [event(source_key="source-1")],
+        str(proxy_log_path),
+    )
+    usage_webhook_server.queue_response(400)
+
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    assert usage_webhook_server.request_count == 1
+    assert usage.counters._pending_reports == 0
+    assert usage.counters._buffered_usage_events == 0
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
