@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.135.2](https://github.com/vm0-ai/vm0/compare/api-v1.135.1...api-v1.135.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* aggregate deleted chat usage records ([#17516](https://github.com/vm0-ai/vm0/issues/17516)) ([91b7973](https://github.com/vm0-ai/vm0/commit/91b797382147f89d3e0df7b3e84fb36d5aebfb79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.2
+    * @vm0/core bumped to 8.334.2
+    * @vm0/db bumped to 1.47.2
+
 ## [1.135.1](https://github.com/vm0-ai/vm0/compare/api-v1.135.0...api-v1.135.1) (2026-06-12)
 
 
