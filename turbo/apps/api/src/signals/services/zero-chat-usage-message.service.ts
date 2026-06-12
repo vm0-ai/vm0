@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -169,7 +169,7 @@ export const maybeEmitRunUsageMessage$ = command(
         breakdown: buildUsageBreakdown(breakdownRows),
       };
 
-      const [latestUsageMessage] = await tx
+      const existingUsageMessages = await tx
         .select({ usagePayload: chatMessages.usagePayload })
         .from(chatMessages)
         .where(
@@ -177,18 +177,16 @@ export const maybeEmitRunUsageMessage$ = command(
             eq(chatMessages.runId, runId),
             sql`${chatMessages.usagePayload} IS NOT NULL`,
           ),
-        )
-        .orderBy(
-          desc(sql<string>`${chatMessages.usagePayload}->>'settledAt'`),
-          desc(chatMessages.createdAt),
-        )
-        .limit(1);
+        );
       signal.throwIfAborted();
 
-      if (
-        latestUsageMessage?.usagePayload &&
-        usagePayloadEquals(latestUsageMessage.usagePayload, payload)
-      ) {
+      const hasExistingPayload = existingUsageMessages.some((message) => {
+        return (
+          message.usagePayload !== null &&
+          usagePayloadEquals(message.usagePayload, payload)
+        );
+      });
+      if (hasExistingPayload) {
         return null;
       }
 
