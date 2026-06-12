@@ -86,6 +86,9 @@ const usageRecordResponseSchema = z.object({
     })
     .nullable(),
   rows: z.array(usageRecordRowSchema),
+  // Total credits across the whole range (not just the current page), so the
+  // summary headline stays correct as more pages load in.
+  totalCredits: z.number(),
   pagination: z.object({
     page: z.number(),
     pageSize: z.number(),

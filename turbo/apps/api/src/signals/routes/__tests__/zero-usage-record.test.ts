@@ -259,6 +259,8 @@ describe("GET /api/zero/usage/record", () => {
 
     expect(response.body.rows).toHaveLength(3);
     expect(response.body.pagination.total).toBe(3);
+    // Range-wide credit total across all three rows (250 + 40 + 80).
+    expect(response.body.totalCredits).toBe(370);
     expect(response.body.period).not.toBeNull();
 
     expect(response.body.rows[0]?.source).toBe("chat");
