@@ -586,7 +586,7 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      <span className="px-1 pt-2 text-sm leading-snug text-muted-foreground">
+      <span className="px-1 pt-2 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
         Select more text to add another comment
       </span>
     </div>
