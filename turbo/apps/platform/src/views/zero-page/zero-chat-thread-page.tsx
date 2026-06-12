@@ -2666,14 +2666,6 @@ function CompletedWorkFoldRow({
         className="group flex h-9 w-full items-center gap-2 rounded-lg px-1 text-left transition-colors hover:bg-muted/40"
       >
         <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
-        <IconChevronRight
-          size={17}
-          stroke={1.7}
-          className={cn(
-            "shrink-0 text-muted-foreground/50 transition-[color,transform] duration-150 group-hover:text-muted-foreground",
-            expanded && "rotate-90",
-          )}
-        />
         <span className="h-px min-w-8 flex-1 bg-border/50 transition-colors group-hover:bg-border" />
       </button>
     </div>
