@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.34](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.33...guest-agent-v0.34.34) (2026-06-12)
+
+
+### Bug Fixes
+
+* set fable effort to low ([#17486](https://github.com/vm0-ai/vm0/issues/17486)) ([5a190d6](https://github.com/vm0-ai/vm0/commit/5a190d6b1c9c06f11f00437ef5110f51741b0f9a))
+
 ## [0.34.33](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.32...guest-agent-v0.34.33) (2026-06-12)
 
 ## [0.34.32](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.31...guest-agent-v0.34.32) (2026-06-12)

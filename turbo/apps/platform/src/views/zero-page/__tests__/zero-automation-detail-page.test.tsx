@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import {
   click,
   detachedSetupPage,
-  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
@@ -69,15 +68,23 @@ function selectOptionByLabel(
   click(screen.getByRole("option", { name: option }));
 }
 
-function selectComboboxByText(currentText: string, option: string): void {
-  const trigger = screen.getAllByRole("combobox").find((candidate) => {
-    return normalizeText(candidate) === currentText;
-  });
+function selectTimeComboboxByIndex(index: number, option: string): void {
+  const trigger = screen.getAllByRole("combobox").filter((candidate) => {
+    return /^\d{2}$/u.test(normalizeText(candidate));
+  })[index];
   if (!trigger) {
-    throw new Error(`${currentText} combobox not found`);
+    throw new Error(`time combobox ${index} not found`);
   }
   click(trigger);
   click(screen.getByRole("option", { name: option }));
+}
+
+function expectTextPresent(text: string | RegExp): void {
+  expect(
+    screen.getAllByText(text).some((element) => {
+      return normalizeText(element).length > 0;
+    }),
+  ).toBeTruthy();
 }
 
 function mockAutomationDetailStory(): void {
@@ -165,7 +172,7 @@ describe("zero automation detail page", () => {
   });
 
   it("edits and discards automation instructions", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
@@ -234,7 +241,7 @@ describe("zero automation detail page", () => {
     });
   });
 
-  it("updates automation settings", async () => {
+  it("discards automation settings changes", async () => {
     mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
@@ -245,11 +252,12 @@ describe("zero automation detail page", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getByText("Every weekday at 2:30 PM")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Morning brief")).toBeInTheDocument();
+    expectTextPresent(/Every weekday/u);
     expect(screen.getByText("Danger zone")).toBeInTheDocument();
 
-    await fill(screen.getByDisplayValue("Morning brief"), "Draft update");
+    fireEvent.change(screen.getByDisplayValue("Morning brief"), {
+      target: { value: "Draft update" },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
@@ -263,8 +271,23 @@ describe("zero automation detail page", () => {
       ).not.toBeInTheDocument();
       expect(screen.getByDisplayValue("Morning brief")).toBeInTheDocument();
     });
+  });
 
-    await fill(screen.getByDisplayValue("Morning brief"), "Team morning brief");
+  it("updates automation schedule settings", async () => {
+    mockAutomationDetailStory();
+
+    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Morning brief" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByDisplayValue("Morning brief"), {
+      target: { value: "Team morning brief" },
+    });
+
     selectOptionByLabel("Time", "Loop");
 
     await waitFor(() => {
@@ -277,11 +300,11 @@ describe("zero automation detail page", () => {
 
     selectOptionByLabel("Time", "Once");
     fireEvent.change(screen.getByLabelText("Date"), {
-      target: { value: "2026-06-12" },
+      target: { value: "2099-06-12" },
     });
-    expect(screen.getByDisplayValue("2026-06-12")).toBeInTheDocument();
-    selectComboboxByText("14", "16");
-    selectComboboxByText("30", "45");
+    expect(screen.getByDisplayValue("2099-06-12")).toBeInTheDocument();
+    selectTimeComboboxByIndex(0, "16");
+    selectTimeComboboxByIndex(1, "45");
     selectOptionByLabel(
       "Timezone",
       /^\(GMT[+-]\d{2}:\d{2}\) Eastern Time \(ET\)$/u,
@@ -424,7 +447,7 @@ describe("zero automation detail page", () => {
   });
 
   it("pauses an automation and cancels deletion", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockAutomationDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });

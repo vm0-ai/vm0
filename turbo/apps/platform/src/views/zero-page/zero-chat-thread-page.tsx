@@ -3360,6 +3360,7 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
 // Returns undefined when the feature is off, so the composer keeps its textarea.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
+  modelSelection: ModelProviderSelection | null,
 ): ComposerFeedback | undefined {
   const features = useLastResolved(featureSwitch$);
   const inlineFeedbackEnabled =
@@ -3373,6 +3374,14 @@ function useChatThreadComposerFeedback(
   const dismiss = useSet(dismissFeedback$);
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
+  // A feedback turn can also carry the composer's template + attachments, so
+  // read the same per-thread template selection the normal send path uses.
+  const generationTemplateState = useGet(threadGenerationTemplate$);
+  const generationTemplate =
+    generationTemplateState?.threadId === thread.threadId
+      ? generationTemplateState.value
+      : undefined;
+  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
 
   // Feedback is owned by the thread it was drafted in; other threads keep their
   // own composer textarea so a draft never bleeds across chats.
@@ -3396,12 +3405,16 @@ function useChatThreadComposerFeedback(
       detach(
         sendMessage(
           prompt,
-          null,
-          { includeDraftAttachments: false },
+          modelSelection,
+          {
+            includeDraftAttachments: true,
+            ...(generationTemplate ? { generationTemplate } : {}),
+          },
           rootSignal,
         ),
         Reason.DomCallback,
       );
+      setGenerationTemplate(thread.threadId, undefined);
       dismiss();
     },
     onDismiss: () => {
@@ -3479,7 +3492,7 @@ function ChatThreadComposer({
     detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const feedback = useChatThreadComposerFeedback(thread);
+  const feedback = useChatThreadComposerFeedback(thread, modelSelection);
 
   return (
     <footer

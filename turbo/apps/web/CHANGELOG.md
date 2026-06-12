@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.425.2](https://github.com/vm0-ai/vm0/compare/web-v12.425.1...web-v12.425.2) (2026-06-12)
+
+
+### Refactoring
+
+* retire obsolete feature switches ([#17496](https://github.com/vm0-ai/vm0/issues/17496)) ([b37964a](https://github.com/vm0-ai/vm0/commit/b37964aa0c45ad3feb291762fdbaaf2fc457cc20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.88.1
+    * @vm0/core bumped to 8.334.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.72.1
+
 ## [12.425.1](https://github.com/vm0-ai/vm0/compare/web-v12.425.0...web-v12.425.1) (2026-06-12)
 
 

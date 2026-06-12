@@ -60,8 +60,9 @@ const usageRecordMemberSchema = z.object({
 });
 
 // One usage row. Threaded sources (chat, automation) aggregate every run in the
-// thread into a single row that links to the thread; unthreaded sources are one
-// row per run that links to the run's activity detail. Ordered by most recent
+// thread into a single row that links to the thread. Deleted threaded sources
+// aggregate into a synthetic non-clickable row. Unthreaded sources are one row
+// per run that links to the run's activity detail. Ordered by most recent
 // activity so the list reads as a chronological record.
 const usageRecordRowSchema = z.object({
   source: usageRecordSourceSchema,

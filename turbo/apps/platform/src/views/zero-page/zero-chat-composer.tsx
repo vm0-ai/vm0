@@ -519,7 +519,7 @@ function ComposerFeedbackRow({
   onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
 }) {
   return (
-    <div className="border-b border-dashed border-border/60 pb-2 pt-1 last:border-b-0">
+    <div className="flex flex-col gap-1.5 border-b border-dashed border-border/60 py-1.5">
       <div className="flex items-center gap-2">
         <span className="h-4 w-[3px] shrink-0 bg-muted-foreground/30" />
         <span className="min-w-0 flex-1 truncate text-sm italic leading-snug text-muted-foreground">
@@ -544,7 +544,7 @@ function ComposerFeedbackRow({
         onKeyDown={onKeyDown}
         rows={1}
         placeholder="What should change about this?"
-        className="mt-1 w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+        className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
       />
     </div>
   );
@@ -584,7 +584,7 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      <span className="px-1 pt-2 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
+      <span className="px-1 pt-1.5 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
         Select more text to add another comment
       </span>
     </div>
@@ -4039,23 +4039,26 @@ export function ZeroChatComposer({
         >
           <CardContent className="p-0">
             <div className="flex flex-col">
+              {/* Template + attachment chips are shared by both modes: a feedback
+                  turn can also carry a template or attachments, so they render
+                  above the feedback rows just as they do above the textarea. */}
+              <SelectedTemplateChipSlot
+                picker={templatePicker}
+                onDraftChange={onDraftChange}
+              />
+              {visibleAttachments.length > 0 && (
+                <AttachmentChips
+                  attachments={visibleAttachments}
+                  onRemove={(attachment) => {
+                    removeAttachment(attachment);
+                    onDraftChange?.();
+                  }}
+                />
+              )}
               {activeFeedback ? (
                 <ComposerFeedbackRows feedback={activeFeedback} />
               ) : (
                 <>
-                  <SelectedTemplateChipSlot
-                    picker={templatePicker}
-                    onDraftChange={onDraftChange}
-                  />
-                  {visibleAttachments.length > 0 && (
-                    <AttachmentChips
-                      attachments={visibleAttachments}
-                      onRemove={(attachment) => {
-                        removeAttachment(attachment);
-                        onDraftChange?.();
-                      }}
-                    />
-                  )}
                   <ComposerInputSlot
                     input={input}
                     onInputChange={onInputChange}
