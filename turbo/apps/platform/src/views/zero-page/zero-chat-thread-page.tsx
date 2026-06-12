@@ -1634,39 +1634,58 @@ function ChatArtifactInboxHeader({
           </span>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onToggleSearch}
-        aria-label="Search artifacts"
-        aria-pressed={searchOpen}
-        className={cn(
-          "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
-          searchOpen && "bg-muted/60 text-foreground",
-        )}
-      >
-        <IconSearch size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={onToggleFullscreen}
-        aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-        data-testid="artifact-inbox-fullscreen-toggle"
-        className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
-      >
-        {fullscreen ? (
-          <IconArrowsDiagonalMinimize2 size={16} />
-        ) : (
-          <IconArrowsDiagonal size={16} />
-        )}
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close artifacts"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-      >
-        <IconX size={16} />
-      </button>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleSearch}
+              aria-label="Search artifacts"
+              aria-pressed={searchOpen}
+              className={cn(
+                "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+                searchOpen && "bg-muted/60 text-foreground",
+              )}
+            >
+              <IconSearch size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Search artifacts</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              data-testid="artifact-inbox-fullscreen-toggle"
+              className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
+            >
+              {fullscreen ? (
+                <IconArrowsDiagonalMinimize2 size={16} />
+              ) : (
+                <IconArrowsDiagonal size={16} />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close artifacts"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <IconX size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Close artifacts</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
