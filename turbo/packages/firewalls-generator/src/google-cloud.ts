@@ -708,10 +708,14 @@ function permissionNamePattern(): RegExp {
 
 function isGoogleCloudPermissionName(value: string): boolean {
   const segments = value.split(".");
+  const isGoogleApisHost =
+    segments.length === 3 &&
+    segments[1] === "googleapis" &&
+    segments[2] === "com";
   return (
     segments.length >= 3 &&
     GOOGLE_CLOUD_PERMISSION_PREFIXES.has(segments[0]!) &&
-    !value.includes("googleapis.com")
+    !isGoogleApisHost
   );
 }
 
