@@ -280,6 +280,24 @@ mod tests {
         })
     }
 
+    fn build_claude_args_with_partial_messages_for_test(
+        include_partial_messages: bool,
+        prompt: &str,
+    ) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        disable_system_log();
+        build_claude_args(ClaudeArgsConfig {
+            model: "",
+            resume_id: "",
+            append_system_prompt: "",
+            disallowed_tools: "",
+            tools: "",
+            settings: "",
+            include_partial_messages,
+            prompt,
+        })
+    }
+
     fn build_claude_args_for_model_test(model: &str, prompt: &str) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
@@ -342,16 +360,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_include_partial_messages_before_prompt_separator() {
-        let args = build_claude_args(ClaudeArgsConfig {
-            model: "",
-            resume_id: "",
-            append_system_prompt: "",
-            disallowed_tools: "",
-            tools: "",
-            settings: "",
-            include_partial_messages: true,
-            prompt: "test",
-        });
+        let args = build_claude_args_with_partial_messages_for_test(true, "test");
         let flag_idx = args
             .iter()
             .position(|arg| arg == "--include-partial-messages")
@@ -367,16 +376,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_omits_partial_messages_when_disabled() {
-        let args = build_claude_args(ClaudeArgsConfig {
-            model: "",
-            resume_id: "",
-            append_system_prompt: "",
-            disallowed_tools: "",
-            tools: "",
-            settings: "",
-            include_partial_messages: false,
-            prompt: "test",
-        });
+        let args = build_claude_args_with_partial_messages_for_test(false, "test");
 
         assert!(!args.contains(&"--include-partial-messages".to_string()));
         assert_prompt_with_separator(&args, "test");
