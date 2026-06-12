@@ -195,10 +195,10 @@ fn codex_error_message(error: Option<&Value>) -> Option<String> {
 
 fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     let error = error?;
-    if error.get("code").and_then(Value::as_str) == Some("invalid_api_key") {
+    if codex_error_code(error) == Some("invalid_api_key") {
         return Some(FailureReason::InvalidApiKey);
     }
-    if error.get("code").and_then(Value::as_str) == Some("TOKEN_REFRESH_FAILED")
+    if codex_error_code(error) == Some("TOKEN_REFRESH_FAILED")
         && error.get("failureReason").and_then(Value::as_str) == Some("reconnect_required")
         && has_exact_codex_oauth_connector(error)
     {
@@ -209,6 +209,13 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
 
 fn codex_event_failure_reason(event: &Value, error: Option<&Value>) -> Option<FailureReason> {
     codex_error_failure_reason(error).or_else(|| codex_error_failure_reason(Some(event)))
+}
+
+fn codex_error_code(value: &Value) -> Option<&str> {
+    value
+        .get("code")
+        .or_else(|| value.get("error"))
+        .and_then(Value::as_str)
 }
 
 fn has_exact_codex_oauth_connector(value: &Value) -> bool {
@@ -738,6 +745,27 @@ mod tests {
         let event = serde_json::json!({
             "type": "error",
             "code": "TOKEN_REFRESH_FAILED",
+            "message": "Access token expired and refresh failed for: codex-oauth-token.",
+            "connectors": ["codex-oauth-token"],
+            "failureReason": "reconnect_required"
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: "Access token expired and refresh failed for: codex-oauth-token."
+                    .to_string(),
+                failure_reason: Some(FailureReason::ReconnectRequired),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_top_level_error_string_reconnect_required_yields_failure_reason() {
+        let event = serde_json::json!({
+            "type": "error",
+            "error": "TOKEN_REFRESH_FAILED",
             "message": "Access token expired and refresh failed for: codex-oauth-token.",
             "connectors": ["codex-oauth-token"],
             "failureReason": "reconnect_required"
