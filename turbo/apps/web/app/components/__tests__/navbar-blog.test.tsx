@@ -289,6 +289,20 @@ describe("Navbar dropdown interactions", () => {
     expect(resources).not.toHaveClass("nav-trigger-active");
   });
 
+  it("keeps the menu open when the already-open trigger is clicked", () => {
+    renderNavbarClient();
+
+    const resources = getDesktopNavTrigger("resources");
+    fireEvent.pointerEnter(resources);
+    expect(resources).toHaveClass("nav-trigger-active");
+
+    // Clicking the trigger (e.g. a touch tap, or cmd-clicking to open the
+    // trigger label itself) must not toggle the hover-opened menu shut.
+    fireEvent.click(resources);
+
+    expect(resources).toHaveClass("nav-trigger-active");
+  });
+
   it("keeps the open menu when a dropdown item is opened with a modifier click", () => {
     renderNavbarClient();
 
