@@ -453,10 +453,10 @@ describe("zero sidebar", () => {
     click(menuItemByText("Rename chat"));
 
     const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
-    await fill(
-      within(dialog).getByPlaceholderText("Chat title"),
-      "Launch plan",
-    );
+    const titleInput = within(dialog).getByPlaceholderText("Chat title");
+    expect(titleInput).toHaveValue("Release plan");
+
+    await fill(titleInput, "Launch plan");
     click(buttonByText("Rename", dialog));
 
     await waitFor(() => {
