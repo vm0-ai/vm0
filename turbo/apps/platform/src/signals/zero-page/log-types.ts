@@ -10,7 +10,6 @@ export type { LogStatus, TriggerSource };
 /** Human-readable labels for each trigger source, shared across activity views. */
 export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   automation: "Automation",
-  schedule: "Schedule",
   web: "Web",
   slack: "Slack",
   email: "Email",

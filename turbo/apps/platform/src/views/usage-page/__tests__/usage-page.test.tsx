@@ -77,7 +77,7 @@ describe("/usage page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("No schedules used in this period"),
+        screen.getByText("No automations used in this period"),
       ).toBeInTheDocument();
       expect(screen.getByText("No chats in this period")).toBeInTheDocument();
     });

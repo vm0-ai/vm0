@@ -2139,24 +2139,6 @@ function captureScheduleRunCallbacks(): void {
   );
 }
 
-async function expectSingleLogSourceMatch(args: {
-  readonly actor: ApiTestUser;
-  readonly triggerSource: "schedule" | "automation";
-  readonly runId: string;
-}): Promise<void> {
-  const response = await reads.requestListLogs(
-    args.actor,
-    { triggerSource: args.triggerSource },
-    [200],
-  );
-  mustOk(response, `${args.triggerSource}-source log list`);
-  expect(
-    response.body.data.map((entry) => {
-      return entry.id;
-    }),
-  ).toStrictEqual([args.runId]);
-}
-
 describe("RUN-04/OPS-01: zero run logs", () => {
   it("lists run logs with filters, paging, zero tokens, and detail residue", async () => {
     const actor = await entitledActor();
@@ -2368,16 +2350,17 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         .sort(),
     ).toStrictEqual([webRun.runId, secondAgentRun.runId].sort());
 
-    await expectSingleLogSourceMatch({
+    const automationSourceList = await reads.requestListLogs(
       actor,
-      triggerSource: "schedule",
-      runId: scheduleRun.body.runId,
-    });
-    await expectSingleLogSourceMatch({
-      actor,
-      triggerSource: "automation",
-      runId: scheduleRun.body.runId,
-    });
+      { triggerSource: "automation" },
+      [200],
+    );
+    mustOk(automationSourceList, "automation-source log list");
+    expect(
+      automationSourceList.body.data.map((entry) => {
+        return entry.id;
+      }),
+    ).toStrictEqual([scheduleRun.body.runId]);
 
     const noSourceMatch = await reads.requestListLogs(
       actor,

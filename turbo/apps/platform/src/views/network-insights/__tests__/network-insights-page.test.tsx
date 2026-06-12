@@ -532,7 +532,7 @@ describe("network insights page", () => {
     });
 
     expect(screen.queryByText("Hidden Schedule")).not.toBeInTheDocument();
-    await user.click(screen.getByText("+1 more schedule"));
+    await user.click(screen.getByText("+1 more automation"));
     expect(screen.getByText("Hidden Schedule")).toBeInTheDocument();
 
     expect(screen.queryByText("Hidden chat")).not.toBeInTheDocument();

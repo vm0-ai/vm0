@@ -25,10 +25,10 @@ const MODEL_TOKEN_CATEGORIES = [
   "tokens.cache_read",
   "tokens.cache_creation",
 ] as const;
-const THREADED_SOURCES = ["chat", "schedule"] as const;
+const THREADED_SOURCES = ["chat", "automation"] as const;
 const USAGE_RECORD_KINDS = ["model", "image", "video", "connector"] as const;
 const PASSTHROUGH_TRIGGER_SOURCES = [
-  "schedule",
+  "automation",
   "slack",
   "telegram",
   "email",
@@ -87,7 +87,6 @@ function sourceExpr(triggerSource: string): string {
   return `
     CASE
       WHEN ${triggerSource} = 'web' THEN 'chat'
-      WHEN ${triggerSource} = 'automation' THEN 'schedule'
       WHEN ${triggerSource} IN (${passthroughList}) THEN ${triggerSource}
       ELSE 'other'
     END`;
