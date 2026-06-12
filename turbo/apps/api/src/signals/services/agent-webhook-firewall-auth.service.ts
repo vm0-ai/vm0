@@ -590,7 +590,6 @@ interface BasicArgContext extends BasicAuthTemplateArg {
   readonly secrets: Record<string, string>;
   readonly vars: Record<string, string>;
   readonly resolvedKeys: Set<string>;
-  readonly emptyResolvedKeys: Set<string>;
 }
 
 const L = logger("webhook:firewall-auth");
@@ -3415,11 +3414,7 @@ function resolveBasicArg(context: BasicArgContext): string {
   }
   if (context.namespace === "secrets") {
     context.resolvedKeys.add(context.key);
-    const value = getOwnValue(context.secrets, context.key);
-    if (value === "") {
-      context.emptyResolvedKeys.add(context.key);
-    }
-    return value ?? "";
+    return getOwnValue(context.secrets, context.key) ?? "";
   }
   return getOwnValue(context.vars, context.key) ?? "";
 }
@@ -3443,13 +3438,11 @@ interface ResolveTemplatesArgs {
 function resolveTemplates(args: ResolveTemplatesArgs): {
   readonly headers: Record<string, string>;
   readonly resolvedSecrets: readonly string[];
-  readonly emptyResolvedSecrets: readonly string[];
   readonly base?: string;
   readonly query?: Record<string, string>;
   readonly awsSigv4?: FirewallAwsSigv4AuthConfig;
 } {
   const resolvedKeys = new Set<string>();
-  const emptyResolvedKeys = new Set<string>();
 
   const resolveSimple = (template: string): string => {
     return template.replace(
@@ -3457,11 +3450,7 @@ function resolveTemplates(args: ResolveTemplatesArgs): {
       (_match, namespace: string, key: string) => {
         if (namespace === "secrets") {
           resolvedKeys.add(key);
-          const value = getOwnValue(args.secrets, key);
-          if (value === "") {
-            emptyResolvedKeys.add(key);
-          }
-          return value ?? "";
+          return getOwnValue(args.secrets, key) ?? "";
         }
         return getOwnValue(args.vars, key) ?? "";
       },
@@ -3476,14 +3465,12 @@ function resolveTemplates(args: ResolveTemplatesArgs): {
         secrets: args.secrets,
         vars: args.vars,
         resolvedKeys,
-        emptyResolvedKeys,
       });
       const pass = resolveBasicArg({
         ...match.second,
         secrets: args.secrets,
         vars: args.vars,
         resolvedKeys,
-        emptyResolvedKeys,
       });
       return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
     });
@@ -3512,7 +3499,6 @@ function resolveTemplates(args: ResolveTemplatesArgs): {
   return {
     headers,
     resolvedSecrets: [...resolvedKeys].sort(),
-    emptyResolvedSecrets: [...emptyResolvedKeys].sort(),
     base,
     query,
     awsSigv4,
@@ -3630,10 +3616,7 @@ export async function resolveFirewallAuth(
     authQuery: body.authQuery,
     authAwsSigv4: body.authAwsSigv4,
   });
-  if (
-    resolved.emptyResolvedSecrets.length > 0 ||
-    hasEmptyAwsSigv4Credential(resolved.awsSigv4)
-  ) {
+  if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {
     return connectorNotConfigured();
   }
 

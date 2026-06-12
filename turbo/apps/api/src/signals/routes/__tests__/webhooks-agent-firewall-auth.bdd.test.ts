@@ -205,26 +205,6 @@ describe("FW-2: template resolution without connector refresh", () => {
     expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
   });
 
-  it("reports empty resolved secret references as connector-not-configured", async () => {
-    const fw = createFirewallApi(context);
-    const { headers } = await firewallRun();
-
-    const missing = await fw.requestFirewallAuth(
-      headers,
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({ API_KEY: "" }),
-        authHeaders: {
-          Authorization: `Bearer ${secretTemplate("API_KEY")}`,
-        },
-      },
-      [424],
-    );
-    if (missing.status !== 424) {
-      throw new Error("Expected empty secret to fail with 424");
-    }
-    expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
-  });
-
   it("passes literals through query templates and keeps basic-literal templates opaque", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();
