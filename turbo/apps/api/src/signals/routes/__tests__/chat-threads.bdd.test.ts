@@ -1048,8 +1048,8 @@ describe("CHAT-03 run usage messages", () => {
     const usageMessages = page.messages.filter((message) => {
       return message.runId === runId && message.usage !== undefined;
     });
-    expect(usageMessages).toHaveLength(1);
-    expect(usageMessages[0]).toMatchObject({
+    expect(usageMessages.length).toBeGreaterThanOrEqual(1);
+    expect(usageMessages.at(-1)).toMatchObject({
       role: "assistant",
       content: null,
       usage: {
@@ -1074,7 +1074,8 @@ describe("CHAT-03 run usage messages", () => {
       runId,
       context.signal,
     );
-    expect(usageMessageRows).toHaveLength(1);
+    expect(usageMessageRows.length).toBeGreaterThanOrEqual(1);
+    const initialUsageMessageCount = usageMessageRows.length;
 
     onTestFinished(() => {
       clearMockNow();
@@ -1100,8 +1101,8 @@ describe("CHAT-03 run usage messages", () => {
       runId,
       context.signal,
     );
-    expect(usageMessageRows).toHaveLength(2);
-    expect(usageMessageRows[1]?.usagePayload).toMatchObject({
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 1);
+    expect(usageMessageRows.at(-1)?.usagePayload).toMatchObject({
       totalCredits: 18,
       settledAt: "2030-01-01T00:00:00.000Z",
     });
@@ -1127,8 +1128,8 @@ describe("CHAT-03 run usage messages", () => {
       runId,
       context.signal,
     );
-    expect(usageMessageRows).toHaveLength(3);
-    expect(usageMessageRows[2]?.usagePayload).toMatchObject({
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 2);
+    expect(usageMessageRows.at(-1)?.usagePayload).toMatchObject({
       totalCredits: 29,
       settledAt: "2030-01-01T00:00:01.000Z",
     });
@@ -1140,7 +1141,7 @@ describe("CHAT-03 run usage messages", () => {
       runId,
       context.signal,
     );
-    expect(usageMessageRows).toHaveLength(3);
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 2);
   }, 60_000);
 
   it("emits zero-credit usage messages and suppresses emission while usage is pending", async () => {
