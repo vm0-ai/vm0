@@ -65,6 +65,7 @@ import {
 } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
 import { safeJsonParse } from "../utils";
+import { assistantMessageIdForRunEvent } from "./assistant-message-id";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
@@ -1401,27 +1402,72 @@ export const insertAssistantEventMessages$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const rows = await writeDb
-      .insert(chatMessages)
-      .values(
-        args.items.map((item) => {
-          return {
-            chatThreadId: args.threadId,
-            runId: args.runId,
-            role: "assistant",
-            content: item.content,
-            sequenceNumber: item.sequenceNumber,
-            runEventId: item.runEventId ?? null,
-          };
-        }),
-      )
-      .onConflictDoNothing({
-        target: [chatMessages.runId, chatMessages.sequenceNumber],
-      })
-      .returning({ id: chatMessages.id });
+    const itemsWithRunEventId = args.items.filter(
+      (
+        item,
+      ): item is {
+        readonly sequenceNumber: number;
+        readonly content: string;
+        readonly runEventId: string;
+      } => {
+        return item.runEventId !== undefined;
+      },
+    );
+    const legacyItems = args.items.filter((item) => {
+      return item.runEventId === undefined;
+    });
+
+    const deterministicRows =
+      itemsWithRunEventId.length === 0
+        ? []
+        : await writeDb
+            .insert(chatMessages)
+            .values(
+              itemsWithRunEventId.map((item) => {
+                return {
+                  id: assistantMessageIdForRunEvent(
+                    args.runId,
+                    item.runEventId,
+                  ),
+                  chatThreadId: args.threadId,
+                  runId: args.runId,
+                  role: "assistant",
+                  content: item.content,
+                  sequenceNumber: item.sequenceNumber,
+                  runEventId: item.runEventId,
+                };
+              }),
+            )
+            .onConflictDoNothing()
+            .returning({ id: chatMessages.id });
     signal.throwIfAborted();
 
-    if (rows.length > 0) {
+    const legacyRows =
+      legacyItems.length === 0
+        ? []
+        : await writeDb
+            .insert(chatMessages)
+            .values(
+              legacyItems.map((item) => {
+                return {
+                  chatThreadId: args.threadId,
+                  runId: args.runId,
+                  role: "assistant",
+                  content: item.content,
+                  sequenceNumber: item.sequenceNumber,
+                  runEventId: null,
+                };
+              }),
+            )
+            .onConflictDoNothing({
+              target: [chatMessages.runId, chatMessages.sequenceNumber],
+            })
+            .returning({ id: chatMessages.id });
+    signal.throwIfAborted();
+
+    const insertedRowCount = deterministicRows.length + legacyRows.length;
+
+    if (insertedRowCount > 0) {
       await publishUserSignal(
         [args.userId],
         `chatThreadMessageCreated:${args.threadId}`,
@@ -1432,7 +1478,7 @@ export const insertAssistantEventMessages$ = command(
       signal.throwIfAborted();
     }
 
-    return rows.length;
+    return insertedRowCount;
   },
 );
 

@@ -19,6 +19,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -2290,6 +2291,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const firstAssistant = afterFirst.messages.find((message) => {
       return message.role === "assistant" && message.runId === runId;
     });
+    expect(firstAssistant?.id).toBe(
+      assistantMessageIdForRunEvent(runId, "msg_bdd_1"),
+    );
     expect(firstAssistant?.content).toBe("Hello from BDD events");
 
     context.mocks.ably.publish.mockRejectedValueOnce(
@@ -2410,6 +2414,34 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         return message.role === "assistant" && message.runId === runId;
       }),
     ).toHaveLength(3);
+
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 8,
+            message: {
+              id: "msg_bdd_1",
+              content: [{ type: "text", text: "Duplicate text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const afterDuplicate = await chat.listThreadMessages(actor, threadId);
+    const duplicatedMessageId = assistantMessageIdForRunEvent(
+      runId,
+      "msg_bdd_1",
+    );
+    const matchingDuplicateRows = afterDuplicate.messages.filter((message) => {
+      return message.role === "assistant" && message.id === duplicatedMessageId;
+    });
+    expect(matchingDuplicateRows).toHaveLength(1);
+    expect(matchingDuplicateRows[0]?.content).toBe("Hello from BDD events");
 
     // Assistant text on a run without a chat thread changes no thread state.
     const threadsBefore = await chat.listThreads(actor);
