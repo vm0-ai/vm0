@@ -40,26 +40,26 @@ export const GOOGLE_CLOUD_DISCOVERY_URLS = {
 } as const;
 
 export const GOOGLE_CLOUD_PERMISSION_DOC_URLS = [
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/delete",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/get",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/list",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setMetadata",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setTags",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/start",
-  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/stop",
-  "https://docs.cloud.google.com/resource-manager/docs/access-control-proj",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/disable",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/get",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/list",
-  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/enable",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/get",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/list",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert",
-  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list",
+  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/delete?hl=en",
+  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/get?hl=en",
+  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert?hl=en",
+  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/list?hl=en",
+  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setMetadata?hl=en",
+  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setTags?hl=en",
+  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/start?hl=en",
+  "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/stop?hl=en",
+  "https://docs.cloud.google.com/resource-manager/docs/access-control-proj?hl=en",
+  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable?hl=en",
+  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/disable?hl=en",
+  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/get?hl=en",
+  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/list?hl=en",
+  "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/enable?hl=en",
+  "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/get?hl=en",
+  "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/list?hl=en",
+  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete?hl=en",
+  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get?hl=en",
+  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert?hl=en",
+  "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list?hl=en",
 ] as const;
 
 interface DiscoveryMediaUploadProtocol {
@@ -209,7 +209,7 @@ const API_CONFIGS: ApiConfig[] = [
 ] as const;
 
 const RESOURCE_MANAGER_PROJECTS_SOURCE =
-  "https://docs.cloud.google.com/resource-manager/docs/access-control-proj";
+  "https://docs.cloud.google.com/resource-manager/docs/access-control-proj?hl=en";
 
 const PERMISSION_MAPPINGS: Record<string, PermissionMapping> = {
   "cloudresourcemanager.projects.create": {
@@ -263,115 +263,115 @@ const PERMISSION_MAPPINGS: Record<string, PermissionMapping> = {
   "compute.instances.delete": {
     permission: "compute.instances.delete",
     sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/delete",
+      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/delete?hl=en",
     snippets: ["compute.instances.delete"],
   },
   "compute.instances.get": {
     permission: "compute.instances.get",
     sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/get",
+      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/get?hl=en",
     snippets: ["compute.instances.get"],
   },
   "compute.instances.insert": {
     permission: "compute.instances.create",
     sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert",
+      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert?hl=en",
     snippets: ["compute.instances.create"],
   },
   "compute.instances.list": {
     permission: "compute.instances.list",
     sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/list",
+      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/list?hl=en",
     snippets: ["compute.instances.list"],
   },
   "compute.instances.setMetadata": {
     permission: "compute.instances.setMetadata",
     sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setMetadata",
+      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setMetadata?hl=en",
     snippets: ["compute.instances.setMetadata"],
   },
   "compute.instances.setTags": {
     permission: "compute.instances.setTags",
     sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setTags",
+      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/setTags?hl=en",
     snippets: ["compute.instances.setTags"],
   },
   "compute.instances.start": {
     permission: "compute.instances.start",
     sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/start",
+      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/start?hl=en",
     snippets: ["compute.instances.start"],
   },
   "compute.instances.stop": {
     permission: "compute.instances.stop",
     sourceUrl:
-      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/stop",
+      "https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/stop?hl=en",
     snippets: ["compute.instances.stop"],
   },
   "serviceusage.services.batchEnable": {
     permission: "serviceusage.services.enable",
     sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable",
+      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable?hl=en",
     snippets: ["serviceusage.services.enable"],
   },
   "serviceusage.services.disable": {
     permission: "serviceusage.services.disable",
     sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/disable",
+      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/disable?hl=en",
     snippets: ["serviceusage.services.disable"],
   },
   "serviceusage.services.enable": {
     permission: "serviceusage.services.enable",
     sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/enable",
+      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/enable?hl=en",
     snippets: ["serviceusage.services.enable"],
   },
   "serviceusage.services.get": {
     permission: "serviceusage.services.get",
     sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/get",
+      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/get?hl=en",
     snippets: ["serviceusage.services.get"],
   },
   "serviceusage.services.list": {
     permission: "serviceusage.services.list",
     sourceUrl:
-      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/list",
+      "https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/list?hl=en",
     snippets: ["serviceusage.services.list"],
   },
   "storage.buckets.get": {
     permission: "storage.buckets.get",
     sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/get",
+      "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/get?hl=en",
     snippets: ["storage.buckets.get"],
   },
   "storage.buckets.list": {
     permission: "storage.buckets.list",
     sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/list",
+      "https://docs.cloud.google.com/storage/docs/json_api/v1/buckets/list?hl=en",
     snippets: ["storage.buckets.list"],
   },
   "storage.objects.delete": {
     permission: "storage.objects.delete",
     sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete",
+      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/delete?hl=en",
     snippets: ["storage.objects.delete"],
   },
   "storage.objects.get": {
     permission: "storage.objects.get",
     sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get",
+      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get?hl=en",
     snippets: ["storage.objects.get"],
   },
   "storage.objects.insert": {
     permission: "storage.objects.create",
     sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert",
+      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert?hl=en",
     snippets: ["storage.objects.create"],
   },
   "storage.objects.list": {
     permission: "storage.objects.list",
     sourceUrl:
-      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list",
+      "https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list?hl=en",
     snippets: ["storage.objects.list"],
   },
 };
