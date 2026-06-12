@@ -1901,11 +1901,11 @@ describe("RUN-04: agent run telemetry families", () => {
         ],
       },
     });
-    const sparseContext = await api.requestRunContext(actor, runId, [200]);
-    if (sparseContext.status !== 200) {
-      throw new Error("Expected the sparse run context read to succeed");
+    const legacyOnlyContext = await api.requestRunContext(actor, runId, [200]);
+    if (legacyOnlyContext.status !== 200) {
+      throw new Error("Expected the legacy-only run context read to succeed");
     }
-    expect(sparseContext.body).toMatchObject({
+    expect(legacyOnlyContext.body).toMatchObject({
       runId,
       sessionId: null,
       environment: {},
