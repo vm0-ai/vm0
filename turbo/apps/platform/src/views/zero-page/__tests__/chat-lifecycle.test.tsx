@@ -1425,6 +1425,59 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("folds completed chat work without hiding the answer before the lifecycle marker", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-completion-marker",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Summarize the production launch status",
+          runId: "run-work-folding-completion-marker",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "The production launch status is ready.",
+          runId: "run-work-folding-completion-marker",
+          createdAt: "2026-06-09T10:00:55Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-work-folding-completion-marker",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:56Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-completion-marker",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+
+    const expandButton = await screen.findByLabelText("Expand work history");
+    expect(expandButton).toHaveTextContent("Worked for 56s");
+    expect(
+      screen.queryByText("Summarize the production launch status"),
+    ).toBeNull();
+    expect(
+      screen.getByText("The production launch status is ready."),
+    ).toBeInTheDocument();
+
+    click(expandButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize the production launch status"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("The production launch status is ready."),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("folds each completed run independently", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-each-run",

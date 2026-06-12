@@ -2491,6 +2491,13 @@ function groupMessagesForCompletedWorkDisplay(
   return groups;
 }
 
+function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    (Boolean(message.content) || Boolean(message.error))
+  );
+}
+
 function buildCompletedWorkFolding(
   groups: readonly GroupedChatMessageGroup[],
   allFinished: boolean,
@@ -2519,9 +2526,29 @@ function buildCompletedWorkFolding(
     }
 
     const runMessages = messages.slice(index, endIndex);
-    const finalMessage = runMessages[runMessages.length - 1]!;
-    if (runMessages.length > 1 && finalMessage.role === "assistant") {
-      const hiddenMessages = runMessages.slice(0, -1);
+    let finalMessageIndex = -1;
+    for (let offset = runMessages.length - 1; offset >= 0; offset--) {
+      if (isRenderableAssistantMessage(runMessages[offset]!)) {
+        finalMessageIndex = offset;
+        break;
+      }
+    }
+    const finalMessage =
+      finalMessageIndex >= 0 ? runMessages[finalMessageIndex]! : undefined;
+    const hiddenMessages =
+      finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
+    const trailingMessages =
+      finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
+    const trailingMessagesAreMarkers = trailingMessages.every((message) => {
+      return (
+        message.role === "assistant" && !isRenderableAssistantMessage(message)
+      );
+    });
+    if (
+      finalMessage !== undefined &&
+      hiddenMessages.length > 0 &&
+      trailingMessagesAreMarkers
+    ) {
       visibleMessages.push(finalMessage);
       folds.push({
         key: `${runId}:${finalMessage.id}`,
