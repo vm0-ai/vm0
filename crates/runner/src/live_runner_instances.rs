@@ -111,16 +111,6 @@ pub(crate) async fn publish(
     Ok(LiveRunnerInstanceHandle { path, identity })
 }
 
-pub(crate) async fn list(home: &HomePaths) -> Vec<LiveRunnerInstance> {
-    match try_list(home).await {
-        Ok(instances) => instances,
-        Err(e) => {
-            tracing::debug!(error = %e, "cannot list live runner instances");
-            Vec::new()
-        }
-    }
-}
-
 pub(crate) async fn try_list(home: &HomePaths) -> RunnerResult<Vec<LiveRunnerInstance>> {
     remove_stale_records(home).await;
 
@@ -544,22 +534,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_returns_empty_when_registry_dir_is_missing() {
+    async fn try_list_returns_empty_when_registry_dir_is_missing() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
     }
 
     #[tokio::test]
-    async fn list_returns_valid_live_instance_metadata() {
+    async fn try_list_returns_valid_live_instance_metadata() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert_eq!(instances.len(), 1);
         let instance = &instances[0];
@@ -574,7 +564,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_defaults_legacy_records_to_start_subcommand() {
+    async fn try_list_defaults_legacy_records_to_start_subcommand() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
@@ -588,14 +578,14 @@ mod tests {
         .await
         .unwrap();
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].subcommand, "start");
     }
 
     #[tokio::test]
-    async fn list_ignores_invalid_records() {
+    async fn try_list_ignores_invalid_records_for_stale_file_identities() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
@@ -637,7 +627,7 @@ mod tests {
         .await
         .unwrap();
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
     }
@@ -664,7 +654,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_ignores_records_with_mismatched_file_identity() {
+    async fn try_list_ignores_records_with_mismatched_stale_file_identity() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
@@ -676,7 +666,7 @@ mod tests {
         )
         .await;
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
     }
@@ -686,7 +676,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let handle = publish(&home, test_metadata(dir.path())).await.unwrap();
-        let instance = list(&home).await.into_iter().next().unwrap();
+        let instance = try_list(&home).await.unwrap().into_iter().next().unwrap();
 
         assert!(is_current(&home, &instance).await);
 
@@ -833,7 +823,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_removes_stale_records() {
+    async fn try_list_removes_stale_records() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         crate::host_file::ensure_dir(
@@ -862,7 +852,7 @@ mod tests {
             .join(".4294967295-1.json.test.tmp");
         tokio::fs::write(&stale_tmp_path, b"partial").await.unwrap();
 
-        let instances = list(&home).await;
+        let instances = try_list(&home).await.unwrap();
 
         assert!(instances.is_empty());
         assert!(!stale_path.exists());

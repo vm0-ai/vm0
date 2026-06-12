@@ -357,7 +357,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     let installed_services = find_installed_services().await;
 
     // Phase 3: Build runner reports
-    let live_runners = crate::live_runner_instances::list(&home).await;
+    let live_runners = crate::live_runner_instances::try_list(&home).await?;
     let reports = build_runner_reports(&live_runners, &discovered, &installed_services).await;
 
     // Phase 4: Find stopped services (installed but no matching running process)
@@ -432,8 +432,8 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
             )
         });
         let fresh_runner_pids: Vec<u32> = if rechecks_orphan_process {
-            crate::live_runner_instances::list(&home)
-                .await
+            crate::live_runner_instances::try_list(&home)
+                .await?
                 .into_iter()
                 .map(|runner| runner.pid)
                 .collect()
@@ -2035,8 +2035,9 @@ mod tests {
         )
         .await
         .unwrap();
-        let runner = crate::live_runner_instances::list(&home)
+        let runner = crate::live_runner_instances::try_list(&home)
             .await
+            .unwrap()
             .into_iter()
             .next()
             .unwrap();

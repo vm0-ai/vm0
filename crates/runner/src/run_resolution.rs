@@ -95,9 +95,11 @@ pub(crate) async fn collect_active_run_mappings(
 }
 
 /// Collect active run mappings from the validated live runner registry.
-pub(crate) async fn collect_active_run_mappings_from_home(home: &HomePaths) -> ActiveRunMappings {
-    let runners = crate::live_runner_instances::list(home).await;
-    collect_active_run_mappings(&runners).await
+pub(crate) async fn collect_active_run_mappings_from_home(
+    home: &HomePaths,
+) -> RunnerResult<ActiveRunMappings> {
+    let runners = crate::live_runner_instances::try_list(home).await?;
+    Ok(collect_active_run_mappings(&runners).await)
 }
 
 /// Given a `run_id` prefix, find the unique matching active run from collected
@@ -356,7 +358,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mappings = collect_active_run_mappings_from_home(&home).await;
+        let mappings = collect_active_run_mappings_from_home(&home).await.unwrap();
 
         assert_eq!(mappings.runners_total, 1);
         assert_eq!(mappings.runners_failed, 0);
@@ -365,6 +367,24 @@ mod tests {
             vec![("run-live".into(), "sandbox-live".into())]
         );
         assert!(handle.remove_if_current().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn collect_active_run_mappings_from_home_fails_when_registry_cannot_be_scanned() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        std::fs::create_dir_all(dir.path().join("home")).unwrap();
+        std::fs::write(home.live_runner_instances_dir(), b"not a directory").unwrap();
+
+        let error = match collect_active_run_mappings_from_home(&home).await {
+            Ok(_) => panic!("expected unreadable registry to fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("scan live runner instances"),
+            "{error}"
+        );
     }
 
     #[test]
