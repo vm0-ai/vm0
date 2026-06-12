@@ -273,7 +273,7 @@ async fn create_started_sandbox(
     let proxy_register_started = Instant::now();
     let network_log_session = match register_proxy(config, context, &source_ip).await {
         Ok(session) => {
-            log_proxy_register_success_if_slow(
+            log_proxy_register_success(
                 context.run_id,
                 sandbox_id,
                 &params.profile_name,
@@ -574,13 +574,23 @@ pub(super) async fn register_proxy(
         .await)
 }
 
-pub(super) fn log_proxy_register_success_if_slow(
+pub(super) fn log_proxy_register_success(
     run_id: RunId,
     sandbox_id: SandboxId,
     profile: &str,
     elapsed: Duration,
 ) {
     if elapsed < SLOW_PROXY_REGISTER_THRESHOLD {
+        info!(
+            stage = "proxy_register",
+            elapsed_ms = duration_ms(elapsed),
+            threshold_ms = duration_ms(SLOW_PROXY_REGISTER_THRESHOLD),
+            success = true,
+            run_id = %run_id,
+            sandbox_id = %sandbox_id,
+            profile,
+            "proxy register timing"
+        );
         return;
     }
     warn!(

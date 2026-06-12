@@ -369,7 +369,7 @@ impl SandboxFactory for FirecrackerFactory {
                 return Err(e);
             }
         };
-        timing.emit_slow_success_summary();
+        timing.emit_success_summary();
         let SandboxCreateResources {
             sandbox_paths,
             sock_paths,

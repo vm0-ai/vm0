@@ -1,7 +1,7 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use tracing::warn;
+use tracing::{info, warn};
 
 pub(super) const SLOW_SANDBOX_CREATE_THRESHOLD: Duration = Duration::from_secs(3);
 
@@ -131,8 +131,8 @@ impl SandboxCreateTiming {
         }
     }
 
-    pub(super) fn emit_slow_success_summary(&self) {
-        self.emit_slow_success_summary_with_total(self.started_at.elapsed());
+    pub(super) fn emit_success_summary(&self) {
+        self.emit_success_summary_with_total(self.started_at.elapsed());
     }
 
     #[cfg(test)]
@@ -161,8 +161,30 @@ impl SandboxCreateTiming {
         );
     }
 
-    fn emit_slow_success_summary_with_total(&self, total_elapsed: Duration) {
+    fn emit_success_summary_with_total(&self, total_elapsed: Duration) {
         if total_elapsed < SLOW_SANDBOX_CREATE_THRESHOLD {
+            info!(
+                stage = "sandbox_create",
+                total_elapsed_ms = duration_ms(total_elapsed),
+                threshold_ms = duration_ms(SLOW_SANDBOX_CREATE_THRESHOLD),
+                success = true,
+                sandbox_id = self.sandbox_id.as_str(),
+                profile = self.profile.as_str(),
+                workspace_drive_present = self.workspace_drive_present,
+                workspace_seed_image_used = self.workspace_seed_image_used,
+                cow_pool_acquire_ms = optional_duration_ms(self.durations.cow_pool_acquire),
+                workspace_dir_rename_ms = optional_duration_ms(self.durations.workspace_dir_rename),
+                workspace_drive_prepare_ms =
+                    optional_duration_ms(self.durations.workspace_drive_prepare),
+                workspace_seed_sparse_copy_ms =
+                    optional_duration_ms(self.durations.workspace_seed_sparse_copy),
+                workspace_fresh_format_ms =
+                    optional_duration_ms(self.durations.workspace_fresh_format),
+                sock_dir_prepare_ms = optional_duration_ms(self.durations.sock_dir_prepare),
+                netns_acquire_ms = optional_duration_ms(self.durations.netns_acquire),
+                nbd_cow_create_ms = optional_duration_ms(self.durations.nbd_cow_create),
+                "sandbox create timing"
+            );
             return;
         }
         warn!(
@@ -264,14 +286,25 @@ mod tests {
     }
 
     #[test]
-    fn fast_success_does_not_emit_warning() {
+    fn fast_success_emits_info_summary() {
         let timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
 
         let events = capture_events(|| {
-            timing.emit_slow_success_summary_with_total(SLOW_SANDBOX_CREATE_THRESHOLD / 2);
+            timing.emit_success_summary_with_total(SLOW_SANDBOX_CREATE_THRESHOLD / 2);
         });
 
-        assert!(events.is_empty(), "unexpected events: {events:#?}");
+        assert_eq!(events.len(), 1, "events: {events:#?}");
+        let event = &events[0];
+        assert_eq!(event.level, Level::INFO);
+        assert_field(event, "message", "sandbox create timing");
+        assert_field(event, "stage", "sandbox_create");
+        assert_field(event, "success", "true");
+        assert_field(event, "sandbox_id", "sandbox-1");
+        assert_field(event, "profile", "vm0/default");
+        assert_field(event, "total_elapsed_ms", "1500");
+        assert_field(event, "threshold_ms", "3000");
+        assert_field(event, "workspace_drive_present", "false");
+        assert_field(event, "workspace_seed_image_used", "false");
     }
 
     #[test]
@@ -303,7 +336,7 @@ mod tests {
         timing.record_stage_duration(SandboxCreateStage::NbdCowCreate, Duration::from_millis(70));
 
         let events = capture_events(|| {
-            timing.emit_slow_success_summary_with_total(SLOW_SANDBOX_CREATE_THRESHOLD);
+            timing.emit_success_summary_with_total(SLOW_SANDBOX_CREATE_THRESHOLD);
         });
 
         assert_eq!(events.len(), 1, "events: {events:#?}");

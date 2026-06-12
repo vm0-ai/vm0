@@ -19,8 +19,7 @@ use super::super::env::{guest_user_env_dir_path, guest_user_env_file_path};
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
     execute_new_sandbox_with_prepared_notifier, execute_prepared_sandbox_run,
-    execute_reused_sandbox, log_proxy_register_failure, log_proxy_register_success_if_slow,
-    register_proxy,
+    execute_reused_sandbox, log_proxy_register_failure, log_proxy_register_success, register_proxy,
 };
 use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JobParams,
@@ -75,9 +74,9 @@ async fn execute_inner_happy_path() {
 }
 
 #[test]
-fn proxy_register_fast_success_does_not_warn() {
+fn proxy_register_fast_success_logs_info() {
     let events = capture_proxy_register_events(|| {
-        log_proxy_register_success_if_slow(
+        log_proxy_register_success(
             RunId::nil(),
             SandboxId::from(uuid::Uuid::nil()),
             "vm0/default",
@@ -85,13 +84,23 @@ fn proxy_register_fast_success_does_not_warn() {
         );
     });
 
-    assert!(events.is_empty(), "unexpected events: {events:#?}");
+    assert_eq!(events.len(), 1, "events: {events:#?}");
+    let event = &events[0];
+    assert_eq!(event.level, Level::INFO);
+    assert_event_field(event, "message", "proxy register timing");
+    assert_event_field(event, "stage", "proxy_register");
+    assert_event_field(event, "elapsed_ms", "1000");
+    assert_event_field(event, "threshold_ms", "3000");
+    assert_event_field(event, "success", "true");
+    assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "profile", "vm0/default");
 }
 
 #[test]
 fn proxy_register_slow_success_warns_with_stable_fields() {
     let events = capture_proxy_register_events(|| {
-        log_proxy_register_success_if_slow(
+        log_proxy_register_success(
             RunId::nil(),
             SandboxId::from(uuid::Uuid::nil()),
             "vm0/default",
