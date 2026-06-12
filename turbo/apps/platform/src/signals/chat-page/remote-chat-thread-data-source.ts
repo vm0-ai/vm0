@@ -9,13 +9,9 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { setAblyLoop$, setAblyMessageHandler$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
-import {
-  applyUnreadSnapshot$,
-  recordOptimisticReadMark$,
-} from "./sidebar-unread-threads.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
   CancelRunsArgs,
@@ -244,14 +240,10 @@ const cancelRuns$ = command(
 
 const markRead$ = command(
   async (
-    { get, set },
-    { threadId, latestMessageId }: MarkReadArgs,
+    { get },
+    { threadId }: MarkReadArgs,
     signal: AbortSignal,
   ): Promise<string | null> => {
-    // Optimistic: suppress this thread's sidebar unread dot immediately.
-    // The response's unread snapshot kicks the mark if a newer message
-    // already landed. Mark-read is not broadcast by the server.
-    set(recordOptimisticReadMark$, threadId);
     const client = get(zeroClient$)(chatThreadMarkReadContract);
     const result = await accept(
       client.markRead({
@@ -261,8 +253,7 @@ const markRead$ = command(
       [200],
     );
     signal.throwIfAborted();
-    set(applyUnreadSnapshot$, result.body.unreads);
-    return result.body.lastReadMessageId ?? latestMessageId;
+    return result.body.lastReadAt ?? null;
   },
 );
 
@@ -277,12 +268,6 @@ const subscribeRealtime$ = command(
         setAblyLoop$,
         `chatThreadMessageCreated:${threadId}`,
         handlers.onMessageCreated$,
-        signal,
-      ),
-      set(
-        setAblyMessageHandler$,
-        `chatThreadMessageDelta:${threadId}`,
-        handlers.onMessageDelta$,
         signal,
       ),
       set(
