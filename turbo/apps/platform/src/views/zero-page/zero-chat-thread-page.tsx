@@ -2663,10 +2663,13 @@ function CompletedWorkFoldRow({
         aria-expanded={expanded}
         aria-label={expanded ? "Collapse work history" : "Expand work history"}
         onClick={onToggle}
-        className="group flex h-9 w-full items-center gap-2 rounded-lg px-1 text-left transition-colors hover:bg-muted/40"
+        className="flex h-5 w-full flex-col justify-center gap-1.5 text-left"
       >
-        <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
-        <span className="h-px min-w-8 flex-1 bg-border/50 transition-colors group-hover:bg-border" />
+        <span className="block h-px w-full bg-border/40" />
+        <span className="flex items-center gap-2">
+          <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
+          <span className="h-px flex-1 bg-border/40" />
+        </span>
       </button>
     </div>
   );
