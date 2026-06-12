@@ -122,7 +122,10 @@ async function cancelLastAdminOrgsStripeSubscriptions(
   }
 }
 
-async function disableUserAutomations(db: Db, userId: string): Promise<void> {
+async function disableUserAutomations(
+  db: Db,
+  userId: string,
+): Promise<void> {
   await db
     .update(automations)
     .set({ enabled: false })
