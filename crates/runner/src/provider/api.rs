@@ -641,7 +641,7 @@ fn is_static_json_field(field: &str) -> bool {
     )
 }
 
-fn format_json_decode_error(path: String, error: &serde_json::Error) -> String {
+fn format_json_decode_error(mut path: String, error: &serde_json::Error) -> String {
     let category = match error.classify() {
         serde_json::error::Category::Io => "io",
         serde_json::error::Category::Syntax => "syntax",
@@ -650,11 +650,24 @@ fn format_json_decode_error(path: String, error: &serde_json::Error) -> String {
     };
     let location = format!("line {} column {}", error.line(), error.column());
     let detail = sanitized_json_error_detail(error);
+    if detail == "unknown variant" && is_firewall_entry_decode_path(&path) {
+        path.push_str(".kind");
+    }
     if path == "." {
         format!("failed at <root>: {detail}; {category} error at {location}")
     } else {
         format!("failed at {path}: {detail}; {category} error at {location}")
     }
+}
+
+fn is_firewall_entry_decode_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("firewalls[") else {
+        return false;
+    };
+    let Some((index, suffix)) = rest.split_once(']') else {
+        return false;
+    };
+    !index.is_empty() && index.chars().all(|c| c.is_ascii_digit()) && suffix.is_empty()
 }
 
 fn sanitized_json_error_detail(error: &serde_json::Error) -> String {
@@ -1185,7 +1198,7 @@ mod tests {
             panic!("expected RunnerError::Api");
         };
         assert!(
-            message.contains("claim decode: failed at firewalls[0]"),
+            message.contains("claim decode: failed at firewalls[0].kind"),
             "decode error should include JSON path, got: {message}"
         );
         assert!(
@@ -1234,7 +1247,7 @@ mod tests {
             panic!("expected RunnerError::Api");
         };
         assert!(
-            message.contains("claim decode: failed at firewalls[0]"),
+            message.contains("claim decode: failed at firewalls[0].kind"),
             "decode error should include JSON path, got: {message}"
         );
         assert!(
