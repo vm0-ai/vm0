@@ -26,6 +26,7 @@ import {
   zeroChatThreadDraftIds,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
+  zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
 import { zeroChatThreadGithubPrs$ } from "../services/chat-thread-github-prs.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
@@ -151,6 +152,20 @@ const listChatThreadDraftsInner$ = computed(async (get) => {
   };
 });
 
+const listChatThreadUnreadsInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const query = get(queryOf(chatThreadsContract.unreads));
+
+  const unreads = await get(
+    zeroChatThreadUnreads({
+      userId: auth.userId,
+      agentComposeId: query.agentId,
+    }),
+  );
+
+  return { status: 200 as const, body: { unreads: [...unreads] } };
+});
+
 const listChatThreadArtifactsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadArtifactsContract.list));
@@ -257,10 +272,12 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    // Registered before the :id route so the literal "drafts" segment is
-    // never captured as a thread id.
     route: chatThreadsContract.drafts,
     handler: authRoute({}, listChatThreadDraftsInner$),
+  },
+  {
+    route: chatThreadsContract.unreads,
+    handler: authRoute({}, listChatThreadUnreadsInner$),
   },
   {
     route: chatThreadByIdContract.get,

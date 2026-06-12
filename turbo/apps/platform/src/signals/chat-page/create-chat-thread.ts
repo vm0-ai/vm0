@@ -1561,9 +1561,9 @@ function createMarkThreadReadIfNeeded({
     if (newLastReadId !== null) {
       set(locallyMarkedReadMessageId$, newLastReadId);
     }
-    // Server broadcasts `threadListChanged` via Ably on mark-read; the
-    // sidebar reloads from that channel. Bumping reloadChatThreads$ here too
-    // forces a redundant refetch that blocks subsequent keyboard navigation.
+    // No sidebar reload needed: markRead$ records an optimistic read mark
+    // and applies the response's unread snapshot, so the unread dot clears
+    // without refetching the thread list.
   });
 }
 
@@ -2064,7 +2064,9 @@ function createRecallMessage(deps: RecallMessageDeps) {
 }
 
 interface MessageCommandsDeps
-  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
+  extends SendMessageDeps,
+    QueueMessageDeps,
+    RecallMessageDeps {}
 
 function createMessageCommands(deps: MessageCommandsDeps) {
   return {

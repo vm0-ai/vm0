@@ -758,9 +758,7 @@ function lastVisibleMessageSubquery(db: Pick<Db, "select">) {
     .as("last_message");
 }
 
-type LastMessageSubquery = ReturnType<typeof lastVisibleMessageSubquery>;
-
-function chatThreadListProjection(lastMessage: LastMessageSubquery) {
+function chatThreadListProjection() {
   return {
     id: chatThreads.id,
     title: chatThreads.title,
@@ -771,10 +769,6 @@ function chatThreadListProjection(lastMessage: LastMessageSubquery) {
     pinnedAt: chatThreads.pinnedAt,
     renamedAt: chatThreads.renamedAt,
     lastMessageAt: chatThreads.lastMessageAt,
-    isRead: sql<boolean>`CASE
-      WHEN ${lastMessage.id} IS NULL THEN true
-      ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
-    END`,
     running: sql<boolean>`EXISTS (
       SELECT 1
       FROM ${zeroRuns}
@@ -795,7 +789,6 @@ type ChatThreadListRow = {
   readonly pinnedAt: Date | null;
   readonly renamedAt: Date | null;
   readonly lastMessageAt: Date;
-  readonly isRead: boolean;
   readonly running: boolean;
 };
 
@@ -811,7 +804,6 @@ function rowToChatThreadListItem(
     },
     createdAt: thread.createdAt.toISOString(),
     updatedAt: thread.updatedAt.toISOString(),
-    isRead: thread.isRead,
     running: thread.running,
     pinnedAt: thread.pinnedAt?.toISOString() ?? null,
     renamedAt: thread.renamedAt?.toISOString() ?? null,
@@ -840,8 +832,7 @@ export function zeroChatThreadList(args: {
     const limit = args.limit ?? SIDEBAR_CHAT_THREAD_LIMIT;
     const cursor = decodeChatThreadListCursor(args.cursor);
 
-    const lastMessage = lastVisibleMessageSubquery(db);
-    const projection = chatThreadListProjection(lastMessage);
+    const projection = chatThreadListProjection();
 
     const scopedFilters = [
       eq(chatThreads.userId, args.userId),
@@ -871,14 +862,12 @@ export function zeroChatThreadList(args: {
               zeroAgents,
               eq(zeroAgents.id, chatThreads.agentComposeId),
             )
-            .leftJoinLateral(lastMessage, sql`true`)
             .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
             .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id)),
       db
         .select(projection)
         .from(chatThreads)
         .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-        .leftJoinLateral(lastMessage, sql`true`)
         .where(and(...nonPinnedFilters))
         .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
         .limit(limit + 1),
@@ -900,6 +889,48 @@ export function zeroChatThreadList(args: {
       hasMore,
       nextCursor,
     };
+  });
+}
+
+/**
+ * The user's unread threads under an agent, each with the creation time of
+ * the latest visible message — the one that made the thread unread. A thread
+ * is unread when it has at least one visible message and the read cursor
+ * (`lastReadMessageId`) doesn't point at the latest one.
+ */
+export function zeroChatThreadUnreads(args: {
+  readonly userId: string;
+  readonly agentComposeId: string;
+}): Computed<Promise<readonly { threadId: string; unreadAt: string }[]>> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const lastMessage = lastVisibleMessageSubquery(db);
+    const rows = await db
+      .select({
+        threadId: chatThreads.id,
+        unreadAt: lastMessage.createdAt,
+      })
+      .from(chatThreads)
+      .leftJoinLateral(lastMessage, sql`true`)
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          eq(chatThreads.agentComposeId, args.agentComposeId),
+          isNotNull(lastMessage.id),
+          or(
+            isNull(chatThreads.lastReadMessageId),
+            sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+          ),
+        ),
+      );
+    return rows.flatMap((row) => {
+      // Always present: the isNotNull(lastMessage.id) filter guarantees a
+      // joined row, but the left-lateral type keeps the column nullable.
+      if (row.unreadAt === null) {
+        return [];
+      }
+      return [{ threadId: row.threadId, unreadAt: row.unreadAt.toISOString() }];
+    });
   });
 }
 

@@ -158,7 +158,6 @@ interface ThreadListItem {
   agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
-  isRead: boolean;
   running: boolean;
   pinnedAt?: string | null;
 }

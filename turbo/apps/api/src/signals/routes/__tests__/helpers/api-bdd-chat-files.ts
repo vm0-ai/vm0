@@ -482,6 +482,20 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body.draftThreadIds;
     },
 
+    async listThreadUnreads(
+      actor: ApiTestUser,
+      agentId: string,
+    ): Promise<readonly { threadId: string; unreadAt: string }[]> {
+      const response = await accept(
+        threadsClient().unreads({
+          headers: authenticate(context, actor),
+          query: { agentId },
+        }),
+        [200],
+      );
+      return response.body.unreads;
+    },
+
     async readThread(
       actor: ApiTestUser,
       threadId: string,
@@ -655,7 +669,7 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
     ): Promise<{
       readonly lastReadMessageId: string | null;
-      readonly changed: boolean;
+      readonly unreads: readonly { threadId: string; unreadAt: string }[];
     }> {
       const response = await accept(
         threadMarkReadClient().markRead({
