@@ -306,25 +306,25 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.CloudflareConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "cloudflare");
-    click(await screen.findByLabelText("Connect Cloudflare"));
+    await fill(searchInput, "stripe");
+    click(await screen.findByLabelText("Connect Stripe"));
 
     const connectDialog = await screen.findByRole("dialog", {
-      name: "Cloudflare",
+      name: "Stripe",
     });
-    expect(within(connectDialog).getByText("API Token")).toBeInTheDocument();
-    expect(within(connectDialog).queryByText("OAuth")).not.toBeInTheDocument();
-    const buttonLabels = queryAllByRoleFast("button", connectDialog).map(
-      (button) => {
-        return button.textContent?.replace(/\s+/g, " ").trim();
-      },
-    );
-    expect(buttonLabels).not.toContain("Connect");
-    expect(buttonLabels).toContain("Save");
+    expect(
+      within(connectDialog).getByText("Sign in with Stripe"),
+    ).toBeInTheDocument();
+    expect(
+      within(connectDialog).getAllByText("API Key").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(connectDialog).queryByText("OAuth (Recommended)"),
+    ).not.toBeInTheDocument();
   });
 
   it("completes a device-auth connector grant", async () => {
