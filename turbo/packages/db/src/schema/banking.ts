@@ -135,7 +135,6 @@ export const bankingAgentEnablements = pgTable(
       .notNull()
       .default(["accounts.read", "balances.read", "transactions.read"]),
     // Whether automation-triggered runs may use this banking enablement.
-    // source.
     allowAutomationRuns: boolean("allow_automation_runs")
       .notNull()
       .default(false),
