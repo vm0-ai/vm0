@@ -105,8 +105,8 @@ const chatThreadListItemSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   /**
-   * Read state of the thread's last message. `false` when the thread has no
-   * messages yet or the last message has not been marked read.
+   * Read state of the thread's last message, derived from
+   * `lastReadAt >= lastMessageAt`.
    */
   isRead: z.boolean(),
   /**
