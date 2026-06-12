@@ -2541,8 +2541,11 @@ function buildCompletedWorkFolding(
     }
     const finalMessage =
       finalMessageIndex >= 0 ? runMessages[finalMessageIndex]! : undefined;
-    const hiddenMessages =
+    const precedingMessages =
       finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
+    const hiddenMessages = precedingMessages.filter((message) => {
+      return message.role !== "user";
+    });
     const trailingMessages =
       finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
     const trailingMessagesAreMarkers = trailingMessages.every((message) => {
@@ -2555,7 +2558,12 @@ function buildCompletedWorkFolding(
       hiddenMessages.length > 0 &&
       trailingMessagesAreMarkers
     ) {
-      visibleMessages.push(finalMessage);
+      visibleMessages.push(
+        ...precedingMessages.filter((message) => {
+          return message.role === "user";
+        }),
+        finalMessage,
+      );
       folds.push({
         key: `${runId}:${finalMessage.id}`,
         finalMessageId: finalMessage.id,

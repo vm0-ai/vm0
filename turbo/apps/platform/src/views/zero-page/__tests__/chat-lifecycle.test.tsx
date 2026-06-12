@@ -1380,6 +1380,12 @@ describe("chat lifecycle", () => {
         },
         {
           role: "assistant",
+          content: "Checking launch status.",
+          runId: "run-work-folding-completed",
+          createdAt: "2026-06-09T10:00:25Z",
+        },
+        {
+          role: "assistant",
           content: "Launch status is summarized.",
           runId: "run-work-folding-completed",
           runLifecycleEvent: "completed",
@@ -1397,7 +1403,8 @@ describe("chat lifecycle", () => {
     const expandButton = await screen.findByLabelText("Expand work history");
     expect(expandButton).toHaveTextContent("Worked for 55s");
     expect(expandButton.closest('[data-role="assistant"]')).not.toBeNull();
-    expect(screen.queryByText("Summarize the launch status")).toBeNull();
+    expect(screen.getByText("Summarize the launch status")).toBeInTheDocument();
+    expect(screen.queryByText("Checking launch status.")).toBeNull();
     expect(
       screen.getByText("Launch status is summarized."),
     ).toBeInTheDocument();
@@ -1405,9 +1412,7 @@ describe("chat lifecycle", () => {
     click(expandButton);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Summarize the launch status"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Checking launch status.")).toBeInTheDocument();
       expect(screen.getByLabelText("Collapse work history")).toHaveAttribute(
         "aria-expanded",
         "true",
@@ -1417,7 +1422,10 @@ describe("chat lifecycle", () => {
     click(screen.getByLabelText("Collapse work history"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Summarize the launch status")).toBeNull();
+      expect(
+        screen.getByText("Summarize the launch status"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Checking launch status.")).toBeNull();
       expect(screen.getByLabelText("Expand work history")).toHaveAttribute(
         "aria-expanded",
         "false",
@@ -1434,6 +1442,12 @@ describe("chat lifecycle", () => {
           content: "Summarize the production launch status",
           runId: "run-work-folding-completion-marker",
           createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking production launch status.",
+          runId: "run-work-folding-completion-marker",
+          createdAt: "2026-06-09T10:00:25Z",
         },
         {
           role: "assistant",
@@ -1460,8 +1474,9 @@ describe("chat lifecycle", () => {
     const expandButton = await screen.findByLabelText("Expand work history");
     expect(expandButton).toHaveTextContent("Worked for 56s");
     expect(
-      screen.queryByText("Summarize the production launch status"),
-    ).toBeNull();
+      screen.getByText("Summarize the production launch status"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Checking production launch status.")).toBeNull();
     expect(
       screen.getByText("The production launch status is ready."),
     ).toBeInTheDocument();
@@ -1470,7 +1485,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize the production launch status"),
+        screen.getByText("Checking production launch status."),
       ).toBeInTheDocument();
       expect(
         screen.getByText("The production launch status is ready."),
@@ -1487,6 +1502,12 @@ describe("chat lifecycle", () => {
           content: "Summarize the first launch",
           runId: "run-work-folding-first",
           createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the first launch notes.",
+          runId: "run-work-folding-first",
+          createdAt: "2026-06-09T10:00:10Z",
         },
         {
           role: "assistant",
@@ -1529,11 +1550,12 @@ describe("chat lifecycle", () => {
     expect(expandButtons).toHaveLength(2);
     expect(expandButtons[0]).toHaveTextContent("Worked for 20s");
     expect(expandButtons[1]).toHaveTextContent("Worked for 55s");
-    expect(screen.queryByText("Summarize the first launch")).toBeNull();
+    expect(screen.getByText("Summarize the first launch")).toBeInTheDocument();
+    expect(screen.queryByText("Checking the first launch notes.")).toBeNull();
     expect(
       screen.getByText("The first launch summary is ready."),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Summarize the second launch")).toBeNull();
+    expect(screen.getByText("Summarize the second launch")).toBeInTheDocument();
     expect(screen.queryByText("Checking the second launch notes.")).toBeNull();
     expect(
       screen.getByText("The second launch summary is ready."),
@@ -1542,7 +1564,10 @@ describe("chat lifecycle", () => {
     click(expandButtons[1]!);
 
     await waitFor(() => {
-      expect(screen.queryByText("Summarize the first launch")).toBeNull();
+      expect(
+        screen.getByText("Summarize the first launch"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Checking the first launch notes.")).toBeNull();
       expect(
         screen.getByText("Summarize the second launch"),
       ).toBeInTheDocument();
@@ -1553,6 +1578,39 @@ describe("chat lifecycle", () => {
         "aria-expanded",
         "true",
       );
+    });
+  });
+
+  it("does not fold a completed run with only a user message and final reply", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-work-folding-user-final-only",
+      chatMessages: [
+        {
+          role: "user",
+          content: "Answer directly",
+          runId: "run-work-folding-user-final-only",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Direct answer.",
+          runId: "run-work-folding-user-final-only",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-work-folding-user-final-only",
+      featureSwitches: { [FeatureSwitchKey.ChatCompletedWorkFolding]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Answer directly")).toBeInTheDocument();
+      expect(screen.getByText("Direct answer.")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Expand work history")).toBeNull();
     });
   });
 
