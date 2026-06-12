@@ -14,7 +14,7 @@ import { testContext } from "./test-helpers.ts";
 // the inline-feedback selection logic reads (the thread id and bubble class).
 function mountThreadBubble(threadId: string, text: string): HTMLElement {
   const section = document.createElement("section");
-  section.setAttribute("data-chat-thread-container-id", threadId);
+  section.dataset.chatThreadContainerId = threadId;
   const bubble = document.createElement("div");
   bubble.className = "zero-chat-bubble-assistant";
   bubble.textContent = text;
@@ -123,6 +123,6 @@ describe("inline feedback source highlight", () => {
     expect(id).toBeDefined();
     ctx.store.set(removeFeedbackItem$, id as number);
 
-    expect(highlights.has("zero-feedback")).toBe(false);
+    expect(highlights.has("zero-feedback")).toBeFalsy();
   });
 });

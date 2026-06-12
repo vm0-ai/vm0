@@ -77,11 +77,11 @@ function resolveSelectionBubble(range: Range): Element | null {
 // The id of the thread that owns the selected passage, or null when it sits
 // outside any thread container.
 function resolveSelectionThreadId(bubble: Element): string | null {
-  return (
-    bubble
-      .closest(THREAD_CONTAINER_SELECTOR)
-      ?.getAttribute("data-chat-thread-container-id") ?? null
-  );
+  const container = bubble.closest(THREAD_CONTAINER_SELECTOR);
+  if (!(container instanceof HTMLElement)) {
+    return null;
+  }
+  return container.dataset.chatThreadContainerId ?? null;
 }
 
 // ---------------------------------------------------------------------------
