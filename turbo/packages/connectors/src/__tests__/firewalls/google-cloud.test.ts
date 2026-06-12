@@ -5,6 +5,7 @@ import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
 } from "../../firewalls";
+import { googleCloudGenerationStats } from "../../firewalls/google-cloud.generated";
 
 const googleCloudFirewall = getConnectorFirewall("google-cloud");
 
@@ -62,6 +63,23 @@ describe("google-cloud firewall", () => {
     for (const api of googleCloudFirewall.apis) {
       expect(api.permissions?.length ?? 0).toBeGreaterThan(0);
     }
+  });
+
+  it("records Google Cloud operation coverage stats", () => {
+    expect(googleCloudGenerationStats.totalOperations).toBeGreaterThan(0);
+    expect(googleCloudGenerationStats.mappedOperations).toBeGreaterThan(0);
+    expect(
+      googleCloudGenerationStats.explicitlyUnmappedOperations,
+    ).toBeGreaterThan(0);
+    expect(googleCloudGenerationStats.unexpectedUnmappedOperations).toBe(0);
+    expect(
+      googleCloudGenerationStats.mappedOperations +
+        googleCloudGenerationStats.explicitlyUnmappedOperations +
+        googleCloudGenerationStats.unexpectedUnmappedOperations,
+    ).toBe(googleCloudGenerationStats.totalOperations);
+    expect(googleCloudGenerationStats.permissionCount).toBe(
+      permissionNames().length,
+    );
   });
 
   it("matches Compute Engine instance endpoints to official IAM permissions", () => {

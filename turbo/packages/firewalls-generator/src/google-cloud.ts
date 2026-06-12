@@ -104,6 +104,14 @@ interface ApiConfig {
   description: string;
 }
 
+interface BuildStats {
+  totalOperations: number;
+  mappedOperations: number;
+  explicitlyUnmappedOperations: number;
+  unexpectedUnmappedOperations: number;
+  permissionCount: number;
+}
+
 const API_CONFIGS: ApiConfig[] = [
   {
     key: "cloudresourcemanager",
@@ -927,6 +935,8 @@ function buildPermissionGroups(
   api: ApiConfig,
   officialPermissions: ReadonlySet<string>,
   unexpectedUnmappedMethods: Set<string>,
+  explicitlyUnmappedMethods: string[],
+  stats: BuildStats,
 ): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
 
@@ -934,14 +944,19 @@ function buildPermissionGroups(
     if (!method.id || !method.httpMethod) {
       throw new Error(`${api.key}: Discovery method missing id or httpMethod`);
     }
+    stats.totalOperations += 1;
     const permission = permissionForMethod(
       api.key,
       method.id,
       officialPermissions,
     );
     if (permission === null) {
-      if (!isExplicitlyUnmappedMethod(method.id)) {
+      if (isExplicitlyUnmappedMethod(method.id)) {
+        explicitlyUnmappedMethods.push(method.id);
+        stats.explicitlyUnmappedOperations += 1;
+      } else {
         unexpectedUnmappedMethods.add(method.id);
+        stats.unexpectedUnmappedOperations += 1;
       }
       continue;
     }
@@ -952,6 +967,7 @@ function buildPermissionGroups(
         `${method.httpMethod.toUpperCase()} /${path}`,
       );
     }
+    stats.mappedOperations += 1;
   }
 
   return [...groups.entries()]
@@ -1027,6 +1043,7 @@ function validateMappingsWereUsed(
 
 function generateTypeScript(
   apiPermissions: Map<string, PermissionGroup[]>,
+  stats: BuildStats,
 ): string {
   const lines: string[] = [
     "// Auto-generated from Google Discovery documents and official Google Cloud IAM docs.",
@@ -1065,8 +1082,33 @@ function generateTypeScript(
   lines.push("  ],");
   lines.push("} as const satisfies FirewallConfig;");
   lines.push("");
+  lines.push(...renderStats(stats));
 
   return lines.join("\n");
+}
+
+function renderStats(stats: BuildStats): string[] {
+  return [
+    "export const googleCloudGenerationStats = {",
+    `  totalOperations: ${stats.totalOperations},`,
+    `  mappedOperations: ${stats.mappedOperations},`,
+    `  explicitlyUnmappedOperations: ${stats.explicitlyUnmappedOperations},`,
+    `  unexpectedUnmappedOperations: ${stats.unexpectedUnmappedOperations},`,
+    `  permissionCount: ${stats.permissionCount},`,
+    "} as const;",
+    "",
+  ];
+}
+
+function logUnmapped(kind: string, methodIds: string[]): void {
+  if (methodIds.length === 0) return;
+  console.error(`  ${methodIds.length} ${kind} Google Cloud operations:`);
+  for (const methodId of methodIds.slice(0, 20)) {
+    console.error(`    ${methodId}`);
+  }
+  if (methodIds.length > 20) {
+    console.error(`    ... ${methodIds.length - 20} more`);
+  }
 }
 
 export async function generate(): Promise<void> {
@@ -1076,6 +1118,14 @@ export async function generate(): Promise<void> {
   const apiPermissions = new Map<string, PermissionGroup[]>();
   const overridesSeen = new Set<string>();
   const unexpectedUnmappedMethods = new Set<string>();
+  const explicitlyUnmappedMethods: string[] = [];
+  const stats: BuildStats = {
+    totalOperations: 0,
+    mappedOperations: 0,
+    explicitlyUnmappedOperations: 0,
+    unexpectedUnmappedOperations: 0,
+    permissionCount: 0,
+  };
 
   for (const api of API_CONFIGS) {
     const discoveryUrl = GOOGLE_CLOUD_DISCOVERY_URLS[api.key];
@@ -1090,6 +1140,8 @@ export async function generate(): Promise<void> {
       api,
       officialPermissions,
       unexpectedUnmappedMethods,
+      explicitlyUnmappedMethods,
+      stats,
     );
     for (const method of extractMethods(discovery.resources ?? {})) {
       if (method.id && METHOD_PERMISSION_OVERRIDES[method.id]) {
@@ -1108,10 +1160,15 @@ export async function generate(): Promise<void> {
   );
 
   const allPermissions = [...apiPermissions.values()].flat();
+  stats.permissionCount = allPermissions.length;
+  logUnmapped("explicitly unmapped", explicitlyUnmappedMethods);
   logStats(allPermissions);
+  console.error(
+    `  ${stats.mappedOperations}/${stats.totalOperations} operations mapped`,
+  );
   writeOutput(
     "google-cloud",
-    generateTypeScript(apiPermissions),
+    generateTypeScript(apiPermissions, stats),
     import.meta.dirname,
   );
 }
