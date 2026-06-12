@@ -116,12 +116,6 @@ const chatThreadListItemSchema = z.object({
    */
   running: z.boolean(),
   /**
-   * True when the thread has draft composer content the user hasn't sent yet
-   * (non-empty `draftContent` or one+ `draftAttachments`). Drives the sidebar
-   * draft indicator. Optional for back-compat with fixtures predating the field.
-   */
-  hasDraft: z.boolean().optional(),
-  /**
    * ISO timestamp at which the user pinned this thread. Null/undefined means
    * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
    * keep recency order. Optional for back-compat with fixtures that predate
@@ -364,6 +358,30 @@ export const chatThreadsContract = c.router({
     },
     summary:
       "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId. An unknown agentId yields an empty list. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads are cursor-paginated.",
+  },
+  drafts: {
+    method: "GET",
+    path: "/api/zero/chat-threads/drafts",
+    headers: authHeadersSchema,
+    query: z.object({
+      /**
+       * Comma-separated chat thread ids to check. Ids the caller does not
+       * own (or that don't exist) are silently absent from the response.
+       */
+      threadIds: z.string().min(1),
+    }),
+    responses: {
+      200: z.object({
+        /**
+         * Subset of the requested thread ids that currently hold an unsent
+         * draft (non-empty `draftContent` or one+ `draftAttachments`).
+         */
+        draftThreadIds: z.array(z.string()),
+      }),
+      401: apiErrorSchema,
+    },
+    summary:
+      "Report which of the given chat threads hold an unsent composer draft. Fetched separately from the thread list so the sidebar draft dots don't gate the list query.",
   },
 });
 

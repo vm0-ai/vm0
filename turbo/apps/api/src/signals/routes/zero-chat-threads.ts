@@ -23,6 +23,7 @@ import {
   zeroChatSearch,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
+  zeroChatThreadDraftIds,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
 } from "../services/zero-chat-thread.service";
@@ -135,6 +136,21 @@ const listChatThreadsInner$ = computed(async (get) => {
   };
 });
 
+const listChatThreadDraftsInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const query = get(queryOf(chatThreadsContract.drafts));
+
+  const threadIds = query.threadIds.split(",").filter(isValidChatThreadId);
+  const draftThreadIds = await get(
+    zeroChatThreadDraftIds({ userId: auth.userId, threadIds }),
+  );
+
+  return {
+    status: 200 as const,
+    body: { draftThreadIds: [...draftThreadIds] },
+  };
+});
+
 const listChatThreadArtifactsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadArtifactsContract.list));
@@ -239,6 +255,12 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listChatThreadsInner$,
     ),
+  },
+  {
+    // Registered before the :id route so the literal "drafts" segment is
+    // never captured as a thread id.
+    route: chatThreadsContract.drafts,
+    handler: authRoute({}, listChatThreadDraftsInner$),
   },
   {
     route: chatThreadByIdContract.get,

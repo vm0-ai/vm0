@@ -468,6 +468,20 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async listThreadDrafts(
+      actor: ApiTestUser,
+      threadIds: readonly string[],
+    ): Promise<readonly string[]> {
+      const response = await accept(
+        threadsClient().drafts({
+          headers: authenticate(context, actor),
+          query: { threadIds: threadIds.join(",") },
+        }),
+        [200],
+      );
+      return response.body.draftThreadIds;
+    },
+
     async readThread(
       actor: ApiTestUser,
       threadId: string,

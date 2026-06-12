@@ -1933,8 +1933,10 @@ async function publishChatMessageCreated(
   userId: string,
   threadId: string,
 ): Promise<void> {
+  // No threadListChanged: every caller is a user-initiated post into the
+  // user's own open thread, so the acting client already reloads locally
+  // and sidebar ordering only moves on run-terminal events.
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
-  await publishThreadListChanged(userId);
 }
 
 async function assertOwnedThread(
@@ -2234,7 +2236,9 @@ function scheduleAssociatedUserMessage(params: {
         [params.userId],
         `chatThreadRunCreated:${params.threadId}`,
       );
-      await publishThreadListChanged(params.userId);
+      // No threadListChanged here: the sending client reloads its own
+      // sidebar after the POST, sorting only moves on run-terminal events,
+      // and the terminal callback broadcasts to other clients.
     })(),
   );
 }

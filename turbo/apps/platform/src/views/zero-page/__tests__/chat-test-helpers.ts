@@ -164,7 +164,6 @@ interface ThreadListItem {
 }
 
 type PagedThreadItem = ThreadListItem & {
-  hasDraft?: boolean;
   pinnedAt?: string | null;
   renamedAt?: string | null;
 };

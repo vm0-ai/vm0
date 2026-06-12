@@ -782,13 +782,6 @@ function chatThreadListProjection(lastMessage: LastMessageSubquery) {
       WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
         AND ${agentRuns.status} IN ('queued', 'pending', 'running')
     )`,
-    hasDraft: sql<boolean>`(
-      COALESCE(${chatThreads.draftContent}, '') <> ''
-      OR (
-        ${chatThreads.draftAttachments} IS NOT NULL
-        AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
-      )
-    )`,
   } as const;
 }
 
@@ -804,7 +797,6 @@ type ChatThreadListRow = {
   readonly lastMessageAt: Date;
   readonly isRead: boolean;
   readonly running: boolean;
-  readonly hasDraft: boolean;
 };
 
 function rowToChatThreadListItem(
@@ -821,7 +813,6 @@ function rowToChatThreadListItem(
     updatedAt: thread.updatedAt.toISOString(),
     isRead: thread.isRead,
     running: thread.running,
-    hasDraft: thread.hasDraft,
     pinnedAt: thread.pinnedAt?.toISOString() ?? null,
     renamedAt: thread.renamedAt?.toISOString() ?? null,
   };
@@ -909,6 +900,41 @@ export function zeroChatThreadList(args: {
       hasMore,
       nextCursor,
     };
+  });
+}
+
+/**
+ * Of the given thread ids, the ones owned by the user that currently hold an
+ * unsent composer draft (non-empty `draftContent` or one+ `draftAttachments`).
+ */
+export function zeroChatThreadDraftIds(args: {
+  readonly userId: string;
+  readonly threadIds: readonly string[];
+}): Computed<Promise<readonly string[]>> {
+  return computed(async (get): Promise<readonly string[]> => {
+    if (args.threadIds.length === 0) {
+      return [];
+    }
+    const db = get(db$);
+    const rows = await db
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          inArray(chatThreads.id, [...args.threadIds]),
+          sql`(
+            COALESCE(${chatThreads.draftContent}, '') <> ''
+            OR (
+              ${chatThreads.draftAttachments} IS NOT NULL
+              AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
+            )
+          )`,
+        ),
+      );
+    return rows.map((row) => {
+      return row.id;
+    });
   });
 }
 
@@ -1434,29 +1460,13 @@ export const deleteChatThread$ = command(
 );
 
 /**
- * A thread "has a draft" when its draft text is non-empty OR it has at least
- * one attachment. Mirrors web's `hasDraftValue` helper exactly so the
- * conditional `threadListChanged` publish observable from web is preserved
- * bit-for-bit.
- */
-function hasDraftValue(
-  content: string | null,
-  attachments: readonly PersistedAttachment[] | null,
-): boolean {
-  return (
-    (content !== null && content !== "") ||
-    (attachments !== null && attachments.length > 0)
-  );
-}
-
-/**
  * Update a chat thread's draft content + attachments.
  *
  * Ownership check via the WHERE clause; missing or cross-user thread → returns
- * `{ updated: false }` so the route handler emits the correct 404. Publishes
- * `threadListChanged` only when the boolean `hasDraft` flag flips, so that
- * continued typing inside an already-drafting thread does not spam the
- * sidebar — same behaviour as web's `updateChatThreadDraft`.
+ * `{ updated: false }` so the route handler emits the correct 404. Draft
+ * changes do not publish `threadListChanged`: the editing client updates its
+ * own sidebar locally, and other clients pick the dot up from the drafts
+ * endpoint on their next list reload.
  */
 export const updateChatThreadDraft$ = command(
   async (
@@ -1471,26 +1481,7 @@ export const updateChatThreadDraft$ = command(
   ): Promise<{ readonly updated: boolean }> => {
     const writeDb = set(writeDb$);
 
-    const [before] = await writeDb
-      .select({
-        draftContent: chatThreads.draftContent,
-        draftAttachments: chatThreads.draftAttachments,
-      })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!before) {
-      return { updated: false };
-    }
-
-    await writeDb
+    const updated = await writeDb
       .update(chatThreads)
       .set({
         draftContent: args.draftContent,
@@ -1503,19 +1494,10 @@ export const updateChatThreadDraft$ = command(
           eq(chatThreads.id, args.threadId),
           eq(chatThreads.userId, args.userId),
         ),
-      );
+      )
+      .returning({ id: chatThreads.id });
     signal.throwIfAborted();
 
-    const hadDraft = hasDraftValue(
-      before.draftContent,
-      before.draftAttachments as PersistedAttachment[] | null,
-    );
-    const hasDraft = hasDraftValue(args.draftContent, args.draftAttachments);
-    if (hadDraft !== hasDraft) {
-      await publishThreadListChanged(args.userId);
-      signal.throwIfAborted();
-    }
-
-    return { updated: true };
+    return { updated: updated.length > 0 };
   },
 );
