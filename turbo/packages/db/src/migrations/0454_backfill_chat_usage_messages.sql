@@ -117,4 +117,5 @@ SELECT
   NULL,
   usage_payload,
   created_at
-FROM message_positions;
+FROM message_positions
+ON CONFLICT (run_id) WHERE usage_payload IS NOT NULL DO NOTHING;

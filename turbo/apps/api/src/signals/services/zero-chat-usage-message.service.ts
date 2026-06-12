@@ -97,117 +97,136 @@ function usagePayloadEquals(
 export const maybeEmitRunUsageMessage$ = command(
   async ({ set }, runId: string, signal: AbortSignal): Promise<boolean> => {
     const db = set(writeDb$);
-    const [context] = await db
-      .select({
-        status: agentRuns.status,
-        chatThreadId: zeroRuns.chatThreadId,
-        userId: chatThreads.userId,
-        pendingCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'pending')::int`,
-        processedCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'processed')::int`,
-        totalCredits: sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0)) FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`,
-        settledAt: sql<Date>`COALESCE(
-          MAX(${usageEvent.processedAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
-          MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
-          MAX(${agentRuns.completedAt}),
-          MAX(${agentRuns.createdAt})
-        )`,
-      })
-      .from(agentRuns)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-      .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
-      .leftJoin(usageEvent, eq(usageEvent.runId, agentRuns.id))
-      .where(eq(agentRuns.id, runId))
-      .groupBy(agentRuns.status, zeroRuns.chatThreadId, chatThreads.userId)
-      .limit(1);
-    signal.throwIfAborted();
+    const emitted = await db.transaction(async (tx) => {
+      // Multiple terminal side effects can attempt emission for the same run.
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext('chat_usage_message:' || ${runId}))`,
+      );
+      signal.throwIfAborted();
 
-    if (!context) {
-      return false;
-    }
-    if (
-      !TERMINAL_RUN_STATUSES.includes(
-        context.status as (typeof TERMINAL_RUN_STATUSES)[number],
-      )
-    ) {
-      return false;
-    }
-    if (!context.chatThreadId || !context.userId) {
-      return false;
-    }
-    if (
-      toNumber(context.pendingCount) > 0 ||
-      toNumber(context.processedCount) === 0
-    ) {
-      return false;
-    }
+      const [context] = await tx
+        .select({
+          status: agentRuns.status,
+          chatThreadId: zeroRuns.chatThreadId,
+          userId: chatThreads.userId,
+          pendingCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'pending')::int`,
+          processedCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'processed')::int`,
+          totalCredits: sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0)) FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`,
+          settledAt: sql<Date>`COALESCE(
+            MAX(${usageEvent.processedAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
+            MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
+            MAX(${agentRuns.completedAt}),
+            MAX(${agentRuns.createdAt})
+          )`,
+        })
+        .from(agentRuns)
+        .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+        .leftJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+        .leftJoin(usageEvent, eq(usageEvent.runId, agentRuns.id))
+        .where(eq(agentRuns.id, runId))
+        .groupBy(agentRuns.status, zeroRuns.chatThreadId, chatThreads.userId)
+        .limit(1);
+      signal.throwIfAborted();
 
-    const breakdownRows = await db
-      .select({
-        kind: usageEvent.kind,
-        provider: sql<string>`COALESCE(NULLIF(${usageEvent.provider}, ''), 'unknown')`,
-        credits: sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0)), 0)::bigint`,
-      })
-      .from(usageEvent)
-      .where(
-        and(eq(usageEvent.runId, runId), eq(usageEvent.status, "processed")),
-      )
-      .groupBy(usageEvent.kind, usageEvent.provider)
-      .orderBy(usageEvent.kind, usageEvent.provider);
-    signal.throwIfAborted();
+      if (!context) {
+        return null;
+      }
+      if (
+        !TERMINAL_RUN_STATUSES.includes(
+          context.status as (typeof TERMINAL_RUN_STATUSES)[number],
+        )
+      ) {
+        return null;
+      }
+      if (!context.chatThreadId || !context.userId) {
+        return null;
+      }
+      if (
+        toNumber(context.pendingCount) > 0 ||
+        toNumber(context.processedCount) === 0
+      ) {
+        return null;
+      }
 
-    const payload: ChatMessageUsagePayload = {
-      version: 1,
-      totalCredits: Math.max(0, toNumber(context.totalCredits)),
-      settledAt: toIsoString(context.settledAt),
-      breakdown: buildUsageBreakdown(breakdownRows),
-    };
+      const breakdownRows = await tx
+        .select({
+          kind: usageEvent.kind,
+          provider: sql<string>`COALESCE(NULLIF(${usageEvent.provider}, ''), 'unknown')`,
+          credits: sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0)), 0)::bigint`,
+        })
+        .from(usageEvent)
+        .where(
+          and(eq(usageEvent.runId, runId), eq(usageEvent.status, "processed")),
+        )
+        .groupBy(usageEvent.kind, usageEvent.provider)
+        .orderBy(usageEvent.kind, usageEvent.provider);
+      signal.throwIfAborted();
 
-    const [latestUsageMessage] = await db
-      .select({ usagePayload: chatMessages.usagePayload })
-      .from(chatMessages)
-      .where(
-        and(
-          eq(chatMessages.runId, runId),
-          sql`${chatMessages.usagePayload} IS NOT NULL`,
-        ),
-      )
-      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-      .limit(1);
-    signal.throwIfAborted();
+      const payload: ChatMessageUsagePayload = {
+        version: 1,
+        totalCredits: Math.max(0, toNumber(context.totalCredits)),
+        settledAt: toIsoString(context.settledAt),
+        breakdown: buildUsageBreakdown(breakdownRows),
+      };
 
-    if (
-      latestUsageMessage?.usagePayload &&
-      usagePayloadEquals(latestUsageMessage.usagePayload, payload)
-    ) {
-      return false;
-    }
+      const [latestUsageMessage] = await tx
+        .select({ usagePayload: chatMessages.usagePayload })
+        .from(chatMessages)
+        .where(
+          and(
+            eq(chatMessages.runId, runId),
+            sql`${chatMessages.usagePayload} IS NOT NULL`,
+          ),
+        )
+        .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+        .limit(1);
+      signal.throwIfAborted();
 
-    const [inserted] = await db
-      .insert(chatMessages)
-      .values({
+      if (
+        latestUsageMessage?.usagePayload &&
+        usagePayloadEquals(latestUsageMessage.usagePayload, payload)
+      ) {
+        return null;
+      }
+
+      const [inserted] = await tx
+        .insert(chatMessages)
+        .values({
+          chatThreadId: context.chatThreadId,
+          role: "assistant",
+          content: null,
+          runId,
+          usagePayload: payload,
+        })
+        .returning({ id: chatMessages.id });
+      signal.throwIfAborted();
+
+      if (!inserted) {
+        return null;
+      }
+
+      return {
         chatThreadId: context.chatThreadId,
-        role: "assistant",
-        content: null,
-        runId,
-        usagePayload: payload,
-      })
-      .returning({ id: chatMessages.id });
+        userId: context.userId,
+        totalCredits: payload.totalCredits,
+      };
+    });
     signal.throwIfAborted();
 
-    if (!inserted) {
+    if (!emitted) {
       return false;
     }
 
     await publishUserSignal(
-      [context.userId],
-      `chatThreadMessageCreated:${context.chatThreadId}`,
+      [emitted.userId],
+      `chatThreadMessageCreated:${emitted.chatThreadId}`,
     );
     signal.throwIfAborted();
 
     L.debug("Emitted chat usage message", {
       runId,
-      chatThreadId: context.chatThreadId,
-      totalCredits: payload.totalCredits,
+      chatThreadId: emitted.chatThreadId,
+      totalCredits: emitted.totalCredits,
     });
 
     return true;
