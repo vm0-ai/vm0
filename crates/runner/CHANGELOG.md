@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.114.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.5...runner-rs-v0.114.6) (2026-06-12)
+
+
+### Bug Fixes
+
+* classify non-code runner job failures ([#17438](https://github.com/vm0-ai/vm0/issues/17438)) ([dcae0a6](https://github.com/vm0-ai/vm0/commit/dcae0a69924bbf34c4a31cea9fee74cbca9aa16d))
+* **runner:** enforce global workspace cache budget ([#17437](https://github.com/vm0-ai/vm0/issues/17437)) ([c2e9a49](https://github.com/vm0-ai/vm0/commit/c2e9a49801481150acf73ad31eeb6e5edb08aa33))
+
 ## [0.114.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.4...runner-rs-v0.114.5) (2026-06-12)
 
 
