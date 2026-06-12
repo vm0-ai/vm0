@@ -108,7 +108,7 @@ export const VIDEO_DIMENSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
   intense_dramatic: "high-stakes emotional intensity",
   whimsical: "quirky, imaginative, fairy-tale whimsy",
   symmetrical_pastel_quirky:
-    "Wes Anderson-esque deadpan symmetry with pastel palette",
+    "deadpan symmetrical framing with pastel palette and flat graphic staging",
   imax_epic_cinematic: "IMAX-scale epic with sweeping aerial scope",
   indie_naturalistic:
     "indie naturalistic — raw handheld authenticity, available light",
@@ -391,7 +391,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ad08022e-5b28-4e80-a67f-cbe5d27cbc03/thumbnail-hand-drawn-fantasy-anime.jpg",
     promptConstraints:
-      "hand-drawn 2D animation, painterly background with visible brushwork, expressive character design, lush warm color palette, Ghibli-adjacent aesthetic, soft diffused light, no 3D CGI, no photorealistic, no live action",
+      "hand-drawn 2D animation, painterly background with visible brushwork, expressive character design, lush warm color palette, detailed nature and forest backgrounds, soft diffused light, no 3D CGI, no photorealistic, no live action",
   },
   {
     id: "chinese-ink-art",
@@ -435,7 +435,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2b537d1a-694c-4d66-82f4-462eca749a28/thumbnail-pop-art.jpg",
     promptConstraints:
-      "bold flat primary colors, Ben-Day halftone dots, high-contrast black outlines, Andy Warhol color repetition, graphic comic panel framing, no naturalistic tones, no soft gradients, no photorealistic",
+      "bold flat primary colors, Ben-Day halftone dots, high-contrast black outlines, bold screen-print color repetition, graphic comic panel framing, no naturalistic tones, no soft gradients, no photorealistic",
   },
   {
     id: "japanese-wabi-sabi",
@@ -809,7 +809,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/2187de1b-b0ae-4e60-8539-dc9db380eecb/thumbnail-magical-girl.jpg",
     promptConstraints:
-      "2D cel animation, sparkle transformation sequence, pastel color explosion, ribbons and hearts in frame, Sailor Moon aesthetic, bright courage visual language, no dark gritty tones, no 3D render, no photorealistic",
+      "2D cel animation, sparkle transformation sequence, pastel color explosion, ribbons and hearts in frame, classic magical girl transformation visual language, bright courage aesthetic, no dark gritty tones, no 3D render, no photorealistic",
   },
   {
     id: "shonen-battle",
@@ -831,7 +831,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b4c37fb8-2f3e-4516-91fd-32d0d022e686/thumbnail-shonen-battle.jpg",
     promptConstraints:
-      "2D anime power-up visual effects, speed lines on dramatic pose, extreme close-up on determined eyes, Naruto/Dragon Ball Z aesthetic, kinetic energy aura, no peaceful scene, no 3D CGI, no photorealistic, no slow pacing",
+      "2D anime power-up visual effects, speed lines on dramatic pose, extreme close-up on determined eyes, classic shonen battle anime aesthetic, kinetic energy aura, no peaceful scene, no 3D CGI, no photorealistic, no slow pacing",
   },
   {
     id: "cyberpunk-anime",
@@ -853,7 +853,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b870f6c1-95a8-4ab6-aa0d-a125cb57dd3e/thumbnail-cyberpunk-anime.jpg",
     promptConstraints:
-      "2D anime with neon megacity backdrop, tech-augmented character design, rain-slicked streets, electric teal and magenta palette, Ghost in the Shell aesthetic, no natural environment, no warm tones, no live action footage, no 3D CGI",
+      "2D anime with neon megacity backdrop, tech-augmented character design, rain-slicked streets, electric teal and magenta palette, cyberpunk anime visual aesthetic, no natural environment, no warm tones, no live action footage, no 3D CGI",
   },
   {
     id: "slice-of-life-anime",
@@ -875,7 +875,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoThumbnailUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/ce926a5b-f5c6-4b5c-956c-799225987fbb/thumbnail-slice-of-life-anime.jpg",
     promptConstraints:
-      "2D anime soft school setting, golden afternoon light through windows, subtle character expression, everyday quiet moment, warm pastel palette, K-On aesthetic, no action sequence, no dark tones, no dramatic lighting, no 3D CGI",
+      "2D anime soft school setting, golden afternoon light through windows, subtle character expression, everyday quiet moment, warm pastel palette, soft slice-of-life anime aesthetic, no action sequence, no dark tones, no dramatic lighting, no 3D CGI",
   },
   {
     id: "wuxia-anime",
