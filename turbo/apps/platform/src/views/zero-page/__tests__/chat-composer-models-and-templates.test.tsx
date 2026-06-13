@@ -10,6 +10,7 @@ import {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  r2ImageTransformUrl,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import {
@@ -1363,7 +1364,13 @@ describe("chat composer templates", () => {
       expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
       expect(
         screen.getByTitle(`${illustrationTemplate.title} illustration preview`),
-      ).toHaveAttribute("src", illustrationTemplate.previewImage);
+      ).toHaveAttribute(
+        "src",
+        r2ImageTransformUrl(illustrationTemplate.previewImage, {
+          width: 640,
+          height: 360,
+        }),
+      );
       expect(screen.getAllByTitle(/ illustration preview$/u)).toHaveLength(
         ILLUSTRATION_TEMPLATE_ITEMS.length,
       );

@@ -1,13 +1,18 @@
+import {
+  VM0_MODEL_CREDIT_MULTIPLIER,
+  type SupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-credit-multipliers";
+
 // ---------------------------------------------------------------------------
 // Models. Built-in lineup shown on /models and /models/[slug].
 //
 // Reasoning models: order, multipliers, pricing, and routing facts mirror the
 // platform at:
+//   - turbo/packages/api-contracts/src/contracts/model-credit-multipliers.ts
+//     (VM0_MODEL_CREDIT_MULTIPLIER)
 //   - turbo/packages/api-contracts/src/contracts/model-providers.ts
 //     (VM0_MODEL_TO_PROVIDER, MODEL_PROVIDER_TYPES)
-//   - turbo/apps/platform/.../settings/provider-ui-config.ts
-//     (VM0_MODEL_CREDIT_MULTIPLIER)
-//   - usage_pricing migrations / production pricing (USD per 1M tokens)
+//   - turbo/apps/api/src/scripts/dev-seed.ts (MODEL_PRICING. USD per 1M tokens)
 //
 // Generation models (image, video, audio): per-unit pricing mirrors the same
 // dev-seed.ts table (USD per image / megapixel / video-second / audio-second).
@@ -70,6 +75,7 @@ interface BaseModelEntry {
 
 export interface ReasoningModelEntry extends BaseModelEntry {
   category: "reasoning";
+  modelId: SupportedRunModel;
   multiplier: number;
   contextWindowK: number;
   promptCaching: boolean;
@@ -91,14 +97,22 @@ export function isReasoningModel(m: ModelEntry): m is ReasoningModelEntry {
   return m.category === "reasoning";
 }
 
+type ReasoningModelInput = Omit<ReasoningModelEntry, "multiplier">;
+
+function reasoningModel(model: ReasoningModelInput): ReasoningModelEntry {
+  return {
+    ...model,
+    multiplier: VM0_MODEL_CREDIT_MULTIPLIER[model.modelId],
+  };
+}
+
 export const MODELS: ModelEntry[] = [
-  {
+  reasoningModel({
     slug: "claude-fable-5",
     modelId: "claude-fable-5",
     name: "Claude Fable 5",
     vendor: "Anthropic",
     category: "reasoning",
-    multiplier: 3.3,
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -120,15 +134,14 @@ export const MODELS: ModelEntry[] = [
       "DeepSeek V4 Pro",
     ],
     alternativeSlugs: ["claude-opus-4-8", "claude-sonnet-4-6", "gpt-5-5"],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "claude-opus-4-8",
     modelId: "claude-opus-4-8",
     name: "Claude Opus 4.8",
     vendor: "Anthropic",
     category: "reasoning",
-    multiplier: 1.7,
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -150,15 +163,14 @@ export const MODELS: ModelEntry[] = [
       "DeepSeek V4 Pro",
     ],
     alternativeSlugs: ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5-5"],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "claude-opus-4-7",
     modelId: "claude-opus-4-7",
     name: "Claude Opus 4.7",
     vendor: "Anthropic",
     category: "reasoning",
-    multiplier: 1.7,
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -184,15 +196,14 @@ export const MODELS: ModelEntry[] = [
       "claude-sonnet-4-6",
       "kimi-k2-7-code",
     ],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "claude-opus-4-6",
     modelId: "claude-opus-4-6",
     name: "Claude Opus 4.6",
     vendor: "Anthropic",
     category: "reasoning",
-    multiplier: 1.7,
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -212,15 +223,14 @@ export const MODELS: ModelEntry[] = [
       "claude-sonnet-4-6",
       "kimi-k2-7-code",
     ],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "gpt-5-5",
     modelId: "gpt-5.5",
     name: "GPT-5.5",
     vendor: "OpenAI",
     category: "reasoning",
-    multiplier: 2,
     contextWindowK: 400,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -236,15 +246,14 @@ export const MODELS: ModelEntry[] = [
     defaultFor: ["OpenAI", "ChatGPT (Codex)"],
     comparisonSlugs: ["GPT-5.4", "Claude Opus 4.7", "Gemini 3 Pro"],
     alternativeSlugs: ["gpt-5-4", "claude-opus-4-7", "claude-sonnet-4-6"],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "claude-sonnet-4-6",
     modelId: "claude-sonnet-4-6",
     name: "Claude Sonnet 4.6",
     vendor: "Anthropic",
     category: "reasoning",
-    multiplier: 1,
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -260,15 +269,14 @@ export const MODELS: ModelEntry[] = [
     defaultFor: ["VM0 Managed"],
     comparisonSlugs: ["Claude Opus 4.7", "DeepSeek V4 Pro", "GPT-5.4 Mini"],
     alternativeSlugs: ["claude-opus-4-7", "deepseek-v4-pro"],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "gpt-5-4",
     modelId: "gpt-5.4",
     name: "GPT-5.4",
     vendor: "OpenAI",
     category: "reasoning",
-    multiplier: 1,
     contextWindowK: 400,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -284,15 +292,14 @@ export const MODELS: ModelEntry[] = [
     defaultFor: [],
     comparisonSlugs: ["GPT-5.5", "Claude Sonnet 4.6", "GPT-5.4 Mini"],
     alternativeSlugs: ["gpt-5-5", "gpt-5-4-mini", "claude-sonnet-4-6"],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "glm-5-1",
     modelId: "glm-5.1",
     name: "GLM-5.1",
     vendor: "Z.AI",
     category: "reasoning",
-    multiplier: 0.4,
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Code"],
@@ -313,15 +320,14 @@ export const MODELS: ModelEntry[] = [
       "deepseek-v4-pro",
       "claude-sonnet-4-6",
     ],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "gpt-5-4-mini",
     modelId: "gpt-5.4-mini",
     name: "GPT-5.4 Mini",
     vendor: "OpenAI",
     category: "reasoning",
-    multiplier: 0.3,
     contextWindowK: 400,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -337,15 +343,14 @@ export const MODELS: ModelEntry[] = [
     defaultFor: [],
     comparisonSlugs: ["GPT-5.4", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
     alternativeSlugs: ["gpt-5-4"],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "kimi-k2-7-code",
     modelId: "kimi-k2.7-code",
     name: "Kimi K2.7 Code",
     vendor: "Moonshot",
     category: "reasoning",
-    multiplier: 0.3,
     contextWindowK: 256,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -361,15 +366,14 @@ export const MODELS: ModelEntry[] = [
     defaultFor: ["Moonshot"],
     comparisonSlugs: ["GLM-5.1", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
     alternativeSlugs: ["glm-5-1", "deepseek-v4-pro", "claude-sonnet-4-6"],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "deepseek-v4-pro",
     modelId: "deepseek-v4-pro",
     name: "DeepSeek V4 Pro",
     vendor: "DeepSeek",
     category: "reasoning",
-    multiplier: 0.3,
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Code"],
@@ -386,15 +390,14 @@ export const MODELS: ModelEntry[] = [
     defaultFor: [],
     comparisonSlugs: ["Claude Sonnet 4.6", "Kimi K2.7 Code", "GLM-5.1"],
     alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2-7-code"],
-  },
+  }),
 
-  {
+  reasoningModel({
     slug: "minimax-m3",
     modelId: "MiniMax-M3",
     name: "MiniMax M3",
     vendor: "MiniMax",
     category: "reasoning",
-    multiplier: 0.2,
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
@@ -411,7 +414,7 @@ export const MODELS: ModelEntry[] = [
     defaultFor: ["MiniMax"],
     comparisonSlugs: ["Kimi K2.7 Code", "Claude Sonnet 4.6", "GLM-5.1"],
     alternativeSlugs: ["kimi-k2-7-code", "claude-sonnet-4-6"],
-  },
+  }),
 
   // -------------------------------------------------------------------------
   // Image generation models.

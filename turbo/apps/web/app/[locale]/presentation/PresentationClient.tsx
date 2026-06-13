@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
+import { r2ImageTransformUrl } from "@vm0/core";
 import { CopyablePrompt } from "../../components/CopyablePrompt";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
@@ -15,6 +16,7 @@ import {
 
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
+const PRESENTATION_PREVIEW_IMAGE_SIZE = { width: 1664, height: 824 } as const;
 
 function PresentationCard({
   item,
@@ -42,7 +44,10 @@ function PresentationCard({
       >
         <div className="relative aspect-[1280/633] overflow-hidden bg-[hsl(var(--gray-1))]">
           <Image
-            src={item.previewImage}
+            src={r2ImageTransformUrl(
+              item.previewImage,
+              PRESENTATION_PREVIEW_IMAGE_SIZE,
+            )}
             alt={item.title}
             fill
             sizes="(min-width: 880px) 832px, calc(100vw - 48px)"

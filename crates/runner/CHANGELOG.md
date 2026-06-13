@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.116.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.2...runner-rs-v0.116.3) (2026-06-13)
+
+
+### Bug Fixes
+
+* surface connector diagnostics for failed requests ([#17457](https://github.com/vm0-ai/vm0/issues/17457)) ([52a3083](https://github.com/vm0-ai/vm0/commit/52a308358d08bb30dd1e87e11747cfe13743a444))
+
 ## [0.116.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.1...runner-rs-v0.116.2) (2026-06-13)
 
 

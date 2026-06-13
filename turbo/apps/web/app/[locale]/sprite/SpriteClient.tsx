@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
+import { r2ImageTransformUrl } from "@vm0/core";
 import { CopyablePrompt } from "../../components/CopyablePrompt";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
@@ -10,6 +11,7 @@ import { SPRITE_ITEMS, buildSpriteRemixHref, type SpriteItem } from "./data";
 
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
+const SPRITE_PREVIEW_IMAGE_SIZE = { width: 1664, height: 1170 } as const;
 
 function SpriteCard({ item, appUrl }: { item: SpriteItem; appUrl: string }) {
   const remixHref = buildSpriteRemixHref(item, appUrl);
@@ -29,7 +31,10 @@ function SpriteCard({ item, appUrl }: { item: SpriteItem; appUrl: string }) {
       >
         <div className="relative aspect-[1280/900] overflow-hidden bg-[hsl(var(--gray-1))]">
           <Image
-            src={item.previewImage}
+            src={r2ImageTransformUrl(
+              item.previewImage,
+              SPRITE_PREVIEW_IMAGE_SIZE,
+            )}
             alt={item.title}
             fill
             sizes="(min-width: 880px) 832px, calc(100vw - 48px)"

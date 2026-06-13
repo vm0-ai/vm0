@@ -6,6 +6,7 @@ import { Footer } from "../../components/Footer";
 import {
   illustrationAssetUrl,
   ILLUSTRATION_STYLES,
+  r2ImageTransformUrl,
   type IllustrationStyle,
 } from "@vm0/core";
 
@@ -13,6 +14,9 @@ interface LightboxState {
   style: IllustrationStyle;
   activeRef: string;
 }
+
+const ILLUSTRATION_CARD_IMAGE_SIZE = { width: 900 } as const;
+const ILLUSTRATION_REF_THUMB_SIZE = { width: 80, height: 80 } as const;
 
 export function IllustrationGalleryClient() {
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
@@ -132,7 +136,7 @@ function IllustrationCard({ style, onOpen }: CardProps) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={coverSrc}
+          src={r2ImageTransformUrl(coverSrc, ILLUSTRATION_CARD_IMAGE_SIZE)}
           width={style.width}
           height={style.height}
           alt={style.title}
@@ -164,7 +168,10 @@ function IllustrationCard({ style, onOpen }: CardProps) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={illustrationAssetUrl(`refs/${style.slug}/${ref}`)}
+                src={r2ImageTransformUrl(
+                  illustrationAssetUrl(`refs/${style.slug}/${ref}`),
+                  ILLUSTRATION_REF_THUMB_SIZE,
+                )}
                 loading="lazy"
                 alt=""
               />
@@ -240,7 +247,10 @@ function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={illustrationAssetUrl(`refs/${style.slug}/${ref}`)}
+                src={r2ImageTransformUrl(
+                  illustrationAssetUrl(`refs/${style.slug}/${ref}`),
+                  ILLUSTRATION_REF_THUMB_SIZE,
+                )}
                 loading="lazy"
                 alt=""
               />
