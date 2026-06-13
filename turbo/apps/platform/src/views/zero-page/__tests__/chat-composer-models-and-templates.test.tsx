@@ -697,6 +697,112 @@ describe("chat composer models", () => {
     });
   });
 
+  it("opens a connected connector's command drawer and inserts its prompt", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent({ customSkills: [] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
+        [FeatureSwitchKey.ChatConnectorCommands]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+
+    const menu = await screen.findByTestId("slash-skill-menu");
+    await user.click(await within(menu).findByText("GitHub"));
+
+    // Drilling into the connector drawer reveals its curated commands.
+    expect(
+      await within(screen.getByTestId("slash-skill-menu")).findByText(
+        "List PRs",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("slash-skill-menu")).getByText("Create issue"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByTestId("slash-skill-menu")).getByText("List PRs"),
+    );
+
+    // Picking a command drops its natural-language prompt into the composer.
+    await waitFor(() => {
+      expect(editor.textContent).toContain("List my open pull requests");
+    });
+  });
+
+  it("hides connector commands for a connector that is not connected", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent({ customSkills: ["sales-research"] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        { name: "sales-research", displayName: null, description: null },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
+        [FeatureSwitchKey.ChatConnectorCommands]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+
+    const menu = await screen.findByTestId("slash-skill-menu");
+    expect(
+      await within(menu).findByText("/sales-research"),
+    ).toBeInTheDocument();
+    expect(within(menu).queryByText("GitHub")).not.toBeInTheDocument();
+  });
+
+  it("hides connector commands when the connector-commands switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent({ customSkills: ["sales-research"] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        { name: "sales-research", displayName: null, description: null },
+      ]);
+    });
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
+        [FeatureSwitchKey.ChatConnectorCommands]: false,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+
+    const menu = await screen.findByTestId("slash-skill-menu");
+    expect(
+      await within(menu).findByText("/sales-research"),
+    ).toBeInTheDocument();
+    expect(within(menu).queryByText("GitHub")).not.toBeInTheDocument();
+  });
+
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();

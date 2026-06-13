@@ -2,6 +2,7 @@
 // inline decorations rather than a transparent-textarea + colored overlay, so the
 // color lives in the same layer as the text and moves/scrolls with it — there is
 // no second layer to keep aligned when the input scrolls (issue #17539).
+import { useEffect, useState } from "react";
 import {
   useGet,
   useSet,
@@ -16,9 +17,11 @@ import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import { orgSkills$ } from "../../signals/skills-page/skills-signals.ts";
+import { allConnectorTypes$ } from "../../signals/zero-page/settings/connectors.ts";
 import {
   slashSkillCaretIndex$,
   setSlashSkillCaretIndex$,
@@ -29,12 +32,18 @@ import {
   buildComposerSlashSkills,
   findActiveSlashSkillRange,
   matchesSkillQuery,
-  scrollSlashSkillIntoView,
+  scrollSlashMenuItemIntoView,
   skillTokenPattern,
   SlashSkillMenu,
   type ComposerSlashSkill,
+  type SlashConnectorGroup,
+  type SlashMenuItem,
   type SlashSkillRange,
 } from "./slash-skill.tsx";
+import {
+  CONNECTOR_COMMAND_GROUPS,
+  type ConnectorCommand,
+} from "./connector-commands.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
 // Match the textarea metrics so swapping inputs is visually seamless. The editor
@@ -187,12 +196,32 @@ function insertSkillToken(
     .run();
 }
 
+// Replace the active `/query` text with a plain natural-language prompt. Unlike
+// a skill token there is no placeholder selection — the caret lands at the end of
+// the inserted text, ready to send or to keep typing (e.g. "Create issue: ").
+function insertPromptText(
+  editor: Editor,
+  slashRange: SlashSkillRange,
+  text: string,
+): void {
+  const head = editor.state.selection.head;
+  const span = slashRange.end - slashRange.start;
+  editor
+    .chain()
+    .focus()
+    .insertContentAt({ from: head - span, to: head }, [{ type: "text", text }])
+    .run();
+}
+
 interface SlashMenuKeyContext {
-  readonly suggestions: readonly ComposerSlashSkill[];
+  readonly items: readonly SlashMenuItem[];
   readonly selectedIndex: number;
   readonly setSelectedIndex: (index: number) => void;
   readonly setCaretIndex: (index: number) => void;
-  readonly onInsert: (skill: ComposerSlashSkill) => void;
+  readonly onSelect: (item: SlashMenuItem) => void;
+  // Set while a connector drawer is open; Escape returns to the top level
+  // instead of closing the menu.
+  readonly onBack: (() => void) | null;
 }
 
 // Drives the suggestion menu from the keyboard. Returns true when it consumes the
@@ -205,31 +234,34 @@ function handleSlashMenuKey(
     event.preventDefault();
     const next = Math.min(
       ctx.selectedIndex + 1,
-      Math.max(ctx.suggestions.length - 1, 0),
+      Math.max(ctx.items.length - 1, 0),
     );
     ctx.setSelectedIndex(next);
-    scrollSlashSkillIntoView(ctx.suggestions[next]);
+    scrollSlashMenuItemIntoView(ctx.items[next]);
     return true;
   }
   if (event.key === "ArrowUp") {
     event.preventDefault();
     const next = Math.max(ctx.selectedIndex - 1, 0);
     ctx.setSelectedIndex(next);
-    scrollSlashSkillIntoView(ctx.suggestions[next]);
+    scrollSlashMenuItemIntoView(ctx.items[next]);
     return true;
   }
-  if ((event.key === "Enter" || event.key === "Tab") && ctx.suggestions[0]) {
+  if ((event.key === "Enter" || event.key === "Tab") && ctx.items[0]) {
     event.preventDefault();
-    const skill =
-      ctx.suggestions[Math.min(ctx.selectedIndex, ctx.suggestions.length - 1)];
-    if (skill) {
-      ctx.onInsert(skill);
+    const item = ctx.items[Math.min(ctx.selectedIndex, ctx.items.length - 1)];
+    if (item) {
+      ctx.onSelect(item);
     }
     return true;
   }
   if (event.key === "Escape") {
     event.preventDefault();
-    ctx.setCaretIndex(-1);
+    if (ctx.onBack) {
+      ctx.onBack();
+    } else {
+      ctx.setCaretIndex(-1);
+    }
     return true;
   }
   return false;
@@ -348,6 +380,13 @@ export function TiptapSkillComposer({
   const orgSkillsLoadable = useLastLoadable(orgSkills$);
   const orgSkillsData =
     orgSkillsLoadable.state === "hasData" ? orgSkillsLoadable.data : [];
+  const connectorsLoadable = useLastLoadable(allConnectorTypes$);
+  const connectorStatuses =
+    connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
+  // Which connector drawer is open, or null at the top level. Reset whenever the
+  // menu closes (effect below) so reopening `/` always starts at the top level.
+  const [openConnectorType, setOpenConnectorType] =
+    useState<ConnectorType | null>(null);
   const composerSkills = buildComposerSlashSkills({
     agentSkillNames: currentAgent?.customSkills ?? [],
     orgSkills: orgSkillsData,
@@ -362,11 +401,76 @@ export function TiptapSkillComposer({
         return matchesSkillQuery(skill, slashRange.query);
       })
     : [];
+
+  // Connected connectors that have a curated command group, gated by the feature
+  // switch. The display label comes from the connector registry; only connected
+  // connectors appear so the menu never offers a command the user can't run.
+  const connectorCommandsEnabled =
+    features?.[FeatureSwitchKey.ChatConnectorCommands] ?? false;
+  const connectorGroups: readonly SlashConnectorGroup[] =
+    connectorCommandsEnabled
+      ? CONNECTOR_COMMAND_GROUPS.flatMap((group) => {
+          const status = connectorStatuses.find((connector) => {
+            return connector.type === group.connectorType;
+          });
+          if (!status || !status.connected) {
+            return [];
+          }
+          return [
+            {
+              connectorType: group.connectorType,
+              label: status.label,
+              commands: group.commands,
+            },
+          ];
+        })
+      : [];
+  const filteredConnectorGroups = slashRange
+    ? connectorGroups.filter((group) => {
+        return group.label
+          .toLowerCase()
+          .includes(slashRange.query.toLowerCase());
+      })
+    : [];
+  const openGroup = openConnectorType
+    ? (connectorGroups.find((group) => {
+        return group.connectorType === openConnectorType;
+      }) ?? null)
+    : null;
+
+  // The ordered rows for the current level. The menu renders/keys off the same
+  // array, so the keyboard selection index and the rendered rows always agree.
+  const menuItems: readonly SlashMenuItem[] = openGroup
+    ? openGroup.commands.map((command, index) => {
+        return { kind: "command", command, index } as const;
+      })
+    : [
+        ...filteredConnectorGroups.map((group) => {
+          return { kind: "connector", group } as const;
+        }),
+        ...suggestions.map((skill) => {
+          return { kind: "skill", skill } as const;
+        }),
+      ];
+  const menuMode: "top" | "drawer" = openGroup ? "drawer" : "top";
+
   const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
   const showSkillsPageLink = features?.[FeatureSwitchKey.SkillsViewer] ?? false;
   const showSlashSkillMenu =
     slashRange !== null &&
-    (isLoadingOrgSkills || composerSkills.length > 0 || showSkillsPageLink);
+    (isLoadingOrgSkills ||
+      composerSkills.length > 0 ||
+      showSkillsPageLink ||
+      filteredConnectorGroups.length > 0 ||
+      openGroup !== null);
+
+  // The menu's open/close is derived state; when it closes, drop back to the top
+  // level so a connector drawer never silently reopens on the next `/`.
+  useEffect(() => {
+    if (!showSlashSkillMenu && openConnectorType !== null) {
+      setOpenConnectorType(null);
+    }
+  }, [showSlashSkillMenu, openConnectorType]);
 
   // Created once; useEditor refreshes its options via setOptions on every render,
   // so the handlers always close over the latest props/state (no refs needed).
@@ -398,15 +502,46 @@ export function TiptapSkillComposer({
     onDraftChange?.();
   }
 
+  function insertPrompt(command: ConnectorCommand): void {
+    if (!editor || !slashRange) {
+      return;
+    }
+    insertPromptText(editor, slashRange, command.prompt);
+    onDraftChange?.();
+  }
+
+  function openConnectorDrawer(connectorType: ConnectorType): void {
+    setOpenConnectorType(connectorType);
+    setSelectedSkillIndex(0);
+  }
+
+  function closeConnectorDrawer(): void {
+    setOpenConnectorType(null);
+    setSelectedSkillIndex(0);
+  }
+
+  function selectMenuItem(item: SlashMenuItem): void {
+    if (item.kind === "connector") {
+      openConnectorDrawer(item.group.connectorType);
+      return;
+    }
+    if (item.kind === "skill") {
+      insertSkill(item.skill);
+      return;
+    }
+    insertPrompt(item.command);
+  }
+
   function handleEditorKeyDown(event: KeyboardEvent): boolean {
     if (
       showSlashSkillMenu &&
       handleSlashMenuKey(event, {
-        suggestions,
+        items: menuItems,
         selectedIndex: selectedSkillIndex,
         setSelectedIndex: setSelectedSkillIndex,
         setCaretIndex,
-        onInsert: insertSkill,
+        onSelect: selectMenuItem,
+        onBack: openGroup ? closeConnectorDrawer : null,
       })
     ) {
       return true;
@@ -440,13 +575,14 @@ export function TiptapSkillComposer({
       </PopoverAnchor>
       {showSlashSkillMenu && (
         <SlashSkillMenu
-          skills={suggestions}
+          items={menuItems}
+          mode={menuMode}
+          drawerLabel={openGroup ? openGroup.label : null}
           loading={isLoadingOrgSkills}
           selectedIndex={selectedSkillIndex}
           showSkillsPageLink={showSkillsPageLink}
-          onSelect={(skill) => {
-            insertSkill(skill);
-          }}
+          onSelect={selectMenuItem}
+          onBack={closeConnectorDrawer}
         />
       )}
     </Popover>
