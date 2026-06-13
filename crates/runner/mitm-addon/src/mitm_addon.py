@@ -96,7 +96,6 @@ _CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES = "_connector_diagnostic_auth_query
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
     (
         "authorization",
-        "proxy-authorization",
         "x-api-key",
         "api-key",
     )
