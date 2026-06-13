@@ -70,6 +70,7 @@
       "ws": ">=8.20.1",
       "mdast-util-to-hast": ">=13.2.1",
       "minimatch": ">=10.2.3",
+      "esbuild": "0.28.1",
       "@esbuild-kit/core-utils>esbuild": "^0.25.4",
       "flatted": ">=3.4.2",
       "picomatch": ">=4.0.4",
