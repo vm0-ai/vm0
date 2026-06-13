@@ -135,6 +135,18 @@ class TestOpenAIResponsesSseUsageExtractor:
             "tokens.output": 4,
         }
 
+    def test_eventless_non_terminal_type_split_across_chunks_recovers(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(b'data: {"type":"response.output_text.')
+        parse(
+            b'delta","delta":"ignored"}\n\n'
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":5}}}\n\n'
+        )
+
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 5
+
     def test_eventless_type_after_prefix_bound_falls_back_to_full_extraction(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
