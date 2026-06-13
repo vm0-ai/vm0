@@ -23,6 +23,32 @@ _BROWSER_USER_AGENT = (
 )
 
 
+def _write_auth_base_firewall_registry(
+    tmp_path,
+    *,
+    vm_fields: dict[str, object] | None = None,
+):
+    return _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="webhook",
+            api_entry={
+                "base": "https://placeholder.example.com",
+                "auth": {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+                "permissions": [{"name": "send", "rules": ["ANY /"]}],
+            },
+            network_policy={
+                "allow": ["send"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            vm_fields=vm_fields,
+        ),
+    )
+
+
 async def test_firewall_match_calls_handler(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
@@ -531,6 +557,216 @@ async def test_oversized_auth_base_request_does_not_capture_request_body(
 
     proxy_log_text = (tmp_path / "proxy.jsonl").read_text()
     assert "super-secret-body" not in proxy_log_text
+
+
+async def test_auth_base_requestheaders_rejects_oversized_content_length_before_auth(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    request_body = b'{"secret":"super-secret-body"}'
+    reg_path = _write_auth_base_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Type", "application/json"),
+            ("Content-Length", str(auth.MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1)),
+        ),
+        request_body=request_body,
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    get_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 413
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
+    body = json.loads(flow.response.content)
+    assert body == {
+        "error": "auth_base_request_body_too_large",
+        "message": "auth.base request body too large",
+        "permission": "webhook",
+        "base": "https://placeholder.example.com",
+    }
+
+    network_log_text = (tmp_path / "net.jsonl").read_text()
+    assert "super-secret-body" not in network_log_text
+    network_log_entry = json.loads(network_log_text)
+    assert "request_body" not in network_log_entry
+    assert network_log_entry["firewall_error"] == "auth_base_request_body_too_large"
+
+    proxy_log_text = (tmp_path / "proxy.jsonl").read_text()
+    assert "super-secret-body" not in proxy_log_text
+
+
+@pytest.mark.parametrize(
+    "request_header_pairs",
+    [
+        [("Transfer-Encoding", "chunked")],
+        [("Content-Length", "not-a-number")],
+        [("Content-Length", "-1")],
+        [("Content-Length", "4"), ("Content-Length", "5")],
+    ],
+)
+async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
+    tmp_path, real_flow, mitm_ctx, headers, request_header_pairs
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            *request_header_pairs,
+        ),
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    get_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 411
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == ("auth_base_request_body_length_required")
+    body = json.loads(flow.response.content)
+    assert body == {
+        "error": "auth_base_request_body_length_required",
+        "message": "auth.base request body requires a valid Content-Length",
+        "permission": "webhook",
+        "base": "https://placeholder.example.com",
+    }
+
+
+async def test_auth_base_requestheaders_accepts_matching_duplicate_content_length(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", "4"),
+            ("Content-Length", "4"),
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    assert flow.response is None
+
+
+async def test_auth_base_requestheaders_accepts_no_body_framing(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="GET",
+        path="/",
+        request_headers=headers(("Host", "placeholder.example.com")),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    assert flow.response is None
+
+
+async def test_auth_base_requestheaders_accepts_body_at_limit_and_reuses_match(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", str(auth.MAX_AUTH_BASE_REQUEST_BODY_BYTES)),
+        ),
+        request_body=b"ok",
+    )
+    token_meta = {
+        "headers": {},
+        "base": "https://real.example.com/webhook",
+        "resolved_secrets": ["WEBHOOK_URL"],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
+    mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+        patch.object(auth, "forward_request", mock_forward),
+    ):
+        mitm_addon.requestheaders(flow)
+        assert flow.response is None
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 200
+    assert mock_forward.call_args is not None
+    assert mock_forward.call_args[0][3] == b"ok"
+
+
+async def test_non_auth_base_requestheaders_ignores_unbounded_body_framing(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos",
+        method="POST",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Transfer-Encoding", "chunked"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert mock_headers.await_count == 1
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
 async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(

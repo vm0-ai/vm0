@@ -204,6 +204,15 @@ def _prepare_firewall_metadata(
     flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = vm_info.get("modelUsageProvider")
 
 
+def prepare_firewall_metadata(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+) -> None:
+    """Store matched-firewall metadata for callers outside this module."""
+    _prepare_firewall_metadata(flow, allow, vm_info)
+
+
 def _build_firewall_auth_context(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
@@ -862,9 +871,11 @@ def _set_auth_base_request_too_large(
     allow: matching.FirewallAllow,
     proxy_log_path: str,
     firewall_base: str,
+    observed_size: int | None = None,
 ) -> None:
-    body = flow.request.raw_content
-    observed_size = len(body) if body is not None else 0
+    if observed_size is None:
+        body = flow.request.raw_content
+        observed_size = len(body) if body is not None else 0
     flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
     log_proxy_entry(
         proxy_log_path,
@@ -881,6 +892,53 @@ def _set_auth_base_request_too_large(
         action="ALLOW",
         error_code="auth_base_request_body_too_large",
         message="auth.base request body too large",
+        permission=allow.name,
+    )
+
+
+def set_auth_base_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+    observed_size: int,
+) -> None:
+    """Set the auth.base oversized-body response before request buffering."""
+    _set_auth_base_request_too_large(
+        flow,
+        allow=allow,
+        proxy_log_path=proxy_log_path,
+        firewall_base=firewall_base,
+        observed_size=observed_size,
+    )
+
+
+def set_auth_base_request_length_required(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+    reason: str,
+) -> None:
+    """Reject auth.base body framing that cannot prove a bounded request body."""
+    flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base request body requires a valid Content-Length",
+        type="firewall",
+        firewall_base=firewall_base,
+        framing_error=reason,
+        request_body_limit_bytes=MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=411,
+        action="ALLOW",
+        error_code="auth_base_request_body_length_required",
+        message="auth.base request body requires a valid Content-Length",
         permission=allow.name,
     )
 
