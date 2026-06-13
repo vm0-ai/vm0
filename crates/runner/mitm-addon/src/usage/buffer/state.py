@@ -8,7 +8,6 @@ from collections.abc import Iterable
 
 from ..idempotency import USAGE_EVENT_NAMESPACE_AGGREGATE, derive_usage_idempotency_key
 from ..webhook import WebhookDeliveryOutcome
-from .logging import _pending_flush_from_batches, _pending_flush_from_pending_batches
 from .models import (
     MAX_AGGREGATE_BUCKETS,
     MAX_BUFFERED_SOURCE_EVENTS,
@@ -33,6 +32,7 @@ from .models import (
     _PendingFlush,
     _RetainBatchesResult,
 )
+from .summaries import _pending_flush_from_batches, _pending_flush_from_pending_batches
 
 
 class _UsageBufferState:

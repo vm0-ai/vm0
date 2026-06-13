@@ -9,13 +9,7 @@ from collections.abc import Callable, Iterable
 
 from ..counters import set_buffered_usage_events
 from ..webhook import WebhookDeliveryOutcome, _enqueue_webhook
-from .logging import (
-    _apply_retained_batch_counts,
-    _build_flush_summaries,
-    _elapsed_ms,
-    _log_dropped_batches,
-    _log_flush_summaries,
-)
+from .logging import _elapsed_ms, _log_dropped_batches, _log_flush_summaries
 from .models import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
     DEFAULT_FLUSH_JITTER_RATIO,
@@ -35,6 +29,7 @@ from .models import (
     _TimerHandle,
 )
 from .state import _UsageBufferState
+from .summaries import _apply_retained_batch_counts, _build_flush_summaries
 
 _jitter_rng = random.SystemRandom()
 
