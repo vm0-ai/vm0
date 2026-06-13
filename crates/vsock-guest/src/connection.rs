@@ -3,7 +3,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use vsock_proto::{
     self, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
@@ -32,8 +32,13 @@ const VSOCK_CID_HOST: u32 = 2;
 /// Read buffer size for the connection event loop (local tuning constant).
 const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB
 enum ConnectionEnd {
-    Closed,
+    Closed { stable: bool },
     Shutdown,
+}
+
+struct ConnectionFailure {
+    error: io::Error,
+    stable: bool,
 }
 
 enum ReconnectFailure {
@@ -57,6 +62,66 @@ impl Drop for ConnectionCancelGuard {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Release);
     }
+}
+
+struct ConnectionSession {
+    started_at: Instant,
+    handled_real_host_work: bool,
+}
+
+impl ConnectionSession {
+    fn new() -> Self {
+        Self {
+            started_at: Instant::now(),
+            handled_real_host_work: false,
+        }
+    }
+
+    fn mark_real_host_work(&mut self, msg_type: u8) {
+        if is_real_host_work_message(msg_type) {
+            self.handled_real_host_work = true;
+        }
+    }
+
+    fn is_stable(&self) -> bool {
+        connection_is_stable(self.started_at.elapsed(), self.handled_real_host_work)
+    }
+
+    fn closed(&self) -> ConnectionEnd {
+        ConnectionEnd::Closed {
+            stable: self.is_stable(),
+        }
+    }
+
+    fn failure(&self, error: io::Error) -> ConnectionFailure {
+        ConnectionFailure {
+            error,
+            stable: self.is_stable(),
+        }
+    }
+}
+
+fn unstable_connection_failure(error: io::Error) -> ConnectionFailure {
+    ConnectionFailure {
+        error,
+        stable: false,
+    }
+}
+
+fn connection_is_stable(elapsed: Duration, handled_real_host_work: bool) -> bool {
+    handled_real_host_work || elapsed >= STABLE_CONNECTION_MIN_DURATION
+}
+
+fn is_real_host_work_message(msg_type: u8) -> bool {
+    matches!(
+        msg_type,
+        MSG_EXEC_START
+            | MSG_EXEC_CANCEL
+            | MSG_EXEC_CONTROL
+            | MSG_WRITE_FILE
+            | MSG_QUIESCE_OPERATIONS
+            | MSG_RESUME_OPERATIONS
+    )
 }
 
 fn acquire_operation_guard(
@@ -400,13 +465,16 @@ pub fn connect_unix(path: &str) -> io::Result<UnixStream> {
 /// Handle connection - the main event loop
 /// Uses separate reader/writer to avoid deadlock between main loop and background threads
 pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
-    handle_connection_with_outcome(stream).map(|_| ())
+    match handle_connection_with_outcome(stream) {
+        Ok(_) => Ok(()),
+        Err(failure) => Err(failure.error),
+    }
 }
 
-fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEnd> {
+fn handle_connection_with_outcome(stream: UnixStream) -> Result<ConnectionEnd, ConnectionFailure> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while worker threads write results.
-    let mut reader = stream.try_clone()?;
+    let mut reader = stream.try_clone().map_err(unstable_connection_failure)?;
     let writer = GuestWriter::new(stream);
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
@@ -415,16 +483,23 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
 
     // Send ready signal
     {
-        let ready = vsock_proto::encode(MSG_READY, 0, &[]).map_err(to_io_error)?;
-        writer.write_frame(&ready)?;
+        let ready = vsock_proto::encode(MSG_READY, 0, &[])
+            .map_err(to_io_error)
+            .map_err(unstable_connection_failure)?;
+        writer
+            .write_frame(&ready)
+            .map_err(unstable_connection_failure)?;
     }
     log("INFO", "Sent ready signal");
 
+    let mut session = ConnectionSession::new();
     let dispatcher = ConnectionDispatcher::new(writer, connection_cancel.clone());
     let mut buf = [0u8; READ_BUFFER_SIZE];
     loop {
         // Read from stream (reader is separate, no lock needed)
-        let n = reader.read(&mut buf)?;
+        let n = reader
+            .read(&mut buf)
+            .map_err(|error| session.failure(error))?;
 
         if n == 0 {
             break;
@@ -433,22 +508,37 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
         // n <= buf.len() is guaranteed by read()
         for msg in decoder
             .decode(buf.get(..n).unwrap_or_default())
-            .map_err(to_io_error)?
+            .map_err(to_io_error)
+            .map_err(|error| session.failure(error))?
         {
-            if dispatcher.dispatch(&msg)? == DispatchOutcome::Shutdown {
+            if dispatcher
+                .dispatch(&msg)
+                .map_err(|error| session.failure(error))?
+                == DispatchOutcome::Shutdown
+            {
                 return Ok(ConnectionEnd::Shutdown);
             }
+            session.mark_real_host_work(msg.msg_type);
         }
     }
 
     log("INFO", "Host disconnected");
-    Ok(ConnectionEnd::Closed)
+    Ok(session.closed())
 }
 
 /// Maximum reconnection attempts before giving up
 const MAX_RECONNECT_ATTEMPTS: u32 = 50;
 /// Delay between reconnection attempts (10ms for fast reconnect after snapshot restore)
 const RECONNECT_DELAY_MS: u64 = 10;
+const STABLE_CONNECTION_MIN_DURATION: Duration = Duration::from_secs(1);
+
+fn next_reconnect_attempts(current_attempts: u32, connection_was_stable: bool) -> u32 {
+    if connection_was_stable {
+        1
+    } else {
+        current_attempts + 1
+    }
+}
 
 fn retry_or_fail(failure: ReconnectFailure, attempts: u32) -> io::Result<()> {
     if attempts >= MAX_RECONNECT_ATTEMPTS {
@@ -515,28 +605,32 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
     loop {
         let result = if let Some(path) = unix_socket {
             log("INFO", &format!("Connecting to Unix socket: {}...", path));
-            connect_unix(path).and_then(|stream| {
-                log("INFO", "Connected");
-                // Reset attempts on successful connection
-                attempts = 0;
-                handle_connection_with_outcome(stream)
-            })
+            connect_unix(path)
+                .map_err(unstable_connection_failure)
+                .and_then(|stream| {
+                    log("INFO", "Connected");
+                    handle_connection_with_outcome(stream)
+                })
         } else {
             log("INFO", "Connecting to host (CID=2)...");
-            connect_vsock().and_then(|stream| {
-                log("INFO", "Connected");
-                // Reset attempts on successful connection
-                attempts = 0;
-                handle_connection_with_outcome(stream)
-            })
+            connect_vsock()
+                .map_err(unstable_connection_failure)
+                .and_then(|stream| {
+                    log("INFO", "Connected");
+                    handle_connection_with_outcome(stream)
+                })
         };
-
-        attempts += 1;
 
         match result {
             Ok(ConnectionEnd::Shutdown) => return Ok(()),
-            Ok(ConnectionEnd::Closed) => retry_or_fail(ReconnectFailure::Closed, attempts)?,
-            Err(error) => retry_or_fail(ReconnectFailure::Error(error), attempts)?,
+            Ok(ConnectionEnd::Closed { stable }) => {
+                attempts = next_reconnect_attempts(attempts, stable);
+                retry_or_fail(ReconnectFailure::Closed, attempts)?;
+            }
+            Err(failure) => {
+                attempts = next_reconnect_attempts(attempts, failure.stable);
+                retry_or_fail(ReconnectFailure::Error(failure.error), attempts)?;
+            }
         }
     }
 }
@@ -544,6 +638,7 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use vsock_proto::{MSG_PING, MSG_SHUTDOWN};
 
     #[test]
     fn retry_closed_failure_returns_connection_reset_when_exhausted() {
@@ -571,5 +666,45 @@ mod tests {
             assert_eq!(error.kind(), io::ErrorKind::TimedOut);
             assert_eq!(error.to_string(), "connection timed out");
         }
+    }
+
+    #[test]
+    fn connection_stability_requires_duration_or_real_work() {
+        assert!(!connection_is_stable(
+            STABLE_CONNECTION_MIN_DURATION - Duration::from_millis(1),
+            false
+        ));
+        assert!(connection_is_stable(STABLE_CONNECTION_MIN_DURATION, false));
+        assert!(connection_is_stable(Duration::ZERO, true));
+    }
+
+    #[test]
+    fn liveness_and_shutdown_messages_do_not_count_as_real_host_work() {
+        assert!(!is_real_host_work_message(MSG_PING));
+        assert!(!is_real_host_work_message(MSG_SHUTDOWN));
+    }
+
+    #[test]
+    fn operation_messages_count_as_real_host_work() {
+        for msg_type in [
+            MSG_EXEC_START,
+            MSG_EXEC_CANCEL,
+            MSG_EXEC_CONTROL,
+            MSG_WRITE_FILE,
+            MSG_QUIESCE_OPERATIONS,
+            MSG_RESUME_OPERATIONS,
+        ] {
+            assert!(is_real_host_work_message(msg_type));
+        }
+    }
+
+    #[test]
+    fn stable_connection_resets_reconnect_attempt_streak_before_counting_failure() {
+        assert_eq!(next_reconnect_attempts(20, true), 1);
+    }
+
+    #[test]
+    fn unstable_connection_continues_reconnect_attempt_streak() {
+        assert_eq!(next_reconnect_attempts(20, false), 21);
     }
 }
