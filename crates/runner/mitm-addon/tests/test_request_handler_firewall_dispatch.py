@@ -713,14 +713,11 @@ async def test_requestheaders_skips_registry_for_bounded_body_headers(real_flow,
         ),
     )
 
-    with patch.object(
-        mitm_addon.registry,
-        "load_registry_state",
-        side_effect=AssertionError("requestheaders should not load the registry"),
-    ):
-        mitm_addon.requestheaders(flow)
+    mitm_addon.requestheaders(flow)
 
     assert flow.response is None
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
 
 
 async def test_auth_base_requestheaders_accepts_body_at_limit(
