@@ -3,29 +3,17 @@
 //! This test lives in its own binary because `guest_agent::env` caches values
 //! in process-wide `LazyLock`s.
 
+mod common;
+
 use api_contracts::generated::constants::model_provider_env::placeholders::OPENAI_API_KEY as OPENAI_API_KEY_PLACEHOLDER;
 use base64::Engine as _;
+use common::SystemLogOverrideGuard;
 use guest_agent::masker::SecretMasker;
 use std::path::Path;
 use std::time::Duration;
 
 const OTHER_SECRET: &str = "codex-setup-env-secret";
 const STDERR_OMITTED_LONG_LINE: &str = "[stderr line omitted: exceeded diagnostic size limit]";
-
-struct SystemLogOverrideGuard;
-
-impl SystemLogOverrideGuard {
-    fn set(path: &Path) -> Self {
-        guest_common::log::set_system_log_file(path);
-        Self
-    }
-}
-
-impl Drop for SystemLogOverrideGuard {
-    fn drop(&mut self) {
-        guest_common::log::clear_system_log_file();
-    }
-}
 
 #[tokio::test]
 async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::error::Error>> {

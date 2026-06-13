@@ -5,25 +5,11 @@
 
 mod common;
 
+use common::SystemLogOverrideGuard;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use serde_json::json;
 use std::time::Duration;
-
-struct SystemLogGuard;
-
-impl SystemLogGuard {
-    fn set(path: &std::path::Path) -> Self {
-        guest_common::log::set_system_log_file(path);
-        Self
-    }
-}
-
-impl Drop for SystemLogGuard {
-    fn drop(&mut self) {
-        guest_common::log::clear_system_log_file();
-    }
-}
 
 #[tokio::test]
 async fn cli_failure_diagnostic_masks_session_id_from_same_event()
@@ -51,7 +37,7 @@ async fn cli_failure_diagnostic_masks_session_id_from_same_event()
     }
 
     let system_log_path = tmp.path().join("system.log");
-    let _system_log_guard = SystemLogGuard::set(&system_log_path);
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
     let masker = SecretMasker::from_raw("");
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),

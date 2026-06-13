@@ -160,7 +160,6 @@ async fn put_presigned_transport_error_does_not_log_presigned_url() {
 
     let tmp = tempfile::tempdir().unwrap();
     let system_log_path = tmp.path().join("system.log");
-    let system_log_path = system_log_path.to_string_lossy().into_owned();
     let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
 
     let signature = "super-secret-signature";

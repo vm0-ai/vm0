@@ -7,6 +7,8 @@ use std::sync::{
 use std::time::Duration;
 use tokio::sync::Notify;
 
+pub(crate) use crate::common::SystemLogOverrideGuard;
+
 /// Shared mock server - env vars are set once before any `LazyLock` in the
 /// library is accessed, so environment-backed guest-agent state resolves to
 /// test values.
@@ -155,21 +157,6 @@ impl MockCallObserver {
             "timed out waiting for {context}: expected at least {expected} mock calls, observed {} after {timeout:?}",
             self.calls(),
         );
-    }
-}
-
-pub(crate) struct SystemLogOverrideGuard;
-
-impl SystemLogOverrideGuard {
-    pub(crate) fn set(path: &str) -> Self {
-        guest_common::log::set_system_log_file(path);
-        Self
-    }
-}
-
-impl Drop for SystemLogOverrideGuard {
-    fn drop(&mut self) {
-        guest_common::log::clear_system_log_file();
     }
 }
 

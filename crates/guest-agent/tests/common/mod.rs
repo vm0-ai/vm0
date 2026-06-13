@@ -19,11 +19,15 @@
 
 #![allow(dead_code)] // consumed across multiple test binaries
 
+mod system_log;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+
+pub type SystemLogOverrideGuard = system_log::SystemLogOverrideGuard;
 
 /// 128 + SIGTERM(15). Rust / glibc's default signal handler maps a
 /// SIGTERM-terminated process to this exit code.
