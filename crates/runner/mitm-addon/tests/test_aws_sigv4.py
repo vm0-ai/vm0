@@ -74,6 +74,17 @@ def test_presigned_query_malformed_url_raises_signing_error() -> None:
         )
 
 
+def test_presigned_query_invalid_bracketed_host_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
+        sign_request(
+            method="GET",
+            url=_presigned_url("[foo]"),
+            headers=[("Host", "sts.amazonaws.com")],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
 def test_invalid_port_keeps_specific_signing_error() -> None:
     with pytest.raises(AwsSigV4SigningError, match="AWS request URL has an invalid port"):
         sign_request(
