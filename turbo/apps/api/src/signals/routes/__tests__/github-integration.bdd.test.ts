@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
@@ -1370,6 +1371,8 @@ async function postGithubWebhook(
     [200],
   );
   // Webhook handling is detached and run dispatch nests more detached work.
+  // Drain it before claiming the queued job or reading session state.
+  await flushWaitUntilForTest();
 }
 
 function runIdFromAuditComment(body: string): string {
@@ -1443,6 +1446,7 @@ async function completeGithubRun(args: {
     { authorization: `Bearer ${args.sandboxToken}` },
     [200],
   );
+  await flushWaitUntilForTest();
   const completed = await args.api.readRun(args.actor, args.runId);
   expect(completed.status).toBe("completed");
   await waitForCommentCount(args.issueApi, args.expectedCommentCount);
@@ -1830,7 +1834,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       webhooks,
       actor,
       issueApi,
-      expectedCommentCount: 4,
+      expectedCommentCount: 5,
       runId: labelRun.runId,
       sandboxToken: labelRun.sandboxToken,
       cliAgentSessionId: "bdd-cli-g6b-label",
@@ -1931,6 +1935,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(firstRunId);
     await api.requestCancelRun(actor, firstRunId, [200]);
     await waitForRunStatus(api, actor, firstRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // A null issue body falls back to the placeholder paragraph.
     const beforeSecondDispatch = issueApi.comments.length;
@@ -1962,6 +1967,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(secondRunId);
     await api.requestCancelRun(actor, secondRunId, [200]);
     await waitForRunStatus(api, actor, secondRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // Non-matching labels and ignored actions never dispatch.
     let commentCount = issueApi.comments.length;
@@ -2025,6 +2031,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(prRunId);
     await api.requestCancelRun(actor, prRunId, [200]);
     await waitForRunStatus(api, actor, prRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // Creator-scoped listeners only fire for issues authored by the linked
     // creator account.
@@ -2085,6 +2092,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(creatorRunId);
     await api.requestCancelRun(actor, creatorRunId, [200]);
     await waitForRunStatus(api, actor, creatorRunId, "cancelled");
+    await flushWaitUntilForTest();
   });
 
   it("reports rejected and failed label dispatches through comments and callbacks", async () => {

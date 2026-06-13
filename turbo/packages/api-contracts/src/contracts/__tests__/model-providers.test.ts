@@ -67,8 +67,7 @@ describe("model-first canonical catalog", () => {
       "claude-opus-4-6",
       "claude-sonnet-4-6",
       "deepseek-v4-pro",
-      "kimi-k2.6",
-      "kimi-k2.5",
+      "kimi-k2.7-code",
       "MiniMax-M3",
       "glm-5.1",
       "gpt-5.5",
@@ -79,6 +78,9 @@ describe("model-first canonical catalog", () => {
 
   it("validates canonical models and credential scopes", () => {
     expect(supportedRunModelSchema.safeParse("gpt-5.5").success).toBe(true);
+    expect(supportedRunModelSchema.safeParse("kimi-k2.7-code").success).toBe(
+      true,
+    );
     expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
       false,
     );
@@ -94,6 +96,8 @@ describe("model-first canonical catalog", () => {
     expect(supportedRunModelSchema.safeParse("MiniMax-M2.7").success).toBe(
       false,
     );
+    expect(supportedRunModelSchema.safeParse("kimi-k2.6").success).toBe(false);
+    expect(supportedRunModelSchema.safeParse("kimi-k2.5").success).toBe(false);
     expect(modelProviderCredentialScopeSchema.safeParse("org").success).toBe(
       true,
     );
@@ -155,6 +159,10 @@ describe("model-first canonical catalog", () => {
     expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
       "openrouter-api-key",
     );
+    expect(getProvidersForModel("kimi-k2.7-code")).toEqual([
+      "vm0",
+      "moonshot-api-key",
+    ]);
     expect(getProvidersForModel("anthropic/claude-haiku-4.5")).toEqual([]);
     expect(getProvidersForModel("minimax/minimax-m2.7")).toEqual([]);
     expect(getProvidersForModel("MiniMax-M3")).toEqual([
@@ -184,8 +192,8 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("openrouter-api-key", "glm-5.1")).toBe(
       "z-ai/glm-5.1",
     );
-    expect(getProviderRuntimeModel("openrouter-api-key", "kimi-k2.6")).toBe(
-      "moonshotai/kimi-k2.6",
+    expect(getProviderRuntimeModel("moonshot-api-key", "kimi-k2.7-code")).toBe(
+      "kimi-k2.7-code",
     );
     expect(getProviderRuntimeModel("minimax-api-key", "MiniMax-M3")).toBe(
       "MiniMax-M3",
@@ -237,13 +245,15 @@ describe("model-first canonical catalog", () => {
         "claude-opus-4-8": 2,
         "claude-opus-4-7": 2,
         "claude-opus-4-6": 2,
-        "deepseek-v4-pro": 0.1,
+        "deepseek-v4-pro": 0.06,
+        "kimi-k2.7-code": 0.3,
       }),
     );
     expect(getVm0ModelMultiplier("claude-opus-4-8")).toBe(2);
     expect(getVm0ModelMultiplier("claude-opus-4-7")).toBe(2);
     expect(getVm0ModelMultiplier("claude-opus-4-6")).toBe(2);
-    expect(getVm0ModelMultiplier("deepseek-v4-pro")).toBe(0.1);
+    expect(getVm0ModelMultiplier("deepseek-v4-pro")).toBe(0.06);
+    expect(getVm0ModelMultiplier("kimi-k2.7-code")).toBe(0.3);
     expect(getVm0ModelMultiplier("custom/model")).toBeUndefined();
   });
 });
@@ -396,13 +406,15 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels();
     expect(models).not.toContain("claude-fable-5");
     expect(models).toContain("claude-opus-4-8");
-    expect(models).toContain("kimi-k2.5");
+    expect(models).toContain("kimi-k2.7-code");
     expect(models).toContain("MiniMax-M3");
     expect(models).toContain("glm-5.1");
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("gpt-5.4-mini");
     expect(models).not.toContain("claude-haiku-4-5");
+    expect(models).not.toContain("kimi-k2.6");
+    expect(models).not.toContain("kimi-k2.5");
     expect(models).not.toContain("MiniMax-M2.7");
     expect(models).not.toContain("deepseek-v4-flash");
   });
@@ -414,7 +426,6 @@ describe("normalizeVm0ModelId", () => {
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
     ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
     ["z-ai/glm-5.1", "glm-5.1"],
-    ["moonshotai/kimi-k2.6", "kimi-k2.6"],
   ])("normalizes %s to %s", (model, expected) => {
     expect(normalizeVm0ModelId(model)).toBe(expected);
   });
@@ -432,9 +443,7 @@ describe("model image input support", () => {
     "claude-sonnet-4-6",
     "claude-opus-4-8",
     "claude-opus-4-7",
-    "kimi-k2.6",
-    "kimi-k2.5",
-    "moonshotai/kimi-k2.5",
+    "kimi-k2.7-code",
     "MiniMax-M3",
   ])("marks %s as image-input capable", (model) => {
     expect(modelSupportsImageInput(model)).toBe(true);

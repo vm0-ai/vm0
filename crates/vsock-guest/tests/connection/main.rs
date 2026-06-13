@@ -10,5 +10,6 @@ mod support;
 mod basic;
 mod exec_operation;
 mod quiesce;
+mod reconnect;
 mod shutdown;
 mod write_file;

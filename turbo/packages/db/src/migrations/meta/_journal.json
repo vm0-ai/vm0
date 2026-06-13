@@ -3221,6 +3221,13 @@
       "when": 1781329745583,
       "tag": "0459_remove_claude_fable_5",
       "breakpoints": true
+    },
+    {
+      "idx": 460,
+      "version": "7",
+      "when": 1781331595077,
+      "tag": "0460_add_kimi_k2_7_code",
+      "breakpoints": true
     }
   ]
 }

@@ -5732,6 +5732,177 @@
         "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Default model on the Moonshot provider; also available on VM0 Managed and via OpenRouter.",
         "vm0Notes": "K2.6 has the strongest long-context recall in the Built-in lineup based on our internal evaluation, and at ×0.3 credits it's cheap enough to act as a viable Sonnet substitute for cost-sensitive work."
       },
+      "kimi-k2-7-code": {
+        "name": "Kimi K2.7 Code",
+        "pageTitle": "Kimi K2.7 Code on VM0. Long-context agents",
+        "tagline": "Moonshots Open-Source-Flaggschiff. Starke SWE-bench-Ergebnisse, Bildunterstützung und AWS-Fehlerbehebungsfähigkeiten zu ×0,3 Credits.",
+        "cardIntro": "Moonshots leistungsstärkstes Modell mit Bild- und Code-Fähigkeiten. Open-Source-Lizenz, 256K-Kontext und ×0,3 Credits auf VM0.",
+        "metaTitle": "Kimi K2.7 Code: Benchmarks, Preise & Fähigkeiten",
+        "metaDescription": "Kimi K2.7 Code im Test. Moonshots Open-Source-Flaggschiff mit 256K-Kontext, $1.14/$4.80 Preisen und ×0,3 Credits. Starke SWE-bench-Ergebnisse.",
+        "summary": "Kimi K2.7 Code ist Moonshots leistungsstärkstes öffentliches Modell, veröffentlicht im June 2026. Es bietet starke SWE-bench-Ergebnisse, multimodale Eingabe (Text, Bild, Code) und prompt caching — alles unter einer Open-Source-Lizenz.\n\nListenpreis $1.14/$4.80 pro 1M Tokens mit gecachtem Input bei $0.192/1M. Auf VM0 bei ×0,3 Credits positioniert es sich als kosteneffiziente Alternative zu Claude Sonnet 4.6.",
+        "releaseDate": "June 2026",
+        "familyPosition": "Moonshots Flaggschiff-Modell. Nachfolger von K2.6.",
+        "background": [
+          "Kimi K2.7 Code is Moonshot AI's open-weight agentic model released June 2026. It's a 1-trillion-parameter Mixture-of-Experts (MoE) model with 32B active parameters per token. The same architecture family as K2.6 and K2 Thinking, with substantial gains on agentic coding and long-horizon reasoning.",
+          "K2.7 made a real splash on independent leaderboards. Vendor-reported scores put it ahead of GPT-5.4 (xhigh) and Claude Opus 4.6 (max effort) on SWE-bench Pro, with a hallucination rate of 39% (down from K2.6's 65%). Artificial Analysis ranks it #4 on its Intelligence Index. The leading open-weight option.",
+          "On VM0 it's exposed via the Moonshot API key as the default model and through VM0 Managed at the same ×0.3 multiplier. The API is Anthropic-compatible, so VM0 agents written for Claude work without code changes."
+        ],
+        "architecture": "",
+        "specs": [
+          {
+            "label": "Familie",
+            "value": "Kimi K2-Familie"
+          },
+          {
+            "label": "Parameter",
+            "value": "Nicht veröffentlicht"
+          },
+          {
+            "label": "Modalitäten",
+            "value": "Text, Bild, Code"
+          },
+          {
+            "label": "Sprachen",
+            "value": "Mehrsprachig"
+          },
+          {
+            "label": "Kontextfenster",
+            "value": "256K Token"
+          },
+          {
+            "label": "Lizenz",
+            "value": "Open Source"
+          },
+          {
+            "label": "Verfügbar auf VM0",
+            "value": "June 2026"
+          }
+        ],
+        "benchmarksNote": "Vendor-reported scores from Moonshot's K2.7 release blog. Independent third parties (Artificial Analysis, TokenMix) corroborate the relative ordering. K2.7's hallucination rate dropped to 39% from K2.6's 65%. A significant safety/reliability improvement.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Pro",
+            "score": "58.6",
+            "note": "vendor-reported; beats GPT-5.4, Opus 4.6"
+          },
+          {
+            "name": "SWE-bench Verified",
+            "score": "80.2",
+            "note": "vendor-reported"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "66.7",
+            "note": "Terminus-2 framework"
+          },
+          {
+            "name": "LiveCodeBench (v6)",
+            "score": "89.6",
+            "note": "vendor-reported"
+          },
+          {
+            "name": "HLE (with tools)",
+            "score": "54.0",
+            "note": "leads GPT-5.4 and Opus 4.6"
+          },
+          {
+            "name": "BrowseComp (Agent Swarm)",
+            "score": "86.3",
+            "note": "up from K2.6's 78.4"
+          },
+          {
+            "name": "Artificial Analysis Intelligence Index",
+            "score": "54",
+            "note": "#4 overall, leading open-weight"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Long-context recall",
+            "body": "Strongest long-context recall in our internal evaluation across the Built-in lineup. Maintains coherence across long agent transcripts where Anthropic Sonnet starts to drift."
+          },
+          {
+            "title": "Agentic benchmarks",
+            "body": "Vendor-reported SWE-bench Pro 58.6 is the highest in the lineup at the time of writing. Beats GPT-5.4 and Opus 4.6."
+          },
+          {
+            "title": "Long-horizon coding",
+            "body": "Documented 12+ hour autonomous sessions completing 4,000+ tool calls. The model genuinely sustains performance across very long runs."
+          },
+          {
+            "title": "Tool use",
+            "body": "Reliable across common VM0 tool flows. The Anthropic-compatible API means tool schemas designed for Claude work directly."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The investigation that has to read every old thread",
+            "body": "Dig through six months of Slack conversations to find why a customer churned, comb the support-ticket backlog for a recurring bug pattern, or stitch together insights across a hundred RFCs. K2.7's long-context recall holds up across transcripts where Anthropic Sonnet starts dropping earlier turns, which is exactly what \"reading the whole pile\" workflows need."
+          },
+          {
+            "title": "The autonomous refactor that runs overnight",
+            "body": "Moonshot has documented a 13-hour autonomous refactor of an eight-year-old matching engine, with K2.7 sustaining 4,000+ tool calls without drifting off task. That's the kind of run where most models lose the goal somewhere around hour two; K2.7's long-horizon stability is what makes \"start it Friday evening, check Monday morning\" actually work."
+          },
+          {
+            "title": "The multimodal agent that handles screenshots and clips",
+            "body": "K2.7 accepts both image and video input through MoonViT, which is unusual outside the Claude family. Useful for screenshot-driven QA agents, document-vision pipelines, and any deployment where you'd otherwise have to splice in a separate vision model just to read images."
+          }
+        ],
+        "avoidFor": "Verzichte auf K2.7 bei den schwierigsten Tool-Routing-Edge-Cases, in denen Sonnet 4.6 bei Produktionszuverlässigkeit noch führt, sowie bei gepinnten Legacy-Workflows, in denen K2.6s niedrigerer Multiplikator bereits ausreicht.",
+        "comparisons": [
+          {
+            "vs": "GLM-5.1",
+            "body": "Both are long-context options. K2.7 wins on raw long-context recall in our internal evaluation; GLM-5.1 wins on context size (1M vs 256K). Default to K2.7 for long transcripts; reach for GLM-5.1 only when you need >256K tokens in a single prompt."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet (×1) leads on multi-tool English-language routing reliability. K2.7 (×0.3) wins on cost and on agentic benchmarks (SWE-bench Pro). Pair them: Sonnet for complex tool-routing, K2.7 for cost-sensitive agent work."
+          },
+          {
+            "vs": "Kimi K2.6",
+            "body": "K2.7 is the newer generation with stronger tool-use, lower hallucination rate (39% vs 65%), and better reasoning. K2.6 (×0.2) is slightly cheaper. Prefer K2.7 for new work."
+          }
+        ],
+        "verdict": "Kimi K2.7 Code ist die beste kosteneffiziente Wahl für SWE-bench-intensive Workloads. Seine Kombination aus Open-Source-Lizenz, Bildunterstützung und niedrigen Kosten macht es zu einem starken Kandidaten für selbst gehostete Setups.",
+        "faqs": [
+          {
+            "q": "When was Kimi K2.7 Code released?",
+            "a": "Moonshot AI released Kimi K2.7 Code on June 2026. Open weights are published on Hugging Face under a Modified MIT License."
+          },
+          {
+            "q": "What's the context window?",
+            "a": "256K tokens. K2.7 differentiates on recall quality at that size, not raw window size. Recall starts to degrade past ~180K (similar to other 256K models)."
+          },
+          {
+            "q": "Do I need to rewrite my agent to use Kimi?",
+            "a": "No. Kimi K2.7 Code exposes an Anthropic-compatible API, so VM0 agents tuned for Claude work without code changes."
+          },
+          {
+            "q": "How does Kimi K2.7 Code compare to Claude Opus 4.6?",
+            "a": "On agentic benchmarks (vendor-reported), K2.7 leads. SWE-bench Pro 58.6 vs Opus 4.6's 53.4, HLE with tools 54.0 vs 53.0. Opus 4.6 retains an edge on safety profile and English-language tool-routing reliability in production."
+          },
+          {
+            "q": "Does K2.7 support image input?",
+            "a": "Yes. K2.7 accepts image and video input. Text-only output. Multimodal agents work natively."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Vorherige Generation, noch günstiger (×0,2 Credits) mit ähnlichen Fähigkeiten."
+          },
+          {
+            "slug": "glm-5-1",
+            "reason": "Ähnlicher Preis, 1M-Kontext, aber ohne Bildunterstützung."
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Stärkere Code-Benchmarks mit ähnlichem Preis (×0,3 Credits)."
+          }
+        ],
+        "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Default model on the Moonshot provider; also available on VM0 Managed.",
+        "vm0Notes": "K2.7 has the strongest long-context recall in the Built-in lineup based on our internal evaluation, and at ×0.3 credits it's cheap enough to act as a viable Sonnet substitute for cost-sensitive work."
+      },
       "deepseek-v4-pro": {
         "name": "DeepSeek V4 Pro",
         "pageTitle": "DeepSeek V4 Pro on VM0. Cost-optimised reasoning",

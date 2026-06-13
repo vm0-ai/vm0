@@ -11,8 +11,8 @@ const withNextIntl = createNextIntlPlugin("./i18n.ts");
 // - removed model pages redirect to their replacement model pages instead of
 //   leaving old public URLs as dead ends.
 const MODEL_SLUG_REDIRECTS = [
-  ["kimi-k2.6", "kimi-k2-6"],
-  ["kimi-k2.5", "kimi-k2-5"],
+  ["kimi-k2.6", "kimi-k2-7-code"],
+  ["kimi-k2.5", "kimi-k2-7-code"],
   ["glm-5.1", "glm-5-1"],
   ["claude-haiku-4-5", "claude-sonnet-4-6"],
   ["deepseek-v4-flash", "deepseek-v4-pro"],

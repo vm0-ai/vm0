@@ -33,6 +33,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // Kimi / Moonshot
   "kimi-k2.6": "Kimi K2.6",
   "kimi-k2.5": "Kimi K2.5",
+  "kimi-k2.7-code": "Kimi K2.7 Code",
   "kimi-k2-thinking": "Kimi K2 Thinking",
   "kimi-k2-thinking-turbo": "Kimi K2 Thinking Turbo",
   "moonshotai/kimi-k2.6": "Kimi K2.6",
