@@ -795,9 +795,12 @@ def _sign_flow_request_with_aws_sigv4(
     flow: http.HTTPFlow,
     credentials: AwsSigV4Credentials,
 ) -> None:
+    url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(url, str):
+        url = flow.request.url
     signed_url, signed_headers = sign_request(
         method=flow.request.method,
-        url=flow.request.url,
+        url=url,
         headers=header_pairs(flow.request.headers),
         body=flow.request.raw_content,
         credentials=credentials,
