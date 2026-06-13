@@ -46,6 +46,7 @@ interface UsageFixture {
 interface AlertRow {
   readonly toAddresses: unknown;
   readonly template: unknown;
+  readonly headers: unknown;
   readonly status: string;
 }
 
@@ -56,6 +57,7 @@ interface CreditLowBalanceTemplate {
     readonly remainingCredits: number;
     readonly thresholdCredits: number;
     readonly billingUrl: string;
+    readonly unsubscribeUrl?: string;
   };
 }
 
@@ -99,7 +101,9 @@ function parseLowCreditTemplate(value: unknown): CreditLowBalanceTemplate {
     typeof value.props.orgName === "string" &&
     typeof value.props.remainingCredits === "number" &&
     typeof value.props.thresholdCredits === "number" &&
-    typeof value.props.billingUrl === "string"
+    typeof value.props.billingUrl === "string" &&
+    (value.props.unsubscribeUrl === undefined ||
+      typeof value.props.unsubscribeUrl === "string")
   ) {
     return {
       template: value.template,
@@ -108,10 +112,26 @@ function parseLowCreditTemplate(value: unknown): CreditLowBalanceTemplate {
         remainingCredits: value.props.remainingCredits,
         thresholdCredits: value.props.thresholdCredits,
         billingUrl: value.props.billingUrl,
+        unsubscribeUrl: value.props.unsubscribeUrl,
       },
     };
   }
   throw new Error("Expected credit low-balance email template");
+}
+
+function parseHeaders(value: unknown): Record<string, string> {
+  if (!isRecord(value)) {
+    throw new Error("Expected email headers JSON to be an object");
+  }
+
+  const headers: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== "string") {
+      throw new Error("Expected email header values to be strings");
+    }
+    headers[key] = entry;
+  }
+  return headers;
 }
 
 function mockCurrentOrgMembers(
@@ -342,6 +362,7 @@ async function lowCreditAlerts(fixture: UsageFixture): Promise<AlertRow[]> {
     .select({
       toAddresses: emailOutbox.toAddresses,
       template: emailOutbox.template,
+      headers: emailOutbox.headers,
       status: emailOutbox.status,
     })
     .from(emailOutbox)
@@ -377,7 +398,9 @@ async function createUsageFixture(
 
 beforeEach(() => {
   mockEnv("APP_URL", "https://app.vm0.test");
+  mockEnv("VM0_API_URL", "https://api.vm0.test");
   mockEnv("RESEND_FROM_DOMAIN", "mail.vm0.test");
+  mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
 });
 
 describe("processOrgUsageEvents$ low-credit alerts", () => {
@@ -390,12 +413,15 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
     await processFixture(fixture);
 
     const alerts = await lowCreditAlerts(fixture);
+    const admin = fixture.members[0];
+    if (!admin) {
+      throw new Error("Expected fixture admin");
+    }
     expect(alerts).toHaveLength(1);
     expect(alerts[0]?.status).toBe("pending");
-    expect(parseAddresses(alerts[0]?.toAddresses)).toStrictEqual([
-      fixture.members[0]?.email,
-    ]);
-    expect(parseLowCreditTemplate(alerts[0]?.template)).toStrictEqual({
+    expect(parseAddresses(alerts[0]?.toAddresses)).toStrictEqual([admin.email]);
+    const template = parseLowCreditTemplate(alerts[0]?.template);
+    expect(template).toMatchObject({
       template: "credit-low-balance",
       props: {
         orgName: fixture.orgName,
@@ -405,6 +431,14 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
           "https://app.vm0.test/?settings=billing&billingView=credits",
       },
     });
+    expect(template.props.unsubscribeUrl).toContain(
+      `https://api.vm0.test/api/email/unsubscribe?token=${admin.userId}.`,
+    );
+    const headers = parseHeaders(alerts[0]?.headers);
+    expect(headers["List-Unsubscribe"]).toBe(
+      `<${template.props.unsubscribeUrl}>`,
+    );
+    expect(headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
 
     const db = store.set(writeDb$);
     const [cachedAdmin] = await db
@@ -495,11 +529,18 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
     await processFixture(fixture);
 
     const alerts = await lowCreditAlerts(fixture);
-    expect(alerts).toHaveLength(1);
-    expect(parseAddresses(alerts[0]?.toAddresses)).toStrictEqual([
-      firstAdmin.email,
-      secondAdmin.email,
-    ]);
+    expect(alerts).toHaveLength(2);
+    const recipients = alerts
+      .flatMap((alert) => {
+        return parseAddresses(alert.toAddresses);
+      })
+      .sort();
+    expect(recipients).toStrictEqual(
+      [firstAdmin.email, secondAdmin.email].sort(),
+    );
+    for (const alert of alerts) {
+      expect(parseAddresses(alert.toAddresses)).toHaveLength(1);
+    }
   });
 
   it("does not enqueue an alert when the org has no current admin", async () => {

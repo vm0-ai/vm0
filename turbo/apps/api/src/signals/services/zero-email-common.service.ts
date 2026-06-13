@@ -126,6 +126,7 @@ interface CreditLowBalanceTemplate {
     readonly remainingCredits: number;
     readonly thresholdCredits: number;
     readonly billingUrl: string;
+    readonly unsubscribeUrl?: string;
   };
 }
 
@@ -454,6 +455,11 @@ function renderTemplate(template: EmailTemplate): string {
         template.props.remainingCredits.toLocaleString("en-US");
       const thresholdCredits =
         template.props.thresholdCredits.toLocaleString("en-US");
+      const unsubscribe = template.props.unsubscribeUrl
+        ? `<p><a href="${escapeHtml(
+            template.props.unsubscribeUrl,
+          )}">Unsubscribe</a></p>`
+        : "";
       return `<main><h1>Your VM0 credits are running low</h1><p>${escapeHtml(
         template.props.orgName,
       )} has ${escapeHtml(
@@ -462,7 +468,7 @@ function renderTemplate(template: EmailTemplate): string {
         thresholdCredits,
       )} credits or less.</p><p><a href="${escapeHtml(
         template.props.billingUrl,
-      )}">Manage billing</a></p></main>`;
+      )}">Manage billing</a></p>${unsubscribe}</main>`;
     }
   }
 }

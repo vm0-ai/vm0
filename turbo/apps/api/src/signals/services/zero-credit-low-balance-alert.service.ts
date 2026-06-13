@@ -14,6 +14,8 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import {
   buildFromAddress,
+  buildUnsubscribeHeaders,
+  buildUnsubscribeUrl,
   getUserEmail,
   type EmailTemplate,
 } from "./zero-email-common.service";
@@ -263,42 +265,46 @@ export const enqueueCreditLowBalanceAlert$ = command(
     );
     signal.throwIfAborted();
 
-    const toAddresses = recipients
-      .map((recipient) => {
-        return recipient.email;
-      })
-      .filter((email) => {
-        return !suppressed.has(email.toLowerCase());
-      });
-    if (toAddresses.length === 0) {
+    const deliverableRecipients = recipients.filter((recipient) => {
+      return !suppressed.has(recipient.email.toLowerCase());
+    });
+    if (deliverableRecipients.length === 0) {
       L.warn("No eligible org admin recipients for low-credit alert", {
         orgId: args.orgId,
       });
       return;
     }
 
-    const template = {
-      template: "credit-low-balance",
-      props: {
-        orgName: await orgDisplayName(db, args.orgId),
-        remainingCredits: args.remainingCredits,
-        thresholdCredits: args.thresholdCredits,
-        billingUrl: `${env("APP_URL")}/?settings=billing&billingView=credits`,
-      },
-    } satisfies EmailTemplate;
+    const orgName = await orgDisplayName(db, args.orgId);
     signal.throwIfAborted();
+    const billingUrl = `${env("APP_URL")}/?settings=billing&billingView=credits`;
 
-    await db.insert(emailOutbox).values({
-      fromAddress: buildFromAddress("vm0"),
-      toAddresses,
-      ccAddresses: null,
-      subject: "Your VM0 credits are running low",
-      replyTo: null,
-      headers: null,
-      template,
-      postSendAction: null,
-      status: "pending",
-      attempts: 0,
-    });
+    await db.insert(emailOutbox).values(
+      deliverableRecipients.map((recipient) => {
+        const unsubscribeUrl = buildUnsubscribeUrl(recipient.userId);
+        const template = {
+          template: "credit-low-balance",
+          props: {
+            orgName,
+            remainingCredits: args.remainingCredits,
+            thresholdCredits: args.thresholdCredits,
+            billingUrl,
+            unsubscribeUrl,
+          },
+        } satisfies EmailTemplate;
+        return {
+          fromAddress: buildFromAddress("vm0"),
+          toAddresses: recipient.email,
+          ccAddresses: null,
+          subject: "Your VM0 credits are running low",
+          replyTo: null,
+          headers: buildUnsubscribeHeaders(unsubscribeUrl),
+          template,
+          postSendAction: null,
+          status: "pending",
+          attempts: 0,
+        };
+      }),
+    );
   },
 );
