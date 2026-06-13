@@ -385,27 +385,6 @@ def _is_browser_request(flow: http.HTTPFlow) -> bool:
     return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
 
 
-def _record_browser_firewall_passthrough(
-    flow: http.HTTPFlow,
-    allow: matching.FirewallAllow,
-) -> None:
-    """Record a browser-looking UA allow without applying provider auth.
-
-    This path returns before ``handle_firewall_request()``, so mitmproxy does
-    not fetch or inject vm0 connector/model-provider tokens. Keep it
-    non-billable unless a future trusted browser path explicitly changes that
-    token boundary.
-    """
-    api_entry = allow.api_entry
-    flow.metadata[metadata_keys.FIREWALL_BASE] = api_entry["base"]
-    flow.metadata[metadata_keys.FIREWALL_NAME] = allow.name
-    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = allow.permission or ""
-    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = allow.rule or ""
-    flow.metadata[metadata_keys.FIREWALL_PARAMS] = allow.params
-    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-
-
 def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
     target = flow.metadata.get(metadata_keys.NETWORK_LOG_TARGET)
     if target is not None:
@@ -734,6 +713,16 @@ async def request(flow: http.HTTPFlow) -> None:
                 flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
                 return
 
+        if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+            # User-Agent is client-controlled. This is a credential-flow skip
+            # for browser-looking traffic, not proof that the request came from
+            # a trusted browser integration. Registry and authority validation
+            # have already run, but connector/model-provider auth is not fetched
+            # or injected on this path.
+            flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+            return
+
         # --- Step 3: Firewall match with permission check ---
         # Match base URL, then check permission rules before injecting auth headers.
         if compiled_firewalls:
@@ -784,13 +773,6 @@ async def request(flow: http.HTTPFlow) -> None:
                 )
                 return
             if isinstance(result, matching.FirewallAllow):
-                if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
-                    # User-Agent is client-controlled. This branch is an auth
-                    # mutation skip for browser-looking traffic, not proof that
-                    # the request came from a trusted browser integration.
-                    _record_browser_firewall_passthrough(flow, result)
-                    return
-
                 _maybe_track_usage_flow(
                     flow,
                     is_billable_firewall(result.name, vm_info),
