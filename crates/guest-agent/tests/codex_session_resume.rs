@@ -26,6 +26,9 @@
 //! - Negative path: a codex marker pointing at an empty sessions dir
 //!   surfaces the "file not found" error rather than a silent fallback.
 
+mod common;
+
+use common::SystemLogOverrideGuard;
 use serde_json::json;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex, Once};
@@ -86,21 +89,6 @@ fn send_event_for_test(
 fn reset_session_files() {
     let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
     let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
-}
-
-struct SystemLogOverrideGuard;
-
-impl SystemLogOverrideGuard {
-    fn set(path: &Path) -> Self {
-        guest_common::log::set_system_log_file(path);
-        Self
-    }
-}
-
-impl Drop for SystemLogOverrideGuard {
-    fn drop(&mut self) {
-        guest_common::log::clear_system_log_file();
-    }
 }
 
 /// Build a `YYYY/MM/DD/` style nested path under `root` and write a file.

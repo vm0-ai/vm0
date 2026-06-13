@@ -6,25 +6,11 @@
 mod common;
 
 use agent_diagnostics::{FailureDetailSource, FailureReason};
+use common::SystemLogOverrideGuard;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-
-struct SystemLogOverrideGuard;
-
-impl SystemLogOverrideGuard {
-    fn set(path: &Path) -> Self {
-        guest_common::log::set_system_log_file(path);
-        Self
-    }
-}
-
-impl Drop for SystemLogOverrideGuard {
-    fn drop(&mut self) {
-        guest_common::log::clear_system_log_file();
-    }
-}
 
 #[tokio::test]
 async fn codex_jsonl_failure_events_are_reported() -> Result<(), Box<dyn std::error::Error>> {
