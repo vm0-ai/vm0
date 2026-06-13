@@ -7,7 +7,7 @@ from typing import Final
 import matching
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
-_TEMPLATE_MARKER: Final = "${{"
+_DYNAMIC_BASE_MARKERS: Final = ("{", "}")
 _MODEL_PROVIDER_PREFIX: Final = "model-provider:"
 _DIAGNOSTIC_ANY_PERMISSION: Final = "__connector_diagnostic_any__"
 _DIAGNOSTIC_ANY_RULES: Final = ("ANY /", "ANY /{path+}")
@@ -181,7 +181,7 @@ def _diagnostic_api(api: object) -> dict | None:
     if not isinstance(api, dict):
         return None
     raw_base = api.get("base")
-    if not isinstance(raw_base, str) or _TEMPLATE_MARKER in raw_base:
+    if not isinstance(raw_base, str) or _has_dynamic_base_marker(raw_base):
         return None
     if not matching.firewall_base_config_is_valid(raw_base):
         return None
@@ -201,7 +201,7 @@ def _model_provider_exclusion_api(api: object) -> dict | None:
     if not isinstance(api, dict):
         return None
     raw_base = api.get("base")
-    if not isinstance(raw_base, str) or _TEMPLATE_MARKER in raw_base:
+    if not isinstance(raw_base, str) or _has_dynamic_base_marker(raw_base):
         return None
     if not matching.firewall_base_config_is_valid(raw_base):
         return None
@@ -226,6 +226,10 @@ def _diagnostic_permissions(raw_permissions: object) -> list[dict]:
 
 def _base_match_permissions() -> list[dict]:
     return [{"name": _DIAGNOSTIC_ANY_PERMISSION, "rules": list(_DIAGNOSTIC_ANY_RULES)}]
+
+
+def _has_dynamic_base_marker(raw_base: str) -> bool:
+    return any(marker in raw_base for marker in _DYNAMIC_BASE_MARKERS)
 
 
 def _matching_network_policies(firewalls: list[dict]) -> dict[str, dict]:

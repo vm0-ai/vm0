@@ -39,6 +39,21 @@ def test_skips_dynamic_template_base_urls():
     assert candidate is None
 
 
+def test_skips_parameterized_base_urls():
+    for url in (
+        "https://s3.amazonaws.com/my-bucket/private-object",
+        "https://raw.githubusercontent.com/vm0-ai/vm0/main/README.md",
+        "https://eth-mainnet.g.alchemy.com/v2/demo",
+    ):
+        candidate = builtin_connector_diagnostics.find_candidate(
+            url,
+            "GET",
+            active_firewall_names=set(),
+        )
+
+        assert candidate is None
+
+
 def test_skips_model_provider_firewalls():
     for url in (
         "https://api.anthropic.com/v1/messages",
