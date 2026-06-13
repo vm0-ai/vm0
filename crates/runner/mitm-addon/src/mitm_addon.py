@@ -128,7 +128,7 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
         "token",
     )
 )
-_AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD", "OPTIONS", "TRACE"))
+_AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))

@@ -613,24 +613,28 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
 
 
 @pytest.mark.parametrize(
-    "request_header_pairs",
+    ("method", "request_header_pairs"),
     [
-        [],
-        [("Transfer-Encoding", "chunked")],
-        [("Content-Length", "not-a-number")],
-        [("Content-Length", "-1")],
-        [("Content-Length", "4"), ("Content-Length", "5")],
+        ("POST", []),
+        ("PUT", []),
+        ("PATCH", []),
+        ("OPTIONS", []),
+        ("TRACE", []),
+        ("POST", [("Transfer-Encoding", "chunked")]),
+        ("POST", [("Content-Length", "not-a-number")]),
+        ("POST", [("Content-Length", "-1")]),
+        ("POST", [("Content-Length", "4"), ("Content-Length", "5")]),
     ],
 )
 async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
-    tmp_path, real_flow, mitm_ctx, headers, request_header_pairs
+    tmp_path, real_flow, mitm_ctx, headers, method, request_header_pairs
 ):
     reg_path = _write_auth_base_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="placeholder.example.com",
-        method="POST",
+        method=method,
         path="/",
         request_headers=headers(
             ("Host", "placeholder.example.com"),
@@ -712,15 +716,16 @@ async def test_auth_base_requestheaders_accepts_matching_duplicate_content_lengt
     assert flow.response is None
 
 
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
 async def test_auth_base_requestheaders_accepts_no_body_framing(
-    tmp_path, real_flow, mitm_ctx, headers
+    tmp_path, real_flow, mitm_ctx, headers, method
 ):
     reg_path = _write_auth_base_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="placeholder.example.com",
-        method="GET",
+        method=method,
         path="/",
         request_headers=headers(("Host", "placeholder.example.com")),
     )
