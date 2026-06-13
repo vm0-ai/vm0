@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { VM0_MODEL_CREDIT_MULTIPLIER } from "@vm0/api-contracts/contracts/model-credit-multipliers";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 
 import { MODELS, isReasoningModel } from "../data";
@@ -15,6 +16,18 @@ const REMOVED_MODEL_CONTENT_TERMS = [
   "Both V4 models",
   "MiniMax M2.7",
   "M2.7",
+  "×1.7",
+  "×1,7",
+  "x1.7",
+  "x1,7",
+  "DeepSeek V4 Pro (×0.3)",
+  "DeepSeek V4 Pro (×0,3)",
+  "DeepSeek V4 Pro（×0.3）",
+  "V4 Pro (×0.3)",
+  "V4 Pro (×0,3)",
+  "V4 Pro（×0.3",
+  "VM0 Managed at ×0.3",
+  "VM0 Managed at ×0,3",
 ] as const;
 
 function readModelContent(locale: (typeof MODEL_CONTENT_LOCALES)[number]) {
@@ -52,6 +65,15 @@ describe("models page data", () => {
         return vm0ModelIds.has(modelId);
       }),
     ).toBe(true);
+  });
+
+  it("uses canonical VM0 credit multipliers for reasoning models", () => {
+    const reasoningModels = MODELS.filter(isReasoningModel);
+    for (const model of reasoningModels) {
+      expect(model.multiplier).toBe(
+        VM0_MODEL_CREDIT_MULTIPLIER[model.modelId],
+      );
+    }
   });
 
   it("documents current VM0-managed additions and omits removed backend models", () => {

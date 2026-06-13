@@ -4285,7 +4285,7 @@
         "comparisons": [
           {
             "vs": "Claude Opus 4.8",
-            "body": "Opus 4.8 (x1.7) bleibt der empfohlene Standard fuer die meisten Agenten und ist die Rueckfallebene von Fable bei Hochrisiko-Anfragen. Auf Fable 5 (x3.3) hochstufen fuer die schwersten, laengsten Aufgaben, bei denen der wachsende Vorsprung den doppelten Anbieterpreis wert ist; sonst ueberall Opus 4.8 behalten."
+            "body": "Opus 4.8 (x2) bleibt der empfohlene Standard fuer die meisten Agenten und ist die Rueckfallebene von Fable bei Hochrisiko-Anfragen. Auf Fable 5 (x3.3) hochstufen fuer die schwersten, laengsten Aufgaben, bei denen der wachsende Vorsprung den doppelten Anbieterpreis wert ist; sonst ueberall Opus 4.8 behalten."
           },
           {
             "vs": "GPT-5.5",
@@ -4349,9 +4349,9 @@
         "metaDescription": "Claude Opus 4.8 im Test. Anthropics Flaggschiff vom 28. Mai 2026 mit 1M-Token-Kontext, Max-Effort-Thinking, dynamischen Workflows, $5/$25 Vendor-Preisen und Benchmark-Vorteilen gegenüber Opus 4.7 bei SWE-bench Pro, OSWorld-Verified, MCP-Atlas, BrowseComp, USAMO und GraphWalks Langkontext-Recall.",
         "summary": "Claude Opus 4.8 ist Anthropics Flaggschiff-Release vom 28. Mai 2026 — ein direktes Upgrade von Opus 4.7 zum gleichen Vendor-Listenpreis von $5/$25. Es erzielt die höchsten Werte für SWE-bench Pro (69,2%), OSWorld-Verified (83,4%), MCP-Atlas (82,2%) und Humanity's Last Exam (57,9% mit Tools), die Anthropic je ausgeliefert hat, und ist das erste Modell, das die All-Pass-Schwelle von 10% beim Legal-Agent-Standard durchbricht.\n\nDie zwei strukturellen Änderungen, die man kennen sollte, sind dynamische Workflows (eine Aufgabe planen und in einer Session über hunderte parallele Subagenten ausfächern) und ein Fast-Mode-Preiscut auf 2,5× Geschwindigkeit bei $10/$50 pro 1M Token — dreimal günstiger als Fast Mode bei früheren Claude-Modellen. Effort-Levels erweitern sich auf high (Standard), extra und max. Anthropic selbst bezeichnet den Release als \"bescheidene, aber spürbare Verbesserung\" und nicht als Sprung.",
         "releaseDate": "28. Mai 2026",
-        "familyPosition": "Spitzenmodell der Claude 4-Familie. Anthropics empfohlener Standard für neue Agenten; läuft mit dem gleichen ×1,7 Multiplikator wie Opus 4.7.",
+        "familyPosition": "Spitzenmodell der Claude 4-Familie. Anthropics empfohlener Standard für neue Agenten; läuft mit dem gleichen ×2 Multiplikator wie Opus 4.7.",
         "background": [
-          "Claude Opus 4.8 wurde am 28. Mai 2026 als neues Anthropic-Flaggschiff veröffentlicht, 41 Tage nach Opus 4.7. Es zielt auf die gleichen Coding-, Agentic-Skill-, Reasoning- und Wissensarbeit-Workloads wie 4.7 ab, zum gleichen regulären Listenpreis ($5 Input / $25 Output pro 1M Token) und mit dem gleichen VM0-Multiplikator (×1,7). Anthropic positioniert den Release als \"bescheidene, aber spürbare Verbesserung gegenüber dem Vorgänger\" und nicht als Stufensprung.",
+          "Claude Opus 4.8 wurde am 28. Mai 2026 als neues Anthropic-Flaggschiff veröffentlicht, 41 Tage nach Opus 4.7. Es zielt auf die gleichen Coding-, Agentic-Skill-, Reasoning- und Wissensarbeit-Workloads wie 4.7 ab, zum gleichen regulären Listenpreis ($5 Input / $25 Output pro 1M Token) und mit dem gleichen VM0-Multiplikator (×2). Anthropic positioniert den Release als \"bescheidene, aber spürbare Verbesserung gegenüber dem Vorgänger\" und nicht als Stufensprung.",
           "Zwei strukturelle Änderungen sind für VM0-Nutzer relevant. Erstens: dynamische Workflows — das Modell kann eine Aufgabe planen und in einer einzigen Session über hunderte parallele Subagenten ausfächern, was Anthropic als Schritt in Richtung Codebase-weiter Migrationen über hunderttausende Codezeilen in einem Run beschreibt. Zweitens: Fast Mode bei 2,5× Geschwindigkeit kostet jetzt $10 / $50 pro 1M Token — dreimal günstiger als Fast Mode bei früheren Claude-Modellen. Effort-Levels erweitern sich auf drei Stufen: high (Standard), extra (xhigh in Claude Code) und max.",
           "Unabhängige Quellen (LLM Stats, VentureBeat, Vellum) bestätigen die relative Reihenfolge gegenüber 4.7 und der Konkurrenz: 4.8 gewinnt in jeder Zelle von Anthropics veröffentlichtem Vergleichssatz außer Terminal-Bench 2.1, wo GPT-5.5 mit 78,2% gegenüber 74,6% von 4.8 weiterhin führt. Der Sprung von 4.7 auf 4.8 bei SWE-bench Pro beträgt +4,9 Punkte; bei USAMO 2026 sind es +27,4; beim neuen 1M-Token GraphWalks Langkontext-F1 sind es +27,8. Absolute Werte sind als Richtungsangaben zu verstehen — SWE-bench Verified nähert sich bei allen Frontier-Modellen der Sättigung."
         ],
@@ -4511,7 +4511,7 @@
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
-            "body": "Gleicher ×1,7 Multiplikator, gleiches Kontextfenster, gleicher regulärer Preis. Opus 4.8 führt in jeder Zelle, die Anthropic veröffentlicht (SWE-bench Verified +1, SWE-bench Pro +4,9, OSWorld-Verified +0,6, MCP-Atlas +4,9, BrowseComp +5,0, GraphWalks 1M +27,8, USAMO +27,4). Der Tradeoff ist ein leicht schwächeres Prompt-Injection-Profil (~9,6% Attack-Success-Rate gegenüber 6,0%). Migriere neue Agenten auf 4.8; pinne 4.7 nur, wenn du dagegen validiert hast und keine Regressionen neu fahren willst."
+            "body": "Gleicher ×2 Multiplikator, gleiches Kontextfenster, gleicher regulärer Preis. Opus 4.8 führt in jeder Zelle, die Anthropic veröffentlicht (SWE-bench Verified +1, SWE-bench Pro +4,9, OSWorld-Verified +0,6, MCP-Atlas +4,9, BrowseComp +5,0, GraphWalks 1M +27,8, USAMO +27,4). Der Tradeoff ist ein leicht schwächeres Prompt-Injection-Profil (~9,6% Attack-Success-Rate gegenüber 6,0%). Migriere neue Agenten auf 4.8; pinne 4.7 nur, wenn du dagegen validiert hast und keine Regressionen neu fahren willst."
           },
           {
             "vs": "Claude Sonnet 4.6",
@@ -4527,7 +4527,7 @@
           },
           {
             "vs": "DeepSeek V4 Pro",
-            "body": "DeepSeek V4 Pro (×0,3) bleibt die kostenoptimierte Wahl, wenn der reine Token-Preis die Entscheidung dominiert. Opus 4.8 behält die Führung bei Tool-Routing-Zuverlässigkeit, Langkontext-Recall, Alignment-Metriken und Computer Use — der Grund, warum die meisten englischsprachigen Enterprise-Agenten trotz des Preisabstands weiterhin standardmäßig auf 4.8 setzen."
+            "body": "DeepSeek V4 Pro (×0,1) bleibt die kostenoptimierte Wahl, wenn der reine Token-Preis die Entscheidung dominiert. Opus 4.8 behält die Führung bei Tool-Routing-Zuverlässigkeit, Langkontext-Recall, Alignment-Metriken und Computer Use — der Grund, warum die meisten englischsprachigen Enterprise-Agenten trotz des Preisabstands weiterhin standardmäßig auf 4.8 setzen."
           }
         ],
         "verdict": "Der neue Standard für neue Agenten in der Claude-Familie. Migriere von 4.7, sobald du neu validieren kannst; setze ihn direkt als Default für frische Arbeit. Behalte Sonnet 4.6 als günstigeres Arbeitspferd darunter.",
@@ -4722,7 +4722,7 @@
         "comparisons": [
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Opus 4.7 bietet konsistentere Langschleifen-Kohärenz und höhere Code-Patch-Qualität im ersten Versuch. Sonnet 4.6 ist ~3× günstiger (×1 vs. ×1,7 Credits) mit höherem Durchsatz. Standardmuster: Sonnet als Default, Opus für Orchestrator-Rolle und kritische Schritte."
+            "body": "Opus 4.7 bietet konsistentere Langschleifen-Kohärenz und höhere Code-Patch-Qualität im ersten Versuch. Sonnet 4.6 ist ~2× günstiger (×1 vs. ×2 Credits) mit höherem Durchsatz. Standardmuster: Sonnet als Default, Opus für Orchestrator-Rolle und kritische Schritte."
           },
           {
             "vs": "Claude Opus 4.6",
@@ -4734,7 +4734,7 @@
           },
           {
             "vs": "DeepSeek V4 Pro",
-            "body": "Opus 4.7 hat die höhere Reasoning-Decke; V4 Pro (×0,3 Credits) besseres Preis-Leistungs-Verhältnis für Frontend-Stacks, Migrationen und Routine-Patches."
+            "body": "Opus 4.7 hat die höhere Reasoning-Decke; V4 Pro (×0,1 Credits) bietet besseres Preis-Leistungs-Verhältnis für Frontend-Stacks, Migrationen und Routine-Patches."
           },
           {
             "vs": "GPT-5.2 / Gemini 3 Pro",
@@ -4767,7 +4767,7 @@
         "alternatives": [
           {
             "slug": "claude-sonnet-4-6",
-            "reason": "Gleiche Familie, 3× günstiger, schnellere Inferenz. Standardmodell für die meisten Agent-Aufgaben."
+            "reason": "Gleiche Familie, 2× günstiger, schnellere Inferenz. Standardmodell für die meisten Agent-Aufgaben."
           },
           {
             "slug": "kimi-k2-6",
@@ -4788,12 +4788,12 @@
         "cardIntro": "Das Claude 4-Flaggschiff der vorherigen Generation. Gleicher Preis wie Opus 4.7, solide Ergebnisse, aber bei fast jeder Metrik überholt.",
         "metaTitle": "Claude Opus 4.6: Benchmarks, Preise & Fähigkeiten",
         "metaDescription": "Claude Opus 4.6 im Test. Anthropics vorheriges Flaggschiff mit 1M-Token-Kontext. Wird von Opus 4.7 bei SWE-bench, Terminal-Bench und GPQA Diamond übertroffen.",
-        "summary": "Claude Opus 4.6 war Anthropics Flaggschiff bis zur Veröffentlichung von Opus 4.7 im April 2026. Es führte das 1M-Token-Kontextfenster und Adaptive-Thinking-Effort-Levels ein. Es ist immer noch leistungsfähig, aber Opus 4.7 liefert konsistent höhere Punktzahlen bei praktisch jedem Benchmark.\n\nDer entscheidende Punkt: gleicher Preis ($15/$75 auf Anthropic API Key; ×1,7 Credits auf VM0). Ohne Preisvorteil ist der Wechsel zu Opus 4.7 die richtige Wahl für die meisten Teams.",
+        "summary": "Claude Opus 4.6 war Anthropics Flaggschiff bis zur Veröffentlichung von Opus 4.7 im April 2026. Es führte das 1M-Token-Kontextfenster und Adaptive-Thinking-Effort-Levels ein. Es ist immer noch leistungsfähig, aber Opus 4.7 liefert konsistent höhere Punktzahlen bei praktisch jedem Benchmark.\n\nDer entscheidende Punkt: gleicher Preis ($15/$75 auf Anthropic API Key; ×2 Credits auf VM0). Ohne Preisvorteil ist der Wechsel zu Opus 4.7 die richtige Wahl für die meisten Teams.",
         "releaseDate": "Mitte 2025 (abgelöst von Opus 4.7 im April 2026)",
         "familyPosition": "Vorheriges Flaggschiff der Claude 4-Familie. Von Opus 4.7 abgelöst.",
         "background": [
           "Claude Opus 4.6 was Anthropic's frontier model before Opus 4.7. It was released on February 5, 2026 and introduced several capabilities that defined the Claude 4 family. Adaptive thinking with four effort levels, the 1M-token context window in beta, and Anthropic's highest agentic-coding scores at release.",
-          "On VM0 it sits at the same ×1.7 credit multiplier as Opus 4.7. Anthropic explicitly recommends migrating to 4.7 for new work; pin 4.6 only if a specific agent has been validated against this version and you don't want to re-run regression tests yet."
+          "On VM0 it sits at the same ×2 credit multiplier as Opus 4.7. Anthropic explicitly recommends migrating to 4.7 for new work; pin 4.6 only if a specific agent has been validated against this version and you don't want to re-run regression tests yet."
         ],
         "architecture": "",
         "specs": [
@@ -4891,7 +4891,7 @@
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
-            "body": "Same ×1.7 multiplier and 1M context window. Opus 4.7 is newer, faster, and lower vendor list price. Pin 4.6 only when you've already invested in tuning against this version."
+            "body": "Same ×2 multiplier and 1M context window. Opus 4.7 is newer, faster, and lower vendor list price. Pin 4.6 only when you've already invested in tuning against this version."
           },
           {
             "vs": "Claude Sonnet 4.6",
@@ -5221,11 +5221,11 @@
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
-            "body": "Sonnet 4.6 ist ~3× günstiger (×1 vs. ×1,7 Credits) und hat einen höheren Durchsatz. Opus 4.7 gewinnt bei Hard-Reasoning und Langschleifen-Kohärenz. Das Standardmuster: Sonnet als Default, Opus für kritische Schritte."
+            "body": "Sonnet 4.6 ist ~2× günstiger (×1 vs. ×2 Credits) und hat einen höheren Durchsatz. Opus 4.7 gewinnt bei Hard-Reasoning und Langschleifen-Kohärenz. Das Standardmuster: Sonnet als Default, Opus für kritische Schritte."
           },
           {
             "vs": "DeepSeek V4 Pro",
-            "body": "V4 Pro bietet ähnliche Reasoning-Qualität zu ×0,3 Credits. Sonnet 4.6s Vorteil ist tiefere Anthropic-Ökosystem-Integration und konsistentere Tool-Use-Zuverlässigkeit."
+            "body": "V4 Pro bietet ähnliche Reasoning-Qualität zu ×0,1 Credits. Sonnet 4.6s Vorteil ist tiefere Anthropic-Ökosystem-Integration und konsistentere Tool-Use-Zuverlässigkeit."
           }
         ],
         "verdict": "Sonnet 4.6 ist das richtige Standardmodell für VM0. Es ist nicht das Beste in einer Kategorie, aber es ist gut genug für 80%+ der Agent-Schritte. Starte hier und routen nur dann an andere Modelle, wenn du einen spezifischen Grund hast.",
@@ -5254,7 +5254,7 @@
         "alternatives": [
           {
             "slug": "claude-opus-4-7",
-            "reason": "Besseres Reasoning für kritische Schritte. ×1,7 Credits."
+            "reason": "Besseres Reasoning für kritische Schritte. ×2 Credits."
           },
           {
             "slug": "deepseek-v4-pro",
@@ -5533,7 +5533,7 @@
           },
           {
             "vs": "DeepSeek V4 Pro",
-            "body": "DeepSeek V4 Pro (×0.3) is cheaper and benchmarks higher on Code Arena per third-party reviews. GLM-5.1 still wins on context size. Pick DeepSeek for cost-sensitive standard-context work; pick GLM-5.1 when context size is the constraint."
+            "body": "DeepSeek V4 Pro (×0.1) is cheaper and benchmarks higher on Code Arena per third-party reviews. GLM-5.1 still wins on context size. Pick DeepSeek for cost-sensitive standard-context work; pick GLM-5.1 when context size is the constraint."
           }
         ],
         "verdict": "GLM-5.1 ist eine solide kosteneffiziente Wahl für text- und codebasierte Aufgaben. Erwäge es, wenn du eine günstigere Alternative zu Claude Sonnet 4.6 suchst und keine Bildeingabe benötigst.",
@@ -5579,13 +5579,13 @@
         "cardIntro": "OpenAIs kostensparendes GPT-5. ×0,3 Credits, schnell und multimodal — die richtige Wahl für Bulk-Pre-Filter-Arbeit auf dem Codex-Framework.",
         "metaTitle": "GPT-5.4 Mini auf VM0: Benchmarks, Preise & Vergleich",
         "metaDescription": "GPT-5.4 Mini im Test auf VM0. Das kostensparende OpenAI-GPT-5-Modell zu $0,75/$4,5 Anbieterpreisen, ×0,3 Credits, 400K Kontext und multimodaler Vision. Spezifikationen, Verhalten und Vergleich zu Kimi K2.6.",
-        "summary": "GPT-5.4 Mini ist das kostensparende Mitglied der GPT-5-Familie von OpenAI — das Modell, zu dem du greifst, wenn Stückkosten mehr zählen als Spitzen-Reasoning-Qualität. Es behält das 400K-Kontextfenster und die multimodalen Eingaben der Familie, kürzt aber Compute pro Token, was sich in niedrigerem Preis ($0,75 / $4,5 pro 1M) und merklich höherer Geschwindigkeit niederschlägt.\n\nAuf VM0 liegt es bei ×0,3 Credits, demselben Multiplikator wie Kimi K2.6 und DeepSeek V4 Pro, was es zur natürlichen OpenAI-seitigen Wahl für Bulk-Klassifikation, Fan-Out-Routing, Pre-Filter und jeden Agent-Schritt macht, bei dem das Drücken auf ein Drittel der GPT-5.4-Kosten der entscheidende Faktor ist.",
+        "summary": "GPT-5.4 Mini ist das kostensparende Mitglied der GPT-5-Familie von OpenAI — das Modell, zu dem du greifst, wenn Stückkosten mehr zählen als Spitzen-Reasoning-Qualität. Es behält das 400K-Kontextfenster und die multimodalen Eingaben der Familie, kürzt aber Compute pro Token, was sich in niedrigerem Preis ($0,75 / $4,5 pro 1M) und merklich höherer Geschwindigkeit niederschlägt.\n\nAuf VM0 liegt es bei ×0,3 Credits, demselben Multiplikator wie Kimi K2.6, was es zur natürlichen OpenAI-seitigen Wahl für Bulk-Klassifikation, Fan-Out-Routing, Pre-Filter und jeden Agent-Schritt macht, bei dem das Drücken auf ein Drittel der GPT-5.4-Kosten der entscheidende Faktor ist.",
         "releaseDate": "April 2026",
         "familyPosition": "Kostensparende Variante der GPT-5-Familie. Das OpenAI-seitige Pendant zu Kimi K2.6.",
         "background": [
           "GPT-5.4 Mini ist das kostenoptimierte Mitglied der GPT-5-Generation von OpenAI, veröffentlicht im April 2026 neben GPT-5.5 und GPT-5.4. OpenAI positioniert es als Hochdurchsatz-Stufe — das Modell, das du auf Klassifikations-, Routing- und Pre-Filter-Schritten laufen lässt, wo das größere 5.4 oder 5.5 für Routine-Entscheidungen verschwendet wäre.",
           "Architektonisch teilt es das 400K-Token-Kontextfenster der GPT-5-Familie, den `reasoning_effort`-Parameter, Prompt Caching und die Responses-API-Oberfläche, die codex CLI standardmäßig nutzt. Der Trade-off gegenüber 5.4 ist Reasoning-Tiefe: Mini handhabt Standard-Tool-Calls, kurze Zusammenfassungen und Structured-Output-Workloads gut, fängt aber bei den schwereren mehrstufigen Plänen an zu driften, wo 5.4 noch hält. Der Trade-off gegenüber Konkurrenten im selben Preispunkt ist Ökosystem — wenn du bereits auf Codex bist, hält das Bleiben in der OpenAI-Oberfläche Tool-Definitionen und Structured-Output-Schemas konsistent.",
-          "Auf VM0 liegt Mini beim ×0,3 Credit-Multiplikator, gleich wie Kimi K2.6 und DeepSeek V4 Pro. Innerhalb der kostensparenden Stufe hängt die Wahl meist von Framework und Verhaltens-Fit auf deiner spezifischen Workload ab."
+          "Auf VM0 liegt Mini beim ×0,3 Credit-Multiplikator, gleich wie Kimi K2.6. DeepSeek V4 Pro liegt niedriger bei ×0,1. Innerhalb der kostensparenden Stufe hängt die Wahl meist von Framework und Verhaltens-Fit auf deiner spezifischen Workload ab."
         ],
         "architecture": "GPT-5.4 Mini nutzt dieselbe Architektur wie der Rest der GPT-5-Familie: 400K-Token-Kontextfenster, `reasoning_effort`-Parameter auf vier Stufen, Prompt Caching, wobei gecachter Input zu einem Zehntel des Input-Preises berechnet wird, und die Responses-API-Oberfläche. Tool-Use, Structured Outputs und multimodale Vision-Eingaben werden unterstützt. Das Modell ist ein kleinerer, schnellerer Verwandter — weniger Parameter pro Token, mehr Durchsatz pro Dollar.",
         "specs": [
@@ -5665,7 +5665,7 @@
           },
           {
             "title": "Kosteneffizienz",
-            "body": "×0,3 Credits inklusive multimodaler Vision. Bei diesem Preispunkt liegen Mini, Kimi K2.6 und DeepSeek V4 Pro im selben Band — die Wahl kommt meist auf Framework-Fit und Verhalten auf deiner spezifischen Workload an."
+            "body": "×0,3 Credits inklusive multimodaler Vision. Mini und Kimi K2.6 liegen im selben Band, während DeepSeek V4 Pro niedriger bei ×0,1 liegt — die Wahl kommt meist auf Framework-Fit und Verhalten auf deiner spezifischen Workload an."
           },
           {
             "title": "Wann eskalieren",
@@ -5723,7 +5723,7 @@
           }
         ],
         "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Available on VM0 Managed and via direct OpenAI API key, ChatGPT (Codex) OAuth, OpenRouter (Codex) and Vercel AI Gateway (Codex).",
-        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Kimi K2.6 and DeepSeek V4 Pro. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
+        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Kimi K2.6, above DeepSeek V4 Pro's ×0.1 tier. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
       },
       "kimi-k2-6": {
         "name": "Kimi K2.6",
@@ -5900,16 +5900,16 @@
         "name": "DeepSeek V4 Pro",
         "pageTitle": "DeepSeek V4 Pro on VM0. Cost-optimised reasoning",
         "tagline": "DeepSeeks Flaggschiff. Erstklassige SWE-bench-Ergebnisse, 1M-Kontext und Open-Source-Lizenz — das beste Preis-Leistungs-Verhältnis für Code-Agenten.",
-        "cardIntro": "DeepSeeks leistungsstärkstes Modell. Führend bei Code-Benchmarks, 1M-Kontext, Open-Source-Lizenz. ×0,3 Credits auf VM0.",
+        "cardIntro": "DeepSeeks leistungsstärkstes Modell. Führend bei Code-Benchmarks, 1M-Kontext, Open-Source-Lizenz. ×0,1 Credits auf VM0.",
         "metaTitle": "DeepSeek V4 Pro: Benchmarks, Preise & Fähigkeiten",
-        "metaDescription": "DeepSeek V4 Pro im Test. DeepSeeks Open-Source-Flaggschiff mit 1M-Kontext, $1,74/$3,48 Preisen und ×0,3 Credits. Führend bei SWE-bench und Terminal-Bench.",
-        "summary": "DeepSeek V4 Pro ist das Flaggschiff von DeepSeek, veröffentlicht am 24. April 2026. Es bietet Spitzen-Code-Benchmarks (SWE-bench Verified, Terminal-Bench, LiveCodeBench), ein 1M-Token-Kontextfenster und eine Open-Source-Lizenz — alles zu einem aggressiven Preis.\n\nListenpreis $1,74/$3,48 pro 1M Tokens mit gecachtem Input bei $0,145/1M. Cache Writes sind kostenlos. Auf VM0 bei ×0,3 Credits positioniert, ist es eine der kosteneffizientesten Optionen für Code-schwere Agent-Workflows.",
+        "metaDescription": "DeepSeek V4 Pro im Test. DeepSeeks Open-Source-Flaggschiff mit 1M-Kontext, $1,74/$3,48 Preisen und ×0,1 Credits. Führend bei SWE-bench und Terminal-Bench.",
+        "summary": "DeepSeek V4 Pro ist das Flaggschiff von DeepSeek, veröffentlicht am 24. April 2026. Es bietet Spitzen-Code-Benchmarks (SWE-bench Verified, Terminal-Bench, LiveCodeBench), ein 1M-Token-Kontextfenster und eine Open-Source-Lizenz — alles zu einem aggressiven Preis.\n\nListenpreis $1,74/$3,48 pro 1M Tokens mit gecachtem Input bei $0,145/1M. Cache Writes sind kostenlos. Auf VM0 bei ×0,1 Credits positioniert, ist es eine der kosteneffizientesten Optionen für Code-schwere Agent-Workflows.",
         "releaseDate": "24. April 2026",
         "familyPosition": "Flaggschiff der DeepSeek V4-Familie. Pro-Variante mit maximaler Reasoning-Tiefe.",
         "background": [
           "DeepSeek V4 Pro ist das Flaggschiff der DeepSeek-V4-Generation, veröffentlicht am 24. April 2026 unter der MIT-Lizenz. Es ist ein Open-Weight-Mixture-of-Experts-Modell mit 1,6T Gesamtparametern und 49B aktiven Parametern pro Token.",
           "V4 Pro unterstützt ein 1M-Token-Kontextfenster, 384K maximale Ausgabe, drei Reasoning-Effort-Modi (standard, think, think-max), JSON-Ausgabe, Tool Calls und FIM-Completion im Non-Think-Modus. Das Pro-Modell ergänzt eine hybride Attention-Architektur (Compressed Sparse Attention + Heavily Compressed Attention) für deutlich effizienteren Langkontext. 27% Single-Token-Inferenz-FLOPs und 10% KV-Cache gegenüber DeepSeek V3.2 bei 1M Kontext.",
-          "DeepSeek made waves through 2025 by delivering Anthropic-grade reasoning at a fraction of the price. V4 Pro continues that pattern: vendor-reported SWE-bench Verified 80.6% sits within 0.2 points of Claude Opus 4.6, at roughly one-seventh the vendor cost. On VM0 it's exposed via the DeepSeek API-key provider and on VM0 Managed at ×0.3. The same multiplier as Kimi K2.6 but with substantially stronger reasoning behaviour."
+          "DeepSeek made waves through 2025 by delivering Anthropic-grade reasoning at a fraction of the price. V4 Pro continues that pattern: vendor-reported SWE-bench Verified 80.6% sits within 0.2 points of Claude Opus 4.6, at roughly one-seventh the vendor cost. On VM0 it's exposed via the DeepSeek API-key provider and on VM0 Managed at ×0.1. Lower multiplier than Kimi K2.6, with substantially stronger reasoning behaviour."
         ],
         "architecture": "",
         "specs": [
@@ -5995,7 +5995,7 @@
           },
           {
             "title": "Cost efficiency",
-            "body": "The standout property. ×0.3 credit cost with reasoning that competes well with Sonnet 4.6 makes V4 Pro the cost-optimisation default. ~7× cheaper than Claude Opus 4.7."
+            "body": "The standout property. ×0.1 credit cost with reasoning that competes well with Sonnet 4.6 makes V4 Pro the cost-optimisation default, far cheaper than Claude Opus 4.7."
           },
           {
             "title": "Cache economics",
@@ -6009,7 +6009,7 @@
         "bestForExamples": [
           {
             "title": "The PR-review agent that runs on every commit",
-            "body": "Sonnet-tier accuracy at roughly one-third of Sonnet's vendor cost is what makes \"review every commit, not just the big PRs\" actually viable. V4 Pro reads the diff, the related files, and the linked issue, then writes a structured comment — and the per-call price is low enough that running it as a CI step on every push doesn't show up as a noticeable line item."
+            "body": "Sonnet-tier accuracy at a fraction of Sonnet's vendor cost is what makes \"review every commit, not just the big PRs\" actually viable. V4 Pro reads the diff, the related files, and the linked issue, then writes a structured comment — and the per-call price is low enough that running it as a CI step on every push doesn't show up as a noticeable line item."
           },
           {
             "title": "The scheduled summariser that runs every night",
@@ -6024,11 +6024,11 @@
         "comparisons": [
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 (×1) wins on tool-routing edge cases and English-language reasoning. V4 Pro (×0.3) wins on cost and is competitive on coding benchmarks (vendor-reported). Worth A/B-testing on a real agent before committing."
+            "body": "Sonnet 4.6 (×1) wins on tool-routing edge cases and English-language reasoning. V4 Pro (×0.1) wins on cost and is competitive on coding benchmarks (vendor-reported). Worth A/B-testing on a real agent before committing."
           },
           {
             "vs": "Kimi K2.6",
-            "body": "Same multiplier (×0.3). Kimi has stronger long-context recall and a higher Intelligence Index (54 vs 52); V4 Pro has the better cache economics (free writes) and a 1M context window vs Kimi's 256K. Pick by which property matters more."
+            "body": "Lower multiplier than Kimi (×0.1 vs ×0.3). Kimi has stronger long-context recall and a higher Intelligence Index (54 vs 52); V4 Pro has the better cache economics (free writes) and a 1M context window vs Kimi's 256K. Pick by which property matters more."
           }
         ],
         "verdict": "DeepSeek V4 Pro ist die erste Wahl für Code-intensive Agenten, wenn die Gesamtbetriebskosten im Vordergrund stehen. Seine Open-Source-Lizenz und führenden Code-Benchmarks machen es zum stärksten Kosteneffizienz-Kandidaten auf VM0.",
@@ -6159,7 +6159,7 @@
           },
           {
             "vs": "DeepSeek V4 Pro",
-            "body": "DeepSeek V4 Pro (×0.3) has stronger reasoning. K2.5 (×0.2) wins on context size and stays within the Moonshot API surface."
+            "body": "DeepSeek V4 Pro (×0.1) has stronger reasoning. K2.5 (×0.2) wins on context size and stays within the Moonshot API surface."
           }
         ],
         "verdict": "Kimi K2.5 ist eine gute Wahl, wenn du die niedrigstmöglichen Kosten bei gleichzeitiger Bildunterstützung benötigst. Für neue Projekte ist K2.6 die bessere Wahl, es sei denn, der ×0,2-Multiplikator ist entscheidend.",
