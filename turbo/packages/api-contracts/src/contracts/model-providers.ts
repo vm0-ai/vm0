@@ -78,9 +78,9 @@ export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
   Record<SupportedRunModel, number>
 >({
   "claude-fable-5": 3.3,
-  "claude-opus-4-8": 1.7,
-  "claude-opus-4-7": 1.7,
-  "claude-opus-4-6": 1.7,
+  "claude-opus-4-8": 2,
+  "claude-opus-4-7": 2,
+  "claude-opus-4-6": 2,
   "claude-sonnet-4-6": 1,
   "deepseek-v4-pro": 0.1,
   "kimi-k2.6": 0.3,
