@@ -177,6 +177,7 @@ export {
   addAutomationTrigger,
   listAutomationTriggers,
   showAutomationTrigger,
+  updateAutomationTrigger,
   removeAutomationTrigger,
   enableAutomationTrigger,
   disableAutomationTrigger,

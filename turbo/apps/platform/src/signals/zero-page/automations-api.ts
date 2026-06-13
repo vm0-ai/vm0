@@ -4,7 +4,7 @@ import {
   automationTriggersContract,
   type AutomationResponse,
   type AutomationTriggerResponse,
-  type CreateTriggerRequest,
+  type UpdateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { accept } from "../../lib/accept.ts";
@@ -71,7 +71,8 @@ function toAutomationView(
   };
 }
 
-function toTriggerRequest(body: AutomationFormBody): CreateTriggerRequest {
+// The narrower update union also satisfies the create-time trigger body.
+function toTriggerRequest(body: AutomationFormBody): UpdateTriggerRequest {
   if ("cronExpression" in body) {
     return {
       kind: "cron",
@@ -194,31 +195,31 @@ async function updateAutomation(
     [200],
   );
 
-  // Replace the time trigger when its config changed. The new trigger is
-  // added before the stale one is removed, so a failure in between never
-  // leaves the automation triggerless (a triggerless automation vanishes
-  // from the automation pages); the sweep then also collects duplicates left
-  // behind by an earlier interrupted replacement.
+  // Replace the time trigger's schedule in place when its config changed:
+  // one atomic PATCH that keeps the trigger's id and run history. A
+  // triggerless automation (not visible on these pages) gets a fresh
+  // trigger instead.
   const timeTriggers = existing.triggers.filter(isTimeTrigger);
   const kept = timeTriggers.find((trigger) => {
     return triggerMatches(trigger, body);
   });
   if (!kept) {
-    await accept(
-      client(automationsByRefContract).addTrigger({
-        params: { ref: existing.id },
-        body: toTriggerRequest(body),
-      }),
-      [201],
-    );
-  }
-  for (const stale of timeTriggers) {
-    if (stale !== kept) {
+    const [current] = timeTriggers;
+    if (current) {
       await accept(
-        client(automationTriggersContract).remove({
-          params: { id: stale.id },
+        client(automationTriggersContract).update({
+          params: { id: current.id },
+          body: toTriggerRequest(body),
         }),
-        [204],
+        [200],
+      );
+    } else {
+      await accept(
+        client(automationsByRefContract).addTrigger({
+          params: { ref: existing.id },
+          body: toTriggerRequest(body),
+        }),
+        [201],
       );
     }
   }
