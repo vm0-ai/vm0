@@ -10,6 +10,11 @@ import { nowDate } from "../external/time";
 import { logger } from "../../lib/log";
 import { tapError } from "../utils";
 import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
+import {
+  enqueueCreditLowBalanceAlert$,
+  LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS,
+  type CreditLowBalanceAlertArgs,
+} from "./zero-credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 
 const L = logger("CreditUsage");
@@ -27,6 +32,15 @@ async function deductOrgCredits(
         ON CONFLICT (org_id)
         DO UPDATE SET credits = org_metadata.credits - ${amount}, updated_at = now()`,
   );
+}
+
+async function getOrgCredits(tx: WriteTx, orgId: string): Promise<number> {
+  const [metadata] = await tx
+    .select({ credits: orgMetadata.credits })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return metadata?.credits ?? 0;
 }
 
 async function expireCredits(tx: WriteTx, orgId: string): Promise<number> {
@@ -112,6 +126,131 @@ async function deductFromExpiresRecords(
   // If left > 0, the excess comes from non-expiring credits — that's fine.
 }
 
+interface ProcessOrgUsageEventsResult {
+  readonly totalCredits: number;
+  readonly runIds: readonly string[];
+  readonly lowBalanceAlert: CreditLowBalanceAlertArgs | null;
+}
+
+async function processOrgUsageEventsInTransaction(
+  tx: WriteTx,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<ProcessOrgUsageEventsResult> {
+  // Same advisory key as web: 'credit_' prefix + orgId.
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('credit_' || ${orgId}))`,
+  );
+
+  const pendingRecords = await tx
+    .select()
+    .from(usageEvent)
+    .where(and(eq(usageEvent.orgId, orgId), eq(usageEvent.status, "pending")));
+
+  if (pendingRecords.length === 0) {
+    return { totalCredits: 0, runIds: [], lowBalanceAlert: null };
+  }
+  const runIds = [
+    ...new Set(
+      pendingRecords.flatMap((record) => {
+        return record.runId ? [record.runId] : [];
+      }),
+    ),
+  ];
+
+  const pricingRecords = await tx.select().from(usagePricing);
+  const pricingByKey = new Map(
+    pricingRecords.map((p) => {
+      return [`${p.kind}|${p.provider}|${p.category}`, p];
+    }),
+  );
+
+  let totalCredits = 0;
+  for (const record of pendingRecords) {
+    const exactPricing = pricingByKey.get(
+      `${record.kind}|${record.provider}|${record.category}`,
+    );
+    const pricing =
+      exactPricing ??
+      pricingByKey.get(`${record.kind}|${record.provider}|__fallback__`);
+
+    if (!pricing) {
+      await tx
+        .update(usageEvent)
+        .set({
+          creditsCharged: 0,
+          status: "processed",
+          processedAt: nowDate(),
+          billingError: "missing_pricing",
+        })
+        .where(eq(usageEvent.id, record.id));
+      L.error("Missing usage_pricing — charged zero", {
+        orgId,
+        runId: record.runId,
+        idempotencyKey: record.idempotencyKey,
+        userId: record.userId,
+        kind: record.kind,
+        provider: record.provider,
+        category: record.category,
+        quantity: record.quantity,
+      });
+      continue;
+    }
+
+    if (!exactPricing) {
+      L.error("Missing usage_pricing — billed at fallback rate", {
+        orgId,
+        runId: record.runId,
+        idempotencyKey: record.idempotencyKey,
+        userId: record.userId,
+        kind: record.kind,
+        provider: record.provider,
+        category: record.category,
+        quantity: record.quantity,
+        fallbackUnitPrice: pricing.unitPrice,
+      });
+    }
+
+    const creditsCharged = Math.ceil(
+      (record.quantity * pricing.unitPrice) / pricing.unitSize,
+    );
+    await tx
+      .update(usageEvent)
+      .set({
+        creditsCharged,
+        status: "processed",
+        processedAt: nowDate(),
+        billingError: exactPricing ? null : "fallback_pricing",
+      })
+      .where(eq(usageEvent.id, record.id));
+    totalCredits += creditsCharged;
+  }
+  signal.throwIfAborted();
+
+  let lowBalanceAlert: CreditLowBalanceAlertArgs | null = null;
+  if (totalCredits > 0) {
+    // Order matters: settle expired credits BEFORE the new deduction.
+    const beforeCredits = await getOrgCredits(tx, orgId);
+    const totalExpired = await expireCredits(tx, orgId);
+    const effectiveBeforeCredits = Math.max(beforeCredits - totalExpired, 0);
+    await deductOrgCredits(tx, orgId, totalCredits);
+    const afterCredits = await getOrgCredits(tx, orgId);
+    await deductFromExpiresRecords(tx, orgId, totalCredits);
+    if (
+      effectiveBeforeCredits > LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS &&
+      afterCredits <= LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS
+    ) {
+      lowBalanceAlert = {
+        orgId,
+        remainingCredits: afterCredits,
+        thresholdCredits: LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS,
+      };
+    }
+  }
+  signal.throwIfAborted();
+  return { totalCredits, runIds, lowBalanceAlert };
+}
+
 /**
  * Atomically process pending usage_event records for an org and deduct
  * the total from the org's credit balance.
@@ -134,110 +273,11 @@ export const processOrgUsageEvents$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const writeDb = set(writeDb$);
 
-    const { totalCredits, runIds } = await writeDb.transaction(async (tx) => {
-      // Same advisory key as web: 'credit_' prefix + orgId.
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext('credit_' || ${orgId}))`,
-      );
-
-      const pendingRecords = await tx
-        .select()
-        .from(usageEvent)
-        .where(
-          and(eq(usageEvent.orgId, orgId), eq(usageEvent.status, "pending")),
-        );
-
-      if (pendingRecords.length === 0) {
-        return { totalCredits: 0, runIds: [] };
-      }
-      const runIds = [
-        ...new Set(
-          pendingRecords.flatMap((record) => {
-            return record.runId ? [record.runId] : [];
-          }),
-        ),
-      ];
-
-      const pricingRecords = await tx.select().from(usagePricing);
-      const pricingByKey = new Map(
-        pricingRecords.map((p) => {
-          return [`${p.kind}|${p.provider}|${p.category}`, p];
-        }),
-      );
-
-      let totalCredits = 0;
-      for (const record of pendingRecords) {
-        const exactPricing = pricingByKey.get(
-          `${record.kind}|${record.provider}|${record.category}`,
-        );
-        const pricing =
-          exactPricing ??
-          pricingByKey.get(`${record.kind}|${record.provider}|__fallback__`);
-
-        if (!pricing) {
-          await tx
-            .update(usageEvent)
-            .set({
-              creditsCharged: 0,
-              status: "processed",
-              processedAt: nowDate(),
-              billingError: "missing_pricing",
-            })
-            .where(eq(usageEvent.id, record.id));
-          L.error("Missing usage_pricing — charged zero", {
-            orgId,
-            runId: record.runId,
-            idempotencyKey: record.idempotencyKey,
-            userId: record.userId,
-            kind: record.kind,
-            provider: record.provider,
-            category: record.category,
-            quantity: record.quantity,
-          });
-          continue;
-        }
-
-        if (!exactPricing) {
-          L.error("Missing usage_pricing — billed at fallback rate", {
-            orgId,
-            runId: record.runId,
-            idempotencyKey: record.idempotencyKey,
-            userId: record.userId,
-            kind: record.kind,
-            provider: record.provider,
-            category: record.category,
-            quantity: record.quantity,
-            fallbackUnitPrice: pricing.unitPrice,
-          });
-        }
-
-        const creditsCharged = Math.ceil(
-          (record.quantity * pricing.unitPrice) / pricing.unitSize,
-        );
-        await tx
-          .update(usageEvent)
-          .set({
-            creditsCharged,
-            status: "processed",
-            processedAt: nowDate(),
-            billingError: exactPricing ? null : "fallback_pricing",
-          })
-          .where(eq(usageEvent.id, record.id));
-        totalCredits += creditsCharged;
-      }
-      signal.throwIfAborted();
-
-      if (totalCredits > 0) {
-        // Order matters: settle expired credits BEFORE the new
-        // deduction. expireCredits zeros out rows whose expires_at <=
-        // now() so deductFromExpiresRecords doesn't touch them.
-        await expireCredits(tx, orgId);
-        await deductOrgCredits(tx, orgId, totalCredits);
-        await deductFromExpiresRecords(tx, orgId, totalCredits);
-      }
-      signal.throwIfAborted();
-      return { totalCredits, runIds };
-    });
+    const { totalCredits, runIds, lowBalanceAlert } = await writeDb.transaction(
+      (tx) => {
+        return processOrgUsageEventsInTransaction(tx, orgId, signal);
+      },
+    );
     signal.throwIfAborted();
 
     if (totalCredits > 0) {
@@ -246,6 +286,19 @@ export const processOrgUsageEvents$ = command(
       // its own errors (clearPendingFlag in catch); the await here is
       // bounded by the route handler's outer waitUntil envelope.
       await set(triggerAutoRecharge$, orgId, signal);
+      signal.throwIfAborted();
+    }
+
+    if (lowBalanceAlert) {
+      await tapError(
+        set(enqueueCreditLowBalanceAlert$, lowBalanceAlert, signal),
+        (error) => {
+          L.error("Failed to enqueue low-credit alert after usage processing", {
+            orgId,
+            error,
+          });
+        },
+      );
       signal.throwIfAborted();
     }
 

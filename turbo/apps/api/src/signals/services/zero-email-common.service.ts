@@ -119,11 +119,22 @@ interface DeveloperSupportTemplate {
   };
 }
 
-type EmailTemplate =
+interface CreditLowBalanceTemplate {
+  readonly template: "credit-low-balance";
+  readonly props: {
+    readonly orgName: string;
+    readonly remainingCredits: number;
+    readonly thresholdCredits: number;
+    readonly billingUrl: string;
+  };
+}
+
+export type EmailTemplate =
   | AgentReplyTemplate
   | InboundErrorTemplate
   | DataExportReadyTemplate
-  | DeveloperSupportTemplate;
+  | DeveloperSupportTemplate
+  | CreditLowBalanceTemplate;
 
 interface SaveThreadSessionAction {
   readonly action: "save_thread_session";
@@ -437,6 +448,21 @@ function renderTemplate(template: EmailTemplate): string {
       )}">Download bundle</a></p><p>Expires ${escapeHtml(
         template.props.expiresAt,
       )}</p></main>`;
+    }
+    case "credit-low-balance": {
+      const remainingCredits =
+        template.props.remainingCredits.toLocaleString("en-US");
+      const thresholdCredits =
+        template.props.thresholdCredits.toLocaleString("en-US");
+      return `<main><h1>Your VM0 credits are running low</h1><p>${escapeHtml(
+        template.props.orgName,
+      )} has ${escapeHtml(
+        remainingCredits,
+      )} credits remaining.</p><p>This alert is sent when an org reaches ${escapeHtml(
+        thresholdCredits,
+      )} credits or less.</p><p><a href="${escapeHtml(
+        template.props.billingUrl,
+      )}">Manage billing</a></p></main>`;
     }
   }
 }
