@@ -110,6 +110,12 @@ async function insertUsage(
   });
 }
 
+async function lockChatUsageMigrationTest(tx: DbTransaction): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('chat_usage_message_migration_tests'))`,
+  );
+}
+
 describe("migration 0454 backfill chat usage messages", () => {
   it("inserts missing usage messages after their run messages and stays idempotent", async () => {
     await runInRollbackTransaction(async (tx) => {
@@ -329,6 +335,7 @@ describe("migration 0454 backfill chat usage messages", () => {
         })
         .returning({ id: chatMessages.id });
 
+      await lockChatUsageMigrationTest(tx);
       await tx.execute(sql`
         CREATE UNIQUE INDEX IF NOT EXISTS "chat_messages_usage_run_id_unique"
         ON "chat_messages" USING btree ("run_id")

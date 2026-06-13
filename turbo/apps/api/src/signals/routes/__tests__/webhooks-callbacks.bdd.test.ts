@@ -1,6 +1,9 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +12,7 @@ import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -27,6 +31,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
+const store = createStore();
 
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
@@ -3155,5 +3160,79 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       permission: "chat:write",
       action: "deny",
     });
+  });
+
+  it("suspends user-owned runs and automations after a verified user.banned event", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+
+    const banned = bdd.user();
+    const granted = await runs.grantProEntitlement(banned);
+    await runs.ensureOrgModelProvider(banned);
+    await runs.enableAutomations(banned);
+    const agent = await bdd.createAgent(banned, {
+      displayName: "BDD Banned User Agent",
+      visibility: "private",
+    });
+
+    const run = await runs.createRun(banned, {
+      agentId: agent.agentId,
+      prompt: "banned user cleanup run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    const created = await runs.createAutomation(banned, {
+      name: uniqueAutomationName("bdd-banned-user"),
+      agentId: agent.agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "banned user scheduled automation",
+      timezone: "UTC",
+      enabled: true,
+    });
+    const db = store.set(writeDb$);
+    const [initialTrigger] = await db
+      .select({ nextRunAt: automationTriggers.nextRunAt })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    expect(initialTrigger?.nextRunAt).not.toBeNull();
+
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+      id: granted.subscriptionId,
+    });
+    api.verifyNextClerkWebhook({
+      type: "user.banned",
+      data: { id: banned.userId },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    const bannedRun = await runs.readRun(banned, run.runId);
+    expect(bannedRun.status).toBe("cancelled");
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      granted.subscriptionId,
+    );
+
+    const [storedAutomation] = await db
+      .select({ enabled: automations.enabled })
+      .from(automations)
+      .where(eq(automations.id, created.automation.id));
+    expect(storedAutomation?.enabled).toBeFalsy();
+
+    const [storedTrigger] = await db
+      .select({ nextRunAt: automationTriggers.nextRunAt })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    expect(storedTrigger?.nextRunAt).toBeNull();
+
+    const queue = await runs.readRunQueue(banned);
+    expect(queue.body.concurrency.active).toBe(0);
+    expect(queue.body.queue).toStrictEqual([]);
   });
 });

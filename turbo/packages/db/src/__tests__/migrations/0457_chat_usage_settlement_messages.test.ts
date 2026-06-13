@@ -19,7 +19,7 @@ import { db, uniqueId } from "../test-db";
 
 const migrationSql = readFileSync(
   new URL(
-    "../../migrations/0455_chat_usage_settlement_messages.sql",
+    "../../migrations/0457_chat_usage_settlement_messages.sql",
     import.meta.url,
   ),
   "utf8",
@@ -43,7 +43,15 @@ async function runInRollbackTransaction(
   }
 }
 
-describe("migration 0455 chat usage settlement messages", () => {
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function lockChatUsageMigrationTest(tx: DbTransaction): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('chat_usage_message_migration_tests'))`,
+  );
+}
+
+describe("migration 0457 chat usage settlement messages", () => {
   it("appends a new immutable message for stale usage payloads and stays idempotent", async () => {
     await runInRollbackTransaction(async (tx) => {
       const orgId = uniqueId("org");
@@ -154,6 +162,7 @@ describe("migration 0455 chat usage settlement messages", () => {
         },
       ]);
 
+      await lockChatUsageMigrationTest(tx);
       await tx.execute(sql.raw(migrationSql));
       await tx.execute(sql.raw(migrationSql));
 
