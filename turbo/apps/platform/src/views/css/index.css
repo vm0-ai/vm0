@@ -60,11 +60,6 @@
 }
 
 @media (display-mode: standalone) {
-  .zero-viewport-shell {
-    height: calc(100dvh + var(--sab));
-    min-height: calc(100dvh + var(--sab));
-  }
-
   .zero-pwa-fixed-cover {
     bottom: calc(-1 * var(--sab));
   }
