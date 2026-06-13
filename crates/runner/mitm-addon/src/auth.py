@@ -623,6 +623,12 @@ def _merge_auth_headers(
     headers,
     auth_headers: dict[str, str],
 ) -> list[tuple[str, str]]:
+    """Append resolved auth headers after replacing same-name client pairs.
+
+    Resolved auth headers are validated and filtered before merge. Any client
+    header pair with the same lowercased name is removed so the resolved value
+    wins in the auth.base rewrite path.
+    """
     pairs = header_pairs(headers)
     auth_pairs = resolved_auth_header_pairs(auth_headers)
     override_names = {name.lower() for name, _value in auth_pairs}

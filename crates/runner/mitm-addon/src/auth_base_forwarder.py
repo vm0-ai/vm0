@@ -221,6 +221,13 @@ def _make_validated_https_connection(
 
 
 def header_pairs(headers) -> list[tuple[str, str]]:
+    """Normalize a supported header container into ordered header pairs.
+
+    Plain dict inputs use their normal items. Header containers with an
+    ``items`` method use ``items(multi=True)`` when supported, preserving
+    repeated mitmproxy headers, then fall back to ``items()``. Other inputs
+    are treated as iterable ``(name, value)`` pairs.
+    """
     if isinstance(headers, dict):
         return list(headers.items())
     if hasattr(headers, "items"):
@@ -257,7 +264,12 @@ def _filter_header_pairs(
 
 
 def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
-    """Return request headers that are safe to forward to the auth.base target."""
+    """Return request headers that can be forwarded to an auth.base target.
+
+    Hop-by-hop headers and headers named by ``Connection`` are removed.
+    ``Host``, ``Content-Length``, and ``Transfer-Encoding`` are also excluded
+    because the forwarder recomputes request authority and framing.
+    """
     return _filter_header_pairs(
         headers,
         extra_excluded={"host", "content-length", "transfer-encoding"},
@@ -273,7 +285,15 @@ def forwarded_auth_base_client_header_pairs(
     *,
     preserve_aws_sigv4_authorization: bool = False,
 ) -> list[tuple[str, str]]:
-    """Return client headers safe to carry across an auth.base rewrite."""
+    """Return client headers allowed to cross an auth.base rewrite.
+
+    This applies forwarded request filtering, then strips client
+    credential-like headers named by ``_CLIENT_CREDENTIAL_HEADER_NAMES`` so
+    placeholder-scoped credentials do not cross the rewrite. The only
+    credential-header exception is ``Authorization`` when
+    ``preserve_aws_sigv4_authorization`` is enabled and the value is a
+    supported AWS SigV4 authorization value.
+    """
     pairs = forwarded_request_header_pairs(headers)
     return [
         (name, value)
@@ -309,7 +329,14 @@ def _validate_resolved_auth_header_pair(header_name: str, header_value: str) -> 
 
 
 def resolved_auth_header_pairs(headers) -> list[tuple[str, str]]:
-    """Return resolved auth headers safe to inject into an outbound request."""
+    """Validate and filter resolved auth headers before outbound injection.
+
+    Each resolved header name and value is validated before any pair is
+    returned; invalid pairs raise ``InvalidResolvedAuthHeaderError``. Headers
+    excluded by ``_RESOLVED_AUTH_HEADER_EXCLUDED`` are then dropped. This
+    helper does not merge with or replace client headers; callers that combine
+    resolved and client headers own that policy.
+    """
     pairs = header_pairs(headers)
     for name, value in pairs:
         _validate_resolved_auth_header_pair(name, value)
@@ -319,7 +346,7 @@ def resolved_auth_header_pairs(headers) -> list[tuple[str, str]]:
 
 
 def trusted_request_header_pairs(headers) -> list[tuple[str, str]]:
-    """Return trusted injected request headers safe to append after client filtering."""
+    """Validate and filter trusted injected headers through the resolved-auth path."""
     return resolved_auth_header_pairs(headers)
 
 
