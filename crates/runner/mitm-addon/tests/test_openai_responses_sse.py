@@ -170,6 +170,16 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.output"] == 4
 
+    def test_finish_flushes_eventless_response_completed_without_blank_line(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":14}}}'
+        )
+        parse.finish()
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 14
+
     def test_accepts_sse_fields_without_optional_space(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(
