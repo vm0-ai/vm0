@@ -208,7 +208,7 @@ export function ActivityHeaderCard({
     selectedModel?: string | null;
     framework?: string | null;
     error?: string | null;
-    scheduleId?: string | null;
+    automationId?: string | null;
   };
   logDetail?: LogDetail;
   duration: string | null | undefined;
@@ -238,11 +238,11 @@ export function ActivityHeaderCard({
             <>
               <div className="flex items-center gap-1.5 px-3">
                 <span className="text-muted-foreground shrink-0">Source</span>
-                {triggerSource === "automation" && detail.scheduleId ? (
+                {triggerSource === "automation" && detail.automationId ? (
                   <Link
-                    pathname="/automations/:scheduleId"
+                    pathname="/automations/:automationId"
                     options={{
-                      pathParams: { scheduleId: detail.scheduleId },
+                      pathParams: { automationId: detail.automationId },
                     }}
                     className="text-foreground whitespace-nowrap underline decoration-foreground/40 hover:decoration-foreground transition-colors"
                   >
@@ -944,7 +944,7 @@ function downloadJson(
       completedAt: detail.completedAt,
       agentId: detail.agentId,
       sessionId: detail.sessionId,
-      scheduleId: detail.scheduleId,
+      automationId: detail.automationId,
     },
     events,
   };

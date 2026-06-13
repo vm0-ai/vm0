@@ -8,7 +8,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { expectApiError } from "./helpers/api-bdd";
 
 /*
@@ -952,7 +952,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
 
 describe("ORG-03: onboarding setup edges", () => {
   it("gates non-admins, validates connectors, and survives clerk slug conflicts [ONBOARD-F]", async () => {
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     api.acceptAgentStorageWrites();
 
     const unauthenticated = await api.requestSetupOnboarding(
@@ -1112,7 +1112,7 @@ describe("ORG-03: onboarding setup edges", () => {
 
 describe("AUTH-02/ORG-01: run-scoped zero tokens on org routes", () => {
   it("serves org and member reads to a claimed run's zero token and rejects org writes [ORG-TOKEN-G]", async () => {
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const admin = api.user();
     api.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();

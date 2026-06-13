@@ -1166,7 +1166,9 @@ function JobAutomationsTab({ displayName }: { displayName: string }) {
   };
 
   const handleOpenDetails = (entry: AutomationEntry) => {
-    nav("/automations/:scheduleId", { pathParams: { scheduleId: entry.id } });
+    nav("/automations/:automationId", {
+      pathParams: { automationId: entry.id },
+    });
   };
 
   return (

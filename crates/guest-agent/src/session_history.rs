@@ -21,7 +21,7 @@
 //! "the most recent file in the tree" would risk uploading an unrelated
 //! session as the resume context, which is a multi-tenant correctness
 //! hazard. The descriptive `Codex session file not found` error from
-//! `read_session_history` surfaces the failure instead.
+//! `read_session_history` surfaces the failure without logging the session id.
 
 use crate::error::AgentError;
 #[cfg(target_os = "linux")]
@@ -49,7 +49,7 @@ pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
     if let Some((sessions_dir, thread_id)) = decode_marker(trimmed) {
         return read_codex_session_history(&sessions_dir, thread_id)?.ok_or_else(|| {
             AgentError::Checkpoint(format!(
-                "Codex session file not found under {} for thread_id {thread_id}",
+                "Codex session file not found under {}",
                 sessions_dir.display()
             ))
         });
@@ -82,7 +82,7 @@ fn read_codex_session_history(
     if !codex_sessions_parent_is_usable(sessions_dir)? {
         return Ok(None);
     }
-    read_codex_session_history_impl(sessions_dir, thread_id, &id_norm)
+    read_codex_session_history_impl(sessions_dir, &id_norm)
 }
 
 pub(crate) fn normalize_codex_thread_id(thread_id: &str) -> Option<String> {
@@ -112,7 +112,6 @@ fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentErr
 #[cfg(not(target_os = "linux"))]
 fn read_codex_session_history_impl(
     sessions_dir: &Path,
-    thread_id: &str,
     id_norm: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     match std::fs::symlink_metadata(sessions_dir) {
@@ -123,7 +122,7 @@ fn read_codex_session_history_impl(
     }
 
     let mut found = None;
-    find_codex_session_file_recursive(sessions_dir, sessions_dir, thread_id, id_norm, &mut found)?;
+    find_codex_session_file_recursive(sessions_dir, sessions_dir, id_norm, &mut found)?;
     found
         .map(|session| read_history_bytes(&session.path))
         .transpose()
@@ -137,7 +136,6 @@ fn read_codex_session_history_impl(
 fn find_codex_session_file_recursive(
     root: &Path,
     dir: &Path,
-    thread_id: &str,
     id_norm: &str,
     found: &mut Option<ResolvedCodexSession>,
 ) -> Result<(), AgentError> {
@@ -159,19 +157,14 @@ fn find_codex_session_file_recursive(
             Err(err) => return Err(read_history_error(&path, err)),
         };
         if file_type.is_dir() {
-            find_codex_session_file_recursive(root, &path, thread_id, id_norm, found)?;
+            find_codex_session_file_recursive(root, &path, id_norm, found)?;
         } else if file_type.is_file()
             && path
                 .file_name()
                 .is_some_and(|name| codex_session_filename_matches(name, id_norm))
         {
-            if let Some(existing) = found.as_ref() {
-                return Err(duplicate_codex_session_error(
-                    root,
-                    thread_id,
-                    &existing.path,
-                    &path,
-                ));
+            if found.is_some() {
+                return Err(duplicate_codex_session_error(root));
             }
             *found = Some(ResolvedCodexSession { path });
         }
@@ -183,7 +176,6 @@ fn find_codex_session_file_recursive(
 #[cfg(target_os = "linux")]
 fn read_codex_session_history_impl(
     sessions_dir: &Path,
-    thread_id: &str,
     id_norm: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     let root = match Dir::open(sessions_dir) {
@@ -196,7 +188,6 @@ fn read_codex_session_history_impl(
         &root,
         sessions_dir,
         sessions_dir,
-        thread_id,
         id_norm,
         &mut found,
     )?;
@@ -210,7 +201,6 @@ fn find_and_read_codex_session_file_recursive(
     dir: &Dir,
     root_path: &Path,
     dir_path: &Path,
-    thread_id: &str,
     id_norm: &str,
     found: &mut Option<ResolvedCodexSession>,
 ) -> Result<(), AgentError> {
@@ -239,9 +229,7 @@ fn find_and_read_codex_session_file_recursive(
                 Err(err) if should_skip_unusable_codex_entry(&err) => continue,
                 Err(err) => return Err(read_history_error(&path, err)),
             };
-            find_and_read_codex_session_file_recursive(
-                &child, root_path, &path, thread_id, id_norm, found,
-            )?;
+            find_and_read_codex_session_file_recursive(&child, root_path, &path, id_norm, found)?;
         } else if file_type.is_file() && codex_session_filename_matches(&name, id_norm) {
             let file = match dir.open_child_file(&name) {
                 Ok(file) => file,
@@ -254,13 +242,8 @@ fn find_and_read_codex_session_file_recursive(
             if !metadata.file_type().is_file() {
                 continue;
             }
-            if let Some(existing) = found.as_ref() {
-                return Err(duplicate_codex_session_error(
-                    root_path,
-                    thread_id,
-                    &existing.path,
-                    &path,
-                ));
+            if found.is_some() {
+                return Err(duplicate_codex_session_error(root_path));
             }
             *found = Some(ResolvedCodexSession { path, file });
         }
@@ -275,17 +258,10 @@ struct ResolvedCodexSession {
     file: File,
 }
 
-fn duplicate_codex_session_error(
-    root: &Path,
-    thread_id: &str,
-    first: &Path,
-    second: &Path,
-) -> AgentError {
+fn duplicate_codex_session_error(root: &Path) -> AgentError {
     AgentError::Checkpoint(format!(
-        "Multiple Codex session files found under {} for thread_id {thread_id}: {}, {}",
-        root.display(),
-        first.display(),
-        second.display()
+        "Multiple Codex session files found under {}",
+        root.display()
     ))
 }
 
@@ -330,11 +306,8 @@ fn read_history_bytes_from_file(path: &Path, mut file: File) -> Result<Vec<u8>, 
     decode_history_bytes(path, raw)
 }
 
-fn read_history_error(path: &Path, source: io::Error) -> AgentError {
-    AgentError::Checkpoint(format!(
-        "Failed to read session history at {}: {source}",
-        path.display()
-    ))
+fn read_history_error(_path: &Path, source: io::Error) -> AgentError {
+    AgentError::Checkpoint(format!("Failed to read session history: {source}"))
 }
 
 fn decode_history_bytes(path: &Path, raw: Vec<u8>) -> Result<Vec<u8>, AgentError> {
@@ -343,10 +316,7 @@ fn decode_history_bytes(path: &Path, raw: Vec<u8>) -> Result<Vec<u8>, AgentError
         .is_some_and(|ext| ext.eq_ignore_ascii_case("zst"))
     {
         zstd::decode_all(raw.as_slice()).map_err(|e| {
-            AgentError::Checkpoint(format!(
-                "Failed to decompress zstd session history at {}: {e}",
-                path.display()
-            ))
+            AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
         })
     } else {
         Ok(raw)

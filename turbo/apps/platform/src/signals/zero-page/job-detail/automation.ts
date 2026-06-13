@@ -108,7 +108,7 @@ function automationToTimeString(
   if (s.cronExpression) {
     return cronToTimeString(s.cronExpression, tz);
   }
-  return "Scheduled";
+  return "Upcoming";
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ export const saveAgentAutomation$ = command(
       if (
         isAtTimePast(params.date, String(params.hour), String(params.minute))
       ) {
-        throw new Error("Scheduled time must be in the future");
+        throw new Error("The selected time must be in the future");
       }
       const atTime = buildAtTime(
         params.date,

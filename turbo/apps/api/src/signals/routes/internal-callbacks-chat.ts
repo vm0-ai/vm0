@@ -1188,7 +1188,7 @@ async function latestSessionForThreadFromDb(
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
     // D7 session-continuity exclusion (see latestSessionForThread in
     // zero-chat-messages.ts): only web-source runs join the chain, so an
-    // autoSend follow-up resumes the latest web session, not a scheduled one.
+    // autoSend follow-up resumes the latest web session, not an automation one.
     .where(
       and(
         eq(zeroRuns.chatThreadId, threadId),

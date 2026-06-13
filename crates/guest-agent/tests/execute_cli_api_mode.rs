@@ -6,7 +6,6 @@
 
 mod common;
 
-use base64::Engine;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
@@ -92,8 +91,7 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
         then.status(200);
     });
 
-    let encoded_mock_session_prefix = base64::engine::general_purpose::STANDARD.encode("mock-");
-    let masker = SecretMasker::from_raw(&encoded_mock_session_prefix);
+    let masker = SecretMasker::from_raw("");
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
         guest_agent::cli::execute_cli(

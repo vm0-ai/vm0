@@ -32,7 +32,7 @@ async function resolveAgentLabel(
   return row?.displayName ?? row?.name ?? undefined;
 }
 
-async function resolveScheduleLabel(
+async function resolveAutomationLabel(
   db: ReadonlyDb,
   runId: string,
 ): Promise<string | undefined> {
@@ -101,10 +101,10 @@ export function slackMessageSendFooterText(args: {
     const runId = args.authRunId;
 
     const noop = (): void => {};
-    const [agentLabel, scheduleLabel, userMention, selectedModel] =
+    const [agentLabel, automationLabel, userMention, selectedModel] =
       await Promise.all([
         tapError(resolveAgentLabel(db, runId), noop),
-        tapError(resolveScheduleLabel(db, runId), noop),
+        tapError(resolveAutomationLabel(db, runId), noop),
         tapError(resolveUserMention(db, runId), noop),
         tapError(resolveSelectedModel(db, runId), noop),
       ]);
@@ -113,12 +113,12 @@ export function slackMessageSendFooterText(args: {
     if (agentLabel) {
       parts.push(`Sent via ${agentLabel}`);
     }
-    if (scheduleLabel) {
-      parts.push(`Triggered by schedule "${scheduleLabel}"`);
+    if (automationLabel) {
+      parts.push(`Triggered by automation "${automationLabel}"`);
     }
     if (userMention) {
       parts.push(
-        scheduleLabel
+        automationLabel
           ? `Created by ${userMention}`
           : `Triggered by ${userMention}`,
       );

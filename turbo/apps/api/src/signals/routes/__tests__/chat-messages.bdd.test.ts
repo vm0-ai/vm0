@@ -33,7 +33,7 @@ import {
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -49,7 +49,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsSchedulesApi(context);
+const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -344,7 +344,7 @@ async function disableComputerUse(actor: ApiTestUser): Promise<void> {
 
 /**
  * Raw chat send through the Hono app, for statuses the ts-rest contract does
- * not model (precedent: requestListAutomationsRaw in api-bdd-runs-schedules).
+ * not model (precedent: requestListAutomationsRaw in api-bdd-runs-automations).
  */
 async function requestSendMessageRaw(
   actor: ApiTestUser,

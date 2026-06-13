@@ -193,7 +193,7 @@ export function PreferenceSection() {
       <section className="flex flex-col gap-3">
         <SettingsSectionHeading
           title="Time Zone"
-          description="Times shown to you and used for scheduled work."
+          description="Times shown to you and used for automation runs."
         />
         <TimezoneSettings />
       </section>

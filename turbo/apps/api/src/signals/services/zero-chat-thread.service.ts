@@ -28,7 +28,7 @@ import {
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageScheduleSnapshot,
+  type ChatMessageAutomationSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -118,11 +118,11 @@ type ChatMessageRow = {
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
-  readonly scheduleSnapshot: ChatMessageScheduleSnapshot | null;
+  readonly automationSnapshot: ChatMessageAutomationSnapshot | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
-  readonly scheduleId: string | null;
-  readonly scheduleTitle: string | null;
+  readonly automationId: string | null;
+  readonly automationTitle: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -224,11 +224,11 @@ const messageColumns = {
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
-  scheduleSnapshot: chatMessages.scheduleSnapshot,
+  automationSnapshot: chatMessages.automationSnapshot,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  scheduleId: chatMessages.scheduleId,
-  scheduleTitle: chatMessages.scheduleTitle,
+  automationId: chatMessages.automationId,
+  automationTitle: chatMessages.automationTitle,
 } as const;
 
 const searchMessageColumns = {
@@ -633,9 +633,9 @@ function toPagedMessage(
       return {
         ...message,
         role: "user" as const,
-        scheduleId: row.scheduleId ?? undefined,
-        scheduleTitle: row.scheduleTitle ?? undefined,
-        scheduleSnapshot: row.scheduleSnapshot ?? undefined,
+        automationId: row.automationId ?? undefined,
+        automationTitle: row.automationTitle ?? undefined,
+        automationSnapshot: row.automationSnapshot ?? undefined,
       };
     }
     return {
@@ -1486,10 +1486,10 @@ const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
 /**
  * Delete a chat thread after winding down everything attached to it. Deleting a
- * thread on its own leaves the linked schedules firing and any in-flight runs
+ * thread on its own leaves the linked automations firing and any in-flight runs
  * executing: `zero_runs.chatThreadId` is `ON DELETE SET NULL`, so a running run
  * simply loses its thread reference and keeps consuming credits. We therefore
- * follow the order: stop related schedules, cancel related active runs, then
+ * follow the order: stop related automations, cancel related active runs, then
  * delete the thread.
  *
  * Run cancellation has side effects that cannot participate in the thread's

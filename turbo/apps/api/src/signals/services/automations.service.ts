@@ -204,7 +204,7 @@ async function resolveTriggerInsert(args: {
     if (atTime <= currentTime) {
       return {
         kind: "bad_request",
-        message: `Scheduled time ${atTime.toISOString()} has already passed`,
+        message: `Cannot create the trigger: time ${atTime.toISOString()} has already passed`,
       };
     }
     return {
@@ -366,7 +366,7 @@ async function insertAutomationWithTrigger(
 
 /**
  * Create an automation (optionally with its first trigger): validate the
- * target agent through the same visibility gate the schedule deploy uses,
+ * target agent through the same visibility gate the automation deploy uses,
  * enforce the (agent, name, org, user) unique key up front, resolve the
  * chat-thread link (an owned existing thread or a server-created one — the
  * link is create-only), and persist the automation plus the optional sugar
@@ -442,7 +442,7 @@ export const createAutomation$ = command(
       triggerInsert = resolved.insert;
     }
 
-    // Parity with the legacy schedule deploy: an omitted description is
+    // Parity with the legacy deploy behavior: an omitted description is
     // generated (LLM with template fallback) so list views are never blank.
     const effectiveBody =
       body.description === undefined
@@ -763,7 +763,7 @@ function isTimeTriggerKind(kind: string): boolean {
 /**
  * Enable or disable an automation. Enabling recomputes `nextRunAt` for each
  * still-enabled time trigger (an expired one-time trigger is disabled instead)
- * so resumed schedules fire on their next occurrence rather than catching up.
+ * so resumed automations fire on their next occurrence rather than catching up.
  * Disabling flips only the automation flag: the automation gate suspends the
  * triggers without touching their rows (both the poller and the inbound
  * webhook dispatch check `automation.enabled && trigger.enabled`).
@@ -1048,7 +1048,7 @@ export const setTriggerEnabled$ = command(
       if (recompute.kind === "expired") {
         return {
           kind: "bad_request",
-          message: "Scheduled time has already passed",
+          message: "Cannot enable the automation: time has already passed",
         };
       }
       recomputedState = {

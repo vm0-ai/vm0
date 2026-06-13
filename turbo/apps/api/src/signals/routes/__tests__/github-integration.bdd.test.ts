@@ -7,7 +7,7 @@ import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   GITHUB_APP_CLIENT_ID,
@@ -822,7 +822,7 @@ describe("INT-03 G4: installation management", () => {
 describe("INT-03 G5: label listeners and capability tokens", () => {
   it("manages label listeners across roles and zero capability tokens", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const gh = createGithubBddApi(context);
 
     const actor = bdd.user();
@@ -1059,7 +1059,7 @@ describe("INT-03 G5: label listeners and capability tokens", () => {
 
 interface GithubRunHarness {
   readonly bdd: ReturnType<typeof createBddApi>;
-  readonly api: ReturnType<typeof createRunsSchedulesApi>;
+  readonly api: ReturnType<typeof createRunsAutomationsApi>;
   readonly webhooks: ReturnType<typeof createWebhookCallbackApi>;
   readonly gh: ReturnType<typeof createGithubBddApi>;
   readonly actor: ApiTestUser;
@@ -1074,7 +1074,7 @@ async function githubRunActor(
   senderGithubUserId: string,
 ): Promise<GithubRunHarness> {
   const bdd = createBddApi(context);
-  const api = createRunsSchedulesApi(context);
+  const api = createRunsAutomationsApi(context);
   const webhooks = createWebhookCallbackApi(context);
   const gh = createGithubBddApi(context);
 
@@ -1286,7 +1286,7 @@ async function waitForArrayLength<T>(
 }
 
 async function waitForRunnerJob(
-  api: ReturnType<typeof createRunsSchedulesApi>,
+  api: ReturnType<typeof createRunsAutomationsApi>,
   runnerGroup: string,
 ) {
   await api.heartbeatRunner(runnerGroup);
@@ -1307,7 +1307,7 @@ async function waitForRunnerJob(
 }
 
 async function waitForRunStatus(
-  api: ReturnType<typeof createRunsSchedulesApi>,
+  api: ReturnType<typeof createRunsAutomationsApi>,
   actor: ApiTestUser,
   runId: string,
   status: "cancelled" | "completed" | "failed" | "pending" | "running",
@@ -1381,7 +1381,7 @@ function runIdFromAuditComment(body: string): string {
 }
 
 async function claimNextGithubRun(
-  api: ReturnType<typeof createRunsSchedulesApi>,
+  api: ReturnType<typeof createRunsAutomationsApi>,
   runnerGroup: string,
 ): Promise<{
   readonly runId: string;
@@ -1419,7 +1419,7 @@ async function checkpointGithubRun(args: {
 }
 
 async function completeGithubRun(args: {
-  readonly api: ReturnType<typeof createRunsSchedulesApi>;
+  readonly api: ReturnType<typeof createRunsAutomationsApi>;
   readonly webhooks: ReturnType<typeof createWebhookCallbackApi>;
   readonly actor: ApiTestUser;
   readonly issueApi: CapturedIssueApi;
@@ -2089,7 +2089,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
 
   it("reports rejected and failed label dispatches through comments and callbacks", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const gh = createGithubBddApi(context);
 

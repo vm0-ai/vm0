@@ -190,7 +190,7 @@ async function resolveRunAgentLabel(
   return row ? displayLabel(row) : undefined;
 }
 
-async function resolveRunScheduleLabel(
+async function resolveRunAutomationLabel(
   db: ReadonlyDb,
   runId: string,
 ): Promise<string | undefined> {
@@ -249,7 +249,7 @@ async function resolveRunSelectedModel(
 /**
  * Resolve the audit footer text appended to user-initiated Telegram messages.
  *
- * Preserves the legacy footer semantics for agent, schedule, triggering user,
+ * Preserves the legacy footer semantics for agent, automation, triggering user,
  * and selected model labels. Returns undefined when authRunId is undefined
  * (auth source has no run context) or when none of the four data points are
  * available.
@@ -264,10 +264,10 @@ export function telegramMessageSendFooterText(args: {
     }
     const db = get(db$);
 
-    const [agentLabel, scheduleLabel, userLabel, selectedModel] =
+    const [agentLabel, automationLabel, userLabel, selectedModel] =
       await Promise.all([
         resolveRunAgentLabel(db, args.authRunId),
-        resolveRunScheduleLabel(db, args.authRunId),
+        resolveRunAutomationLabel(db, args.authRunId),
         resolveRunUserLabel(db, {
           runId: args.authRunId,
           botId: args.botId,
@@ -279,12 +279,14 @@ export function telegramMessageSendFooterText(args: {
     if (agentLabel) {
       parts.push(`Sent via ${escapeHtml(agentLabel)}`);
     }
-    if (scheduleLabel) {
-      parts.push(`Triggered by schedule "${escapeHtml(scheduleLabel)}"`);
+    if (automationLabel) {
+      parts.push(`Triggered by automation "${escapeHtml(automationLabel)}"`);
     }
     if (userLabel) {
       parts.push(
-        scheduleLabel ? `Created by ${userLabel}` : `Triggered by ${userLabel}`,
+        automationLabel
+          ? `Created by ${userLabel}`
+          : `Triggered by ${userLabel}`,
       );
     }
     if (selectedModel) {

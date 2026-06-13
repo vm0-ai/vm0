@@ -133,6 +133,68 @@ async fn final_flush_uploads_log_emitted_immediately_before_it() {
     let _ = std::fs::remove_file(pos_file);
 }
 
+#[tokio::test]
+async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+    remove_telemetry_files();
+    let _session_files = SessionCheckpointFilesGuard::new();
+
+    let system_log = guest_agent::paths::system_log_file();
+    let pos_file = guest_agent::paths::telemetry_system_log_pos_file();
+    ensure_parent_dir(system_log);
+
+    let session_id = "telemetry-session-secret";
+    let event_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""session_id":"***""#);
+        then.status(200);
+    });
+    let raw_telemetry_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes(session_id);
+        then.status(500);
+    });
+    let masked_telemetry_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes("system log ***");
+        then.status(200);
+    });
+
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry =
+        guest_agent::telemetry::Telemetry::spawn(std::sync::Arc::clone(&masker), http_client!());
+    let event = serde_json::json!({
+        "type": "system",
+        "subtype": "init",
+        "session_id": session_id
+    });
+    guest_agent::events::send_event(&http_client!(), event, 1, &masker)
+        .await
+        .expect("session event should be sent");
+
+    std::fs::write(system_log, format!("system log {session_id}\n"))
+        .expect("system log should be written");
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Final)
+        .await
+        .expect("final flush should upload masked log");
+    telemetry.shutdown().await;
+
+    event_mock.assert_calls_async(1).await;
+    raw_telemetry_mock.assert_calls_async(0).await;
+    masked_telemetry_mock.assert_calls_async(1).await;
+
+    event_mock.delete_async().await;
+    raw_telemetry_mock.delete_async().await;
+    masked_telemetry_mock.delete_async().await;
+    let _ = std::fs::remove_file(system_log);
+    let _ = std::fs::remove_file(pos_file);
+}
+
 /// Regression for #11008. Combines two distinct guarantees that
 /// together produce the "exactly one HTTP POST" assertion:
 ///

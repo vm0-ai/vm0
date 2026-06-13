@@ -535,7 +535,7 @@ const TRIAL_GALLERY_COPY: readonly TrialGalleryCopy[] = [
     id: "workflow",
     label: "Workflow",
     title: "Workflows that run themselves",
-    subtitle: "Daily briefs, scheduled alerts, weekly digests",
+    subtitle: "Daily briefs, recurring alerts, weekly digests",
   },
   {
     id: "website",

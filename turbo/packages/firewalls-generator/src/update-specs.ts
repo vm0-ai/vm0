@@ -24,6 +24,10 @@ import {
   CLOUDFLARE_OPENAPI_URL,
 } from "./cloudflare-sources";
 import {
+  GOOGLE_CLOUD_DISCOVERY_URLS,
+  GOOGLE_CLOUD_PERMISSION_DOC_URLS,
+} from "./google-cloud";
+import {
   STRIPE_OPENAPI_URL,
   STRIPE_PERMISSIONS_URL,
   STRIPE_RESTRICTED_API_KEYS_URL,
@@ -314,6 +318,10 @@ const UPDATERS: Updater[] = [
   staticUpdater("google-analytics", [
     "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta",
     "https://analyticsadmin.googleapis.com/$discovery/rest?version=v1beta",
+  ]),
+  staticUpdater("google-cloud", [
+    ...Object.values(GOOGLE_CLOUD_DISCOVERY_URLS),
+    ...GOOGLE_CLOUD_PERMISSION_DOC_URLS,
   ]),
   staticUpdater("google-search-console", [
     "https://searchconsole.googleapis.com/$discovery/rest?version=v1",

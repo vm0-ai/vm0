@@ -34,7 +34,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import {
   callbackDeliveryWithStatus,
@@ -104,7 +104,7 @@ function inlineFirewallApis(
 }
 
 async function waitForRunStatus(
-  api: ReturnType<typeof createRunsSchedulesApi>,
+  api: ReturnType<typeof createRunsAutomationsApi>,
   actor: ApiTestUser,
   runId: string,
   status: string,
@@ -118,7 +118,7 @@ async function waitForRunStatus(
 }
 
 async function waitForRunQueueLength(
-  api: ReturnType<typeof createRunsSchedulesApi>,
+  api: ReturnType<typeof createRunsAutomationsApi>,
   actor: ApiTestUser,
   length: number,
 ) {
@@ -210,7 +210,7 @@ async function entitledRunActor(): Promise<{
   };
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsSchedulesApi(context);
+  const api = createRunsAutomationsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -274,7 +274,7 @@ function assistantOutputEvent(
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
   it("creates, dispatches, claims, reports, and completes a run through public APIs", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -388,7 +388,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("resumes the previous session when a run is created with the same sessionId", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
@@ -428,7 +428,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 describe("RUN-01: admission boundaries beyond request validation", () => {
   it("rejects runs for onboarded organizations that never gained an entitlement", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.configureRunnerGroup();
@@ -468,7 +468,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
   });
 
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
@@ -510,7 +510,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
   });
 
   it("removes cancelled runs from the claimable queue", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
 
     const run = await api.createRun(actor, {
@@ -533,7 +533,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
 
 describe("RUN-01: zero run request validation and token boundaries", () => {
   it("rejects invalid zero run requests and run-scoped tokens without agent-run:write", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const unauthenticated = await api.requestCreateRun(
@@ -628,7 +628,7 @@ describe("RUN-01: zero run request validation and token boundaries", () => {
 
   it("limits private agents to their owner and infers the agent from a session", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
 
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
@@ -664,7 +664,7 @@ describe("RUN-01: zero run request validation and token boundaries", () => {
 describe("RUN-02: model provider selection and vm0 admission", () => {
   it("gates vm0 runs on billing state and on unexpired credit grants", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
 
     // An org that never went through onboarding has no billing state at all,
     // so vm0 runs are refused before provider resolution.
@@ -705,7 +705,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
   });
 
   it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -793,7 +793,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
   });
 
   it("uses the requested provider instead of the caller's personal default", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const misc = createMiscRoutesApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -825,7 +825,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
   });
 
   it("runs thread-pinned member-scope providers and mounts codex custom skills", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const bdd = createBddApi(context);
     const chat = createChatFilesBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -928,7 +928,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
 describe("RUN-02: stored connector injection into claimed runs", () => {
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -993,7 +993,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
   });
 
   it("injects manual-grant api-token connectors and their optional variables", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -1040,7 +1040,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
   });
 
   it("keeps refresh-owned connector secrets out of the sandbox environment", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -1072,7 +1072,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
   });
 
   it("withholds platform secrets from the sandbox environment", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token-bdd");
@@ -1109,7 +1109,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
   });
 
   it("ignores plain user secrets named like connector tokens", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -1143,7 +1143,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
   it("resolves compose secret references into direct run environments", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -1186,7 +1186,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
   it("injects enabled custom connector firewalls with resolvable org secrets", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -1250,7 +1250,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   });
 
   it("keeps connector-owned vars out of custom connector base urls", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -1303,7 +1303,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
   it("applies, scopes, expires, and snapshots user permission grants", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
 
@@ -1458,7 +1458,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
   it("injects agent identity, tool hints, and user info into the runner context", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
@@ -1558,7 +1558,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     "does not add chat stream context to %s-triggered runs",
     async (triggerSource) => {
       const bdd = createBddApi(context);
-      const api = createRunsSchedulesApi(context);
+      const api = createRunsAutomationsApi(context);
       const connectors = createConnectorBddApi(context);
       const actor = bdd.user();
       bdd.acceptAgentStorageWrites();
@@ -1600,7 +1600,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
   );
 
   it("promotes queued runs with feature flags and a fresh api start time", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const computerUse = createComputerUseBddApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -1672,7 +1672,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
   it("mounts custom skills for claude-code zero agents", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const misc = createMiscRoutesApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
 
@@ -1711,7 +1711,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
 describe("RUN-03: cancellation of dispatched and terminal runs", () => {
   it("cancels a claimed running run and treats repeat cancellation as settled", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const run = await api.createRun(actor, {
@@ -1736,7 +1736,7 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
 
 describe("RUN-03: user-runner protocol and runner authentication", () => {
   it("dispatches, scopes, and claims runs through user API keys", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const apiKey = await api.createApiKey(actor);
     const bearer = `Bearer ${apiKey.token}`;
@@ -1863,7 +1863,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
   });
 
   it("rejects runner calls with malformed, revoked, or wrong runner credentials", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const bdd = createBddApi(context);
     const actor = bdd.user();
     const pollBody = { group: "vm0/bdd-auth", profiles: ["vm0/default"] };
@@ -1909,7 +1909,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
   });
 
   it("drops queued jobs whose runs reached a terminal state before the claim", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
 
@@ -1948,7 +1948,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
 
   it("returns null claim secretValues for direct compose runs without stored secrets", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
@@ -2007,7 +2007,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
 
 describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () => {
   it("delivers, fails, and retries chat run callbacks through cancellation side effects", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const { actor, agentId } = await entitledRunActor();
     mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "bdd-bypass");
@@ -2120,7 +2120,7 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
     "https://openrouter.ai/api/v1/chat/completions";
 
   it("summarizes completed runs replayed through the agent callback route", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -2262,7 +2262,7 @@ describe("HOOK-01: agent callback summaries through replayed deliveries", () => 
 
 describe("HOOK-02: event-consumer dispatch failures", () => {
   it("surfaces required event-consumer failures and recovers on retry", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -2306,7 +2306,7 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
 
 describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () => {
   it("acknowledges late assistant events when completion cleanup already wrote the run sequence", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const chatCallbacks = createChatCallbacksApi(context);
@@ -2391,7 +2391,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
   }, 90_000);
 
   it("persists assistant events into the linked thread and swallows optional consumer failures", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2622,7 +2622,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
 
 describe("BILL-02: usage reads for an entitled organization with runs", () => {
   it("exposes usage runs, members, and processed usage events through public reads", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2676,7 +2676,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
 
   it("aggregates usage members across organization users", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2794,7 +2794,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
 
 describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhooks", () => {
   it("reports artifacts, volumes, model usage, and telemetry through sandbox webhooks", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const storages = createStoragesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2993,7 +2993,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
   it("fails a clean exit whose run never reported a checkpoint", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
 
@@ -3023,7 +3023,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
   });
 
   it("reports the settled status when a checkpoint-less completion races a cancellation", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
 
@@ -3048,7 +3048,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
   });
 
   it("keeps a cancelled run settled when its checkpointed completion arrives late", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
 
@@ -3092,7 +3092,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
 
   it("checkpoints direct compose runs without vars and canonicalizes usage by event model", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -3228,7 +3228,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
   }
 
   it("recovers payment-failed subscriptions that became active again", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const { actor, granted } = await entitledRunActor();
     await failSubscription(granted);
@@ -3276,7 +3276,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
   });
 
   it("keeps recently paid-through subscriptions and downgrades stale ones", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const { actor, granted } = await entitledRunActor();
     await failSubscription(granted);
@@ -3329,7 +3329,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
   });
 
   it("clears cancelled subscriptions during reconciliation", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const { actor, granted } = await entitledRunActor();
     await failSubscription(granted);

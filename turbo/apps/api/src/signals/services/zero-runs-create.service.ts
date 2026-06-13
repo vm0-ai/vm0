@@ -100,7 +100,6 @@ interface RunCallback {
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  readonly scheduleId?: string;
   readonly automationId?: string;
   readonly triggerId?: string;
 }

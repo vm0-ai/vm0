@@ -404,7 +404,7 @@ export const composesByIdContract = c.router({
 
   /**
    * DELETE /api/agent/composes/:id
-   * Delete agent compose and all associated resources (versions, schedules, permissions, etc.)
+   * Delete agent compose and all associated resources (versions, automations, permissions, etc.)
    * Returns 409 Conflict if agent has running or pending runs
    */
   delete: {

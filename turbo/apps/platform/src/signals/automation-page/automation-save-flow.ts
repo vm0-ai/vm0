@@ -25,7 +25,7 @@ export const createOrgAutomationFromForm$ = command(
       return;
     }
     set(setCreatingOrgAutomation$, true);
-    const scheduleId = await set(
+    const automationId = await set(
       saveOrgAutomation$,
       {
         prompt: values.prompt.trim(),
@@ -50,8 +50,8 @@ export const createOrgAutomationFromForm$ = command(
     });
     signal.throwIfAborted();
     set(closeCreateAutomationDialog$);
-    set(detachedNavigateTo$, "/automations/:scheduleId", {
-      pathParams: { scheduleId },
+    set(detachedNavigateTo$, "/automations/:automationId", {
+      pathParams: { automationId },
     });
   },
 );

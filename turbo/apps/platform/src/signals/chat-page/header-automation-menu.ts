@@ -23,7 +23,7 @@ export const reloadHeaderAutomationMenu$ = command(({ get, set }) => {
 /**
  * All of the user's automations, for the chat-thread header automation menu. Read
  * via useLastLoadable; refetched on every menu open via reloadHeaderAutomationMenu$
- * and on realtime chatThreadSchedulesChanged signals. Consumers filter this to
+ * and on realtime chatThreadAutomationsChanged signals. Consumers filter this to
  * the automations linked to the current chat thread (see automationsForThread).
  */
 export const headerAutomationMenu$ = computed(
