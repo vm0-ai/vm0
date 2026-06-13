@@ -49,6 +49,7 @@ _JSON_CONTROL_CHAR_MAX = 0x20
 _JSON_PREFILTER_MAX_DEPTH = 256
 _JSON_PREFILTER_MAX_STRING_BYTES = 1024
 _JSON_HEX_BYTES = frozenset(b"0123456789abcdefABCDEF")
+_RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES = 4096
 
 _OPENAI_RESPONSES_USAGE_CATEGORIES = (
     MODEL_USAGE_CATEGORY_INPUT,
@@ -444,24 +445,39 @@ class _OpenAIResponsesSseUsageHandler:
     ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
+        self._eventless_prefix: bytearray | None = None
+        self._discard_eventless_event = False
         self._on_parse_error = on_parse_error
 
     def should_capture_event(self, event_name: str | None) -> bool:
         return event_name is None or event_name in _RESPONSES_TERMINAL_USAGE_EVENTS
 
     def on_event_start(self, event_name: str | None) -> None:
-        self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
+        self._reset_event_state()
+        if event_name is None:
+            self._eventless_prefix = bytearray()
+            return
+        self._start_full_extractor()
 
     def on_data(self, chunk: bytes) -> None:
+        if self._discard_eventless_event:
+            return
         if self._extractor is not None:
             self._extractor.feed(chunk)
+            return
+        if self._eventless_prefix is not None:
+            self._feed_eventless_data(chunk)
 
     def on_data_separator(self) -> None:
         self.on_data(b"\n")
 
     def on_event_end(self, event_name: str | None) -> None:
+        if self._eventless_prefix is not None:
+            extractor = self._start_full_extractor()
+            extractor.feed(bytes(self._eventless_prefix))
+            self._eventless_prefix = None
         extractor = self._extractor
-        self._extractor = None
+        self._reset_event_state()
         if extractor is None:
             return
         result = extractor.finish()
@@ -477,7 +493,51 @@ class _OpenAIResponsesSseUsageHandler:
             self._on_parse_error(event_name, result.error)
 
     def on_event_discard(self, event_name: str | None) -> None:
+        self._reset_event_state()
+
+    def _reset_event_state(self) -> None:
         self._extractor = None
+        self._eventless_prefix = None
+        self._discard_eventless_event = False
+
+    def _start_full_extractor(self) -> JsonSelectiveExtractor:
+        self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
+        return self._extractor
+
+    def _feed_eventless_data(self, chunk: bytes) -> None:
+        prefix = self._eventless_prefix
+        if prefix is None:
+            return
+
+        remaining = max(_RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES - len(prefix), 0)
+        captured_len = min(len(chunk), remaining)
+        if captured_len:
+            prefix.extend(chunk[:captured_len])
+
+        event_type = _classify_responses_event_type(bytes(prefix))
+        if event_type == _RESPONSES_EVENT_NON_TERMINAL:
+            self._eventless_prefix = None
+            self._discard_eventless_event = True
+            return
+
+        should_fallback = (
+            event_type == _RESPONSES_EVENT_TERMINAL
+            or captured_len < len(chunk)
+            or len(prefix) >= _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
+        )
+        if not should_fallback:
+            return
+
+        self._fallback_eventless_prefix_to_full_extractor()
+        if self._extractor is not None and captured_len < len(chunk):
+            self._extractor.feed(chunk[captured_len:])
+
+    def _fallback_eventless_prefix_to_full_extractor(self) -> None:
+        prefix = self._eventless_prefix
+        self._eventless_prefix = None
+        extractor = self._start_full_extractor()
+        if prefix:
+            extractor.feed(bytes(prefix))
 
 
 class OpenAIResponsesJsonUsageExtractor:

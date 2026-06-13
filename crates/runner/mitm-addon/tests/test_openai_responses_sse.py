@@ -2,6 +2,7 @@
 
 import pytest
 
+import usage.openai_responses as openai_responses
 from usage import (
     create_openai_responses_sse_usage_extractor,
 )
@@ -88,6 +89,62 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         assert usage["model"] == "gpt-5.4-mini"
         assert usage["tokens.input"] == 3
+
+    def test_eventless_non_terminal_skips_large_delta_before_full_extraction(self, monkeypatch):
+        real_extractor = openai_responses.JsonSelectiveExtractor
+        fed_chunks: list[bytes] = []
+
+        class TrackingExtractor:
+            def __init__(self, **kwargs):
+                self._inner = real_extractor(**kwargs)
+
+            def feed(self, chunk: bytes) -> None:
+                fed_chunks.append(chunk)
+                self._inner.feed(chunk)
+
+            def finish(self):
+                return self._inner.finish()
+
+        monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", TrackingExtractor)
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.output_text.delta","delta":"'
+            + b"x" * 100_000
+            + b'"}\n\n'
+            + b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+            + b'"usage":{"output_tokens":9}}}\n\n'
+        )
+
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 9
+        assert not any(b"x" * 1000 in chunk for chunk in fed_chunks)
+
+    def test_eventless_terminal_type_split_across_chunks_extracts_usage(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(b'data: {"type":"response.comp')
+        parse(
+            b'leted","response":{"id":"resp_split","model":"gpt-5.4",'
+            b'"usage":{"input_tokens":6,"output_tokens":4}}}\n\n'
+        )
+
+        assert usage == {
+            "message_id": "resp_split",
+            "model": "gpt-5.4",
+            "tokens.input": 6,
+            "tokens.output": 4,
+        }
+
+    def test_eventless_type_after_prefix_bound_falls_back_to_full_extraction(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"padding":"'
+            + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+            + b'","type":"response.completed","response":{"model":"gpt-5.4",'
+            + b'"usage":{"output_tokens":8}}}\n\n'
+        )
+
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 8
 
     def test_finish_flushes_response_completed_without_blank_line(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
