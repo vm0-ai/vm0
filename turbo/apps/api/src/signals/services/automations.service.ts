@@ -1,10 +1,13 @@
 import { command } from "ccstate";
-import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
+import type {
+  CreateTriggerRequest,
+  UpdateTriggerRequest,
+} from "@vm0/api-contracts/contracts/automations";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -228,7 +231,7 @@ async function resolveTriggerInsert(args: {
         values: {
           kind: "loop",
           intervalSeconds: request.intervalSeconds,
-          nextRunAt: currentTime,
+          nextRunAt: args.automationEnabled ? currentTime : null,
           ...timestamps,
         },
       },
@@ -764,9 +767,12 @@ function isTimeTriggerKind(kind: string): boolean {
  * Enable or disable an automation. Enabling recomputes `nextRunAt` for each
  * still-enabled time trigger (an expired one-time trigger is disabled instead)
  * so resumed automations fire on their next occurrence rather than catching up.
- * Disabling flips only the automation flag: the automation gate suspends the
- * triggers without touching their rows (both the poller and the inbound
- * webhook dispatch check `automation.enabled && trigger.enabled`).
+ * Disabling clears `nextRunAt` on every time trigger (without touching their
+ * own enabled flag, lastRunId, or failure counter) so the poller stops seeing
+ * them: a loop trigger is always due by design, so a disabled automation that
+ * left its rows scheduled would sit permanently due and starve the poller batch
+ * (#17546). Re-enabling recomputes the next run. The inbound webhook dispatch
+ * still also checks `automation.enabled && trigger.enabled`.
  */
 export const setAutomationEnabled$ = command(
   async (
@@ -826,6 +832,23 @@ export const setAutomationEnabled$ = command(
             )
             .where(eq(automationTriggers.id, trigger.id));
         }
+      } else {
+        // Clear the next run on every scheduled time trigger so the poller
+        // stops seeing them: a loop trigger is always due by design, so leaving
+        // a disabled automation's rows scheduled creates a permanently-due
+        // "zombie" that fills the poller batch and starves real work (#17546).
+        // The trigger's own enabled flag / lastRunId / failure counter stay
+        // intact; re-enabling recomputes the next run.
+        await tx
+          .update(automationTriggers)
+          .set({ nextRunAt: null, updatedAt: currentTime })
+          .where(
+            and(
+              eq(automationTriggers.automationId, updated.id),
+              inArray(automationTriggers.kind, [...TIME_TRIGGER_KINDS]),
+              isNotNull(automationTriggers.nextRunAt),
+            ),
+          );
       }
 
       return updated;
@@ -1062,6 +1085,84 @@ export const setTriggerEnabled$ = command(
       .set({
         enabled: args.enabled,
         ...recomputedState,
+        updatedAt: currentTime,
+      })
+      .where(eq(automationTriggers.id, owned.trigger.id))
+      .returning();
+    signal.throwIfAborted();
+    if (!trigger) {
+      return { kind: "not_found" };
+    }
+
+    await publishChatThreadAutomationsChangedSafely(
+      args.userId,
+      owned.automation.chatThreadId,
+    );
+    signal.throwIfAborted();
+
+    return { kind: "ok", trigger };
+  },
+);
+
+/**
+ * Replace a time trigger's schedule config in place — the kind may switch
+ * among cron/once/loop. The row keeps its id, enabled flag, and lastRunId
+ * history; `nextRunAt` is recomputed by the creation rules (a cron schedules
+ * only while the automation is enabled) and the consecutive-failure counter
+ * resets — the same revive semantics as enable. Webhook triggers carry no
+ * schedule and are rejected.
+ */
+export const updateTrigger$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly id: string;
+      readonly body: UpdateTriggerRequest;
+    },
+    signal: AbortSignal,
+  ): Promise<TriggerMutationResult> => {
+    const db = set(writeDb$);
+    const owned = await loadOwnedTrigger(db, args);
+    signal.throwIfAborted();
+    if (!owned) {
+      return { kind: "not_found" };
+    }
+    if (owned.trigger.kind === "webhook") {
+      return {
+        kind: "bad_request",
+        message: "Webhook triggers have no schedule to update",
+      };
+    }
+
+    const currentTime = nowDate();
+    const result = await resolveTriggerInsert({
+      request: args.body,
+      automationEnabled: owned.automation.enabled,
+      currentTime,
+    });
+    signal.throwIfAborted();
+    if (result.kind === "bad_request") {
+      return result;
+    }
+    const { values } = result.insert;
+
+    // The B4 CHECK constraint requires each kind to carry exactly its own
+    // config columns, so the new kind's fields are set and the unused ones
+    // are nulled explicitly (the timezone column is NOT NULL, default UTC —
+    // the same effective value a fresh loop insert gets). The enabled flag,
+    // lastRunId, and the webhook columns are untouched.
+    const [trigger] = await db
+      .update(automationTriggers)
+      .set({
+        kind: values.kind,
+        cronExpression: values.cronExpression ?? null,
+        atTime: values.atTime ?? null,
+        intervalSeconds: values.intervalSeconds ?? null,
+        timezone: values.timezone ?? "UTC",
+        nextRunAt: values.nextRunAt,
+        consecutiveFailures: 0,
         updatedAt: currentTime,
       })
       .where(eq(automationTriggers.id, owned.trigger.id))

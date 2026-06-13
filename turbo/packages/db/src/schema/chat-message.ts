@@ -180,7 +180,7 @@ export const chatMessages = pgTable(
         table.createdAt,
       ),
       index("idx_chat_messages_run_id").on(table.runId),
-      uniqueIndex("chat_messages_usage_run_id_unique")
+      index("chat_messages_usage_run_id_idx")
         .on(table.runId)
         .where(sql`${table.usagePayload} IS NOT NULL`),
       uniqueIndex("chat_messages_revokes_message_id_unique").on(

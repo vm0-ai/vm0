@@ -1162,7 +1162,7 @@ function OnboardingOrgSwitcher() {
 
 function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="zero-app flex h-dvh bg-muted/30 relative">
+    <div className="zero-app zero-viewport-shell flex bg-muted/30 relative">
       {/* Left panel — brand / illustration */}
       <OnboardingIllustrationPanel />
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.192.0](https://github.com/vm0-ai/vm0/compare/cli-v9.191.0...cli-v9.192.0) (2026-06-13)
+
+
+### Features
+
+* update a time trigger's schedule in place ([#17543](https://github.com/vm0-ai/vm0/issues/17543)) ([1c4cdb1](https://github.com/vm0-ai/vm0/commit/1c4cdb18b84b8924684b33545781112275437c97))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.91.0
+    * @vm0/core bumped to 8.335.3
+
 ## [9.191.0](https://github.com/vm0-ai/vm0/compare/cli-v9.190.10...cli-v9.191.0) (2026-06-12)
 
 

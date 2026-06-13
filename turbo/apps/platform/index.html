@@ -451,7 +451,14 @@
         }
         .sk {
           height: 100dvh;
+          min-height: 100dvh;
           background: #fdfdfe;
+        }
+        @media (display-mode: standalone) {
+          .sk {
+            height: calc(100dvh + env(safe-area-inset-bottom, 0px));
+            min-height: calc(100dvh + env(safe-area-inset-bottom, 0px));
+          }
         }
         [data-theme="dark"] .sk {
           background: #19191b;

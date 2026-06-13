@@ -992,7 +992,7 @@ function ArtifactPreviewDialogContent({
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className={`zero-dialog-enter-overlay fixed inset-0 z-[9999] isolate flex items-center justify-center bg-gray-900/45 outline-none transition-opacity duration-[180ms] ease ${
+      className={`zero-dialog-enter-overlay zero-pwa-fixed-cover fixed inset-0 z-[9999] isolate flex items-center justify-center bg-gray-900/45 outline-none transition-opacity duration-[180ms] ease ${
         visible
           ? "pointer-events-auto opacity-100"
           : "pointer-events-none opacity-0"
@@ -1009,7 +1009,7 @@ function ArtifactPreviewDialogContent({
           visible ? "translate-y-0" : "translate-y-2"
         } ${
           fullscreen
-            ? "h-dvh w-dvw rounded-none"
+            ? "zero-viewport-shell w-dvw rounded-none"
             : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-2xl"
         }`}
         data-testid="attachment-lightbox-panel"

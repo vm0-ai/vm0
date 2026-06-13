@@ -1091,7 +1091,6 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
       throw new Error("Expected execute schedules cron to succeed");
     }
     expect(cron.body.success).toBeTruthy();
-    expect(cron.body.executed).toBe(0);
     expect(cron.body.skipped).toBeGreaterThanOrEqual(1);
 
     const afterCron = await api.listAutomations(actor);

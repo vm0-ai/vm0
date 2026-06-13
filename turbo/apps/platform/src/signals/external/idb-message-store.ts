@@ -7,6 +7,8 @@ import { logger } from "../log.ts";
 
 const L = logger("ChatIdbCache");
 
+const DB_VERSION = 3;
+
 interface ChatMessageReadStore {
   readLatest(
     threadId: string,
@@ -66,11 +68,11 @@ function createIdbMessageStores(userId: string, orgId: string) {
   function getDb(): Promise<IDBPDatabase> {
     if (!dbPromise) {
       L.debug("openDB", { dbName, storeName });
-      // Schema is shared with idb-thread-agent-store.ts: both modules open
-      // the same DB at version 2. The upgrade callback creates every store
+      // Schema is shared with idb-thread-meta-store.ts: both modules open
+      // the same DB at the same version. The upgrade callback creates every store
       // the schema currently defines, idempotently, so whichever module
       // triggers the version bump leaves a complete schema for the other.
-      dbPromise = openDB(dbName, 2, {
+      dbPromise = openDB(dbName, DB_VERSION, {
         upgrade(db) {
           L.debug("openDB:upgrade", { dbName, storeName });
           if (!db.objectStoreNames.contains(storeName)) {

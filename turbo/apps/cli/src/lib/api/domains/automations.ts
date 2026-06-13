@@ -9,6 +9,7 @@ import type {
   AutomationResponse,
   AutomationTriggerResponse,
   CreateTriggerRequest,
+  UpdateTriggerRequest,
 } from "@vm0/api-contracts/contracts/automations";
 
 /**
@@ -224,6 +225,27 @@ export async function showAutomationTrigger(
   }
 
   handleError(result, `Trigger not found: ${id}`);
+}
+
+/**
+ * Replace a time trigger's schedule config in place (the kind may switch
+ * among cron/once/loop). The trigger keeps its id, enabled flag, and run
+ * history; the next run is recomputed and the failure counter resets.
+ */
+export async function updateAutomationTrigger(
+  id: string,
+  body: UpdateTriggerRequest,
+): Promise<AutomationTriggerResponse> {
+  const config = await getClientConfig();
+  const client = initClient(automationTriggersContract, config);
+
+  const result = await client.update({ params: { id }, body });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, `Failed to update trigger ${id}`);
 }
 
 /**

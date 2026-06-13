@@ -37,7 +37,15 @@ MODEL_USAGE_KIND = "model"
 
 
 def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
-    """Return whether model-provider token usage should be extracted/reported."""
+    """Return whether model-provider token usage can be observed.
+
+    This gates response usage parser setup and model usage observation
+    reporting. It is not a billing gate: BYOK/non-billable model providers can
+    be observable when the run context supplies a non-empty
+    ``MODEL_USAGE_PROVIDER``.
+    ``FIREWALL_BILLABLE`` is also accepted as a legacy model-provider
+    observability signal for older billable contexts.
+    """
     firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
     if not firewall_name.startswith("model-provider:"):
         return False
@@ -98,7 +106,28 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
 
 
 def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) -> bool:
-    """Buffer token usage observations for model-provider responses if available."""
+    """Buffer model usage statistics for observable model-provider responses.
+
+    Observations are sent to
+    ``/api/webhooks/agent/model-usage-observation`` and are separate from
+    billable ``/api/webhooks/agent/usage-event`` rows. Accepted observation
+    reporting requires all gates to pass:
+
+    - ``run_id`` is non-empty.
+    - ``firewall_name`` starts with ``model-provider:``.
+    - The flow is model-provider observable: ``MODEL_USAGE_PROVIDER`` is a
+      non-empty string, or legacy ``FIREWALL_BILLABLE`` is truthy.
+    - At least one model-provider usage source is available.
+    - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
+      quantity.
+    - ``vm_sandbox_token`` and ``get_api_url()`` are both non-empty.
+
+    Non-billable BYOK model-provider flows with ``MODEL_USAGE_PROVIDER`` are
+    expected to report observations without reporting billable usage events.
+    All failed gates are silent by design except missing sandbox token or API
+    URL, which writes a proxy warning because that indicates an
+    environment/reporting setup problem.
+    """
     if not run_id:
         return False
     if not is_model_provider_usage_observable(flow):

@@ -1637,6 +1637,84 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows the latest immutable run usage settlement", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-chip-settlements",
+      chatMessages: [
+        {
+          id: "msg-usage-settlement-user",
+          role: "user",
+          content: "Summarize usage settlements",
+          runId: "run-usage-settlement",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-settlement-assistant",
+          role: "assistant",
+          content: "Usage summary is ready.",
+          runId: "run-usage-settlement",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-settlement-first",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-settlement",
+          usage: {
+            version: 1,
+            totalCredits: 12,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.5/tokens.output",
+                credits: 12,
+                providers: [{ provider: "openai", credits: 12 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-usage-settlement-second",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-settlement",
+          usage: {
+            version: 1,
+            totalCredits: 108,
+            settledAt: "2026-06-09T10:00:05Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.5/tokens.output",
+                credits: 12,
+                providers: [{ provider: "openai", credits: 12 }],
+              },
+              {
+                kind: "image",
+                credits: 96,
+                providers: [{ provider: "nano-banana-2", credits: 96 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-chip-settlements",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Credit usage 108"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Credit usage 12")).not.toBeInTheDocument();
+  });
+
   it("stops a server-queued run and recalls queued follow-up messages", async () => {
     const interrupts: string[] = [];
     const recalls: string[] = [];

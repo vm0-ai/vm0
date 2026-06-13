@@ -83,6 +83,7 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_model_provider_websocket_usage.py` | Model provider WebSocket usage reporting pipeline |
 | `test_model_provider_websocket_metadata.py` | Model provider WebSocket usage metadata parsing |
 | `test_model_provider_usage.py` | Model provider usage reporter |
+| `x_connector_usage/` | Direct X connector usage billing, write refinement, unparseable fallback, and skip gates |
 | `test_connector_usage.py` | Connector usage reporter and stream-path detection |
 | `test_usage_idempotency.py` | Usage event idempotency key helpers |
 | `test_usage_reporting_idempotency.py` | Hook-level usage reporting idempotency |

@@ -1,23 +1,10 @@
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { isGoogleOAuthConnector } from "@vm0/connectors/auth-providers/oauth/google-connectors";
 
 export function shouldShowGoogleSecurityWarningNotice(
   type: ConnectorType,
 ): boolean {
-  switch (type) {
-    case "gmail":
-    case "google-ads":
-    case "google-calendar":
-    case "google-docs":
-    case "google-drive":
-    case "google-meet":
-    case "google-search-console":
-    case "google-sheets": {
-      return true;
-    }
-    default: {
-      return false;
-    }
-  }
+  return isGoogleOAuthConnector(type);
 }
 
 export function shouldShowMetaAdsReviewNotice(type: ConnectorType): boolean {

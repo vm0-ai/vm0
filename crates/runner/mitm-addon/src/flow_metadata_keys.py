@@ -28,8 +28,8 @@ Request context
 - ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
   ``"claude-code"``. Read by model-provider usage protocol selection.
 - ``BROWSER_USER_AGENT``: ``bool`` written by ``request()`` for browser-looking
-  user agents. Read by request dispatch to skip auth mutation for that flow and
-  by network-log entry construction.
+  user agents. Read by request dispatch to skip the firewall credential flow for
+  that request and by network-log entry construction.
 
 Timing context
 --------------
@@ -42,8 +42,8 @@ Timing context
 Firewall and auth context
 -------------------------
 - ``FIREWALL_BASE``: ``str`` matched firewall base. Written by firewall match,
-  browser passthrough, matched firewall block, and auth paths. Read by logging,
-  auth cache invalidation, usage dispatch, and local error responses.
+  matched firewall block, and auth paths. Read by logging, auth cache
+  invalidation, usage dispatch, and local error responses.
 - ``FIREWALL_API_ID``: ``str`` API id or base fallback from the matched
   firewall. Read by auth handling and 401 cache invalidation.
 - ``FIREWALL_NAME``: ``str`` firewall connector/model name. Read by logging,

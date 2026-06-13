@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.448.0](https://github.com/vm0-ai/vm0/compare/app-v0.447.0...app-v0.448.0) (2026-06-13)
+
+
+### Features
+
+* update a time trigger's schedule in place ([#17543](https://github.com/vm0-ai/vm0/issues/17543)) ([1c4cdb1](https://github.com/vm0-ai/vm0/commit/1c4cdb18b84b8924684b33545781112275437c97))
+
+
+### Bug Fixes
+
+* append chat usage settlement messages ([#17521](https://github.com/vm0-ai/vm0/issues/17521)) ([a937645](https://github.com/vm0-ai/vm0/commit/a937645344bdc687227019304f5af2fd3d4fcc74))
+
+
+### Performance Improvements
+
+* separate read state and draft state from chat thread list ([#17527](https://github.com/vm0-ai/vm0/issues/17527)) ([a518593](https://github.com/vm0-ai/vm0/commit/a518593c22cb47096df031c05e0b4e0ed047f0ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.0
+    * @vm0/core bumped to 8.335.3
+
 ## [0.447.0](https://github.com/vm0-ai/vm0/compare/app-v0.446.1...app-v0.447.0) (2026-06-12)
 
 

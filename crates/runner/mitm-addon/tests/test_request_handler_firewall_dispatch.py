@@ -503,7 +503,7 @@ async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
 async def test_browser_firewall_match_skips_auth_injection(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    """Browser-looking UAs pass through without connector auth mutation."""
+    """Browser-looking UAs pass through without entering the credential flow."""
     pending_path = tmp_path / "usage-pending"
     usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
     reg_path = _write_registry(
@@ -548,13 +548,10 @@ async def test_browser_firewall_match_skips_auth_injection(
     assert flow.response is None
     assert "Authorization" not in flow.request.headers
     assert flow.metadata["firewall_action"] == "ALLOW"
-    assert flow.metadata["firewall_base"] == "https://api.stripe.com"
-    assert flow.metadata["firewall_name"] == "stripe"
-    assert flow.metadata["firewall_permission"] == ""
-    assert flow.metadata["firewall_rule_match"] == ""
-    assert flow.metadata["firewall_params"] == {}
     assert flow.metadata["firewall_billable"] is False
     assert flow.metadata["browser_user_agent"] is True
+    assert "firewall_base" not in flow.metadata
+    assert "firewall_name" not in flow.metadata
     assert "firewall_api_id" not in flow.metadata
     assert "auth_resolved_secrets" not in flow.metadata
     assert "auth_url_rewrite" not in flow.metadata
@@ -571,6 +568,7 @@ async def test_browser_firewall_match_skips_auth_injection(
     mitm_addon.response(flow)
     network_log_entry = json.loads((tmp_path / "net.jsonl").read_text().splitlines()[0])
     assert network_log_entry["browser_user_agent"] is True
+    assert "firewall_base" not in network_log_entry
 
 
 async def test_non_browser_firewall_match_still_injects_auth(
@@ -622,10 +620,10 @@ async def test_non_browser_firewall_match_still_injects_auth(
     assert flow.metadata["firewall_name"] == "stripe"
 
 
-async def test_browser_firewall_match_does_not_bypass_denied_unknown_policy(
+async def test_browser_firewall_match_bypasses_denied_unknown_policy(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    """Browser-looking UA only skips auth mutation after firewall allow."""
+    """Browser-looking UAs skip the firewall matcher for unknown endpoints."""
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -664,16 +662,77 @@ async def test_browser_firewall_match_does_not_bypass_denied_unknown_policy(
         await mitm_addon.request(flow)
 
     mock_headers.assert_not_called()
-    assert flow.response is not None
-    assert flow.response.status_code == 403
+    assert flow.response is None
     assert "Authorization" not in flow.request.headers
-    assert flow.metadata["firewall_action"] == "DENY"
-    assert flow.metadata["firewall_base"] == "https://api.stripe.com"
-    assert flow.metadata["firewall_name"] == "stripe"
+    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata["firewall_billable"] is False
     assert flow.metadata["browser_user_agent"] is True
-    body = json.loads(flow.response.content)
-    assert body["error"] == "permission_denied"
-    assert body["reason"] == "unknown_endpoint"
+    assert "firewall_base" not in flow.metadata
+    assert "firewall_name" not in flow.metadata
+
+
+async def test_browser_firewall_match_bypasses_explicit_denied_permission(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Browser-looking UAs pass through even when a matched permission is denied."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="stripe",
+            billable_firewalls=["stripe"],
+            api_entry={
+                "base": "https://api.stripe.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.STRIPE_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "payment_method_write",
+                        "rules": ["POST /v1/payment_methods"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": [],
+                "deny": ["payment_method_write"],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.stripe.com",
+        method="POST",
+        path="/v1/payment_methods",
+        request_headers=headers(
+            ("Host", "api.stripe.com"),
+            ("User-Agent", _BROWSER_USER_AGENT),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_not_called()
+    assert flow.response is None
+    assert "Authorization" not in flow.request.headers
+    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata["firewall_billable"] is False
+    assert flow.metadata["browser_user_agent"] is True
+    assert "firewall_base" not in flow.metadata
+    assert "firewall_name" not in flow.metadata
+    assert "firewall_api_id" not in flow.metadata
+
+    flow.response = mitm_addon.http.Response.make(200)
+    mitm_addon.response(flow)
+    network_log_entry = json.loads((tmp_path / "net.jsonl").read_text().splitlines()[0])
+    assert network_log_entry["browser_user_agent"] is True
+    assert "firewall_base" not in network_log_entry
 
 
 @pytest.mark.parametrize(

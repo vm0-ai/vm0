@@ -13,7 +13,10 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { automationsByRefContract } from "@vm0/api-contracts/contracts/automations";
+import {
+  automationsByRefContract,
+  automationTriggersContract,
+} from "@vm0/api-contracts/contracts/automations";
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import {
   type TeamComposeItem,
@@ -487,8 +490,9 @@ describe("zero jobs page", () => {
       context.mocks.data.automations(automations);
       return respond(200, toMockAutomationResponse(updated));
     });
+    // A changed schedule is replaced in place via the trigger PATCH endpoint.
     context.mocks.api(
-      automationsByRefContract.addTrigger,
+      automationTriggersContract.update,
       ({ body, respond }) => {
         capturedTriggerBody = body;
         const currentAutomation = automations[0];
@@ -513,7 +517,7 @@ describe("zero jobs page", () => {
         if (!trigger) {
           throw new Error("expected a projected trigger");
         }
-        return respond(201, { trigger });
+        return respond(200, trigger);
       },
     );
 

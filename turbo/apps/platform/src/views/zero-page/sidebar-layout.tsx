@@ -251,14 +251,14 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const setExpanded = useSet(setSidebarExpanded$);
 
   return (
-    <div className="zero-app flex h-dvh w-full bg-background">
+    <div className="zero-app zero-viewport-shell flex w-full bg-background">
       <OrgManageDialogMount />
       <SettingsDialogMount />
       <QueueDrawer />
       <ZeroSidebar />
       <div
         data-sidebar-expanded={expanded || undefined}
-        className="fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
+        className="zero-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
         aria-label="Sidebar overlay"
         onClick={() => {
           return setExpanded(false);

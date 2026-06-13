@@ -6,6 +6,8 @@ export function OnboardingPage() {
   const showOnboarding = useLastResolved(onboardingShowDialog$) ?? false;
 
   return (
-    <div className="h-dvh w-full">{showOnboarding && <ZeroOnboarding />}</div>
+    <div className="zero-viewport-shell w-full">
+      {showOnboarding && <ZeroOnboarding />}
+    </div>
   );
 }

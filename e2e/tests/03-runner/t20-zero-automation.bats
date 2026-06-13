@@ -144,6 +144,15 @@ setup() {
     assert_output --partial "loop"
     assert_output --partial "5m"
 
+    # --- Update the schedule in place ---
+    run $ZERO_CLI automation update "$AUTOMATION_NAME" --loop 10m
+    assert_success
+    assert_output --partial "updated"
+
+    run $ZERO_CLI automation show "$AUTOMATION_NAME"
+    assert_success
+    assert_output --partial "10m"
+
     # --- List ---
     run $ZERO_CLI automation list
     assert_success

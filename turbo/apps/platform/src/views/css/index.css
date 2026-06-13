@@ -54,6 +54,22 @@
   --zero-desktop-titlebar-height: 48px;
 }
 
+.zero-viewport-shell {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+@media (display-mode: standalone) {
+  .zero-viewport-shell {
+    height: calc(100dvh + var(--sab));
+    min-height: calc(100dvh + var(--sab));
+  }
+
+  .zero-pwa-fixed-cover {
+    bottom: calc(-1 * var(--sab));
+  }
+}
+
 .zero-sidebar-header {
   padding-top: calc(0.375rem + var(--sat));
 }

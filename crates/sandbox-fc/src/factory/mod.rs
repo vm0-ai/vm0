@@ -1,11 +1,12 @@
 mod cleanup_group;
 mod cow_cleanup;
+mod create_timing;
 mod create_transaction;
 mod invariant;
 mod leak_cleaner;
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
@@ -19,13 +20,14 @@ use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::cow_cleanup::CowCleanupOutcome;
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
+use crate::factory::create_timing::{SandboxCreateStage, SandboxCreateTiming};
 use crate::factory::create_transaction::{
     FactoryCreateRollbackCleanup, SandboxCreateResources, SandboxCreateTransaction,
     rollback_create_transaction,
 };
 use crate::factory::leak_cleaner::LeakCleaner;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
-use crate::paths::{FactoryPaths, RuntimePaths, SockPaths};
+use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
 use crate::sandbox::{FirecrackerSandbox, FirecrackerSandboxInit};
 
@@ -226,6 +228,7 @@ impl SandboxFactory for FirecrackerFactory {
         let device_rate_limits = convert_device_rate_limits(config.device_rate_limits.as_ref())?;
         let leak_tx = resources.leak_cleaner.sender();
         let id = config.id.to_string();
+        let mut timing = SandboxCreateTiming::new(id.clone(), self.config.profile.clone());
         let rollback_cleanup = FactoryCreateRollbackCleanup {
             id: id.clone(),
             netns_pool: resources.netns_pool.clone(),
@@ -236,74 +239,123 @@ impl SandboxFactory for FirecrackerFactory {
             async {
                 // Acquire a pre-warmed COW slot from the pool.
                 // The slot provides: workspace dir (already created) and cow file.
-                let slot = resources.cow_pool.acquire().await.map_err(|e| {
+                let stage_started = Instant::now();
+                let slot = match resources.cow_pool.acquire().await.map_err(|e| {
                     SandboxError::Initialization {
                         phase: SandboxInitializationPhase::SandboxAllocation,
                         message: format!("acquire COW slot: {e}"),
                     }
-                })?;
-                tx.track_slot(slot)?;
+                }) {
+                    Ok(slot) => slot,
+                    Err(e) => {
+                        return timing.record_stage_result(
+                            SandboxCreateStage::CowPoolAcquire,
+                            stage_started,
+                            Err(e),
+                        );
+                    }
+                };
+                timing.record_stage_result(
+                    SandboxCreateStage::CowPoolAcquire,
+                    stage_started,
+                    tx.track_slot(slot),
+                )?;
 
                 // The slot workspace is {workspaces_dir}/{slot_uuid}/.
                 // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
-                let target_workspace = self.factory_paths.workspace(&id);
-                clean_stale_workspace_dir(&id, &target_workspace)?;
-                let slot_workspace = tx.begin_workspace_rename(target_workspace.clone())?;
-                // Keep rename cancellation-safe: tokio::fs::rename may keep
-                // running on the blocking pool after its future is dropped.
-                if let Err(e) = std::fs::rename(&slot_workspace, &target_workspace) {
-                    tx.abort_workspace_rename_after_error()?;
-                    return Err(SandboxError::Initialization {
-                        phase: SandboxInitializationPhase::SandboxAllocation,
-                        message: format!("rename workspace: {e}"),
-                    });
-                }
-                tx.finish_workspace_rename()?;
+                let stage_started = Instant::now();
+                let rename_result = (|| {
+                    let target_workspace = self.factory_paths.workspace(&id);
+                    clean_stale_workspace_dir(&id, &target_workspace)?;
+                    let slot_workspace = tx.begin_workspace_rename(target_workspace.clone())?;
+                    // Keep rename cancellation-safe: tokio::fs::rename may keep
+                    // running on the blocking pool after its future is dropped.
+                    if let Err(e) = std::fs::rename(&slot_workspace, &target_workspace) {
+                        tx.abort_workspace_rename_after_error()?;
+                        return Err(SandboxError::Initialization {
+                            phase: SandboxInitializationPhase::SandboxAllocation,
+                            message: format!("rename workspace: {e}"),
+                        });
+                    }
+                    tx.finish_workspace_rename()?;
+                    let cow_file = target_workspace.join("cow.img");
+                    let sandbox_paths = SandboxPaths::new(target_workspace);
+                    Ok((cow_file, sandbox_paths))
+                })();
+                let (cow_file, sandbox_paths) = timing.record_stage_result(
+                    SandboxCreateStage::WorkspaceDirRename,
+                    stage_started,
+                    rename_result,
+                )?;
 
                 // Recompute cow_file path after rename (the slot path no longer exists).
-                let cow_file = target_workspace.join("cow.img");
-                let sandbox_paths = crate::paths::SandboxPaths::new(target_workspace.clone());
                 if let Some(workspace_drive) = config.workspace_drive.as_ref() {
-                    prepare_workspace_drive_image(
+                    let stage_started = Instant::now();
+                    let prepare_result = prepare_workspace_drive_image(
                         &sandbox_paths.workspace_image(),
                         workspace_drive,
+                        Some(&mut timing),
                     )
-                    .await?;
+                    .await;
+                    timing.record_stage_result(
+                        SandboxCreateStage::WorkspaceDrivePrepare,
+                        stage_started,
+                        prepare_result,
+                    )?;
                 }
 
                 // Clean stale sock dir and create vsock directory.
+                let stage_started = Instant::now();
                 let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
-                clean_stale_sock_dir(&id, sock_paths.dir())?;
-                tx.track_sock_dir(sock_paths.dir().to_owned());
-                if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
-                    return Err(SandboxError::Initialization {
-                        phase: SandboxInitializationPhase::SandboxAllocation,
-                        message: format!("mkdir vsock dir: {e}"),
-                    });
-                }
+                let sock_result = match clean_stale_sock_dir(&id, sock_paths.dir()) {
+                    Ok(()) => {
+                        tx.track_sock_dir(sock_paths.dir().to_owned());
+                        tokio::fs::create_dir_all(sock_paths.vsock_dir())
+                            .await
+                            .map_err(|e| SandboxError::Initialization {
+                                phase: SandboxInitializationPhase::SandboxAllocation,
+                                message: format!("mkdir vsock dir: {e}"),
+                            })
+                    }
+                    Err(e) => Err(e),
+                };
+                timing.record_stage_result(
+                    SandboxCreateStage::SockDirPrepare,
+                    stage_started,
+                    sock_result,
+                )?;
 
                 // Acquire a network namespace from the pool.
-                let network = resources.netns_pool.acquire().await.map_err(|e| {
-                    SandboxError::Initialization {
-                        phase: SandboxInitializationPhase::SandboxAllocation,
-                        message: format!("acquire netns: {e}"),
-                    }
-                })?;
+                let stage_started = Instant::now();
+                let network = timing.record_stage_result(
+                    SandboxCreateStage::NetnsAcquire,
+                    stage_started,
+                    resources.netns_pool.acquire().await.map_err(|e| {
+                        SandboxError::Initialization {
+                            phase: SandboxInitializationPhase::SandboxAllocation,
+                            message: format!("acquire netns: {e}"),
+                        }
+                    }),
+                )?;
                 tx.track_network(network);
 
                 // Create NBD COW device (~15ms via netlink, no subprocess).
-                let cow_device = self
-                    .device_pool
-                    .create_cow_device(
-                        &resources.base_image.path,
-                        &cow_file,
-                        resources.base_image.size,
-                    )
-                    .await
-                    .map_err(|e| SandboxError::Initialization {
-                        phase: SandboxInitializationPhase::SandboxAllocation,
-                        message: format!("create NBD COW device: {e}"),
-                    })?;
+                let stage_started = Instant::now();
+                let cow_device = timing.record_stage_result(
+                    SandboxCreateStage::NbdCowCreate,
+                    stage_started,
+                    self.device_pool
+                        .create_cow_device(
+                            &resources.base_image.path,
+                            &cow_file,
+                            resources.base_image.size,
+                        )
+                        .await
+                        .map_err(|e| SandboxError::Initialization {
+                            phase: SandboxInitializationPhase::SandboxAllocation,
+                            message: format!("create NBD COW device: {e}"),
+                        }),
+                )?;
                 tx.track_cow_device(cow_device);
 
                 tx.commit()
@@ -317,6 +369,7 @@ impl SandboxFactory for FirecrackerFactory {
                 return Err(e);
             }
         };
+        timing.emit_success_summary();
         let SandboxCreateResources {
             sandbox_paths,
             sock_paths,
@@ -336,7 +389,6 @@ impl SandboxFactory for FirecrackerFactory {
             device_rate_limits,
             leak_tx,
         });
-
         Ok(Box::new(sandbox))
     }
 
@@ -419,7 +471,12 @@ fn clean_stale_workspace_dir(id: &str, target_workspace: &Path) -> sandbox::Resu
 pub(crate) async fn prepare_workspace_drive_image(
     path: &Path,
     config: &sandbox::WorkspaceDriveConfig,
+    mut timing: Option<&mut SandboxCreateTiming>,
 ) -> sandbox::Result<()> {
+    if let Some(timing) = timing.as_deref_mut() {
+        timing.mark_workspace_drive_present();
+    }
+
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -430,10 +487,14 @@ pub(crate) async fn prepare_workspace_drive_image(
     }
 
     if let Some(source_image) = config.seed_image.as_ref() {
+        if let Some(timing) = timing.as_deref_mut() {
+            timing.mark_workspace_seed_image_used();
+        }
         return copy_workspace_drive_seed_image(
             path,
             source_image,
             workspace_drive_size_bytes(config.size_mb),
+            timing,
         )
         .await;
     }
@@ -456,7 +517,8 @@ pub(crate) async fn prepare_workspace_drive_image(
         phase: SandboxInitializationPhase::SandboxAllocation,
         message: format!("workspace image path is not UTF-8: {}", path.display()),
     })?;
-    command::exec_with_timeout(
+    let stage_started = Instant::now();
+    let result = command::exec_with_timeout(
         "mkfs.ext4",
         &["-F", "-q", path_str],
         Duration::from_secs(60),
@@ -465,7 +527,16 @@ pub(crate) async fn prepare_workspace_drive_image(
     .map_err(|e| SandboxError::Initialization {
         phase: SandboxInitializationPhase::SandboxAllocation,
         message: format!("format workspace image: {e}"),
-    })?;
+    });
+    if let Some(timing) = timing {
+        timing.record_stage_result(
+            SandboxCreateStage::WorkspaceFreshFormat,
+            stage_started,
+            result,
+        )
+    } else {
+        result
+    }?;
     Ok(())
 }
 
@@ -473,6 +544,7 @@ async fn copy_workspace_drive_seed_image(
     target: &Path,
     source: &Path,
     expected_size_bytes: u64,
+    timing: Option<&mut SandboxCreateTiming>,
 ) -> sandbox::Result<()> {
     let source_metadata =
         tokio::fs::metadata(source)
@@ -518,7 +590,8 @@ async fn copy_workspace_drive_seed_image(
             message: format!("workspace image path is not UTF-8: {}", target.display()),
         })?;
 
-    command::exec_with_timeout(
+    let stage_started = Instant::now();
+    let result = command::exec_with_timeout(
         "cp",
         &["--sparse=always", "--", source_str, target_str],
         Duration::from_secs(300),
@@ -527,7 +600,16 @@ async fn copy_workspace_drive_seed_image(
     .map_err(|e| SandboxError::Initialization {
         phase: SandboxInitializationPhase::SandboxAllocation,
         message: format!("copy workspace seed image: {e}"),
-    })?;
+    });
+    if let Some(timing) = timing {
+        timing.record_stage_result(
+            SandboxCreateStage::WorkspaceSeedSparseCopy,
+            stage_started,
+            result,
+        )
+    } else {
+        result
+    }?;
 
     let target_metadata =
         tokio::fs::metadata(target)
@@ -666,6 +748,7 @@ mod tests {
     async fn prepare_workspace_drive_image_without_seed_formats_fresh_image() {
         let tmp = tempfile::tempdir().unwrap();
         let target = tmp.path().join("nested").join("workspace.ext4");
+        let mut timing = SandboxCreateTiming::new("sandbox".into(), "vm0/default".into());
 
         prepare_workspace_drive_image(
             &target,
@@ -673,12 +756,23 @@ mod tests {
                 size_mb: 16,
                 seed_image: None,
             },
+            Some(&mut timing),
         )
         .await
         .unwrap();
 
         let metadata = tokio::fs::metadata(&target).await.unwrap();
         assert_eq!(metadata.len(), workspace_drive_size_bytes(16));
+        assert!(
+            timing
+                .stage_duration_for_test(SandboxCreateStage::WorkspaceFreshFormat)
+                .is_some()
+        );
+        assert!(
+            timing
+                .stage_duration_for_test(SandboxCreateStage::WorkspaceSeedSparseCopy)
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -688,6 +782,7 @@ mod tests {
         let target = tmp.path().join("nested").join("workspace.ext4");
         let marker_offset = 4096;
         let marker = b"vm0";
+        let mut timing = SandboxCreateTiming::new("sandbox".into(), "vm0/default".into());
 
         let mut source_file = tokio::fs::File::create(&source).await.unwrap();
         source_file
@@ -708,12 +803,23 @@ mod tests {
                 size_mb: 1,
                 seed_image: Some(source.clone()),
             },
+            Some(&mut timing),
         )
         .await
         .unwrap();
 
         let metadata = tokio::fs::metadata(&target).await.unwrap();
         assert_eq!(metadata.len(), workspace_drive_size_bytes(1));
+        assert!(
+            timing
+                .stage_duration_for_test(SandboxCreateStage::WorkspaceSeedSparseCopy)
+                .is_some()
+        );
+        assert!(
+            timing
+                .stage_duration_for_test(SandboxCreateStage::WorkspaceFreshFormat)
+                .is_none()
+        );
 
         let mut target_file = tokio::fs::File::open(&target).await.unwrap();
         target_file
@@ -744,6 +850,7 @@ mod tests {
                 size_mb: 1,
                 seed_image: Some(source),
             },
+            None,
         )
         .await
         .unwrap_err();

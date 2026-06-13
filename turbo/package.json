@@ -70,6 +70,7 @@
       "ws": ">=8.20.1",
       "mdast-util-to-hast": ">=13.2.1",
       "minimatch": ">=10.2.3",
+      "esbuild": "0.28.1",
       "@esbuild-kit/core-utils>esbuild": "^0.25.4",
       "flatted": ">=3.4.2",
       "picomatch": ">=4.0.4",
@@ -111,7 +112,9 @@
       "@tiptap/extension-text": "3.21.0",
       "@tiptap/extension-underline": "3.21.0",
       "@tiptap/suggestion": "3.21.0",
-      "@types/node": "24.3.0"
+      "@types/node": "24.3.0",
+      "esbuild@>=0.17.0 <0.28.1": ">=0.28.1",
+      "esbuild@>=0.27.3 <0.28.1": ">=0.28.1"
     }
   },
   "packageManager": "pnpm@10.33.4",

@@ -1,7 +1,7 @@
 //! Sandbox preparation, reuse, and post-run cleanup glue.
 
 use std::panic::AssertUnwindSafe;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxConfig, SandboxFactory, SandboxId};
@@ -27,6 +27,8 @@ use crate::types::ExecutionContext;
 use crate::workspace_image_cache::{WorkspaceImageLease, WorkspaceImagePrepareRequest};
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+
+const SLOW_PROXY_REGISTER_THRESHOLD: Duration = Duration::from_secs(3);
 
 #[cfg(test)]
 pub(super) async fn execute_new_sandbox(
@@ -268,9 +270,25 @@ async fn create_started_sandbox(
     };
 
     let source_ip = sandbox.source_ip().to_string();
+    let proxy_register_started = Instant::now();
     let network_log_session = match register_proxy(config, context, &source_ip).await {
-        Ok(session) => session,
+        Ok(session) => {
+            log_proxy_register_success(
+                context.run_id,
+                sandbox_id,
+                &params.profile_name,
+                proxy_register_started.elapsed(),
+            );
+            session
+        }
         Err(e) => {
+            log_proxy_register_failure(
+                context.run_id,
+                sandbox_id,
+                &params.profile_name,
+                proxy_register_started.elapsed(),
+                &e.to_string(),
+            );
             telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
             destroy_sandbox_panic_safe(factory, sandbox).await;
             return Err(SandboxPrepareError::fatal(e));
@@ -554,6 +572,60 @@ pub(super) async fn register_proxy(
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
         .await)
+}
+
+pub(super) fn log_proxy_register_success(
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    profile: &str,
+    elapsed: Duration,
+) {
+    if elapsed < SLOW_PROXY_REGISTER_THRESHOLD {
+        info!(
+            stage = "proxy_register",
+            elapsed_ms = duration_ms(elapsed),
+            threshold_ms = duration_ms(SLOW_PROXY_REGISTER_THRESHOLD),
+            success = true,
+            run_id = %run_id,
+            sandbox_id = %sandbox_id,
+            profile,
+            "proxy register timing"
+        );
+        return;
+    }
+    warn!(
+        stage = "proxy_register",
+        elapsed_ms = duration_ms(elapsed),
+        threshold_ms = duration_ms(SLOW_PROXY_REGISTER_THRESHOLD),
+        success = true,
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        profile,
+        "slow proxy register"
+    );
+}
+
+pub(super) fn log_proxy_register_failure(
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    profile: &str,
+    elapsed: Duration,
+    error: &str,
+) {
+    warn!(
+        stage = "proxy_register",
+        elapsed_ms = duration_ms(elapsed),
+        success = false,
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        profile,
+        error,
+        "proxy register failed"
+    );
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    duration.as_millis() as u64
 }
 
 /// Unregister a VM from the proxy registry.

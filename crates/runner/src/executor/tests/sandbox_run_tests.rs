@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use agent_diagnostics::FailureDiagnostic;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
@@ -18,7 +19,7 @@ use super::super::env::{guest_user_env_dir_path, guest_user_env_file_path};
 use super::super::sandbox_run::{
     NewSandboxHooks, PreparedSandboxRun, execute_new_sandbox,
     execute_new_sandbox_with_prepared_notifier, execute_prepared_sandbox_run,
-    execute_reused_sandbox, register_proxy,
+    execute_reused_sandbox, log_proxy_register_failure, log_proxy_register_success, register_proxy,
 };
 use super::super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, ExecutionFailureKind, JobParams,
@@ -26,11 +27,11 @@ use super::super::{
     SandboxPreparedNotifier, USER_ENV_FILE_ENV_KEY, execute_job, execute_job_reuse,
 };
 use super::support::{
-    DestroyPanicFactory, QueuedCopyFileSandbox, api_storage, assert_proxy_registry_empty,
-    create_overridden_sandbox, default_params, make_reusable_idle_sandbox, minimal_context,
-    run_execute_inner, sandbox_create_error, sandbox_exec_error, sandbox_write_file_error,
-    seed_workspace_image_cache, test_budget_lease, test_device_rate_limits, test_executor_config,
-    test_telemetry,
+    CapturedEvent, CapturedEvents, DestroyPanicFactory, QueuedCopyFileSandbox, api_storage,
+    assert_proxy_registry_empty, create_overridden_sandbox, default_params,
+    make_reusable_idle_sandbox, minimal_context, run_execute_inner, sandbox_create_error,
+    sandbox_exec_error, sandbox_write_file_error, seed_workspace_image_cache, test_budget_lease,
+    test_device_rate_limits, test_executor_config, test_telemetry,
 };
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
@@ -39,6 +40,23 @@ use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
     WorkspaceImagePrepareRequest,
 };
+use tracing::Level;
+use tracing_subscriber::prelude::*;
+
+fn capture_proxy_register_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    tracing::subscriber::with_default(subscriber, action);
+    captured.entries()
+}
+
+fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+    let actual = event
+        .fields
+        .get(field)
+        .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+    assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+}
 
 #[tokio::test]
 async fn execute_inner_happy_path() {
@@ -53,6 +71,79 @@ async fn execute_inner_happy_path() {
     assert_eq!(exit_code, 0);
     assert!(error_msg.is_none());
     assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[test]
+fn proxy_register_fast_success_logs_info() {
+    let events = capture_proxy_register_events(|| {
+        log_proxy_register_success(
+            RunId::nil(),
+            SandboxId::from(uuid::Uuid::nil()),
+            "vm0/default",
+            Duration::from_secs(1),
+        );
+    });
+
+    assert_eq!(events.len(), 1, "events: {events:#?}");
+    let event = &events[0];
+    assert_eq!(event.level, Level::INFO);
+    assert_event_field(event, "message", "proxy register timing");
+    assert_event_field(event, "stage", "proxy_register");
+    assert_event_field(event, "elapsed_ms", "1000");
+    assert_event_field(event, "threshold_ms", "3000");
+    assert_event_field(event, "success", "true");
+    assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "profile", "vm0/default");
+}
+
+#[test]
+fn proxy_register_slow_success_warns_with_stable_fields() {
+    let events = capture_proxy_register_events(|| {
+        log_proxy_register_success(
+            RunId::nil(),
+            SandboxId::from(uuid::Uuid::nil()),
+            "vm0/default",
+            Duration::from_secs(3),
+        );
+    });
+
+    assert_eq!(events.len(), 1, "events: {events:#?}");
+    let event = &events[0];
+    assert_eq!(event.level, Level::WARN);
+    assert_event_field(event, "message", "slow proxy register");
+    assert_event_field(event, "stage", "proxy_register");
+    assert_event_field(event, "elapsed_ms", "3000");
+    assert_event_field(event, "threshold_ms", "3000");
+    assert_event_field(event, "success", "true");
+    assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "profile", "vm0/default");
+}
+
+#[test]
+fn proxy_register_failure_warns_with_error() {
+    let events = capture_proxy_register_events(|| {
+        log_proxy_register_failure(
+            RunId::nil(),
+            SandboxId::from(uuid::Uuid::nil()),
+            "vm0/default",
+            Duration::from_millis(25),
+            "registry failed",
+        );
+    });
+
+    assert_eq!(events.len(), 1, "events: {events:#?}");
+    let event = &events[0];
+    assert_eq!(event.level, Level::WARN);
+    assert_event_field(event, "message", "proxy register failed");
+    assert_event_field(event, "stage", "proxy_register");
+    assert_event_field(event, "elapsed_ms", "25");
+    assert_event_field(event, "success", "false");
+    assert_event_field(event, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "sandbox_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(event, "profile", "vm0/default");
+    assert_event_field(event, "error", "registry failed");
 }
 
 #[tokio::test]

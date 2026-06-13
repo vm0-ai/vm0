@@ -370,6 +370,8 @@ const ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE =
   "/api/zero/chat-threads/:id/model-selection";
 const ZERO_CHAT_THREAD_MODEL_SELECTION_PATH_RE =
   /^\/api\/zero\/chat-threads\/[^/]+\/model-selection$/;
+const ZERO_CHAT_THREAD_DRAFTS_REWRITE_SOURCE = "/api/zero/chat-thread-drafts";
+const ZERO_CHAT_THREAD_UNREADS_REWRITE_SOURCE = "/api/zero/chat-thread-unreads";
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH_RE = /^\/api\/zero\/chat-threads$/;
 const ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE = "/api/zero/chat-threads/:id";
@@ -1033,6 +1035,8 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/chat-threads/:id/model-selection",
     ZERO_CHAT_THREAD_MODEL_SELECTION_PATH_RE,
   ],
+  [ZERO_CHAT_THREAD_DRAFTS_REWRITE_SOURCE, "/api/zero/chat-thread-drafts"],
+  [ZERO_CHAT_THREAD_UNREADS_REWRITE_SOURCE, "/api/zero/chat-thread-unreads"],
   [
     ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
     "/api/zero/chat-threads/:id",

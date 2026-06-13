@@ -975,7 +975,7 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
 });
 
 describe("CHAT-03 run usage messages", () => {
-  it("emits one persisted usage message after completion side effects process run usage", async () => {
+  it("appends immutable usage messages as settled usage changes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Usage message agent",
     );
@@ -1048,8 +1048,8 @@ describe("CHAT-03 run usage messages", () => {
     const usageMessages = page.messages.filter((message) => {
       return message.runId === runId && message.usage !== undefined;
     });
-    expect(usageMessages).toHaveLength(1);
-    expect(usageMessages[0]).toMatchObject({
+    expect(usageMessages.length).toBeGreaterThanOrEqual(1);
+    expect(usageMessages.at(-1)).toMatchObject({
       role: "assistant",
       content: null,
       usage: {
@@ -1074,7 +1074,65 @@ describe("CHAT-03 run usage messages", () => {
       runId,
       context.signal,
     );
-    expect(usageMessageRows).toHaveLength(1);
+    expect(usageMessageRows.length).toBeGreaterThanOrEqual(1);
+    const initialUsageMessageCount = usageMessageRows.length;
+
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockNow(new Date("2030-01-01T00:00:00.000Z"));
+    await store.set(
+      insertRunUsageEvent$,
+      {
+        runId,
+        orgId: actor.orgId!,
+        userId: actor.userId,
+        provider: missingProvider,
+        status: "processed",
+        creditsCharged: 0,
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+    ).resolves.toBeTruthy();
+    usageMessageRows = await store.set(
+      usageMessagesForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 1);
+    expect(usageMessageRows.at(-1)?.usagePayload).toMatchObject({
+      totalCredits: 18,
+      settledAt: "2030-01-01T00:00:00.000Z",
+    });
+
+    mockNow(new Date("2030-01-01T00:00:01.000Z"));
+    await store.set(
+      insertRunUsageEvent$,
+      {
+        runId,
+        orgId: actor.orgId!,
+        userId: actor.userId,
+        provider,
+        status: "processed",
+        creditsCharged: 11,
+      },
+      context.signal,
+    );
+    await expect(
+      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+    ).resolves.toBeTruthy();
+    usageMessageRows = await store.set(
+      usageMessagesForRun$,
+      runId,
+      context.signal,
+    );
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 2);
+    expect(usageMessageRows.at(-1)?.usagePayload).toMatchObject({
+      totalCredits: 29,
+      settledAt: "2030-01-01T00:00:01.000Z",
+    });
     await expect(
       store.set(maybeEmitRunUsageMessage$, runId, context.signal),
     ).resolves.toBeFalsy();
@@ -1083,7 +1141,7 @@ describe("CHAT-03 run usage messages", () => {
       runId,
       context.signal,
     );
-    expect(usageMessageRows).toHaveLength(1);
+    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 2);
   }, 60_000);
 
   it("emits zero-credit usage messages and suppresses emission while usage is pending", async () => {

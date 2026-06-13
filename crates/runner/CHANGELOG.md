@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.116.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.1...runner-rs-v0.116.2) (2026-06-13)
+
+
+### Documentation
+
+* document model usage observation gates ([#17533](https://github.com/vm0-ai/vm0/issues/17533)) ([bec1ee0](https://github.com/vm0-ai/vm0/commit/bec1ee0de023f580554aef14949bddba2cc83892))
+
+## [0.116.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.0...runner-rs-v0.116.1) (2026-06-13)
+
+
+### Refactoring
+
+* **mitm-addon:** split x connector usage tests ([#17530](https://github.com/vm0-ai/vm0/issues/17530)) ([22b1abf](https://github.com/vm0-ai/vm0/commit/22b1abfaff9fc4461c6b8f1af3455e361ddcb6d3))
+
 ## [0.116.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.115.0...runner-rs-v0.116.0) (2026-06-12)
 
 

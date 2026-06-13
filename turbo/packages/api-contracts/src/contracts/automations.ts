@@ -81,28 +81,47 @@ export const automationListResponseSchema = z.object({
   automations: z.array(automationResponseSchema),
 });
 
+const cronTriggerConfigSchema = z.object({
+  kind: z.literal("cron"),
+  cronExpression: z.string().min(1),
+  timezone: z.string().optional(),
+});
+
+const onceTriggerConfigSchema = z.object({
+  kind: z.literal("once"),
+  atTime: z.string().min(1),
+  timezone: z.string().optional(),
+});
+
+const loopTriggerConfigSchema = z.object({
+  kind: z.literal("loop"),
+  intervalSeconds: z.number().int().positive(),
+});
+
 /**
  * Trigger creation input: the kind plus exactly its own config. Webhook
  * triggers mint their token + HMAC secret server-side.
  */
 export const createTriggerRequestSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("cron"),
-    cronExpression: z.string().min(1),
-    timezone: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal("once"),
-    atTime: z.string().min(1),
-    timezone: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal("loop"),
-    intervalSeconds: z.number().int().positive(),
-  }),
+  cronTriggerConfigSchema,
+  onceTriggerConfigSchema,
+  loopTriggerConfigSchema,
   z.object({
     kind: z.literal("webhook"),
   }),
+]);
+
+/**
+ * Trigger update input: updating replaces the trigger's schedule in place —
+ * id, enabled flag, and lastRunId history are preserved; nextRunAt is
+ * recomputed and the consecutive-failure counter resets (same revive
+ * semantics as enable). The kind may switch among cron/once/loop; webhook
+ * triggers have no schedule and are not updatable.
+ */
+export const updateTriggerRequestSchema = z.discriminatedUnion("kind", [
+  cronTriggerConfigSchema,
+  onceTriggerConfigSchema,
+  loopTriggerConfigSchema,
 ]);
 
 const createAutomationRequestSchema = z.object({
@@ -323,6 +342,22 @@ export const automationTriggersContract = c.router({
     },
     summary: "Show a trigger",
   },
+  update: {
+    method: "PATCH",
+    path: "/api/automation-triggers/:id",
+    headers: authHeadersSchema,
+    pathParams: triggerIdParamsSchema,
+    body: updateTriggerRequestSchema,
+    responses: {
+      200: automationTriggerResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary:
+      "Replace a time trigger's schedule config (kind may switch among cron/once/loop)",
+  },
   remove: {
     method: "DELETE",
     path: "/api/automation-triggers/:id",
@@ -391,3 +426,4 @@ export type AutomationTriggerResponse = z.infer<
   typeof automationTriggerResponseSchema
 >;
 export type CreateTriggerRequest = z.infer<typeof createTriggerRequestSchema>;
+export type UpdateTriggerRequest = z.infer<typeof updateTriggerRequestSchema>;

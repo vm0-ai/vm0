@@ -14,9 +14,9 @@ import { getMockAutomations, setMockAutomations } from "./automations-store.ts";
 // The Automation resource API over the shared automation store: each store row
 // (flat single-trigger projection) is served as an automation carrying one
 // time trigger. Trigger ids are minted per row and remembered so trigger
-// sub-resource calls can be traced back to their store row. Replaced ids stay
-// resolvable (`triggerOwners`) because the update flow adds the new trigger
-// before deleting the stale one.
+// sub-resource calls can be traced back to their store row. Schedule updates
+// PATCH the trigger in place (the id survives); replaced ids from explicit
+// add+remove flows stay resolvable (`triggerOwners`).
 
 const currentTriggerIds = new Map<string, string>();
 const triggerOwners = new Map<string, string>();
@@ -255,6 +255,29 @@ export const apiAutomationsHandlers = [
     currentTriggerIds.delete(row.id);
     replaceRow(updated);
     return respond(201, { trigger: toTrigger(updated) });
+  }),
+
+  // PATCH /api/automation-triggers/:id — in-place schedule replacement
+  // mirroring the server semantics: kind/config swap, failure counter reset,
+  // same trigger id (the `currentTriggerIds` entry stays valid).
+  mockApi(automationTriggersContract.update, ({ params, body, respond }) => {
+    const automationId = automationIdForTrigger(params.id);
+    const row = automationId
+      ? getMockAutomations().find((s) => s.id === automationId)
+      : undefined;
+    if (!row) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    const updated: AutomationView = {
+      ...row,
+      ...triggerFields(body),
+      consecutiveFailures: 0,
+      updatedAt: nowDate().toISOString(),
+    };
+    replaceRow(updated);
+    return respond(200, toTrigger(updated));
   }),
 
   // DELETE /api/automation-triggers/:id
