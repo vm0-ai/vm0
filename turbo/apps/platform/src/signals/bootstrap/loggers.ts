@@ -42,16 +42,3 @@ export function extendDebugLoggerLocalStorage(loggerName: string): void {
     return JSON.stringify([...loggerNames, loggerName]);
   });
 }
-
-export const extendDebugLoggerLocalStorage$ = command(
-  ({ get, set }, loggerName: string) => {
-    const debugLoggers = get(get$);
-    const loggerNames = debugLoggers
-      ? jsonParseOr<string[]>(debugLoggers, [])
-      : [];
-    if (!loggerNames.includes(loggerName)) {
-      loggerNames.push(loggerName);
-      set(set$, JSON.stringify(loggerNames));
-    }
-  },
-);
