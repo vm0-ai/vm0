@@ -16,6 +16,7 @@ import {
   getDefaultOrgModelPolicySeed,
   getProviderRuntimeModel,
   getProvidersForModel,
+  getVm0ModelMultiplier,
   isModelSupportedByProvider,
   isSupportedRunModel,
   normalizeRunModelId,
@@ -25,6 +26,7 @@ import {
   supportedRunModelSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   SUPPORTED_RUN_MODELS,
+  VM0_MODEL_CREDIT_MULTIPLIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
@@ -227,6 +229,22 @@ describe("model-first canonical catalog", () => {
         };
       }),
     );
+  });
+
+  it("exposes VM0 credit multipliers for built-in reasoning models", () => {
+    expect(VM0_MODEL_CREDIT_MULTIPLIER).toEqual(
+      expect.objectContaining({
+        "claude-opus-4-8": 2,
+        "claude-opus-4-7": 2,
+        "claude-opus-4-6": 2,
+        "deepseek-v4-pro": 0.1,
+      }),
+    );
+    expect(getVm0ModelMultiplier("claude-opus-4-8")).toBe(2);
+    expect(getVm0ModelMultiplier("claude-opus-4-7")).toBe(2);
+    expect(getVm0ModelMultiplier("claude-opus-4-6")).toBe(2);
+    expect(getVm0ModelMultiplier("deepseek-v4-pro")).toBe(0.1);
+    expect(getVm0ModelMultiplier("custom/model")).toBeUndefined();
   });
 });
 

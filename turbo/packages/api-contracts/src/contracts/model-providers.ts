@@ -1,6 +1,17 @@
 import { z } from "zod";
 
 import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
+import {
+  SUPPORTED_RUN_MODELS,
+  VM0_MODEL_CREDIT_MULTIPLIER,
+  type SupportedRunModel,
+} from "./model-credit-multipliers";
+
+export {
+  SUPPORTED_RUN_MODELS,
+  VM0_MODEL_CREDIT_MULTIPLIER,
+  type SupportedRunModel,
+};
 
 /**
  * Secret field configuration for multi-secret providers
@@ -45,52 +56,6 @@ export type ModelProviderEnvBindings = Record<string, string>;
  * The org slug authorized to use the VM0 managed provider.
  */
 export const VM0_ORG_SLUG = "vm0";
-
-/**
- * Canonical model-first catalog.
- */
-export const SUPPORTED_RUN_MODELS = [
-  "claude-fable-5",
-  "claude-opus-4-8",
-  "claude-opus-4-7",
-  "claude-opus-4-6",
-  "claude-sonnet-4-6",
-  "deepseek-v4-pro",
-  "kimi-k2.6",
-  "kimi-k2.5",
-  "MiniMax-M3",
-  "glm-5.1",
-  "gpt-5.5",
-  "gpt-5.4",
-  "gpt-5.4-mini",
-] as const;
-
-export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
-
-/**
- * Credit multiplier for Built-in model offerings, normalized so Claude Sonnet 4.6 = 1x.
- * Sourced from vendor/OpenRouter per-token USD pricing and normalized via a
- * blended (input + 5x output) cost against Sonnet 4.6 ($3/$15 per M), rounded
- * to 1 decimal. Only applies to the `vm0` provider type; BYOK providers pay
- * the vendor directly and do not carry a platform multiplier.
- */
-export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
-  Record<SupportedRunModel, number>
->({
-  "claude-fable-5": 3.3,
-  "claude-opus-4-8": 1.7,
-  "claude-opus-4-7": 1.7,
-  "claude-opus-4-6": 1.7,
-  "claude-sonnet-4-6": 1,
-  "deepseek-v4-pro": 0.06,
-  "kimi-k2.6": 0.3,
-  "kimi-k2.5": 0.2,
-  "MiniMax-M3": 0.2,
-  "glm-5.1": 0.4,
-  "gpt-5.5": 2,
-  "gpt-5.4": 1,
-  "gpt-5.4-mini": 0.3,
-});
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5",
