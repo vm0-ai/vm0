@@ -2,13 +2,17 @@ use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::mpsc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use vsock_guest::run;
-use vsock_proto::{self, MSG_PING, MSG_PONG};
+use vsock_proto::{
+    self, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+};
 
-use super::support::{read_and_discard_message, read_message, unique_socket_path};
+use super::support::{
+    read_and_discard_message, read_message, send_resume_operations, unique_socket_path,
+};
 
 const EXPECTED_RECONNECT_ATTEMPTS: usize = 50;
 const ACCEPT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -37,6 +41,53 @@ fn run_exhausts_reconnect_attempts_after_ping_only_disconnects() {
     });
 }
 
+#[test]
+fn run_resets_reconnect_attempts_after_real_host_work() {
+    let socket_path = unique_socket_path("reconnect-real-work-reset");
+    let listener = UnixListener::bind(socket_path.as_str()).unwrap();
+    let (done_rx, handle) = spawn_run_thread(socket_path.as_str());
+
+    for accepted in 1..EXPECTED_RECONNECT_ATTEMPTS {
+        let mut host_stream = accept_run_connection(&listener, &done_rx, accepted);
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        read_and_discard_message(&mut host_stream);
+        drop(host_stream);
+        assert_run_still_running(&done_rx, accepted);
+    }
+
+    let mut real_work_stream =
+        accept_run_connection(&listener, &done_rx, EXPECTED_RECONNECT_ATTEMPTS);
+    real_work_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    read_and_discard_message(&mut real_work_stream);
+    send_resume_operations(&mut real_work_stream, 9);
+    let resumed = read_message(&mut real_work_stream);
+    assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
+    assert_eq!(resumed.seq, 9);
+    drop(real_work_stream);
+
+    let mut shutdown_stream =
+        accept_run_connection(&listener, &done_rx, EXPECTED_RECONNECT_ATTEMPTS + 1);
+    shutdown_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    read_and_discard_message(&mut shutdown_stream);
+    let shutdown = vsock_proto::encode(MSG_SHUTDOWN, 10, &[]).unwrap();
+    shutdown_stream.write_all(&shutdown).unwrap();
+    let ack = read_message(&mut shutdown_stream);
+    assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
+    assert_eq!(ack.seq, 10);
+
+    let report = done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    drop(shutdown_stream);
+    drop(listener);
+    assert_eq!(report, Ok(()));
+    handle.join().unwrap().unwrap();
+}
+
 fn assert_run_exhausts_after_short_lived_connections(
     label: &str,
     mut handle_connection: impl FnMut(&mut UnixStream),
@@ -44,17 +95,7 @@ fn assert_run_exhausts_after_short_lived_connections(
     let socket_path = unique_socket_path(label);
     let listener = UnixListener::bind(socket_path.as_str()).unwrap();
 
-    let guest_socket_path = socket_path.as_str().to_owned();
-    let (done_tx, done_rx) = mpsc::channel();
-    let handle = thread::spawn(move || {
-        let result = run(Some(&guest_socket_path));
-        let report = result
-            .as_ref()
-            .map(|_| ())
-            .map_err(|error| (error.kind(), error.to_string()));
-        let _ = done_tx.send(report);
-        result
-    });
+    let (done_rx, handle) = spawn_run_thread(socket_path.as_str());
 
     for accepted in 1..=EXPECTED_RECONNECT_ATTEMPTS {
         let mut host_stream = accept_run_connection(&listener, &done_rx, accepted);
@@ -90,6 +131,21 @@ fn assert_run_exhausts_after_short_lived_connections(
     );
     assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
     assert_eq!(error.to_string(), "Max reconnect attempts reached");
+}
+
+fn spawn_run_thread(socket_path: &str) -> (mpsc::Receiver<RunReport>, JoinHandle<io::Result<()>>) {
+    let guest_socket_path = socket_path.to_owned();
+    let (done_tx, done_rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let result = run(Some(&guest_socket_path));
+        let report = result
+            .as_ref()
+            .map(|_| ())
+            .map_err(|error| (error.kind(), error.to_string()));
+        let _ = done_tx.send(report);
+        result
+    });
+    (done_rx, handle)
 }
 
 fn accept_run_connection(
