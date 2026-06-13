@@ -49,6 +49,9 @@ _JSON_CONTROL_CHAR_MAX = 0x20
 _JSON_PREFILTER_MAX_DEPTH = 256
 _JSON_PREFILTER_MAX_STRING_BYTES = 1024
 _JSON_HEX_BYTES = frozenset(b"0123456789abcdefABCDEF")
+# Eventless SSE frames normally expose ``type`` near the top of the JSON body.
+# After this bounded prefix, fall back to the full streaming extractor so rare
+# terminal frames with late ``type`` fields still report usage.
 _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES = 4096
 
 _OPENAI_RESPONSES_USAGE_CATEGORIES = (

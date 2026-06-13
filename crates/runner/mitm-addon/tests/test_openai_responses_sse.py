@@ -107,17 +107,18 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", TrackingExtractor)
         parse, usage = create_openai_responses_sse_usage_extractor()
+        delta_payload = b'{"type":"response.output_text.delta","delta":"' + b"x" * 100_000 + b'"}'
         parse(
-            b'data: {"type":"response.output_text.delta","delta":"'
-            + b"x" * 100_000
-            + b'"}\n\n'
+            b"data: "
+            + delta_payload
+            + b"\n\n"
             + b'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
             + b'"usage":{"output_tokens":9}}}\n\n'
         )
 
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.output"] == 9
-        assert not any(b"x" * 1000 in chunk for chunk in fed_chunks)
+        assert delta_payload not in b"".join(fed_chunks)
 
     def test_eventless_terminal_type_split_across_chunks_extracts_usage(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
