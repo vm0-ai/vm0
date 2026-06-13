@@ -62,7 +62,6 @@ describe("model-first canonical catalog", () => {
 
   it("exposes the curated flat model list only", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
-      "claude-fable-5",
       "claude-opus-4-8",
       "claude-opus-4-7",
       "claude-opus-4-6",
@@ -83,6 +82,9 @@ describe("model-first canonical catalog", () => {
       true,
     );
     expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
+      false,
+    );
+    expect(supportedRunModelSchema.safeParse("claude-fable-5").success).toBe(
       false,
     );
     expect(supportedRunModelSchema.safeParse("claude-haiku-4-5").success).toBe(
@@ -108,11 +110,11 @@ describe("model-first canonical catalog", () => {
   });
 
   it("surfaces display labels for canonical models", () => {
-    expect(getCanonicalModelDisplayName("claude-fable-5")).toBe(
-      "Claude Fable 5",
-    );
     expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
       "Claude Opus 4.8",
+    );
+    expect(getCanonicalModelDisplayName("claude-fable-5")).toBe(
+      "claude-fable-5",
     );
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
   });
@@ -127,20 +129,19 @@ describe("model-first canonical catalog", () => {
     expect(normalizeRunModelId("anthropic/claude-haiku-4.5")).toBe(
       "anthropic/claude-haiku-4.5",
     );
+    expect(normalizeRunModelId("anthropic/claude-fable-5")).toBe(
+      "anthropic/claude-fable-5",
+    );
     expect(normalizeRunModelId("minimax/minimax-m2.7")).toBe(
       "minimax/minimax-m2.7",
     );
+    expect(isSupportedRunModel("claude-fable-5")).toBe(false);
     expect(isSupportedRunModel("deepseek-v4-flash")).toBe(false);
   });
 
   it("returns compatible provider types for canonical models", () => {
-    expect(getProvidersForModel("claude-fable-5")).toEqual([
-      "vm0",
-      "claude-code-oauth-token",
-      "anthropic-api-key",
-      "openrouter-api-key",
-      "vercel-ai-gateway",
-    ]);
+    expect(getProvidersForModel("claude-fable-5")).toEqual([]);
+    expect(getProvidersForModel("anthropic/claude-fable-5")).toEqual([]);
     expect(getProvidersForModel("claude-opus-4-8")).toEqual([
       "vm0",
       "claude-code-oauth-token",
@@ -205,9 +206,9 @@ describe("model-first canonical catalog", () => {
     ).toBe("claude-opus-4-8");
     expect(
       getProviderRuntimeModel("openrouter-api-key", "claude-fable-5"),
-    ).toBe("anthropic/claude-fable-5");
+    ).toBe("claude-fable-5");
     expect(getProviderRuntimeModel("vercel-ai-gateway", "claude-fable-5")).toBe(
-      "anthropic/claude-fable-5",
+      "claude-fable-5",
     );
     expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("z-ai/glm-5.1");
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.5")).toBe(
@@ -220,7 +221,6 @@ describe("model-first canonical catalog", () => {
 
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
-      "claude-fable-5",
       "claude-opus-4-8",
       "claude-sonnet-4-6",
       "deepseek-v4-pro",
@@ -351,7 +351,7 @@ describe("model selection for Anthropic-native providers", () => {
     "%s offers sonnet and opus models",
     (type) => {
       const models = getModels(type);
-      expect(models).toContain("claude-fable-5");
+      expect(models).not.toContain("claude-fable-5");
       expect(models).toContain("claude-sonnet-4-6");
       expect(models).toContain("claude-opus-4-6");
       expect(models).toContain("claude-opus-4-7");
@@ -388,14 +388,14 @@ describe("model selection for Anthropic-native providers", () => {
 
 describe("model selection for Claude-compatible gateway providers", () => {
   it.each(["openrouter-api-key", "vercel-ai-gateway"] as const)(
-    "%s offers Claude Fable 5 through the Anthropic gateway id",
+    "%s omits Claude Fable 5",
     (type) => {
-      expect(getModels(type)).toContain("anthropic/claude-fable-5");
+      expect(getModels(type)).not.toContain("anthropic/claude-fable-5");
       expect(isModelSupportedByProvider("anthropic/claude-fable-5", type)).toBe(
-        true,
+        false,
       );
       expect(getProviderRuntimeModel(type, "claude-fable-5")).toBe(
-        "anthropic/claude-fable-5",
+        "claude-fable-5",
       );
     },
   );
@@ -404,7 +404,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
 describe("getVm0VisibleModels", () => {
   it("returns all VM0 managed models", () => {
     const models = getVm0VisibleModels();
-    expect(models).toContain("claude-fable-5");
+    expect(models).not.toContain("claude-fable-5");
     expect(models).toContain("claude-opus-4-8");
     expect(models).toContain("kimi-k2.7-code");
     expect(models).toContain("MiniMax-M3");
@@ -422,7 +422,6 @@ describe("getVm0VisibleModels", () => {
 
 describe("normalizeVm0ModelId", () => {
   it.each([
-    ["anthropic/claude-fable-5", "claude-fable-5"],
     ["anthropic/claude-opus-4.8", "claude-opus-4-8"],
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
     ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
@@ -433,13 +432,14 @@ describe("normalizeVm0ModelId", () => {
 
   it("keeps unknown model ids unchanged", () => {
     expect(normalizeVm0ModelId("custom/model")).toBe("custom/model");
+    expect(normalizeVm0ModelId("anthropic/claude-fable-5")).toBe(
+      "anthropic/claude-fable-5",
+    );
   });
 });
 
 describe("model image input support", () => {
   it.each([
-    "claude-fable-5",
-    "anthropic/claude-fable-5",
     "claude-sonnet-4-6",
     "claude-opus-4-8",
     "claude-opus-4-7",
@@ -463,6 +463,12 @@ describe("model image input support", () => {
   it("treats unknown model ids as unknown rather than unsupported", () => {
     expect(modelSupportsImageInput("custom/model")).toBe(false);
     expect(getModelImageInputSupport("custom/model")).toBe("unknown");
+    expect(modelSupportsImageInput("claude-fable-5")).toBe(false);
+    expect(getModelImageInputSupport("claude-fable-5")).toBe("unknown");
+    expect(modelSupportsImageInput("anthropic/claude-fable-5")).toBe(false);
+    expect(getModelImageInputSupport("anthropic/claude-fable-5")).toBe(
+      "unknown",
+    );
   });
 });
 
@@ -479,6 +485,9 @@ describe("minimax-api-key provider", () => {
 describe("removed poor agent backend models", () => {
   it("removes old provider aliases from static provider model lists", () => {
     expect(getModels("openrouter-api-key")).not.toContain(
+      "anthropic/claude-fable-5",
+    );
+    expect(getModels("openrouter-api-key")).not.toContain(
       "anthropic/claude-haiku-4.5",
     );
     expect(getModels("openrouter-api-key")).not.toContain(
@@ -486,6 +495,9 @@ describe("removed poor agent backend models", () => {
     );
     expect(getModels("openrouter-api-key")).not.toContain(
       "minimax/minimax-m2.7",
+    );
+    expect(getModels("vercel-ai-gateway")).not.toContain(
+      "anthropic/claude-fable-5",
     );
     expect(getModels("vercel-ai-gateway")).not.toContain(
       "anthropic/claude-haiku-4.5",
