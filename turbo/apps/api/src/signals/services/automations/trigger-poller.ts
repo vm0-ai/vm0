@@ -30,6 +30,11 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 /** The time-trigger kinds the poller scans; webhook triggers are not time-driven. */
 const TIME_TRIGGER_KINDS = ["cron", "once", "loop"] as const;
 
+// Upper bound on triggers claimed per cron tick. Loop triggers are perpetually
+// due, so a busy workspace can have many simultaneously due at once; 200 covers
+// real load with headroom, and anything beyond is still due on the next tick.
+const DUE_BATCH_LIMIT = 200;
+
 type TriggerRow = typeof automationTriggers.$inferSelect;
 
 /**
@@ -387,7 +392,6 @@ export const executeDueTriggers$ = command(
         description: automations.description,
         instruction: automations.instruction,
         appendSystemPrompt: automations.appendSystemPrompt,
-        automationEnabled: automations.enabled,
       })
       .from(automationTriggers)
       .innerJoin(
@@ -396,30 +400,28 @@ export const executeDueTriggers$ = command(
       )
       .where(
         and(
+          eq(automations.enabled, true),
           eq(automationTriggers.enabled, true),
           inArray(automationTriggers.kind, [...TIME_TRIGGER_KINDS]),
           lte(automationTriggers.nextRunAt, currentTime),
         ),
       )
-      .limit(10);
+      // Deliberately NOT ordered by next_run_at: that would prioritize the
+      // oldest rows, and historically the oldest were permanently-due "zombies"
+      // (disabled automations whose loop triggers stayed scheduled), which
+      // starved the batch (#17546). The disable-clears-next_run_at cure removes
+      // those, so an unordered, generously-capped batch can't starve — anything
+      // beyond the cap is still due on the next tick.
+      .limit(DUE_BATCH_LIMIT);
     signal.throwIfAborted();
 
     let executed = 0;
-    let skipped = 0;
+    let skippedActiveRun = 0;
+    let skippedClaimRace = 0;
+    let preRunFailures = 0;
     const timeTrigger = new TimeTrigger();
 
     for (const row of rows) {
-      // A disabled automation suspends all its triggers without touching their
-      // own enabled flag (mirrors the webhook dispatch's automation gate).
-      if (!row.automationEnabled) {
-        log.debug("Skipping trigger: automation disabled", {
-          triggerId: row.trigger.id,
-          automationId: row.automationId,
-        });
-        skipped++;
-        continue;
-      }
-
       const due: DueTrigger = {
         trigger: row.trigger,
         automation: {
@@ -448,7 +450,7 @@ export const executeDueTriggers$ = command(
             triggerId: row.trigger.id,
             automationId: row.automationId,
           });
-          skipped++;
+          skippedActiveRun++;
           continue;
         }
       }
@@ -465,7 +467,7 @@ export const executeDueTriggers$ = command(
           triggerId: row.trigger.id,
           automationId: row.automationId,
         });
-        skipped++;
+        skippedClaimRace++;
         continue;
       }
 
@@ -475,19 +477,46 @@ export const executeDueTriggers$ = command(
       signal.throwIfAborted();
       if (!runResult.ok) {
         await recordTriggerPreRunFailure(db, due, runResult.error, signal);
-        skipped++;
+        preRunFailures++;
         continue;
       }
       const result = runResult.value;
       if (result.kind !== "ok") {
         await recordTriggerPreRunFailure(db, due, result, signal);
-        skipped++;
+        preRunFailures++;
         continue;
       }
       executed++;
     }
 
-    log.debug("Executed due triggers", { executed, skipped });
+    const skipped = skippedActiveRun + skippedClaimRace + preRunFailures;
+    // Per-tick metrics with the skip reason broken out (#17546): the previous
+    // single "skipped" total hid whether the batch was draining real work or
+    // just churning on active-run/claim-race rows. Routine diagnostic, so debug
+    // per the API logging policy (info-level API logs are disallowed).
+    log.debug("execute-automations tick complete", {
+      dueCount: rows.length,
+      executed,
+      skippedActiveRun,
+      skippedClaimRace,
+      preRunFailures,
+    });
+    if (rows.length >= DUE_BATCH_LIMIT && executed === 0) {
+      // A full batch that claimed nothing is the starvation fingerprint
+      // (#17546): the disable-clears-next_run_at cure should prevent it, so if
+      // it recurs surface it as actionable (warn is permitted where info is
+      // not). Active-run/claim-race rows are normally a small minority, so a
+      // full batch yielding zero runs points at a systemic stall.
+      log.warn(
+        "execute-automations claimed nothing from a full batch; investigate poller starvation",
+        {
+          dueCount: rows.length,
+          skippedActiveRun,
+          skippedClaimRace,
+          preRunFailures,
+        },
+      );
+    }
     return { executed, skipped };
   },
 );

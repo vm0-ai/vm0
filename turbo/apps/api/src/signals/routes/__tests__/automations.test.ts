@@ -10,13 +10,14 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -560,7 +561,7 @@ describe("Automations API", () => {
     expect(renamed.body.name).toBe("gamma");
   });
 
-  it("disable suspends the poller and enable recomputes time-trigger next runs", async () => {
+  it("disable clears time-trigger next runs and enable recomputes them", async () => {
     const fixture = await seedFixture();
     await enableWebhookTriggers(fixture);
     mockEnv("CRON_SECRET", CRON_SECRET);
@@ -587,20 +588,21 @@ describe("Automations API", () => {
       [200],
     );
     expect(disabled.body.enabled).toBeFalsy();
-    // Disable touches only the automation flag: the trigger row keeps its own
-    // enabled flag and time state.
+    // Disable clears next_run_at on the time trigger so the poller stops seeing
+    // it (#17546), but leaves the trigger's own enabled flag intact.
     const [suspended] = await findTriggerRows(automationId);
     expect(suspended?.enabled).toBeTruthy();
-    expect(suspended?.nextRunAt).toStrictEqual(dueTime);
+    expect(suspended?.nextRunAt).toBeNull();
 
-    // The poller sees the due trigger but skips it via the automation gate.
+    // The poller's SQL filter no longer surfaces the disabled automation's
+    // trigger at all, so it is neither claimed nor counted as skipped.
     const cronResponse = await accept(
       cronApi().execute({
         headers: { authorization: `Bearer ${CRON_SECRET}` },
       }),
       [200],
     );
-    expect(cronResponse.body.skipped).toBeGreaterThanOrEqual(1);
+    expect(cronResponse.body.executed).toBe(0);
     const runs = await db
       .select({ id: zeroRuns.id })
       .from(zeroRuns)
@@ -649,6 +651,221 @@ describe("Automations API", () => {
     }
     expect(onceTrigger.enabled).toBeFalsy();
     expect(onceTrigger.nextRunAt).toBeNull();
+  });
+
+  it("creating a loop trigger on a disabled automation leaves next run unscheduled", async () => {
+    const fixture = await seedFixture();
+    await enableWebhookTriggers(fixture);
+
+    const disabled = await createAutomation({
+      name: "loop-disabled",
+      agentId: fixture.composeId,
+      enabled: false,
+      trigger: { kind: "loop", intervalSeconds: 300 },
+    });
+    const [loopTrigger] = disabled.automation.triggers;
+    if (loopTrigger?.kind !== "loop") {
+      throw new Error("Expected a loop trigger");
+    }
+    // A loop trigger is always due by design; gating its next run on the
+    // automation flag stops a disabled automation from minting a permanently-due
+    // "zombie" row (#17546).
+    expect(loopTrigger.nextRunAt).toBeNull();
+  });
+
+  it("disable clears cron and loop next runs but keeps enabled and last run; re-enable recomputes", async () => {
+    const fixture = await seedFixture();
+    await enableWebhookTriggers(fixture);
+
+    const created = await createAutomation({
+      name: "round-trip",
+      agentId: fixture.composeId,
+      trigger: { kind: "cron", cronExpression: "0 9 * * *" },
+    });
+    const automationId = created.automation.id;
+    await accept(
+      refApi().addTrigger({
+        params: { ref: "round-trip" },
+        headers: SESSION_HEADERS,
+        body: { kind: "loop", intervalSeconds: 300 },
+      }),
+      [201],
+    );
+
+    // Stamp a last run on both triggers to prove disable does not clear it.
+    const db = store.set(writeDb$);
+    const [session] = await db
+      .insert(agentSessions)
+      .values({
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        agentComposeId: fixture.composeId,
+      })
+      .returning({ id: agentSessions.id });
+    const [priorRun] = await db
+      .insert(agentRuns)
+      .values({
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        sessionId: session!.id,
+        status: "completed",
+        prompt: "prior run",
+      })
+      .returning({ id: agentRuns.id });
+    const fakeRunId = priorRun!.id;
+    await db
+      .update(automationTriggers)
+      .set({ lastRunId: fakeRunId })
+      .where(eq(automationTriggers.automationId, automationId));
+
+    const disabled = await accept(
+      refApi().disable({
+        params: { ref: "round-trip" },
+        headers: SESSION_HEADERS,
+        body: {},
+      }),
+      [200],
+    );
+    expect(disabled.body.enabled).toBeFalsy();
+    const suspendedRows = await findTriggerRows(automationId);
+    for (const row of suspendedRows) {
+      // Both time triggers lose their next run but keep their own enabled flag
+      // and last-run history.
+      expect(row.nextRunAt).toBeNull();
+      expect(row.enabled).toBeTruthy();
+      expect(row.lastRunId).toBe(fakeRunId);
+    }
+
+    const enabled = await accept(
+      refApi().enable({
+        params: { ref: "round-trip" },
+        headers: SESSION_HEADERS,
+        body: {},
+      }),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+    // Re-enable recomputes the next run for both kinds (cron → next occurrence,
+    // loop → due now).
+    const cronTrigger = enabled.body.triggers.find((trigger) => {
+      return trigger.kind === "cron";
+    });
+    if (cronTrigger?.kind !== "cron") {
+      throw new Error("Expected a cron trigger");
+    }
+    expect(Date.parse(cronTrigger.nextRunAt!)).toBeGreaterThan(now());
+    const loopTrigger = enabled.body.triggers.find((trigger) => {
+      return trigger.kind === "loop";
+    });
+    if (loopTrigger?.kind !== "loop") {
+      throw new Error("Expected a loop trigger");
+    }
+    expect(loopTrigger.nextRunAt).not.toBeNull();
+
+    // The last-run history (an internal column) survives the round trip.
+    const enabledRows = await findTriggerRows(automationId);
+    for (const row of enabledRows) {
+      expect(row.lastRunId).toBe(fakeRunId);
+    }
+  });
+
+  it("the poller does not let disabled-automation zombies starve a due trigger", async () => {
+    // #17546 regression: historically, disabling an automation left its loop
+    // trigger enabled with a past next_run_at (a permanently-due "zombie"). With
+    // >10 such rows, the old unordered LIMIT 10 batch filled with zombies every
+    // tick and a genuinely-due trigger never got claimed. The SQL automation
+    // filter plus the raised batch cap fix it.
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    context.mocks.s3.send.mockResolvedValue({});
+    setSecretKmsClientForTests(fakeKmsClient().client);
+    mockEnv("CRON_SECRET", CRON_SECRET);
+
+    const pastDue = new Date(now() - 60_000);
+    const fixture = await trackAutomations(
+      store.set(
+        seedAutomationsScenario$,
+        {
+          automations: [
+            // 12 zombies: enabled loop triggers, automation flag flipped off
+            // below. >10 proves the old LIMIT 10 starvation.
+            ...Array.from({ length: 12 }, (_, index) => {
+              return {
+                name: `zombie-${index}`,
+                prompt: "Zombie task",
+                triggerType: "loop" as const,
+                intervalSeconds: 300,
+                enabled: true,
+                nextRunAt: pastDue,
+              };
+            }),
+            // The one healthy, enabled automation with a due loop trigger.
+            {
+              name: "healthy",
+              prompt: "Healthy task",
+              triggerType: "loop" as const,
+              intervalSeconds: 300,
+              enabled: true,
+              nextRunAt: pastDue,
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const db = store.set(writeDb$);
+    // Flip the first 12 automations off WITHOUT touching their trigger rows:
+    // exactly the historical zombie shape (trigger enabled=true,
+    // next_run_at in the past, automation enabled=false).
+    const zombieIds = fixture.automationIds.slice(0, 12);
+    const healthyId = fixture.automationIds[12]!;
+    await db
+      .update(automations)
+      .set({ enabled: false })
+      .where(inArray(automations.id, [...zombieIds]));
+
+    const response = await accept(
+      cronApi().execute({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    // The healthy trigger was claimed and run despite 12 starving zombies.
+    expect(response.body.executed).toBe(1);
+
+    const [healthyTrigger] = await findTriggerRows(healthyId);
+    expect(healthyTrigger?.nextRunAt).toBeNull();
+    expect(healthyTrigger?.lastRunId).not.toBeNull();
+    const healthyRuns = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.automationId, healthyId));
+    expect(healthyRuns).toHaveLength(1);
+
+    // The zombies were never touched: still due, never run.
+    const zombieTriggers = await db
+      .select({
+        nextRunAt: automationTriggers.nextRunAt,
+        lastRunId: automationTriggers.lastRunId,
+      })
+      .from(automationTriggers)
+      .innerJoin(
+        automations,
+        eq(automationTriggers.automationId, automations.id),
+      )
+      .where(inArray(automations.id, [...zombieIds]));
+    expect(zombieTriggers).toHaveLength(12);
+    for (const zombie of zombieTriggers) {
+      expect(zombie.nextRunAt).toStrictEqual(pastDue);
+      expect(zombie.lastRunId).toBeNull();
+    }
+    const zombieRuns = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(inArray(zeroRuns.automationId, [...zombieIds]));
+    expect(zombieRuns).toHaveLength(0);
   });
 
   it("enables and disables a single trigger", async () => {

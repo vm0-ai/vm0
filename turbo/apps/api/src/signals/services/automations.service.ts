@@ -7,7 +7,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -231,7 +231,7 @@ async function resolveTriggerInsert(args: {
         values: {
           kind: "loop",
           intervalSeconds: request.intervalSeconds,
-          nextRunAt: currentTime,
+          nextRunAt: args.automationEnabled ? currentTime : null,
           ...timestamps,
         },
       },
@@ -767,9 +767,12 @@ function isTimeTriggerKind(kind: string): boolean {
  * Enable or disable an automation. Enabling recomputes `nextRunAt` for each
  * still-enabled time trigger (an expired one-time trigger is disabled instead)
  * so resumed automations fire on their next occurrence rather than catching up.
- * Disabling flips only the automation flag: the automation gate suspends the
- * triggers without touching their rows (both the poller and the inbound
- * webhook dispatch check `automation.enabled && trigger.enabled`).
+ * Disabling clears `nextRunAt` on every time trigger (without touching their
+ * own enabled flag, lastRunId, or failure counter) so the poller stops seeing
+ * them: a loop trigger is always due by design, so a disabled automation that
+ * left its rows scheduled would sit permanently due and starve the poller batch
+ * (#17546). Re-enabling recomputes the next run. The inbound webhook dispatch
+ * still also checks `automation.enabled && trigger.enabled`.
  */
 export const setAutomationEnabled$ = command(
   async (
@@ -829,6 +832,23 @@ export const setAutomationEnabled$ = command(
             )
             .where(eq(automationTriggers.id, trigger.id));
         }
+      } else {
+        // Clear the next run on every scheduled time trigger so the poller
+        // stops seeing them: a loop trigger is always due by design, so leaving
+        // a disabled automation's rows scheduled creates a permanently-due
+        // "zombie" that fills the poller batch and starves real work (#17546).
+        // The trigger's own enabled flag / lastRunId / failure counter stay
+        // intact; re-enabling recomputes the next run.
+        await tx
+          .update(automationTriggers)
+          .set({ nextRunAt: null, updatedAt: currentTime })
+          .where(
+            and(
+              eq(automationTriggers.automationId, updated.id),
+              inArray(automationTriggers.kind, [...TIME_TRIGGER_KINDS]),
+              isNotNull(automationTriggers.nextRunAt),
+            ),
+          );
       }
 
       return updated;
