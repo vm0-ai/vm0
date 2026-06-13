@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.448.1](https://github.com/vm0-ai/vm0/compare/app-v0.448.0...app-v0.448.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* prevent pwa shell page scroll ([#17561](https://github.com/vm0-ai/vm0/issues/17561)) ([020d0db](https://github.com/vm0-ai/vm0/commit/020d0dbc8c901161dce0a73e4dcb55a46b2e52f4))
+* surface connector diagnostics for failed requests ([#17457](https://github.com/vm0-ai/vm0/issues/17457)) ([52a3083](https://github.com/vm0-ai/vm0/commit/52a308358d08bb30dd1e87e11747cfe13743a444))
+
+
+### Refactoring
+
+* **platform:** keep ccstate accessors inside callbacks ([#17542](https://github.com/vm0-ai/vm0/issues/17542)) ([f272170](https://github.com/vm0-ai/vm0/commit/f272170dbc9058fda7dcb7749fe0ac3b0b80e081))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.1
+    * @vm0/core bumped to 8.335.4
+
 ## [0.448.0](https://github.com/vm0-ai/vm0/compare/app-v0.447.0...app-v0.448.0) (2026-06-13)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.192.1](https://github.com/vm0-ai/vm0/compare/cli-v9.192.0...cli-v9.192.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* surface connector diagnostics for failed requests ([#17457](https://github.com/vm0-ai/vm0/issues/17457)) ([52a3083](https://github.com/vm0-ai/vm0/commit/52a308358d08bb30dd1e87e11747cfe13743a444))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.91.1
+    * @vm0/core bumped to 8.335.4
+
 ## [9.192.0](https://github.com/vm0-ai/vm0/compare/cli-v9.191.0...cli-v9.192.0) (2026-06-13)
 
 

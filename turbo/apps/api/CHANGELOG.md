@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.139.2](https://github.com/vm0-ai/vm0/compare/api-v1.139.1...api-v1.139.2) (2026-06-13)
+
+
+### Bug Fixes
+
+* surface connector diagnostics for failed requests ([#17457](https://github.com/vm0-ai/vm0/issues/17457)) ([52a3083](https://github.com/vm0-ai/vm0/commit/52a308358d08bb30dd1e87e11747cfe13743a444))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.1
+    * @vm0/core bumped to 8.335.4
+    * @vm0/db bumped to 1.49.2
+
 ## [1.139.1](https://github.com/vm0-ai/vm0/compare/api-v1.139.0...api-v1.139.1) (2026-06-13)
 
 
