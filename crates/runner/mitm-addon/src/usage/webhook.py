@@ -184,7 +184,7 @@ def _do_post_webhook_attempts(
             if attempt < max_retries:
                 _log_webhook_entry(
                     proxy_log_path,
-                    "warn",
+                    "info",
                     f"Webhook POST to {url} attempt {attempt + 1} failed, retrying: {exc}",
                     url,
                     log_type,
@@ -197,7 +197,7 @@ def _do_post_webhook_attempts(
             else:
                 _log_webhook_entry(
                     proxy_log_path,
-                    "error",
+                    "info",
                     f"Webhook POST to {url} failed after {attempt + 1} attempts: {exc}",
                     url,
                     log_type,
@@ -205,13 +205,14 @@ def _do_post_webhook_attempts(
                     payload_bytes=payload_bytes,
                     attempt=attempt + 1,
                     error=str(exc),
+                    extra_fields={"delivery_outcome": _RETRYABLE_FAILURE},
                 )
                 return _RETRYABLE_FAILURE
         except (urllib.error.URLError, OSError, TimeoutError) as exc:
             if attempt < max_retries:
                 _log_webhook_entry(
                     proxy_log_path,
-                    "warn",
+                    "info",
                     f"Webhook POST to {url} attempt {attempt + 1} failed, retrying: {exc}",
                     url,
                     log_type,
@@ -224,7 +225,7 @@ def _do_post_webhook_attempts(
             else:
                 _log_webhook_entry(
                     proxy_log_path,
-                    "error",
+                    "info",
                     f"Webhook POST to {url} failed after {attempt + 1} attempts: {exc}",
                     url,
                     log_type,
@@ -232,6 +233,7 @@ def _do_post_webhook_attempts(
                     payload_bytes=payload_bytes,
                     attempt=attempt + 1,
                     error=str(exc),
+                    extra_fields={"delivery_outcome": _RETRYABLE_FAILURE},
                 )
                 return _RETRYABLE_FAILURE
         except Exception as exc:
@@ -349,12 +351,13 @@ def _enqueue_webhook(
     if admitted_count is None:
         _log_webhook_entry(
             proxy_log_path,
-            "warn",
+            "info",
             f"Webhook POST to {url} was not admitted because usage delivery is saturated",
             url,
             log_type,
             payload,
             extra_fields={
+                "reason": "delivery_saturated",
                 "webhook_delivery_capacity": MAX_PENDING_WEBHOOK_PAYLOADS,
                 "webhook_delivery_pending": _pending_delivery_payload_count(),
             },

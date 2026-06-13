@@ -203,7 +203,7 @@ class TestUsageWebhookDelivery:
         assert usage_webhook_server.request_count == 2
         mock_sleep.assert_called_once_with(0.5)
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
-        assert [entry["level"] for entry in entries] == ["warn", "info"]
+        assert [entry["level"] for entry in entries] == ["info", "info"]
         assert [entry["attempt"] for entry in entries] == [1, 2]
         assert all(entry["url"] == usage_webhook_server.url("/x") for entry in entries)
         assert all(entry["type"] == "usage" for entry in entries)
@@ -235,6 +235,8 @@ class TestUsageWebhookDelivery:
         assert webhook.request_count == 2
         assert proxy_log.exists()
         assert "2 attempts" in proxy_log.read_text()
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert all(entry["level"] != "error" for entry in entries)
 
     def test_give_up_with_payload_collision_logs_body_free_summary(
         self, tmp_path, usage_webhook_server
@@ -255,7 +257,8 @@ class TestUsageWebhookDelivery:
 
         assert outcome == "retryable_failure"
         [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
-        assert entry["level"] == "error"
+        assert entry["level"] == "info"
+        assert entry["delivery_outcome"] == "retryable_failure"
         assert entry["attempt"] == 1
         assert "HTTP Error 500" in entry["error"]
         _assert_body_free_webhook_entry(
@@ -283,6 +286,9 @@ class TestUsageWebhookDelivery:
         assert outcome == "retryable_failure"
         assert usage_webhook_server.request_count == 2
         mock_sleep.assert_called_once_with(0.5)
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert [entry["level"] for entry in entries] == ["info", "info"]
+        assert entries[-1]["delivery_outcome"] == "retryable_failure"
 
     def test_http_400_is_permanent(self, tmp_path, usage_webhook_server):
         proxy_log = tmp_path / "proxy.jsonl"
@@ -458,7 +464,8 @@ class TestUsageWebhookDelivery:
 
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
         saturated_entry = entries[-1]
-        assert saturated_entry["level"] == "warn"
+        assert saturated_entry["level"] == "info"
+        assert saturated_entry["reason"] == "delivery_saturated"
         assert "not admitted" in saturated_entry["message"]
         assert "saturated" in saturated_entry["message"]
         assert "dropped" not in saturated_entry["message"]

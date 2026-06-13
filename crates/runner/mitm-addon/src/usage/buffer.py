@@ -1099,13 +1099,11 @@ def _log_flush_summaries(
         level = "error" if phase == "failed" else "info"
         message = f"Usage event buffer flush {phase}"
         if phase == "retained":
-            level = "warn"
             message = "Usage event buffer flush retained for retry"
         elif phase == "dropped":
             level = "error"
             message = "Usage event buffer flush dropped retained batches"
         elif phase == "enqueued" and summary.retained_webhook_batch_count:
-            level = "warn"
             message = "Usage event buffer flush retained webhook batches for retry"
         log_proxy_entry(
             summary.proxy_log_path,
