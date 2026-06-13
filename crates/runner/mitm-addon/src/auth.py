@@ -801,7 +801,10 @@ def _trusted_aws_sigv4_url(flow: http.HTTPFlow) -> str:
     except ValueError as e:
         raise AwsSigV4SigningError("AWS request URL is malformed") from e
 
-    current_query = urllib.parse.urlsplit(flow.request.path).query
+    try:
+        current_query = urllib.parse.urlsplit(flow.request.path).query
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
     if current_query == original.query:
         return url
     return urllib.parse.urlunsplit(

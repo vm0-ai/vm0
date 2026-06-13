@@ -824,6 +824,50 @@ async def test_header_sigv4_without_trusted_original_url_fails_closed(
     assert "AWS request URL is unavailable" in flow.response.json()["message"]
 
 
+async def test_header_sigv4_with_malformed_current_request_target_fails_closed(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    flow = real_flow(
+        with_response=False,
+        host="sts.amazonaws.com",
+        path="/",
+        method="POST",
+        request_headers=headers(
+            ("Host", "sts.amazonaws.com"),
+            ("X-Amz-Date", "20260101T000000Z"),
+            (
+                "Authorization",
+                "AWS4-HMAC-SHA256 "
+                "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+                "SignedHeaders=host;x-amz-date, "
+                "Signature=placeholder",
+            ),
+        ),
+    )
+    _prepare_firewall_request(flow)
+    flow.request.path = "//[foo]?Trace=secret-value"
+    set_cached_headers(
+        ("run-1", "https://sts.amazonaws.com"),
+        headers={},
+        aws_sigv4=AwsSigV4Credentials(
+            "AKIDEXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        ),
+    )
+
+    with mitm_ctx():
+        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+
+    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+    assert "AWS request URL is malformed" in flow.response.json()["message"]
+
+
 async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
     real_flow,
     headers,
