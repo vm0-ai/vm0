@@ -289,8 +289,8 @@ def forwarded_auth_base_client_header_pairs(
 
     This applies forwarded request filtering, then strips client
     credential-like headers named by ``_CLIENT_CREDENTIAL_HEADER_NAMES`` so
-    placeholder-scoped credentials do not cross the rewrite. The only
-    credential-header exception is ``Authorization`` when
+    placeholder-scoped credentials do not cross the rewrite. Within that
+    stripped set, the only exception is ``Authorization`` when
     ``preserve_aws_sigv4_authorization`` is enabled and the value is a
     supported AWS SigV4 authorization value.
     """
