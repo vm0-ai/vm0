@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.139.0](https://github.com/vm0-ai/vm0/compare/api-v1.138.0...api-v1.139.0) (2026-06-13)
+
+
+### Features
+
+* cancel runs and disable automations on clerk user.banned webhook ([#17523](https://github.com/vm0-ai/vm0/issues/17523)) ([f728b8f](https://github.com/vm0-ai/vm0/commit/f728b8f34106055a80fa53b61b64d0dd5547a56e))
+* update a time trigger's schedule in place ([#17543](https://github.com/vm0-ai/vm0/issues/17543)) ([1c4cdb1](https://github.com/vm0-ai/vm0/commit/1c4cdb18b84b8924684b33545781112275437c97))
+
+
+### Bug Fixes
+
+* append chat usage settlement messages ([#17521](https://github.com/vm0-ai/vm0/issues/17521)) ([a937645](https://github.com/vm0-ai/vm0/commit/a937645344bdc687227019304f5af2fd3d4fcc74))
+* stop disabled automations from starving the trigger poller ([#17549](https://github.com/vm0-ai/vm0/issues/17549)) ([78eadde](https://github.com/vm0-ai/vm0/commit/78eadde22357d5b52f02749dbdff13f819efea82)), closes [#17546](https://github.com/vm0-ai/vm0/issues/17546)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.0
+    * @vm0/core bumped to 8.335.3
+    * @vm0/db bumped to 1.49.1
+
 ## [1.138.0](https://github.com/vm0-ai/vm0/compare/api-v1.137.0...api-v1.138.0) (2026-06-12)
 
 

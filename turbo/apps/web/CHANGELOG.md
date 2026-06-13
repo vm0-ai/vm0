@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.425.7](https://github.com/vm0-ai/vm0/compare/web-v12.425.6...web-v12.425.7) (2026-06-13)
+
+
+### Performance Improvements
+
+* separate read state and draft state from chat thread list ([#17527](https://github.com/vm0-ai/vm0/issues/17527)) ([a518593](https://github.com/vm0-ai/vm0/commit/a518593c22cb47096df031c05e0b4e0ed047f0ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.0
+    * @vm0/core bumped to 8.335.3
+
 ## [12.425.6](https://github.com/vm0-ai/vm0/compare/web-v12.425.5...web-v12.425.6) (2026-06-12)
 
 
