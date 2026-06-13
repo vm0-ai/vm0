@@ -1089,8 +1089,8 @@ async def _apply_url_rewrite(
     # The addon forwards the request itself because mitmproxy's eager
     # connection already connected to the placeholder IP. Setting
     # flow.response bypasses the upstream connection entirely.
-    orig_query = urllib.parse.urlparse(flow.request.path).query
     try:
+        orig_query = urllib.parse.urlparse(flow.request.path).query
         new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
     except ValueError as e:
         _set_url_rewrite_forward_failed(
