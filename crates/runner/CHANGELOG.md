@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.116.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.4...runner-rs-v0.116.5) (2026-06-13)
+
+
+### Bug Fixes
+
+* reserve usage webhook errors for final loss ([#17578](https://github.com/vm0-ai/vm0/issues/17578)) ([d4212a5](https://github.com/vm0-ai/vm0/commit/d4212a5920202fc6c39b822060134008000127bf))
+
+
+### Performance Improvements
+
+* **mitm-addon:** skip eventless responses delta parsing ([#17574](https://github.com/vm0-ai/vm0/issues/17574)) ([6446fc2](https://github.com/vm0-ai/vm0/commit/6446fc2f3b15397bd14270392231a461d35e7f27))
+
 ## [0.116.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.3...runner-rs-v0.116.4) (2026-06-13)
 
 

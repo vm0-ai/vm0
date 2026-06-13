@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.140.0](https://github.com/vm0-ai/vm0/compare/api-v1.139.3...api-v1.140.0) (2026-06-13)
+
+
+### Features
+
+* add Kimi K2.7 Code model ([#17568](https://github.com/vm0-ai/vm0/issues/17568)) ([841b0ff](https://github.com/vm0-ai/vm0/commit/841b0ff05bf4f594080bd7fb5b17e2ff0cecf2a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.92.0
+    * @vm0/core bumped to 8.336.0
+    * @vm0/db bumped to 1.50.0
+
 ## [1.139.3](https://github.com/vm0-ai/vm0/compare/api-v1.139.2...api-v1.139.3) (2026-06-13)
 
 

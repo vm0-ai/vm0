@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.32](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.31...vsock-guest-v0.18.32) (2026-06-13)
+
+
+### Bug Fixes
+
+* **vsock-guest:** bound short-lived reconnect attempts ([#17575](https://github.com/vm0-ai/vm0/issues/17575)) ([af3c00a](https://github.com/vm0-ai/vm0/commit/af3c00aac6a020ad18c96f326e15d42fcb522340))
+
 ## [0.18.31](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.30...vsock-guest-v0.18.31) (2026-06-12)
 
 
