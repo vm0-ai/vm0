@@ -14,7 +14,7 @@ import { Extension, type Editor, type JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import type { KeyboardEventLike } from "@vm0/ui";
+import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
@@ -296,6 +296,30 @@ function buildEditorOptions(
   };
 }
 
+// Keep the highlight plugin's skill list current without rebuilding the editor
+// (decorations recompute on the next transaction), and reconcile the value when it
+// changes outside of typing (draft restore, the send-clear, template insertion).
+// Guarded so typing — where the serialized value already matches — never resets the
+// caret. shouldRerenderOnTransaction is off, so this never triggers a React re-render.
+function syncEditorState(
+  editor: Editor,
+  skillNames: readonly string[],
+  input: string,
+): void {
+  const storage = (
+    editor.storage as unknown as Record<
+      string,
+      SkillHighlightStorage | undefined
+    >
+  ).skillHighlight;
+  if (storage) {
+    storage.skillNames = skillNames;
+  }
+  if (docToString(editor) !== input) {
+    editor.commands.setContent(valueToDoc(input), { emitUpdate: false });
+  }
+}
+
 export function TiptapSkillComposer({
   input,
   onInputChange,
@@ -363,24 +387,7 @@ export function TiptapSkillComposer({
   );
 
   if (editor) {
-    // Keep the highlight plugin's skill list current without rebuilding the
-    // editor; decorations recompute on the next transaction.
-    const storage = (
-      editor.storage as unknown as Record<
-        string,
-        SkillHighlightStorage | undefined
-      >
-    ).skillHighlight;
-    if (storage) {
-      storage.skillNames = skillNames;
-    }
-    // Reconcile when the value changes outside of typing (draft restore, the
-    // send-clear, template insertion). Guarded so typing — where the serialized
-    // value already matches — never resets the caret. shouldRerenderOnTransaction
-    // is off, so this never triggers a React re-render.
-    if (docToString(editor) !== input) {
-      editor.commands.setContent(valueToDoc(input), { emitUpdate: false });
-    }
+    syncEditorState(editor, skillNames, input);
   }
 
   function insertSkill(skill: ComposerSlashSkill): void {
@@ -412,7 +419,25 @@ export function TiptapSkillComposer({
   }
 
   return (
-    <div className="slash-skill-anchor relative">
+    // Radix Popover (Floating UI) positions the menu cross-browser; the anchor
+    // is the input region so the menu sits above it. `open` is fully controlled
+    // by composer state, so Escape/typing close it via showSlashSkillMenu.
+    <Popover open={showSlashSkillMenu}>
+      <PopoverAnchor asChild>
+        <div className="relative min-h-[96px]">
+          {input === "" && (
+            <div
+              className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
+              aria-hidden="true"
+            >
+              {sending
+                ? "Type your next message…"
+                : "Ask me to automate workflows, manage tasks..."}
+            </div>
+          )}
+          <EditorContent editor={editor} />
+        </div>
+      </PopoverAnchor>
       {showSlashSkillMenu && (
         <SlashSkillMenu
           skills={suggestions}
@@ -424,19 +449,6 @@ export function TiptapSkillComposer({
           }}
         />
       )}
-      <div className="relative min-h-[96px]">
-        {input === "" && (
-          <div
-            className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
-            aria-hidden="true"
-          >
-            {sending
-              ? "Type your next message…"
-              : "Ask me to automate workflows, manage tasks..."}
-          </div>
-        )}
-        <EditorContent editor={editor} />
-      </div>
-    </div>
+    </Popover>
   );
 }

@@ -1,11 +1,9 @@
 // Slash-skill domain helpers and the suggestion menu, shared by the chat
 // composer. Kept in its own module so the textarea composer and the TipTap
 // skill composer can both reuse them without an import cycle.
-import { useSet } from "ccstate-react";
 import { IconChevronRight, IconFileText } from "@tabler/icons-react";
-import { cn } from "@vm0/ui";
+import { cn, PopoverContent } from "@vm0/ui";
 import type { ZeroAgentCustomSkill } from "@vm0/api-contracts/contracts/zero-agents";
-import { setSlashSkillMenuRef$ } from "../../signals/zero-page/zero-chat-composer.ts";
 import { Link } from "../router/link.tsx";
 
 export interface SlashSkillRange {
@@ -117,13 +115,18 @@ export function SlashSkillMenu({
   readonly showSkillsPageLink: boolean;
   readonly onSelect: (skill: ComposerSlashSkill) => void;
 }) {
-  const setMenuRef = useSet(setSlashSkillMenuRef$);
-
   return (
-    <div
-      ref={setMenuRef}
-      popover="manual"
-      className="slash-skill-popover flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
+    <PopoverContent
+      side="top"
+      align="start"
+      sideOffset={8}
+      collisionPadding={12}
+      // Keep focus in the TipTap editor: the menu's keyboard navigation is
+      // handled there, so the popover must never steal focus when it opens.
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+      }}
+      className="flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0"
       data-testid="slash-skill-menu"
     >
       <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
@@ -185,6 +188,6 @@ export function SlashSkillMenu({
           </Link>
         </div>
       )}
-    </div>
+    </PopoverContent>
   );
 }
