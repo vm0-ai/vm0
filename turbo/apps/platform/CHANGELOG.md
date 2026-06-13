@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.448.2](https://github.com/vm0-ai/vm0/compare/app-v0.448.1...app-v0.448.2) (2026-06-13)
+
+
+### Bug Fixes
+
+* make pinned chat indicator open menu ([#17577](https://github.com/vm0-ai/vm0/issues/17577)) ([4fcb011](https://github.com/vm0-ai/vm0/commit/4fcb011cd1fec0025a20a59dfb7efe756ebbb773))
+* preserve chat usage display by run ([#17579](https://github.com/vm0-ai/vm0/issues/17579)) ([a85d76f](https://github.com/vm0-ai/vm0/commit/a85d76fe9a54771cd4262597601b3a08d48e5f99))
+* remove claude fable 5 model support ([#17567](https://github.com/vm0-ai/vm0/issues/17567)) ([63733bf](https://github.com/vm0-ai/vm0/commit/63733bf637ce02afe00d0f97a2439f988c59078d))
+* replace skill-highlight overlay with single-layer tiptap composer ([#17570](https://github.com/vm0-ai/vm0/issues/17570)) ([26fbff0](https://github.com/vm0-ai/vm0/commit/26fbff0ae9d53cb7deec0fe849f1bf37d5aae34e))
+
+
+### Performance Improvements
+
+* resize r2 thumbnails in chat and galleries ([#17569](https://github.com/vm0-ai/vm0/issues/17569)) ([a91f0cf](https://github.com/vm0-ai/vm0/commit/a91f0cf4b9108aa36e7961a1da5a8076b02e401e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.2
+    * @vm0/core bumped to 8.335.5
+
 ## [0.448.1](https://github.com/vm0-ai/vm0/compare/app-v0.448.0...app-v0.448.1) (2026-06-13)
 
 
