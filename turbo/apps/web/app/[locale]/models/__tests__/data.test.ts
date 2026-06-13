@@ -70,9 +70,7 @@ describe("models page data", () => {
   it("uses canonical VM0 credit multipliers for reasoning models", () => {
     const reasoningModels = MODELS.filter(isReasoningModel);
     for (const model of reasoningModels) {
-      expect(model.multiplier).toBe(
-        VM0_MODEL_CREDIT_MULTIPLIER[model.modelId],
-      );
+      expect(model.multiplier).toBe(VM0_MODEL_CREDIT_MULTIPLIER[model.modelId]);
     }
   });
 
