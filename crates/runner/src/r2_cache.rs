@@ -118,10 +118,10 @@
 //!    regular file.)
 //!
 //! **Maintenance note**: `try_download_template_file_by_key` verifies that the
-//! archive contains `template.ext4` and classifies a missing file as an invalid
-//! object. If you add a new required member to the template R2 archive, extend that
-//! validation accordingly — otherwise an attacker-controlled tar that omits the
-//! new file would go undetected.
+//! archive contains a regular `template.ext4` file and classifies a missing or
+//! non-file member as an invalid object. If you add a new required member to the
+//! template R2 archive, extend that validation accordingly — otherwise an
+//! attacker-controlled tar that omits the new file would go undetected.
 
 use std::path::{Path, PathBuf};
 
@@ -430,17 +430,33 @@ impl R2ImageCache {
         }
 
         let unpacked_template = staging.join(TEMPLATE_FILE);
-        if !tokio::fs::try_exists(&unpacked_template)
-            .await
-            .unwrap_or(false)
-        {
-            return Err(finish_file_staging_error(
-                &staging,
-                R2DownloadError::InvalidObject(R2Error::Io(io_other(
-                    "template archive missing template.ext4",
-                ))),
-            )
-            .await);
+        match tokio::fs::symlink_metadata(&unpacked_template).await {
+            Ok(metadata) if metadata.file_type().is_file() => {}
+            Ok(_) => {
+                return Err(finish_file_staging_error(
+                    &staging,
+                    R2DownloadError::InvalidObject(R2Error::Io(io_other(
+                        "template archive template.ext4 is not a regular file",
+                    ))),
+                )
+                .await);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(finish_file_staging_error(
+                    &staging,
+                    R2DownloadError::InvalidObject(R2Error::Io(io_other(
+                        "template archive missing template.ext4",
+                    ))),
+                )
+                .await);
+            }
+            Err(e) => {
+                return Err(finish_file_staging_error(
+                    &staging,
+                    R2DownloadError::Local(R2Error::Io(e)),
+                )
+                .await);
+            }
         }
 
         if let Err(e) = tokio::fs::rename(&unpacked_template, destination).await {
@@ -2189,6 +2205,10 @@ mod tests {
         .unwrap()
     }
 
+    async fn build_nested_template_archive_bytes() -> Vec<u8> {
+        zstd_bytes(craft_tar_with_path(b"template.ext4/payload", b"bad")).await
+    }
+
     async fn build_empty_archive_bytes() -> Vec<u8> {
         tokio::task::spawn_blocking(move || {
             let mut buf: Vec<u8> = Vec::new();
@@ -2350,6 +2370,85 @@ mod tests {
         assert!(
             !dst.path().join("extra.txt").exists(),
             "extra archive members must be discarded with download staging"
+        );
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_rejects_nested_template_directory() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_nested_template_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+
+        let err = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::InvalidObject(_)),
+            "nested template directory must be classified as invalid cache object, got {err:?}"
+        );
+        assert!(!destination.exists(), "destination must remain absent");
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_preserves_existing_destination_when_template_path_is_directory()
+    {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_nested_template_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+        tokio::fs::write(&destination, b"existing-rootfs")
+            .await
+            .unwrap();
+
+        let err = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::InvalidObject(_)),
+            "nested template directory must be classified as invalid cache object, got {err:?}"
+        );
+        assert_eq!(
+            tokio::fs::read(&destination).await.unwrap(),
+            b"existing-rootfs"
         );
         assert!(
             !file_staging_dir(&destination).exists(),

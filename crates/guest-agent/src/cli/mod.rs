@@ -98,8 +98,26 @@ fn chat_stream_delta_from_event(
 /// Bounded terminal failure detail extracted from CLI stdout JSONL.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliFailureDiagnostic {
+    /// Terminal failure message selected from CLI stdout JSONL.
+    ///
+    /// When produced by [`execute_cli`], this message has already been
+    /// secret-masked, line-break escaped, and bounded before exposure.
     pub message: String,
+
+    /// High-level source of the stdout-derived failure detail.
+    ///
+    /// Values produced by [`execute_cli`] use `ClaudeResult` for Claude Code
+    /// terminal result events and `CodexJsonl` for Codex JSONL failure events.
+    /// The final run diagnostic may still prefer stderr when this stdout
+    /// message is generic.
     pub source: FailureDetailSource,
+
+    /// Optional structured failure reason parsed from supported CLI payloads.
+    ///
+    /// `None` means no supported structured reason was observed. A reason may
+    /// be carried independently from the selected display message, including
+    /// when a generic stdout message is replaced by a more specific message or
+    /// stderr fallback.
     pub failure_reason: Option<FailureReason>,
 }
 
