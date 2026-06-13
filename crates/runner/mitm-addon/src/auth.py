@@ -258,8 +258,7 @@ def _set_matched_firewall_failure_response(
     # an auth or forwarding error when the firewall granted the request but
     # the addon could not fulfill it. See #10493.
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = action
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = error_code
+    _mark_matched_firewall_failure(flow, action=action, error_code=error_code)
     body: dict[str, object] = {
         "error": error_code,
         "message": message,
@@ -275,6 +274,16 @@ def _set_matched_firewall_failure_response(
         json.dumps(body).encode(),
         {"Content-Type": "application/json"},
     )
+
+
+def _mark_matched_firewall_failure(
+    flow: http.HTTPFlow,
+    *,
+    action: str,
+    error_code: str,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = action
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = error_code
 
 
 def request_force_refresh(cache_key: tuple[str, str]) -> None:
@@ -865,10 +874,9 @@ def _request_body_exceeds_auth_base_limit(flow: http.HTTPFlow) -> bool:
     return body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES
 
 
-def _set_auth_base_request_too_large(
+def _log_auth_base_request_too_large(
     flow: http.HTTPFlow,
     *,
-    allow: matching.FirewallAllow,
     proxy_log_path: str,
     firewall_base: str,
     observed_size: int | None = None,
@@ -886,6 +894,22 @@ def _set_auth_base_request_too_large(
         request_body_size_bytes=observed_size,
         request_body_limit_bytes=MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     )
+
+
+def _set_auth_base_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+    observed_size: int | None = None,
+) -> None:
+    _log_auth_base_request_too_large(
+        flow,
+        proxy_log_path=proxy_log_path,
+        firewall_base=firewall_base,
+        observed_size=observed_size,
+    )
     _set_matched_firewall_failure_response(
         flow,
         status=413,
@@ -896,33 +920,35 @@ def _set_auth_base_request_too_large(
     )
 
 
-def set_auth_base_request_too_large(
+def mark_auth_base_request_too_large(
     flow: http.HTTPFlow,
     *,
-    allow: matching.FirewallAllow,
     proxy_log_path: str,
     firewall_base: str,
     observed_size: int,
 ) -> None:
-    """Set the auth.base oversized-body response before request buffering."""
-    _set_auth_base_request_too_large(
+    """Record an auth.base oversized-body failure before killing the flow."""
+    _log_auth_base_request_too_large(
         flow,
-        allow=allow,
         proxy_log_path=proxy_log_path,
         firewall_base=firewall_base,
         observed_size=observed_size,
     )
+    _mark_matched_firewall_failure(
+        flow,
+        action="ALLOW",
+        error_code="auth_base_request_body_too_large",
+    )
 
 
-def set_auth_base_request_length_required(
+def mark_auth_base_request_length_required(
     flow: http.HTTPFlow,
     *,
-    allow: matching.FirewallAllow,
     proxy_log_path: str,
     firewall_base: str,
     reason: str,
 ) -> None:
-    """Reject auth.base body framing that cannot prove a bounded request body."""
+    """Record unbounded auth.base body framing before killing the flow."""
     flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
     log_proxy_entry(
         proxy_log_path,
@@ -933,13 +959,10 @@ def set_auth_base_request_length_required(
         framing_error=reason,
         request_body_limit_bytes=MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     )
-    _set_matched_firewall_failure_response(
+    _mark_matched_firewall_failure(
         flow,
-        status=411,
         action="ALLOW",
         error_code="auth_base_request_body_length_required",
-        message="auth.base request body requires a valid Content-Length",
-        permission=allow.name,
     )
 
 

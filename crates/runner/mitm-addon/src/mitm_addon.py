@@ -56,10 +56,10 @@ from auth import (
     clear_cached_firewall_headers,
     handle_firewall_request,
     is_billable_firewall,
+    mark_auth_base_request_length_required,
+    mark_auth_base_request_too_large,
     prepare_firewall_metadata,
     request_force_refresh,
-    set_auth_base_request_length_required,
-    set_auth_base_request_too_large,
 )
 from logging_utils import (
     add_firewall_metadata,
@@ -156,7 +156,7 @@ _RequestClassificationKind = Literal[
     "allow",
 ]
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
-_REQUEST_HEADERS_LOCAL_RESPONSE = "_request_headers_local_response"
+_REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 
 
 @dataclass(frozen=True)
@@ -1191,7 +1191,7 @@ def client_disconnected(client: connection.Client) -> None:
 
 
 def requestheaders(flow: http.HTTPFlow) -> None:
-    """Reject unbounded auth.base request bodies before mitmproxy buffers them."""
+    """Terminate unsafe auth.base request bodies before mitmproxy buffers them."""
     body_check = _auth_base_body_header_check(flow)
     if body_check.kind == "ok":
         return
@@ -1209,22 +1209,21 @@ def requestheaders(flow: http.HTTPFlow) -> None:
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
     if body_check.kind == "too_large":
-        set_auth_base_request_too_large(
+        mark_auth_base_request_too_large(
             flow,
-            allow=allow,
             proxy_log_path=proxy_log_path,
             firewall_base=firewall_base,
             observed_size=body_check.observed_size,
         )
     else:
-        set_auth_base_request_length_required(
+        mark_auth_base_request_length_required(
             flow,
-            allow=allow,
             proxy_log_path=proxy_log_path,
             firewall_base=firewall_base,
             reason=body_check.reason,
         )
-    flow.metadata[_REQUEST_HEADERS_LOCAL_RESPONSE] = True
+    flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+    flow.kill()
 
 
 def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
@@ -1277,7 +1276,7 @@ async def request(flow: http.HTTPFlow) -> None:
     2. VM0 API auto-allow (agent must always reach the platform)
     3. Firewall match (inject auth headers for allowed requests)
     """
-    if flow.metadata.get(_REQUEST_HEADERS_LOCAL_RESPONSE):
+    if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         return
 
     classification = _classify_request(flow)
