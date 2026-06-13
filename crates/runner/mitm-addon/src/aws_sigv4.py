@@ -180,6 +180,8 @@ def _classify_request(
 
 def _split_url_for_signing(url: str) -> urllib.parse.SplitResult:
     _utf8_encode(url, "AWS request URL is malformed")
+    if _has_malformed_percent_encoding(url):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
     try:
         return urllib.parse.urlsplit(url)
     except ValueError as e:

@@ -98,6 +98,20 @@ def test_header_auth_invalid_unicode_path_raises_signing_error() -> None:
         )
 
 
+@pytest.mark.parametrize("path", ["/%ZZ", "/%"])
+def test_header_auth_malformed_percent_encoded_path_raises_signing_error(
+    path: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
+        sign_request(
+            method="GET",
+            url=f"https://sts.amazonaws.com{path}",
+            headers=_header_auth_headers(),
+            body=None,
+            credentials=_credentials(),
+        )
+
+
 def test_presigned_query_invalid_unicode_query_raises_signing_error() -> None:
     with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
         sign_request(
