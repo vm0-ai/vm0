@@ -488,6 +488,21 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
     await expect(lowCreditAlerts(fixture)).resolves.toStrictEqual([]);
   });
 
+  it("alerts when usage lands exactly on the threshold from above", async () => {
+    const fixture = await createUsageFixture({
+      beforeCredits: LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS + 1,
+      chargeCredits: 1,
+    });
+
+    await processFixture(fixture);
+
+    const alerts = await lowCreditAlerts(fixture);
+    expect(alerts).toHaveLength(1);
+    expect(
+      parseLowCreditTemplate(alerts[0]?.template).props.remainingCredits,
+    ).toBe(LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS);
+  });
+
   it("alerts again after credits are topped up and cross the threshold again", async () => {
     const fixture = await createUsageFixture({
       beforeCredits: LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS + 1000,
