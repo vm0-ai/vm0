@@ -797,7 +797,7 @@ def _sign_flow_request_with_aws_sigv4(
 ) -> None:
     url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
     if not isinstance(url, str):
-        url = flow.request.url
+        raise AwsSigV4SigningError("AWS request URL is unavailable")
     signed_url, signed_headers = sign_request(
         method=flow.request.method,
         url=url,

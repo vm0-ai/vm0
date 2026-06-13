@@ -65,6 +65,13 @@ def _auth_response() -> dict[str, object]:
     }
 
 
+def _prepare_firewall_request(flow, *, original_url: str | None = None) -> None:
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-1"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = (
+        flow.request.url if original_url is None else original_url
+    )
+
+
 async def test_re_signs_header_sigv4_request(real_flow, headers, tmp_path, mitm_ctx):
     endpoint = FakeAuthEndpoint()
     endpoint.queue_json_response(_auth_response())
@@ -87,7 +94,7 @@ async def test_re_signs_header_sigv4_request(real_flow, headers, tmp_path, mitm_
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -160,7 +167,7 @@ async def test_re_signs_header_sigv4_request_to_reference_signature(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(
@@ -229,7 +236,7 @@ async def test_re_signs_header_sigv4_request_with_encoded_path(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(
@@ -305,7 +312,7 @@ async def test_re_signs_header_sigv4_request_with_normalized_host(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(
@@ -375,8 +382,7 @@ async def test_re_signs_header_sigv4_request_with_trusted_original_url(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
-    flow.metadata[metadata_keys.ORIGINAL_URL] = "https://iam.amazonaws.com/"
+    _prepare_firewall_request(flow, original_url="https://iam.amazonaws.com/")
     flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = "iam.amazonaws.com"
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
@@ -418,7 +424,7 @@ async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
         ),
         method="GET",
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -460,7 +466,7 @@ async def test_re_signs_query_sigv4_request_strips_session_token_header(
         method="GET",
         request_headers=headers(("X-Amz-Security-Token", "placeholder-session-token")),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -496,7 +502,7 @@ async def test_re_signs_query_sigv4_request_preserves_literal_plus(
         ),
         method="GET",
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -528,7 +534,7 @@ async def test_sigv4a_request_fails_closed(real_flow, headers, tmp_path, mitm_ct
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -559,7 +565,7 @@ async def test_hmac_sigv4_wildcard_region_fails_closed(real_flow, headers, tmp_p
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -596,7 +602,7 @@ async def test_header_sigv4_with_malformed_scope_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -638,7 +644,7 @@ async def test_header_sigv4_with_invalid_resolved_access_key_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -673,7 +679,7 @@ async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
     set_cached_headers(
         ("run-1", "https://sts.amazonaws.com"),
         headers={},
@@ -688,6 +694,49 @@ async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
     assert flow.response.status_code == 502
     assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
     assert "Invalid AWS secret access key" in flow.response.json()["message"]
+
+
+async def test_header_sigv4_without_trusted_original_url_fails_closed(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    flow = real_flow(
+        with_response=False,
+        host="sts.amazonaws.com",
+        path="/",
+        method="POST",
+        request_headers=headers(
+            ("Host", "sts.amazonaws.com"),
+            ("X-Amz-Date", "20260101T000000Z"),
+            (
+                "Authorization",
+                "AWS4-HMAC-SHA256 "
+                "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+                "SignedHeaders=host;x-amz-date, "
+                "Signature=placeholder",
+            ),
+        ),
+    )
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-1"
+    set_cached_headers(
+        ("run-1", "https://sts.amazonaws.com"),
+        headers={},
+        aws_sigv4=AwsSigV4Credentials(
+            "AKIDEXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        ),
+    )
+
+    with mitm_ctx():
+        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+
+    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+    assert "AWS request URL is unavailable" in flow.response.json()["message"]
 
 
 async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
@@ -713,7 +762,7 @@ async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
     set_cached_headers(
         ("run-1", "https://sts.amazonaws.com"),
         headers={},
@@ -759,7 +808,7 @@ async def test_header_sigv4_with_real_source_access_key_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -797,7 +846,7 @@ async def test_header_sigv4_with_duplicate_credential_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -835,7 +884,7 @@ async def test_header_sigv4_with_duplicate_authorization_headers_fails_closed(
             ("Authorization", authorization),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -871,7 +920,7 @@ async def test_header_sigv4_without_signature_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -908,7 +957,7 @@ async def test_header_sigv4_with_duplicate_signed_header_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -945,7 +994,7 @@ async def test_header_sigv4_with_empty_signed_header_segment_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -981,7 +1030,7 @@ async def test_header_sigv4_without_amz_date_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1018,7 +1067,7 @@ async def test_header_sigv4_with_malformed_amz_date_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1055,7 +1104,7 @@ async def test_header_sigv4_with_scope_date_mismatch_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1093,7 +1142,7 @@ async def test_header_sigv4_with_duplicate_amz_date_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1133,7 +1182,7 @@ async def test_header_sigv4_with_duplicate_content_hash_fails_closed(
             ),
         ),
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1165,7 +1214,7 @@ async def test_query_sigv4_without_signature_fails_closed(real_flow, tmp_path, m
         ),
         method="GET",
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1198,7 +1247,7 @@ async def test_query_sigv4_with_real_source_access_key_fails_closed(real_flow, t
         ),
         method="GET",
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1236,7 +1285,7 @@ async def test_query_sigv4_with_duplicate_credential_fails_closed(real_flow, tmp
         ),
         method="GET",
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1274,7 +1323,7 @@ async def test_query_sigv4_with_duplicate_signed_header_fails_closed(
         ),
         method="GET",
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
@@ -1307,7 +1356,7 @@ async def test_query_sigv4_with_malformed_expiry_fails_closed(real_flow, tmp_pat
         ),
         method="GET",
     )
-    flow.metadata["vm_run_id"] = "run-1"
+    _prepare_firewall_request(flow)
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
         result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
