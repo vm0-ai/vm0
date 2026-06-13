@@ -6,6 +6,8 @@ import pytest
 
 from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
 
+_INVALID_UNICODE = "\ud800"
+
 
 def _credentials() -> AwsSigV4Credentials:
     return AwsSigV4Credentials("AKIDEXAMPLE", "secret")
@@ -82,6 +84,50 @@ def test_presigned_query_invalid_bracketed_host_raises_signing_error() -> None:
             headers=[("Host", "sts.amazonaws.com")],
             body=None,
             credentials=_credentials(),
+        )
+
+
+def test_header_auth_invalid_unicode_path_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
+        sign_request(
+            method="GET",
+            url=f"https://sts.amazonaws.com/{_INVALID_UNICODE}",
+            headers=_header_auth_headers(),
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+def test_presigned_query_invalid_unicode_query_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
+        sign_request(
+            method="GET",
+            url=f"{_presigned_url('sts.amazonaws.com')}&Extra={_INVALID_UNICODE}",
+            headers=[("Host", "sts.amazonaws.com")],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+def test_signed_header_invalid_unicode_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request contains invalid text"):
+        sign_request(
+            method="GET",
+            url="https://sts.amazonaws.com/",
+            headers=[*_header_auth_headers(), ("x-amz-meta-test", _INVALID_UNICODE)],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+def test_invalid_unicode_secret_key_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="Invalid AWS secret access key"):
+        sign_request(
+            method="GET",
+            url="https://sts.amazonaws.com/",
+            headers=_header_auth_headers(),
+            body=None,
+            credentials=AwsSigV4Credentials("AKIDEXAMPLE", f"secret{_INVALID_UNICODE}"),
         )
 
 

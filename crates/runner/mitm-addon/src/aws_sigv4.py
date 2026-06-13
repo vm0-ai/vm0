@@ -424,7 +424,7 @@ def _canonical_uri(path: str, *, is_s3: bool) -> str:
     if is_s3:
         return raw_path
     normalized = _remove_dot_segments(raw_path)
-    return urllib.parse.quote(normalized, safe="/~")
+    return _quote_url_component(normalized, safe="/~")
 
 
 def _remove_dot_segments(path: str) -> str:
@@ -516,7 +516,9 @@ def _signature(
             _HMAC_ALGORITHM,
             amz_date,
             _scope_string(scope),
-            hashlib.sha256(canonical_request.encode()).hexdigest(),
+            hashlib.sha256(
+                _utf8_encode(canonical_request, "AWS request contains invalid text")
+            ).hexdigest(),
         ]
     )
     signing_key = _signing_key(credentials.secret_access_key, scope)
@@ -524,7 +526,10 @@ def _signature(
 
 
 def _signing_key(secret_access_key: str, scope: _CredentialScope) -> bytes:
-    date_key = _hmac_digest(f"AWS4{secret_access_key}".encode(), scope.date)
+    date_key = _hmac_digest(
+        _utf8_encode(f"AWS4{secret_access_key}", "Invalid AWS secret access key"),
+        scope.date,
+    )
     region_key = _hmac_digest(date_key, scope.region)
     service_key = _hmac_digest(region_key, scope.service)
     return _hmac_digest(service_key, _AWS4_REQUEST)
@@ -577,7 +582,14 @@ def _encode_query_pairs(pairs: list[tuple[str, str]]) -> str:
 
 
 def _aws_quote(value: str) -> str:
-    return urllib.parse.quote(value, safe="-_.~")
+    return _quote_url_component(value, safe="-_.~")
+
+
+def _quote_url_component(value: str, *, safe: str) -> str:
+    try:
+        return urllib.parse.quote(value, safe=safe)
+    except UnicodeEncodeError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
 
 
 def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
@@ -596,12 +608,33 @@ def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
 def _validate_credentials(credentials: AwsSigV4Credentials) -> None:
     if not _ACCESS_KEY_ID_RE.fullmatch(credentials.access_key_id):
         raise AwsSigV4SigningError("Invalid AWS access key ID")
-    if not credentials.secret_access_key or _has_ascii_control(credentials.secret_access_key):
+    if (
+        not credentials.secret_access_key
+        or _has_ascii_control(credentials.secret_access_key)
+        or not _is_utf8_encodable(credentials.secret_access_key)
+    ):
         raise AwsSigV4SigningError("Invalid AWS secret access key")
     if credentials.session_token is not None and (
-        not credentials.session_token or _has_ascii_control(credentials.session_token)
+        not credentials.session_token
+        or _has_ascii_control(credentials.session_token)
+        or not _is_utf8_encodable(credentials.session_token)
     ):
         raise AwsSigV4SigningError("Invalid AWS session token")
+
+
+def _utf8_encode(value: str, message: str) -> bytes:
+    try:
+        return value.encode()
+    except UnicodeEncodeError as e:
+        raise AwsSigV4SigningError(message) from e
+
+
+def _is_utf8_encodable(value: str) -> bool:
+    try:
+        value.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _has_ascii_control(value: str) -> bool:
