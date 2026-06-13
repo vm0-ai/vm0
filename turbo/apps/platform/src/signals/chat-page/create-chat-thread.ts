@@ -39,6 +39,7 @@ import {
   type AttachFile,
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
+  type ChatMessageUsagePayload,
   type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -524,6 +525,7 @@ export interface ChatThreadSignals {
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  threadUsage$: Computed<Promise<ChatMessageUsagePayload | undefined>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   allFinished$: Computed<Promise<boolean>>;
@@ -1320,6 +1322,128 @@ function createFetchNextPageCommand({
   });
 }
 
+function usageSettlementSortValue(
+  usage: ChatMessageUsagePayload,
+  createdAt: string,
+): number {
+  const timestamp = Date.parse(usage.settledAt ?? createdAt);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function aggregateThreadUsage(
+  messages: readonly PagedChatMessage[],
+): ChatMessageUsagePayload | undefined {
+  const latestByRunId = new Map<
+    string,
+    {
+      readonly usage: ChatMessageUsagePayload;
+      readonly sortValue: number;
+      readonly index: number;
+    }
+  >();
+
+  for (const [index, message] of messages.entries()) {
+    if (!isUsageMessage(message) || message.runId === undefined) {
+      continue;
+    }
+    const sortValue = usageSettlementSortValue(
+      message.usage,
+      message.createdAt,
+    );
+    const existing = latestByRunId.get(message.runId);
+    if (
+      existing === undefined ||
+      sortValue > existing.sortValue ||
+      (sortValue === existing.sortValue && index > existing.index)
+    ) {
+      latestByRunId.set(message.runId, {
+        usage: message.usage,
+        sortValue,
+        index,
+      });
+    }
+  }
+
+  if (latestByRunId.size === 0) {
+    return undefined;
+  }
+
+  let totalCredits = 0;
+  let latestSettledAt = "";
+  let latestSettledAtSortValue = Number.NEGATIVE_INFINITY;
+  const breakdownByKind = new Map<
+    string,
+    {
+      kind: string;
+      credits: number;
+      providers: Map<string, number>;
+    }
+  >();
+
+  for (const { usage } of latestByRunId.values()) {
+    totalCredits += usage.totalCredits;
+    const settledAtSortValue = usageSettlementSortValue(usage, usage.settledAt);
+    if (
+      latestSettledAt === "" ||
+      settledAtSortValue > latestSettledAtSortValue
+    ) {
+      latestSettledAt = usage.settledAt;
+      latestSettledAtSortValue = settledAtSortValue;
+    }
+    for (const kindBreakdown of usage.breakdown) {
+      let aggregate = breakdownByKind.get(kindBreakdown.kind);
+      if (aggregate === undefined) {
+        aggregate = {
+          kind: kindBreakdown.kind,
+          credits: 0,
+          providers: new Map<string, number>(),
+        };
+        breakdownByKind.set(kindBreakdown.kind, aggregate);
+      }
+      aggregate.credits += kindBreakdown.credits;
+      for (const providerBreakdown of kindBreakdown.providers) {
+        aggregate.providers.set(
+          providerBreakdown.provider,
+          (aggregate.providers.get(providerBreakdown.provider) ?? 0) +
+            providerBreakdown.credits,
+        );
+      }
+    }
+  }
+
+  return {
+    version: 1,
+    totalCredits,
+    settledAt: latestSettledAt,
+    breakdown: Array.from(breakdownByKind.values()).map((aggregate) => {
+      return {
+        kind: aggregate.kind,
+        credits: aggregate.credits,
+        providers: Array.from(aggregate.providers.entries()).map(
+          ([provider, credits]) => {
+            return { provider, credits };
+          },
+        ),
+      };
+    }),
+  };
+}
+
+function createThreadUsageComputed({
+  allMessages$,
+  hasOlderHistory$,
+}: {
+  allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
+  hasOlderHistory$: Computed<Promise<boolean>>;
+}): Computed<Promise<ChatMessageUsagePayload | undefined>> {
+  return computed(async (get): Promise<ChatMessageUsagePayload | undefined> => {
+    if (await get(hasOlderHistory$)) {
+      return undefined;
+    }
+    return aggregateThreadUsage(await get(allMessages$));
+  });
+}
+
 function createPagedMessages(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
@@ -1403,6 +1527,11 @@ function createPagedMessages(
     return initial.hasHistoryBefore;
   });
 
+  const threadUsage$ = createThreadUsageComputed({
+    allMessages$,
+    hasOlderHistory$,
+  });
+
   const backfillHistoryBoundary$ = createBackfillHistoryBoundaryCommand({
     threadId,
     initialPage$,
@@ -1449,6 +1578,7 @@ function createPagedMessages(
     latestAssistantTextCreatedAt$,
     allMessages$,
     groupedChatMessages$,
+    threadUsage$,
     rawMessages$,
     knownServerMessageIds$,
     hasOlderHistory$,
@@ -2441,6 +2571,7 @@ export function createChatThreadSignals(
     latestAssistantTextCreatedAt$,
     allMessages$,
     groupedChatMessages$,
+    threadUsage$,
     rawMessages$,
     knownServerMessageIds$,
     hasOlderHistory$,
@@ -2528,6 +2659,7 @@ export function createChatThreadSignals(
     latestChatMessageId$,
     latestAssistantTextCreatedAt$,
     groupedChatMessages$,
+    threadUsage$,
     hasOlderHistory$,
     latestRunStatus$,
     allFinished$: runTracking.allFinished$,

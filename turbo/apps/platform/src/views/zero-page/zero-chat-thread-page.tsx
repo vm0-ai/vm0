@@ -1079,6 +1079,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const features = useLastResolved(featureSwitch$);
   const githubPrTrackingEnabled =
     features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
+  const usageEnabled = features?.[FeatureSwitchKey.ChatRunUsage] ?? false;
   const agentId =
     threadDataLoadable.state === "hasData"
       ? (threadDataLoadable.data?.agentId ?? null)
@@ -1100,6 +1101,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
+        {usageEnabled && <ThreadUsageChip thread={thread} />}
         <AutomationMenuButton threadId={thread.threadId} />
         <ArtifactsButton thread={thread} />
         {githubPrTrackingEnabled && agentId && (
@@ -5733,19 +5735,19 @@ function buildRunUsageDisplayRows(
   return Array.from(rows.values());
 }
 
-function RunUsageChip({
-  runId,
+function UsageChip({
   usage,
+  title,
+  ariaLabel,
+  open,
+  setOpen,
 }: {
-  runId: string;
   usage: ChatMessageUsagePayload;
+  title: string;
+  ariaLabel: string;
+  open: boolean;
+  setOpen: (open: boolean) => void;
 }) {
-  const openRunId = useGet(runUsagePopoverOpenRunId$);
-  const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
-  const open = openRunId === runId;
-  const setOpen = (nextOpen: boolean) => {
-    setOpenRunId(nextOpen ? runId : null);
-  };
   const total = formatCredits(usage.totalCredits);
   const displayRows = buildRunUsageDisplayRows(usage);
 
@@ -5755,7 +5757,7 @@ function RunUsageChip({
         <button
           type="button"
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
-          aria-label={`Credit usage ${total}`}
+          aria-label={`${ariaLabel} ${total}`}
           aria-expanded={open}
           aria-haspopup="dialog"
           onClick={() => {
@@ -5802,7 +5804,7 @@ function RunUsageChip({
         }}
       >
         <div className="flex items-center justify-between gap-3 text-sm font-medium">
-          <span>Credit usage</span>
+          <span>{title}</span>
           <span>{total}</span>
         </div>
         <div className="mt-3 flex flex-col gap-1.5">
@@ -5824,6 +5826,55 @@ function RunUsageChip({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+const THREAD_USAGE_POPOVER_ID = "__thread_credit_usage__";
+
+function ThreadUsageChip({ thread }: { thread: ChatThreadSignals }) {
+  const usageLoadable = useLastLoadable(thread.threadUsage$);
+  const openRunId = useGet(runUsagePopoverOpenRunId$);
+  const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
+  const usage =
+    usageLoadable.state === "hasData" ? usageLoadable.data : undefined;
+
+  if (usage === undefined) {
+    return null;
+  }
+
+  return (
+    <UsageChip
+      usage={usage}
+      title="Thread credit usage"
+      ariaLabel="Thread credit usage"
+      open={openRunId === THREAD_USAGE_POPOVER_ID}
+      setOpen={(open) => {
+        setOpenRunId(open ? THREAD_USAGE_POPOVER_ID : null);
+      }}
+    />
+  );
+}
+
+function RunUsageChip({
+  runId,
+  usage,
+}: {
+  runId: string;
+  usage: ChatMessageUsagePayload;
+}) {
+  const openRunId = useGet(runUsagePopoverOpenRunId$);
+  const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
+
+  return (
+    <UsageChip
+      usage={usage}
+      title="Credit usage"
+      ariaLabel="Credit usage"
+      open={openRunId === runId}
+      setOpen={(open) => {
+        setOpenRunId(open ? runId : null);
+      }}
+    />
   );
 }
 
