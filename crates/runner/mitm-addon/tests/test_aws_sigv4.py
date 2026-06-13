@@ -52,6 +52,17 @@ def test_header_auth_malformed_url_raises_signing_error() -> None:
         )
 
 
+def test_header_auth_invalid_bracketed_host_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
+        sign_request(
+            method="GET",
+            url="https://[foo]/",
+            headers=_header_auth_headers(),
+            body=None,
+            credentials=_credentials(),
+        )
+
+
 def test_presigned_query_malformed_url_raises_signing_error() -> None:
     with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
         sign_request(

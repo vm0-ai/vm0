@@ -659,9 +659,13 @@ def _upsert_header(
 
 def _host_header_value(url: str) -> str:
     parts = _split_url_for_signing(url)
-    if not parts.netloc or not parts.hostname:
+    try:
+        hostname = parts.hostname
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+    if not parts.netloc or not hostname:
         raise AwsSigV4SigningError("AWS request URL must include a host")
-    host = parts.hostname
+    host = hostname
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
     try:
