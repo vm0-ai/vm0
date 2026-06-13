@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.139.3](https://github.com/vm0-ai/vm0/compare/api-v1.139.2...api-v1.139.3) (2026-06-13)
+
+
+### Bug Fixes
+
+* remove claude fable 5 model support ([#17567](https://github.com/vm0-ai/vm0/issues/17567)) ([63733bf](https://github.com/vm0-ai/vm0/commit/63733bf637ce02afe00d0f97a2439f988c59078d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.2
+    * @vm0/core bumped to 8.335.5
+    * @vm0/db bumped to 1.49.3
+
 ## [1.139.2](https://github.com/vm0-ai/vm0/compare/api-v1.139.1...api-v1.139.2) (2026-06-13)
 
 

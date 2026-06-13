@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.335.5](https://github.com/vm0-ai/vm0/compare/core-v8.335.4...core-v8.335.5) (2026-06-13)
+
+
+### Performance Improvements
+
+* resize r2 thumbnails in chat and galleries ([#17569](https://github.com/vm0-ai/vm0/issues/17569)) ([a91f0cf](https://github.com/vm0-ai/vm0/commit/a91f0cf4b9108aa36e7961a1da5a8076b02e401e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.91.2
+
 ## [8.335.4](https://github.com/vm0-ai/vm0/compare/core-v8.335.3...core-v8.335.4) (2026-06-13)
 
 

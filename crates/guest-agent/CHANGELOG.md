@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.35.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.1...guest-agent-v0.35.2) (2026-06-13)
+
+
+### Bug Fixes
+
+* remove claude fable 5 model support ([#17567](https://github.com/vm0-ai/vm0/issues/17567)) ([63733bf](https://github.com/vm0-ai/vm0/commit/63733bf637ce02afe00d0f97a2439f988c59078d))
+
+
+### Documentation
+
+* document cli failure diagnostic fields ([#17571](https://github.com/vm0-ai/vm0/issues/17571)) ([d5f6bd8](https://github.com/vm0-ai/vm0/commit/d5f6bd8fac011d570520b50dac839cf9f453a2af))
+
 ## [0.35.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.0...guest-agent-v0.35.1) (2026-06-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.116.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.3...runner-rs-v0.116.4) (2026-06-13)
+
+
+### Bug Fixes
+
+* **runner:** reject non-file r2 templates ([#17573](https://github.com/vm0-ai/vm0/issues/17573)) ([eaa764f](https://github.com/vm0-ai/vm0/commit/eaa764f7b4fa5dac5dea987ed500363be9ac771f))
+
 ## [0.116.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.2...runner-rs-v0.116.3) (2026-06-13)
 
 
