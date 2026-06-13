@@ -16,7 +16,6 @@ import logging_utils
 import mitm_addon
 import registry
 import usage
-import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 from tests.usage_buffer_helpers import RecordingEnqueue, event
@@ -522,6 +521,22 @@ class TestRunnerUsageFlushSignal:
                 }
             )
         )
+        enqueue_calls = 0
+
+        def fail_enqueue_webhook(
+            url: str,
+            sandbox_token: str,
+            payload: dict,
+            proxy_log_path: str,
+            log_type: str,
+            delivery_outcome_callback: Callable[[usage.webhook.WebhookDeliveryOutcome], None],
+        ) -> bool:
+            nonlocal enqueue_calls
+            del url, sandbox_token, payload, proxy_log_path, log_type, delivery_outcome_callback
+            enqueue_calls += 1
+            raise OSError("no threads")
+
+        usage.reset_usage_buffer_for_tests(enqueue_webhook=fail_enqueue_webhook)
         usage.buffer_usage_events(
             "https://api.test/api/webhooks/agent/usage-event",
             "token-a",
@@ -539,12 +554,10 @@ class TestRunnerUsageFlushSignal:
         )
 
         try:
-            with (
-                patch.object(usage_buffer, "_enqueue_webhook", side_effect=OSError("no threads")),
-                patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            ):
+            with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
                 mitm_addon._flush_usage_for_runner_request()
 
+            assert enqueue_calls == 1
             assert_pending(
                 pending_path,
                 flows=0,

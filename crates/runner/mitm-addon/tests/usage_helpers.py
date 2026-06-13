@@ -45,6 +45,7 @@ def install_recording_usage_timer(
     *,
     enqueue_webhook: _EnqueueWebhook | None = None,
     flush_owner_lock: _FlushOwnerLock | None = None,
+    max_retained_batch_retries: int | None = None,
 ) -> list[RecordingTimer]:
     """Reset the usage buffer with a timer factory that records scheduled timers."""
     timers: list[RecordingTimer] = []
@@ -54,12 +55,21 @@ def install_recording_usage_timer(
         timers.append(timer)
         return timer
 
-    usage.reset_usage_buffer_for_tests(
-        timer_enabled=True,
-        timer_factory=timer_factory,
-        enqueue_webhook=enqueue_webhook,
-        flush_owner_lock=flush_owner_lock,
-    )
+    if max_retained_batch_retries is None:
+        usage.reset_usage_buffer_for_tests(
+            timer_enabled=True,
+            timer_factory=timer_factory,
+            enqueue_webhook=enqueue_webhook,
+            flush_owner_lock=flush_owner_lock,
+        )
+    else:
+        usage.reset_usage_buffer_for_tests(
+            timer_enabled=True,
+            timer_factory=timer_factory,
+            enqueue_webhook=enqueue_webhook,
+            flush_owner_lock=flush_owner_lock,
+            max_retained_batch_retries=max_retained_batch_retries,
+        )
     return timers
 
 
