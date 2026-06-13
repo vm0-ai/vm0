@@ -6,6 +6,7 @@ import random
 import threading
 import time
 from collections.abc import Callable, Iterable
+from typing import Protocol
 
 from ..counters import set_buffered_usage_events
 from ..webhook import WebhookDeliveryOutcome, _enqueue_webhook
@@ -20,18 +21,36 @@ from .models import (
     _BatchAdmissionResult,
     _BatchEnqueueError,
     _DeliveryCompletion,
-    _DeliveryOutcomeCallback,
-    _EnqueueWebhook,
-    _FlushOwnerLock,
     _PendingBatch,
     _PendingFlush,
-    _TimerFactory,
-    _TimerHandle,
 )
 from .state import _UsageBufferState
 from .summaries import _apply_retained_batch_counts, _build_flush_summaries
 
 _jitter_rng = random.SystemRandom()
+
+
+class _TimerHandle(Protocol):
+    daemon: bool
+
+    def start(self) -> None:
+        """Start the scheduled callback."""
+
+    def cancel(self) -> None:
+        """Cancel the scheduled callback."""
+
+
+_TimerFactory = Callable[[float, Callable[[], None]], _TimerHandle]
+_DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
+_EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
+
+
+class _FlushOwnerLock(Protocol):
+    def acquire(self, blocking: bool = True) -> bool:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        raise NotImplementedError
 
 
 class UsageEventBuffer:

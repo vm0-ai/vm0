@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, TypedDict
-
-from ..webhook import WebhookDeliveryOutcome
+from typing import Literal, TypedDict
 
 DEFAULT_FLUSH_INTERVAL_SECONDS = 30.0
 DEFAULT_FLUSH_JITTER_RATIO = 0.2
@@ -28,29 +25,6 @@ class UsageEvent(TypedDict):
 
 UsageFlushTrigger = Literal["timer", "threshold", "runner", "shutdown", "test"]
 ResourceFieldName = Literal["provider", "model"]
-
-
-class _TimerHandle(Protocol):
-    daemon: bool
-
-    def start(self) -> None:
-        """Start the scheduled callback."""
-
-    def cancel(self) -> None:
-        """Cancel the scheduled callback."""
-
-
-_TimerFactory = Callable[[float, Callable[[], None]], _TimerHandle]
-_DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
-_EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
-
-
-class _FlushOwnerLock(Protocol):
-    def acquire(self, blocking: bool = True) -> bool:
-        raise NotImplementedError
-
-    def release(self) -> None:
-        raise NotImplementedError
 
 
 @dataclass(frozen=True)
