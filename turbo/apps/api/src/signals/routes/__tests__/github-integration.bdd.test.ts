@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
@@ -1370,6 +1371,8 @@ async function postGithubWebhook(
     [200],
   );
   // Webhook handling is detached and run dispatch nests more detached work.
+  // Drain it before claiming the queued job or reading session state.
+  await flushWaitUntilForTest();
 }
 
 function runIdFromAuditComment(body: string): string {
@@ -1443,6 +1446,7 @@ async function completeGithubRun(args: {
     { authorization: `Bearer ${args.sandboxToken}` },
     [200],
   );
+  await flushWaitUntilForTest();
   const completed = await args.api.readRun(args.actor, args.runId);
   expect(completed.status).toBe("completed");
   await waitForCommentCount(args.issueApi, args.expectedCommentCount);

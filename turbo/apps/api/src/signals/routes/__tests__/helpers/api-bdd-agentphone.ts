@@ -22,6 +22,7 @@ import {
   type TestContext,
 } from "../../../../__tests__/test-helpers";
 import { server } from "../../../../mocks/server";
+import { flushWaitUntilForTest } from "../../../context/wait-until";
 import type { ApiTestUser } from "./api-bdd";
 import {
   agentPhoneBddWebhookSecret,
@@ -205,8 +206,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
       agentPhoneWebhookHeaders(rawBody, `evt-bdd-agentphone-${randomUUID()}`),
       [200],
     );
-    // Webhook handling is waitUntil-detached; callers synchronize on the
-    // observable side effect they care about.
+    // Webhook handling is waitUntil-detached; drain it so follow-up steps
+    // cannot observe provider sends before thread/session state is persisted.
+    await flushWaitUntilForTest();
     return messageId;
   }
 

@@ -190,28 +190,34 @@ export function detach(
 }
 
 export async function clearAllDetached(): Promise<void> {
-  const pending = [...tracker().collected];
-  tracker().collected.clear();
-  tracker().mechanisms.clear();
-  tracker().descriptions.clear();
-
   if (!IN_VITEST) {
     return;
   }
 
   // Await every detached promise so background work cannot leak into the next
-  // test. Only AbortError is swallowed — any other rejection is re-thrown so a
-  // failing waitUntil task fails the test that scheduled it.
+  // test. Detached work can schedule more detached work as it settles, so keep
+  // draining until no promises remain. Only AbortError is swallowed — any other
+  // rejection is re-thrown so a failing waitUntil task fails the test that
+  // scheduled it.
   const errors: unknown[] = [];
-  for (const promise of pending) {
-    await promise.then(
-      () => {},
-      (error: unknown) => {
-        if (!isAbortError(error)) {
-          errors.push(error);
-        }
-      },
-    );
+  while (tracker().collected.size > 0) {
+    const pending = [...tracker().collected];
+    for (const promise of pending) {
+      tracker().collected.delete(promise);
+      tracker().mechanisms.delete(promise);
+      tracker().descriptions.delete(promise);
+    }
+
+    for (const promise of pending) {
+      await promise.then(
+        () => {},
+        (error: unknown) => {
+          if (!isAbortError(error)) {
+            errors.push(error);
+          }
+        },
+      );
+    }
   }
   if (errors.length > 0) {
     throw errors[0];
