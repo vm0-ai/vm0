@@ -13,15 +13,15 @@ import { db, uniqueId } from "../test-db";
 const ORG_SENTINEL_USER_ID = "__org__";
 
 const migrationSql = readFileSync(
-  new URL("../../migrations/0459_add_kimi_k2_7_code.sql", import.meta.url),
+  new URL("../../migrations/0460_add_kimi_k2_7_code.sql", import.meta.url),
   "utf8",
 );
 
-async function runMigration0459(): Promise<void> {
+async function runMigration0460(): Promise<void> {
   await db.execute(sql.raw(migrationSql));
 }
 
-describe("migration 0459 add Kimi K2.7 Code", () => {
+describe("migration 0460 add Kimi K2.7 Code", () => {
   it("adds K2.7 pricing, upgrades K2.6 policies, and removes old Kimi policies", async () => {
     const defaultK26OrgId = uniqueId("org-k26-default");
     const openrouterK26OrgId = uniqueId("org-k26-openrouter");
@@ -163,8 +163,8 @@ describe("migration 0459 add Kimi K2.7 Code", () => {
       selectedModel: "moonshotai/kimi-k2.5",
     });
 
-    await runMigration0459();
-    await runMigration0459();
+    await runMigration0460();
+    await runMigration0460();
 
     const k27Prices = await db
       .select({

@@ -1834,7 +1834,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       webhooks,
       actor,
       issueApi,
-      expectedCommentCount: 4,
+      expectedCommentCount: 5,
       runId: labelRun.runId,
       sandboxToken: labelRun.sandboxToken,
       cliAgentSessionId: "bdd-cli-g6b-label",
@@ -1935,6 +1935,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(firstRunId);
     await api.requestCancelRun(actor, firstRunId, [200]);
     await waitForRunStatus(api, actor, firstRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // A null issue body falls back to the placeholder paragraph.
     const beforeSecondDispatch = issueApi.comments.length;
@@ -1966,6 +1967,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(secondRunId);
     await api.requestCancelRun(actor, secondRunId, [200]);
     await waitForRunStatus(api, actor, secondRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // Non-matching labels and ignored actions never dispatch.
     let commentCount = issueApi.comments.length;
@@ -2029,6 +2031,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(prRunId);
     await api.requestCancelRun(actor, prRunId, [200]);
     await waitForRunStatus(api, actor, prRunId, "cancelled");
+    await flushWaitUntilForTest();
 
     // Creator-scoped listeners only fire for issues authored by the linked
     // creator account.
@@ -2089,6 +2092,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await api.claimRunnerJob(creatorRunId);
     await api.requestCancelRun(actor, creatorRunId, [200]);
     await waitForRunStatus(api, actor, creatorRunId, "cancelled");
+    await flushWaitUntilForTest();
   });
 
   it("reports rejected and failed label dispatches through comments and callbacks", async () => {
