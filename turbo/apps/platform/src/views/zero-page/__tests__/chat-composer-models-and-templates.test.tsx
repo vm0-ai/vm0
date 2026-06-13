@@ -154,9 +154,9 @@ function mockOrgModelRoutes(defaultSelectedModel: string): void {
   context.mocks.data.orgModelPolicies([
     buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000201",
-      model: "kimi-k2.5",
-      modelLabel: "Kimi K2.5",
-      isDefault: defaultSelectedModel === "kimi-k2.5",
+      model: "kimi-k2.7-code",
+      modelLabel: "Kimi K2.7 Code",
+      isDefault: defaultSelectedModel === "kimi-k2.7-code",
       defaultProviderType: "moonshot-api-key",
       credentialScope: "org",
       modelProviderId: MOONSHOT_PROVIDER_ID,
@@ -480,7 +480,7 @@ beforeEach(() => {
 describe("chat composer models", () => {
   it("suggests current agent skills from slash input and highlights inserted skill tokens", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: ["sales-research", "support-escalation"] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -542,7 +542,7 @@ describe("chat composer models", () => {
 
   it("does not suggest org skills that are not enabled on the current agent", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: [] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -572,7 +572,7 @@ describe("chat composer models", () => {
 
   it("links to the skills page from the slash skill menu footer", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: [] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -608,7 +608,7 @@ describe("chat composer models", () => {
 
   it("hides slash skill suggestions when the feature switch is off", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: ["sales-research"] });
     context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -641,7 +641,7 @@ describe("chat composer models", () => {
       configurable: true,
       value: scrollIntoView,
     });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     const customSkills = Array.from({ length: 12 }, (_, index) => {
       return `custom-skill-${index + 1}`;
     });
@@ -680,7 +680,7 @@ describe("chat composer models", () => {
   });
 
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -688,11 +688,11 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Kimi K2.5");
+    await expectComposerModel("Kimi K2.7 Code");
   });
 
   it("shows user preference over workspace default", async () => {
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-opus-4-7",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -709,7 +709,7 @@ describe("chat composer models", () => {
 
   it("shows thread override over user and workspace defaults, then remains editable", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.5");
+    mockOrgModelRoutes("kimi-k2.7-code");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-opus-4-7",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -751,8 +751,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000302",
-        model: "kimi-k2.6",
-        modelLabel: "Kimi K2.6",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
         defaultProviderType: "moonshot-api-key",
         credentialScope: "org",
         modelProviderId: MOONSHOT_PROVIDER_ID,
@@ -769,7 +769,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
-        screen.getByRole("option", { name: /Kimi K2\.6 BYOK/ }),
+        screen.getByRole("option", { name: /Kimi K2\.7 Code BYOK/ }),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     });

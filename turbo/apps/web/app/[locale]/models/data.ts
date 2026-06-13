@@ -7,7 +7,7 @@
 //     (VM0_MODEL_TO_PROVIDER, MODEL_PROVIDER_TYPES)
 //   - turbo/apps/platform/.../settings/provider-ui-config.ts
 //     (VM0_MODEL_CREDIT_MULTIPLIER)
-//   - turbo/apps/api/src/scripts/dev-seed.ts (MODEL_PRICING. USD per 1M tokens)
+//   - usage_pricing migrations / production pricing (USD per 1M tokens)
 //
 // Generation models (image, video, audio): per-unit pricing mirrors the same
 // dev-seed.ts table (USD per image / megapixel / video-second / audio-second).
@@ -176,10 +176,14 @@ export const MODELS: ModelEntry[] = [
       "Claude Opus 4.8",
       "Claude Sonnet 4.6",
       "Claude Opus 4.6",
-      "Kimi K2.6",
+      "Kimi K2.7 Code",
       "DeepSeek V4 Pro",
     ],
-    alternativeSlugs: ["claude-opus-4-8", "claude-sonnet-4-6", "kimi-k2-6"],
+    alternativeSlugs: [
+      "claude-opus-4-8",
+      "claude-sonnet-4-6",
+      "kimi-k2-7-code",
+    ],
   },
 
   {
@@ -202,8 +206,12 @@ export const MODELS: ModelEntry[] = [
     vm0Tier: "core",
     byoKeyLabel: "Anthropic API key",
     defaultFor: ["Anthropic API key", "Claude Code OAuth"],
-    comparisonSlugs: ["Claude Opus 4.7", "Claude Sonnet 4.6", "Kimi K2.6"],
-    alternativeSlugs: ["claude-opus-4-7", "claude-sonnet-4-6", "kimi-k2-6"],
+    comparisonSlugs: ["Claude Opus 4.7", "Claude Sonnet 4.6", "Kimi K2.7 Code"],
+    alternativeSlugs: [
+      "claude-opus-4-7",
+      "claude-sonnet-4-6",
+      "kimi-k2-7-code",
+    ],
   },
 
   {
@@ -299,8 +307,12 @@ export const MODELS: ModelEntry[] = [
     vm0TimeoutMin: 50,
     byoKeyLabel: "Z.AI API key",
     defaultFor: ["Z.AI"],
-    comparisonSlugs: ["Kimi K2.6", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
-    alternativeSlugs: ["kimi-k2-6", "deepseek-v4-pro", "claude-sonnet-4-6"],
+    comparisonSlugs: ["Kimi K2.7 Code", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
+    alternativeSlugs: [
+      "kimi-k2-7-code",
+      "deepseek-v4-pro",
+      "claude-sonnet-4-6",
+    ],
   },
 
   {
@@ -328,27 +340,27 @@ export const MODELS: ModelEntry[] = [
   },
 
   {
-    slug: "kimi-k2-6",
-    modelId: "kimi-k2.6",
-    name: "Kimi K2.6",
+    slug: "kimi-k2-7-code",
+    modelId: "kimi-k2.7-code",
+    name: "Kimi K2.7 Code",
     vendor: "Moonshot",
     category: "reasoning",
     multiplier: 0.3,
     contextWindowK: 256,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
-    releasedToVm0: "April 2026",
+    releasedToVm0: "June 2026",
     pricing: {
-      inputUsd: 0.6,
-      outputUsd: 3,
-      cacheReadUsd: 0.1,
-      cacheWriteUsd: 0.6,
+      inputUsd: 1.14,
+      outputUsd: 4.8,
+      cacheReadUsd: 0.192,
+      cacheWriteUsd: 1.14,
     },
     vm0Tier: "cost-saving",
     byoKeyLabel: "Moonshot API key",
     defaultFor: ["Moonshot"],
-    comparisonSlugs: ["GLM-5.1", "Claude Sonnet 4.6", "Kimi K2.5"],
-    alternativeSlugs: ["kimi-k2-5", "glm-5-1", "deepseek-v4-pro"],
+    comparisonSlugs: ["GLM-5.1", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
+    alternativeSlugs: ["glm-5-1", "deepseek-v4-pro", "claude-sonnet-4-6"],
   },
 
   {
@@ -372,32 +384,8 @@ export const MODELS: ModelEntry[] = [
     vm0TimeoutMin: 10,
     byoKeyLabel: "DeepSeek API key",
     defaultFor: [],
-    comparisonSlugs: ["Claude Sonnet 4.6", "Kimi K2.6", "GLM-5.1"],
-    alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2-6"],
-  },
-
-  {
-    slug: "kimi-k2-5",
-    modelId: "kimi-k2.5",
-    name: "Kimi K2.5",
-    vendor: "Moonshot",
-    category: "reasoning",
-    multiplier: 0.2,
-    contextWindowK: 256,
-    promptCaching: true,
-    modalities: ["Text", "Image", "Code"],
-    releasedToVm0: "Available since launch",
-    pricing: {
-      inputUsd: 0.6,
-      outputUsd: 3,
-      cacheReadUsd: 0.1,
-      cacheWriteUsd: 0.6,
-    },
-    vm0Tier: "cost-saving",
-    byoKeyLabel: "Moonshot API key",
-    defaultFor: [],
-    comparisonSlugs: ["Kimi K2.6", "DeepSeek V4 Pro"],
-    alternativeSlugs: ["kimi-k2-6", "glm-5-1", "deepseek-v4-pro"],
+    comparisonSlugs: ["Claude Sonnet 4.6", "Kimi K2.7 Code", "GLM-5.1"],
+    alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2-7-code"],
   },
 
   {
@@ -421,8 +409,8 @@ export const MODELS: ModelEntry[] = [
     vm0TimeoutMin: 50,
     byoKeyLabel: "MiniMax API key",
     defaultFor: ["MiniMax"],
-    comparisonSlugs: ["Kimi K2.6", "Claude Sonnet 4.6", "GLM-5.1"],
-    alternativeSlugs: ["kimi-k2-6", "claude-sonnet-4-6"],
+    comparisonSlugs: ["Kimi K2.7 Code", "Claude Sonnet 4.6", "GLM-5.1"],
+    alternativeSlugs: ["kimi-k2-7-code", "claude-sonnet-4-6"],
   },
 
   // -------------------------------------------------------------------------

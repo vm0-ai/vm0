@@ -5908,6 +5908,177 @@
         "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de Moonshot en `api.moonshot.ai`. Modelo predeterminado en el proveedor Moonshot; también disponible en VM0 Managed y vía OpenRouter.",
         "vm0Notes": "K2.6 tiene la recuperación de contexto largo más fuerte del catálogo Built-in según nuestra evaluación interna, y a ×0,3 créditos es lo suficientemente barato como para actuar como un sustituto viable de Sonnet para trabajo sensible al costo."
       },
+      "kimi-k2-7-code": {
+        "name": "Kimi K2.7 Code",
+        "pageTitle": "Kimi K2.7 Code en VM0. Agentes de contexto largo",
+        "tagline": "El último modelo de peso abierto de Moonshot. Los mejores benchmarks agénticos de su clase en la frontera de código abierto e interfaz compatible con Claude.",
+        "cardIntro": "Lo último de Moonshot. La mejor recuperación de contexto largo en nuestra evaluación interna e interfaz compatible con Claude.",
+        "metaTitle": "Kimi K2.7 Code en VM0: SWE-bench, Precios y Uso de Contexto Largo",
+        "metaDescription": "Reseña de Kimi K2.7 Code en VM0. MoE de 1T parámetros de peso abierto de Moonshot. SWE-bench Pro 58,6, costo de crédito ×0,3, contexto 256K. Especificaciones y tareas recomendadas.",
+        "summary": "Kimi K2.7 Code es el buque insignia de peso abierto de Moonshot y actualmente el modelo agéntico de código abierto más fuerte en varios benchmarks públicos. Mantiene ejecuciones muy largas sin perder el hilo (Moonshot ha documentado sesiones desatendidas de más de 12 horas y más de 4.000 llamadas a herramientas) y acepta entrada de imagen y video de forma nativa. SWE-bench Pro reportado por el proveedor alcanza 58,6 (por encima de Claude Opus 4.6 y GPT-5.4 en ese benchmark), y la tasa de alucinación bajó del ~65% de K2.6 al ~39%.\n\nEl precio de lista del proveedor es $1.14 / $4.80 por 1M tokens, pesos abiertos bajo licencia MIT Modificada, y la API es compatible con Anthropic. Recurre a Sonnet 4.6 cuando la fiabilidad de enrutamiento de herramientas en producción importa más que las puntuaciones de benchmark, y a Kimi K2.7 Code cuando la latencia domina.",
+        "releaseDate": "junio de 2026",
+        "familyPosition": "Cima de la serie Kimi K2 de peso abierto de Moonshot. Sucesor de K2.6 y K2 Thinking.",
+        "background": [
+          "Kimi K2.7 Code es el modelo agéntico de peso abierto de Moonshot AI lanzado el junio de 2026. Es un modelo Mixture-of-Experts (MoE) de 1 billón de parámetros con 32B parámetros activos por token. La misma familia de arquitectura que K2.6 y K2 Thinking, con ganancias sustanciales en codificación agéntica y razonamiento de largo horizonte.",
+          "K2.7 causó un gran impacto en los rankings independientes. Las puntuaciones reportadas por el proveedor lo sitúan por delante de GPT-5.4 (xhigh) y Claude Opus 4.6 (esfuerzo máximo) en SWE-bench Pro, con una tasa de alucinación del 39% (bajando del 65% de K2.6). Artificial Analysis lo clasifica #4 en su Índice de Inteligencia. La opción líder de peso abierto.",
+          "En VM0 se expone a través de la clave API de Moonshot como modelo predeterminado y mediante VM0 Managed con el mismo multiplicador ×0,3. La API es compatible con Anthropic, por lo que los agentes VM0 escritos para Claude funcionan sin cambios de código."
+        ],
+        "architecture": "K2.7 es un modelo Mixture-of-Experts con 1B parámetros totales y 32B activos por token, con una ventana de contexto de 256K tokens y entrada multimodal de imagen y video (salida solo texto). Moonshot lo combina con un runtime Agent Swarm que escala horizontalmente a 300 sub-agentes y 4.000 pasos coordinados, y ha documentado sesiones de codificación de largo horizonte de 12 horas o más. Los pesos abiertos están publicados en Hugging Face bajo una Licencia MIT Modificada.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Serie Kimi K2"
+          },
+          {
+            "label": "Parámetros",
+            "value": "1B total / 32B activos (MoE)"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Imagen, video, texto"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Multilingüe"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "256K tokens"
+          },
+          {
+            "label": "Licencia",
+            "value": "MIT Modificada (pesos abiertos)"
+          },
+          {
+            "label": "Disponible en VM0",
+            "value": "Abril 2026"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor del blog de lanzamiento de K2.7 de Moonshot. Terceros independientes (Artificial Analysis, TokenMix) corroboran el orden relativo. La tasa de alucinación de K2.7 bajó al 39% desde el 65% de K2.6. Una mejora significativa en seguridad/fiabilidad.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Pro",
+            "score": "58,6",
+            "note": "reportado por el proveedor; supera a GPT-5.4, Opus 4.6"
+          },
+          {
+            "name": "SWE-bench Verified",
+            "score": "80,2",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "66,7",
+            "note": "framework Terminus-2"
+          },
+          {
+            "name": "LiveCodeBench (v6)",
+            "score": "89,6",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "HLE (con herramientas)",
+            "score": "54,0",
+            "note": "supera a GPT-5.4 y Opus 4.6"
+          },
+          {
+            "name": "BrowseComp (Agent Swarm)",
+            "score": "86,3",
+            "note": "sube desde 78,4 de K2.6"
+          },
+          {
+            "name": "Índice de Inteligencia Artificial Analysis",
+            "score": "54",
+            "note": "#4 general, líder en pesos abiertos"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Recuperación de contexto largo",
+            "body": "La recuperación de contexto largo más fuerte en nuestra evaluación interna en todo el catálogo Built-in. Mantiene la coherencia en transcripciones largas de agente donde Anthropic Sonnet empieza a desviarse."
+          },
+          {
+            "title": "Benchmarks agénticos",
+            "body": "SWE-bench Pro 58,6 reportado por el proveedor es el más alto del catálogo al momento de escribir. Supera a GPT-5.4 y Opus 4.6."
+          },
+          {
+            "title": "Codificación de largo horizonte",
+            "body": "Sesiones autónomas documentadas de más de 12 horas completando más de 4.000 llamadas a herramientas. El modelo realmente mantiene el rendimiento en ejecuciones muy largas."
+          },
+          {
+            "title": "Uso de herramientas",
+            "body": "Fiable en los flujos de herramientas comunes de VM0. La API compatible con Anthropic significa que los esquemas de herramientas diseñados para Claude funcionan directamente."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "La investigación que tiene que leer cada hilo antiguo",
+            "body": "Excava en seis meses de conversaciones de Slack para encontrar por qué un cliente se dio de baja, peina el backlog de tickets de soporte en busca de un patrón de bug recurrente, o une ideas a través de cientos de RFCs. La recuperación de contexto largo de K2.7 se mantiene en transcripciones donde Anthropic Sonnet empieza a olvidar turnos anteriores, que es exactamente lo que necesitan los flujos de trabajo de \"leer todo el montón\"."
+          },
+          {
+            "title": "La refactorización autónoma que se ejecuta durante la noche",
+            "body": "Moonshot ha documentado una refactorización autónoma de 13 horas de un motor de matching de ocho años, con K2.7 manteniendo más de 4.000 llamadas a herramientas sin desviarse de la tarea. Ese es el tipo de ejecución donde la mayoría de los modelos pierden el objetivo alrededor de la segunda hora; la estabilidad de largo horizonte de K2.7 es lo que hace que \"empezar el viernes por la noche, revisar el lunes por la mañana\" realmente funcione."
+          },
+          {
+            "title": "El agente multimodal que maneja capturas de pantalla y clips",
+            "body": "K2.7 acepta tanto entrada de imagen como de video a través de MoonViT, lo cual es inusual fuera de la familia Claude. Útil para agentes de QA basados en capturas de pantalla, pipelines de visión de documentos y cualquier despliegue donde de otro modo tendrías que incorporar un modelo de visión separado solo para leer imágenes."
+          }
+        ],
+        "avoidFor": "Evita K2.7 en los casos límite más difíciles de enrutamiento de herramientas donde Sonnet 4.6 aún lidera en fiabilidad de producción, y en flujos legacy fijados donde el multiplicador más bajo de K2.6 ya es suficiente.",
+        "comparisons": [
+          {
+            "vs": "GLM-5.1",
+            "body": "Ambos son opciones de contexto largo. K2.7 gana en recuperación bruta de contexto largo en nuestra evaluación interna; GLM-5.1 gana en tamaño de contexto (1M vs 256K). Predetermina K2.7 para transcripciones largas; recurre a GLM-5.1 solo cuando necesitas más de 256K tokens en un solo prompt."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet (×1) lidera en fiabilidad de enrutamiento multi-herramienta en inglés. K2.7 (×0,3) gana en costo y en benchmarks agénticos (SWE-bench Pro). Combínalos: Sonnet para enrutamiento complejo de herramientas, K2.7 para trabajo de agente sensible al costo."
+          },
+          {
+            "vs": "Kimi K2.6",
+            "body": "K2.7 es la generación más reciente con mejor uso de herramientas, menor tasa de alucinación (39% vs 65%) y mejor razonamiento. K2.6 (×0,2) es ligeramente más barato. Prefiere K2.7 para trabajo nuevo."
+          }
+        ],
+        "verdict": "El predeterminado de peso abierto para trabajo de agente serio — contexto largo, costo-efectivo. Las brechas restantes frente a Sonnet 4.6 son fiabilidad de enrutamiento de herramientas y soporte empresarial.",
+        "faqs": [
+          {
+            "q": "¿Cuándo se lanzó Kimi K2.7 Code?",
+            "a": "Moonshot AI lanzó Kimi K2.7 Code el junio de 2026. Los pesos abiertos están publicados en Hugging Face bajo una Licencia MIT Modificada."
+          },
+          {
+            "q": "¿Cuál es la ventana de contexto?",
+            "a": "256K tokens. K2.7 se diferencia por la calidad de recuperación a ese tamaño, no por el tamaño bruto de la ventana. La recuperación empieza a degradarse pasados ~180K (similar a otros modelos de 256K)."
+          },
+          {
+            "q": "¿Necesito reescribir mi agente para usar Kimi?",
+            "a": "No. Kimi K2.7 Code expone una API compatible con Anthropic, por lo que los agentes VM0 ajustados para Claude funcionan sin cambios de código."
+          },
+          {
+            "q": "¿Cómo se compara Kimi K2.7 Code con Claude Opus 4.6?",
+            "a": "En benchmarks agénticos (reportados por el proveedor), K2.7 lidera. SWE-bench Pro 58,6 vs 53,4 de Opus 4.6, HLE con herramientas 54,0 vs 53,0. Opus 4.6 mantiene una ventaja en perfil de seguridad y fiabilidad de enrutamiento de herramientas en inglés en producción."
+          },
+          {
+            "q": "¿K2.7 soporta entrada de imágenes?",
+            "a": "Sí. K2.7 acepta entrada de imagen y video. Salida solo texto. Los agentes multimodales funcionan de forma nativa."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Generación anterior, multiplicador ligeramente más barato"
+          },
+          {
+            "slug": "glm-5-1",
+            "reason": "Ventana de contexto aún más larga (1M tokens)"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Alternativa más barata para trabajo sensible al costo"
+          }
+        ],
+        "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de Moonshot en `api.moonshot.ai`. Modelo predeterminado en el proveedor Moonshot; también disponible en VM0 Managed.",
+        "vm0Notes": "K2.7 tiene la recuperación de contexto largo más fuerte del catálogo Built-in según nuestra evaluación interna, y a ×0,3 créditos es lo suficientemente barato como para actuar como un sustituto viable de Sonnet para trabajo sensible al costo."
+      },
       "deepseek-v4-pro": {
         "name": "DeepSeek V4 Pro",
         "pageTitle": "DeepSeek V4 Pro en VM0. Razonamiento optimizado en costo",

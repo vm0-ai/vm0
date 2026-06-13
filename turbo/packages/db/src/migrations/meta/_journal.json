@@ -3214,6 +3214,13 @@
       "when": 1781320263500,
       "tag": "0458_clear_disabled_automation_trigger_next_run",
       "breakpoints": true
+    },
+    {
+      "idx": 459,
+      "version": "7",
+      "when": 1781331595077,
+      "tag": "0459_add_kimi_k2_7_code",
+      "breakpoints": true
     }
   ]
 }

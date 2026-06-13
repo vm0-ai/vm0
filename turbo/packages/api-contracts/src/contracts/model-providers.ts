@@ -56,8 +56,7 @@ export const SUPPORTED_RUN_MODELS = [
   "claude-opus-4-6",
   "claude-sonnet-4-6",
   "deepseek-v4-pro",
-  "kimi-k2.6",
-  "kimi-k2.5",
+  "kimi-k2.7-code",
   "MiniMax-M3",
   "glm-5.1",
   "gpt-5.5",
@@ -83,8 +82,7 @@ export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
   "claude-opus-4-6": 1.7,
   "claude-sonnet-4-6": 1,
   "deepseek-v4-pro": 0.06,
-  "kimi-k2.6": 0.3,
-  "kimi-k2.5": 0.2,
+  "kimi-k2.7-code": 0.3,
   "MiniMax-M3": 0.2,
   "glm-5.1": 0.4,
   "gpt-5.5": 2,
@@ -126,8 +124,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-opus-4-6": "Claude Opus 4.6",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
-  "kimi-k2.6": "Kimi K2.6",
-  "kimi-k2.5": "Kimi K2.5",
+  "kimi-k2.7-code": "Kimi K2.7 Code",
   "MiniMax-M3": "MiniMax M3",
   "glm-5.1": "GLM-5.1",
   "gpt-5.5": "GPT-5.5",
@@ -213,11 +210,7 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "openrouter",
     apiModel: "z-ai/glm-5.1",
   },
-  "kimi-k2.6": {
-    concreteType: "moonshot-api-key",
-    vendor: "moonshot",
-  },
-  "kimi-k2.5": {
+  "kimi-k2.7-code": {
     concreteType: "moonshot-api-key",
     vendor: "moonshot",
   },
@@ -251,8 +244,6 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
   "z-ai/glm-5.1": "glm-5.1",
   "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
-  "moonshotai/kimi-k2.6": "kimi-k2.6",
-  "moonshotai/kimi-k2.5": "kimi-k2.5",
 } as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
 
 const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
@@ -277,10 +268,7 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "anthropic/claude-opus-4.5",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-sonnet-4.5",
-  "kimi-k2.6",
-  "kimi-k2.5",
-  "moonshotai/kimi-k2.6",
-  "moonshotai/kimi-k2.5",
+  "kimi-k2.7-code",
   "MiniMax-M3",
 ]);
 
@@ -413,8 +401,6 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-sonnet-4.5",
       "z-ai/glm-5.1",
       "deepseek/deepseek-v4-pro",
-      "moonshotai/kimi-k2.6",
-      "moonshotai/kimi-k2.5",
     ] as string[],
     defaultModel: "",
   },
@@ -435,12 +421,11 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
-      "kimi-k2.6",
-      "kimi-k2.5",
+      "kimi-k2.7-code",
       "kimi-k2-thinking-turbo",
       "kimi-k2-thinking",
     ] as string[],
-    defaultModel: "kimi-k2.6",
+    defaultModel: "kimi-k2.7-code",
   },
   "minimax-api-key": {
     framework: "claude-code" as const,
@@ -526,8 +511,6 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-opus-4.5",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-sonnet-4.5",
-      "moonshotai/kimi-k2.6",
-      "moonshotai/kimi-k2.5",
       "minimax/minimax-m2.5",
       "zai/glm-5-turbo",
     ] as string[],
@@ -833,18 +816,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "vercel-ai-gateway-codex",
   ],
   "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
-  "kimi-k2.6": [
-    "vm0",
-    "moonshot-api-key",
-    "openrouter-api-key",
-    "vercel-ai-gateway",
-  ],
-  "kimi-k2.5": [
-    "vm0",
-    "moonshot-api-key",
-    "openrouter-api-key",
-    "vercel-ai-gateway",
-  ],
+  "kimi-k2.7-code": ["vm0", "moonshot-api-key"],
   "MiniMax-M3": ["vm0", "minimax-api-key"],
   "glm-5.1": ["vm0", "zai-api-key", "openrouter-api-key"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
@@ -859,8 +831,6 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
     "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
-    "kimi-k2.6": "moonshotai/kimi-k2.6",
-    "kimi-k2.5": "moonshotai/kimi-k2.5",
     "glm-5.1": "z-ai/glm-5.1",
   },
   "vercel-ai-gateway": {
@@ -869,8 +839,6 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
-    "kimi-k2.6": "moonshotai/kimi-k2.6",
-    "kimi-k2.5": "moonshotai/kimi-k2.5",
   },
   "openrouter-codex": {
     "gpt-5.5": "openai/gpt-5.5",
@@ -892,8 +860,6 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
     "anthropic/claude-opus-4.6": "claude-opus-4-6",
     "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
     "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
-    "moonshotai/kimi-k2.6": "kimi-k2.6",
-    "moonshotai/kimi-k2.5": "kimi-k2.5",
     "z-ai/glm-5.1": "glm-5.1",
   };
 
