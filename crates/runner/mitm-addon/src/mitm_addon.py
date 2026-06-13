@@ -155,7 +155,6 @@ _RequestClassificationKind = Literal[
     "allow",
 ]
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
-_AUTH_BASE_REQUEST_CLASSIFICATION = "_auth_base_request_classification"
 _REQUEST_HEADERS_LOCAL_RESPONSE = "_request_headers_local_response"
 
 
@@ -1186,17 +1185,16 @@ def client_disconnected(client: connection.Client) -> None:
 
 def requestheaders(flow: http.HTTPFlow) -> None:
     """Reject unbounded auth.base request bodies before mitmproxy buffers them."""
+    body_check = _auth_base_body_header_check(flow)
+    if body_check.kind == "ok":
+        return
+
     classification = _classify_request(flow)
     allow = classification.firewall_allow
     vm_info = classification.vm_info
     if classification.kind != "firewall_allow" or allow is None or vm_info is None:
         return
     if not _firewall_allow_auth_base(allow):
-        return
-
-    flow.metadata[_AUTH_BASE_REQUEST_CLASSIFICATION] = classification
-    body_check = _auth_base_body_header_check(flow)
-    if body_check.kind == "ok":
         return
 
     _start_request_timing(flow)
@@ -1275,9 +1273,7 @@ async def request(flow: http.HTTPFlow) -> None:
     if flow.metadata.get(_REQUEST_HEADERS_LOCAL_RESPONSE):
         return
 
-    classification = flow.metadata.pop(_AUTH_BASE_REQUEST_CLASSIFICATION, None)
-    if not isinstance(classification, _RequestClassification):
-        classification = _classify_request(flow)
+    classification = _classify_request(flow)
 
     if _classification_needs_request_timing(classification):
         _start_request_timing(flow)

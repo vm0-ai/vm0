@@ -700,7 +700,30 @@ async def test_auth_base_requestheaders_accepts_no_body_framing(
     assert flow.response is None
 
 
-async def test_auth_base_requestheaders_accepts_body_at_limit_and_reuses_match(
+async def test_requestheaders_skips_registry_for_bounded_body_headers(real_flow, headers):
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", "4"),
+        ),
+    )
+
+    with patch.object(
+        mitm_addon.registry,
+        "load_registry_state",
+        side_effect=AssertionError("requestheaders should not load the registry"),
+    ):
+        mitm_addon.requestheaders(flow)
+
+    assert flow.response is None
+
+
+async def test_auth_base_requestheaders_accepts_body_at_limit(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     reg_path = _write_auth_base_firewall_registry(tmp_path)
