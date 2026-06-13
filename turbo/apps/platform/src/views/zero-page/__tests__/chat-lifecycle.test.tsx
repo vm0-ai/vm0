@@ -1847,6 +1847,122 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("hides aggregate thread credit usage until older history is loaded", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-aggregate-usage-paginated-history",
+      historyMessages: [
+        {
+          id: "msg-thread-usage-history-user",
+          role: "user",
+          content: "Start older usage run",
+          runId: "run-thread-usage-history",
+          createdAt: "2026-06-08T10:00:00Z",
+        },
+        {
+          id: "msg-thread-usage-history-assistant",
+          role: "assistant",
+          content: "Earlier run is ready.",
+          runId: "run-thread-usage-history",
+          createdAt: "2026-06-08T10:00:01Z",
+        },
+        {
+          id: "msg-thread-usage-history-latest",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-history",
+          usage: {
+            version: 1,
+            totalCredits: 75,
+            settledAt: "2026-06-08T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 75,
+                providers: [{ provider: "moonshot", credits: 75 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-08T10:00:02Z",
+        },
+      ],
+      chatMessages: [
+        {
+          id: "msg-thread-usage-current-user",
+          role: "user",
+          content: "Start current usage run",
+          runId: "run-thread-usage-current",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-thread-usage-current-assistant",
+          role: "assistant",
+          content: "Current run is ready.",
+          runId: "run-thread-usage-current",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-thread-usage-current-latest",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-current",
+          usage: {
+            version: 1,
+            totalCredits: 50,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "image",
+                credits: 50,
+                providers: [{ provider: "gpt-image-2", credits: 50 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-aggregate-usage-paginated-history",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current run is ready.")).toBeInTheDocument();
+      expect(buttonByText("Load history")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Thread credit usage 50"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Thread credit usage 125"),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Load history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Earlier run is ready.")).toBeInTheDocument();
+      expect(queryButtonByText("Load history")).not.toBeInTheDocument();
+    });
+
+    const threadCredit = await screen.findByLabelText(
+      "Thread credit usage 125",
+    );
+    fireEvent.pointerEnter(threadCredit);
+
+    await waitFor(() => {
+      expect(screen.getByText("Thread credit usage")).toBeInTheDocument();
+      expect(screen.getAllByText("125").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Kimi K2.5")).toBeInTheDocument();
+      expect(screen.getAllByText("75").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("GPT Image 2")).toBeInTheDocument();
+      expect(screen.getAllByText("50").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it("keeps connector usage visible when completed work is folded", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip-folded-connector",

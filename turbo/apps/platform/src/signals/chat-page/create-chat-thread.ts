@@ -1429,6 +1429,21 @@ function aggregateThreadUsage(
   };
 }
 
+function createThreadUsageComputed({
+  allMessages$,
+  hasOlderHistory$,
+}: {
+  allMessages$: Computed<Promise<EnrichedChatMessage[]>>;
+  hasOlderHistory$: Computed<Promise<boolean>>;
+}): Computed<Promise<ChatMessageUsagePayload | undefined>> {
+  return computed(async (get): Promise<ChatMessageUsagePayload | undefined> => {
+    if (await get(hasOlderHistory$)) {
+      return undefined;
+    }
+    return aggregateThreadUsage(await get(allMessages$));
+  });
+}
+
 function createPagedMessages(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
@@ -1472,12 +1487,6 @@ function createPagedMessages(
     },
   );
 
-  const threadUsage$ = computed(
-    async (get): Promise<ChatMessageUsagePayload | undefined> => {
-      return aggregateThreadUsage(await get(allMessages$));
-    },
-  );
-
   const earliestChatMessageId$ = computed(
     async (get): Promise<string | undefined> => {
       const messages = await get(allMessages$);
@@ -1516,6 +1525,11 @@ function createPagedMessages(
     }
     const initial = await get(initialPage$);
     return initial.hasHistoryBefore;
+  });
+
+  const threadUsage$ = createThreadUsageComputed({
+    allMessages$,
+    hasOlderHistory$,
   });
 
   const backfillHistoryBoundary$ = createBackfillHistoryBoundaryCommand({
