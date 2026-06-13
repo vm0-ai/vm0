@@ -892,9 +892,10 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
 
 describe("WHCB-04: internal callback and event-consumer boundaries", () => {
   it("rejects malformed callback bodies before callback lookup", async () => {
-    const invalidJson = await api.requestInvalidAgentCallbackBody("not-json", [
-      400,
-    ]);
+    const invalidJson = await api.requestInvalidAgentCallbackBody(
+      "not-json",
+      [400],
+    );
     expect(invalidJson.body).toStrictEqual({ error: "Invalid JSON body" });
 
     const missingRunId = await api.requestAgentCallback(
@@ -3163,7 +3164,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
   it("suspends user-owned runs and automations after a verified user.banned event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -3187,7 +3188,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(run.status).toBe("pending");
 
     const created = await runs.createAutomation(banned, {
-      name: uniqueScheduleName("bdd-banned-user"),
+      name: uniqueAutomationName("bdd-banned-user"),
       agentId: agent.agentId,
       cronExpression: "0 9 * * *",
       prompt: "banned user scheduled automation",
