@@ -187,11 +187,15 @@ def _diagnostic_api(api: object) -> dict | None:
         return None
 
     auth = api.get("auth")
+    env_names = tuple(_extract_reference_names(auth))
+    if not env_names:
+        return None
+
     return {
         "base": raw_base,
         "auth": {},
         "permissions": _base_match_permissions(),
-        "_diagnostic_env_names": tuple(_extract_reference_names(auth)),
+        "_diagnostic_env_names": env_names,
         "_diagnostic_auth_header_names": tuple(_extract_auth_header_names(auth)),
         "_diagnostic_auth_query_param_names": tuple(_extract_auth_query_param_names(auth)),
     }

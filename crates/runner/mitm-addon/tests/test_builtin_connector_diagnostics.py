@@ -54,6 +54,16 @@ def test_skips_parameterized_base_urls():
         assert candidate is None
 
 
+def test_skips_static_connector_urls_without_injectable_auth_references():
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://test.api.amadeus.com/v1/security/oauth2/token",
+        "POST",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is None
+
+
 def test_skips_model_provider_firewalls():
     for url in (
         "https://api.anthropic.com/v1/messages",
