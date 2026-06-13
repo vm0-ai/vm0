@@ -72,6 +72,7 @@ import type {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  r2ImageTransformUrl,
   VIDEO_STYLE_PRESETS,
 } from "@vm0/core";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
@@ -1323,7 +1324,7 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
   if (previewKind === "image") {
     return (
       <img
-        src={publicUrl}
+        src={r2ImageTransformUrl(publicUrl, { width: 96, height: 96 })}
         alt=""
         aria-hidden="true"
         className="h-full w-full object-cover"
@@ -1452,7 +1453,11 @@ function ChatImagePreviewLink({
   const imageLoadStatusRef = useSet(imageLoadStatusRef$);
   const setImageLoadStatus = useSet(setImageLoadStatus$);
   const imageUrl = publicAttachmentUrl(url);
-  const imageLoadKey = `chat-image-preview:${imageUrl}`;
+  const previewImageUrl = r2ImageTransformUrl(imageUrl, {
+    width: 800,
+    height: 720,
+  });
+  const imageLoadKey = `chat-image-preview:${previewImageUrl}`;
   const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
 
   const showPlaceholder = imageStatus !== "loaded";
@@ -1499,7 +1504,7 @@ function ChatImagePreviewLink({
       <img
         key={imageLoadKey}
         ref={imageLoadStatusRef}
-        src={imageUrl}
+        src={previewImageUrl}
         alt={alt}
         data-image-load-key={imageLoadKey}
         loading="lazy"
