@@ -792,8 +792,15 @@ async def test_auth_base_requestheaders_accepts_body_at_limit(
     assert mock_forward.call_args[0][3] == b"ok"
 
 
-async def test_non_auth_base_requestheaders_ignores_unbounded_body_framing(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+@pytest.mark.parametrize(
+    "request_header_pairs",
+    [
+        [],
+        [("Transfer-Encoding", "chunked")],
+    ],
+)
+async def test_non_auth_base_requestheaders_ignores_auth_base_body_contract(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, request_header_pairs
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
@@ -804,7 +811,7 @@ async def test_non_auth_base_requestheaders_ignores_unbounded_body_framing(
         method="POST",
         request_headers=headers(
             ("Host", "api.github.com"),
-            ("Transfer-Encoding", "chunked"),
+            *request_header_pairs,
         ),
     )
 
