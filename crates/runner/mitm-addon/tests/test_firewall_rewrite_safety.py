@@ -163,14 +163,21 @@ class TestAuthBaseUrlRewriteSafety:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
+    @pytest.mark.parametrize(
+        "request_path",
+        [
+            "//[foo]?client=visible",
+            "/hook?client=visible\nsecret",
+        ],
+    )
     async def test_malformed_request_target_fails_closed_without_forwarding(
-        self, real_flow, mitm_ctx, tmp_path
+        self, real_flow, mitm_ctx, tmp_path, request_path
     ):
         """Malformed request target query extraction must use the local rewrite failure path."""
         flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
-            path="//[foo]?client=visible",
+            path=request_path,
             resolved_base="https://real.example.com/webhook/super-secret-token",
         )
         mock_forward = AsyncMock()

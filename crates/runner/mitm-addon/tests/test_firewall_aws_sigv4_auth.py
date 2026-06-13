@@ -2,6 +2,8 @@
 
 import urllib.parse
 
+import pytest
+
 import auth
 import flow_metadata_keys as metadata_keys
 import matching
@@ -824,11 +826,19 @@ async def test_header_sigv4_without_trusted_original_url_fails_closed(
     assert "AWS request URL is unavailable" in flow.response.json()["message"]
 
 
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "//[foo]?Trace=secret-value",
+        "/?Trace=secret\nvalue",
+    ],
+)
 async def test_header_sigv4_with_malformed_current_request_target_fails_closed(
     real_flow,
     headers,
     tmp_path,
     mitm_ctx,
+    request_path,
 ):
     flow = real_flow(
         with_response=False,
@@ -848,7 +858,7 @@ async def test_header_sigv4_with_malformed_current_request_target_fails_closed(
         ),
     )
     _prepare_firewall_request(flow)
-    flow.request.path = "//[foo]?Trace=secret-value"
+    flow.request.path = request_path
     set_cached_headers(
         ("run-1", "https://sts.amazonaws.com"),
         headers={},

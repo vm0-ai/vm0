@@ -48,6 +48,7 @@ _PRESIGN_EXPIRES_RE = re.compile(r"^[1-9]\d*$")
 _ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
 _SIGNED_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
 _HEX_DIGITS = frozenset("0123456789ABCDEFabcdef")
+_RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
 _DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -180,6 +181,8 @@ def _classify_request(
 
 def _split_url_for_signing(url: str) -> urllib.parse.SplitResult:
     _utf8_encode(url, "AWS request URL is malformed")
+    if _has_raw_whitespace(url) or _has_ascii_control(url):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
     if _has_malformed_percent_encoding(url):
         raise AwsSigV4SigningError("AWS request URL is malformed")
     try:
@@ -674,6 +677,10 @@ def _is_utf8_encodable(value: str) -> bool:
 
 def _has_ascii_control(value: str) -> bool:
     return any(ord(char) <= _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value)
+
+
+def _has_raw_whitespace(value: str) -> bool:
+    return any(char in _RAW_WHITESPACE_CHARS for char in value)
 
 
 def _unique_header_value(
