@@ -531,11 +531,10 @@ describe("chat composer models", () => {
     expect(salesSuggestion).toBeInTheDocument();
     expect(screen.getByText("/support-escalation")).toBeInTheDocument();
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+    // The menu renders in a Radix Popover portal (Floating UI handles
+    // cross-browser placement), so it lives outside the composer element.
     const slashSkillMenu = screen.getByTestId("slash-skill-menu");
-    expect(composerElementFrom(editor)).toContain(slashSkillMenu);
-    expect(slashSkillMenu).toHaveAttribute("popover", "manual");
-    expect(slashSkillMenu).toHaveClass("slash-skill-popover");
-    expect(slashSkillMenu.closest(".slash-skill-anchor")).not.toBeNull();
+    expect(slashSkillMenu).toBeInTheDocument();
 
     await user.keyboard("sales");
 
