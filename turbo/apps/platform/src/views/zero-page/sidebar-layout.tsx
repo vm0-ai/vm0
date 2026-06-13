@@ -6,10 +6,14 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { IconMenu2, IconPackage, IconUserPlus } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
-import { AutomationMenuButton } from "./zero-chat-thread-page.tsx";
+import {
+  AutomationMenuButton,
+  ThreadUsageChip,
+} from "./zero-chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import {
   currentLeftThread$,
@@ -51,6 +55,9 @@ import {
   currentArtifactInboxThreadId$,
   openArtifactInbox$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+
+const MOBILE_THREAD_USAGE_POPOVER_ID = "__mobile_thread_credit_usage__";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -151,11 +158,32 @@ function MobileAutomationButtonLeaf() {
   );
 }
 
+function MobileThreadUsageChipLeaf() {
+  const features = useLastResolved(featureSwitch$);
+  const usageEnabled = features?.[FeatureSwitchKey.ChatRunUsage] ?? false;
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+
+  if (!usageEnabled || !thread) {
+    return null;
+  }
+
+  return (
+    <ThreadUsageChip
+      thread={thread}
+      contentAlign="end"
+      popoverId={MOBILE_THREAD_USAGE_POPOVER_ID}
+    />
+  );
+}
+
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const inChatRoute = isChatRoute(activeId);
   const showInviteFallback = inChatRoute && activeId !== "chat";
   return (
     <>
+      {inChatRoute && <MobileThreadUsageChipLeaf />}
       {inChatRoute && <MobileAutomationButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {showInviteFallback && <InviteButtonLeaf />}

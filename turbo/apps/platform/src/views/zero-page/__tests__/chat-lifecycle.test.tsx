@@ -1823,16 +1823,30 @@ describe("chat lifecycle", () => {
       },
     });
 
-    const threadCredit = await screen.findByLabelText(
+    const threadCredits = await screen.findAllByLabelText(
       "Thread credit usage 125",
     );
+    expect(threadCredits.length).toBeGreaterThanOrEqual(2);
+
     const artifacts = screen.getByLabelText("Open artifacts");
+    const desktopThreadCredit = within(
+      artifacts.parentElement as HTMLElement,
+    ).getByLabelText("Thread credit usage 125");
     expect(
-      threadCredit.compareDocumentPosition(artifacts) &
+      desktopThreadCredit.compareDocumentPosition(artifacts) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    fireEvent.pointerEnter(threadCredit);
+    const mobileArtifacts = screen.getByLabelText("Open mobile artifacts");
+    const mobileThreadCredit = within(
+      mobileArtifacts.parentElement as HTMLElement,
+    ).getByLabelText("Thread credit usage 125");
+    expect(
+      mobileThreadCredit.compareDocumentPosition(mobileArtifacts) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.pointerEnter(desktopThreadCredit);
 
     await waitFor(() => {
       expect(screen.getByText("Thread credit usage")).toBeInTheDocument();
@@ -1948,9 +1962,14 @@ describe("chat lifecycle", () => {
       expect(queryButtonByText("Load history")).not.toBeInTheDocument();
     });
 
-    const threadCredit = await screen.findByLabelText(
+    const threadCredits = await screen.findAllByLabelText(
       "Thread credit usage 125",
     );
+    expect(threadCredits.length).toBeGreaterThanOrEqual(2);
+    const artifacts = screen.getByLabelText("Open artifacts");
+    const threadCredit = within(
+      artifacts.parentElement as HTMLElement,
+    ).getByLabelText("Thread credit usage 125");
     fireEvent.pointerEnter(threadCredit);
 
     await waitFor(() => {
