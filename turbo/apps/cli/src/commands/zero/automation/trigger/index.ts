@@ -15,6 +15,7 @@ import {
   printWebhookSecret,
 } from "../trigger-display";
 import { addCommand } from "./add";
+import { updateCommand } from "./update";
 
 /**
  * `zero automation trigger` — manage the triggers of a unified automation.
@@ -154,6 +155,7 @@ export const triggerCommand = new Command()
   .name("trigger")
   .description("Manage an automation's triggers")
   .addCommand(addCommand)
+  .addCommand(updateCommand)
   .addCommand(listCommand)
   .addCommand(showCommand)
   .addCommand(rmCommand)
@@ -165,6 +167,7 @@ export const triggerCommand = new Command()
     `
 Examples:
   Add a trigger:      zero automation trigger add <automation> cron --expr "0 9 * * *"
+  Update a schedule:  zero automation trigger update <trigger-id> --every 10m  (kind switches to match the flag)
   List triggers:      zero automation trigger list <automation>
   Inspect a trigger:  zero automation trigger show <trigger-id>
   Pause one trigger:  zero automation trigger disable <trigger-id>

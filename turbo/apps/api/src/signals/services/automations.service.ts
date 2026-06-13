@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import type { CreateTriggerRequest } from "@vm0/api-contracts/contracts/automations";
+import type {
+  CreateTriggerRequest,
+  UpdateTriggerRequest,
+} from "@vm0/api-contracts/contracts/automations";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -1062,6 +1065,84 @@ export const setTriggerEnabled$ = command(
       .set({
         enabled: args.enabled,
         ...recomputedState,
+        updatedAt: currentTime,
+      })
+      .where(eq(automationTriggers.id, owned.trigger.id))
+      .returning();
+    signal.throwIfAborted();
+    if (!trigger) {
+      return { kind: "not_found" };
+    }
+
+    await publishChatThreadAutomationsChangedSafely(
+      args.userId,
+      owned.automation.chatThreadId,
+    );
+    signal.throwIfAborted();
+
+    return { kind: "ok", trigger };
+  },
+);
+
+/**
+ * Replace a time trigger's schedule config in place — the kind may switch
+ * among cron/once/loop. The row keeps its id, enabled flag, and lastRunId
+ * history; `nextRunAt` is recomputed by the creation rules (a cron schedules
+ * only while the automation is enabled) and the consecutive-failure counter
+ * resets — the same revive semantics as enable. Webhook triggers carry no
+ * schedule and are rejected.
+ */
+export const updateTrigger$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly id: string;
+      readonly body: UpdateTriggerRequest;
+    },
+    signal: AbortSignal,
+  ): Promise<TriggerMutationResult> => {
+    const db = set(writeDb$);
+    const owned = await loadOwnedTrigger(db, args);
+    signal.throwIfAborted();
+    if (!owned) {
+      return { kind: "not_found" };
+    }
+    if (owned.trigger.kind === "webhook") {
+      return {
+        kind: "bad_request",
+        message: "Webhook triggers have no schedule to update",
+      };
+    }
+
+    const currentTime = nowDate();
+    const result = await resolveTriggerInsert({
+      request: args.body,
+      automationEnabled: owned.automation.enabled,
+      currentTime,
+    });
+    signal.throwIfAborted();
+    if (result.kind === "bad_request") {
+      return result;
+    }
+    const { values } = result.insert;
+
+    // The B4 CHECK constraint requires each kind to carry exactly its own
+    // config columns, so the new kind's fields are set and the unused ones
+    // are nulled explicitly (the timezone column is NOT NULL, default UTC —
+    // the same effective value a fresh loop insert gets). The enabled flag,
+    // lastRunId, and the webhook columns are untouched.
+    const [trigger] = await db
+      .update(automationTriggers)
+      .set({
+        kind: values.kind,
+        cronExpression: values.cronExpression ?? null,
+        atTime: values.atTime ?? null,
+        intervalSeconds: values.intervalSeconds ?? null,
+        timezone: values.timezone ?? "UTC",
+        nextRunAt: values.nextRunAt,
+        consecutiveFailures: 0,
         updatedAt: currentTime,
       })
       .where(eq(automationTriggers.id, owned.trigger.id))

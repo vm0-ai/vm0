@@ -742,6 +742,188 @@ describe("Automations API", () => {
     expect(expired.body.error.message).toContain("already passed");
   });
 
+  it("updates a trigger's schedule in place, preserving id and run history", async () => {
+    const fixture = await seedFixture();
+
+    const created = await createAutomation({
+      name: "retime-me",
+      agentId: fixture.composeId,
+      trigger: { kind: "loop", intervalSeconds: 300 },
+    });
+    const triggerId = created.automation.triggers[0]!.id;
+
+    // A manual fire stamps lastRunId; a seeded failure count exercises the
+    // revive semantics (the counter resets on update, like enable).
+    const runResponse = await accept(
+      refApi().run({
+        params: { ref: "retime-me" },
+        headers: SESSION_HEADERS,
+        body: {},
+      }),
+      [201],
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(automationTriggers)
+      .set({ consecutiveFailures: 2 })
+      .where(eq(automationTriggers.id, triggerId));
+
+    const updated = await accept(
+      triggerApi().update({
+        params: { id: triggerId },
+        headers: SESSION_HEADERS,
+        body: { kind: "loop", intervalSeconds: 600 },
+      }),
+      [200],
+    );
+    if (updated.body.kind !== "loop") {
+      throw new Error("Expected a loop trigger");
+    }
+    expect(updated.body.id).toBe(triggerId);
+    expect(updated.body.intervalSeconds).toBe(600);
+    expect(updated.body.consecutiveFailures).toBe(0);
+    expect(updated.body.nextRunAt).not.toBeNull();
+
+    const [row] = await findTriggerRows(created.automation.id);
+    expect(row?.lastRunId).toBe(runResponse.body.runId);
+
+    // The kind may switch: loop → cron swaps the config columns in place.
+    const switched = await accept(
+      triggerApi().update({
+        params: { id: triggerId },
+        headers: SESSION_HEADERS,
+        body: {
+          kind: "cron",
+          cronExpression: "0 9 * * *",
+          timezone: "Asia/Shanghai",
+        },
+      }),
+      [200],
+    );
+    if (switched.body.kind !== "cron") {
+      throw new Error("Expected a cron trigger");
+    }
+    expect(switched.body.id).toBe(triggerId);
+    expect(switched.body.cronExpression).toBe("0 9 * * *");
+    expect(switched.body.timezone).toBe("Asia/Shanghai");
+    expect(Date.parse(switched.body.nextRunAt!)).toBeGreaterThan(now());
+
+    const [switchedRow] = await findTriggerRows(created.automation.id);
+    expect(switchedRow?.kind).toBe("cron");
+    expect(switchedRow?.intervalSeconds).toBeNull();
+    expect(switchedRow?.atTime).toBeNull();
+    expect(switchedRow?.lastRunId).toBe(runResponse.body.runId);
+    expect(switchedRow?.enabled).toBeTruthy();
+  });
+
+  it("rejects invalid schedule updates and webhook trigger updates", async () => {
+    const fixture = await seedFixture();
+    await enableWebhookTriggers(fixture);
+
+    const created = await createAutomation({
+      name: "update-validate",
+      agentId: fixture.composeId,
+      trigger: { kind: "loop", intervalSeconds: 300 },
+    });
+    const triggerId = created.automation.triggers[0]!.id;
+
+    const pastOnce = await accept(
+      triggerApi().update({
+        params: { id: triggerId },
+        headers: SESSION_HEADERS,
+        body: { kind: "once", atTime: new Date(now() - 60_000).toISOString() },
+      }),
+      [400],
+    );
+    expect(pastOnce.body.error.message).toContain("already passed");
+
+    const badCron = await accept(
+      triggerApi().update({
+        params: { id: triggerId },
+        headers: SESSION_HEADERS,
+        body: { kind: "cron", cronExpression: "not a cron" },
+      }),
+      [400],
+    );
+    expect(badCron.body.error.message).toContain("Invalid cron expression");
+
+    // A failed validation leaves the row untouched.
+    const [row] = await findTriggerRows(created.automation.id);
+    expect(row?.kind).toBe("loop");
+    expect(row?.intervalSeconds).toBe(300);
+
+    // Webhook triggers carry no schedule.
+    const webhookAdded = await accept(
+      refApi().addTrigger({
+        params: { ref: "update-validate" },
+        headers: SESSION_HEADERS,
+        body: { kind: "webhook" },
+      }),
+      [201],
+    );
+    const webhookRejected = await accept(
+      triggerApi().update({
+        params: { id: webhookAdded.body.trigger.id },
+        headers: SESSION_HEADERS,
+        body: { kind: "loop", intervalSeconds: 60 },
+      }),
+      [400],
+    );
+    expect(webhookRejected.body.error.message).toContain(
+      "no schedule to update",
+    );
+  });
+
+  it("scopes trigger updates to the caller and gates cron next runs on the automation flag", async () => {
+    const fixture = await seedFixture();
+
+    // Another user's trigger resolves as not found.
+    const otherFixture = await trackAutomations(
+      store.set(
+        seedAutomationsScenario$,
+        {
+          automations: [
+            { name: "other-loop", prompt: "Other task", intervalSeconds: 300 },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    const [otherTrigger] = await findTriggerRows(
+      otherFixture.automationIds[0]!,
+    );
+    const denied = await accept(
+      triggerApi().update({
+        params: { id: otherTrigger!.id },
+        headers: SESSION_HEADERS,
+        body: { kind: "loop", intervalSeconds: 600 },
+      }),
+      [404],
+    );
+    expect(denied.body.error.code).toBe("NOT_FOUND");
+
+    // Switching to cron on a disabled automation keeps next run unscheduled
+    // (the same gating creation applies).
+    const created = await createAutomation({
+      name: "disabled-retime",
+      agentId: fixture.composeId,
+      enabled: false,
+      trigger: { kind: "loop", intervalSeconds: 300 },
+    });
+    const updated = await accept(
+      triggerApi().update({
+        params: { id: created.automation.triggers[0]!.id },
+        headers: SESSION_HEADERS,
+        body: { kind: "cron", cronExpression: "0 9 * * *" },
+      }),
+      [200],
+    );
+    if (updated.body.kind !== "cron") {
+      throw new Error("Expected a cron trigger");
+    }
+    expect(updated.body.nextRunAt).toBeNull();
+  });
+
   it("manually fires an automation: chat callback only, automation-only provenance", async () => {
     const fixture = await seedFixture();
     await enableWebhookTriggers(fixture);
