@@ -54,6 +54,8 @@ async function lockChatUsageMigrationTest(tx: DbTransaction): Promise<void> {
 describe("migration 0457 chat usage settlement messages", () => {
   it("appends a new immutable message for stale usage payloads and stays idempotent", async () => {
     await runInRollbackTransaction(async (tx) => {
+      await lockChatUsageMigrationTest(tx);
+
       const orgId = uniqueId("org");
       const userId = uniqueId("user");
 
@@ -162,7 +164,6 @@ describe("migration 0457 chat usage settlement messages", () => {
         },
       ]);
 
-      await lockChatUsageMigrationTest(tx);
       await tx.execute(sql.raw(migrationSql));
       await tx.execute(sql.raw(migrationSql));
 

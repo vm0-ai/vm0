@@ -142,6 +142,8 @@ async function recreateLegacyUsageRunUniqueIndex(
 describe("migration 0454 backfill chat usage messages", () => {
   it("inserts missing usage messages after their run messages and stays idempotent", async () => {
     await runInRollbackTransaction(async (tx) => {
+      await lockChatUsageMigrationTest(tx);
+
       const orgId = uniqueId("org");
       const userId = uniqueId("user");
 
@@ -358,7 +360,6 @@ describe("migration 0454 backfill chat usage messages", () => {
         })
         .returning({ id: chatMessages.id });
 
-      await lockChatUsageMigrationTest(tx);
       await recreateLegacyUsageRunUniqueIndex(tx, [
         targetRunId,
         pendingRunId,
