@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.450.0](https://github.com/vm0-ai/vm0/compare/app-v0.449.0...app-v0.450.0) (2026-06-13)
+
+
+### Features
+
+* show thread credit usage ([#17585](https://github.com/vm0-ai/vm0/issues/17585)) ([919d242](https://github.com/vm0-ai/vm0/commit/919d2427dc8224535ac0de571e1b66a94946296a))
+
+
+### Bug Fixes
+
+* position slash command menu via radix popover for ios webkit ([#17583](https://github.com/vm0-ai/vm0/issues/17583)) ([84ae41e](https://github.com/vm0-ai/vm0/commit/84ae41e4271c81ac6ce9cecdf85aef8b42464c4a))
+
 ## [0.449.0](https://github.com/vm0-ai/vm0/compare/app-v0.448.2...app-v0.449.0) (2026-06-13)
 
 
