@@ -43,7 +43,7 @@ function isThreadMetaRow(raw: unknown): raw is ThreadMetaRow {
 // without `startMessageId` are still valid; new fields default to undefined.
 const STORE = "chat_thread_agents";
 const MESSAGE_STORE = "chat_messages";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const getDb = (() => {
   const cache: Record<string, Promise<IDBPDatabase>> = {};
