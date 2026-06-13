@@ -543,6 +543,35 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
     }
   });
 
+  it("pages current org memberships before selecting admin recipients", async () => {
+    const pagedAdmin = member("org:admin", "paged-admin@example.com");
+    const fixture = await createUsageFixture({
+      beforeCredits: LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS + 600,
+      chargeCredits: 700,
+      members: [
+        ...Array.from({ length: 100 }, () => {
+          return member("org:member");
+        }),
+        pagedAdmin,
+      ],
+    });
+
+    await processFixture(fixture);
+
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledWith({
+      organizationId: fixture.orgId,
+      limit: 100,
+      offset: 100,
+    });
+    const alerts = await lowCreditAlerts(fixture);
+    expect(alerts).toHaveLength(1);
+    expect(parseAddresses(alerts[0]?.toAddresses)).toStrictEqual([
+      pagedAdmin.email,
+    ]);
+  });
+
   it("does not enqueue an alert when the org has no current admin", async () => {
     const currentMember = member("org:member");
     const fixture = await createUsageFixture({

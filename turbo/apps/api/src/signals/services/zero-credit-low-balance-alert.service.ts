@@ -41,6 +41,13 @@ interface Recipient {
   readonly email: string;
 }
 
+interface OrgMemberCacheRow {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly role: "admin" | "member";
+  readonly cachedAt: Date;
+}
+
 async function listCurrentOrgMemberships(
   clerk: ClerkClient,
   orgId: string,
@@ -72,20 +79,21 @@ async function refreshOrgMemberCache(
   orgId: string,
   memberships: readonly OrganizationMembership[],
 ): Promise<void> {
-  const rows = memberships.flatMap((membership) => {
+  const cachedAt = nowDate();
+  const rowsByUserId = new Map<string, OrgMemberCacheRow>();
+  for (const membership of memberships) {
     const userId = membershipUserId(membership);
     if (!userId) {
-      return [];
+      continue;
     }
-    return [
-      {
-        orgId,
-        userId,
-        role: membership.role === "org:admin" ? "admin" : "member",
-        cachedAt: nowDate(),
-      },
-    ];
-  });
+    rowsByUserId.set(userId, {
+      orgId,
+      userId,
+      role: membership.role === "org:admin" ? "admin" : "member",
+      cachedAt,
+    });
+  }
+  const rows = [...rowsByUserId.values()];
 
   await db.transaction(async (tx) => {
     if (rows.length > 0) {
