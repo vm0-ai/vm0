@@ -55,13 +55,12 @@ function parseLoopPayload(payload: unknown): TriggerPayload | null {
 }
 
 /**
- * Completion callback for `automation_triggers` time rows — mirrors the schedule
- * callback's semantics 1:1, keyed on `trigger_id`: a completed run resets the
- * consecutive-failure counter, a failed run increments it (auto-disable at the
- * threshold), and the recurrence advances from completion time. The poller's
- * claim cleared `next_run_at`, so this callback is what reschedules the trigger.
- * `once` triggers were disabled at claim, so their callback lands in the
- * disabled-skip branch — same as the live schedule path.
+ * Completion callback for `automation_triggers` time rows, keyed on
+ * `trigger_id`: a completed run resets the consecutive-failure counter, a
+ * failed run increments it (auto-disable at the threshold), and the recurrence
+ * advances from completion time. The poller's claim cleared `next_run_at`, so
+ * this callback is what reschedules the trigger. `once` triggers were disabled
+ * at claim, so their callback lands in the disabled-skip branch.
  */
 function createTriggerCallbackHandler(
   parsePayload: (payload: unknown) => TriggerPayload | null,

@@ -23,7 +23,7 @@ import {
   zeroComposeDeleteToken,
 } from "./helpers/api-bdd-composes";
 import { mockClerkMembership } from "./helpers/api-bdd-github";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 
 /*
@@ -916,7 +916,7 @@ describe("COMPOSE-01 zero route errors", () => {
 
 describe("COMPOSE-01 delete protection and volume sweep", () => {
   it("blocks deletion while a run is pending and sweeps the instructions volume after", async () => {
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const actor = api.user();
     api.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();

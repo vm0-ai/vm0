@@ -80,11 +80,11 @@ const automationBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
     const section = "Automations";
     const params = get(pathParams$) as Params;
-    const scheduleId = getStringParam(params, "scheduleId");
-    if (scheduleId) {
+    const automationId = getStringParam(params, "automationId");
+    if (automationId) {
       const entries = await get(allOrgAutomationEntries$);
       const entry = entries.find((e) => {
-        return e.id === scheduleId;
+        return e.id === automationId;
       });
       if (entry) {
         return {

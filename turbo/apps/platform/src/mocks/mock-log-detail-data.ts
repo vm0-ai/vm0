@@ -39,7 +39,7 @@ export const mockLogDetail: LogDetail = {
   selectedModel: null,
   triggerSource: "slack",
   triggerAgentName: null,
-  scheduleId: null,
+  automationId: null,
   status: "completed",
   appendSystemPrompt: null,
   prompt: [

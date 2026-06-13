@@ -1257,7 +1257,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const db = store.set(writeDb$);
     const [zeroRun] = await db
-      .select()
+      .select({ triggerSource: zeroRuns.triggerSource })
       .from(zeroRuns)
       .where(eq(zeroRuns.id, run!.id))
       .limit(1);
@@ -1556,7 +1556,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     const db = store.set(writeDb$);
     const [zeroRun] = await db
-      .select()
+      .select({ triggerSource: zeroRuns.triggerSource })
       .from(zeroRuns)
       .where(eq(zeroRuns.id, run!.id))
       .limit(1);

@@ -106,7 +106,7 @@ describe("zero whoami command", () => {
         runId: "run-abc",
         orgId: "org-xyz",
         scope: "zero",
-        capabilities: ["agent:read", "agent:write", "schedule:read"],
+        capabilities: ["agent:read", "agent:write", "automation:read"],
         iat: 1000,
         exp: 2000,
       });
@@ -158,7 +158,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("schedule:read");
+          return line.includes("automation:read");
         }),
       ).toBe(true);
     });

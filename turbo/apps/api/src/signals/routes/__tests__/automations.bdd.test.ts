@@ -14,10 +14,10 @@ import {
 } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
-  createRunsSchedulesApi,
+  createRunsAutomationsApi,
   signAutomationWebhook,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 
 /**
  * AUTOMATIONS-02/03 and HOOK-02: the events-first automations surface (feature
@@ -28,7 +28,7 @@ import {
  * Shared-database isolation: this file never calls cron-execute-schedules (or
  * any other cron route) — those global sweeps are owned by
  * runs-schedules.bdd.test.ts. Every time automation created here is
- * enabled:false (runScheduleNow$ has no enabled gate, and a disabled row can
+ * enabled:false (runAutomationNow$ has no enabled gate, and a disabled row can
  * never be claimed by a foreign worker's execute-schedules sweep) and webhook
  * automations have no zero_agent_schedules row at all. No mockNow anywhere:
  * nothing here depends on due-time math.
@@ -48,7 +48,7 @@ async function entitledAutomationActor(): Promise<{
   readonly runnerGroup: string;
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsSchedulesApi(context);
+  const api = createRunsAutomationsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -87,7 +87,7 @@ function automationRunIdFromThread(
 describe("AUTOMATIONS-02: webhook trigger feature-switch gating", () => {
   it("keeps webhook trigger creation gated while the automation resource stays mounted", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
 
     // Given a fresh user whose org/user has no webhook-trigger override (the
     // switch defaults to off). First test in this file: install the ably
@@ -146,13 +146,13 @@ describe("AUTOMATIONS-02: webhook trigger feature-switch gating", () => {
 
 describe("AUTOMATIONS-03: automation run-now dispatch", () => {
   it("dispatches a run-now automation visible through chat, claim, and queue", async () => {
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
 
     // Given an entitled actor with the automations switch on
     const { actor, agentId, runnerGroup } = await entitledAutomationActor();
     const prompt = `Run the automation report ${randomUUID().slice(0, 8)}.`;
-    const automationName = uniqueScheduleName("bdd-auto-run");
+    const automationName = uniqueAutomationName("bdd-auto-run");
 
     // When the actor creates a disabled cron automation (enabled:false keeps
     // the row invisible to any foreign execute-schedules sweep on the shared
@@ -200,7 +200,7 @@ describe("AUTOMATIONS-03: automation run-now dispatch", () => {
     // automations surface
     expect(claim.prompt).toBe(prompt);
     expect(claim.appendSystemPrompt).toContain(
-      "You are currently running inside: Schedule",
+      "You are currently running inside: Automation",
     );
     expect(claim.appendSystemPrompt).toContain("Trigger type: manual");
     expect(claim.appendSystemPrompt).toContain("Automation tone.");
@@ -222,7 +222,7 @@ describe("AUTOMATIONS-03: automation run-now dispatch", () => {
     // When a disabled loop automation is run now, the manual fire still
     // belongs to the automation rather than to a specific trigger.
     const loopCreated = await api.createAutomation(actor, {
-      name: uniqueScheduleName("bdd-auto-loop"),
+      name: uniqueAutomationName("bdd-auto-loop"),
       agentId,
       intervalSeconds: 300,
       prompt,
@@ -248,7 +248,7 @@ describe("AUTOMATIONS-03: automation run-now dispatch", () => {
     // Then updating a missing automation reports not-found
     const updateMissingAutomation = await api.requestUpdateAutomationUnchecked(
       actor,
-      uniqueScheduleName("bdd-missing-auto"),
+      uniqueAutomationName("bdd-missing-auto"),
       {
         prompt,
       },
@@ -271,7 +271,7 @@ describe("AUTOMATIONS-03: automation run-now dispatch", () => {
 describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
   it("manages webhook automations and fires a signed inbound payload into a run", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
 
     // Given an entitled actor with two agents, plus an outsider with the
@@ -289,7 +289,7 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
     const missingAgent = await api.requestCreateWebhookAutomationUnchecked(
       actor,
       {
-        name: uniqueScheduleName("bdd-hook-missing-agent"),
+        name: uniqueAutomationName("bdd-hook-missing-agent"),
         instruction: "Handle it.",
         agentId: randomUUID(),
       },
@@ -305,7 +305,7 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
     const wrongAgentThread = await api.requestCreateWebhookAutomationUnchecked(
       actor,
       {
-        name: uniqueScheduleName("bdd-hook-wrong-thread"),
+        name: uniqueAutomationName("bdd-hook-wrong-thread"),
         instruction: "Handle it.",
         agentId,
         chatThreadId: threadOnAgentB.id,
@@ -318,7 +318,7 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
     // When linking an owned thread on the same agent
     const ownedThread = await chat.createThread(actor, { agentId });
     const linked = await api.createWebhookAutomation(actor, {
-      name: uniqueScheduleName("bdd-hook-linked"),
+      name: uniqueAutomationName("bdd-hook-linked"),
       instruction: "Summarize linked events.",
       agentId,
       chatThreadId: ownedThread.id,
@@ -344,7 +344,7 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
     // When minting the main webhook automation
     const instruction = `Summarize the incoming webhook event ${randomUUID().slice(0, 8)}.`;
     const created = await api.createWebhookAutomation(actor, {
-      name: uniqueScheduleName("bdd-hook-main"),
+      name: uniqueAutomationName("bdd-hook-main"),
       instruction,
       description: "On deploy",
       agentId,
@@ -381,7 +381,7 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
 
     // Then a disabled automation is indistinguishable from a missing one
     const disabled = await api.createWebhookAutomation(actor, {
-      name: uniqueScheduleName("bdd-hook-disabled"),
+      name: uniqueAutomationName("bdd-hook-disabled"),
       instruction: "Should never fire.",
       agentId,
       enabled: false,
@@ -464,7 +464,7 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
 
   it("surfaces run-creation failure of a signed dispatch as a throttled 429", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsSchedulesApi(context);
+    const api = createRunsAutomationsApi(context);
 
     // Given a free-tier actor with no entitlement and no model provider
     const actor = bdd.user();
@@ -478,7 +478,7 @@ describe("HOOK-02: webhook automations fired by signed inbound HTTP", () => {
 
     // When a correctly signed payload fires the automation
     const created = await api.createWebhookAutomation(actor, {
-      name: uniqueScheduleName("bdd-hook-free"),
+      name: uniqueAutomationName("bdd-hook-free"),
       instruction: "Will not start.",
       agentId: agent.agentId,
     });

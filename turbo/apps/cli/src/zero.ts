@@ -52,10 +52,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   connector: "connector:read",
   // "schedule" is deliberately absent: the rename stub stays out of
   // token-scoped (agent) help but remains invokable and visible to humans.
-  // Tokens minted before #17307 carry "schedule:read"; newer ones carry
-  // "automation:read". Accept both so the command stays visible regardless
-  // of which side (API or CLI) deploys first.
-  automation: ["schedule:read", "automation:read"],
+  automation: "automation:read",
   doctor: null,
   credit: "billing:write",
   model: null,

@@ -24,8 +24,8 @@ export const triggerCronCallbackPayloadSchema = triggerLoopCallbackPayloadSchema
   .passthrough();
 
 /**
- * Completion callbacks for `automation_triggers` time rows — the trigger-table
- * counterpart of the schedule callbacks. The poller claims a due trigger by
+ * Completion callbacks for `automation_triggers` time rows. The poller
+ * claims a due trigger by
  * clearing `next_run_at`; this callback advances the recurrence after the run
  * finishes and owns the consecutive-failure bookkeeping (reset on success,
  * increment on failure, auto-disable at the threshold).

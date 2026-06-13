@@ -37,10 +37,10 @@ const insightMemberCreditsSchema = z.object({
   agentCredits: z.record(z.string(), z.number()).optional(),
 });
 
-const insightDayScheduleSchema = z.object({
-  scheduleId: z.string(),
-  scheduleName: z.string(),
-  scheduleDescription: z.string().nullable(),
+const insightDayAutomationSchema = z.object({
+  automationId: z.string(),
+  automationName: z.string(),
+  automationDescription: z.string().nullable(),
   credits: z.number(),
   tokens: z.number(),
 });
@@ -61,7 +61,7 @@ const dayInsightSchema = z.object({
   topTask: insightTopTaskSchema.nullable().default(null),
   services: z.array(insightServiceSchema).default([]),
   permissions: z.array(insightPermissionSchema).default([]),
-  schedules: z.array(insightDayScheduleSchema).default([]),
+  automations: z.array(insightDayAutomationSchema).default([]),
   chats: z.array(insightDayChatSchema).default([]),
 });
 

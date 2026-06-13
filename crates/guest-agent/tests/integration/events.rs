@@ -99,9 +99,7 @@ async fn send_event_captures_session_metadata_before_masking() {
     });
 
     let session_id = "ses-secret-123";
-    let engine = base64::engine::general_purpose::STANDARD;
-    let encoded_session_id = engine.encode(session_id);
-    let masker = SecretMasker::from_raw(&encoded_session_id);
+    let masker = SecretMasker::from_raw("");
     let event = json!({
         "type": "system",
         "subtype": "init",
@@ -133,8 +131,16 @@ async fn send_event_captures_session_metadata_before_masking() {
         "system log should confirm session ID file creation, got: {system_log}"
     );
     assert!(
-        system_log.contains(&format!("Session history marker written to {hist_file}:")),
+        system_log.contains(&format!("Session history marker written to {hist_file}")),
         "system log should confirm session history marker creation, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(session_id),
+        "system log must not contain the raw session id, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(&history),
+        "system log must not contain the full session history marker payload, got: {system_log}"
     );
 
     mock.delete_async().await;
@@ -170,6 +176,46 @@ async fn prepare_event_does_not_capture_session_metadata() {
 }
 
 #[tokio::test]
+async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+    let _session_files = SessionCheckpointFilesGuard::new();
+
+    let sid_file = guest_agent::paths::session_id_file();
+    let hist_file = guest_agent::paths::session_history_path_file();
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""session_id":"***""#);
+        then.status(200);
+    });
+
+    let session_id = "bad/session-secret";
+    let masker = SecretMasker::from_raw("");
+    let event = json!({
+        "type": "system",
+        "subtype": "init",
+        "session_id": session_id
+    });
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+
+    assert!(result.is_ok());
+    mock.assert_calls_async(1).await;
+    assert_eq!(masker.mask_string(session_id), "***");
+    assert!(
+        !std::path::Path::new(sid_file).exists(),
+        "invalid session id must not be persisted"
+    );
+    assert!(
+        !std::path::Path::new(hist_file).exists(),
+        "invalid session id must not create a history marker"
+    );
+
+    mock.delete_async().await;
+}
+
+#[tokio::test]
 async fn send_event_keeps_existing_session_metadata() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
@@ -177,11 +223,13 @@ async fn send_event_keeps_existing_session_metadata() {
 
     let sid_file = guest_agent::paths::session_id_file();
     let hist_file = guest_agent::paths::session_history_path_file();
-    std::fs::write(sid_file, "first-session").unwrap();
-    std::fs::write(hist_file, "/tmp/first-session.jsonl").unwrap();
+    guest_agent::paths::write_private(sid_file, "first-session").unwrap();
+    guest_agent::paths::write_private(hist_file, "/tmp/first-session.jsonl").unwrap();
 
     let mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/events");
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""session_id":"***""#);
         then.status(200);
     });
 
@@ -205,6 +253,8 @@ async fn send_event_keeps_existing_session_metadata() {
         "/tmp/first-session.jsonl",
         "later id-bearing events must not replace checkpoint history metadata"
     );
+    assert_eq!(masker.mask_string("first-session"), "***");
+    assert_eq!(masker.mask_string("second-session"), "***");
 
     mock.delete_async().await;
 }
@@ -252,6 +302,7 @@ async fn send_event_repairs_missing_claude_history_marker_after_later_event() {
             history.ends_with(&format!("/{session_id}.jsonl")),
             "repaired history marker should point at the existing session id, got: {history}"
         );
+        assert_eq!(masker.mask_string(session_id), "***");
     }
 
     mock.assert_calls_async(2).await;

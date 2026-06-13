@@ -98,7 +98,7 @@ function buildInspectDetail(meta: InspectLogData["meta"]) {
     selectedModel: meta?.selectedModel ?? null,
     framework: meta?.framework ?? null,
     error: meta?.error ?? null,
-    scheduleId: meta?.scheduleId ?? null,
+    automationId: meta?.automationId ?? null,
   };
 }
 

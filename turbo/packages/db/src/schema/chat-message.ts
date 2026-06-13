@@ -85,7 +85,7 @@ export interface ChatMessageAttachFileMetadata {
 
 export type ChatMessageAttachFileMetadataList = ChatMessageAttachFileMetadata[];
 
-export interface ChatMessageScheduleSnapshot {
+export interface ChatMessageAutomationSnapshot {
   readonly id: string;
   readonly title: string;
   readonly description: string | null;
@@ -146,15 +146,14 @@ export const chatMessages = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Set when this user message was posted by a firing schedule rather than
-    // typed by a human. Historical rows reference the dropped
-    // zero_agent_schedules ids; `schedule_snapshot` preserves the basic
-    // schedule details at send time so the message keeps rendering its label.
-    // `schedule_title` is retained for legacy rows and fallback display.
-    scheduleId: uuid("schedule_id"),
-    scheduleTitle: text("schedule_title"),
-    scheduleSnapshot:
-      jsonb("schedule_snapshot").$type<ChatMessageScheduleSnapshot>(),
+    // Set when this user message was posted by a firing automation rather than
+    // typed by the user; the snapshot preserves the basic display details at
+    // send time so the bubble keeps its label after an edit/delete.
+    automationId: uuid("automation_id"),
+    automationTitle: text("automation_title"),
+    automationSnapshot: jsonb(
+      "automation_snapshot",
+    ).$type<ChatMessageAutomationSnapshot>(),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     error: text("error"),

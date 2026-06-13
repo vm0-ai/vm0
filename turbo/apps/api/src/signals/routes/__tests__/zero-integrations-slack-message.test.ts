@@ -25,7 +25,7 @@ import {
   deleteUsageInsightFixture$,
   seedCompose$,
   seedRun$,
-  seedSchedule$,
+  seedAutomation$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 
@@ -396,15 +396,15 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(footerCtx.elements![0]!.text).toBe("Sent via My Assistant");
   });
 
-  it("appends schedule, creator, and model in footer when run is triggered by a schedule", async () => {
+  it("appends automation, creator, and model in footer when run is triggered by an automation", async () => {
     const { orgId, userId, slackWorkspaceId } = await seedWithInstallation();
     const { composeId, agentId } = await store.set(
       seedCompose$,
       { orgId, userId, displayName: "My Assistant" },
       context.signal,
     );
-    const scheduleId = await store.set(
-      seedSchedule$,
+    const automationId = await store.set(
+      seedAutomation$,
       {
         orgId,
         userId,
@@ -420,7 +420,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
         orgId,
         userId,
         composeId,
-        scheduleId,
+        automationId,
         triggerSource: "automation",
       },
       context.signal,
@@ -460,7 +460,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const footerCtx = blocks[blocks.length - 1]!;
     expect(footerCtx.type).toBe("context");
     expect(footerCtx.elements![0]!.text).toBe(
-      `Sent via My Assistant · Triggered by schedule "Daily standup summary" · Created by <@${slackUserId}> · Claude Sonnet 4.6`,
+      `Sent via My Assistant · Triggered by automation "Daily standup summary" · Created by <@${slackUserId}> · Claude Sonnet 4.6`,
     );
   });
 

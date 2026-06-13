@@ -18,7 +18,7 @@ import type { AutomationFormBody } from "./cron.ts";
 // manage carries exactly one time trigger (cron / once / loop), and the view
 // model stays `AutomationView` — the flat projection the pages were built
 // on. These helpers translate between that projection and the resource API
-// (automation + triggers[]), replacing the retired schedule surfaces (#17307).
+// (automation + triggers[]), replacing the retired single-trigger surfaces (#17307).
 // ---------------------------------------------------------------------------
 
 type TimeTrigger = Extract<

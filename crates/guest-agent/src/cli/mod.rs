@@ -156,6 +156,7 @@ pub async fn execute_cli(
 ) -> Result<CliExecutionResult, AgentError> {
     let framework = env::Framework::from_env();
     let behavior = CliFrameworkBehavior::new(framework);
+    masker.add_sensitive_value(env::resume_session_id());
     log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
 
     let cmd = command::build_cli_command_for_framework(framework)?;
@@ -356,6 +357,7 @@ pub async fn execute_cli(
                             if event.get("type").and_then(serde_json::Value::as_str)
                                 == Some("stream_event")
                             {
+                                events::register_event_session_identifier(&event, masker);
                                 if event
                                     .get("parent_tool_use_id")
                                     .is_some_and(|value| !value.is_null())
@@ -411,6 +413,10 @@ pub async fn execute_cli(
                             if seq == 0 {
                                 timing::record_e2e_from_api("api_to_cli_init");
                             }
+                            // Capture checkpoint metadata and register any
+                            // event-local session identifier before logging
+                            // terminal diagnostics from the same event.
+                            events::capture_session_metadata(&event, masker);
                             // Print Claude Code final result to stdout if applicable.
                             if behavior.handles_claude_result_event(&event) {
                                 claude_result = Some(ClaudeResultSummary::from_event(&event));
@@ -432,7 +438,10 @@ pub async fn execute_cli(
                                 }
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
-                                    println!("{result}");
+                                    // Guest-agent stdout is captured as
+                                    // system-stream logs, so mask before
+                                    // printing Claude's final result.
+                                    println!("{}", masker.mask_string(result));
                                 }
                                 // Arm the post-result reap deadline once per
                                 // run — see `TerminationState::should_arm_post_result`.
@@ -472,10 +481,6 @@ pub async fn execute_cli(
                                     failure_diagnostic = Some(selected);
                                 }
                             }
-                            // Capture checkpoint metadata before event payload preparation
-                            // consumes and masks the event.
-                            events::capture_session_metadata(&event);
-
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
                             if should_send_events {
@@ -848,10 +853,13 @@ fn with_carried_failure_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        CliFailureDiagnostic, select_failure_diagnostic, set_cli_current_dir,
-        with_carried_failure_reason,
+        CliFailureDiagnostic, chat_stream_delta_from_event, select_failure_diagnostic,
+        set_cli_current_dir, with_carried_failure_reason,
     };
+    use crate::events;
+    use crate::masker::SecretMasker;
     use agent_diagnostics::{FailureDetailSource, FailureReason};
+    use serde_json::json;
 
     #[tokio::test]
     async fn cli_current_dir_helper_sets_child_working_directory() {
@@ -896,6 +904,33 @@ mod tests {
             .expect_err("non-directory cwd should fail");
 
         assert!(err.to_string().contains("is not a directory"));
+    }
+
+    #[test]
+    fn stream_event_chat_delta_masks_top_level_session_id_from_same_event() {
+        let session_id = "stream-session-secret-123";
+        let masker = SecretMasker::from_raw("");
+        let event = json!({
+            "type": "stream_event",
+            "session_id": session_id,
+            "event": {
+                "type": "content_block_delta",
+                "delta": {
+                    "type": "text_delta",
+                    "text": format!("delta for {session_id}")
+                }
+            }
+        });
+
+        events::register_event_session_identifier(&event, &masker);
+        let delta = chat_stream_delta_from_event(
+            event.get("event").expect("stream event payload"),
+            "msg_01",
+            &masker,
+        )
+        .expect("chat delta");
+
+        assert_eq!(delta.text, "delta for ***");
     }
 
     #[test]

@@ -300,18 +300,6 @@ const ROUTE_CONFIG = [
     setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),
   },
   { path: "/chat/:id", setup: redirectWithId(ROUTES.chat, "threadId") },
-  { path: "/schedule", setup: redirectTo(ROUTES.automations) },
-  {
-    path: "/schedule/:id",
-    setup: redirectWithId(ROUTES.automationDetail, "scheduleId"),
-  },
-  // The surface moved from /schedules to /automations (#17307); old links
-  // and bookmarks redirect.
-  { path: "/schedules", setup: redirectTo(ROUTES.automations) },
-  {
-    path: "/schedules/:id",
-    setup: redirectWithId(ROUTES.automationDetail, "scheduleId"),
-  },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
 
   {

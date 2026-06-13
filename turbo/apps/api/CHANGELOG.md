@@ -1,5 +1,52 @@
 # Changelog
 
+## [1.138.0](https://github.com/vm0-ai/vm0/compare/api-v1.137.0...api-v1.138.0) (2026-06-12)
+
+
+### Features
+
+* **db:** drop the schedule columns ([#17537](https://github.com/vm0-ai/vm0/issues/17537)) ([c490692](https://github.com/vm0-ai/vm0/commit/c4906922c4d14d16f1ddcda22dc1199e7eea6336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.49.0
+
+## [1.137.0](https://github.com/vm0-ai/vm0/compare/api-v1.136.1...api-v1.137.0) (2026-06-12)
+
+
+### Features
+
+* stop touching the schedule columns and rename the wire fields ([#17535](https://github.com/vm0-ai/vm0/issues/17535)) ([7ffec48](https://github.com/vm0-ai/vm0/commit/7ffec48d24efa30899a74026d2593ec52e4cc9a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.90.0
+    * @vm0/core bumped to 8.335.2
+    * @vm0/db bumped to 1.48.0
+
+## [1.136.1](https://github.com/vm0-ai/vm0/compare/api-v1.136.0...api-v1.136.1) (2026-06-12)
+
+
+### Refactoring
+
+* retire the remaining schedule residue ([#17529](https://github.com/vm0-ai/vm0/issues/17529)) ([bf2b208](https://github.com/vm0-ai/vm0/commit/bf2b2082775c38dcf3d5938bc6ed4fb3df76c306))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.89.1
+    * @vm0/connectors bumped to 1.74.0
+    * @vm0/core bumped to 8.335.1
+    * @vm0/db bumped to 1.47.4
+
 ## [1.136.0](https://github.com/vm0-ai/vm0/compare/api-v1.135.2...api-v1.136.0) (2026-06-12)
 
 

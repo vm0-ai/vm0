@@ -24,7 +24,7 @@ import {
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -1560,7 +1560,7 @@ function sttFormData(
 describe("FILE-02: audio transcription v1 and Gemini generate-image provider contracts", () => {
   it("transcribes raw PCM through OpenAI behind the feature switch with the WAV byte contract", async () => {
     const { api, admin } = testActors();
-    const runsApi = createRunsSchedulesApi(context);
+    const runsApi = createRunsAutomationsApi(context);
     await runsApi.grantProEntitlement(admin);
     const authApi = createAuthOrgAgentsBddApi(context);
     const apiKey = await authApi.createApiKey(admin, {
@@ -1642,7 +1642,7 @@ describe("FILE-02: audio transcription v1 and Gemini generate-image provider con
     if (!admin.orgId) {
       throw new Error("Expected STT duration test user to have an org");
     }
-    const runsApi = createRunsSchedulesApi(context);
+    const runsApi = createRunsAutomationsApi(context);
     await runsApi.grantProEntitlement(admin);
 
     server.use(
@@ -1919,7 +1919,7 @@ describe("FILE-02: audio transcription v1 and Gemini generate-image provider con
 
   it("generates Gemini images behind configuration and no-image gates", async () => {
     const { api, admin } = testActors();
-    const runsApi = createRunsSchedulesApi(context);
+    const runsApi = createRunsAutomationsApi(context);
     await runsApi.grantProEntitlement(admin);
 
     context.mocks.googleGenAi.constructorArgs.mockClear();

@@ -20,7 +20,7 @@ type InterpreterKind = "time" | "webhook" | "default";
  * Domain view of an Automation as the interpreter sees it. This is a thin
  * projection down to the fields needed to build an agent-run input: the prompt,
  * the append-prompt context, the agent / chat-thread linkage, and the recurrence
- * (for schedule reschedule callbacks). A webhook automation carries no
+ * (for time-trigger reschedule callbacks). A webhook automation carries no
  * recurrence — its `triggerType` is "webhook" and its `cronExpression` is null —
  * and supplies its dynamic payload through the trigger event instead.
  */
@@ -61,7 +61,7 @@ type ZeroRunInputMetadata = {
  * interpreter constructs from the Automation definition (and trigger event).
  * Runtime concerns resolved from live state (model pin, provider admission) are
  * layered on by the caller, not by the interpreter. `Metadata` is the
- * trigger-specific run-identity shape (schedule vs automation).
+ * trigger-specific run-identity shape.
  */
 interface ZeroRunInput<
   Metadata extends ZeroRunInputMetadata = ZeroRunInputMetadata,
@@ -89,13 +89,12 @@ export interface WebhookTriggerEvent {
 }
 
 /**
- * Trigger event for an automation-table time fire (the dormant trigger poller,
- * U4). Like the schedule time fire it is instruction-only — no inbound payload —
- * but it tags the run with the originating automation + the firing
- * `automation_triggers` row (run provenance, U3) instead of a schedule id, and
- * attaches the trigger-keyed reschedule callback (the claim cleared
- * `next_run_at`; the callback advances it). `triggerId` is the firing trigger
- * row.
+ * Trigger event for an automation-table time fire (the trigger poller, U4).
+ * It is instruction-only — no inbound payload — and tags the run with the
+ * originating automation + the firing `automation_triggers` row (run
+ * provenance, U3), attaching the trigger-keyed reschedule callback (the claim
+ * cleared `next_run_at`; the callback advances it). `triggerId` is the firing
+ * trigger row.
  */
 interface AutomationTimeTriggerEvent {
   readonly kind: "automation-time";
@@ -112,11 +111,10 @@ interface ManualTriggerEvent {
 }
 
 /**
- * The trigger that fired an Automation. A schedule time fire carries only the
- * schedule identity; an automation-table time fire carries the firing trigger
- * identity; a webhook fire carries the raw inbound payload; a manual fire
- * carries nothing. The interpreter keys its context/callbacks/metadata off
- * this discriminant.
+ * The trigger that fired an Automation. A time fire carries the firing
+ * trigger identity; a webhook fire carries the raw inbound payload; a manual
+ * fire carries nothing. The interpreter keys its context/callbacks/metadata
+ * off this discriminant.
  */
 type TriggerEvent =
   | AutomationTimeTriggerEvent
@@ -127,8 +125,7 @@ type TriggerEvent =
  * Maps an `automations` row (joined with its firing trigger) to the Automation
  * view the interpreter consumes. A webhook automation carries no recurrence, so
  * the time-only fields collapse to their inert values; its dynamic payload
- * arrives through the trigger event instead. Counterpart to
- * `scheduleToAutomation` for the webhook fire path.
+ * arrives through the trigger event instead.
  */
 export function webhookRowToAutomation(row: {
   readonly id: string;
@@ -157,9 +154,9 @@ export function webhookRowToAutomation(row: {
 /**
  * Maps an `automations` row (joined with its firing time trigger) to the
  * Automation view the interpreter consumes for an automation-table time fire
- * (the dormant trigger poller). The recurrence lives on the trigger row, so its
- * `kind` (cron/once/loop) and `cronExpression`/`timezone` are threaded in here.
- * Counterpart to `scheduleToAutomation` for the events-first time path.
+ * (the trigger poller). The recurrence lives on the trigger row, so its
+ * `kind` (cron/once/loop) and `cronExpression`/`timezone` are threaded in
+ * here.
  */
 export function automationRowToTimeAutomation(row: {
   readonly id: string;
@@ -192,7 +189,7 @@ export function automationRowToTimeAutomation(row: {
  * Maps an `automations` row to the Automation view the interpreter consumes for
  * a manual fire (the run-now endpoint). A manual fire is keyed off no
  * trigger row, so the recurrence fields collapse to their inert values and the
- * `triggerType` renders as "manual" in the schedule integration context.
+ * `triggerType` renders as "manual" in the automation integration context.
  */
 export function automationRowToManualAutomation(row: {
   readonly id: string;
@@ -218,23 +215,23 @@ export function automationRowToManualAutomation(row: {
   };
 }
 
-function buildSchedulePrompt(triggerType: string): string {
+function buildAutomationPrompt(triggerType: string): string {
   return [
     "# Current Integration",
-    "You are currently running inside: Schedule",
+    "You are currently running inside: Automation",
     `Trigger type: ${triggerType}`,
   ].join("\n");
 }
 
 /**
- * Schedule (time-fire) context: the integration header plus any user-provided
+ * Automation (time-fire) context: the integration header plus any user-provided
  * append prompt. Behavior-preserving extraction of the time interpreter.
  */
-function buildScheduleAppendSystemPrompt(automation: Automation): string {
+function buildAutomationAppendSystemPrompt(automation: Automation): string {
   const integrationContext = [
-    buildSchedulePrompt(automation.triggerType),
+    buildAutomationPrompt(automation.triggerType),
     "",
-    "This scheduled run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread.",
+    "This automated run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread.",
   ].join("\n");
   const baseAppendPrompt = automation.appendSystemPrompt ?? undefined;
   return baseAppendPrompt
@@ -339,9 +336,10 @@ function buildTriggerCallbacks(
  *   context as a fenced JSON block, and tags the run with the originating
  *   automation + trigger (run provenance). No reschedule callback (webhooks
  *   don't recur).
- * - A time fire (no raw payload) is instruction-only: it renders the schedule
- *   integration context plus any user append prompt, attaches the recurrence
- *   reschedule callback, and tags the run with the originating schedule.
+ * - A time fire (no raw payload) is instruction-only: it renders the
+ *   automation integration context plus any user append prompt, attaches the
+ *   recurrence reschedule callback, and tags the run with the originating
+ *   automation.
  *
  * Both fire paths attach the chat callback so the run renders as a web-chat turn
  * in the linked thread. One impl for now; the registry is deferred to the first
@@ -366,7 +364,7 @@ export class DefaultInterpreter {
       });
     }
 
-    // Manual fire: instruction-only schedule context, tagged with the
+    // Manual fire: instruction-only automation context, tagged with the
     // automation alone — no trigger was claimed, so there is no trigger
     // provenance and no reschedule callback, only the chat callback.
     if (triggerEvent.kind === "manual") {
@@ -374,13 +372,13 @@ export class DefaultInterpreter {
         prompt: automation.prompt,
         agentId: automation.agentId,
         chatThreadId: automation.chatThreadId,
-        appendSystemPrompt: buildScheduleAppendSystemPrompt(automation),
+        appendSystemPrompt: buildAutomationAppendSystemPrompt(automation),
         callbacks: [buildChatCallback(automation)],
         zeroRunMetadata: { automationId: automation.id },
       });
     }
 
-    // Time fire: instruction-only schedule context, tagged with the
+    // Time fire: instruction-only automation context, tagged with the
     // automation + firing trigger (provenance) and carrying the trigger-keyed
     // reschedule callback — the claim cleared next_run_at, the callback
     // advances it.
@@ -388,7 +386,7 @@ export class DefaultInterpreter {
       prompt: automation.prompt,
       agentId: automation.agentId,
       chatThreadId: automation.chatThreadId,
-      appendSystemPrompt: buildScheduleAppendSystemPrompt(automation),
+      appendSystemPrompt: buildAutomationAppendSystemPrompt(automation),
       callbacks: buildTriggerCallbacks(automation, triggerEvent.triggerId),
       zeroRunMetadata: {
         automationId: automation.id,

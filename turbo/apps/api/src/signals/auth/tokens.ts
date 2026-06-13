@@ -46,50 +46,14 @@ const sandboxTokenPayloadSchema = jwtBaseSchema.extend({
   orgId: z.string().min(1),
 });
 
-// "automation:*" replaced "schedule:*" (#17307). In-flight zero tokens (2h
-// lifetime) may still carry the legacy names; they are accepted here and
-// normalized to their automation equivalents right after parse — a permanent
-// compatibility mapping in the authorization layer.
-type LegacyZeroCapability =
-  | "schedule:read"
-  | "schedule:write"
-  | "schedule:delete";
-
-const LEGACY_CAPABILITY_ALIASES: Readonly<
-  Record<LegacyZeroCapability, ZeroCapability>
-> = {
-  "schedule:read": "automation:read",
-  "schedule:write": "automation:write",
-  "schedule:delete": "automation:delete",
-};
-
-function isLegacyCapability(
-  value: ZeroCapability | LegacyZeroCapability,
-): value is LegacyZeroCapability {
-  return value in LEGACY_CAPABILITY_ALIASES;
-}
-
-const zeroCapabilitySchema = z.custom<ZeroCapability | LegacyZeroCapability>(
-  (value) => {
-    return (
-      typeof value === "string" &&
-      (value in LEGACY_CAPABILITY_ALIASES ||
-        ZERO_CAPABILITIES.some((capability) => {
-          return capability === value;
-        }))
-    );
-  },
-);
-
-function normalizeCapabilities(
-  capabilities: readonly (ZeroCapability | LegacyZeroCapability)[],
-): readonly ZeroCapability[] {
-  return capabilities.map((capability) => {
-    return isLegacyCapability(capability)
-      ? LEGACY_CAPABILITY_ALIASES[capability]
-      : capability;
-  });
-}
+const zeroCapabilitySchema = z.custom<ZeroCapability>((value) => {
+  return (
+    typeof value === "string" &&
+    ZERO_CAPABILITIES.some((capability) => {
+      return capability === value;
+    })
+  );
+});
 
 const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   scope: z.literal("zero"),
@@ -226,7 +190,7 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
     userId: parsed.data.userId,
     runId: parsed.data.runId,
     orgId: parsed.data.orgId,
-    capabilities: normalizeCapabilities(parsed.data.capabilities),
+    capabilities: parsed.data.capabilities,
     ...(parsed.data.computerUseHostId
       ? { computerUseHostId: parsed.data.computerUseHostId }
       : {}),

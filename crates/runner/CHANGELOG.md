@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.116.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.115.0...runner-rs-v0.116.0) (2026-06-12)
+
+
+### Features
+
+* add google cloud firewall permissions ([#17476](https://github.com/vm0-ai/vm0/issues/17476)) ([f117e1a](https://github.com/vm0-ai/vm0/commit/f117e1a38bdda1e7bde6acabaf816ae65ac2549a))
+
 ## [0.115.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.114.10...runner-rs-v0.115.0) (2026-06-12)
 
 

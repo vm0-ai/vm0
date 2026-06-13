@@ -353,7 +353,7 @@ function AutomationListSkeleton() {
               className="py-3 px-2 min-w-[6.5rem] max-w-[9rem] align-middle font-medium"
               scope="col"
             >
-              Schedule at
+              Runs at
             </th>
             <th
               className="py-3 px-3 w-16 text-center align-middle font-medium"
@@ -574,8 +574,8 @@ export function ZeroAutomationsPage() {
   ] as const;
 
   const openAutomationDetail = (entry: CombinedEntry) => {
-    navigate("/automations/:scheduleId", {
-      pathParams: { scheduleId: entry.id },
+    navigate("/automations/:automationId", {
+      pathParams: { automationId: entry.id },
     });
   };
 

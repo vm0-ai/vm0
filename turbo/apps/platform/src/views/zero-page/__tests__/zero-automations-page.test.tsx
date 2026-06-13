@@ -178,14 +178,12 @@ async function openAutomationList(): Promise<void> {
 
   await waitFor(() => {
     expect(screen.getByText("Instruction")).toBeInTheDocument();
-    expect(screen.getByText("Schedule at")).toBeInTheDocument();
+    expect(screen.getByText("Runs at")).toBeInTheDocument();
   });
 }
 
 async function openAutomationsList(): Promise<void> {
-  // The legacy /schedules path redirects to /automations (#17307); entering
-  // through it keeps the redirect covered.
-  detachedSetupPage({ context, path: "/schedules" });
+  detachedSetupPage({ context, path: "/automations" });
 
   await waitFor(() => {
     expect(
@@ -197,7 +195,7 @@ async function openAutomationsList(): Promise<void> {
 
   await waitFor(() => {
     expect(screen.getByText("Instruction")).toBeInTheDocument();
-    expect(screen.getByText("Schedule at")).toBeInTheDocument();
+    expect(screen.getByText("Runs at")).toBeInTheDocument();
   });
 }
 
@@ -406,7 +404,7 @@ describe("zero automations page", () => {
     click(tabByText("List"));
 
     await waitFor(() => {
-      expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
+      expect(screen.getByText("No upcoming runs")).toBeInTheDocument();
       expect(
         screen.getByText(
           "Set up an automation and your agents will handle the rest.",
