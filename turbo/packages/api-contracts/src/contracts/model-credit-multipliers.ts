@@ -5,7 +5,6 @@
  * without importing the full model provider contract schema.
  */
 export const SUPPORTED_RUN_MODELS = [
-  "claude-fable-5",
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
@@ -32,7 +31,6 @@ export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
 export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
   Record<SupportedRunModel, number>
 >({
-  "claude-fable-5": 3.3,
   "claude-opus-4-8": 2,
   "claude-opus-4-7": 2,
   "claude-opus-4-6": 2,
