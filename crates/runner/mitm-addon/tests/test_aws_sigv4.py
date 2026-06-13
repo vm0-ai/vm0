@@ -76,12 +76,63 @@ def test_presigned_query_malformed_url_raises_signing_error() -> None:
         )
 
 
+def test_presigned_query_double_encoded_credential_raises_signing_error() -> None:
+    double_encoded_credential = urllib.parse.quote(
+        urllib.parse.quote(
+            "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
+            safe="",
+        ),
+        safe="",
+    )
+    url = (
+        "https://sts.amazonaws.com/?Action=GetCallerIdentity&Version=2011-06-15"
+        "&X-Amz-Algorithm=AWS4-HMAC-SHA256"
+        f"&X-Amz-Credential={double_encoded_credential}"
+        "&X-Amz-Date=20260101T000000Z"
+        "&X-Amz-Expires=60"
+        "&X-Amz-SignedHeaders=host"
+        "&X-Amz-Signature=placeholder"
+    )
+
+    with pytest.raises(AwsSigV4SigningError, match="Malformed AWS credential scope"):
+        sign_request(
+            method="GET",
+            url=url,
+            headers=[("Host", "sts.amazonaws.com")],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
 def test_presigned_query_invalid_bracketed_host_raises_signing_error() -> None:
     with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
         sign_request(
             method="GET",
             url=_presigned_url("[foo]"),
             headers=[("Host", "sts.amazonaws.com")],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+def test_header_auth_percent_encoded_credential_raises_signing_error() -> None:
+    headers = [
+        (
+            "Authorization",
+            "AWS4-HMAC-SHA256 "
+            "Credential=PLACEHOLDER%2F20260101%2Fus-east-1%2Fsts%2Faws4_request, "
+            "SignedHeaders=host;x-amz-date, "
+            "Signature=placeholder",
+        ),
+        ("X-Amz-Date", "20260101T000000Z"),
+        ("Host", "sts.amazonaws.com"),
+    ]
+
+    with pytest.raises(AwsSigV4SigningError, match="Malformed AWS credential scope"):
+        sign_request(
+            method="GET",
+            url="https://sts.amazonaws.com/",
+            headers=headers,
             body=None,
             credentials=_credentials(),
         )

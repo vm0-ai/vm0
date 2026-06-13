@@ -8,6 +8,7 @@ import matching
 from aws_sigv4 import AwsSigV4Credentials
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import set_cached_headers
+from url_utils import get_original_url
 
 
 def _api_entry() -> dict:
@@ -68,7 +69,7 @@ def _auth_response() -> dict[str, object]:
 def _prepare_firewall_request(flow, *, original_url: str | None = None) -> None:
     flow.metadata[metadata_keys.VM_RUN_ID] = "run-1"
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
-        flow.request.url if original_url is None else original_url
+        get_original_url(flow) if original_url is None else original_url
     )
 
 
@@ -382,7 +383,7 @@ async def test_re_signs_header_sigv4_request_with_trusted_original_url(
             ),
         ),
     )
-    _prepare_firewall_request(flow, original_url="https://iam.amazonaws.com/")
+    _prepare_firewall_request(flow)
     flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = "iam.amazonaws.com"
 
     with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
@@ -464,7 +465,10 @@ async def test_re_signs_query_sigv4_request_strips_session_token_header(
             "&X-Amz-Signature=placeholder"
         ),
         method="GET",
-        request_headers=headers(("X-Amz-Security-Token", "placeholder-session-token")),
+        request_headers=headers(
+            ("Host", "sts.amazonaws.com"),
+            ("X-Amz-Security-Token", "placeholder-session-token"),
+        ),
     )
     _prepare_firewall_request(flow)
 

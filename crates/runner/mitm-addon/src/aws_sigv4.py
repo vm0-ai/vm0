@@ -258,7 +258,7 @@ def _parse_authorization_header(value: str) -> tuple[str, dict[str, str]]:
 
 
 def _parse_credential(credential: str) -> tuple[str, _CredentialScope]:
-    parts = urllib.parse.unquote(credential).split("/")
+    parts = credential.split("/")
     if len(parts) != _CREDENTIAL_SCOPE_PARTS or parts[-1] != _AWS4_REQUEST:
         raise AwsSigV4SigningError("Malformed AWS credential scope")
     access_key_id = parts[0]
