@@ -17,14 +17,14 @@ export function AutoFocusedArtifactIframe({
 }: AutoFocusedArtifactIframeProps) {
   const handleLoad: ReactEventHandler<HTMLIFrameElement> = (event) => {
     onLoad?.(event);
-    scheduleIframeFocus(event.currentTarget, focusKey, focusOnMount, "load");
+    deferIframeFocus(event.currentTarget, focusKey, focusOnMount, "load");
   };
 
   return (
     <iframe
       {...props}
       ref={(element) => {
-        scheduleIframeFocus(element, focusKey, focusOnMount, "mount");
+        deferIframeFocus(element, focusKey, focusOnMount, "mount");
       }}
       onLoad={handleLoad}
       tabIndex={focusOnMount && tabIndex === undefined ? -1 : tabIndex}
@@ -32,7 +32,7 @@ export function AutoFocusedArtifactIframe({
   );
 }
 
-function scheduleIframeFocus(
+function deferIframeFocus(
   element: HTMLIFrameElement | null,
   focusKey: string,
   focusOnMount: boolean,

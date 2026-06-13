@@ -17,6 +17,7 @@
     "update-specs:google-drive": "tsx src/update-specs.ts google-drive",
     "update-specs:google-meet": "tsx src/update-specs.ts google-meet",
     "update-specs:google-analytics": "tsx src/update-specs.ts google-analytics",
+    "update-specs:google-cloud": "tsx src/update-specs.ts google-cloud",
     "update-specs:google-search-console": "tsx src/update-specs.ts google-search-console",
     "update-specs:google-sheets": "tsx src/update-specs.ts google-sheets",
     "update-specs:notion": "tsx src/update-specs.ts notion",

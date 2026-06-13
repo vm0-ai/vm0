@@ -134,7 +134,8 @@ export const bankingAgentEnablements = pgTable(
       .$type<BankingOperationScope[]>()
       .notNull()
       .default(["accounts.read", "balances.read", "transactions.read"]),
-    allowScheduledRuns: boolean("allow_scheduled_runs")
+    // Whether automation-triggered runs may use this banking enablement.
+    allowAutomationRuns: boolean("allow_automation_runs")
       .notNull()
       .default(false),
     revokedAt: timestamp("revoked_at"),

@@ -81,7 +81,7 @@ const categories: readonly Category[] = [
       },
       {
         title: "Metabase dashboard digest",
-        description: "Dashboard snapshots posted to Slack on a schedule",
+        description: "Dashboard snapshots posted to Slack automatically",
         prompt:
           "Set up a weekly Metabase digest that snapshots key dashboards, captures charts, and posts them to Slack every Monday morning",
         connectors: ["metabase", "slack"],

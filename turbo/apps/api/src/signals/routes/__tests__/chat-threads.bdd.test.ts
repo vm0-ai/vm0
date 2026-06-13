@@ -41,9 +41,9 @@ import {
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
 import {
-  createRunsSchedulesApi,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -64,7 +64,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const bdd = createBddApi(context);
-const api = createRunsSchedulesApi(context);
+const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -561,8 +561,8 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       prompt: "delete cascade anchor",
     });
     await claimChatRun(runnerGroup, main.runId);
-    const scheduleName = uniqueScheduleName("bdd-thread-linked");
-    await api.deploySchedule(actor, {
+    const scheduleName = uniqueAutomationName("bdd-thread-linked");
+    await api.deployAutomation(actor, {
       name: scheduleName,
       cronExpression: "0 9 * * *",
       timezone: "UTC",
@@ -612,9 +612,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       id: main.threadId,
     });
 
-    const schedulesBefore = await api.listSchedules(actor);
+    const schedulesBefore = await api.listAutomations(actor);
     expect(
-      schedulesBefore.schedules.some((schedule) => {
+      schedulesBefore.automations.some((schedule) => {
         return schedule.name === scheduleName;
       }),
     ).toBeTruthy();
@@ -631,9 +631,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     list = await chat.listThreads(actor, { agentId });
     expect(listedThreadIds(list)).not.toContain(main.threadId);
 
-    const schedulesAfter = await api.listSchedules(actor);
+    const schedulesAfter = await api.listAutomations(actor);
     expect(
-      schedulesAfter.schedules.some((schedule) => {
+      schedulesAfter.automations.some((schedule) => {
         return schedule.name === scheduleName;
       }),
     ).toBeFalsy();

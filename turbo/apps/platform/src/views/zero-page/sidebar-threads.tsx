@@ -642,8 +642,8 @@ function DeleteChatThreadDialog() {
   const pendingDeleteAutomations = pendingDeleteThreadId
     ? automationsForThread(allAutomations, pendingDeleteThreadId)
     : [];
-  const scheduleCount = pendingDeleteAutomations.length;
-  const hasAutomations = !checkingAutomations && scheduleCount > 0;
+  const automationCount = pendingDeleteAutomations.length;
+  const hasAutomations = !checkingAutomations && automationCount > 0;
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -670,8 +670,8 @@ function DeleteChatThreadDialog() {
           </DialogTitle>
           <DialogDescription>
             {hasAutomations
-              ? `This will permanently delete this chat and its ${scheduleCount} linked ${
-                  scheduleCount === 1 ? "automation" : "automations"
+              ? `This will permanently delete this chat and its ${automationCount} linked ${
+                  automationCount === 1 ? "automation" : "automations"
                 }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
               : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
           </DialogDescription>

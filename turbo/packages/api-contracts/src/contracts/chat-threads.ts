@@ -214,12 +214,13 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
-  // Present on user messages posted by a firing schedule. `scheduleId` links to
-  // the schedule detail page; `scheduleSnapshot` preserves the schedule label
-  // and description at send time. `scheduleTitle` is legacy fallback data.
-  scheduleId: z.string().optional(),
-  scheduleTitle: z.string().optional(),
-  scheduleSnapshot: z
+  // Present on user messages posted by a firing automation. `automationId`
+  // links to the automation detail page; `automationSnapshot` preserves the
+  // automation label and description at send time. `automationTitle` is
+  // legacy fallback data.
+  automationId: z.string().optional(),
+  automationTitle: z.string().optional(),
+  automationSnapshot: z
     .object({
       id: z.string(),
       title: z.string(),

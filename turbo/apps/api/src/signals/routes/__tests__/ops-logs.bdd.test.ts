@@ -8,7 +8,7 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
-import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 /*
@@ -20,7 +20,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  * it from any other test file would race this file's far-past observation
  * windows on the shared database — the same single-file-ownership rule as the
  * email drain / billing reconcile / screenshot cleanup crons (see
- * runSafeCronRoutes in helpers/api-bdd-runs-schedules.ts).
+ * runSafeCronRoutes in helpers/api-bdd-runs-automations.ts).
  *
  * Shared-DB time design: the model-stats chain derives a random far-past UTC
  * day (2003-2009) per run and asserts rankings as baseline+delta, so leftovers
@@ -46,7 +46,7 @@ async function entitledRunActor(): Promise<{
   readonly agentId: string;
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsSchedulesApi(context);
+  const api = createRunsAutomationsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -149,7 +149,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 
   it("aggregates sandbox model observations into public rankings and applies retention", async () => {
     const api = createOpsLogsApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const model = "claude-sonnet-4-6";
 
@@ -365,7 +365,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 describe("OPS-01: run log search via /api/logs/search", () => {
   it("searches run logs with keyword, context, filters, and pagination through the api", async () => {
     const api = createOpsLogsApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
     const created = await runs.createRun(actor, {
       agentId,
@@ -481,7 +481,7 @@ describe("OPS-01: run log search via /api/logs/search", () => {
 
   it("scopes log search to the caller's organization runs", async () => {
     const api = createOpsLogsApi(context);
-    const runs = createRunsSchedulesApi(context);
+    const runs = createRunsAutomationsApi(context);
     const first = await entitledRunActor();
     const firstRun = await runs.createRun(first.actor, {
       agentId: first.agentId,

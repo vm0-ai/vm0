@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.0...guest-agent-v0.35.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* mask runtime guest-agent session ids ([#17491](https://github.com/vm0-ai/vm0/issues/17491)) ([4f6308d](https://github.com/vm0-ai/vm0/commit/4f6308dc3fb70f5115cdfb0dd1318447250dc121))
+
 ## [0.35.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.34...guest-agent-v0.35.0) (2026-06-12)
 
 

@@ -1,28 +1,43 @@
-//! Secret masking for event payloads and CLI diagnostics.
+//! Sensitive value masking for event payloads and CLI diagnostics.
 //!
 //! Reads `VM0_SECRET_VALUES` (comma-separated base64 values), pre-computes
 //! plain / base64 / URL-encoded variants for normal payload masking, and derives
-//! diagnostic-only multiline variants for bounded CLI stderr tails.
+//! diagnostic-only multiline variants for bounded CLI stderr tails. Runtime
+//! metadata such as CLI session identifiers can be registered after startup and
+//! uses the same matcher set.
 
 use crate::env;
 use aho_corasick::{AhoCorasick, MatchKind};
 use base64::Engine;
 use serde_json::Value;
-use std::{collections::HashSet, ops::Range};
+use std::{
+    collections::HashSet,
+    ops::Range,
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 /// Minimum secret length to avoid false-positive masking.
 const MIN_SECRET_LEN: usize = 5;
 
-/// Holds pre-computed secret patterns for efficient masking.
+/// Holds pre-computed sensitive value patterns for efficient masking.
 ///
 /// Uses Aho-Corasick with leftmost-longest match semantics so that when one
-/// configured secret is a substring of another, the longer match wins and no
-/// partial secret survives. See issue #9778.
+/// configured value is a substring of another, the longer match wins and no
+/// partial sensitive value survives. See issue #9778.
 pub struct SecretMasker {
+    state: RwLock<MaskerState>,
+}
+
+struct MaskerState {
     matcher: Option<Matcher>,
     diagnostic_matcher: Option<Matcher>,
     url_encoded_matcher: Option<Matcher>,
     diagnostic_url_encoded_matcher: Option<Matcher>,
+    patterns: Vec<String>,
+    diagnostic_patterns: Vec<String>,
+    url_encoded_patterns: Vec<String>,
+    diagnostic_url_encoded_patterns: Vec<String>,
+    registered_values: HashSet<String>,
 }
 
 struct Matcher {
@@ -33,7 +48,9 @@ struct Matcher {
 impl SecretMasker {
     /// Build a masker from the `VM0_SECRET_VALUES` environment variable.
     pub fn from_env() -> Self {
-        Self::from_raw(env::secret_values())
+        let masker = Self::from_raw(env::secret_values());
+        masker.add_sensitive_value(env::resume_session_id());
+        masker
     }
 
     /// Build a masker from a raw comma-separated base64-encoded secret string.
@@ -63,35 +80,23 @@ impl SecretMasker {
             .filter(|s| !s.is_empty())
             .collect();
 
-        let mut patterns = Vec::new();
-        let mut diagnostic_patterns = Vec::new();
-        let mut url_encoded_patterns = Vec::new();
-        let mut diagnostic_url_encoded_patterns = Vec::new();
+        let mut state = MaskerState::empty();
         for secret in &secrets {
-            if secret.len() < MIN_SECRET_LEN {
-                continue;
-            }
-            push_secret_patterns(secret, &mut patterns);
-            push_secret_patterns(secret, &mut diagnostic_patterns);
-            push_url_encoded_secret_pattern(secret, &mut url_encoded_patterns);
-            push_url_encoded_secret_pattern(secret, &mut diagnostic_url_encoded_patterns);
-            push_diagnostic_multiline_patterns(secret, &mut diagnostic_patterns);
+            state.add_sensitive_value_patterns(secret);
         }
-        Self::build_with_diagnostic_patterns(
-            patterns,
-            diagnostic_patterns,
-            url_encoded_patterns,
-            diagnostic_url_encoded_patterns,
-        )
+        state.rebuild_matchers();
+        Self::from_state(state)
+    }
+
+    pub(crate) fn add_sensitive_value(&self, value: &str) {
+        let mut state = self.write_state();
+        if state.add_sensitive_value_patterns(value) {
+            state.rebuild_matchers();
+        }
     }
 
     fn empty() -> Self {
-        Self {
-            matcher: None,
-            diagnostic_matcher: None,
-            url_encoded_matcher: None,
-            diagnostic_url_encoded_matcher: None,
-        }
+        Self::from_state(MaskerState::empty())
     }
 
     #[cfg(test)]
@@ -99,22 +104,19 @@ impl SecretMasker {
         Self::build_with_diagnostic_patterns(patterns.clone(), patterns, Vec::new(), Vec::new())
     }
 
+    #[cfg(test)]
     fn build_with_diagnostic_patterns(
         patterns: Vec<String>,
         diagnostic_patterns: Vec<String>,
         url_encoded_patterns: Vec<String>,
         diagnostic_url_encoded_patterns: Vec<String>,
     ) -> Self {
-        let matcher = Self::build_matcher(&patterns);
-        let diagnostic_matcher = Self::build_matcher(&diagnostic_patterns);
-        let url_encoded_matcher = Self::build_matcher(&url_encoded_patterns);
-        let diagnostic_url_encoded_matcher = Self::build_matcher(&diagnostic_url_encoded_patterns);
-        Self {
-            matcher,
-            diagnostic_matcher,
-            url_encoded_matcher,
-            diagnostic_url_encoded_matcher,
-        }
+        Self::from_state(MaskerState::from_pattern_sets(
+            patterns,
+            diagnostic_patterns,
+            url_encoded_patterns,
+            diagnostic_url_encoded_patterns,
+        ))
     }
 
     /// # Panics
@@ -143,8 +145,112 @@ impl SecretMasker {
         Some(Matcher { ac, replacements })
     }
 
+    fn from_state(state: MaskerState) -> Self {
+        Self {
+            state: RwLock::new(state),
+        }
+    }
+
+    fn read_state(&self) -> RwLockReadGuard<'_, MaskerState> {
+        self.state.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn write_state(&self) -> RwLockWriteGuard<'_, MaskerState> {
+        self.state.write().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Recursively mask secrets in a JSON value tree (in-place).
     pub fn mask_value(&self, val: &mut Value) {
+        self.read_state().mask_value(val);
+    }
+
+    /// Replace all secret patterns in a string with `***`.
+    ///
+    /// Uses leftmost-longest matching semantics: at each position, the
+    /// longest configured pattern wins, so a shorter secret that is a
+    /// substring of a longer one cannot strip a byte off the longer match.
+    pub fn mask_string(&self, s: &str) -> String {
+        self.masked_string(s).unwrap_or_else(|| s.to_string())
+    }
+
+    pub(crate) fn mask_owned_string(&self, s: String) -> String {
+        self.masked_string(&s).unwrap_or(s)
+    }
+
+    /// Mask diagnostic text while preserving the caller's line boundaries.
+    pub(crate) fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
+        self.read_state().mask_diagnostic_lines(lines)
+    }
+
+    #[cfg(test)]
+    fn mask_string_in_place(&self, s: &mut String) -> bool {
+        self.read_state().mask_string_in_place(s)
+    }
+
+    fn masked_string(&self, s: &str) -> Option<String> {
+        self.read_state().masked_string(s)
+    }
+}
+
+impl MaskerState {
+    fn empty() -> Self {
+        Self {
+            matcher: None,
+            diagnostic_matcher: None,
+            url_encoded_matcher: None,
+            diagnostic_url_encoded_matcher: None,
+            patterns: Vec::new(),
+            diagnostic_patterns: Vec::new(),
+            url_encoded_patterns: Vec::new(),
+            diagnostic_url_encoded_patterns: Vec::new(),
+            registered_values: HashSet::new(),
+        }
+    }
+
+    #[cfg(test)]
+    fn from_pattern_sets(
+        patterns: Vec<String>,
+        diagnostic_patterns: Vec<String>,
+        url_encoded_patterns: Vec<String>,
+        diagnostic_url_encoded_patterns: Vec<String>,
+    ) -> Self {
+        let mut state = Self {
+            matcher: None,
+            diagnostic_matcher: None,
+            url_encoded_matcher: None,
+            diagnostic_url_encoded_matcher: None,
+            patterns,
+            diagnostic_patterns,
+            url_encoded_patterns,
+            diagnostic_url_encoded_patterns,
+            registered_values: HashSet::new(),
+        };
+        state.rebuild_matchers();
+        state
+    }
+
+    fn add_sensitive_value_patterns(&mut self, value: &str) -> bool {
+        if value.len() < MIN_SECRET_LEN || !self.registered_values.insert(value.to_string()) {
+            return false;
+        }
+
+        push_secret_patterns(value, &mut self.patterns);
+        push_secret_patterns(value, &mut self.diagnostic_patterns);
+        push_url_encoded_secret_pattern(value, &mut self.url_encoded_patterns);
+        push_url_encoded_secret_pattern(value, &mut self.diagnostic_url_encoded_patterns);
+        push_diagnostic_multiline_patterns(value, &mut self.diagnostic_patterns);
+        true
+    }
+
+    fn rebuild_matchers(&mut self) {
+        self.matcher = SecretMasker::build_matcher(&self.patterns);
+        self.diagnostic_matcher = SecretMasker::build_matcher(&self.diagnostic_patterns);
+        self.url_encoded_matcher = SecretMasker::build_matcher(&self.url_encoded_patterns);
+        self.diagnostic_url_encoded_matcher =
+            SecretMasker::build_matcher(&self.diagnostic_url_encoded_patterns);
+    }
+
+    fn mask_value(&self, val: &mut Value) {
         if self.matcher.is_none() && self.url_encoded_matcher.is_none() {
             return;
         }
@@ -166,21 +272,7 @@ impl SecretMasker {
         }
     }
 
-    /// Replace all secret patterns in a string with `***`.
-    ///
-    /// Uses leftmost-longest matching semantics: at each position, the
-    /// longest configured pattern wins, so a shorter secret that is a
-    /// substring of a longer one cannot strip a byte off the longer match.
-    pub fn mask_string(&self, s: &str) -> String {
-        self.masked_string(s).unwrap_or_else(|| s.to_string())
-    }
-
-    pub(crate) fn mask_owned_string(&self, s: String) -> String {
-        self.masked_string(&s).unwrap_or(s)
-    }
-
-    /// Mask diagnostic text while preserving the caller's line boundaries.
-    pub(crate) fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
+    fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
         if self.diagnostic_matcher.is_none() && self.diagnostic_url_encoded_matcher.is_none() {
             return lines;
         }
@@ -539,6 +631,43 @@ mod tests {
         masker.mask_value(&mut val);
         assert_eq!(val["outer"]["inner"], "has *** inside");
         assert_eq!(val["list"][1], "***");
+    }
+
+    #[test]
+    fn runtime_sensitive_value_masks_existing_paths() {
+        let masker = SecretMasker::from_raw("");
+        let value = "session/value";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(value);
+
+        masker.add_sensitive_value(value);
+
+        let mut val = json!({
+            "plain": "contains session/value",
+            "encoded": encoded,
+            "url": "contains session%2fvalue",
+        });
+        masker.mask_value(&mut val);
+        assert_eq!(val["plain"], "contains ***");
+        assert_eq!(val["encoded"], "***");
+        assert_eq!(val["url"], "contains ***");
+        assert_eq!(masker.mask_string("session/value"), "***");
+        assert_eq!(
+            masker.mask_owned_string("system log session/value".to_string()),
+            "system log ***"
+        );
+        assert_eq!(
+            masker.mask_diagnostic_lines(vec!["stderr session/value".to_string()]),
+            vec!["stderr ***".to_string()]
+        );
+    }
+
+    #[test]
+    fn runtime_sensitive_value_skips_short_values() {
+        let masker = SecretMasker::from_raw("");
+
+        masker.add_sensitive_value("abcd");
+
+        assert_eq!(masker.mask_string("abcd"), "abcd");
     }
 
     #[test]

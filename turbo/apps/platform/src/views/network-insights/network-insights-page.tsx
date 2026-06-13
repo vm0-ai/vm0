@@ -1057,13 +1057,13 @@ function DayAutomationsCard({
         <ul className="flex flex-col gap-2 mt-3">
           {visible.map((row) => {
             const fullName =
-              row.scheduleDescription?.trim() || row.scheduleName;
+              row.automationDescription?.trim() || row.automationName;
             const pct = (row.credits / maxValue) * 100;
             return (
-              <li key={row.scheduleId}>
+              <li key={row.automationId}>
                 <Link
-                  pathname="/automations/:scheduleId"
-                  options={{ pathParams: { scheduleId: row.scheduleId } }}
+                  pathname="/automations/:automationId"
+                  options={{ pathParams: { automationId: row.automationId } }}
                   className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
                 >
                   <Tooltip>
@@ -1281,7 +1281,7 @@ function DaySection({
           onHoverAgent={handleHoverAgent}
         />
         <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
-        <DayAutomationsCard dayDate={day.date} automations={day.schedules} />
+        <DayAutomationsCard dayDate={day.date} automations={day.automations} />
         <DayChatsCard dayDate={day.date} chats={day.chats} />
         <PermissionsAllowedCard
           day={day}

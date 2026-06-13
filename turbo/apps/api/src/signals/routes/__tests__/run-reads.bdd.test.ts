@@ -15,9 +15,9 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
-  createRunsSchedulesApi,
-  uniqueScheduleName,
-} from "./helpers/api-bdd-runs-schedules";
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -42,7 +42,7 @@ const UTF8_ENCODING = ["utf", "8"].join("-");
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsSchedulesApi(context);
+const api = createRunsAutomationsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const reads = createRunReadsApi(context);
 
@@ -2205,8 +2205,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
 
     // A far-future yearly cron keeps the global execute-schedules sweep from
     // ever considering this schedule due; only run-now fires it.
-    const schedule = await api.deploySchedule(actor, {
-      name: uniqueScheduleName("bdd-log-sched"),
+    const schedule = await api.deployAutomation(actor, {
+      name: uniqueAutomationName("bdd-log-sched"),
       agentId: agentOne.agentId,
       cronExpression: "0 0 1 1 *",
       prompt: "scheduled run for logs",
@@ -2214,9 +2214,9 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       timezone: "UTC",
       enabled: true,
     });
-    const scheduleRun = await api.runScheduleNow(
+    const scheduleRun = await api.requestRunAutomation(
       actor,
-      schedule.schedule.id,
+      schedule.automation.id,
       [201],
     );
     if (scheduleRun.status !== 201) {
@@ -2252,7 +2252,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       displayName: "BDD logs agent one",
       framework: "claude-code",
       triggerSource: "web",
-      scheduleId: null,
+      automationId: null,
       status: "cancelled",
       prompt: "web run on agent one",
     });
@@ -2263,14 +2263,14 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       agentId: null,
       displayName: null,
       triggerSource: "cli",
-      scheduleId: null,
+      automationId: null,
     });
     const scheduleEntry = listed.body.data.find((entry) => {
       return entry.id === scheduleRun.body.runId;
     });
     expect(scheduleEntry).toMatchObject({
       triggerSource: "automation",
-      scheduleId: schedule.schedule.id,
+      automationId: schedule.automation.id,
     });
 
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
@@ -2391,18 +2391,18 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     }
     expect(noSourceMatch.body.data).toStrictEqual([]);
 
-    const byScheduleId = await reads.requestListLogs(
+    const byAutomationId = await reads.requestListLogs(
       actor,
-      { scheduleId: schedule.schedule.id, limit: 1 },
+      { automationId: schedule.automation.id, limit: 1 },
       [200],
     );
-    if (byScheduleId.status !== 200) {
-      throw new Error("Expected the schedule-filtered list to succeed");
+    if (byAutomationId.status !== 200) {
+      throw new Error("Expected the automation-filtered list to succeed");
     }
-    expect(byScheduleId.body.data).toStrictEqual([
+    expect(byAutomationId.body.data).toStrictEqual([
       expect.objectContaining({ id: scheduleRun.body.runId }),
     ]);
-    expect(byScheduleId.body.pagination.totalPages).toBe(1);
+    expect(byAutomationId.body.pagination.totalPages).toBe(1);
 
     expect(listed.body.filters.statuses).toContain("cancelled");
     expect([...listed.body.filters.sources].sort()).toStrictEqual([
@@ -2422,7 +2422,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(scheduleDetail.body).toMatchObject({
       id: scheduleRun.body.runId,
       triggerSource: "automation",
-      scheduleId: schedule.schedule.id,
+      automationId: schedule.automation.id,
     });
 
     const pendingRun = await api.createRun(actor, {

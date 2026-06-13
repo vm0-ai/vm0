@@ -30,10 +30,10 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
-import { automations } from "@vm0/db/schema/automation";
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -84,6 +84,59 @@ async function cancelOrgRuns(db: Db, orgId: string): Promise<void> {
       return publishCancelBestEffort(run.runnerGroup, run.id);
     }),
   );
+}
+
+async function cancelLastAdminOrgsStripeSubscriptions(
+  db: Db,
+  userId: string,
+): Promise<void> {
+  const adminOrgs = await db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(
+      and(
+        eq(orgMembersCache.userId, userId),
+        eq(orgMembersCache.role, "admin"),
+      ),
+    );
+
+  for (const { orgId } of adminOrgs) {
+    const [result] = await db
+      .select({ adminCount: count() })
+      .from(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, orgId),
+          eq(orgMembersCache.role, "admin"),
+        ),
+      );
+
+    if ((result?.adminCount ?? 0) <= 1) {
+      await tapError(cancelStripeSubscription(db, orgId), (error) => {
+        L.warn(
+          "failed to cancel stripe subscription for org with banned last admin",
+          { userId, orgId, error },
+        );
+      });
+    }
+  }
+}
+
+async function disableUserAutomations(db: Db, userId: string): Promise<void> {
+  await db
+    .update(automations)
+    .set({ enabled: false })
+    .where(eq(automations.userId, userId));
+
+  const userAutomationIds = db
+    .select({ id: automations.id })
+    .from(automations)
+    .where(eq(automations.userId, userId));
+
+  await db
+    .update(automationTriggers)
+    .set({ nextRunAt: null })
+    .where(inArray(automationTriggers.automationId, userAutomationIds));
 }
 
 async function cancelUserRuns(db: Db, userId: string): Promise<void> {
@@ -585,5 +638,16 @@ export const cleanupClerkDeletedUser$ = command(
     await get(deleteUserS3Data(db, userId));
     signal.throwIfAborted();
     await deleteUserData(db, userId);
+  },
+);
+
+export const cleanupClerkBannedUser$ = command(
+  async ({ set }, userId: string, signal: AbortSignal): Promise<void> => {
+    const db = set(writeDb$);
+    await cancelUserRuns(db, userId);
+    signal.throwIfAborted();
+    await disableUserAutomations(db, userId);
+    signal.throwIfAborted();
+    await cancelLastAdminOrgsStripeSubscriptions(db, userId);
   },
 );

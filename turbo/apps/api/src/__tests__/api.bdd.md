@@ -39,7 +39,7 @@ BDD helpers should be thin wrappers over route calls:
 - Connector helpers: `listConnectors`, `searchConnectors`, `readConnectorByType`, `startOAuth`, `completeOAuth`, `connectManualGrant`, `createCustomConnector`, `setConnectorSecret`, `deleteConnectorSecret`, `readIntegrationStatus`.
 - Billing and usage helpers: `readBillingStatus`, `startCheckout`, `openPortal`, `redeemCredit`, `readUsage`, `readUsageMembers`, `readUsageRuns`, `readInsights`, `runUsageCron`.
 - File and media helpers: `prepareUpload`, `completeUpload`, `readFile`, `readArtifact`, `readHostedContent`, `startImageGeneration`, `startVideoGeneration`, `startVoiceGeneration`, `readGenerationStatus`.
-- Schedule and webhook helpers: `createSchedule`, `readSchedule`, `listSchedules`, `enableSchedule`, `disableSchedule`, `runSchedule`, `deleteSchedule`, `postSignedCallback`, `postSignedWebhook`.
+- Automation and webhook helpers: `deployAutomation`, `listAutomations`, `enableAutomation`, `disableAutomation`, `runAutomationNow`, `deleteAutomation`, `postSignedCallback`, `postSignedWebhook`.
 
 If a helper cannot be implemented with API calls, mark the BDD case as `needs visible API/helper` and do not silently fall back to direct database setup.
 
@@ -628,7 +628,7 @@ Production-reachable but not API-constructible (recorded as explicit exceptions;
 
 These gaps must be closed before the corresponding old tests can be safely deleted:
 
-- ~~Billing and credit fixture setup that is visible through billing status.~~ Closed: `grantProEntitlement` in `helpers/api-bdd-runs-schedules.ts` moves an onboarded org to the pro tier with credits through the public Stripe `invoice.paid` webhook and verifies via billing status.
+- ~~Billing and credit fixture setup that is visible through billing status.~~ Closed: `grantProEntitlement` in `helpers/api-bdd-runs-automations.ts` moves an onboarded org to the pro tier with credits through the public Stripe `invoice.paid` webhook and verifies via billing status.
 - ~~vm0-managed-provider runs (`vm0_api_keys` has no public write API), the post-resolution vm0 gate, the vm0 billable arm, the nested trigger-agent family (zero tokens exclude `agent-run:write`), the custom-skill seed-volume override, and the agent provider pin (`zeroAgents.modelProviderId` has no public writer).~~ Removed from executable legacy coverage and recorded under Unreachable Code Candidates; `createZeroIntegrationRun$` coverage is owned by the alive `test-telegram-dispatch-probe.test.ts`.
 - `usage_pricing` has no write API: the priced settlement path (zero-credit-usage charge/expire/deduct plus the auto-recharge trigger) and the tier-less drain arm (org without `org_metadata`) were deleted with the legacy `webhooks-agent-complete.test.ts` remnant and recorded here.
 - Usage event creation through product APIs plus aggregation cron helpers.

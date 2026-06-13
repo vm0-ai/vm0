@@ -319,7 +319,13 @@ export interface PermissionGroup<T extends { name: string }> {
   permissions: T[];
 }
 
-const CONNECTOR_FIREWALLS = {
+function defineConnectorFirewalls<
+  const T extends Record<string, FirewallConfig>,
+>(firewalls: T): { readonly [K in keyof T]: FirewallConfig } {
+  return firewalls;
+}
+
+const CONNECTOR_FIREWALLS = defineConnectorFirewalls({
   agentmail: agentmailFirewall,
   amplitude: amplitudeFirewall,
   amadeus: amadeusFirewall,
@@ -576,7 +582,7 @@ const CONNECTOR_FIREWALLS = {
   openrouter: openrouterFirewall,
   openweather: openweatherFirewall,
   reducto: reductoFirewall,
-} as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
+} satisfies Partial<Record<ConnectorType, FirewallConfig>>);
 
 /**
  * Expand firewall placeholders to cover all secret names related to the

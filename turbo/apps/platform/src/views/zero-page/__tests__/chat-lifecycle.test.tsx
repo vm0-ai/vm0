@@ -973,12 +973,17 @@ describe("chat lifecycle", () => {
   it("renders completed markdown and returns the composer to send mode", async () => {
     const user = userEvent.setup({ delay: null });
     const lifecycle = mockChatLifecycle(context);
-    const markRead = vi.fn((lastReadMessageId: string | null) => {
-      return { lastReadMessageId, unreads: [] };
-    });
-    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-      return respond(200, markRead("msg-assistant-run-marker-v1"));
-    });
+    const markedThreadIds: string[] = [];
+    context.mocks.api(
+      chatThreadMarkReadContract.markRead,
+      ({ params, respond }) => {
+        markedThreadIds.push(params.id);
+        return respond(200, {
+          lastReadMessageId: "msg-assistant-run-marker-v1",
+          unreads: [],
+        });
+      },
+    );
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
@@ -990,7 +995,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
-    markRead.mockClear();
+    const markReadCountBeforeCompletion = markedThreadIds.length;
 
     lifecycle.completeRun("Here is the **result**");
 
@@ -1000,7 +1005,9 @@ describe("chat lifecycle", () => {
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(markRead).toHaveBeenCalledWith("msg-assistant-run-marker-v1");
+      expect(markedThreadIds.length).toBeGreaterThan(
+        markReadCountBeforeCompletion,
+      );
     });
   });
 
@@ -2768,27 +2775,27 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("shows scheduled run messages as automation links in chat history", async () => {
-    const threadId = "thread-scheduled-message";
-    const scheduleId = "f0000001-0000-4000-a000-000000000721";
+  it("shows automation run messages as automation links in chat history", async () => {
+    const threadId = "thread-automation-message";
+    const automationId = "f0000001-0000-4000-a000-000000000721";
     mockChatLifecycle(context, {
       threadId,
-      threadTitle: "Scheduled message",
+      threadTitle: "Automation message",
       chatMessages: [
         {
-          id: "msg-scheduled-user",
+          id: "msg-automation-user",
           role: "user",
           content: "Review launch risks",
-          scheduleId,
-          scheduleSnapshot: {
-            id: scheduleId,
+          automationId,
+          automationSnapshot: {
+            id: automationId,
             title: "Launch risk review",
             description: "Launch review",
           },
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
-          id: "msg-scheduled-assistant",
+          id: "msg-automation-assistant",
           role: "assistant",
           content: "I'll review the launch risks on schedule.",
           createdAt: "2026-06-09T10:00:01Z",
@@ -2799,11 +2806,11 @@ describe("chat lifecycle", () => {
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
-      expect(screen.getByText("Scheduled message")).toBeInTheDocument();
+      expect(screen.getByText("Automation message")).toBeInTheDocument();
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(
         screen.getByLabelText("Open automation Launch review"),
-      ).toHaveAttribute("href", `/automations/${scheduleId}`);
+      ).toHaveAttribute("href", `/automations/${automationId}`);
       expect(screen.queryByText("Review launch risks")).not.toBeInTheDocument();
     });
   });
@@ -4379,7 +4386,7 @@ describe("chat lifecycle", () => {
         selectedModel: null,
         triggerSource: "web",
         triggerAgentName: null,
-        scheduleId: null,
+        automationId: null,
         status: "running",
         prompt: "Active task prompt",
         appendSystemPrompt: null,

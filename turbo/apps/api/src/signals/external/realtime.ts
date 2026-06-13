@@ -136,16 +136,13 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
  * Best-effort: a failed publish must not fail the automation mutation that
  * triggers it. Payload is intentionally empty — the client re-fetches the
  * authoritative list on any delivery.
- *
- * The wire topic literal keeps the legacy "chatThreadSchedulesChanged" name
- * for compatibility with deployed platform listeners (#17307).
  */
 export async function publishChatThreadAutomationsChangedSafely(
   userId: string,
   threadId: string,
 ): Promise<void> {
   await tapError(
-    publishUserSignal([userId], `chatThreadSchedulesChanged:${threadId}`),
+    publishUserSignal([userId], `chatThreadAutomationsChanged:${threadId}`),
     (error) => {
       L.warn("Failed to publish chat thread automations changed signal", {
         threadId,

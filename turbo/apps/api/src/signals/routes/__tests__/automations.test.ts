@@ -28,10 +28,10 @@ import {
 } from "../../services/crypto.utils";
 import { writeDb$ } from "../../external/db";
 import {
-  type SchedulesFixture,
-  deleteSchedulesScenario$,
-  seedSchedulesScenario$,
-} from "./helpers/zero-schedules";
+  type AutomationsFixture,
+  deleteAutomationsScenario$,
+  seedAutomationsScenario$,
+} from "./helpers/automations";
 import { decryptSecretForTests } from "./helpers/encrypt-secret";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import {
@@ -66,14 +66,14 @@ function cronApi() {
   return setupApp({ context })(cronExecuteAutomationsContract);
 }
 
-const trackSchedules = createFixtureTracker<SchedulesFixture>((fixture) => {
-  return store.set(deleteSchedulesScenario$, fixture, context.signal);
+const trackAutomations = createFixtureTracker<AutomationsFixture>((fixture) => {
+  return store.set(deleteAutomationsScenario$, fixture, context.signal);
 });
 
 // Automations created through the API are not part of the schedule fixture, so
 // delete them by their org scope after each test. The trigger rows cascade
 // with the automation; the linked chat threads are removed explicitly.
-const trackCreatedAutomations = createFixtureTracker<SchedulesFixture>(
+const trackCreatedAutomations = createFixtureTracker<AutomationsFixture>(
   async (fixture) => {
     const db = store.set(writeDb$);
     const rows = await db
@@ -96,15 +96,15 @@ const trackExtraComposes = createFixtureTracker<string>(async (composeId) => {
   await db.delete(agentComposes).where(eq(agentComposes.id, composeId));
 });
 
-async function seedFixture(): Promise<SchedulesFixture> {
+async function seedFixture(): Promise<AutomationsFixture> {
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   // Pin the description generator to its deterministic template fallback: an
   // ambient key would make description-less creates call openrouter.ai live.
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   context.mocks.s3.send.mockResolvedValue({});
   setSecretKmsClientForTests(fakeKmsClient().client);
-  const fixture = await trackSchedules(
-    store.set(seedSchedulesScenario$, { schedules: [] }, context.signal),
+  const fixture = await trackAutomations(
+    store.set(seedAutomationsScenario$, { automations: [] }, context.signal),
   );
   await trackCreatedAutomations(Promise.resolve(fixture));
   mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -112,7 +112,7 @@ async function seedFixture(): Promise<SchedulesFixture> {
 }
 
 async function enableWebhookTriggers(
-  fixture: SchedulesFixture,
+  fixture: AutomationsFixture,
   options?: { readonly webhookTriggers?: boolean },
 ): Promise<void> {
   const db = store.set(writeDb$);
@@ -810,21 +810,18 @@ describe("Automations API", () => {
       .select({
         role: chatMessages.role,
         content: chatMessages.content,
-        scheduleSnapshot: chatMessages.scheduleSnapshot,
+        automationTitle: chatMessages.automationTitle,
+        automationSnapshot: chatMessages.automationSnapshot,
       })
       .from(chatMessages)
       .where(eq(chatMessages.runId, runId));
-    expect(
-      messages.some((message) => {
-        return (
-          message.role === "user" &&
-          message.content === "Manual run test" &&
-          message.scheduleSnapshot?.id === created.automation.id &&
-          message.scheduleSnapshot.title === "fire-now"
-        );
-      }),
-    ).toBeTruthy();
-
+    const chipMessage = messages.find((message) => {
+      return message.role === "user" && message.content === "Manual run test";
+    });
+    expect(chipMessage).toMatchObject({
+      automationTitle: "fire-now",
+      automationSnapshot: { id: created.automation.id, title: "fire-now" },
+    });
     // The manual run is stamped on the trigger, so a second fire conflicts
     // while it is still active (per-trigger skip-if-active semantics).
     const [trigger] = await findTriggerRows(created.automation.id);

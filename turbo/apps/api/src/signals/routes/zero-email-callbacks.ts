@@ -194,7 +194,7 @@ const handleEmailReplyCallback$ = command(
         from: buildFromAddress(org.slug),
         to: emailTo,
         cc: emailCc,
-        subject: `Re: VM0 - Scheduled run for "${agent.name}" completed`,
+        subject: `Re: VM0 - Automation run for "${agent.name}" completed`,
         template: {
           template: "agent-reply",
           props: { agentName: agent.name, output, logsUrl, unsubscribeUrl },

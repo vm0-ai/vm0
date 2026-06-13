@@ -40,7 +40,7 @@ interface SeedRunArgs {
   readonly userId: string;
   readonly composeId: string;
   readonly triggerSource?: string;
-  readonly scheduleId?: string;
+  readonly automationId?: string;
   readonly chatThreadId?: string;
   readonly status?: string;
   readonly prompt?: string;
@@ -54,7 +54,7 @@ interface SeedRunArgs {
   readonly lastEventSequence?: number | null;
 }
 
-interface SeedScheduleArgs {
+interface SeedAutomationArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -105,7 +105,7 @@ interface BonusUsageEvent {
   readonly status: string;
 }
 
-interface ScheduleBatchArgs {
+interface AutomationBatchArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly composeId: string;
@@ -383,7 +383,7 @@ export const seedRun$ = command(
     await db.insert(zeroRuns).values({
       id: run.id,
       triggerSource: args.triggerSource ?? "cli",
-      automationId: args.scheduleId ?? null,
+      automationId: args.automationId ?? null,
       chatThreadId: args.chatThreadId ?? null,
     });
     signal.throwIfAborted();
@@ -391,10 +391,10 @@ export const seedRun$ = command(
   },
 );
 
-export const seedSchedule$ = command(
+export const seedAutomation$ = command(
   async (
     { set },
-    args: SeedScheduleArgs,
+    args: SeedAutomationArgs,
     signal: AbortSignal,
   ): Promise<string> => {
     const db = set(writeDb$);
@@ -404,7 +404,7 @@ export const seedSchedule$ = command(
       .returning({ id: chatThreads.id });
     signal.throwIfAborted();
     if (!thread) {
-      throw new Error("seedSchedule$: chat thread insert returned no row");
+      throw new Error("seedAutomation$: chat thread insert returned no row");
     }
     const [row] = await db
       .insert(automations)
@@ -421,7 +421,7 @@ export const seedSchedule$ = command(
       .returning({ id: automations.id });
     signal.throwIfAborted();
     if (!row) {
-      throw new Error("seedSchedule$: insert returned no row");
+      throw new Error("seedAutomation$: insert returned no row");
     }
     return row.id;
   },
@@ -614,12 +614,12 @@ export const setUsageEventCreatedAt$ = command(
   },
 );
 
-export const seedScheduleBatch$ = command(
+export const seedAutomationBatch$ = command(
   async (
     { set },
-    args: ScheduleBatchArgs,
+    args: AutomationBatchArgs,
     signal: AbortSignal,
-  ): Promise<{ scheduleIds: string[] }> => {
+  ): Promise<{ automationIds: string[] }> => {
     const db = set(writeDb$);
     const indices = Array.from({ length: args.count }, (_, index) => {
       return index;
@@ -632,10 +632,10 @@ export const seedScheduleBatch$ = command(
           .returning({ id: chatThreads.id });
         if (!thread) {
           throw new Error(
-            "seedScheduleBatch$: chat thread insert returned no row",
+            "seedAutomationBatch$: chat thread insert returned no row",
           );
         }
-        const [scheduleRow] = await db
+        const [automationRow] = await db
           .insert(automations)
           .values({
             agentId: args.composeId,
@@ -647,9 +647,9 @@ export const seedScheduleBatch$ = command(
             chatThreadId: thread.id,
           })
           .returning({ id: automations.id });
-        if (!scheduleRow) {
+        if (!automationRow) {
           throw new Error(
-            "seedScheduleBatch$: schedule insert returned no row",
+            "seedAutomationBatch$: automation insert returned no row",
           );
         }
         const versionId = randomUUID();
@@ -671,7 +671,9 @@ export const seedScheduleBatch$ = command(
           })
           .returning({ id: agentSessions.id });
         if (!session) {
-          throw new Error("seedScheduleBatch$: session insert returned no row");
+          throw new Error(
+            "seedAutomationBatch$: session insert returned no row",
+          );
         }
         const [run] = await db
           .insert(agentRuns)
@@ -685,12 +687,12 @@ export const seedScheduleBatch$ = command(
           })
           .returning({ id: agentRuns.id });
         if (!run) {
-          throw new Error("seedScheduleBatch$: run insert returned no row");
+          throw new Error("seedAutomationBatch$: run insert returned no row");
         }
         await db.insert(zeroRuns).values({
           id: run.id,
           triggerSource: "automation",
-          automationId: scheduleRow.id,
+          automationId: automationRow.id,
         });
         const credits = args.creditsForIndex(index);
         await db.insert(usageEvent).values({
@@ -722,10 +724,10 @@ export const seedScheduleBatch$ = command(
             processedAt: bonus.status === "processed" ? nowDate() : null,
           });
         }
-        return scheduleRow.id;
+        return automationRow.id;
       }),
     );
     signal.throwIfAborted();
-    return { scheduleIds: results };
+    return { automationIds: results };
   },
 );

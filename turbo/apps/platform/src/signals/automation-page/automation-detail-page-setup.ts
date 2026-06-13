@@ -25,11 +25,11 @@ export const setupAutomationDetailPage$ = command(
 
     // Initialize run history with the current automation ID from the URL
     const params = get(pathParams$);
-    const scheduleId =
-      params && typeof params === "object" && "scheduleId" in params
-        ? String(params.scheduleId)
+    const automationId =
+      params && typeof params === "object" && "automationId" in params
+        ? String(params.automationId)
         : null;
-    set(setRunHistoryAutomationId$, scheduleId);
+    set(setRunHistoryAutomationId$, automationId);
     set(seedAutomationRunCursorHistory$);
 
     await Promise.all([

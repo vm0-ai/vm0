@@ -86,13 +86,6 @@ export const conflict = makeApiError(
   "Resource already exists",
 );
 
-export const schedulePast = makeApiError(
-  "SchedulePastError",
-  "SCHEDULE_PAST",
-  400,
-  "Schedule time has already passed",
-);
-
 export const concurrentRunLimit = makeApiError(
   "ConcurrentRunLimitError",
   "TOO_MANY_REQUESTS",
@@ -211,12 +204,6 @@ export function isConflict(e: unknown): e is ReturnType<typeof conflict> {
 
 export function isForbidden(e: unknown): e is ReturnType<typeof forbidden> {
   return e instanceof Error && e.name === "ForbiddenError";
-}
-
-export function isSchedulePast(
-  e: unknown,
-): e is ReturnType<typeof schedulePast> {
-  return e instanceof Error && e.name === "SchedulePastError";
 }
 
 export function isConcurrentRunLimit(
