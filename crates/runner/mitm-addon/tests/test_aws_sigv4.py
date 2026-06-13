@@ -109,6 +109,20 @@ def test_presigned_query_invalid_unicode_query_raises_signing_error() -> None:
         )
 
 
+@pytest.mark.parametrize("query", ["Bad=%ED%A0%80", "Bad=%ZZ"])
+def test_presigned_query_malformed_percent_encoding_raises_signing_error(
+    query: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
+        sign_request(
+            method="GET",
+            url=f"{_presigned_url('sts.amazonaws.com')}&{query}",
+            headers=[("Host", "sts.amazonaws.com")],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
 def test_header_auth_invalid_unicode_fragment_raises_signing_error() -> None:
     with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
         sign_request(
@@ -121,11 +135,31 @@ def test_header_auth_invalid_unicode_fragment_raises_signing_error() -> None:
 
 
 def test_signed_header_invalid_unicode_raises_signing_error() -> None:
-    with pytest.raises(AwsSigV4SigningError, match="AWS request contains invalid text"):
+    with pytest.raises(AwsSigV4SigningError, match="AWS request header contains invalid text"):
         sign_request(
             method="GET",
             url="https://sts.amazonaws.com/",
             headers=[*_header_auth_headers(), ("x-amz-meta-test", _INVALID_UNICODE)],
+            body=None,
+            credentials=_credentials(),
+        )
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        (f"x-other-{_INVALID_UNICODE}", "value"),
+        ("x-other", f"value{_INVALID_UNICODE}"),
+    ],
+)
+def test_unsigned_header_invalid_unicode_raises_signing_error(
+    header: tuple[str, str],
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request header contains invalid text"):
+        sign_request(
+            method="GET",
+            url="https://sts.amazonaws.com/",
+            headers=[*_header_auth_headers(), header],
             body=None,
             credentials=_credentials(),
         )

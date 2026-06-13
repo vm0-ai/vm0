@@ -47,6 +47,7 @@ _AMZ_DATE_RE = re.compile(r"^\d{8}T\d{6}Z$")
 _PRESIGN_EXPIRES_RE = re.compile(r"^[1-9]\d*$")
 _ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
 _SIGNED_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
+_HEX_DIGITS = frozenset("0123456789ABCDEFabcdef")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
 _DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -122,6 +123,7 @@ def sign_request(
     hash is ``UNSIGNED-PAYLOAD``.
     """
     _validate_credentials(credentials)
+    _validate_headers(headers)
     context = _classify_request(url, headers)
     if context.algorithm == _ASYMMETRIC_ALGORITHM:
         raise AwsSigV4SigningError("SigV4A is not supported by this runner")
@@ -602,8 +604,32 @@ def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
         if not raw_pair:
             continue
         raw_key, _separator, raw_value = raw_pair.partition("=")
-        pairs.append((urllib.parse.unquote(raw_key), urllib.parse.unquote(raw_value)))
+        pairs.append((_unquote_query_component(raw_key), _unquote_query_component(raw_value)))
     return pairs
+
+
+def _unquote_query_component(value: str) -> str:
+    if _has_malformed_percent_encoding(value):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
+    try:
+        return urllib.parse.unquote_to_bytes(value).decode()
+    except UnicodeDecodeError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+
+
+def _has_malformed_percent_encoding(value: str) -> bool:
+    index = 0
+    while True:
+        index = value.find("%", index)
+        if index == -1:
+            return False
+        if (
+            index + 2 >= len(value)
+            or value[index + 1] not in _HEX_DIGITS
+            or value[index + 2] not in _HEX_DIGITS
+        ):
+            return True
+        index += 3
 
 
 def _validate_credentials(credentials: AwsSigV4Credentials) -> None:
@@ -621,6 +647,12 @@ def _validate_credentials(credentials: AwsSigV4Credentials) -> None:
         or not _is_utf8_encodable(credentials.session_token)
     ):
         raise AwsSigV4SigningError("Invalid AWS session token")
+
+
+def _validate_headers(headers: list[tuple[str, str]]) -> None:
+    for name, value in headers:
+        _utf8_encode(name, "AWS request header contains invalid text")
+        _utf8_encode(value, "AWS request header contains invalid text")
 
 
 def _utf8_encode(value: str, message: str) -> bytes:
