@@ -110,8 +110,8 @@ function claudeOpusApiKeyPolicy(): OrgModelPolicy {
 function missingMoonshotPolicy(): OrgModelPolicy {
   return {
     id: "00000000-0000-4000-a000-000000000213",
-    model: "kimi-k2.6",
-    modelLabel: "Kimi K2.6",
+    model: "kimi-k2.7-code",
+    modelLabel: "Kimi K2.7 Code",
     isDefault: false,
     defaultProviderType: "moonshot-api-key",
     credentialScope: "org",
@@ -399,7 +399,7 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     const missingRow = await screen.findByTestId(
-      "org-model-policy-row-kimi-k2.6",
+      "org-model-policy-row-kimi-k2.7-code",
     );
     expect(
       within(missingRow).getByText("Missing provider"),

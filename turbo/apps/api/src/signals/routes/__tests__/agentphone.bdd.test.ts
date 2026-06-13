@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import {
   createBddApi,
@@ -158,6 +159,7 @@ async function completeSandboxRun(
     sandboxHeaders,
     [200],
   );
+  await flushWaitUntilForTest();
 }
 
 function lastSend(sends: AgentPhoneSendCapture): AgentPhoneProviderSend {

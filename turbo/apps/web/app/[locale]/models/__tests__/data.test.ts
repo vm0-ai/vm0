@@ -80,8 +80,11 @@ describe("models page data", () => {
     const reasoningIds = MODELS.filter(isReasoningModel).map((m) => {
       return m.modelId;
     });
+    expect(reasoningIds).toContain("kimi-k2.7-code");
     expect(reasoningIds).toContain("MiniMax-M3");
     expect(reasoningIds).not.toContain("claude-fable-5");
+    expect(reasoningIds).not.toContain("kimi-k2.6");
+    expect(reasoningIds).not.toContain("kimi-k2.5");
     expect(reasoningIds).not.toContain("claude-haiku-4-5");
     expect(reasoningIds).not.toContain("deepseek-v4-flash");
     expect(reasoningIds).not.toContain("MiniMax-M2.7");
