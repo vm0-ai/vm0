@@ -165,7 +165,7 @@ def _classify_request(
         "authorization",
         "Malformed AWS authorization header",
     )
-    query_pairs = _parse_query_pairs(urllib.parse.urlsplit(url).query)
+    query_pairs = _parse_query_pairs(_split_url_for_signing(url).query)
     query_algorithm = _unique_query_value(query_pairs, "X-Amz-Algorithm")
     if auth_header and query_algorithm:
         raise AwsSigV4SigningError("Ambiguous AWS auth location")
@@ -174,6 +174,13 @@ def _classify_request(
     if auth_header:
         return _classify_header_request(auth_header, headers)
     raise AwsSigV4SigningError("Missing AWS SigV4 auth metadata")
+
+
+def _split_url_for_signing(url: str) -> urllib.parse.SplitResult:
+    try:
+        return urllib.parse.urlsplit(url)
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
 
 
 def _classify_header_request(
@@ -395,7 +402,7 @@ def _canonical_request(
     payload_hash: str,
     is_s3: bool,
 ) -> tuple[str, str]:
-    parts = urllib.parse.urlsplit(url)
+    parts = _split_url_for_signing(url)
     canonical_uri = _canonical_uri(parts.path, is_s3=is_s3)
     canonical_query = _canonical_query_string(parts.query)
     canonical_headers, signed_header_names = _canonical_headers(headers, signed_headers)
@@ -539,7 +546,7 @@ def _replace_query_signing_params(
     signed_headers: frozenset[str],
     signature: str | None,
 ) -> str:
-    parts = urllib.parse.urlsplit(url)
+    parts = _split_url_for_signing(url)
     filtered = [
         (key, value)
         for key, value in _parse_query_pairs(parts.query)
@@ -651,7 +658,7 @@ def _upsert_header(
 
 
 def _host_header_value(url: str) -> str:
-    parts = urllib.parse.urlsplit(url)
+    parts = _split_url_for_signing(url)
     if not parts.netloc or not parts.hostname:
         raise AwsSigV4SigningError("AWS request URL must include a host")
     host = parts.hostname
