@@ -56,6 +56,18 @@ def test_skips_model_provider_firewalls():
         assert candidate is None
 
 
+def test_connector_diagnostic_matches_static_base_without_permission_method_enforcement():
+    candidate = builtin_connector_diagnostics.find_candidate(
+        "https://slack.com/api/conversations.list",
+        "POST",
+        active_firewall_names=set(),
+    )
+
+    assert candidate is not None
+    assert candidate.connector_type == "slack"
+    assert candidate.base == "https://slack.com/api"
+
+
 def test_classifies_connector_permission_path_on_model_provider_host():
     candidate = builtin_connector_diagnostics.find_candidate(
         "https://api.anthropic.com/v1/agents",

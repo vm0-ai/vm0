@@ -190,7 +190,7 @@ def _diagnostic_api(api: object) -> dict | None:
     return {
         "base": raw_base,
         "auth": {},
-        "permissions": _diagnostic_permissions(api.get("permissions")),
+        "permissions": _base_match_permissions(),
         "_diagnostic_env_names": tuple(_extract_reference_names(auth)),
         "_diagnostic_auth_header_names": tuple(_extract_auth_header_names(auth)),
         "_diagnostic_auth_query_param_names": tuple(_extract_auth_query_param_names(auth)),
@@ -221,6 +221,10 @@ def _diagnostic_permissions(raw_permissions: object) -> list[dict]:
                 permissions.append(permission)
         if permissions:
             return permissions
+    return _base_match_permissions()
+
+
+def _base_match_permissions() -> list[dict]:
     return [{"name": _DIAGNOSTIC_ANY_PERMISSION, "rules": list(_DIAGNOSTIC_ANY_RULES)}]
 
 
