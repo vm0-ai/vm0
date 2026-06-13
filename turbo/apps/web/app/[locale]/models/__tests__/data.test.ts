@@ -7,6 +7,8 @@ import { MODELS, isReasoningModel } from "../data";
 
 const MODEL_CONTENT_LOCALES = ["en", "de", "es", "ja"] as const;
 const REMOVED_MODEL_CONTENT_TERMS = [
+  "Claude Fable 5",
+  "Fable 5",
   "Claude Haiku 4.5",
   "Haiku 4.5",
   "Haiku",
@@ -78,8 +80,8 @@ describe("models page data", () => {
     const reasoningIds = MODELS.filter(isReasoningModel).map((m) => {
       return m.modelId;
     });
-    expect(reasoningIds).toContain("claude-fable-5");
     expect(reasoningIds).toContain("MiniMax-M3");
+    expect(reasoningIds).not.toContain("claude-fable-5");
     expect(reasoningIds).not.toContain("claude-haiku-4-5");
     expect(reasoningIds).not.toContain("deepseek-v4-flash");
     expect(reasoningIds).not.toContain("MiniMax-M2.7");

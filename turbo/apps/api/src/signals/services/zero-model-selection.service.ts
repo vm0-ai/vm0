@@ -1,11 +1,12 @@
 import {
+  SUPPORTED_RUN_MODELS,
   isSupportedRunModel,
   type ModelProviderCredentialScope,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 
 import { badRequestMessage } from "../../lib/error";
 import type { Db } from "../external/db";
@@ -68,7 +69,9 @@ export async function resolveDefaultModelFirstPin(
     )
     .limit(1);
 
-  const preferredModel = preference?.selectedModel ?? null;
+  const preferredModel = isSupportedRunModel(preference?.selectedModel)
+    ? preference.selectedModel
+    : null;
   const [policy] = await db
     .select({
       model: orgModelPolicies.model,
@@ -86,6 +89,7 @@ export async function resolveDefaultModelFirstPin(
         : and(
             eq(orgModelPolicies.orgId, orgId),
             eq(orgModelPolicies.isDefault, true),
+            inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
           ),
     )
     .limit(1);
