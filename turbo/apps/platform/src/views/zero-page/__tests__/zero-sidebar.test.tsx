@@ -370,7 +370,11 @@ describe("zero sidebar", () => {
       ).toBeInTheDocument();
     });
 
-    openThreadMenu("Release plan");
+    click(
+      within(threadRowByTitle("Release plan")).getByTestId(
+        "chat-thread-pinned-indicator",
+      ),
+    );
     click(menuItemByText("Unpin chat"));
 
     await waitFor(() => {
