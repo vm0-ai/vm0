@@ -109,6 +109,17 @@ def test_presigned_query_invalid_unicode_query_raises_signing_error() -> None:
         )
 
 
+def test_header_auth_invalid_unicode_fragment_raises_signing_error() -> None:
+    with pytest.raises(AwsSigV4SigningError, match="AWS request URL is malformed"):
+        sign_request(
+            method="GET",
+            url=f"https://sts.amazonaws.com/#fragment{_INVALID_UNICODE}",
+            headers=_header_auth_headers(),
+            body=None,
+            credentials=_credentials(),
+        )
+
+
 def test_signed_header_invalid_unicode_raises_signing_error() -> None:
     with pytest.raises(AwsSigV4SigningError, match="AWS request contains invalid text"):
         sign_request(
