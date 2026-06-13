@@ -237,6 +237,15 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.output"] == 4
 
+    def test_multidata_eventless_response_completed_event(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"type":"response.completed",\n'
+            b'data: "response":{"model":"gpt-5.4","usage":{"output_tokens":15}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 15
+
     def test_skips_large_irrelevant_events_without_buffering(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         parse(b"event: response.output_text.delta\n")
