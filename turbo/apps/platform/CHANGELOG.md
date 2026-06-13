@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.450.1](https://github.com/vm0-ai/vm0/compare/app-v0.450.0...app-v0.450.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* show thread credit usage on mobile ([#17586](https://github.com/vm0-ai/vm0/issues/17586)) ([7dbf853](https://github.com/vm0-ai/vm0/commit/7dbf8535ac6a22ca0ccd2c81dc8d45eba1a2713f))
+
 ## [0.450.0](https://github.com/vm0-ai/vm0/compare/app-v0.449.0...app-v0.450.0) (2026-06-13)
 
 
