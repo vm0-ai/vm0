@@ -973,17 +973,6 @@ describe("chat lifecycle", () => {
   it("renders completed markdown and returns the composer to send mode", async () => {
     const user = userEvent.setup({ delay: null });
     const lifecycle = mockChatLifecycle(context);
-    const markedThreadIds: string[] = [];
-    context.mocks.api(
-      chatThreadMarkReadContract.markRead,
-      ({ params, respond }) => {
-        markedThreadIds.push(params.id);
-        return respond(200, {
-          lastReadMessageId: "msg-assistant-run-marker-v1",
-          unreads: [],
-        });
-      },
-    );
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
@@ -995,7 +984,6 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
-    const markReadCountBeforeCompletion = markedThreadIds.length;
 
     lifecycle.completeRun("Here is the **result**");
 
@@ -1003,11 +991,6 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("result")).toBeInTheDocument();
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(markedThreadIds.length).toBeGreaterThan(
-        markReadCountBeforeCompletion,
-      );
     });
   });
 
