@@ -51,6 +51,18 @@ ruleTester.run("no-accessor-escape", rule, {
       errors: [{ messageId: "accessorEscape" }],
     },
     {
+      code: "command(({ get }) => { return () => get(count$); })",
+      errors: [{ messageId: "accessorEscape" }],
+    },
+    {
+      code: "command(({ get }) => { return { read: () => get(count$) }; })",
+      errors: [{ messageId: "accessorEscape" }],
+    },
+    {
+      code: "command(({ get }) => { setTimeout(() => get(count$), 0); })",
+      errors: [{ messageId: "accessorEscape" }],
+    },
+    {
       code: "command(({ set }) => { const values = [set]; return values; })",
       errors: [{ messageId: "accessorEscape" }],
     },

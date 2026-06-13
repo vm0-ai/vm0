@@ -15,10 +15,20 @@ type CallbackNode =
   | TSESTree.ArrowFunctionExpression
   | TSESTree.FunctionExpression;
 
+type FunctionNode = CallbackNode | TSESTree.FunctionDeclaration;
+
+const DEFERRED_CALLBACK_FUNCTIONS = new Set(["setInterval", "setTimeout"]);
+
 function isCallbackNode(node: TSESTree.Node): node is CallbackNode {
   return (
     node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
     node.type === AST_NODE_TYPES.FunctionExpression
+  );
+}
+
+function isFunctionNode(node: TSESTree.Node): node is FunctionNode {
+  return (
+    isCallbackNode(node) || node.type === AST_NODE_TYPES.FunctionDeclaration
   );
 }
 
@@ -27,6 +37,73 @@ function isDirectCallCallee(node: TSESTree.Identifier): boolean {
   return (
     parent.type === AST_NODE_TYPES.CallExpression && parent.callee === node
   );
+}
+
+function isDeferredCallbackCall(
+  call: TSESTree.CallExpression,
+  callback: CallbackNode,
+): boolean {
+  if (!call.arguments.includes(callback)) {
+    return false;
+  }
+  if (
+    call.callee.type === AST_NODE_TYPES.Identifier &&
+    DEFERRED_CALLBACK_FUNCTIONS.has(call.callee.name)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isReturnedContainerCallback(node: CallbackNode): boolean {
+  let current: TSESTree.Node | undefined = node.parent;
+  while (
+    current?.type === AST_NODE_TYPES.Property ||
+    current?.type === AST_NODE_TYPES.ObjectExpression ||
+    current?.type === AST_NODE_TYPES.ArrayExpression
+  ) {
+    current = current.parent;
+  }
+  return current?.type === AST_NODE_TYPES.ReturnStatement;
+}
+
+function callbackEscapes(
+  primitive: "command" | "computed",
+  node: FunctionNode,
+): boolean {
+  if (primitive !== "command") {
+    return false;
+  }
+  if (!isCallbackNode(node)) {
+    return false;
+  }
+  const parent = node.parent;
+  if (parent.type === AST_NODE_TYPES.ReturnStatement) {
+    return true;
+  }
+  if (parent.type === AST_NODE_TYPES.CallExpression) {
+    return isDeferredCallbackCall(parent, node);
+  }
+  return isReturnedContainerCallback(node);
+}
+
+function isAllowedAccessorUse(
+  primitive: "command" | "computed",
+  identifier: TSESTree.Identifier,
+  callback: CallbackNode,
+): boolean {
+  if (!isDirectCallCallee(identifier)) {
+    return false;
+  }
+
+  let current: TSESTree.Node | undefined = identifier.parent;
+  while (current && current !== callback) {
+    if (isFunctionNode(current) && callbackEscapes(primitive, current)) {
+      return false;
+    }
+    current = current.parent;
+  }
+  return current === callback;
 }
 
 function bindingFromPropertyValue(
@@ -122,7 +199,7 @@ export default createRule<[], MessageIds>({
           if (identifier.type !== AST_NODE_TYPES.Identifier) {
             continue;
           }
-          if (isDirectCallCallee(identifier)) {
+          if (isAllowedAccessorUse(primitive, identifier, callback)) {
             continue;
           }
           context.report({

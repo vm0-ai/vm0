@@ -4,11 +4,7 @@ const registeredLocalStorageKeys$ = state<Set<string> | null>(null);
 
 export const resetLocalStorageForTest$ = command(({ set, get }) => {
   const keys = get(registeredLocalStorageKeys$);
-  if (!keys) {
-    return;
-  }
-
-  for (const key of keys) {
+  for (const key of keys ?? []) {
     localStorage.removeItem(key);
   }
 
@@ -47,5 +43,14 @@ export function localStorageSignals(key: string) {
     });
   });
 
-  return Object.freeze({ get$, set$, clear$ });
+  const updateRaw = (update: (value: string | null) => string | null) => {
+    const next = update(localStorage.getItem(key));
+    if (next === null) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, next);
+  };
+
+  return Object.freeze({ get$, set$, clear$, updateRaw });
 }
