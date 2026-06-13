@@ -99,6 +99,7 @@ import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
+  r2ImageTransformUrl,
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
   VIDEO_STYLE_GROUPS,
@@ -335,6 +336,12 @@ type ComposerTemplatePicker = NonNullable<
   ZeroChatComposerProps["templatePicker"]
 >;
 type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
+
+const TEMPLATE_CARD_PREVIEW_SIZE = { width: 640, height: 360 } as const;
+const TEMPLATE_DETAIL_PREVIEW_SIZE = { width: 1600, height: 900 } as const;
+const TEMPLATE_STRIP_THUMB_SIZE = { width: 200, height: 112 } as const;
+const ILLUSTRATION_DETAIL_PREVIEW_SIZE = { width: 1400, height: 1400 } as const;
+const SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE = { width: 40, height: 40 } as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -776,7 +783,10 @@ function VideoTemplatePreview({ item }: { item: VideoStylePreset }) {
   return (
     <video
       src={item.sampleVideoUrl}
-      poster={item.sampleVideoThumbnailUrl}
+      poster={r2ImageTransformUrl(
+        item.sampleVideoThumbnailUrl,
+        TEMPLATE_CARD_PREVIEW_SIZE,
+      )}
       className="h-full w-full object-cover"
       preload="none"
       playsInline
@@ -1059,7 +1069,9 @@ function TemplatePreview({
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
-  const slideImages = presentationTemplateSlideImages(item);
+  const slideImages = presentationTemplateSlideImages(item).map((imageUrl) => {
+    return r2ImageTransformUrl(imageUrl, TEMPLATE_CARD_PREVIEW_SIZE);
+  });
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
   const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
@@ -1229,6 +1241,9 @@ function TemplatePreviewPage({
     Math.min(selectedSlideIndex, slideImages.length - 1),
   );
   const selectedSlideImage = slideImages[safeSlideIndex];
+  const selectedSlidePreviewImage = selectedSlideImage
+    ? r2ImageTransformUrl(selectedSlideImage, TEMPLATE_DETAIL_PREVIEW_SIZE)
+    : selectedSlideImage;
   const hasMultipleSlides = slideImages.length > 1;
   const kind = formatPresentationTemplateKind(item.templateId);
 
@@ -1266,7 +1281,7 @@ function TemplatePreviewPage({
             </div>
             <img
               key={selectedSlideImage}
-              src={selectedSlideImage}
+              src={selectedSlidePreviewImage}
               title={`${item.title} preview slide ${safeSlideIndex + 1}`}
               alt=""
               className="aspect-[16/9] w-full object-cover"
@@ -1298,6 +1313,10 @@ function TemplatePreviewPage({
           <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {slideImages.map((image, index) => {
               const selected = index === safeSlideIndex;
+              const thumbnailImage = r2ImageTransformUrl(
+                image,
+                TEMPLATE_STRIP_THUMB_SIZE,
+              );
               return (
                 <button
                   key={image}
@@ -1313,7 +1332,7 @@ function TemplatePreviewPage({
                   }}
                 >
                   <img
-                    src={image}
+                    src={thumbnailImage}
                     alt=""
                     className="aspect-[16/9] w-full object-cover"
                     loading="lazy"
@@ -1425,10 +1444,15 @@ function IllustrationTemplatePreview({
   item: IllustrationTemplateItem;
   onPreview: (item: IllustrationTemplateItem) => void;
 }) {
+  const previewImage = r2ImageTransformUrl(
+    item.previewImage,
+    TEMPLATE_CARD_PREVIEW_SIZE,
+  );
+
   return (
     <div className="relative h-44 shrink-0 overflow-hidden bg-muted">
       <img
-        src={item.previewImage}
+        src={previewImage}
         alt=""
         title={`${item.title} illustration preview`}
         className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
@@ -1438,7 +1462,7 @@ function IllustrationTemplatePreview({
         onLoad={(event) => {
           const image = event.currentTarget;
           detach(
-            markIllustrationPreviewImageLoaded(item.previewImage, image),
+            markIllustrationPreviewImageLoaded(previewImage, image),
             Reason.DomCallback,
           );
         }}
@@ -1577,6 +1601,9 @@ function IllustrationPreviewPage({
     Math.min(selectedImageIndex, images.length - 1),
   );
   const selectedImage = images[safeImageIndex];
+  const selectedPreviewImage = selectedImage
+    ? r2ImageTransformUrl(selectedImage, ILLUSTRATION_DETAIL_PREVIEW_SIZE)
+    : selectedImage;
 
   return (
     <>
@@ -1600,7 +1627,7 @@ function IllustrationPreviewPage({
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
             <img
               key={selectedImage}
-              src={selectedImage}
+              src={selectedPreviewImage}
               title={`${item.title} preview variant ${safeImageIndex + 1}`}
               alt=""
               className="h-full w-full object-contain"
@@ -1610,6 +1637,10 @@ function IllustrationPreviewPage({
           <div className="mt-3 flex shrink-0 max-w-full items-center gap-2 overflow-x-auto pb-1">
             {images.map((image, index) => {
               const selected = index === safeImageIndex;
+              const thumbnailImage = r2ImageTransformUrl(
+                image,
+                TEMPLATE_STRIP_THUMB_SIZE,
+              );
               return (
                 <button
                   key={image}
@@ -1625,7 +1656,7 @@ function IllustrationPreviewPage({
                   }}
                 >
                   <img
-                    src={image}
+                    src={thumbnailImage}
                     alt=""
                     className="h-full w-full object-cover"
                     loading="lazy"
@@ -2117,7 +2148,10 @@ function SelectedTemplateChip({
         <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
           <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
             <img
-              src={item.previewImage}
+              src={r2ImageTransformUrl(
+                item.previewImage,
+                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+              )}
               alt=""
               className="h-full w-full object-cover"
               loading="lazy"
@@ -2196,7 +2230,10 @@ function SelectedIllustrationTemplateChip({
         <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
           <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
             <img
-              src={item.previewImage}
+              src={r2ImageTransformUrl(
+                item.previewImage,
+                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+              )}
               alt=""
               className="h-full w-full object-cover"
               loading="lazy"

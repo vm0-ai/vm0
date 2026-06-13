@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
+import { r2ImageTransformUrl } from "@vm0/core";
 import { CopyablePrompt } from "../../components/CopyablePrompt";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
@@ -10,6 +11,7 @@ import { GALLERY_ITEMS, buildGalleryRemixHref, type GalleryItem } from "./data";
 
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
+const GALLERY_PREVIEW_IMAGE_SIZE = { width: 1664, height: 1040 } as const;
 
 function GalleryCard({ item, appUrl }: { item: GalleryItem; appUrl: string }) {
   const remixHref = buildGalleryRemixHref(item, appUrl);
@@ -31,7 +33,10 @@ function GalleryCard({ item, appUrl }: { item: GalleryItem; appUrl: string }) {
         <div className="relative aspect-[16/10] overflow-hidden bg-[hsl(var(--gray-1))]">
           <div className="absolute inset-y-0 left-0 w-[calc(100%+18px)] transition-transform duration-300 group-hover:scale-[1.03]">
             <Image
-              src={item.previewImage}
+              src={r2ImageTransformUrl(
+                item.previewImage,
+                GALLERY_PREVIEW_IMAGE_SIZE,
+              )}
               alt={item.title}
               fill
               sizes="(min-width: 880px) 832px, calc(100vw - 48px)"

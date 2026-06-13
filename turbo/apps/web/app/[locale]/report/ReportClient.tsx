@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
+import { r2ImageTransformUrl } from "@vm0/core";
 import { CopyablePrompt } from "../../components/CopyablePrompt";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
@@ -12,6 +13,7 @@ import { REPORT_ITEMS, buildReportRemixHref, type ReportItem } from "./data";
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
 const REPORT_PREVIEW_SCROLL_SPEED = 28;
+const REPORT_PREVIEW_IMAGE_SIZE = { width: 1664 } as const;
 
 function ReportPreview({ item }: { item: ReportItem }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -80,7 +82,10 @@ function ReportPreview({ item }: { item: ReportItem }) {
         className="max-h-[640px] overflow-hidden sm:max-h-[720px]"
       >
         <Image
-          src={item.previewImage}
+          src={r2ImageTransformUrl(
+            item.previewImage,
+            REPORT_PREVIEW_IMAGE_SIZE,
+          )}
           alt={item.title}
           width={item.previewWidth}
           height={item.previewHeight}
