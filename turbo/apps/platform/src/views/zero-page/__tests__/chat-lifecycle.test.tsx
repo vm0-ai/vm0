@@ -1543,6 +1543,9 @@ describe("chat lifecycle", () => {
       expect(
         screen.queryByLabelText("Credit usage 123"),
       ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Thread credit usage 123"),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -1713,6 +1716,135 @@ describe("chat lifecycle", () => {
       screen.findByLabelText("Credit usage 108"),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByLabelText("Credit usage 12")).not.toBeInTheDocument();
+  });
+
+  it("shows aggregate thread credit usage from latest run settlements", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-aggregate-usage-chip",
+      chatMessages: [
+        {
+          id: "msg-thread-usage-user-a",
+          role: "user",
+          content: "Start usage run A",
+          runId: "run-thread-usage-a",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-thread-usage-assistant-a",
+          role: "assistant",
+          content: "Run A is ready.",
+          runId: "run-thread-usage-a",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-thread-usage-stale-a",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-a",
+          usage: {
+            version: 1,
+            totalCredits: 40,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 40,
+                providers: [{ provider: "moonshot", credits: 40 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-thread-usage-latest-a",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-a",
+          usage: {
+            version: 1,
+            totalCredits: 55,
+            settledAt: "2026-06-09T10:00:04Z",
+            breakdown: [
+              {
+                kind: "model/kimi-k2.5/tokens.input",
+                credits: 45,
+                providers: [{ provider: "moonshot", credits: 45 }],
+              },
+              {
+                kind: "connector",
+                credits: 10,
+                providers: [{ provider: "x", credits: 10 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+        {
+          id: "msg-thread-usage-user-b",
+          role: "user",
+          content: "Start usage run B",
+          runId: "run-thread-usage-b",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-thread-usage-assistant-b",
+          role: "assistant",
+          content: "Run B is ready.",
+          runId: "run-thread-usage-b",
+          createdAt: "2026-06-09T10:01:01Z",
+        },
+        {
+          id: "msg-thread-usage-latest-b",
+          role: "assistant",
+          content: null,
+          runId: "run-thread-usage-b",
+          usage: {
+            version: 1,
+            totalCredits: 70,
+            settledAt: "2026-06-09T10:01:02Z",
+            breakdown: [
+              {
+                kind: "image",
+                credits: 70,
+                providers: [{ provider: "gpt-image-2", credits: 70 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:01:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-aggregate-usage-chip",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    const threadCredit = await screen.findByLabelText(
+      "Thread credit usage 125",
+    );
+    const artifacts = screen.getByLabelText("Open artifacts");
+    expect(
+      threadCredit.compareDocumentPosition(artifacts) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.pointerEnter(threadCredit);
+
+    await waitFor(() => {
+      expect(screen.getByText("Thread credit usage")).toBeInTheDocument();
+      expect(screen.getAllByText("125").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Kimi K2.5")).toBeInTheDocument();
+      expect(screen.getAllByText("45").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("X")).toBeInTheDocument();
+      expect(screen.getAllByText("10").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("GPT Image 2")).toBeInTheDocument();
+      expect(screen.getAllByText("70").length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText("40")).not.toBeInTheDocument();
+    });
   });
 
   it("keeps connector usage visible when completed work is folded", async () => {
