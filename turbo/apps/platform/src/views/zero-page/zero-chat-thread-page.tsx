@@ -5739,12 +5739,14 @@ function UsageChip({
   usage,
   title,
   ariaLabel,
+  contentAlign = "start",
   open,
   setOpen,
 }: {
   usage: ChatMessageUsagePayload;
   title: string;
   ariaLabel: string;
+  contentAlign?: "start" | "center" | "end";
   open: boolean;
   setOpen: (open: boolean) => void;
 }) {
@@ -5788,7 +5790,7 @@ function UsageChip({
       </PopoverAnchor>
       <PopoverContent
         side="bottom"
-        align="start"
+        align={contentAlign}
         className="w-72 p-3"
         onPointerEnter={() => {
           setOpen(true);
@@ -5831,7 +5833,15 @@ function UsageChip({
 
 const THREAD_USAGE_POPOVER_ID = "__thread_credit_usage__";
 
-function ThreadUsageChip({ thread }: { thread: ChatThreadSignals }) {
+export function ThreadUsageChip({
+  thread,
+  contentAlign,
+  popoverId = THREAD_USAGE_POPOVER_ID,
+}: {
+  thread: ChatThreadSignals;
+  contentAlign?: "start" | "center" | "end";
+  popoverId?: string;
+}) {
   const usageLoadable = useLastLoadable(thread.threadUsage$);
   const openRunId = useGet(runUsagePopoverOpenRunId$);
   const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
@@ -5847,9 +5857,10 @@ function ThreadUsageChip({ thread }: { thread: ChatThreadSignals }) {
       usage={usage}
       title="Thread credit usage"
       ariaLabel="Thread credit usage"
-      open={openRunId === THREAD_USAGE_POPOVER_ID}
+      contentAlign={contentAlign}
+      open={openRunId === popoverId}
       setOpen={(open) => {
-        setOpenRunId(open ? THREAD_USAGE_POPOVER_ID : null);
+        setOpenRunId(open ? popoverId : null);
       }}
     />
   );
