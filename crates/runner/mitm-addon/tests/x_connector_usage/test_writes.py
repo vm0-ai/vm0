@@ -14,6 +14,11 @@ from tests.x_flow_helpers import (
 )
 
 
+def _raw_deflate_body(payload: bytes) -> bytes:
+    compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    return compressor.compress(payload) + compressor.flush()
+
+
 def test_logs_write_operation_charges_one(x_usage, tmp_path, real_flow):
     """POST /2/tweets (no request body parsed) -> stay on the expensive
     with_url bucket, quantity=1."""
@@ -86,8 +91,21 @@ def test_tweet_create_plain_text_downgrades_to_content_create(x_usage, tmp_path,
 @pytest.mark.parametrize(
     ("request_encoding", "request_body"),
     [
-        ("gzip", gzip.compress(json.dumps({"text": "hello world"}).encode())),
-        ("deflate", zlib.compress(json.dumps({"text": "hello world"}).encode())),
+        pytest.param(
+            "gzip",
+            gzip.compress(json.dumps({"text": "hello world"}).encode()),
+            id="gzip",
+        ),
+        pytest.param(
+            "deflate",
+            zlib.compress(json.dumps({"text": "hello world"}).encode()),
+            id="deflate-zlib",
+        ),
+        pytest.param(
+            "deflate",
+            _raw_deflate_body(json.dumps({"text": "hello world"}).encode()),
+            id="deflate-raw",
+        ),
     ],
 )
 def test_tweet_create_compressed_plain_text_downgrades_to_content_create(
@@ -151,7 +169,7 @@ def test_tweet_create_raw_body_over_cap_stays_conservative(x_usage, tmp_path, re
     assert p["quantity"] == 1
 
 
-@pytest.mark.parametrize("request_encoding", ["gzip", "br", "zstd", "x-vm0-test"])
+@pytest.mark.parametrize("request_encoding", ["gzip", "deflate", "br", "zstd", "x-vm0-test"])
 def test_tweet_create_invalid_or_unsupported_encoding_stays_conservative(
     x_usage, tmp_path, real_flow, request_encoding
 ):
