@@ -2509,6 +2509,44 @@ function groupMessagesForCompletedWorkDisplay(
   return groups;
 }
 
+function firstRunIdForMessages(
+  messages: readonly EnrichedChatMessage[],
+): string | undefined {
+  return messages.find((message) => {
+    return message.runId !== undefined;
+  })?.runId;
+}
+
+function usageByRunIdFromGroups(
+  groups: readonly GroupedChatMessageGroup[],
+): Map<string, ChatMessageUsagePayload> {
+  const usageByRunId = new Map<string, ChatMessageUsagePayload>();
+  for (const group of groups) {
+    if (group.role !== "assistant" || group.usage === undefined) {
+      continue;
+    }
+    const runId = firstRunIdForMessages(group.messages);
+    if (runId !== undefined) {
+      usageByRunId.set(runId, group.usage);
+    }
+  }
+  return usageByRunId;
+}
+
+function attachUsageToCompletedWorkGroups(
+  groups: readonly GroupedChatMessageGroup[],
+  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+): GroupedChatMessageGroup[] {
+  return groups.map((group) => {
+    if (group.role !== "assistant") {
+      return group;
+    }
+    const runId = firstRunIdForMessages(group.messages);
+    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    return usage === undefined ? group : { ...group, usage };
+  });
+}
+
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
     message.role === "assistant" &&
@@ -2538,6 +2576,7 @@ function terminatedRunIdsForCompletedWork(
 function buildCompletedWorkFolding(
   groups: readonly GroupedChatMessageGroup[],
 ): CompletedWorkFolding | null {
+  const usageByRunId = usageByRunIdFromGroups(groups);
   const messages = groups.flatMap((group) => {
     return group.messages;
   });
@@ -2620,9 +2659,12 @@ function buildCompletedWorkFolding(
     }),
   );
   return {
-    visibleGroups: groupMessagesForCompletedWorkDisplay(
-      visibleMessages,
-      foldFinalMessageIds,
+    visibleGroups: attachUsageToCompletedWorkGroups(
+      groupMessagesForCompletedWorkDisplay(
+        visibleMessages,
+        foldFinalMessageIds,
+      ),
+      usageByRunId,
     ),
     foldsByFinalMessageId: new Map(
       folds.map((fold) => {

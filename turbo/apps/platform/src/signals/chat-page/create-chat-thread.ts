@@ -912,7 +912,7 @@ function mergeIntoGroups(
     }
 
     const last = result[result.length - 1];
-    if (last && last.role === msg.role) {
+    if (last && shouldMergeIntoGroup(last, msg)) {
       last.messages.push(msg);
       positionById.set(msg.id, {
         groupIdx: result.length - 1,
@@ -928,6 +928,32 @@ function mergeIntoGroups(
     }
   }
   return result;
+}
+
+function firstRunIdForGroup(
+  group: GroupedChatMessageGroup,
+): string | undefined {
+  return group.messages.find((message) => {
+    return message.runId !== undefined;
+  })?.runId;
+}
+
+function shouldMergeIntoGroup(
+  group: GroupedChatMessageGroup,
+  msg: EnrichedChatMessage,
+): boolean {
+  if (group.role !== msg.role) {
+    return false;
+  }
+  if (group.role !== "assistant") {
+    return true;
+  }
+
+  const groupRunId = firstRunIdForGroup(group);
+  if (groupRunId === undefined || msg.runId === undefined) {
+    return true;
+  }
+  return groupRunId === msg.runId;
 }
 
 function groupMessagesForDisplay(
@@ -961,9 +987,7 @@ function groupMessagesForDisplay(
     if (group.role !== "assistant") {
       return group;
     }
-    const runId = group.messages.find((message) => {
-      return message.runId !== undefined;
-    })?.runId;
+    const runId = firstRunIdForGroup(group);
     const usage = runId === undefined ? undefined : usageByRunId.get(runId);
     return usage === undefined ? group : { ...group, usage };
   });

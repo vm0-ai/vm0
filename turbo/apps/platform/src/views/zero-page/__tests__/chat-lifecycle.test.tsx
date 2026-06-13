@@ -1715,6 +1715,189 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Credit usage 12")).not.toBeInTheDocument();
   });
 
+  it("keeps connector usage visible when completed work is folded", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-chip-folded-connector",
+      chatMessages: [
+        {
+          id: "msg-usage-folded-user",
+          role: "user",
+          content: "Use the connector",
+          runId: "run-usage-folded-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-folded-work",
+          role: "assistant",
+          content: "Inspecting connector results.",
+          runId: "run-usage-folded-connector",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-folded-final",
+          role: "assistant",
+          content: "Connector usage is ready.",
+          runId: "run-usage-folded-connector",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-usage-folded-usage",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-folded-connector",
+          usage: {
+            version: 1,
+            totalCredits: 108,
+            settledAt: "2026-06-09T10:00:03Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 108,
+                providers: [{ provider: "x", credits: 108 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-usage-folded-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-folded-connector",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-chip-folded-connector",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Connector usage is ready."),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("Inspecting connector results."),
+    ).not.toBeInTheDocument();
+
+    const connectorCredit = await screen.findByLabelText("Credit usage 108");
+    fireEvent.pointerEnter(connectorCredit);
+
+    await waitFor(() => {
+      expect(screen.getByText("X")).toBeInTheDocument();
+      expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("keeps connector usage attached to consecutive assistant runs", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-usage-chip-consecutive-runs",
+      chatMessages: [
+        {
+          id: "msg-usage-consecutive-user",
+          role: "user",
+          content: "Summarize two runs",
+          runId: "run-usage-model",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-usage-consecutive-model-assistant",
+          role: "assistant",
+          content: "Model usage is ready.",
+          runId: "run-usage-model",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-usage-consecutive-model",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-model",
+          usage: {
+            version: 1,
+            totalCredits: 12,
+            settledAt: "2026-06-09T10:00:02Z",
+            breakdown: [
+              {
+                kind: "model/gpt-5.5/tokens.output",
+                credits: 12,
+                providers: [{ provider: "openai", credits: 12 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-usage-consecutive-model-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-model",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+        {
+          id: "msg-usage-consecutive-connector-assistant",
+          role: "assistant",
+          content: "Connector usage is ready.",
+          runId: "run-usage-connector",
+          createdAt: "2026-06-09T10:00:04Z",
+        },
+        {
+          id: "msg-usage-consecutive-connector",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-connector",
+          usage: {
+            version: 1,
+            totalCredits: 108,
+            settledAt: "2026-06-09T10:00:05Z",
+            breakdown: [
+              {
+                kind: "connector",
+                credits: 108,
+                providers: [{ provider: "x", credits: 108 }],
+              },
+            ],
+          },
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+        {
+          id: "msg-usage-consecutive-connector-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-usage-connector",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:06Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-usage-chip-consecutive-runs",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunUsage]: true,
+      },
+    });
+
+    await expect(
+      screen.findByLabelText("Credit usage 12"),
+    ).resolves.toBeInTheDocument();
+    const connectorCredit = await screen.findByLabelText("Credit usage 108");
+
+    fireEvent.pointerEnter(connectorCredit);
+
+    await waitFor(() => {
+      expect(screen.getByText("Connector usage is ready.")).toBeInTheDocument();
+      expect(screen.getByText("X")).toBeInTheDocument();
+      expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it("stops a server-queued run and recalls queued follow-up messages", async () => {
     const interrupts: string[] = [];
     const recalls: string[] = [];
