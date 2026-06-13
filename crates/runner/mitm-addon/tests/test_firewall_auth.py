@@ -24,6 +24,7 @@ from tests.auth_state_helpers import (
     set_cached_headers,
 )
 from tests.firewall_helpers import cancel_pending_task
+from url_utils import get_original_url
 
 _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
 
@@ -826,6 +827,7 @@ class TestHandleFirewallRequest:
             ),
         )
         flow.metadata["vm_run_id"] = "test-run"
+        flow.metadata["original_url"] = get_original_url(flow)
         api_entry = _api_entry(
             base="https://sts.amazonaws.com",
             auth_config={
