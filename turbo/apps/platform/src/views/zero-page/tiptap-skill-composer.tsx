@@ -2,7 +2,6 @@
 // inline decorations rather than a transparent-textarea + colored overlay, so the
 // color lives in the same layer as the text and moves/scrolls with it — there is
 // no second layer to keep aligned when the input scrolls (issue #17539).
-import { useEffect, useState } from "react";
 import {
   useGet,
   useSet,
@@ -27,6 +26,8 @@ import {
   setSlashSkillCaretIndex$,
   selectedSlashSkillIndex$,
   setSelectedSlashSkillIndex$,
+  openSlashConnectorType$,
+  setOpenSlashConnectorType$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   buildComposerSlashSkills,
@@ -40,10 +41,7 @@ import {
   type SlashMenuItem,
   type SlashSkillRange,
 } from "./slash-skill.tsx";
-import {
-  CONNECTOR_COMMAND_GROUPS,
-  type ConnectorCommand,
-} from "./connector-commands.ts";
+import { CONNECTOR_COMMAND_GROUPS } from "./connector-commands.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
 // Match the textarea metrics so swapping inputs is visually seamless. The editor
@@ -276,6 +274,9 @@ interface EditorOptionsParams {
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly setSelectedSkillIndex: (index: number) => void;
   readonly setCaretIndex: (index: number) => void;
+  // Drop back to the menu's top level when the content changes, so a connector
+  // drawer never silently reopens on the next `/`.
+  readonly resetConnectorDrawer: () => void;
   readonly onEditorKeyDown: (event: KeyboardEvent) => boolean;
 }
 
@@ -314,6 +315,7 @@ function buildEditorOptions(
         params.onInputChange(value);
       }
       params.setSelectedSkillIndex(0);
+      params.resetConnectorDrawer();
       params.setCaretIndex(caretStringIndex(editor));
     },
     onSelectionUpdate: ({ editor }) => {
@@ -352,6 +354,237 @@ function syncEditorState(
   }
 }
 
+// Connected connectors that have a curated command group, gated by the feature
+// switch. The display label comes from the connector registry; only connected
+// connectors appear so the menu never offers a command the user can't run.
+function buildConnectorGroups(
+  enabled: boolean,
+  connectorStatuses: readonly {
+    readonly type: ConnectorType;
+    readonly connected: boolean;
+    readonly label: string;
+  }[],
+): readonly SlashConnectorGroup[] {
+  if (!enabled) {
+    return [];
+  }
+  return CONNECTOR_COMMAND_GROUPS.flatMap((group) => {
+    const status = connectorStatuses.find((connector) => {
+      return connector.type === group.connectorType;
+    });
+    if (!status || !status.connected) {
+      return [];
+    }
+    return [
+      {
+        connectorType: group.connectorType,
+        label: status.label,
+        commands: group.commands,
+      },
+    ];
+  });
+}
+
+interface SlashMenuModel {
+  readonly menuItems: readonly SlashMenuItem[];
+  readonly menuMode: "top" | "drawer";
+  readonly openGroup: SlashConnectorGroup | null;
+  readonly showMenu: boolean;
+}
+
+// Builds the ordered rows for the current menu level plus whether the menu is
+// shown, from the active slash query, the agent's skills, and the connected
+// connector groups. Kept pure so the component stays small. The menu renders and
+// keys off the same array, so the keyboard selection index always agrees.
+function buildSlashMenuModel({
+  slashRange,
+  composerSkills,
+  connectorGroups,
+  openConnectorType,
+  isLoadingOrgSkills,
+  showSkillsPageLink,
+}: {
+  readonly slashRange: SlashSkillRange | null;
+  readonly composerSkills: readonly ComposerSlashSkill[];
+  readonly connectorGroups: readonly SlashConnectorGroup[];
+  readonly openConnectorType: ConnectorType | null;
+  readonly isLoadingOrgSkills: boolean;
+  readonly showSkillsPageLink: boolean;
+}): SlashMenuModel {
+  const query = slashRange?.query ?? null;
+  const suggestions =
+    query === null
+      ? []
+      : composerSkills.filter((skill) => {
+          return matchesSkillQuery(skill, query);
+        });
+  const filteredConnectorGroups =
+    query === null
+      ? []
+      : connectorGroups.filter((group) => {
+          return group.label.toLowerCase().includes(query.toLowerCase());
+        });
+  const openGroup =
+    connectorGroups.find((group) => {
+      return group.connectorType === openConnectorType;
+    }) ?? null;
+  const menuItems: readonly SlashMenuItem[] = openGroup
+    ? openGroup.commands.map((command, index) => {
+        return { kind: "command", command, index } as const;
+      })
+    : [
+        ...filteredConnectorGroups.map((group) => {
+          return { kind: "connector", group } as const;
+        }),
+        ...suggestions.map((skill) => {
+          return { kind: "skill", skill } as const;
+        }),
+      ];
+  const showMenu =
+    slashRange !== null &&
+    (isLoadingOrgSkills ||
+      composerSkills.length > 0 ||
+      showSkillsPageLink ||
+      filteredConnectorGroups.length > 0 ||
+      openGroup !== null);
+  return {
+    menuItems,
+    menuMode: openGroup ? "drawer" : "top",
+    openGroup,
+    showMenu,
+  };
+}
+
+interface SlashSelectContext {
+  readonly editor: Editor | null;
+  readonly slashRange: SlashSkillRange | null;
+  readonly input: string;
+  readonly onDraftChange: (() => void) | undefined;
+  readonly openDrawer: (connectorType: ConnectorType) => void;
+}
+
+// Applies a chosen menu row: connectors open their command drawer; skills and
+// commands insert their text via the shared insertion path.
+function selectSlashMenuItem(
+  item: SlashMenuItem,
+  ctx: SlashSelectContext,
+): void {
+  if (item.kind === "connector") {
+    ctx.openDrawer(item.group.connectorType);
+    return;
+  }
+  if (!ctx.editor || !ctx.slashRange) {
+    return;
+  }
+  if (item.kind === "skill") {
+    insertSkillToken(ctx.editor, ctx.slashRange, ctx.input, item.skill);
+  } else {
+    insertPromptText(ctx.editor, ctx.slashRange, item.command.prompt);
+  }
+  ctx.onDraftChange?.();
+}
+
+interface ComposerKeyContext {
+  readonly showMenu: boolean;
+  readonly menuItems: readonly SlashMenuItem[];
+  readonly selectedIndex: number;
+  readonly setSelectedIndex: (index: number) => void;
+  readonly setCaretIndex: (index: number) => void;
+  readonly onSelect: (item: SlashMenuItem) => void;
+  readonly onBack: (() => void) | null;
+  readonly onKeyDown: (event: KeyboardEventLike) => void;
+}
+
+// Lets the open suggestion menu consume navigation/selection keys first, then
+// defers to the parent for send / global shortcuts.
+function handleComposerKeyDown(
+  event: KeyboardEvent,
+  ctx: ComposerKeyContext,
+): boolean {
+  if (
+    ctx.showMenu &&
+    handleSlashMenuKey(event, {
+      items: ctx.menuItems,
+      selectedIndex: ctx.selectedIndex,
+      setSelectedIndex: ctx.setSelectedIndex,
+      setCaretIndex: ctx.setCaretIndex,
+      onSelect: ctx.onSelect,
+      onBack: ctx.onBack,
+    })
+  ) {
+    return true;
+  }
+  // Defer to the parent for send / global shortcuts. If it consumes the event
+  // (e.g. Enter-to-send) it calls preventDefault; otherwise the editor handles
+  // the keystroke (e.g. Shift+Enter or mobile Enter inserts a newline).
+  ctx.onKeyDown(event);
+  return event.defaultPrevented;
+}
+
+// Presentational shell: the TipTap editor with its placeholder, anchored to the
+// Radix Popover (Floating UI) that positions the slash menu cross-browser above
+// the input. `open` is fully controlled by composer state, so Escape/typing
+// close it via showMenu.
+function SlashComposerShell({
+  editor,
+  input,
+  sending,
+  showMenu,
+  menuItems,
+  menuMode,
+  drawerLabel,
+  loading,
+  selectedIndex,
+  showSkillsPageLink,
+  onSelect,
+  onBack,
+}: {
+  readonly editor: Editor | null;
+  readonly input: string;
+  readonly sending: boolean | undefined;
+  readonly showMenu: boolean;
+  readonly menuItems: readonly SlashMenuItem[];
+  readonly menuMode: "top" | "drawer";
+  readonly drawerLabel: string | null;
+  readonly loading: boolean;
+  readonly selectedIndex: number;
+  readonly showSkillsPageLink: boolean;
+  readonly onSelect: (item: SlashMenuItem) => void;
+  readonly onBack: () => void;
+}) {
+  return (
+    <Popover open={showMenu}>
+      <PopoverAnchor asChild>
+        <div className="relative min-h-[96px]">
+          {input === "" && (
+            <div
+              className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
+              aria-hidden="true"
+            >
+              {sending
+                ? "Type your next message…"
+                : "Ask me to automate workflows, manage tasks..."}
+            </div>
+          )}
+          <EditorContent editor={editor} />
+        </div>
+      </PopoverAnchor>
+      {showMenu && (
+        <SlashSkillMenu
+          items={menuItems}
+          mode={menuMode}
+          drawerLabel={drawerLabel}
+          loading={loading}
+          selectedIndex={selectedIndex}
+          showSkillsPageLink={showSkillsPageLink}
+          onSelect={onSelect}
+          onBack={onBack}
+        />
+      )}
+    </Popover>
+  );
+}
+
 export function TiptapSkillComposer({
   input,
   onInputChange,
@@ -375,6 +608,11 @@ export function TiptapSkillComposer({
   const setCaretIndex = useSet(setSlashSkillCaretIndex$);
   const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
   const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
+  // Which connector drawer is open, or null at the top level. Lives in a signal
+  // (React state is restricted here) and resets on content change so reopening
+  // `/` always starts at the top level.
+  const openConnectorType = useGet(openSlashConnectorType$);
+  const setOpenConnectorType = useSet(setOpenSlashConnectorType$);
   const currentAgent = useLastResolved(currentChatAgent$);
   const features = useLastResolved(featureSwitch$);
   const orgSkillsLoadable = useLastLoadable(orgSkills$);
@@ -383,10 +621,7 @@ export function TiptapSkillComposer({
   const connectorsLoadable = useLastLoadable(allConnectorTypes$);
   const connectorStatuses =
     connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
-  // Which connector drawer is open, or null at the top level. Reset whenever the
-  // menu closes (effect below) so reopening `/` always starts at the top level.
-  const [openConnectorType, setOpenConnectorType] =
-    useState<ConnectorType | null>(null);
+
   const composerSkills = buildComposerSlashSkills({
     agentSkillNames: currentAgent?.customSkills ?? [],
     orgSkills: orgSkillsData,
@@ -396,81 +631,20 @@ export function TiptapSkillComposer({
   });
 
   const slashRange = findActiveSlashSkillRange(input, caretIndex);
-  const suggestions = slashRange
-    ? composerSkills.filter((skill) => {
-        return matchesSkillQuery(skill, slashRange.query);
-      })
-    : [];
-
-  // Connected connectors that have a curated command group, gated by the feature
-  // switch. The display label comes from the connector registry; only connected
-  // connectors appear so the menu never offers a command the user can't run.
-  const connectorCommandsEnabled =
-    features?.[FeatureSwitchKey.ChatConnectorCommands] ?? false;
-  const connectorGroups: readonly SlashConnectorGroup[] =
-    connectorCommandsEnabled
-      ? CONNECTOR_COMMAND_GROUPS.flatMap((group) => {
-          const status = connectorStatuses.find((connector) => {
-            return connector.type === group.connectorType;
-          });
-          if (!status || !status.connected) {
-            return [];
-          }
-          return [
-            {
-              connectorType: group.connectorType,
-              label: status.label,
-              commands: group.commands,
-            },
-          ];
-        })
-      : [];
-  const filteredConnectorGroups = slashRange
-    ? connectorGroups.filter((group) => {
-        return group.label
-          .toLowerCase()
-          .includes(slashRange.query.toLowerCase());
-      })
-    : [];
-  const openGroup = openConnectorType
-    ? (connectorGroups.find((group) => {
-        return group.connectorType === openConnectorType;
-      }) ?? null)
-    : null;
-
-  // The ordered rows for the current level. The menu renders/keys off the same
-  // array, so the keyboard selection index and the rendered rows always agree.
-  const menuItems: readonly SlashMenuItem[] = openGroup
-    ? openGroup.commands.map((command, index) => {
-        return { kind: "command", command, index } as const;
-      })
-    : [
-        ...filteredConnectorGroups.map((group) => {
-          return { kind: "connector", group } as const;
-        }),
-        ...suggestions.map((skill) => {
-          return { kind: "skill", skill } as const;
-        }),
-      ];
-  const menuMode: "top" | "drawer" = openGroup ? "drawer" : "top";
-
   const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
   const showSkillsPageLink = features?.[FeatureSwitchKey.SkillsViewer] ?? false;
-  const showSlashSkillMenu =
-    slashRange !== null &&
-    (isLoadingOrgSkills ||
-      composerSkills.length > 0 ||
-      showSkillsPageLink ||
-      filteredConnectorGroups.length > 0 ||
-      openGroup !== null);
-
-  // The menu's open/close is derived state; when it closes, drop back to the top
-  // level so a connector drawer never silently reopens on the next `/`.
-  useEffect(() => {
-    if (!showSlashSkillMenu && openConnectorType !== null) {
-      setOpenConnectorType(null);
-    }
-  }, [showSlashSkillMenu, openConnectorType]);
+  const connectorGroups = buildConnectorGroups(
+    features?.[FeatureSwitchKey.ChatConnectorCommands] ?? false,
+    connectorStatuses,
+  );
+  const { menuItems, menuMode, openGroup, showMenu } = buildSlashMenuModel({
+    slashRange,
+    composerSkills,
+    connectorGroups,
+    openConnectorType,
+    isLoadingOrgSkills,
+    showSkillsPageLink,
+  });
 
   // Created once; useEditor refreshes its options via setOptions on every render,
   // so the handlers always close over the latest props/state (no refs needed).
@@ -484,30 +658,28 @@ export function TiptapSkillComposer({
       setInputRef,
       setSelectedSkillIndex,
       setCaretIndex,
+      resetConnectorDrawer: () => {
+        if (openConnectorType !== null) {
+          setOpenConnectorType(null);
+        }
+      },
       onEditorKeyDown: (event) => {
-        return handleEditorKeyDown(event);
+        return handleComposerKeyDown(event, {
+          showMenu,
+          menuItems,
+          selectedIndex: selectedSkillIndex,
+          setSelectedIndex: setSelectedSkillIndex,
+          setCaretIndex,
+          onSelect: selectItem,
+          onBack: openGroup ? closeConnectorDrawer : null,
+          onKeyDown,
+        });
       },
     }),
   );
 
   if (editor) {
     syncEditorState(editor, skillNames, input);
-  }
-
-  function insertSkill(skill: ComposerSlashSkill): void {
-    if (!editor || !slashRange) {
-      return;
-    }
-    insertSkillToken(editor, slashRange, input, skill);
-    onDraftChange?.();
-  }
-
-  function insertPrompt(command: ConnectorCommand): void {
-    if (!editor || !slashRange) {
-      return;
-    }
-    insertPromptText(editor, slashRange, command.prompt);
-    onDraftChange?.();
   }
 
   function openConnectorDrawer(connectorType: ConnectorType): void {
@@ -520,71 +692,30 @@ export function TiptapSkillComposer({
     setSelectedSkillIndex(0);
   }
 
-  function selectMenuItem(item: SlashMenuItem): void {
-    if (item.kind === "connector") {
-      openConnectorDrawer(item.group.connectorType);
-      return;
-    }
-    if (item.kind === "skill") {
-      insertSkill(item.skill);
-      return;
-    }
-    insertPrompt(item.command);
-  }
-
-  function handleEditorKeyDown(event: KeyboardEvent): boolean {
-    if (
-      showSlashSkillMenu &&
-      handleSlashMenuKey(event, {
-        items: menuItems,
-        selectedIndex: selectedSkillIndex,
-        setSelectedIndex: setSelectedSkillIndex,
-        setCaretIndex,
-        onSelect: selectMenuItem,
-        onBack: openGroup ? closeConnectorDrawer : null,
-      })
-    ) {
-      return true;
-    }
-    // Defer to the parent for send / global shortcuts. If it consumes the event
-    // (e.g. Enter-to-send) it calls preventDefault; otherwise the editor handles
-    // the keystroke (e.g. Shift+Enter or mobile Enter inserts a newline).
-    onKeyDown(event);
-    return event.defaultPrevented;
+  function selectItem(item: SlashMenuItem): void {
+    selectSlashMenuItem(item, {
+      editor,
+      slashRange,
+      input,
+      onDraftChange,
+      openDrawer: openConnectorDrawer,
+    });
   }
 
   return (
-    // Radix Popover (Floating UI) positions the menu cross-browser; the anchor
-    // is the input region so the menu sits above it. `open` is fully controlled
-    // by composer state, so Escape/typing close it via showSlashSkillMenu.
-    <Popover open={showSlashSkillMenu}>
-      <PopoverAnchor asChild>
-        <div className="relative min-h-[96px]">
-          {input === "" && (
-            <div
-              className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
-              aria-hidden="true"
-            >
-              {sending
-                ? "Type your next message…"
-                : "Ask me to automate workflows, manage tasks..."}
-            </div>
-          )}
-          <EditorContent editor={editor} />
-        </div>
-      </PopoverAnchor>
-      {showSlashSkillMenu && (
-        <SlashSkillMenu
-          items={menuItems}
-          mode={menuMode}
-          drawerLabel={openGroup ? openGroup.label : null}
-          loading={isLoadingOrgSkills}
-          selectedIndex={selectedSkillIndex}
-          showSkillsPageLink={showSkillsPageLink}
-          onSelect={selectMenuItem}
-          onBack={closeConnectorDrawer}
-        />
-      )}
-    </Popover>
+    <SlashComposerShell
+      editor={editor}
+      input={input}
+      sending={sending}
+      showMenu={showMenu}
+      menuItems={menuItems}
+      menuMode={menuMode}
+      drawerLabel={openGroup ? openGroup.label : null}
+      loading={isLoadingOrgSkills}
+      selectedIndex={selectedSkillIndex}
+      showSkillsPageLink={showSkillsPageLink}
+      onSelect={selectItem}
+      onBack={closeConnectorDrawer}
+    />
   );
 }

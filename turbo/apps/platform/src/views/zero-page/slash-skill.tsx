@@ -197,24 +197,67 @@ function SlashMenuRow({
   );
 }
 
-export function SlashSkillMenu({
+// The open connector's drawer: a back row to the top level above that
+// connector's curated commands.
+function SlashDrawerContent({
   items,
-  mode,
   drawerLabel,
-  loading,
   selectedIndex,
-  showSkillsPageLink,
   onSelect,
   onBack,
 }: {
   readonly items: readonly SlashMenuItem[];
-  readonly mode: "top" | "drawer";
   readonly drawerLabel: string | null;
-  readonly loading: boolean;
   readonly selectedIndex: number;
-  readonly showSkillsPageLink: boolean;
   readonly onSelect: (item: SlashMenuItem) => void;
   readonly onBack: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-left text-[0.8125rem] font-medium text-popover-foreground"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          onBack();
+        }}
+      >
+        <IconChevronLeft
+          size={16}
+          stroke={1.8}
+          className="shrink-0 text-muted-foreground"
+        />
+        <span className="truncate">{drawerLabel}</span>
+      </button>
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
+        {items.map((item, index) => {
+          return (
+            <SlashMenuRow
+              key={slashMenuItemId(item)}
+              item={item}
+              index={index}
+              selectedIndex={selectedIndex}
+              onSelect={onSelect}
+            />
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// The top level: connected connectors' command groups (Commands) above the
+// current agent's skills (Skills).
+function SlashTopLevelContent({
+  items,
+  loading,
+  selectedIndex,
+  onSelect,
+}: {
+  readonly items: readonly SlashMenuItem[];
+  readonly loading: boolean;
+  readonly selectedIndex: number;
+  readonly onSelect: (item: SlashMenuItem) => void;
 }) {
   const connectorItems = items
     .map((item, index) => {
@@ -236,6 +279,102 @@ export function SlashSkillMenu({
     loading || skillItems.length > 0 || connectorItems.length === 0;
 
   return (
+    <>
+      {connectorItems.length > 0 && (
+        <>
+          <div className={SECTION_LABEL_CLASS}>Commands</div>
+          <div className="px-1.5 pb-1">
+            {connectorItems.map((entry) => {
+              return (
+                <SlashMenuRow
+                  key={slashMenuItemId(entry.item)}
+                  item={entry.item}
+                  index={entry.index}
+                  selectedIndex={selectedIndex}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+      {showSkillsSection && (
+        <>
+          <div className={SECTION_LABEL_CLASS}>Skills</div>
+          {loading ? (
+            <div className="px-2.5 py-2 text-sm text-muted-foreground">
+              Loading skills...
+            </div>
+          ) : skillItems.length > 0 ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
+              {skillItems.map((entry) => {
+                return (
+                  <SlashMenuRow
+                    key={slashMenuItemId(entry.item)}
+                    item={entry.item}
+                    index={entry.index}
+                    selectedIndex={selectedIndex}
+                    onSelect={onSelect}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
+              No matching skills
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+function SlashSkillsPageLink() {
+  return (
+    <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1.5">
+      <Link
+        pathname="/skills"
+        className="flex h-9 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <IconFileText
+            size={16}
+            stroke={1.8}
+            className="shrink-0 text-muted-foreground"
+          />
+          <span className="truncate">View all skills</span>
+        </span>
+        <IconChevronRight
+          size={16}
+          stroke={1.8}
+          className="shrink-0 text-muted-foreground"
+        />
+      </Link>
+    </div>
+  );
+}
+
+export function SlashSkillMenu({
+  items,
+  mode,
+  drawerLabel,
+  loading,
+  selectedIndex,
+  showSkillsPageLink,
+  onSelect,
+  onBack,
+}: {
+  readonly items: readonly SlashMenuItem[];
+  readonly mode: "top" | "drawer";
+  readonly drawerLabel: string | null;
+  readonly loading: boolean;
+  readonly selectedIndex: number;
+  readonly showSkillsPageLink: boolean;
+  readonly onSelect: (item: SlashMenuItem) => void;
+  readonly onBack: () => void;
+}) {
+  return (
     <PopoverContent
       side="top"
       align="start"
@@ -250,108 +389,22 @@ export function SlashSkillMenu({
       data-testid="slash-skill-menu"
     >
       {mode === "drawer" ? (
-        <>
-          <button
-            type="button"
-            className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-left text-[0.8125rem] font-medium text-popover-foreground"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              onBack();
-            }}
-          >
-            <IconChevronLeft
-              size={16}
-              stroke={1.8}
-              className="shrink-0 text-muted-foreground"
-            />
-            <span className="truncate">{drawerLabel}</span>
-          </button>
-          <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
-            {items.map((item, index) => {
-              return (
-                <SlashMenuRow
-                  key={slashMenuItemId(item)}
-                  item={item}
-                  index={index}
-                  selectedIndex={selectedIndex}
-                  onSelect={onSelect}
-                />
-              );
-            })}
-          </div>
-        </>
+        <SlashDrawerContent
+          items={items}
+          drawerLabel={drawerLabel}
+          selectedIndex={selectedIndex}
+          onSelect={onSelect}
+          onBack={onBack}
+        />
       ) : (
-        <>
-          {connectorItems.length > 0 && (
-            <>
-              <div className={SECTION_LABEL_CLASS}>Commands</div>
-              <div className="px-1.5 pb-1">
-                {connectorItems.map((entry) => {
-                  return (
-                    <SlashMenuRow
-                      key={slashMenuItemId(entry.item)}
-                      item={entry.item}
-                      index={entry.index}
-                      selectedIndex={selectedIndex}
-                      onSelect={onSelect}
-                    />
-                  );
-                })}
-              </div>
-            </>
-          )}
-          {showSkillsSection && (
-            <>
-              <div className={SECTION_LABEL_CLASS}>Skills</div>
-              {loading ? (
-                <div className="px-2.5 py-2 text-sm text-muted-foreground">
-                  Loading skills...
-                </div>
-              ) : skillItems.length > 0 ? (
-                <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
-                  {skillItems.map((entry) => {
-                    return (
-                      <SlashMenuRow
-                        key={slashMenuItemId(entry.item)}
-                        item={entry.item}
-                        index={entry.index}
-                        selectedIndex={selectedIndex}
-                        onSelect={onSelect}
-                      />
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
-                  No matching skills
-                </div>
-              )}
-            </>
-          )}
-        </>
+        <SlashTopLevelContent
+          items={items}
+          loading={loading}
+          selectedIndex={selectedIndex}
+          onSelect={onSelect}
+        />
       )}
-      {showSkillsPageLink && (
-        <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1.5">
-          <Link
-            pathname="/skills"
-            className="flex h-9 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <IconFileText
-                size={16}
-                stroke={1.8}
-                className="shrink-0 text-muted-foreground"
-              />
-              <span className="truncate">View all skills</span>
-            </span>
-            <IconChevronRight
-              size={16}
-              stroke={1.8}
-              className="shrink-0 text-muted-foreground"
-            />
-          </Link>
-        </div>
-      )}
+      {showSkillsPageLink && <SlashSkillsPageLink />}
     </PopoverContent>
   );
 }

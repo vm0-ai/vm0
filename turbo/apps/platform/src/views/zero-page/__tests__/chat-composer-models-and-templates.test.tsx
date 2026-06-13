@@ -723,11 +723,9 @@ describe("chat composer models", () => {
     await user.click(await within(menu).findByText("GitHub"));
 
     // Drilling into the connector drawer reveals its curated commands.
-    expect(
-      await within(screen.getByTestId("slash-skill-menu")).findByText(
-        "List PRs",
-      ),
-    ).toBeInTheDocument();
+    await expect(
+      within(screen.getByTestId("slash-skill-menu")).findByText("List PRs"),
+    ).resolves.toBeInTheDocument();
     expect(
       within(screen.getByTestId("slash-skill-menu")).getByText("Create issue"),
     ).toBeInTheDocument();
@@ -766,9 +764,9 @@ describe("chat composer models", () => {
     await user.keyboard("/");
 
     const menu = await screen.findByTestId("slash-skill-menu");
-    expect(
-      await within(menu).findByText("/sales-research"),
-    ).toBeInTheDocument();
+    await expect(
+      within(menu).findByText("/sales-research"),
+    ).resolves.toBeInTheDocument();
     expect(within(menu).queryByText("GitHub")).not.toBeInTheDocument();
   });
 
@@ -797,9 +795,9 @@ describe("chat composer models", () => {
     await user.keyboard("/");
 
     const menu = await screen.findByTestId("slash-skill-menu");
-    expect(
-      await within(menu).findByText("/sales-research"),
-    ).toBeInTheDocument();
+    await expect(
+      within(menu).findByText("/sales-research"),
+    ).resolves.toBeInTheDocument();
     expect(within(menu).queryByText("GitHub")).not.toBeInTheDocument();
   });
 
