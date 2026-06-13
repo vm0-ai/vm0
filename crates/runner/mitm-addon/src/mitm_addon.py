@@ -128,6 +128,7 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
         "token",
     )
 )
+_AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD", "OPTIONS", "TRACE"))
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
@@ -648,6 +649,8 @@ def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
 
     raw_content_lengths = flow.request.headers.get_all("Content-Length")
     if not raw_content_lengths:
+        if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
+            return _AuthBaseBodyCheck(kind="length_required", reason="missing_content_length")
         return _AuthBaseBodyCheck(kind="ok")
 
     parsed_length: int | None = None
@@ -676,7 +679,11 @@ def _parse_auth_base_content_length_part(value: str) -> int | None:
         return None
     if not value.isascii() or not value.isdecimal():
         return None
-    return int(value)
+    normalized = value.lstrip("0") or "0"
+    limit_text = str(auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES)
+    if len(normalized) > len(limit_text):
+        return auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1
+    return int(normalized)
 
 
 def _record_connector_diagnostic_candidate(

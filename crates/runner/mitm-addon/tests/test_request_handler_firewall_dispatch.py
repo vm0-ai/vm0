@@ -615,6 +615,7 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
 @pytest.mark.parametrize(
     "request_header_pairs",
     [
+        [],
         [("Transfer-Encoding", "chunked")],
         [("Content-Length", "not-a-number")],
         [("Content-Length", "-1")],
@@ -656,6 +657,36 @@ async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
         "permission": "webhook",
         "base": "https://placeholder.example.com",
     }
+
+
+async def test_auth_base_requestheaders_rejects_extreme_content_length_before_auth(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Length", "9" * 5000),
+        ),
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    get_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 413
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
 
 
 async def test_auth_base_requestheaders_accepts_matching_duplicate_content_length(
