@@ -791,16 +791,31 @@ def _apply_header_query_injection(
             flow.request.query[key] = value
 
 
+def _trusted_aws_sigv4_url(flow: http.HTTPFlow) -> str:
+    url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(url, str):
+        raise AwsSigV4SigningError("AWS request URL is unavailable")
+
+    try:
+        original = urllib.parse.urlsplit(url)
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+
+    current_query = urllib.parse.urlsplit(flow.request.path).query
+    if current_query == original.query:
+        return url
+    return urllib.parse.urlunsplit(
+        (original.scheme, original.netloc, original.path, current_query, original.fragment)
+    )
+
+
 def _sign_flow_request_with_aws_sigv4(
     flow: http.HTTPFlow,
     credentials: AwsSigV4Credentials,
 ) -> None:
-    url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-    if not isinstance(url, str):
-        raise AwsSigV4SigningError("AWS request URL is unavailable")
     signed_url, signed_headers = sign_request(
         method=flow.request.method,
-        url=url,
+        url=_trusted_aws_sigv4_url(flow),
         headers=header_pairs(flow.request.headers),
         body=flow.request.raw_content,
         credentials=credentials,

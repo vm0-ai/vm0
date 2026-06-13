@@ -404,6 +404,87 @@ async def test_re_signs_header_sigv4_request_with_trusted_original_url(
     )
 
 
+async def test_re_signs_header_sigv4_request_keeps_resolved_query_with_trusted_url(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(
+        {
+            "headers": {},
+            "query": {"Trace": "secret-value"},
+            "awsSigv4": {
+                "accessKeyId": "AKIDEXAMPLE",
+                "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+            },
+            "expiresAt": 1_800_000_000,
+            "resolvedSecrets": [
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+            ],
+            "refreshedConnectors": [],
+            "refreshedSecrets": [],
+        }
+    )
+    api_entry = {
+        "base": "https://iam.amazonaws.com",
+        "auth": {
+            "headers": {},
+            "query": {"Trace": "${{ secrets.TRACE }}"},
+            "awsSigv4": {
+                "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            },
+        },
+    }
+    flow = real_flow(
+        with_response=False,
+        host="203.0.113.10",
+        sni="iam.amazonaws.com",
+        path="/?Action=ListUsers&Version=2010-05-08",
+        method="GET",
+        request_headers=headers(
+            ("Host", "iam.amazonaws.com"),
+            ("Content-Type", "application/x-www-form-urlencoded; charset=utf-8"),
+            ("X-Amz-Date", "20150830T123600Z"),
+            (
+                "Authorization",
+                "AWS4-HMAC-SHA256 "
+                "Credential=PLACEHOLDER/20150830/us-east-1/iam/aws4_request, "
+                "SignedHeaders=content-type;host;x-amz-date, "
+                "Signature=placeholder",
+            ),
+        ),
+    )
+    _prepare_firewall_request(flow)
+    flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = "iam.amazonaws.com"
+
+    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+        result = await auth.handle_firewall_request(
+            flow,
+            matching.FirewallAllow(api_entry, "aws", "trusted-query", {}, "GET /", "/"),
+            _vm_info(tmp_path),
+        )
+
+    assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+    signed_parts = urllib.parse.urlsplit(flow.request.url)
+    assert signed_parts.scheme == "https"
+    assert signed_parts.netloc == "iam.amazonaws.com"
+    assert dict(urllib.parse.parse_qsl(signed_parts.query)) == {
+        "Action": "ListUsers",
+        "Version": "2010-05-08",
+        "Trace": "secret-value",
+    }
+    assert flow.request.headers["authorization"] == (
+        "AWS4-HMAC-SHA256 "
+        "Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, "
+        "SignedHeaders=content-type;host;x-amz-date, "
+        "Signature=22a3e4709cec49fad0f5cb8eac18cb63ab08f1f90b46be84ed239a4687fdcd97"
+    )
+
+
 async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
     endpoint = FakeAuthEndpoint()
     endpoint.queue_json_response(_auth_response())
