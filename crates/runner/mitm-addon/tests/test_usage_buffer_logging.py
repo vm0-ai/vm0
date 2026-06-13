@@ -74,7 +74,7 @@ def test_flush_logs_retained_webhook_batches(tmp_path):
     assert [entry["phase"] for entry in entries] == ["started", "enqueued"]
     assert entries[0]["dropped_webhook_batch_count"] == 0
     assert entries[0]["retained_webhook_batch_count"] == 0
-    assert entries[1]["level"] == "warn"
+    assert entries[1]["level"] == "info"
     assert entries[1]["message"] == "Usage event buffer flush retained webhook batches for retry"
     assert entries[1]["dropped_webhook_batch_count"] == 0
     assert entries[1]["retained_webhook_batch_count"] == 1
@@ -119,7 +119,7 @@ def test_flush_logs_delivery_retry_retained_counts(tmp_path):
     entries = flush_log_entries(proxy_log_path)
     assert [entry["phase"] for entry in entries] == ["started", "enqueued", "retained"]
     retained_entry = entries[2]
-    assert retained_entry["level"] == "warn"
+    assert retained_entry["level"] == "info"
     assert retained_entry["message"] == "Usage event buffer flush retained for retry"
     assert retained_entry["source_event_count"] == 2
     assert retained_entry["webhook_batch_count"] == 1
