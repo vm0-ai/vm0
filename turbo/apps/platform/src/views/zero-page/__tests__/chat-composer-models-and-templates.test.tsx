@@ -473,6 +473,20 @@ function composerElementFrom(textarea: HTMLElement): HTMLElement {
   return composer;
 }
 
+// The slash-skill composer renders a TipTap contenteditable instead of a
+// textarea, so locate it directly rather than by placeholder.
+async function findComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
+}
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
@@ -508,9 +522,8 @@ describe("chat composer models", () => {
       featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    expect(textarea).not.toHaveClass("text-transparent");
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
     await user.keyboard("/");
 
     const salesSuggestion = await screen.findByText("/sales-research");
@@ -518,26 +531,31 @@ describe("chat composer models", () => {
     expect(screen.getByText("/support-escalation")).toBeInTheDocument();
     expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
     const slashSkillMenu = screen.getByTestId("slash-skill-menu");
-    expect(composerElementFrom(textarea)).toContain(slashSkillMenu);
+    expect(composerElementFrom(editor)).toContain(slashSkillMenu);
     expect(slashSkillMenu).toHaveAttribute("popover", "manual");
     expect(slashSkillMenu).toHaveClass("slash-skill-popover");
     expect(slashSkillMenu.closest(".slash-skill-anchor")).not.toBeNull();
 
     await user.keyboard("sales");
 
+    await waitFor(() => {
+      expect(screen.queryByText("/support-escalation")).not.toBeInTheDocument();
+    });
     expect(screen.getByText("/sales-research")).toBeInTheDocument();
-    expect(screen.queryByText("/support-escalation")).not.toBeInTheDocument();
 
     await user.keyboard("{Enter}");
 
-    expect(textarea).toHaveValue("/sales-research ");
+    await waitFor(() => {
+      expect(editor.textContent).toContain("/sales-research");
+    });
+    // The colored token is a real inline decoration in the same layer as the
+    // text (no overlay), so it stays aligned when the composer scrolls.
     const highlightedSkill = screen
       .getAllByText("/sales-research")
       .find((element) => {
         return element.tagName.toLowerCase() === "span";
       });
     expect(highlightedSkill).toHaveClass("text-primary");
-    expect(highlightedSkill).not.toHaveClass("font-medium");
   });
 
   it("does not suggest org skills that are not enabled on the current agent", async () => {
@@ -560,14 +578,14 @@ describe("chat composer models", () => {
       featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
     await user.keyboard("/");
 
     await waitFor(() => {
       expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
     });
-    expect(textarea).toHaveValue("/");
+    expect(editor.textContent).toContain("/");
   });
 
   it("links to the skills page from the slash skill menu footer", async () => {
@@ -593,8 +611,8 @@ describe("chat composer models", () => {
       },
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
     await user.keyboard("/");
 
     await expect(
@@ -665,8 +683,8 @@ describe("chat composer models", () => {
       featureSwitches: { [FeatureSwitchKey.ChatSlashSkillCommands]: true },
     });
 
-    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(textarea);
+    const editor = await findComposerEditor();
+    await user.click(editor);
     await user.keyboard("/");
     await expect(
       screen.findByText("/custom-skill-1"),

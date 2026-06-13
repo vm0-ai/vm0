@@ -2,7 +2,6 @@
 // oxlint-disable max-lines-per-function
 import type {
   ChangeEvent,
-  ClipboardEvent,
   DragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
@@ -22,7 +21,6 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDeviceDesktop,
-  IconFileText,
   IconPresentation,
   IconEye,
   IconLoader2,
@@ -62,6 +60,7 @@ import {
   cn,
   matchShortcut,
   processShortcut,
+  type KeyboardEventLike,
 } from "@vm0/ui";
 import {
   bestEffort,
@@ -94,8 +93,9 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroAgentCustomSkill } from "@vm0/api-contracts/contracts/zero-agents";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
+import { TiptapSkillComposer } from "./tiptap-skill-composer.tsx";
+import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
@@ -166,11 +166,6 @@ import {
   setComputerUsePopoverOpen$,
   templateCardHover$,
   setTemplateCardHover$,
-  slashSkillCaretIndex$,
-  setSlashSkillCaretIndex$,
-  selectedSlashSkillIndex$,
-  setSelectedSlashSkillIndex$,
-  setSlashSkillMenuRef$,
   type TemplatePickerVideoGroup,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
@@ -187,10 +182,7 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
-import { currentChatAgent$ } from "../../signals/agent-chat.ts";
-import { orgSkills$ } from "../../signals/skills-page/skills-signals.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
-import { Link } from "../router/link.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -2932,15 +2924,17 @@ function useResolvedComposerSignals(
 }
 
 function insertPastedText(
-  textarea: HTMLTextAreaElement,
+  target: HTMLElement,
   currentValue: string,
   pastedText: string,
 ): string {
-  if (!pastedText) {
+  // Only the plain textarea supports caret-based insertion. The TipTap composer
+  // inserts pasted text itself, so for it we leave the value unchanged here.
+  if (!pastedText || !(target instanceof HTMLTextAreaElement)) {
     return currentValue;
   }
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
+  const start = target.selectionStart;
+  const end = target.selectionEnd;
   return `${currentValue.slice(0, start)}${pastedText}${currentValue.slice(end)}`;
 }
 
@@ -2970,216 +2964,6 @@ function toPersistedAttachments(
 
 type KeyboardSendAction = "none" | "send" | "queue";
 
-interface SlashSkillRange {
-  readonly start: number;
-  readonly end: number;
-  readonly query: string;
-}
-
-interface ComposerSlashSkill extends ZeroAgentCustomSkill {
-  readonly token: string;
-}
-
-function findActiveSlashSkillRange(
-  value: string,
-  caretIndex: number,
-): SlashSkillRange | null {
-  const beforeCaret = value.slice(0, caretIndex);
-  const match = /(?:^|\s)\/([a-z0-9-]*)$/i.exec(beforeCaret);
-  if (!match) {
-    return null;
-  }
-
-  const query = match[1] ?? "";
-  const slashOffset = match[0].lastIndexOf("/");
-  const start = beforeCaret.length - match[0].length + slashOffset;
-  return { start, end: caretIndex, query };
-}
-
-function matchesSkillQuery(skill: ComposerSlashSkill, query: string): boolean {
-  if (!query) {
-    return true;
-  }
-
-  const normalizedQuery = query.toLowerCase();
-  return [skill.name, skill.displayName ?? "", skill.description ?? ""]
-    .join(" ")
-    .toLowerCase()
-    .includes(normalizedQuery);
-}
-
-function skillTokenPattern(skillNames: readonly string[]): RegExp | null {
-  if (skillNames.length === 0) {
-    return null;
-  }
-
-  const escaped = skillNames.map((name) => {
-    return name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-  });
-  return new RegExp(`/(?:${escaped.join("|")})(?=$|\\s)`, "g");
-}
-
-function ComposerInputHighlight({
-  input,
-  skills,
-}: {
-  readonly input: string;
-  readonly skills: readonly ComposerSlashSkill[];
-}) {
-  const pattern = skillTokenPattern(
-    skills.map((skill) => {
-      return skill.name;
-    }),
-  );
-
-  if (!input || !pattern) {
-    return null;
-  }
-
-  const parts: { text: string; skill: boolean; start: number }[] = [];
-  let lastIndex = 0;
-  for (const match of input.matchAll(pattern)) {
-    const start = match.index ?? 0;
-    if (start > lastIndex) {
-      parts.push({
-        text: input.slice(lastIndex, start),
-        skill: false,
-        start: lastIndex,
-      });
-    }
-    parts.push({ text: match[0], skill: true, start });
-    lastIndex = start + match[0].length;
-  }
-
-  if (lastIndex < input.length) {
-    parts.push({
-      text: input.slice(lastIndex),
-      skill: false,
-      start: lastIndex,
-    });
-  }
-
-  return (
-    <div
-      className="pointer-events-none absolute inset-0 z-20 whitespace-pre-wrap break-words px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-transparent"
-      aria-hidden="true"
-    >
-      {parts.map((part) => {
-        return (
-          <span
-            key={`${part.start}:${part.skill ? "skill" : "text"}:${part.text}`}
-            className={part.skill ? "text-primary" : "text-transparent"}
-          >
-            {part.text}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-function SlashSkillMenu({
-  skills,
-  loading,
-  selectedIndex,
-  showSkillsPageLink,
-  onSelect,
-}: {
-  readonly skills: readonly ComposerSlashSkill[];
-  readonly loading: boolean;
-  readonly selectedIndex: number;
-  readonly showSkillsPageLink: boolean;
-  readonly onSelect: (skill: ComposerSlashSkill) => void;
-}) {
-  const setMenuRef = useSet(setSlashSkillMenuRef$);
-
-  return (
-    <div
-      ref={setMenuRef}
-      popover="manual"
-      className="slash-skill-popover flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-md border border-border/70 bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
-      data-testid="slash-skill-menu"
-    >
-      <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
-        Skills
-      </div>
-      {loading ? (
-        <div className="px-2.5 py-2 text-sm text-muted-foreground">
-          Loading skills...
-        </div>
-      ) : skills.length > 0 ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
-          {skills.map((skill, index) => {
-            const selected = index === selectedIndex;
-            return (
-              <button
-                id={slashSkillOptionId(skill.name)}
-                key={skill.name}
-                type="button"
-                className={cn(
-                  "flex w-full items-center rounded px-2 py-1.5 text-left transition-colors",
-                  selected ? "bg-accent" : "hover:bg-accent/60",
-                )}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  onSelect(skill);
-                }}
-              >
-                <span className="truncate font-mono text-sm text-primary">
-                  {skill.token}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
-          No matching skills
-        </div>
-      )}
-      {showSkillsPageLink && (
-        <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1.5">
-          <Link
-            pathname="/skills"
-            className="flex h-9 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <IconFileText
-                size={16}
-                stroke={1.8}
-                className="shrink-0 text-muted-foreground"
-              />
-              <span className="truncate">View all skills</span>
-            </span>
-            <IconChevronRight
-              size={16}
-              stroke={1.8}
-              className="shrink-0 text-muted-foreground"
-            />
-          </Link>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function slashSkillOptionId(skillName: string): string {
-  return `slash-skill-option-${skillName}`;
-}
-
-function scrollSlashSkillIntoView(skill: ComposerSlashSkill | undefined): void {
-  if (!skill) {
-    return;
-  }
-
-  window.requestAnimationFrame(() => {
-    const option = document.getElementById(slashSkillOptionId(skill.name));
-    if (option && typeof option.scrollIntoView === "function") {
-      option.scrollIntoView({ block: "nearest" });
-    }
-  });
-}
-
 function ComposerTextarea({
   input,
   onInputChange,
@@ -3196,8 +2980,8 @@ function ComposerTextarea({
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
-  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  readonly onKeyDown: (e: KeyboardEventLike) => void;
+  readonly onPaste: (e: ComposerPasteEvent) => void;
   readonly onAfterInputChange?: (textarea: HTMLTextAreaElement) => void;
   readonly onPointerSelectionChange?: (textarea: HTMLTextAreaElement) => void;
 }) {
@@ -3239,181 +3023,6 @@ function ComposerTextarea({
   );
 }
 
-function buildComposerSlashSkills({
-  agentSkillNames,
-  orgSkills,
-}: {
-  readonly agentSkillNames: readonly string[];
-  readonly orgSkills: readonly ZeroAgentCustomSkill[];
-}): readonly ComposerSlashSkill[] {
-  const metadataByName = new Map(
-    orgSkills.map((skill) => {
-      return [skill.name, skill];
-    }),
-  );
-  return agentSkillNames.map((name) => {
-    const metadata = metadataByName.get(name);
-    return {
-      name,
-      displayName: metadata?.displayName ?? null,
-      description: metadata?.description ?? null,
-      token: `/${name}`,
-    };
-  });
-}
-
-function SlashSkillComposerInput({
-  input,
-  onInputChange,
-  onDraftChange,
-  sending,
-  autoFocus,
-  setInputRef,
-  onKeyDown,
-  onPaste,
-}: {
-  readonly input: string;
-  readonly onInputChange: (value: string) => void;
-  readonly onDraftChange: (() => void) | undefined;
-  readonly sending: boolean | undefined;
-  readonly autoFocus: boolean | undefined;
-  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
-  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
-}) {
-  const caretIndex = useGet(slashSkillCaretIndex$);
-  const setCaretIndex = useSet(setSlashSkillCaretIndex$);
-  const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
-  const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
-  const currentAgent = useLastResolved(currentChatAgent$);
-  const features = useLastResolved(featureSwitch$);
-  const orgSkillsLoadable = useLastLoadable(orgSkills$);
-  const orgSkills =
-    orgSkillsLoadable.state === "hasData" ? orgSkillsLoadable.data : [];
-  const composerSkills = buildComposerSlashSkills({
-    agentSkillNames: currentAgent?.customSkills ?? [],
-    orgSkills,
-  });
-  const slashRange = findActiveSlashSkillRange(input, caretIndex);
-  const slashSkillSuggestions = slashRange
-    ? composerSkills.filter((skill) => {
-        return matchesSkillQuery(skill, slashRange.query);
-      })
-    : [];
-  const isLoadingOrgSkills = orgSkillsLoadable.state === "loading";
-  const showSkillsPageLink = features?.[FeatureSwitchKey.SkillsViewer] ?? false;
-  const showSlashSkillMenu =
-    slashRange !== null &&
-    (isLoadingOrgSkills || composerSkills.length > 0 || showSkillsPageLink);
-
-  const updateCaretIndex = (textarea: HTMLTextAreaElement) => {
-    setCaretIndex(textarea.selectionStart);
-  };
-
-  const insertSlashSkill = (
-    skill: ComposerSlashSkill,
-    textarea: HTMLTextAreaElement | null,
-  ) => {
-    if (!slashRange) {
-      return;
-    }
-
-    const suffix = input.slice(slashRange.end).startsWith(" ") ? "" : " ";
-    const nextInput = `${input.slice(0, slashRange.start)}${skill.token}${suffix}${input.slice(slashRange.end)}`;
-    const nextCaret = slashRange.start + skill.token.length + suffix.length;
-    onInputChange(nextInput);
-    onDraftChange?.();
-    setCaretIndex(nextCaret);
-    window.requestAnimationFrame(() => {
-      textarea?.setSelectionRange(nextCaret, nextCaret);
-      textarea?.focus();
-    });
-  };
-
-  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (!showSlashSkillMenu) {
-      onKeyDown(e);
-      return;
-    }
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      const nextIndex = Math.min(
-        selectedSkillIndex + 1,
-        Math.max(slashSkillSuggestions.length - 1, 0),
-      );
-      setSelectedSkillIndex(nextIndex);
-      scrollSlashSkillIntoView(slashSkillSuggestions[nextIndex]);
-      return;
-    }
-
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      const nextIndex = Math.max(selectedSkillIndex - 1, 0);
-      setSelectedSkillIndex(nextIndex);
-      scrollSlashSkillIntoView(slashSkillSuggestions[nextIndex]);
-      return;
-    }
-
-    if ((e.key === "Enter" || e.key === "Tab") && slashSkillSuggestions[0]) {
-      e.preventDefault();
-      insertSlashSkill(
-        slashSkillSuggestions[
-          Math.min(selectedSkillIndex, slashSkillSuggestions.length - 1)
-        ]!,
-        e.currentTarget,
-      );
-      return;
-    }
-
-    if (e.key === "Escape") {
-      e.preventDefault();
-      setCaretIndex(-1);
-      return;
-    }
-
-    onKeyDown(e);
-  };
-
-  return (
-    <div className="slash-skill-anchor relative">
-      {showSlashSkillMenu && (
-        <SlashSkillMenu
-          skills={slashSkillSuggestions}
-          loading={isLoadingOrgSkills}
-          selectedIndex={selectedSkillIndex}
-          showSkillsPageLink={showSkillsPageLink}
-          onSelect={(skill) => {
-            insertSlashSkill(
-              skill,
-              document.activeElement instanceof HTMLTextAreaElement
-                ? document.activeElement
-                : null,
-            );
-          }}
-        />
-      )}
-      <div className="relative min-h-[96px]">
-        <ComposerInputHighlight input={input} skills={composerSkills} />
-        <ComposerTextarea
-          input={input}
-          onInputChange={onInputChange}
-          sending={sending}
-          autoFocus={autoFocus}
-          setInputRef={setInputRef}
-          onKeyDown={handleKeyDown}
-          onPaste={onPaste}
-          onAfterInputChange={(textarea) => {
-            setSelectedSkillIndex(0);
-            updateCaretIndex(textarea);
-          }}
-          onPointerSelectionChange={updateCaretIndex}
-        />
-      </div>
-    </div>
-  );
-}
-
 function ComposerInputSlot({
   input,
   onInputChange,
@@ -3430,8 +3039,8 @@ function ComposerInputSlot({
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
-  readonly onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-  readonly onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  readonly onKeyDown: (e: KeyboardEventLike) => void;
+  readonly onPaste: (e: ComposerPasteEvent) => void;
 }) {
   const features = useLastResolved(featureSwitch$);
   const slashSkillCommandsEnabled =
@@ -3439,7 +3048,7 @@ function ComposerInputSlot({
 
   if (slashSkillCommandsEnabled) {
     return (
-      <SlashSkillComposerInput
+      <TiptapSkillComposer
         input={input}
         onInputChange={onInputChange}
         onDraftChange={onDraftChange}
@@ -3710,7 +3319,10 @@ export function ZeroChatComposer({
   const activeFeedback = resolveActiveFeedback(feedback);
 
   // File upload handlers (paste / drag-drop)
-  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (e: ComposerPasteEvent) => {
+    if (!e.clipboardData) {
+      return;
+    }
     const chatPayload = readChatMessageFromClipboard(e.clipboardData);
     if (chatPayload && chatPayload.attachments.length > 0) {
       const persistedAttachments = toPersistedAttachments(
@@ -3943,7 +3555,7 @@ export function ZeroChatComposer({
   const toggleSidebar = useSet(toggleSidebarOff$);
   const newChat = useSet(navigateToNewChat$);
 
-  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: KeyboardEventLike) => {
     if (window.matchMedia("(pointer: coarse)").matches) {
       return;
     }
