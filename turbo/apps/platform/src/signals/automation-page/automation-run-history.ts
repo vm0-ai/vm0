@@ -32,6 +32,31 @@ export const automationRunStatusFilter$ = computed((get) => {
   return get(searchParams$).get("runStatus") ?? "all";
 });
 
+const automationRunFetchParams$ = computed((get) => {
+  const automationId = get(runHistoryAutomationId$);
+  if (!automationId) {
+    return null;
+  }
+
+  const params: Record<string, string> = { automationId };
+
+  const statusFilter = get(automationRunStatusFilter$);
+  if (statusFilter !== "all") {
+    params.status = statusFilter;
+  }
+
+  return params;
+});
+
+const automationRunPreserveUrlParams$ = computed((get) => {
+  const result: Record<string, string> = {};
+  const status = get(automationRunStatusFilter$);
+  if (status !== "all") {
+    result.runStatus = status;
+  }
+  return result;
+});
+
 // ---------------------------------------------------------------------------
 // Cursor pagination instance
 // ---------------------------------------------------------------------------
@@ -49,36 +74,8 @@ export const {
   setRowsPerPage$: setAutomationRunRowsPerPage$,
   resetPaginationState$: resetAutomationRunPagination$,
 } = createCursorPagination({
-  buildFetchParams: (limit, cursor, get) => {
-    const automationId = get(runHistoryAutomationId$);
-    if (!automationId) {
-      return null;
-    }
-
-    const params = new URLSearchParams({
-      limit: String(limit),
-      automationId,
-    });
-
-    if (cursor) {
-      params.set("cursor", cursor);
-    }
-
-    const statusFilter = get(automationRunStatusFilter$);
-    if (statusFilter !== "all") {
-      params.set("status", statusFilter);
-    }
-
-    return params;
-  },
-  preserveUrlParams: (get) => {
-    const result: Record<string, string> = {};
-    const status = get(automationRunStatusFilter$);
-    if (status !== "all") {
-      result.runStatus = status;
-    }
-    return result;
-  },
+  fetchParams$: automationRunFetchParams$,
+  preserveUrlParams$: automationRunPreserveUrlParams$,
 });
 
 // ---------------------------------------------------------------------------

@@ -51,6 +51,7 @@ export default [
       "ccstate/require-client-signal": "error",
       "ccstate/command-async-signal": "error",
       "ccstate/no-getter-setter-params": "error",
+      "ccstate/no-accessor-escape": "error",
       "ccstate/no-store-in-params": [
         "error",
         {

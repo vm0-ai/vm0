@@ -17,25 +17,18 @@ import { accept } from "../lib/accept.ts";
 const DEFAULT_LIMIT = 10;
 const VALID_LIMITS = [10, 20, 50, 100] as const;
 
-type GetAccessor = <T>(atom: Computed<T>) => T;
-
 interface CursorPaginationConfig {
   /**
-   * Build the URLSearchParams for the data fetch.
-   * Receives limit, cursor, and a `get` accessor to read other signals.
-   * Must include limit; cursor is already handled by the caller.
+   * Query params for the data fetch beyond limit/cursor.
+   * Return null to skip fetching, for example while required context is absent.
    */
-  buildFetchParams: (
-    limit: number,
-    cursor: string | null,
-    get: GetAccessor,
-  ) => URLSearchParams | null;
+  fetchParams$: Computed<Record<string, string> | null>;
 
   /**
    * Extra URL search params to preserve when writing pagination params.
    * Return entries to merge into the URLSearchParams being written.
    */
-  preserveUrlParams?: (get: GetAccessor) => Record<string, string>;
+  preserveUrlParams$?: Computed<Record<string, string>>;
 }
 
 interface UrlParamOverrides {
@@ -52,16 +45,16 @@ interface PaginationDeps {
   writeUrlParams$: ReturnType<typeof command<void, [UrlParamOverrides]>>;
 }
 
-/** Convert URLSearchParams to a plain query object for ts-rest. */
-function paramsToQuery(
-  params: URLSearchParams,
+function buildQuery(
+  limit: number,
+  cursor: string | null,
+  extra: Record<string, string>,
 ): Record<string, string | number> {
-  const obj: Record<string, string | number> = {};
-  for (const [key, value] of params) {
-    // Convert limit to number since the contract expects it
-    obj[key] = key === "limit" ? Number(value) : value;
-  }
-  return obj;
+  return {
+    ...extra,
+    limit,
+    ...(cursor ? { cursor } : {}),
+  };
 }
 
 function createNavigationCommands(deps: PaginationDeps) {
@@ -130,20 +123,15 @@ function createNavigationCommands(deps: PaginationDeps) {
         return next;
       });
 
-      // Fetch intermediate page to get second cursor
-      const intermediateParams = config.buildFetchParams(
-        get(limit$),
-        cursor1,
-        get,
-      );
-      if (!intermediateParams) {
+      const extra = get(config.fetchParams$);
+      if (!extra) {
         set(writeUrlParams$, { cursor: cursor1 });
         return;
       }
 
       const client = get(zeroClient$)(logsListContract);
       const result = await accept(
-        client.list({ query: paramsToQuery(intermediateParams) }),
+        client.list({ query: buildQuery(get(limit$), cursor1, extra) }),
         [200],
       );
 
@@ -217,8 +205,8 @@ export function createCursorPagination(config: CursorPaginationConfig) {
     const limit = get(limit$);
     const cursor = get(cursor$);
 
-    const params = config.buildFetchParams(limit, cursor, get);
-    if (!params) {
+    const extra = get(config.fetchParams$);
+    if (!extra) {
       return {
         data: [],
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
@@ -228,7 +216,7 @@ export function createCursorPagination(config: CursorPaginationConfig) {
 
     const client = get(zeroClient$)(logsListContract);
     const result = await accept(
-      client.list({ query: paramsToQuery(params) }),
+      client.list({ query: buildQuery(limit, cursor, extra) }),
       [200],
     );
     return result.body;
@@ -271,8 +259,8 @@ export function createCursorPagination(config: CursorPaginationConfig) {
         params.set("cursor", cursor);
       }
 
-      if (config.preserveUrlParams) {
-        const extra = config.preserveUrlParams(get);
+      if (config.preserveUrlParams$) {
+        const extra = get(config.preserveUrlParams$);
         for (const [key, value] of Object.entries(extra)) {
           if (value) {
             params.set(key, value);

@@ -104,24 +104,6 @@ export function resolveUserPermissionGrantPolicy(
   ])?.[connectorRef]?.policies[permission];
 }
 
-async function listUserPermissionGrants(
-  get: <T>(atom: Computed<T>) => T,
-  agentId: string,
-): Promise<readonly UserPermissionGrantResponse[]> {
-  const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-  const result = await accept(client.list({ query: { agentId } }), [200]);
-  return result.body;
-}
-
-export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
-  get(internalUserPermissionGrantsReload$);
-  const agentId = get(permissionAllowAgentId$);
-  if (!agentId) {
-    return [];
-  }
-  return await listUserPermissionGrants(get, agentId);
-});
-
 interface UserPermissionGrantsByAgentParams {
   agentId: string;
 }
@@ -141,7 +123,12 @@ function createUserPermissionGrantsByAgentFactory(): (
     }
     const atom$ = computed(async (get) => {
       get(internalUserPermissionGrantsReload$);
-      return await listUserPermissionGrants(get, params.agentId);
+      const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+      const result = await accept(
+        client.list({ query: { agentId: params.agentId } }),
+        [200],
+      );
+      return result.body;
     });
     cache.set(key, atom$);
     return atom$;
@@ -150,6 +137,14 @@ function createUserPermissionGrantsByAgentFactory(): (
 
 export const userPermissionGrantsByAgent =
   createUserPermissionGrantsByAgentFactory();
+
+export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
+  const agentId = get(permissionAllowAgentId$);
+  if (!agentId) {
+    return [];
+  }
+  return await get(userPermissionGrantsByAgent({ agentId }));
+});
 
 export const upsertUserPermissionGrant$ = command(
   async (

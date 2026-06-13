@@ -1,4 +1,4 @@
-import { command, state, type Command, type Setter } from "ccstate";
+import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
@@ -16,8 +16,7 @@ const subscriberPokeRegistry$ = state<ReadonlySet<() => void>>(new Set());
 interface PendingAblySubscription {
   topic: string;
   signal: AbortSignal;
-  start: (channel: RealtimeChannel) => void;
-  reject: (reason?: unknown) => void;
+  channelDeferred: ReturnType<typeof createDeferredPromise<RealtimeChannel>>;
 }
 
 const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
@@ -41,168 +40,163 @@ function isAblyConnectionClosedError(error: unknown): boolean {
   return errorMessage(error) === "Connection closed";
 }
 
-async function runWithChannel({
-  set,
-  channel,
-  topic,
-  loopCommand$,
-  signal,
-}: {
-  set: Setter;
-  channel: RealtimeChannel;
-  topic: string;
-  loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
-  signal: AbortSignal;
-}): Promise<void> {
-  // No implicit prime on subscribe. Callers whose loop body sets up baseline
-  // state (for example connector `initialUpdatedAt`) must run the body
-  // themselves before calling this. Chat / queue / slack
-  // subscribers don't need a baseline because their data is fetched through
-  // separate computeds.
-  signal.throwIfAborted();
-  let deferred = createDeferredPromise(signal);
+const runWithChannel$ = command(
+  async (
+    { set },
+    channel: RealtimeChannel,
+    topic: string,
+    loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    // No implicit prime on subscribe. Callers whose loop body sets up baseline
+    // state (for example connector `initialUpdatedAt`) must run the body
+    // themselves before calling this. Chat / queue / slack
+    // subscribers don't need a baseline because their data is fetched through
+    // separate computeds.
+    signal.throwIfAborted();
+    let deferred = createDeferredPromise(signal);
 
-  const pokeLoop = () => {
-    deferred.resolve(true);
-    deferred = createDeferredPromise(signal);
-  };
+    const pokeLoop = () => {
+      deferred.resolve(true);
+      deferred = createDeferredPromise(signal);
+    };
 
-  const callback = (message: InboundMessage) => {
-    L.debug("got message from topic", topic, message);
-    pokeLoop();
-  };
-  const onVisibilityChange = () => {
-    if (document.visibilityState !== "visible") {
-      return;
-    }
-    L.debug("tab visible, poking loop", topic);
-    pokeLoop();
-  };
-  let subscribed = false;
-  let registeredPoke = false;
-
-  const cleanup = () => {
-    set(subscriberPokeRegistry$, (prev) => {
-      if (!registeredPoke) {
-        return prev;
+    const callback = (message: InboundMessage) => {
+      L.debug("got message from topic", topic, message);
+      pokeLoop();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        return;
       }
+      L.debug("tab visible, poking loop", topic);
+      pokeLoop();
+    };
+    let subscribed = false;
+    let registeredPoke = false;
+
+    const cleanup = () => {
+      set(subscriberPokeRegistry$, (prev) => {
+        if (!registeredPoke) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(pokeLoop);
+        return next;
+      });
+      registeredPoke = false;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (subscribed) {
+        subscribed = false;
+        channel.unsubscribe(topic, callback);
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange, {
+      signal,
+    });
+    set(subscriberPokeRegistry$, (prev) => {
       const next = new Set(prev);
-      next.delete(pokeLoop);
+      next.add(pokeLoop);
       return next;
     });
-    registeredPoke = false;
-    document.removeEventListener("visibilitychange", onVisibilityChange);
-    if (subscribed) {
-      subscribed = false;
-      channel.unsubscribe(topic, callback);
-    }
-  };
+    registeredPoke = true;
+    signal.addEventListener("abort", cleanup, { once: true });
 
-  document.addEventListener("visibilitychange", onVisibilityChange, {
-    signal,
-  });
-  set(subscriberPokeRegistry$, (prev) => {
-    const next = new Set(prev);
-    next.add(pokeLoop);
-    return next;
-  });
-  registeredPoke = true;
-  signal.addEventListener("abort", cleanup, { once: true });
-
-  // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
-  try {
-    await channel.subscribe(topic, callback);
-    subscribed = true;
-    signal.throwIfAborted();
-    L.debug("subscribed to topic: " + topic);
-
-    while (!signal.aborted) {
-      await deferred.promise;
+    // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
+    try {
+      await channel.subscribe(topic, callback);
       signal.throwIfAborted();
+      subscribed = true;
+      L.debug("subscribed to topic: " + topic);
 
-      // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
-      try {
-        const done = await set(loopCommand$, signal);
+      while (!signal.aborted) {
+        await deferred.promise;
         signal.throwIfAborted();
-        if (done) {
-          cleanup();
-          return;
+
+        // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
+        try {
+          const done = await set(loopCommand$, signal);
+          signal.throwIfAborted();
+          if (done) {
+            cleanup();
+            return;
+          }
+        } catch (error) {
+          signal.throwIfAborted();
+          throwIfAbort(error);
+          L.warn(`transient error in ably notification`, error);
         }
-      } catch (error) {
-        signal.throwIfAborted();
-        throwIfAbort(error);
-        L.warn(`transient error in ably notification`, error);
       }
+    } catch (error) {
+      signal.throwIfAborted();
+      throwIfAbort(error);
+      if (isAblyConnectionClosedError(error)) {
+        L.debug("Ably connection closed before subscription completed", {
+          topic,
+        });
+        return;
+      }
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", cleanup);
+      cleanup();
     }
-  } catch (error) {
+  },
+);
+
+const runWithChannelMessageHandler$ = command(
+  async (
+    { set },
+    channel: RealtimeChannel,
+    topic: string,
+    onMessage$: Command<void, [unknown, AbortSignal]>,
+    signal: AbortSignal,
+  ): Promise<void> => {
     signal.throwIfAborted();
-    throwIfAbort(error);
-    if (isAblyConnectionClosedError(error)) {
-      L.debug("Ably connection closed before subscription completed", {
-        topic,
-      });
-      return;
+    const done = createDeferredPromise<void>(signal);
+
+    const callback = (message: InboundMessage) => {
+      L.debug("got message payload from topic", topic, message);
+      set(onMessage$, message.data, signal);
+    };
+    let subscribed = false;
+
+    const cleanup = () => {
+      if (subscribed) {
+        subscribed = false;
+        channel.unsubscribe(topic, callback);
+      }
+    };
+
+    signal.addEventListener("abort", cleanup, { once: true });
+
+    // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
+    try {
+      await channel.subscribe(topic, callback);
+      signal.throwIfAborted();
+      subscribed = true;
+      L.debug("subscribed to message topic: " + topic);
+      await done.promise;
+    } catch (error) {
+      signal.throwIfAborted();
+      throwIfAbort(error);
+      if (isAblyConnectionClosedError(error)) {
+        L.debug(
+          "Ably connection closed before message subscription completed",
+          {
+            topic,
+          },
+        );
+        return;
+      }
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", cleanup);
+      cleanup();
     }
-    throw error;
-  } finally {
-    signal.removeEventListener("abort", cleanup);
-    cleanup();
-  }
-}
-
-async function runWithChannelMessageHandler({
-  set,
-  channel,
-  topic,
-  onMessage$,
-  signal,
-}: {
-  set: Setter;
-  channel: RealtimeChannel;
-  topic: string;
-  onMessage$: Command<void, [unknown, AbortSignal]>;
-  signal: AbortSignal;
-}): Promise<void> {
-  signal.throwIfAborted();
-  const done = createDeferredPromise<void>(signal);
-
-  const callback = (message: InboundMessage) => {
-    L.debug("got message payload from topic", topic, message);
-    set(onMessage$, message.data, signal);
-  };
-  let subscribed = false;
-
-  const cleanup = () => {
-    if (subscribed) {
-      subscribed = false;
-      channel.unsubscribe(topic, callback);
-    }
-  };
-
-  signal.addEventListener("abort", cleanup, { once: true });
-
-  // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
-  try {
-    await channel.subscribe(topic, callback);
-    subscribed = true;
-    signal.throwIfAborted();
-    L.debug("subscribed to message topic: " + topic);
-    await done.promise;
-  } catch (error) {
-    signal.throwIfAborted();
-    throwIfAbort(error);
-    if (isAblyConnectionClosedError(error)) {
-      L.debug("Ably connection closed before message subscription completed", {
-        topic,
-      });
-      return;
-    }
-    throw error;
-  } finally {
-    signal.removeEventListener("abort", cleanup);
-    cleanup();
-  }
-}
+  },
+);
 
 /**
  * Initialize the Ably realtime client and subscribe to the user's channel.
@@ -235,7 +229,9 @@ export const setupRealtime$ = command(
         return;
       }
       for (const pendingSubscription of pendingSubscriptions) {
-        pendingSubscription.reject(reason);
+        if (!pendingSubscription.channelDeferred.settled()) {
+          pendingSubscription.channelDeferred.reject(reason);
+        }
       }
       set(pendingAblySubscriptions$, []);
     };
@@ -289,9 +285,15 @@ export const setupRealtime$ = command(
       );
       for (const pendingSubscription of pendingSubscriptions) {
         if (pendingSubscription.signal.aborted) {
-          pendingSubscription.reject(pendingSubscription.signal.reason);
-        } else {
-          pendingSubscription.start(channel);
+          if (!pendingSubscription.channelDeferred.settled()) {
+            pendingSubscription.channelDeferred.reject(
+              pendingSubscription.signal.reason,
+            );
+          }
+          continue;
+        }
+        if (!pendingSubscription.channelDeferred.settled()) {
+          pendingSubscription.channelDeferred.resolve(channel);
         }
       }
       set(pendingAblySubscriptions$, []);
@@ -310,36 +312,18 @@ export const setAblyLoop$ = command(
   ) => {
     signal.throwIfAborted();
 
-    const channel = get(internalUserChannel$);
+    let channel = get(internalUserChannel$);
     if (channel) {
-      await runWithChannel({ set, channel, topic, loopCommand$, signal });
+      await set(runWithChannel$, channel, topic, loopCommand$, signal);
       signal.throwIfAborted();
       return;
     }
 
-    const startDeferred = createDeferredPromise<void>(signal);
-    let loopPromise: Promise<void> | null = null;
+    const channelDeferred = createDeferredPromise<RealtimeChannel>(signal);
     const pendingSubscription: PendingAblySubscription = {
       topic,
       signal,
-      start: (pendingChannel) => {
-        if (startDeferred.settled()) {
-          return;
-        }
-        loopPromise = runWithChannel({
-          set,
-          channel: pendingChannel,
-          topic,
-          loopCommand$,
-          signal,
-        });
-        startDeferred.resolve();
-      },
-      reject: (reason?: unknown) => {
-        if (!startDeferred.settled()) {
-          startDeferred.reject(reason);
-        }
-      },
+      channelDeferred,
     };
     const removePendingSubscription = () => {
       set(pendingAblySubscriptions$, (prev) => {
@@ -356,14 +340,11 @@ export const setAblyLoop$ = command(
       return [...prev, pendingSubscription];
     });
 
-    await startDeferred.promise.finally(() => {
+    channel = await channelDeferred.promise.finally(() => {
       signal.removeEventListener("abort", removePendingSubscription);
     });
     signal.throwIfAborted();
-    if (!loopPromise) {
-      throw new Error("realtime subscription did not start");
-    }
-    await loopPromise;
+    await set(runWithChannel$, channel, topic, loopCommand$, signal);
     signal.throwIfAborted();
   },
 );
@@ -377,42 +358,24 @@ export const setAblyMessageHandler$ = command(
   ) => {
     signal.throwIfAborted();
 
-    const channel = get(internalUserChannel$);
+    let channel = get(internalUserChannel$);
     if (channel) {
-      await runWithChannelMessageHandler({
-        set,
+      await set(
+        runWithChannelMessageHandler$,
         channel,
         topic,
         onMessage$,
         signal,
-      });
+      );
       signal.throwIfAborted();
       return;
     }
 
-    const startDeferred = createDeferredPromise<void>(signal);
-    let loopPromise: Promise<void> | null = null;
+    const channelDeferred = createDeferredPromise<RealtimeChannel>(signal);
     const pendingSubscription: PendingAblySubscription = {
       topic,
       signal,
-      start: (pendingChannel) => {
-        if (startDeferred.settled()) {
-          return;
-        }
-        loopPromise = runWithChannelMessageHandler({
-          set,
-          channel: pendingChannel,
-          topic,
-          onMessage$,
-          signal,
-        });
-        startDeferred.resolve();
-      },
-      reject: (reason?: unknown) => {
-        if (!startDeferred.settled()) {
-          startDeferred.reject(reason);
-        }
-      },
+      channelDeferred,
     };
     const removePendingSubscription = () => {
       set(pendingAblySubscriptions$, (prev) => {
@@ -429,14 +392,17 @@ export const setAblyMessageHandler$ = command(
       return [...prev, pendingSubscription];
     });
 
-    await startDeferred.promise.finally(() => {
+    channel = await channelDeferred.promise.finally(() => {
       signal.removeEventListener("abort", removePendingSubscription);
     });
     signal.throwIfAborted();
-    if (!loopPromise) {
-      throw new Error("realtime message subscription did not start");
-    }
-    await loopPromise;
+    await set(
+      runWithChannelMessageHandler$,
+      channel,
+      topic,
+      onMessage$,
+      signal,
+    );
     signal.throwIfAborted();
   },
 );

@@ -26,10 +26,6 @@ ruleTester.run("no-getter-setter-params", rule, {
     {
       code: "const fn = (x: number) => x",
     },
-    // Getter/Setter inside nested command callback
-    {
-      code: "command(({ get, set }) => { function inner(get: Getter) {} })",
-    },
     // No type annotation — untyped params are not flagged
     {
       code: "function helper(get) { }",
@@ -37,6 +33,10 @@ ruleTester.run("no-getter-setter-params", rule, {
     // Qualified type name — only bare Getter/Setter is matched
     {
       code: "function helper(get: lib.Getter) { }",
+    },
+    // Type alias for Getter is not detected — only explicit Getter/Setter annotations are matched
+    {
+      code: "type MyGetter = Getter; function helper(get: MyGetter) { }",
     },
   ],
   invalid: [
@@ -62,6 +62,26 @@ ruleTester.run("no-getter-setter-params", rule, {
         { messageId: "noGetterSetterParam" },
         { messageId: "noGetterSetterParam" },
       ],
+    },
+    // Getter/Setter inside nested command callback is still a helper boundary
+    {
+      code: "command(({ get, set }) => { function inner(get: Getter) {} })",
+      errors: [{ messageId: "noGetterSetterParam" }],
+    },
+    // Object property with Setter
+    {
+      code: "function helper(args: { set: Setter; value: string }) { }",
+      errors: [{ messageId: "noGetterSetterObjectParam" }],
+    },
+    // Destructured object property with Getter
+    {
+      code: "function helper({ get }: { get: Getter }) { }",
+      errors: [{ messageId: "noGetterSetterObjectParam" }],
+    },
+    // Getter in generic args
+    {
+      code: "function helper(getters: Array<Getter>) { }",
+      errors: [{ messageId: "noGetterSetterParam" }],
     },
   ],
 });
