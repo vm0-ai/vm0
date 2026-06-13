@@ -2,7 +2,6 @@
 
 import threading
 from collections.abc import Callable
-from unittest.mock import patch
 
 import pytest
 
@@ -592,23 +591,25 @@ def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
         delivery_outcome_callback("retryable_failure")
         return True
 
-    with patch.object(usage_buffer, "MAX_RETAINED_USAGE_BATCH_RETRIES", 1):
-        timers = install_recording_usage_timer(enqueue_webhook=enqueue_retryable_failure)
-        usage.buffer_usage_events(
-            "https://api.test/api/webhooks/agent/usage-event",
-            "secret-token",
-            "run-1",
-            [event(source_key="source-1", quantity=10)],
-            str(proxy_log_path),
-        )
+    timers = install_recording_usage_timer(
+        enqueue_webhook=enqueue_retryable_failure,
+        max_retained_batch_retries=1,
+    )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "secret-token",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(proxy_log_path),
+    )
 
-        timers[0].callback()
+    timers[0].callback()
 
-        assert usage.counters._buffered_usage_events == 1
-        assert len(timers) == 2
-        assert timers[1].started is True
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 2
+    assert timers[1].started is True
 
-        timers[1].callback()
+    timers[1].callback()
 
     assert usage.counters._buffered_usage_events == 0
     usage.write_pending_snapshot(flush_request_id="request-1")
@@ -631,24 +632,26 @@ def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_t
 ):
     proxy_log_path = tmp_path / "proxy.jsonl"
 
-    with patch.object(usage_buffer, "MAX_RETAINED_USAGE_BATCH_RETRIES", 1):
-        enqueue = RecordingEnqueue(return_value=False)
-        timers = install_recording_usage_timer(enqueue_webhook=enqueue)
-        usage.buffer_usage_events(
-            "https://api.test/api/webhooks/agent/usage-event",
-            "secret-token",
-            "run-1",
-            [event(source_key="source-1")],
-            str(proxy_log_path),
-        )
+    enqueue = RecordingEnqueue(return_value=False)
+    timers = install_recording_usage_timer(
+        enqueue_webhook=enqueue,
+        max_retained_batch_retries=1,
+    )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "secret-token",
+        "run-1",
+        [event(source_key="source-1")],
+        str(proxy_log_path),
+    )
 
-        assert usage.flush_usage_events(trigger="shutdown") == 0
-        assert usage.counters._buffered_usage_events == 1
-        assert len(timers) == 1
-        assert timers[0].cancelled is True
+    assert usage.flush_usage_events(trigger="shutdown") == 0
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 1
+    assert timers[0].cancelled is True
 
-        enqueue.clear()
-        assert usage.flush_usage_events(trigger="shutdown") == 0
+    enqueue.clear()
+    assert usage.flush_usage_events(trigger="shutdown") == 0
 
     enqueue.assert_called_once()
     assert usage.counters._buffered_usage_events == 0

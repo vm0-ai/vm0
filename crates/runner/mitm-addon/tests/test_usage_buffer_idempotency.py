@@ -21,7 +21,8 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
         )
         == 0
     )
-    assert usage_buffer._usage_event_buffer._state._buckets == {}
+    assert usage.flush_usage_events(trigger="test") == 0
+    enqueue.assert_not_called()
 
     assert (
         usage.buffer_usage_events(
@@ -33,7 +34,6 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
         )
         == 1
     )
-    assert len(usage_buffer._usage_event_buffer._state._buckets) == 1
 
     assert (
         usage.buffer_usage_events(
@@ -45,11 +45,13 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
         )
         == 0
     )
-    assert len(usage_buffer._usage_event_buffer._state._buckets) == 1
 
     assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
+    assert enqueue.last_call.url == "https://api-a.test/api/webhooks/agent/usage-event"
+    assert enqueue.last_call.sandbox_token == "token-a"
+    assert enqueue.last_call.payload["runId"] == "run-1"
 
 
 def test_aggregate_idempotency_key_changes_between_flush_batches(tmp_path):
