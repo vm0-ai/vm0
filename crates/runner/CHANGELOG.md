@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.116.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.1...runner-rs-v0.116.2) (2026-06-13)
+
+
+### Documentation
+
+* document model usage observation gates ([#17533](https://github.com/vm0-ai/vm0/issues/17533)) ([bec1ee0](https://github.com/vm0-ai/vm0/commit/bec1ee0de023f580554aef14949bddba2cc83892))
+
 ## [0.116.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.0...runner-rs-v0.116.1) (2026-06-13)
 
 

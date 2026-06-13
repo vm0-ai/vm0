@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.139.1](https://github.com/vm0-ai/vm0/compare/api-v1.139.0...api-v1.139.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* clarify custom skill sync guidance ([#17544](https://github.com/vm0-ai/vm0/issues/17544)) ([45b5c5e](https://github.com/vm0-ai/vm0/commit/45b5c5e9d13f93710ca7c71c03cc5bb3e5ae76f6))
+
 ## [1.139.0](https://github.com/vm0-ai/vm0/compare/api-v1.138.0...api-v1.139.0) (2026-06-13)
 
 
