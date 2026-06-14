@@ -2,6 +2,86 @@ use crate::support::{
     TarEntry, create_tar_gz, create_tar_gz_entries, run_guest_download, write_manifest,
 };
 use httpmock::prelude::*;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::thread;
+
+fn start_truncated_then_valid_server(
+    archive: Vec<u8>,
+) -> std::io::Result<(String, thread::JoinHandle<std::io::Result<usize>>)> {
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let base_url = format!("http://{}", listener.local_addr()?);
+    let partial_len = (archive.len() / 2).max(1);
+    let partial_archive: Vec<u8> = archive.iter().copied().take(partial_len).collect();
+
+    let handle = thread::spawn(move || -> std::io::Result<usize> {
+        let mut storage_requests = 0;
+        loop {
+            let (mut stream, _) = listener.accept()?;
+            let path = read_request_path(&mut stream)?;
+            if path == "/__unblock" {
+                write_response(&mut stream, &[], 0)?;
+                break;
+            } else if path == "/storage.tar.gz" {
+                if storage_requests == 0 {
+                    write_response(&mut stream, &partial_archive, archive.len())?;
+                } else {
+                    write_response(&mut stream, &archive, archive.len())?;
+                }
+                storage_requests += 1;
+                if storage_requests == 2 {
+                    break;
+                }
+            } else {
+                write_response(&mut stream, &[], 0)?;
+            }
+        }
+        Ok(storage_requests)
+    });
+
+    Ok((base_url, handle))
+}
+
+fn read_request_path(stream: &mut TcpStream) -> std::io::Result<String> {
+    let mut request = Vec::new();
+    let mut buffer = [0_u8; 512];
+    while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+        let bytes_read = stream.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        request.extend(buffer.iter().take(bytes_read).copied());
+    }
+
+    let request = String::from_utf8_lossy(&request);
+    Ok(request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap_or_default()
+        .to_owned())
+}
+
+fn write_response(
+    stream: &mut TcpStream,
+    body: &[u8],
+    content_length: usize,
+) -> std::io::Result<()> {
+    let headers = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: application/gzip\r\ncontent-length: {content_length}\r\nconnection: close\r\n\r\n"
+    );
+    stream.write_all(headers.as_bytes())?;
+    stream.write_all(body)?;
+    stream.flush()
+}
+
+fn unblock_server(base_url: &str) -> std::io::Result<()> {
+    let Some(address) = base_url.strip_prefix("http://") else {
+        return Ok(());
+    };
+    let mut stream = TcpStream::connect(address)?;
+    stream.write_all(b"GET /__unblock HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n")
+}
 
 // ---------------------------------------------------------------------------
 // Test 1: single storage download succeeds
@@ -351,6 +431,28 @@ fn invalid_tar_gz_non_retriable() {
 
     assert!(!result);
     mock.assert_calls(1);
+}
+
+#[test]
+fn http_body_read_error_retries_then_succeeds() {
+    let tar_gz = create_tar_gz(&[("recovered.txt", b"recovered")]).unwrap();
+    let (base_url, server) = start_truncated_then_valid_server(tar_gz).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("mount");
+    let url = format!("{base_url}/storage.tar.gz");
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = run_guest_download(manifest.to_str().unwrap());
+    let _ = unblock_server(&base_url);
+    let storage_requests = server.join().unwrap().unwrap();
+
+    assert!(result);
+    assert_eq!(storage_requests, 2);
+    assert_eq!(
+        std::fs::read_to_string(mount.join("recovered.txt")).unwrap(),
+        "recovered"
+    );
 }
 
 // ---------------------------------------------------------------------------
