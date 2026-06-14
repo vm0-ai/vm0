@@ -48,6 +48,7 @@ interface AlertRow {
   readonly template: unknown;
   readonly headers: unknown;
   readonly status: string;
+  readonly subject: string;
 }
 
 interface CreditLowBalanceTemplate {
@@ -377,6 +378,7 @@ async function lowCreditAlerts(fixture: UsageFixture): Promise<AlertRow[]> {
       template: emailOutbox.template,
       headers: emailOutbox.headers,
       status: emailOutbox.status,
+      subject: emailOutbox.subject,
     })
     .from(emailOutbox)
     .where(
@@ -432,6 +434,7 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
     }
     expect(alerts).toHaveLength(1);
     expect(alerts[0]?.status).toBe("pending");
+    expect(alerts[0]?.subject).toBe("Your credit balance is running low");
     expect(parseAddresses(alerts[0]?.toAddresses)).toStrictEqual([admin.email]);
     const template = parseLowCreditTemplate(alerts[0]?.template);
     expect(template).toMatchObject({

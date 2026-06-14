@@ -45,6 +45,8 @@ const OUTBOX_TTL_MS = 15 * 60 * 1000;
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 const PRESIGNED_URL_EXPIRY = 3600;
 const R2_PATH_PREFIX = "email-attachments";
+export const CREDIT_LOW_BALANCE_EMAIL_SUBJECT =
+  "Your credit balance is running low";
 
 export type HandlerResult =
   | { readonly ok: true }
@@ -460,7 +462,7 @@ function renderTemplate(template: EmailTemplate): string {
             template.props.unsubscribeUrl,
           )}">Unsubscribe</a></p>`
         : "";
-      return `<main><h1>Your VM0 credits are running low</h1><p>${escapeHtml(
+      return `<main><h1>${CREDIT_LOW_BALANCE_EMAIL_SUBJECT}</h1><p>${escapeHtml(
         template.props.orgName,
       )} has ${escapeHtml(
         remainingCredits,

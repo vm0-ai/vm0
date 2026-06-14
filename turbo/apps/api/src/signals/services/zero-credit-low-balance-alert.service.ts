@@ -16,6 +16,7 @@ import {
   buildFromAddress,
   buildUnsubscribeHeaders,
   buildUnsubscribeUrl,
+  CREDIT_LOW_BALANCE_EMAIL_SUBJECT,
   getUserEmail,
   type EmailTemplate,
 } from "./zero-email-common.service";
@@ -309,7 +310,7 @@ export const enqueueCreditLowBalanceAlert$ = command(
           fromAddress: buildFromAddress("vm0"),
           toAddresses: recipient.email,
           ccAddresses: null,
-          subject: "Your VM0 credits are running low",
+          subject: CREDIT_LOW_BALANCE_EMAIL_SUBJECT,
           replyTo: null,
           headers: buildUnsubscribeHeaders(unsubscribeUrl),
           template,
