@@ -693,8 +693,9 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     (``body_format: "ndjson"``) and skip the legacy buffered fallback, since
     forensic stream buffers are capped at ``STREAM_BUFFER_LIMIT`` and don't
     contain the full response. For streams, ``body_truncated`` is always
-    ``False`` because that marker describes forensic buffer truncation, not
-    whether the incremental parser or streaming decoder accepted every chunk.
+    ``False`` because NDJSON billing does not parse from that capped capture
+    buffer; decoder/parser completeness is reported separately from forensic
+    buffer truncation.
 
     Buffered JSON fallback failures (truncated buffer, malformed JSON,
     unexpected shape) leave ``body_parsed=False`` and emit no count fields, so
@@ -711,9 +712,9 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     # intentionally tiny (64 KB) for streams and does NOT hold the body.
     #
     # Override body_truncated to False: the stream_buffer-derived truncated
-    # flag reflects the forensic buffer cap, but NDJSON billing uses parser
-    # state instead of bytes(buf). Reporting body_truncated=True here would
-    # misleadingly tie billing reliability to capture truncation.
+    # flag reflects only the forensic capture cap, while NDJSON billing uses
+    # parser state instead of bytes(buf). Reporting body_truncated=True here
+    # would misleadingly tie billing reliability to capture truncation.
     ndjson_state = flow.metadata.get(metadata_keys.X_NDJSON_STATE)
     if ndjson_state is not None:
         result["body_parsed"] = True
