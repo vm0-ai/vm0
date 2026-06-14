@@ -263,11 +263,15 @@ async function processOrgUsageEventsInTransaction(
  * verbatim same key string as web so api and web serialize correctly on
  * the same org during rollout.
  *
- * After the transaction commits and credits are deducted, fires
- * `triggerAutoRecharge$` for Stripe top-up when the balance crosses the
- * recharge threshold (bounded by the route handler's outer waitUntil
- * envelope so end-user latency is unaffected). Errors in the Stripe path
- * are caught inside the trigger Command (clearPendingFlag in catch).
+ * After the transaction commits and credits are deducted, runs post-billing
+ * side effects outside the credit transaction:
+ * - `triggerAutoRecharge$` for Stripe top-up when the balance crosses the
+ *   recharge threshold.
+ * - `enqueueCreditLowBalanceAlert$` when usage crosses the low-credit email
+ *   threshold.
+ *
+ * Both side effects are bounded by the route handler's outer waitUntil
+ * envelope. Low-balance alert failures are logged without affecting billing.
  */
 export const processOrgUsageEvents$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
