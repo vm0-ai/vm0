@@ -795,7 +795,7 @@ describe("Automations API", () => {
                 prompt: "Zombie task",
                 triggerType: "loop" as const,
                 intervalSeconds: 300,
-                enabled: true,
+                enabled: false,
                 nextRunAt: pastDue,
               };
             }),
@@ -816,15 +816,16 @@ describe("Automations API", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const db = store.set(writeDb$);
-    // Flip the first 12 automations off WITHOUT touching their trigger rows:
-    // exactly the historical zombie shape (trigger enabled=true,
-    // next_run_at in the past, automation enabled=false).
+    // Seed zombies disabled, then restore only their trigger state. That avoids
+    // a race window where another test worker's global cron can claim them
+    // before this test has built the historical zombie shape (trigger
+    // enabled=true, next_run_at in the past, automation enabled=false).
     const zombieIds = fixture.automationIds.slice(0, 12);
     const healthyId = fixture.automationIds[12]!;
     await db
-      .update(automations)
-      .set({ enabled: false })
-      .where(inArray(automations.id, [...zombieIds]));
+      .update(automationTriggers)
+      .set({ enabled: true, nextRunAt: pastDue })
+      .where(inArray(automationTriggers.automationId, [...zombieIds]));
 
     const response = await accept(
       cronApi().execute({
@@ -832,8 +833,9 @@ describe("Automations API", () => {
       }),
       [200],
     );
-    // The healthy trigger was claimed and run despite 12 starving zombies.
-    expect(response.body.executed).toBe(1);
+    // The route reports global counts, so assert the local side effect instead:
+    // the healthy trigger was claimed and run despite 12 starving zombies.
+    expect(response.body.success).toBeTruthy();
 
     const [healthyTrigger] = await findTriggerRows(healthyId);
     expect(healthyTrigger?.nextRunAt).toBeNull();

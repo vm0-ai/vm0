@@ -34,6 +34,7 @@ function writeLine(message: string): void {
  *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
  * OpenAI also falls back to OPENAI_API_KEY because local dev already uses it
  * for platform OpenAI features.
+ * DeepSeek also falls back to DEEPSEEK_API_KEY to match the provider secret name.
  */
 
 /** 1 USD = 1000 credits */
@@ -399,6 +400,17 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ]),
 ];
 
+function getVendorApiKeyEnvVars(vendor: string): string[] {
+  const envVar = `DEV_MODEL_${vendor.toUpperCase()}_KEY`;
+  if (vendor === "openai") {
+    return [envVar, "OPENAI_API_KEY"];
+  }
+  if (vendor === "deepseek") {
+    return [envVar, "DEEPSEEK_API_KEY"];
+  }
+  return [envVar];
+}
+
 /**
  * Build vm0_api_keys entries from environment variables.
  * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER
@@ -415,8 +427,7 @@ function buildVm0ApiKeys(): (typeof vm0ApiKeys.$inferInsert)[] {
 
   const keys: (typeof vm0ApiKeys.$inferInsert)[] = [];
   for (const [vendor, models] of vendorModels) {
-    const envVar = `DEV_MODEL_${vendor.toUpperCase()}_KEY`;
-    const envVars = vendor === "openai" ? [envVar, "OPENAI_API_KEY"] : [envVar];
+    const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {
         return optionalEnv(name);
