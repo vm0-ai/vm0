@@ -693,14 +693,14 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     (``body_format: "ndjson"``) and skip the legacy buffered fallback, since
     forensic stream buffers are capped at ``STREAM_BUFFER_LIMIT`` and don't
     contain the full response. For streams, ``body_truncated`` is always
-    ``False`` — the incremental parser saw every byte even if the forensic
-    ``stream_buffer`` filled up.
+    ``False`` because that marker describes forensic buffer truncation, not
+    whether the incremental parser or streaming decoder accepted every chunk.
 
-    Failures (truncated buffer, malformed JSON, unexpected shape) leave
-    ``body_parsed=False`` and emit no count fields, so analysis can
-    distinguish "field absent in response" from "we couldn't parse it".
-    Incremental parser failures may also include ``parse_error`` for proxy
-    audit logs.
+    Buffered JSON fallback failures (truncated buffer, malformed JSON,
+    unexpected shape) leave ``body_parsed=False`` and emit no count fields, so
+    analysis can distinguish "field absent in response" from "we couldn't
+    parse it". NDJSON stream parser failures are reported through
+    ``ndjson_lines_failed``.
     """
     state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE) or {}
     truncated = bool(state.get("truncated", False))
@@ -711,10 +711,9 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     # intentionally tiny (64 KB) for streams and does NOT hold the body.
     #
     # Override body_truncated to False: the stream_buffer-derived truncated
-    # flag reflects the forensic buffer cap, but the NDJSON parser processed
-    # every chunk regardless of that cap, so billing counts are complete.
-    # Reporting body_truncated=True here would misleadingly suggest the
-    # counts are unreliable when they are not.
+    # flag reflects the forensic buffer cap, but NDJSON billing uses parser
+    # state instead of bytes(buf). Reporting body_truncated=True here would
+    # misleadingly tie billing reliability to capture truncation.
     ndjson_state = flow.metadata.get(metadata_keys.X_NDJSON_STATE)
     if ndjson_state is not None:
         result["body_parsed"] = True
