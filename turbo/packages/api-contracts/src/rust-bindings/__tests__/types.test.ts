@@ -517,6 +517,22 @@ describe("Rust type bindings", () => {
     }).toThrow("missing Rust docs for type module webhooks");
   });
 
+  it("fails clearly when Rust type module docs are duplicated", () => {
+    expect(() => {
+      renderRustTypes(
+        [validBinding()],
+        [
+          ...exampleModuleDocs,
+          {
+            rustModulePath: ["webhooks", "agent", "example"],
+            rustDoc: ["Duplicate generated DTO module."],
+          },
+        ],
+        exampleRootDoc,
+      );
+    }).toThrow("duplicate Rust type module docs: webhooks::agent::example");
+  });
+
   it("fails clearly when Rust type module docs are stale", () => {
     expect(() => {
       renderRustTypes(
@@ -546,6 +562,23 @@ describe("Rust type bindings", () => {
       ]);
     }).toThrow(
       "webhooks::agent::example::Request.Request is missing Rust docs",
+    );
+  });
+
+  it("fails clearly when declaration docs are duplicated", () => {
+    expect(() => {
+      renderExampleRustTypes([
+        validBinding({
+          declarations: [
+            requestDeclaration(),
+            requestDeclaration({
+              runId: ["Duplicate run identifier."],
+            }),
+          ],
+        }),
+      ]);
+    }).toThrow(
+      "webhooks::agent::example::Request has duplicate Rust type declaration docs: Request",
     );
   });
 
