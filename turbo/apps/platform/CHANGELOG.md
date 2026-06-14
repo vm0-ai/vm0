@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.451.1](https://github.com/vm0-ai/vm0/compare/app-v0.451.0...app-v0.451.1) (2026-06-14)
+
+
+### Bug Fixes
+
+* lock pwa root viewport ([#17628](https://github.com/vm0-ai/vm0/issues/17628)) ([1a663c0](https://github.com/vm0-ai/vm0/commit/1a663c08647fca62969cc1ca61cbd02ebd788996))
+
 ## [0.451.0](https://github.com/vm0-ai/vm0/compare/app-v0.450.1...app-v0.451.0) (2026-06-14)
 
 
