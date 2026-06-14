@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.337.0](https://github.com/vm0-ai/vm0/compare/core-v8.336.0...core-v8.337.0) (2026-06-14)
+
+
+### Features
+
+* add connector quick commands to chat composer slash menu ([#17588](https://github.com/vm0-ai/vm0/issues/17588)) ([d2a3723](https://github.com/vm0-ai/vm0/commit/d2a372307137de87c491019a2698acaa3eb92f0c))
+
+
+### Refactoring
+
+* remove chat recommended followups switch ([#17608](https://github.com/vm0-ai/vm0/issues/17608)) ([8e03d5a](https://github.com/vm0-ai/vm0/commit/8e03d5a65d4b2a666c56e0cea534402d12a947ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.92.1
+    * @vm0/connectors bumped to 1.75.0
+
 ## [8.336.0](https://github.com/vm0-ai/vm0/compare/core-v8.335.5...core-v8.336.0) (2026-06-13)
 
 
