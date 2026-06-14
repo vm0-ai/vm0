@@ -302,12 +302,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatRecommendedFollowups]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Generate and show recommended follow-up prompts after completed chat runs.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ChatRunUsage]: {
     maintainer: "ethan@vm0.ai",
     description:

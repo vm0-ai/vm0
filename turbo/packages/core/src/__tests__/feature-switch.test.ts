@@ -103,9 +103,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
-      true,
-    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -114,9 +111,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatInlineFeedback]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
-      true,
-    );
   });
 
   it("should apply overrides to enable disabled features", () => {

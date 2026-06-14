@@ -13,8 +13,6 @@ import {
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -64,7 +62,6 @@ import {
   generateChatNotificationSummary,
 } from "../services/zero-chat-title.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { settle, tapError } from "../utils";
 import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 
@@ -536,25 +533,9 @@ async function insertRunLifecycleMarker(args: {
 async function generateRecommendedFollowupsForCompletedRun(args: {
   readonly db: Db;
   readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
   readonly signal: AbortSignal;
 }): Promise<ChatMessageRecommendedFollowups | undefined> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    args.db,
-    args.orgId,
-    args.userId,
-  );
   args.signal.throwIfAborted();
-  if (
-    !isFeatureEnabled(
-      FeatureSwitchKey.ChatRecommendedFollowups,
-      featureSwitchContext,
-    )
-  ) {
-    return undefined;
-  }
-
   const suggestions = await generateChatThreadRecommendedFollowups({
     db: args.db,
     threadId: args.threadId,
@@ -636,8 +617,6 @@ async function handleCompletedChatCallback(args: {
       await generateRecommendedFollowupsForCompletedRun({
         db: args.db,
         threadId: args.chatThread.chatThreadId,
-        orgId: args.chatThread.orgId,
-        userId: args.chatThread.userId,
         signal: args.signal,
       });
     await insertRunLifecycleMarker({
