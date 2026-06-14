@@ -1199,8 +1199,6 @@ def requestheaders(flow: http.HTTPFlow) -> None:
     classification = _classify_request(flow)
     allow = classification.firewall_allow
     vm_info = classification.vm_info
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
-        return
     if classification.kind != "firewall_allow" or allow is None or vm_info is None:
         return
     if not _firewall_allow_auth_base(allow):
