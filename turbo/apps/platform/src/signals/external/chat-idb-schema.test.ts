@@ -29,7 +29,9 @@ function fakeDb(existingStores: readonly string[]) {
   return {
     db: {
       objectStoreNames: {
-        contains: (name: string) => stores.has(name),
+        contains: (name: string) => {
+          return stores.has(name);
+        },
       },
       deleteObjectStore,
       createObjectStore,
@@ -41,7 +43,7 @@ function fakeDb(existingStores: readonly string[]) {
 }
 
 describe("upgradeChatIdb", () => {
-  it("clears legacy chat cache when upgrading to v4", async () => {
+  it("clears legacy chat cache when upgrading to v4", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_META_STORE,
