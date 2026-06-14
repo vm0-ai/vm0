@@ -1,6 +1,11 @@
 import { openDB, type IDBPDatabase } from "idb";
 import { nowDate } from "../../lib/time.ts";
 import { logger } from "../log.ts";
+import {
+  CHAT_IDB_VERSION,
+  CHAT_THREAD_META_STORE,
+  upgradeChatIdb,
+} from "./chat-idb-schema.ts";
 
 const L = logger("ChatIdbThreadMeta");
 
@@ -41,9 +46,7 @@ function isThreadMetaRow(raw: unknown): raw is ThreadMetaRow {
 // IDB store name kept as `chat_thread_agents` for backward compatibility with
 // existing v2 databases. The row schema is forward-compatible: older rows
 // without `startMessageId` are still valid; new fields default to undefined.
-const STORE = "chat_thread_agents";
-const MESSAGE_STORE = "chat_messages";
-const DB_VERSION = 3;
+const STORE = CHAT_THREAD_META_STORE;
 
 const getDb = (() => {
   const cache: Record<string, Promise<IDBPDatabase>> = {};
@@ -54,21 +57,10 @@ const getDb = (() => {
       return existing;
     }
     L.debug("openDB", { dbName });
-    const promise = openDB(dbName, DB_VERSION, {
-      upgrade(db) {
+    const promise = openDB(dbName, CHAT_IDB_VERSION, {
+      upgrade(db, oldVersion) {
         L.debug("openDB:upgrade", { dbName });
-        if (!db.objectStoreNames.contains(MESSAGE_STORE)) {
-          const messageStore = db.createObjectStore(MESSAGE_STORE, {
-            keyPath: "id",
-          });
-          messageStore.createIndex("byThreadAndTime", [
-            "threadId",
-            "createdAt",
-          ]);
-        }
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: "threadId" });
-        }
+        upgradeChatIdb(db, oldVersion);
       },
     });
     cache[dbName] = promise;

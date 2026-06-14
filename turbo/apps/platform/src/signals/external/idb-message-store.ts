@@ -4,10 +4,13 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
+import {
+  CHAT_IDB_VERSION,
+  CHAT_MESSAGES_STORE,
+  upgradeChatIdb,
+} from "./chat-idb-schema.ts";
 
 const L = logger("ChatIdbCache");
-
-const DB_VERSION = 3;
 
 interface ChatMessageReadStore {
   readLatest(
@@ -61,7 +64,7 @@ function validateMessage(raw: unknown): PagedChatMessage {
 
 function createIdbMessageStores(userId: string, orgId: string) {
   const dbName = `vm0-chat-${userId}-${orgId}`;
-  const storeName = "chat_messages";
+  const storeName = CHAT_MESSAGES_STORE;
 
   let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -72,16 +75,10 @@ function createIdbMessageStores(userId: string, orgId: string) {
       // the same DB at the same version. The upgrade callback creates every store
       // the schema currently defines, idempotently, so whichever module
       // triggers the version bump leaves a complete schema for the other.
-      dbPromise = openDB(dbName, DB_VERSION, {
-        upgrade(db) {
+      dbPromise = openDB(dbName, CHAT_IDB_VERSION, {
+        upgrade(db, oldVersion) {
           L.debug("openDB:upgrade", { dbName, storeName });
-          if (!db.objectStoreNames.contains(storeName)) {
-            const store = db.createObjectStore(storeName, { keyPath: "id" });
-            store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
-          }
-          if (!db.objectStoreNames.contains("chat_thread_agents")) {
-            db.createObjectStore("chat_thread_agents", { keyPath: "threadId" });
-          }
+          upgradeChatIdb(db, oldVersion);
         },
       });
     }
