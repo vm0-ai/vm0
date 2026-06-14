@@ -363,13 +363,15 @@ fn classify_cli_failure_reason(
     }
     // Subscription/usage limits are an expected quota state for both Codex
     // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
-    // "weekly limit"), so classify them regardless of framework. This lets the
-    // runner log these expected outcomes at info instead of error.
+    // "weekly limit" / org monthly spend limit), so classify them regardless of
+    // framework where the wording is shared. This lets the runner log these
+    // expected outcomes at info instead of error.
     if normalized.contains("usage limit")
         || normalized.contains("session limit")
         || normalized.contains("weekly limit")
         || (matches!(framework, AgentFramework::ClaudeCode)
-            && is_claude_subscription_access_disabled_error(&normalized))
+            && (is_claude_subscription_access_disabled_error(&normalized)
+                || is_claude_monthly_spend_limit_error(&normalized)))
     {
         return Some(FailureReason::UsageLimit);
     }
@@ -383,6 +385,11 @@ fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
 
 fn is_claude_subscription_access_disabled_error(normalized: &str) -> bool {
     normalized.contains("disabled claude subscription access") && normalized.contains("claude code")
+}
+
+fn is_claude_monthly_spend_limit_error(normalized: &str) -> bool {
+    normalized.contains("org's monthly spend limit")
+        && normalized.contains("claude.ai/settings/usage")
 }
 
 fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
@@ -1342,6 +1349,26 @@ mod tests {
         );
 
         assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_monthly_spend_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "You've hit your org's monthly spend limit · ask your admin to raise it at claude.ai/settings/usage",
+        );
+
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_codex_monthly_spend_limit_text() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::Codex,
+            "You've hit your org's monthly spend limit · ask your admin to raise it at claude.ai/settings/usage",
+        );
+
+        assert_eq!(reason, None);
     }
 
     #[test]
