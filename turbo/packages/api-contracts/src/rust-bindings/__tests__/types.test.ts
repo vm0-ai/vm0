@@ -517,6 +517,22 @@ describe("Rust type bindings", () => {
     }).toThrow("missing Rust docs for type module webhooks");
   });
 
+  it("fails clearly when Rust type module docs are stale", () => {
+    expect(() => {
+      renderRustTypes(
+        [validBinding()],
+        [
+          ...exampleModuleDocs,
+          {
+            rustModulePath: ["webhooks", "agent", "unused"],
+            rustDoc: ["Unused generated DTO module."],
+          },
+        ],
+        exampleRootDoc,
+      );
+    }).toThrow("unused Rust docs for type module webhooks::agent::unused");
+  });
+
   it("fails clearly when declaration docs are missing", () => {
     expect(() => {
       renderExampleRustTypes([
@@ -530,6 +546,24 @@ describe("Rust type bindings", () => {
       ]);
     }).toThrow(
       "webhooks::agent::example::Request.Request is missing Rust docs",
+    );
+  });
+
+  it("fails clearly when declaration docs are stale", () => {
+    expect(() => {
+      renderExampleRustTypes([
+        validBinding({
+          declarations: [
+            requestDeclaration(),
+            {
+              rustTypeName: "UnusedRequest",
+              rustDoc: ["Unused request DTO."],
+            },
+          ],
+        }),
+      ]);
+    }).toThrow(
+      "webhooks::agent::example::Request.UnusedRequest has Rust docs but did not generate a declaration",
     );
   });
 
