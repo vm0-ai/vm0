@@ -312,7 +312,6 @@ describe("CHAT-02: completed chat callback", () => {
   it("persists assistant output, reorders threads, titles the thread, recommends follow-ups, notifies, and auto-sends the queued template message", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.proxyChatCallbackToApp();
-    await chatCallbacks.enableChatRecommendedFollowups(actor);
 
     const titlePrompts: string[] = [];
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");

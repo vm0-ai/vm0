@@ -3872,12 +3872,7 @@ function ThinkingIndicator({
   const donePhrase = useGet(thread.donePhrase$);
   const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const isQueued = latestRunStatus === "queued";
-  const features = useLastResolved(featureSwitch$);
-  const recommendedFollowupsEnabled =
-    features?.[FeatureSwitchKey.ChatRecommendedFollowups] ?? false;
-  const recommendedFollowupSource = recommendedFollowupsEnabled
-    ? latestRecommendedFollowups(groups)
-    : null;
+  const recommendedFollowupSource = latestRecommendedFollowups(groups);
   const doneLabel = recommendedFollowupSource ? "Keep going" : donePhrase;
 
   if (

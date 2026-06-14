@@ -4098,7 +4098,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FOLLOWUP_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
     });
 
     await waitFor(() => {
@@ -4190,7 +4189,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FOLLOWUP_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
     });
 
     await waitFor(() => {
