@@ -66,10 +66,10 @@
         "crates/guest-agent": {
             "release-type": "rust"
         },
-        "crates/guest-common": {
+        "crates/guest-contracts": {
             "release-type": "rust"
         },
-        "crates/guest-runtime-paths": {
+        "crates/guest-common": {
             "release-type": "rust"
         },
         "crates/guest-download": {

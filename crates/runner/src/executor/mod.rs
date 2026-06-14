@@ -88,13 +88,13 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "LD_AUDIT",
     "NODE_OPTIONS",
 ];
-const USER_ENV_FILE_ENV_KEY: &str = "VM0_USER_ENV_FILE";
+const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const GUEST_USER_ENV_DIR_NAME: &str = "user-env";
 const GUEST_USER_ENV_FILENAME: &str = "env.json";
 const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
-    "VM0_STUCK_TOOL_TIMEOUT_SECS",
-    "VM0_POST_RESULT_SIGTERM_GRACE_SECS",
-    "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
+    guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+    guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+    guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
 ];
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
     include_str!("../../scripts/agent-abnormal-exit-diagnostics.sh");
@@ -115,7 +115,7 @@ use crate::workspace_image_cache::{
 
 fn guest_runtime_dir(run_id: RunId) -> RunnerResult<String> {
     let run_id = run_id.to_string();
-    let path = guest_runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
+    let path = guest_contracts::runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
         .map_err(|e| RunnerError::Internal(format!("guest runtime dir: {e}")))?;
     Ok(path.to_string_lossy().into_owned())
 }
@@ -125,8 +125,9 @@ fn guest_runtime_path(
     path: impl FnOnce(PathBuf) -> PathBuf,
 ) -> RunnerResult<String> {
     let run_id = run_id.to_string();
-    let run_dir = guest_runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
-        .map_err(|e| RunnerError::Internal(format!("guest runtime path: {e}")))?;
+    let run_dir =
+        guest_contracts::runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
+            .map_err(|e| RunnerError::Internal(format!("guest runtime path: {e}")))?;
     Ok(path(run_dir).to_string_lossy().into_owned())
 }
 

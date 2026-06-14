@@ -6,13 +6,14 @@ use std::io::Write;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-static RUN_ID: LazyLock<String> = LazyLock::new(|| std::env::var("VM0_RUN_ID").unwrap_or_default());
+static RUN_ID: LazyLock<String> =
+    LazyLock::new(|| std::env::var(guest_contracts::env::RUN_ID_ENV).unwrap_or_default());
 
 static SANDBOX_OPS_LOG: LazyLock<String> = LazyLock::new(|| {
-    let Ok(run_dir) = guest_runtime_paths::run_dir_from_env(&RUN_ID) else {
+    let Ok(run_dir) = guest_contracts::runtime_paths::run_dir_from_env(&RUN_ID) else {
         return String::new();
     };
-    guest_runtime_paths::sandbox_ops_log_file(run_dir)
+    guest_contracts::runtime_paths::sandbox_ops_log_file(run_dir)
         .to_string_lossy()
         .into_owned()
 });
@@ -55,7 +56,7 @@ pub fn record_sandbox_op(
         return;
     }
 
-    let Ok(mut file) = guest_runtime_paths::open_private_append(path) else {
+    let Ok(mut file) = guest_contracts::runtime_paths::open_private_append(path) else {
         return; // Silently fail if can't open log
     };
 
@@ -77,7 +78,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let runtime_dir = dir.path().join("runtime");
         unsafe {
-            std::env::set_var(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV, &runtime_dir);
+            std::env::set_var(
+                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                &runtime_dir,
+            );
         }
         let log_path = sandbox_ops_log();
         let _ = std::fs::remove_file(log_path);
@@ -102,7 +106,7 @@ mod tests {
 
         let _ = std::fs::remove_file(log_path);
         unsafe {
-            std::env::remove_var(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV);
+            std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
         }
     }
 }

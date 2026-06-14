@@ -12,8 +12,8 @@ bytes.workspace = true
 chrono = { workspace = true, features = ["clock"] }
 flate2.workspace = true
 process-control-ipc.workspace = true
+guest-contracts.workspace = true
 guest-common.workspace = true
-guest-runtime-paths.workspace = true
 http-body = "1"
 libc.workspace = true
 pin-project-lite = "0.2"
