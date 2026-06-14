@@ -27,9 +27,9 @@ Request context
   handling. Read by body capture to mark oversized request bodies truncated.
 - ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
   ``"claude-code"``. Read by model-provider usage protocol selection.
-- ``BROWSER_USER_AGENT``: ``bool`` written by ``request()`` for browser-looking
-  user agents. Read by request dispatch to skip the firewall credential flow for
-  that request and by network-log entry construction.
+- ``BROWSER_USER_AGENT``: ``bool`` written during request classification for
+  browser-looking user agents. Read by request dispatch to skip firewall
+  matching and credential mutation, and by network-log entry construction.
 
 Timing context
 --------------

@@ -657,6 +657,46 @@ async def test_auth_base_requestheaders_rejects_unbounded_body_framing(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == ("auth_base_request_body_length_required")
 
 
+async def test_browser_auth_base_requestheaders_skips_body_framing_rejection(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("User-Agent", _BROWSER_USER_AGENT),
+        ),
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    get_headers.assert_not_called()
+    assert flow.response is None
+    assert flow.error is None
+    assert flow.live is True
+    assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
+    assert metadata_keys.FIREWALL_PERMISSION not in flow.metadata
+    assert metadata_keys.FIREWALL_RULE_MATCH not in flow.metadata
+    assert metadata_keys.FIREWALL_PARAMS not in flow.metadata
+    assert metadata_keys.FIREWALL_API_ID not in flow.metadata
+    assert metadata_keys.MODEL_USAGE_PROVIDER not in flow.metadata
+
+
 async def test_auth_base_requestheaders_rejects_extreme_content_length_before_auth(
     tmp_path, real_flow, mitm_ctx, headers
 ):
@@ -931,7 +971,11 @@ async def test_browser_firewall_match_skips_auth_injection(
     assert flow.metadata["browser_user_agent"] is True
     assert "firewall_base" not in flow.metadata
     assert "firewall_name" not in flow.metadata
+    assert "firewall_permission" not in flow.metadata
+    assert "firewall_rule_match" not in flow.metadata
+    assert "firewall_params" not in flow.metadata
     assert "firewall_api_id" not in flow.metadata
+    assert metadata_keys.MODEL_USAGE_PROVIDER not in flow.metadata
     assert "auth_resolved_secrets" not in flow.metadata
     assert "auth_url_rewrite" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="browser-passthrough")
@@ -1200,3 +1244,57 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unsafe_path"
+
+
+async def test_browser_firewall_unsafe_path_bypasses_firewall_match(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Browser-looking UAs skip firewall matching, including unsafe-path blocks."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "full-access",
+                        "rules": ["ANY /{path+}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/%2e%2e/admin",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("User-Agent", _BROWSER_USER_AGENT),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_not_called()
+    assert flow.response is None
+    assert flow.metadata["browser_user_agent"] is True
+    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata["firewall_billable"] is False
+    assert "firewall_base" not in flow.metadata
+    assert "firewall_name" not in flow.metadata
+    assert "Authorization" not in flow.request.headers

@@ -1312,11 +1312,10 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
             return
         if classification.kind == "browser_allow":
-            # User-Agent is client-controlled. This is a credential-flow skip
-            # for browser-looking traffic, not proof that the request came from
-            # a trusted browser integration. Registry and authority validation
-            # have already run, but connector/model-provider auth is not fetched
-            # or injected on this path.
+            # User-Agent is client-controlled. This is a business passthrough
+            # for browser-looking traffic, not proof of trusted browser
+            # provenance. Registry and authority validation have already run,
+            # but firewall matching, credential fetch, and auth injection do not.
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
             return
