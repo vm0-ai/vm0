@@ -86,10 +86,15 @@ async function refreshOrgMemberCache(
     if (!userId) {
       continue;
     }
+    const role = membership.role === "org:admin" ? "admin" : "member";
+    const existing = rowsByUserId.get(userId);
+    if (existing?.role === "admin") {
+      continue;
+    }
     rowsByUserId.set(userId, {
       orgId,
       userId,
-      role: membership.role === "org:admin" ? "admin" : "member",
+      role,
       cachedAt,
     });
   }

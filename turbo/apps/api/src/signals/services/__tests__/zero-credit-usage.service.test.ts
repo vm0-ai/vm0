@@ -74,6 +74,18 @@ function member(role: MemberFixture["role"], email?: string): MemberFixture {
   };
 }
 
+function uniqueMembersByUserId(
+  members: readonly MemberFixture[],
+): MemberFixture[] {
+  return [
+    ...new Map(
+      members.map((entry) => {
+        return [entry.userId, entry];
+      }),
+    ).values(),
+  ];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -228,11 +240,12 @@ async function seedUsageFixture(options: {
       },
     });
 
-  if (members.length > 0) {
+  const uniqueMembers = uniqueMembersByUserId(members);
+  if (uniqueMembers.length > 0) {
     await db
       .insert(users)
       .values(
-        members.map((entry) => {
+        uniqueMembers.map((entry) => {
           return {
             id: entry.userId,
             emailUnsubscribed: entry.emailUnsubscribed ?? false,
@@ -250,7 +263,7 @@ async function seedUsageFixture(options: {
     await db
       .insert(userCache)
       .values(
-        members.map((entry) => {
+        uniqueMembers.map((entry) => {
           return {
             userId: entry.userId,
             email: entry.email,
@@ -556,6 +569,33 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
     for (const alert of alerts) {
       expect(parseAddresses(alert.toAddresses)).toHaveLength(1);
     }
+  });
+
+  it("keeps admin in the member cache when duplicate membership rows disagree", async () => {
+    const admin = member("org:admin", "duplicate-role-admin@example.com");
+    const duplicateMember = {
+      ...admin,
+      role: "org:member" as const,
+    };
+    const fixture = await createUsageFixture({
+      beforeCredits: LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS + 600,
+      chargeCredits: 700,
+      members: [admin, duplicateMember],
+    });
+
+    await processFixture(fixture);
+
+    const alerts = await lowCreditAlerts(fixture);
+    expect(alerts).toHaveLength(1);
+    expect(parseAddresses(alerts[0]?.toAddresses)).toStrictEqual([admin.email]);
+
+    const db = store.set(writeDb$);
+    const [cachedMember] = await db
+      .select({ role: orgMembersCache.role })
+      .from(orgMembersCache)
+      .where(eq(orgMembersCache.orgId, fixture.orgId))
+      .limit(1);
+    expect(cachedMember?.role).toBe("admin");
   });
 
   it("pages current org memberships before selecting admin recipients", async () => {
