@@ -137,12 +137,14 @@ class _UsageBufferState:
                 for event_count in events_by_run.values()
             )
         for source_events in self._source_events.values():
-            events_by_run: dict[str, int] = {}
+            source_events_by_run: dict[str, int] = {}
             for source_event in source_events:
-                events_by_run[source_event.run_id] = events_by_run.get(source_event.run_id, 0) + 1
+                source_events_by_run[source_event.run_id] = (
+                    source_events_by_run.get(source_event.run_id, 0) + 1
+                )
             count += sum(
                 (event_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
-                for event_count in events_by_run.values()
+                for event_count in source_events_by_run.values()
             )
         return count
 
