@@ -8,6 +8,7 @@ use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootP
 
 use crate::constants;
 use crate::error::AgentError;
+use guest_common::env as guest_env;
 use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";

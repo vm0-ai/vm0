@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
+use guest_common::env as guest_env;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
 use super::session_restore::canonical_codex_thread_id;

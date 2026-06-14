@@ -14,6 +14,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
+use guest_common::env as guest_env;
+
 static RUNTIME_DIR: LazyLock<PathBuf> = LazyLock::new(default_run_dir);
 
 #[allow(clippy::panic)]

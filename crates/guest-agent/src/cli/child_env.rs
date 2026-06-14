@@ -1,6 +1,7 @@
 //! Curated environment for CLI children.
 
 use crate::env;
+use guest_common::env as guest_env;
 
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const DEFAULT_SHELL: &str = "/bin/bash";

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 #[allow(clippy::panic)]
-static RUN_ID: LazyLock<String> = LazyLock::new(|| match std::env::var(guest_env::RUN_ID_ENV) {
+static RUN_ID: LazyLock<String> = LazyLock::new(|| match std::env::var(crate::env::RUN_ID_ENV) {
     Ok(run_id) if !run_id.is_empty() => run_id,
     _ => panic!("VM0_RUN_ID is required for guest system logging"),
 });

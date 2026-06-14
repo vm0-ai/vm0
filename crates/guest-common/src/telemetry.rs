@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 static RUN_ID: LazyLock<String> =
-    LazyLock::new(|| std::env::var(guest_env::RUN_ID_ENV).unwrap_or_default());
+    LazyLock::new(|| std::env::var(crate::env::RUN_ID_ENV).unwrap_or_default());
 
 static SANDBOX_OPS_LOG: LazyLock<String> = LazyLock::new(|| {
     let Ok(run_dir) = guest_runtime_paths::run_dir_from_env(&RUN_ID) else {

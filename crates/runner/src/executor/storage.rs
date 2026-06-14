@@ -1,5 +1,6 @@
 //! Storage manifest filtering and guest download helpers.
 
+use guest_common::env as guest_env;
 use sandbox::{EXEC_OUTPUT_LIMIT_1_MIB, ExecRequest, Sandbox};
 use tracing::info;
 

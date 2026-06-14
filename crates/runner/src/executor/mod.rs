@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use agent_diagnostics::FailureDiagnostic;
 use futures_util::future::BoxFuture;
+use guest_common::env as guest_env;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 use tokio_util::sync::CancellationToken;
 

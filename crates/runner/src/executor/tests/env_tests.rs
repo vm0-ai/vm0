@@ -4,6 +4,7 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use api_contracts::generated::types::runners::storage::{
     ArtifactEntryMissingRootPolicy, StorageManifest,
 };
+use guest_common::env as guest_env;
 use sandbox::SandboxId;
 
 use super::super::env::{
