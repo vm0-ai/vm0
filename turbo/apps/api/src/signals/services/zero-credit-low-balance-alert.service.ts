@@ -31,6 +31,10 @@ export const LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS = 5000;
 const L = logger("CreditLowBalanceAlert");
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
 
+function billingCreditsUrl(): string {
+  return `${env("APP_URL").replace(/\/$/, "")}/?settings=billing&billingView=credits`;
+}
+
 export interface CreditLowBalanceAlertArgs {
   readonly orgId: string;
   readonly remainingCredits: number;
@@ -291,7 +295,7 @@ export const enqueueCreditLowBalanceAlert$ = command(
 
     const orgName = await orgDisplayName(db, args.orgId);
     signal.throwIfAborted();
-    const billingUrl = `${env("APP_URL")}/?settings=billing&billingView=credits`;
+    const billingUrl = billingCreditsUrl();
 
     await db.insert(emailOutbox).values(
       deliverableRecipients.map((recipient) => {

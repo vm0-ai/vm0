@@ -420,6 +420,7 @@ beforeEach(() => {
 
 describe("processOrgUsageEvents$ low-credit alerts", () => {
   it("enqueues a low-credit alert when usage crosses the threshold", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test/");
     const fixture = await createUsageFixture({
       beforeCredits: LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS + 1000,
       chargeCredits: 1500,
