@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.116.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.5...runner-rs-v0.116.6) (2026-06-14)
+
+
+### Bug Fixes
+
+* **mitm-addon:** cap auth base bodies before buffering ([#17594](https://github.com/vm0-ai/vm0/issues/17594)) ([4d0ccd7](https://github.com/vm0-ai/vm0/commit/4d0ccd7e4af24a5c6846d096b5876c00b0f182ae))
+* wrap malformed sigv4 urls in signing errors ([#17572](https://github.com/vm0-ai/vm0/issues/17572)) ([5dcfdfb](https://github.com/vm0-ai/vm0/commit/5dcfdfb8bb2fd0a40d055a74c2d06cb8477c8564))
+
+
+### Documentation
+
+* document auth base header trust boundaries ([#17581](https://github.com/vm0-ai/vm0/issues/17581)) ([e73cf83](https://github.com/vm0-ai/vm0/commit/e73cf8367b1667659ba4201152068f167df81148))
+
+
+### Refactoring
+
+* **mitm-addon:** split usage buffer internals ([#17591](https://github.com/vm0-ai/vm0/issues/17591)) ([b9a603e](https://github.com/vm0-ai/vm0/commit/b9a603e9540057362fb33c9218b77812171d691e))
+
 ## [0.116.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.4...runner-rs-v0.116.5) (2026-06-13)
 
 
