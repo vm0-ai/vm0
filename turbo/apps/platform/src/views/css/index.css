@@ -52,7 +52,16 @@
   --sat: env(safe-area-inset-top, 0px);
   --sab-raw: env(safe-area-inset-bottom, 0px);
   --sab: var(--sab-raw);
+  --zero-viewport-height: 100dvh;
   --zero-desktop-titlebar-height: 48px;
+}
+
+@supports (height: 100lvh) {
+  @media (display-mode: standalone) {
+    :root {
+      --zero-viewport-height: 100lvh;
+    }
+  }
 }
 
 :root:has(
@@ -66,9 +75,47 @@
   --sab: 0px;
 }
 
+@supports (height: 100lvh) {
+  @media (display-mode: standalone) {
+    :root:has(
+      :is(
+        input,
+        textarea,
+        select,
+        [contenteditable]:not([contenteditable="false"])
+      ):focus-visible
+    ) {
+      --zero-viewport-height: 100dvh;
+    }
+  }
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: var(--zero-viewport-height);
+  min-height: var(--zero-viewport-height);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
 .zero-viewport-shell {
-  height: 100dvh;
-  min-height: 100dvh;
+  height: var(--zero-viewport-height);
+  min-height: var(--zero-viewport-height);
+  max-height: var(--zero-viewport-height);
+  overflow: hidden;
 }
 
 @media (display-mode: standalone) {
