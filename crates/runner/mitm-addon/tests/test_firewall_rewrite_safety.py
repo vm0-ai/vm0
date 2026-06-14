@@ -164,6 +164,43 @@ class TestAuthBaseUrlRewriteSafety:
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
     @pytest.mark.parametrize(
+        "request_path",
+        [
+            "//[foo]?client=visible",
+            "/hook?client=visible\nsecret",
+        ],
+    )
+    async def test_malformed_request_target_fails_closed_without_forwarding(
+        self, real_flow, mitm_ctx, tmp_path, request_path
+    ):
+        """Malformed request target query extraction must use the local rewrite failure path."""
+        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path=request_path,
+            resolved_base="https://real.example.com/webhook/super-secret-token",
+        )
+        mock_forward = AsyncMock()
+        mock_log = MagicMock()
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert mock_forward.call_count == 0
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert "auth_url_rewrite" not in flow.metadata
+        assert "super-secret-token" not in flow.response.text
+        for log_call in mock_log.call_args_list:
+            assert "super-secret-token" not in json.dumps(log_call.args)
+            assert "super-secret-token" not in json.dumps(log_call.kwargs)
+
+    @pytest.mark.parametrize(
         "resolved_base",
         [
             "https://real.example.com/webhook/%5csuper-secret-token",

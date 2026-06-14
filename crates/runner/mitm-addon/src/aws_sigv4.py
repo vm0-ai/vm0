@@ -47,6 +47,8 @@ _AMZ_DATE_RE = re.compile(r"^\d{8}T\d{6}Z$")
 _PRESIGN_EXPIRES_RE = re.compile(r"^[1-9]\d*$")
 _ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
 _SIGNED_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
+_HEX_DIGITS = frozenset("0123456789ABCDEFabcdef")
+_RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
 _DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -122,6 +124,7 @@ def sign_request(
     hash is ``UNSIGNED-PAYLOAD``.
     """
     _validate_credentials(credentials)
+    _validate_headers(headers)
     context = _classify_request(url, headers)
     if context.algorithm == _ASYMMETRIC_ALGORITHM:
         raise AwsSigV4SigningError("SigV4A is not supported by this runner")
@@ -165,7 +168,7 @@ def _classify_request(
         "authorization",
         "Malformed AWS authorization header",
     )
-    query_pairs = _parse_query_pairs(urllib.parse.urlsplit(url).query)
+    query_pairs = _parse_query_pairs(_split_url_for_signing(url).query)
     query_algorithm = _unique_query_value(query_pairs, "X-Amz-Algorithm")
     if auth_header and query_algorithm:
         raise AwsSigV4SigningError("Ambiguous AWS auth location")
@@ -174,6 +177,18 @@ def _classify_request(
     if auth_header:
         return _classify_header_request(auth_header, headers)
     raise AwsSigV4SigningError("Missing AWS SigV4 auth metadata")
+
+
+def _split_url_for_signing(url: str) -> urllib.parse.SplitResult:
+    _utf8_encode(url, "AWS request URL is malformed")
+    if _has_raw_whitespace(url) or _has_ascii_control(url):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
+    if _has_malformed_percent_encoding(url):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
+    try:
+        return urllib.parse.urlsplit(url)
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
 
 
 def _classify_header_request(
@@ -246,7 +261,7 @@ def _parse_authorization_header(value: str) -> tuple[str, dict[str, str]]:
 
 
 def _parse_credential(credential: str) -> tuple[str, _CredentialScope]:
-    parts = urllib.parse.unquote(credential).split("/")
+    parts = credential.split("/")
     if len(parts) != _CREDENTIAL_SCOPE_PARTS or parts[-1] != _AWS4_REQUEST:
         raise AwsSigV4SigningError("Malformed AWS credential scope")
     access_key_id = parts[0]
@@ -395,7 +410,7 @@ def _canonical_request(
     payload_hash: str,
     is_s3: bool,
 ) -> tuple[str, str]:
-    parts = urllib.parse.urlsplit(url)
+    parts = _split_url_for_signing(url)
     canonical_uri = _canonical_uri(parts.path, is_s3=is_s3)
     canonical_query = _canonical_query_string(parts.query)
     canonical_headers, signed_header_names = _canonical_headers(headers, signed_headers)
@@ -417,7 +432,7 @@ def _canonical_uri(path: str, *, is_s3: bool) -> str:
     if is_s3:
         return raw_path
     normalized = _remove_dot_segments(raw_path)
-    return urllib.parse.quote(normalized, safe="/~")
+    return _quote_url_component(normalized, safe="/~")
 
 
 def _remove_dot_segments(path: str) -> str:
@@ -509,7 +524,9 @@ def _signature(
             _HMAC_ALGORITHM,
             amz_date,
             _scope_string(scope),
-            hashlib.sha256(canonical_request.encode()).hexdigest(),
+            hashlib.sha256(
+                _utf8_encode(canonical_request, "AWS request contains invalid text")
+            ).hexdigest(),
         ]
     )
     signing_key = _signing_key(credentials.secret_access_key, scope)
@@ -517,7 +534,10 @@ def _signature(
 
 
 def _signing_key(secret_access_key: str, scope: _CredentialScope) -> bytes:
-    date_key = _hmac_digest(f"AWS4{secret_access_key}".encode(), scope.date)
+    date_key = _hmac_digest(
+        _utf8_encode(f"AWS4{secret_access_key}", "Invalid AWS secret access key"),
+        scope.date,
+    )
     region_key = _hmac_digest(date_key, scope.region)
     service_key = _hmac_digest(region_key, scope.service)
     return _hmac_digest(service_key, _AWS4_REQUEST)
@@ -539,7 +559,7 @@ def _replace_query_signing_params(
     signed_headers: frozenset[str],
     signature: str | None,
 ) -> str:
-    parts = urllib.parse.urlsplit(url)
+    parts = _split_url_for_signing(url)
     filtered = [
         (key, value)
         for key, value in _parse_query_pairs(parts.query)
@@ -570,7 +590,14 @@ def _encode_query_pairs(pairs: list[tuple[str, str]]) -> str:
 
 
 def _aws_quote(value: str) -> str:
-    return urllib.parse.quote(value, safe="-_.~")
+    return _quote_url_component(value, safe="-_.~")
+
+
+def _quote_url_component(value: str, *, safe: str) -> str:
+    try:
+        return urllib.parse.quote(value, safe=safe)
+    except UnicodeEncodeError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
 
 
 def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
@@ -582,23 +609,78 @@ def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
         if not raw_pair:
             continue
         raw_key, _separator, raw_value = raw_pair.partition("=")
-        pairs.append((urllib.parse.unquote(raw_key), urllib.parse.unquote(raw_value)))
+        pairs.append((_unquote_query_component(raw_key), _unquote_query_component(raw_value)))
     return pairs
+
+
+def _unquote_query_component(value: str) -> str:
+    if _has_malformed_percent_encoding(value):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
+    try:
+        return urllib.parse.unquote_to_bytes(value).decode()
+    except UnicodeDecodeError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+
+
+def _has_malformed_percent_encoding(value: str) -> bool:
+    index = 0
+    while True:
+        index = value.find("%", index)
+        if index == -1:
+            return False
+        if (
+            index + 2 >= len(value)
+            or value[index + 1] not in _HEX_DIGITS
+            or value[index + 2] not in _HEX_DIGITS
+        ):
+            return True
+        index += 3
 
 
 def _validate_credentials(credentials: AwsSigV4Credentials) -> None:
     if not _ACCESS_KEY_ID_RE.fullmatch(credentials.access_key_id):
         raise AwsSigV4SigningError("Invalid AWS access key ID")
-    if not credentials.secret_access_key or _has_ascii_control(credentials.secret_access_key):
+    if (
+        not credentials.secret_access_key
+        or _has_ascii_control(credentials.secret_access_key)
+        or not _is_utf8_encodable(credentials.secret_access_key)
+    ):
         raise AwsSigV4SigningError("Invalid AWS secret access key")
     if credentials.session_token is not None and (
-        not credentials.session_token or _has_ascii_control(credentials.session_token)
+        not credentials.session_token
+        or _has_ascii_control(credentials.session_token)
+        or not _is_utf8_encodable(credentials.session_token)
     ):
         raise AwsSigV4SigningError("Invalid AWS session token")
 
 
+def _validate_headers(headers: list[tuple[str, str]]) -> None:
+    for name, value in headers:
+        _utf8_encode(name, "AWS request header contains invalid text")
+        _utf8_encode(value, "AWS request header contains invalid text")
+
+
+def _utf8_encode(value: str, message: str) -> bytes:
+    try:
+        return value.encode()
+    except UnicodeEncodeError as e:
+        raise AwsSigV4SigningError(message) from e
+
+
+def _is_utf8_encodable(value: str) -> bool:
+    try:
+        value.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _has_ascii_control(value: str) -> bool:
     return any(ord(char) <= _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value)
+
+
+def _has_raw_whitespace(value: str) -> bool:
+    return any(char in _RAW_WHITESPACE_CHARS for char in value)
 
 
 def _unique_header_value(
@@ -651,10 +733,14 @@ def _upsert_header(
 
 
 def _host_header_value(url: str) -> str:
-    parts = urllib.parse.urlsplit(url)
-    if not parts.netloc or not parts.hostname:
+    parts = _split_url_for_signing(url)
+    try:
+        hostname = parts.hostname
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+    if not parts.netloc or not hostname:
         raise AwsSigV4SigningError("AWS request URL must include a host")
-    host = parts.hostname
+    host = hostname
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
     try:

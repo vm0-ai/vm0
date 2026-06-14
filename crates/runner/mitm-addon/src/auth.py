@@ -31,6 +31,7 @@ from auth_base_forwarder import (
 )
 from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
 from logging_utils import log_proxy_entry
+from url_syntax import has_unsafe_runtime_url_syntax
 from url_utils import build_rewrite_url
 
 
@@ -797,13 +798,44 @@ def _apply_header_query_injection(
             flow.request.query[key] = value
 
 
+def _trusted_aws_sigv4_url(flow: http.HTTPFlow) -> str:
+    url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(url, str):
+        raise AwsSigV4SigningError("AWS request URL is unavailable")
+    if has_unsafe_runtime_url_syntax(url, allow_backslash=True):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
+
+    try:
+        original = urllib.parse.urlsplit(url)
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+
+    if has_unsafe_runtime_url_syntax(flow.request.path, allow_backslash=True):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
+    try:
+        current_query = urllib.parse.urlsplit(flow.request.path).query
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+    if current_query == original.query:
+        return url
+    return urllib.parse.urlunsplit(
+        (original.scheme, original.netloc, original.path, current_query, original.fragment)
+    )
+
+
+def _request_path_query(flow: http.HTTPFlow) -> str:
+    if has_unsafe_runtime_url_syntax(flow.request.path, allow_backslash=True):
+        raise ValueError("unsafe request target")
+    return urllib.parse.urlparse(flow.request.path).query
+
+
 def _sign_flow_request_with_aws_sigv4(
     flow: http.HTTPFlow,
     credentials: AwsSigV4Credentials,
 ) -> None:
     signed_url, signed_headers = sign_request(
         method=flow.request.method,
-        url=flow.request.url,
+        url=_trusted_aws_sigv4_url(flow),
         headers=header_pairs(flow.request.headers),
         body=flow.request.raw_content,
         credentials=credentials,
@@ -1074,8 +1106,8 @@ async def _apply_url_rewrite(
     # The addon forwards the request itself because mitmproxy's eager
     # connection already connected to the placeholder IP. Setting
     # flow.response bypasses the upstream connection entirely.
-    orig_query = urllib.parse.urlparse(flow.request.path).query
     try:
+        orig_query = _request_path_query(flow)
         new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
     except ValueError as e:
         _set_url_rewrite_forward_failed(
