@@ -43,8 +43,9 @@ _HTTP_STATUS_REDIRECT_MIN = 300
 # is a regular request/response endpoint for rules management, NOT a stream).
 # Streams deliver one JSON object per line, possibly for hours.  The shared
 # response streaming wrapper remains the mitmproxy stream callback: it keeps the
-# capped forensic stream_buffer and feeds the X NDJSON parser incrementally, so
-# billing extraction does not require buffering the full response body.
+# capped forensic stream_buffer and, when a parser is configured, feeds the X
+# NDJSON parser incrementally so billing extraction does not require buffering
+# the full response body.
 _STREAM_ENDPOINTS = frozenset(
     {
         "/2/tweets/search/stream",
@@ -685,8 +686,8 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         from ``/2/tweets/counts/*`` endpoints, where ``data`` carries time
         buckets, not tweets.
 
-    For X NDJSON streaming endpoints, the shared response streaming wrapper
-    feeds an incremental parser that populates
+    For X NDJSON streaming endpoints with a configured parser, the shared
+    response streaming wrapper feeds an incremental parser that populates
     ``flow.metadata[metadata_keys.X_NDJSON_STATE]`` as response bytes arrive.
     When that state is present we return its accumulated counters directly
     (``body_format: "ndjson"``) and skip the legacy buffered fallback, since
