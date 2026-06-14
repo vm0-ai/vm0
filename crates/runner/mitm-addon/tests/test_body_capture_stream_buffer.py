@@ -28,7 +28,7 @@ class TestBodyCaptureStreamBuffer:
         assert entry["response_body_encoding"] == "utf-8"
         assert "response_body_truncated" not in entry
 
-    def test_empty_stream_buffer_skips_body(self, real_flow, headers):
+    def test_empty_stream_buffer_skips_body(self, real_flow):
         """Empty stream_buffer (e.g. synthetic 403) should not produce body fields."""
         flow = real_flow(
             method="POST",

@@ -223,7 +223,7 @@ class TestAddCaptureFields:
         assert entry["response_body_truncated"] is True
         assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
-    def test_no_body_fields_when_empty(self, real_flow, headers):
+    def test_no_body_fields_when_empty(self, real_flow):
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -262,7 +262,7 @@ class TestAddCaptureFields:
         assert entry["response_body"] == '{"ok": true}'
         assert entry["response_body_encoding"] == "utf-8"
 
-    def test_response_decompression_error_skips_body(self, real_flow, headers):
+    def test_response_decompression_error_skips_body(self, real_flow):
         # Content-Encoding: gzip + non-gzip bytes makes flow.response.content
         # raise ValueError, which add_capture_fields is expected to catch.
         flow = real_flow(
@@ -282,7 +282,7 @@ class TestAddCaptureFields:
         assert "response_body" not in entry  # response body skipped
         assert entry["response_body_encoding"] == "binary"  # marked as binary
 
-    def test_request_decompression_error_marks_body_binary(self, real_flow, headers):
+    def test_request_decompression_error_marks_body_binary(self, real_flow):
         # Content-Encoding: gzip + non-gzip bytes on the REQUEST side makes
         # flow.request.content raise ValueError.  add_capture_fields must
         # catch it and mark request_body_encoding as binary, mirroring the
@@ -320,7 +320,7 @@ class TestAddCaptureFields:
         assert "request_body" not in entry
         assert entry["request_body_encoding"] == "binary"
 
-    def test_binary_request_body_marks_encoding(self, real_flow, headers):
+    def test_binary_request_body_marks_encoding(self, real_flow):
         flow = real_flow(
             method="POST",
             host="api.example.com",
