@@ -4,7 +4,12 @@ import {
   renderRustTypes,
   type NormalizedTypeBinding,
 } from "../generate";
-import { type RustTypeBinding, rustTypeBindings } from "../types";
+import {
+  type RustTypeDeclarationDoc,
+  type RustTypeModuleDoc,
+  type RustTypeBinding,
+  rustTypeBindings,
+} from "../types";
 import {
   artifactEntrySchema,
   storageEntrySchema,
@@ -59,6 +64,53 @@ const expectedBindings = [
   },
 ] as const;
 
+const exampleRootDoc = ["Example generated DTOs."] as const;
+
+const exampleModuleDocs = [
+  {
+    rustModulePath: ["webhooks"],
+    rustDoc: ["Example webhook DTOs."],
+  },
+  {
+    rustModulePath: ["webhooks", "agent"],
+    rustDoc: ["Example agent webhook DTOs."],
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "example"],
+    rustDoc: ["Example generated DTO module."],
+  },
+] satisfies readonly RustTypeModuleDoc[];
+
+function structDeclaration(
+  rustTypeName: string,
+  fields: Readonly<Record<string, readonly string[]>>,
+): RustTypeDeclarationDoc {
+  return {
+    rustTypeName,
+    rustDoc: [`Example ${rustTypeName} DTO.`],
+    fields,
+  };
+}
+
+function enumDeclaration(
+  rustTypeName: string,
+  variants: Readonly<Record<string, readonly string[]>>,
+): RustTypeDeclarationDoc {
+  return {
+    rustTypeName,
+    rustDoc: [`Example ${rustTypeName} enum.`],
+    variants,
+  };
+}
+
+function requestDeclaration(
+  fields: Readonly<Record<string, readonly string[]>> = {
+    runId: ["Example run identifier."],
+  },
+): RustTypeDeclarationDoc {
+  return structDeclaration("Request", fields);
+}
+
 function validBinding(
   overrides: Partial<RustTypeBinding> = {},
 ): RustTypeBinding {
@@ -69,8 +121,13 @@ function validBinding(
     rustModulePath: ["webhooks", "agent", "example"],
     rustTypeName: "Request",
     direction: "request",
+    declarations: [requestDeclaration()],
     ...overrides,
   };
+}
+
+function renderExampleRustTypes(bindings: readonly RustTypeBinding[]): string {
+  return renderRustTypes(bindings, exampleModuleDocs, exampleRootDoc);
 }
 
 function summarizeBinding(binding: NormalizedTypeBinding) {
@@ -117,6 +174,18 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub mod webhooks {");
     expect(firstRender).toContain("pub mod prepare {");
     expect(firstRender).toContain("pub struct FileEntryWithHash {");
+    expect(firstRender).toContain(
+      "//! Generated Rust DTOs for selected `@vm0/api-contracts` request and response bodies.",
+    );
+    expect(firstRender).toContain(
+      "/// Storage manifest DTOs used by runners to mount volumes and artifacts.",
+    );
+    expect(firstRender).toContain(
+      "/// File metadata entry used to compute and commit content-addressed storage uploads.",
+    );
+    expect(firstRender).toContain(
+      "/// Path of the file inside the uploaded storage archive.",
+    );
     expect(firstRender).toContain("pub struct Request {");
     expect(firstRender).toContain("pub struct Response {");
     expect(
@@ -128,6 +197,12 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub storages: Vec<StorageEntry>,");
     expect(firstRender).toContain("pub artifacts: Vec<ArtifactEntry>,");
     expect(firstRender).toContain("pub enum ArtifactEntryMissingRootPolicy {");
+    expect(firstRender).toContain(
+      "/// Policy used when an artifact mount root is missing from the uploaded manifest.",
+    );
+    expect(firstRender).toContain(
+      "/// Treat a missing artifact root as an error.",
+    );
     expect(firstRender).toContain("Fail,");
     expect(firstRender).toContain("PreserveParentVersion,");
     expect(firstRender).toContain(
@@ -179,7 +254,7 @@ describe("Rust type bindings", () => {
   });
 
   it("renders common JSON schema shapes", () => {
-    const rendered = renderRustTypes([
+    const rendered = renderExampleRustTypes([
       validBinding({
         schema: z.object({
           mode: z.enum(["running", "stopping"]),
@@ -193,6 +268,23 @@ describe("Rust type bindings", () => {
           ),
           ok: z.literal(true),
         }),
+        declarations: [
+          enumDeclaration("RequestMode", {
+            running: ["Running mode."],
+            stopping: ["Stopping mode."],
+          }),
+          structDeclaration("RequestItem", {
+            someValue: ["Some value."],
+          }),
+          requestDeclaration({
+            mode: ["Mode field."],
+            optionalValue: ["Optional value."],
+            nullableValue: ["Nullable value."],
+            labels: ["Label map."],
+            items: ["Item list."],
+            ok: ["Boolean literal flag."],
+          }),
+        ],
       }),
     ]);
 
@@ -210,11 +302,16 @@ describe("Rust type bindings", () => {
   });
 
   it("renders optional nullable fields without nested options", () => {
-    const rendered = renderRustTypes([
+    const rendered = renderExampleRustTypes([
       validBinding({
         schema: z.object({
           maybe: z.string().nullable().optional(),
         }),
+        declarations: [
+          requestDeclaration({
+            maybe: ["Optional nullable value."],
+          }),
+        ],
       }),
     ]);
 
@@ -223,7 +320,7 @@ describe("Rust type bindings", () => {
   });
 
   it("uses explicit field type overrides", () => {
-    const rendered = renderRustTypes([
+    const rendered = renderExampleRustTypes([
       validBinding({
         schema: z.object({
           storageType: z.enum(["volume", "artifact"]),
@@ -231,6 +328,11 @@ describe("Rust type bindings", () => {
         fieldTypeOverrides: {
           storageType: "String",
         },
+        declarations: [
+          requestDeclaration({
+            storageType: ["Storage type."],
+          }),
+        ],
       }),
     ]);
 
@@ -239,12 +341,18 @@ describe("Rust type bindings", () => {
   });
 
   it("renames Rust keyword fields", () => {
-    const rendered = renderRustTypes([
+    const rendered = renderExampleRustTypes([
       validBinding({
         schema: z.object({
           type: z.string(),
           self: z.boolean(),
         }),
+        declarations: [
+          requestDeclaration({
+            type: ["Type field."],
+            self: ["Self field."],
+          }),
+        ],
       }),
     ]);
 
@@ -255,11 +363,20 @@ describe("Rust type bindings", () => {
   });
 
   it("renames Rust keyword enum variants", () => {
-    const rendered = renderRustTypes([
+    const rendered = renderExampleRustTypes([
       validBinding({
         schema: z.object({
           mode: z.enum(["self", "ready"]),
         }),
+        declarations: [
+          enumDeclaration("RequestMode", {
+            self: ["Self variant."],
+            ready: ["Ready variant."],
+          }),
+          requestDeclaration({
+            mode: ["Mode field."],
+          }),
+        ],
       }),
     ]);
 
@@ -270,7 +387,7 @@ describe("Rust type bindings", () => {
 
   it("fails clearly for unsupported unions", () => {
     expect(() => {
-      renderRustTypes([
+      renderExampleRustTypes([
         validBinding({
           schema: z.union([
             z.object({ a: z.string() }),
@@ -283,7 +400,7 @@ describe("Rust type bindings", () => {
 
   it("fails clearly for passthrough object schemas", () => {
     expect(() => {
-      renderRustTypes([
+      renderExampleRustTypes([
         validBinding({
           schema: z.object({ type: z.string() }).passthrough(),
         }),
@@ -303,12 +420,17 @@ describe("Rust type bindings", () => {
 
   it("fails clearly when wire fields collide as Rust field names", () => {
     expect(() => {
-      renderRustTypes([
+      renderExampleRustTypes([
         validBinding({
           schema: z.object({
             apiURL: z.string(),
             apiUrl: z.string(),
           }),
+          declarations: [
+            requestDeclaration({
+              apiURL: ["API URL."],
+            }),
+          ],
         }),
       ]);
     }).toThrow("maps both apiURL and apiUrl to Rust field api_url");
@@ -316,11 +438,19 @@ describe("Rust type bindings", () => {
 
   it("fails clearly when enum values collide as Rust variant names", () => {
     expect(() => {
-      renderRustTypes([
+      renderExampleRustTypes([
         validBinding({
           schema: z.object({
             mode: z.enum(["foo-bar", "foo_bar"]),
           }),
+          declarations: [
+            enumDeclaration("RequestMode", {
+              "foo-bar": ["Foo bar variant."],
+            }),
+            requestDeclaration({
+              mode: ["Mode field."],
+            }),
+          ],
         }),
       ]);
     }).toThrow("duplicate Rust enum variant: FooBar");
@@ -328,12 +458,20 @@ describe("Rust type bindings", () => {
 
   it("fails clearly when nested fields collide as Rust type names", () => {
     expect(() => {
-      renderRustTypes([
+      renderExampleRustTypes([
         validBinding({
           schema: z.object({
             user: z.object({ id: z.string() }),
             users: z.array(z.object({ name: z.string() })),
           }),
+          declarations: [
+            structDeclaration("RequestUser", {
+              id: ["User id."],
+            }),
+            requestDeclaration({
+              user: ["User object."],
+            }),
+          ],
         }),
       ]);
     }).toThrow("duplicate Rust type name: RequestUser");
@@ -341,22 +479,129 @@ describe("Rust type bindings", () => {
 
   it("fails clearly when bindings and nested fields collide as Rust type names", () => {
     expect(() => {
-      renderRustTypes([
+      renderExampleRustTypes([
         validBinding({
           rustTypeName: "RequestFile",
           schema: z.object({
             path: z.string(),
           }),
+          declarations: [
+            structDeclaration("RequestFile", {
+              path: ["File path."],
+            }),
+          ],
         }),
         validBinding({
           rustTypeName: "Request",
           schema: z.object({
             files: z.array(z.object({ path: z.string() })),
           }),
+          declarations: [
+            structDeclaration("RequestFile", {
+              path: ["File path."],
+            }),
+            requestDeclaration({
+              files: ["File list."],
+            }),
+          ],
         }),
       ]);
     }).toThrow(
       "generates duplicate Rust type name RequestFile in module webhooks::agent::example",
+    );
+  });
+
+  it("fails clearly when Rust type module docs are missing", () => {
+    expect(() => {
+      renderRustTypes([validBinding()], [], exampleRootDoc);
+    }).toThrow("missing Rust docs for type module webhooks");
+  });
+
+  it("fails clearly when declaration docs are missing", () => {
+    expect(() => {
+      renderExampleRustTypes([
+        validBinding({
+          declarations: [
+            structDeclaration("OtherRequest", {
+              runId: ["Run id."],
+            }),
+          ],
+        }),
+      ]);
+    }).toThrow(
+      "webhooks::agent::example::Request.Request is missing Rust docs",
+    );
+  });
+
+  it("fails clearly when field docs are missing", () => {
+    expect(() => {
+      renderExampleRustTypes([
+        validBinding({
+          declarations: [requestDeclaration({})],
+        }),
+      ]);
+    }).toThrow(
+      "webhooks::agent::example::Request.Request.runId is missing Rust field docs",
+    );
+  });
+
+  it("fails clearly when variant docs are missing", () => {
+    expect(() => {
+      renderExampleRustTypes([
+        validBinding({
+          schema: z.object({
+            mode: z.enum(["running"]),
+          }),
+          declarations: [
+            enumDeclaration("RequestMode", {}),
+            requestDeclaration({
+              mode: ["Mode field."],
+            }),
+          ],
+        }),
+      ]);
+    }).toThrow(
+      "webhooks::agent::example::Request.RequestMode.running is missing Rust variant docs",
+    );
+  });
+
+  it("fails clearly when field docs are stale", () => {
+    expect(() => {
+      renderExampleRustTypes([
+        validBinding({
+          declarations: [
+            requestDeclaration({
+              runId: ["Run id."],
+              stale: ["Stale field."],
+            }),
+          ],
+        }),
+      ]);
+    }).toThrow(
+      "webhooks::agent::example::Request.Request.stale has Rust docs but did not generate a field",
+    );
+  });
+
+  it("fails clearly when variant docs are stale", () => {
+    expect(() => {
+      renderExampleRustTypes([
+        validBinding({
+          schema: z.object({
+            mode: z.enum(["running"]),
+          }),
+          declarations: [
+            enumDeclaration("RequestMode", {
+              running: ["Running variant."],
+              stale: ["Stale variant."],
+            }),
+            requestDeclaration({
+              mode: ["Mode field."],
+            }),
+          ],
+        }),
+      ]);
+    }).toThrow(
+      "webhooks::agent::example::Request.RequestMode.stale has Rust docs but did not generate a variant",
     );
   });
 });

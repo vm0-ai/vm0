@@ -2,142 +2,219 @@
 // Do not edit by hand.
 // Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 
+//! Generated Rust DTOs for selected `@vm0/api-contracts` request and response bodies.
+//! Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.
+//! These types preserve the TypeScript wire contract for Rust runner and guest-agent code.
+
+/// Runner-facing DTOs generated from TypeScript API contracts.
 pub mod runners {
+    /// Storage manifest DTOs used by runners to mount volumes and artifacts.
     pub mod storage {
+        /// Policy used when an artifact mount root is missing from the uploaded manifest.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
         pub enum ArtifactEntryMissingRootPolicy {
+            /// Treat a missing artifact root as an error.
             #[serde(rename = "fail")]
             Fail,
+            /// Preserve the parent artifact version when the root path is missing.
             #[serde(rename = "preserveParentVersion")]
             PreserveParentVersion,
         }
 
+        /// Artifact entry in a runner storage manifest.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         pub struct ArtifactEntry {
+            /// Guest filesystem path where the artifact is mounted.
             pub mount_path: String,
+            /// VAS storage name that stores the artifact versions.
             pub vas_storage_name: String,
+            /// VAS storage identifier for the artifact.
             pub vas_storage_id: String,
+            /// VAS version identifier for the artifact contents.
             pub vas_version_id: String,
+            /// Presigned URL for downloading the artifact archive.
             pub archive_url: String,
+            /// Optional presigned URL for downloading the artifact manifest.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub manifest_url: Option<String>,
+            /// Optional policy for a missing artifact root; absence behaves like `fail`.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
         }
 
+        /// Volume storage entry in a runner storage manifest.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         pub struct StorageEntry {
+            /// User-facing storage name referenced by the run.
             pub name: String,
+            /// Guest filesystem path where the storage is mounted.
             pub mount_path: String,
+            /// VAS storage name that stores the volume versions.
             pub vas_storage_name: String,
+            /// VAS version identifier for the volume contents.
             pub vas_version_id: String,
+            /// Optional filename used when storage instructions are written into the mount.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub instructions_target_filename: Option<String>,
+            /// Presigned URL for downloading the storage archive.
             pub archive_url: String,
         }
 
+        /// Runner storage manifest containing all volume and artifact mounts.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         pub struct StorageManifest {
+            /// Volume storage entries to mount for the run.
             pub storages: Vec<StorageEntry>,
+            /// Artifact entries to mount for the run.
             pub artifacts: Vec<ArtifactEntry>,
         }
     }
 }
 
+/// Webhook DTOs generated from TypeScript API contracts.
 pub mod webhooks {
+    /// Agent webhook DTOs exchanged between sandboxes and the API.
     pub mod agent {
+        /// Sandbox storage upload DTOs shared by guest agents and webhook handlers.
         pub mod storages {
+            /// File metadata entry used to compute and commit content-addressed storage uploads.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
             pub struct FileEntryWithHash {
+                /// Path of the file inside the uploaded storage archive.
                 pub path: String,
+                /// SHA-256 hash of the file contents encoded as hex.
                 pub hash: String,
+                /// File size in bytes.
                 pub size: u64,
             }
 
+            /// DTOs for committing direct sandbox storage uploads.
             pub mod commit {
+                /// Request body for committing a direct sandbox storage upload.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct Request {
+                    /// Agent run identifier bound to the sandbox token.
                     pub run_id: String,
+                    /// Storage name being committed.
                     pub storage_name: String,
+                    /// Storage kind encoded by the TypeScript contract.
                     pub storage_type: String,
+                    /// Storage version identifier being committed.
                     pub version_id: String,
+                    /// Optional parent version used when committing an incremental upload.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub parent_version_id: Option<String>,
+                    /// Content-addressed file list included in the committed upload.
                     pub files: Vec<super::FileEntryWithHash>,
+                    /// Optional commit message associated with the storage version.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub message: Option<String>,
                 }
 
+                /// Response body returned after committing a direct sandbox storage upload.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct Response {
+                    /// Whether the storage commit succeeded.
                     pub success: bool,
+                    /// Committed storage version identifier.
                     pub version_id: String,
+                    /// Storage name that was committed.
                     pub storage_name: String,
+                    /// Total committed storage size in bytes.
                     pub size: f64,
+                    /// Number of files recorded in the committed storage version.
                     pub file_count: f64,
+                    /// Whether the committed version reused existing storage content.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub deduplicated: Option<bool>,
                 }
             }
 
+            /// DTOs for preparing direct sandbox storage uploads.
             pub mod prepare {
+                /// Incremental file change set sent while preparing a partial storage upload.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct RequestChanges {
+                    /// Paths added since the base storage version.
                     pub added: Vec<String>,
+                    /// Paths modified since the base storage version.
                     pub modified: Vec<String>,
+                    /// Paths deleted since the base storage version.
                     pub deleted: Vec<String>,
                 }
 
+                /// Request body for preparing a direct sandbox storage upload.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct Request {
+                    /// Agent run identifier bound to the sandbox token.
                     pub run_id: String,
+                    /// Storage name being prepared for upload.
                     pub storage_name: String,
+                    /// Storage kind encoded by the TypeScript contract.
                     pub storage_type: String,
+                    /// Content-addressed file list included in the upload.
                     pub files: Vec<super::FileEntryWithHash>,
+                    /// Optional parent version used when preparing an incremental upload.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub parent_version_id: Option<String>,
+                    /// Whether to bypass deduplication checks for this upload.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub force: Option<bool>,
+                    /// Optional base version identifier for an incremental upload.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub base_version: Option<String>,
+                    /// Optional incremental file changes from the base version.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub changes: Option<RequestChanges>,
                 }
 
+                /// Presigned upload target for the storage archive object.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct ResponseUploadsArchive {
+                    /// Object key for the archive upload.
                     pub key: String,
+                    /// Presigned URL used to upload the archive object.
                     pub presigned_url: String,
                 }
 
+                /// Presigned upload target for the storage manifest object.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct ResponseUploadsManifest {
+                    /// Object key for the manifest upload.
                     pub key: String,
+                    /// Presigned URL used to upload the manifest object.
                     pub presigned_url: String,
                 }
 
+                /// Upload targets returned when the storage version does not already exist.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct ResponseUploads {
+                    /// Archive upload target.
                     pub archive: ResponseUploadsArchive,
+                    /// Manifest upload target.
                     pub manifest: ResponseUploadsManifest,
                 }
 
+                /// Response body for preparing a direct sandbox storage upload.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
                 pub struct Response {
+                    /// Storage version identifier prepared for the upload.
                     pub version_id: String,
+                    /// Whether the requested storage version already exists and can be reused.
                     pub existing: bool,
+                    /// Presigned upload targets when archive and manifest uploads are required.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub uploads: Option<ResponseUploads>,
                 }
