@@ -704,71 +704,6 @@ impl SessionWorkspaceCache {
             .await
         {
             Ok(Some(metadata)) => {
-                if !has_copy_headroom(stats, budget, metadata.allocated_bytes) {
-                    match self.gc(false).await {
-                        Ok(freed) if freed > 0 => match self.fs_stats().await {
-                            Ok(updated) => {
-                                stats = updated;
-                                budget = CacheBudget::from_fs_stats(stats);
-                            }
-                            Err(e) => warn!(
-                                run_id = %request.run_id,
-                                cache_key,
-                                error = %e,
-                                "workspace image cache stats refresh failed after cache-hit GC"
-                            ),
-                        },
-                        Ok(_) => {}
-                        Err(e) => warn!(
-                            run_id = %request.run_id,
-                            cache_key,
-                            error = %e,
-                            "workspace image cache GC failed before cache hit checkout"
-                        ),
-                    }
-                }
-                if !has_copy_headroom(stats, budget, metadata.allocated_bytes) {
-                    info!(
-                        run_id = %request.run_id,
-                        cache_key,
-                        allocated_bytes = metadata.allocated_bytes,
-                        available_bytes = stats.available_bytes,
-                        min_free_bytes = budget.min_free_bytes,
-                        "workspace image cache hit skipped due to free-space pressure"
-                    );
-                    if let Err(e) = self
-                        .invalidate_current_image(
-                            request.run_id,
-                            &cache_key,
-                            &current_path,
-                            "cache hit checkout skipped due to free-space pressure",
-                        )
-                        .await
-                    {
-                        warn!(
-                            run_id = %request.run_id,
-                            cache_key,
-                            error = %e,
-                            "failed to invalidate workspace image cache baseline after checkout was skipped"
-                        );
-                        return workspace_drive(
-                            WorkspaceCacheCheckoutResult::DiskPressure,
-                            None,
-                            None,
-                            Some(lock),
-                            None,
-                            true,
-                        );
-                    }
-                    return workspace_drive(
-                        WorkspaceCacheCheckoutResult::DiskPressure,
-                        None,
-                        None,
-                        Some(lock),
-                        Some(cache_key),
-                        true,
-                    );
-                }
                 let previous = metadata.storage_fingerprints.clone();
                 match fs::remove_file(&metadata_path).await {
                     Ok(()) => {
@@ -5369,7 +5304,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkout_uses_current_allocated_bytes_when_cache_hit_copy_lacks_headroom() {
+    async fn cache_hit_checkout_does_not_require_copy_headroom() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -5444,21 +5379,33 @@ mod tests {
             })
             .await;
 
-        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::DiskPressure);
-        assert!(!lease.can_attempt_promotion(Some("sess-1")));
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Hit);
+        assert!(lease.can_attempt_promotion(Some("sess-1")));
+        assert_eq!(
+            lease
+                .workspace_drive_config()
+                .and_then(|config| config.seed_image),
+            Some(sandbox::WorkspaceDriveSeedImage::Move(current.clone()))
+        );
         assert!(
-            !tokio::fs::try_exists(&current).await.unwrap(),
-            "current image must not remain reusable after real allocated bytes make a cache hit unsafe"
+            tokio::fs::try_exists(&current).await.unwrap(),
+            "move checkout keeps the source in place until sandbox preparation consumes it"
+        );
+        assert!(
+            !tokio::fs::try_exists(paths.session_workspace_cache_metadata(&cache_key))
+                .await
+                .unwrap(),
+            "move checkout removes metadata before handing the current image to sandbox preparation"
         );
         tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
             .await
             .unwrap();
-        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"new image")
+        tokio::fs::rename(&current, paths.active_workspace_image(&sandbox_id))
             .await
             .unwrap();
 
         assert!(
-            !lease
+            lease
                 .promote(
                     run_id,
                     None,
@@ -5468,9 +5415,9 @@ mod tests {
                 )
                 .await
                 .unwrap(),
-            "disk-pressure checkout should not promote a fresh image into the cache"
+            "consumed cache hit promotion should move the active image back without copy headroom"
         );
-        assert!(cache.held_session_states().await.is_empty());
+        assert!(tokio::fs::try_exists(&current).await.unwrap());
     }
 
     #[tokio::test]

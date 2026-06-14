@@ -1,5 +1,5 @@
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
@@ -107,14 +107,6 @@ pub enum WorkspaceDriveSeedImage {
     /// Move the host-local ext4 image into this sandbox's active workspace
     /// image. The source is consumed when sandbox preparation succeeds.
     Move(PathBuf),
-}
-
-impl WorkspaceDriveSeedImage {
-    pub fn path(&self) -> &Path {
-        match self {
-            Self::Copy(path) | Self::Move(path) => path,
-        }
-    }
 }
 
 /// Provider-neutral workspace block image configuration for one sandbox.
