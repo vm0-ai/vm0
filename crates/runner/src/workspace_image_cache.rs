@@ -160,7 +160,6 @@ struct WorkspaceImagePromotionInput<'a> {
     working_dir: &'a str,
     active_image: &'a Path,
     image_size_bytes: u64,
-    consumed_cache_hit: bool,
     terminal_status: WorkspaceCacheTerminalStatus,
     completed_at: &'a str,
     storage_fingerprints: &'a StorageFingerprints,
@@ -1704,7 +1703,7 @@ impl SessionWorkspaceCache {
 
         let mut stats = self.fs_stats().await?;
         let mut budget = CacheBudget::from_fs_stats(stats);
-        if !input.consumed_cache_hit && stats.available_bytes < budget.min_free_bytes {
+        if stats.available_bytes < budget.min_free_bytes {
             match self.gc_locked(false).await {
                 Ok(freed) if freed > 0 => {
                     stats = self.fs_stats().await?;
@@ -1719,7 +1718,7 @@ impl SessionWorkspaceCache {
                 ),
             }
         }
-        if !input.consumed_cache_hit && stats.available_bytes < budget.min_free_bytes {
+        if stats.available_bytes < budget.min_free_bytes {
             info!(
                 run_id = %input.run_id,
                 cache_key = input.cache_key,
@@ -1739,16 +1738,6 @@ impl SessionWorkspaceCache {
             );
             return Ok(false);
         }
-        if input.consumed_cache_hit && image_metadata.len() != input.image_size_bytes {
-            info!(
-                run_id = %input.run_id,
-                cache_key = input.cache_key,
-                actual_image_size_bytes = image_metadata.len(),
-                expected_image_size_bytes = input.image_size_bytes,
-                "workspace image cache promotion skipped because active image size does not match cache key"
-            );
-            return Ok(false);
-        }
         let active_allocated = allocated_bytes(&image_metadata);
         if active_allocated > budget.max_entry_bytes {
             info!(
@@ -1759,95 +1748,6 @@ impl SessionWorkspaceCache {
                 "workspace image cache promotion skipped because image is too large"
             );
             return Ok(false);
-        }
-        if input.consumed_cache_hit {
-            ensure_workspace_cache_entry_dir(&cache_dir).await?;
-            let current = self.session_workspace_cache_current_image(input.cache_key);
-            remove_workspace_cache_path_if_exists(&current).await?;
-            if let Err(e) = std::fs::rename(input.active_image, &current) {
-                return Err(e.into());
-            }
-            let current_metadata = match fs::symlink_metadata(&current).await {
-                Ok(metadata) => metadata,
-                Err(e) => {
-                    let _ = remove_workspace_cache_path_if_exists(&current).await;
-                    return Err(e.into());
-                }
-            };
-            if !current_metadata.is_file() {
-                let _ = remove_workspace_cache_path_if_exists(&current).await;
-                return Err(RunnerError::Internal(format!(
-                    "workspace image cache current image is not a file: {}",
-                    current.display()
-                )));
-            }
-            let logical_image_size_bytes = current_metadata.len();
-            if logical_image_size_bytes != input.image_size_bytes {
-                let _ = remove_workspace_cache_path_if_exists(&current).await;
-                info!(
-                    run_id = %input.run_id,
-                    cache_key = input.cache_key,
-                    actual_image_size_bytes = logical_image_size_bytes,
-                    expected_image_size_bytes = input.image_size_bytes,
-                    "workspace image cache promotion skipped because moved image size does not match cache key"
-                );
-                return Ok(false);
-            }
-            let allocated = allocated_bytes(&current_metadata);
-            if allocated > budget.max_entry_bytes {
-                let _ = remove_workspace_cache_path_if_exists(&current).await;
-                info!(
-                    run_id = %input.run_id,
-                    cache_key = input.cache_key,
-                    allocated_bytes = allocated,
-                    max_entry_bytes = budget.max_entry_bytes,
-                    "workspace image cache promotion skipped because moved image is too large"
-                );
-                return Ok(false);
-            }
-            let metadata = WorkspaceCacheMetadata {
-                format_version: CACHE_FORMAT_VERSION,
-                key_version: CACHE_KEY_VERSION,
-                cache_scope: self.inner.cache_scope.clone(),
-                profile_name: input.profile_name.to_owned(),
-                session_id: input.session_id.to_owned(),
-                working_dir: input.working_dir.to_owned(),
-                last_completed_at: input.completed_at.to_owned(),
-                last_used_at: local_timestamp(),
-                last_terminal_status: input.terminal_status,
-                workspace_trust: WorkspaceTrust::Clean,
-                logical_image_size_bytes,
-                allocated_bytes: allocated,
-                current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
-                drive_layout: WORKSPACE_DRIVE_LAYOUT.to_owned(),
-                storage_fingerprints: filter_storage_fingerprints_for_working_dir(
-                    input.storage_fingerprints,
-                    input.working_dir,
-                ),
-                state: WorkspaceCacheState::Current,
-            };
-            if let Err(e) = self
-                .write_metadata(input.cache_key, input.run_id, metadata)
-                .await
-            {
-                let _ = remove_workspace_cache_path_if_exists(&current).await;
-                return Err(e);
-            }
-            info!(
-                run_id = %input.run_id,
-                cache_key = input.cache_key,
-                allocated_bytes = allocated,
-                "workspace image cache promoted by moving active image"
-            );
-            if let Err(e) = self.gc_locked(false).await {
-                warn!(
-                    run_id = %input.run_id,
-                    cache_key = input.cache_key,
-                    error = %e,
-                    "workspace image cache GC failed after promotion"
-                );
-            }
-            return Ok(true);
         }
         if !has_copy_headroom(stats, budget, active_allocated) {
             match self.gc_locked(false).await {
@@ -2240,7 +2140,6 @@ impl WorkspaceImageLease {
                 working_dir: &self.working_dir,
                 active_image: &self.active_image,
                 image_size_bytes: self.image_size_bytes,
-                consumed_cache_hit: self.consumed_cache_hit,
                 terminal_status,
                 completed_at: &completed_at,
                 storage_fingerprints,
@@ -2359,7 +2258,6 @@ impl WorkspaceImagePromotionContext {
                 working_dir: &self.working_dir,
                 active_image: &self.active_image,
                 image_size_bytes: self.image_size_bytes,
-                consumed_cache_hit: self.consumed_cache_hit,
                 terminal_status: self.terminal_status,
                 completed_at: &self.completed_at,
                 storage_fingerprints: promotion_storage_fingerprints,
@@ -4271,7 +4169,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn consumed_cache_hit_promotion_moves_active_image_back_to_cache() {
+    async fn consumed_cache_hit_promotion_copies_active_image_back_to_cache() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -4323,8 +4221,15 @@ mod tests {
                 .unwrap()
         );
 
-        assert!(!active_image.exists());
+        assert_eq!(fs::read(&active_image).await.unwrap(), updated);
         assert_eq!(fs::read(&current).await.unwrap(), updated);
+        let active_metadata = fs::metadata(&active_image).await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        assert_ne!(
+            (active_metadata.dev(), active_metadata.ino()),
+            (current_metadata.dev(), current_metadata.ino()),
+            "published cache image must not share an inode with a sandbox that has not been destroyed yet"
+        );
         let metadata = cache
             .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
             .await
@@ -5405,7 +5310,7 @@ mod tests {
             .unwrap();
 
         assert!(
-            lease
+            !lease
                 .promote(
                     run_id,
                     None,
@@ -5415,9 +5320,12 @@ mod tests {
                 )
                 .await
                 .unwrap(),
-            "consumed cache hit promotion should move the active image back without copy headroom"
+            "checkout does not need copy headroom, but publishing an independent cache copy still does"
         );
-        assert!(tokio::fs::try_exists(&current).await.unwrap());
+        assert!(
+            !tokio::fs::try_exists(&current).await.unwrap(),
+            "failed copy promotion must not publish reusable metadata for the consumed cache hit"
+        );
     }
 
     #[tokio::test]
