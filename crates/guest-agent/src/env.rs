@@ -11,7 +11,7 @@ use crate::error::AgentError;
 use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const USER_ENV_FILE_ENV_KEY: &str = "VM0_USER_ENV_FILE";
+const USER_ENV_FILE_ENV_KEY: &str = guest_env::USER_ENV_FILE_ENV;
 const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 const USER_ENV_FILENAME: &str = "env.json";
 const ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
@@ -62,33 +62,37 @@ static FRAMEWORK: LazyLock<Framework> = LazyLock::new(|| match cli_agent_type() 
 // Core
 // ---------------------------------------------------------------------------
 
-static RUN_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_RUN_ID"));
-static API_URL: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_URL"));
-static API_TOKEN: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_TOKEN"));
-static SANDBOX_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SANDBOX_ID"));
+static RUN_ID: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_env::RUN_ID_ENV));
+static API_URL: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_env::API_URL_ENV));
+static API_TOKEN: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_env::API_TOKEN_ENV));
+static SANDBOX_ID: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_env::SANDBOX_ID_ENV));
 static SANDBOX_REUSE_RESULT: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_SANDBOX_REUSE_RESULT"));
-static PROMPT: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_PROMPT"));
+    LazyLock::new(|| env_or_empty(guest_env::SANDBOX_REUSE_RESULT_ENV));
+static PROMPT: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_env::PROMPT_ENV));
 static APPEND_SYSTEM_PROMPT: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_APPEND_SYSTEM_PROMPT"));
-static VERCEL_BYPASS: LazyLock<String> = LazyLock::new(|| env_or_empty("VERCEL_PROTECTION_BYPASS"));
+    LazyLock::new(|| env_or_empty(guest_env::APPEND_SYSTEM_PROMPT_ENV));
+static VERCEL_BYPASS: LazyLock<String> =
+    LazyLock::new(|| env_or_empty(guest_env::VERCEL_PROTECTION_BYPASS_ENV));
 static RESUME_SESSION_ID: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_RESUME_SESSION_ID"));
-static API_START_TIME: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_START_TIME"));
-static SECRET_VALUES: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SECRET_VALUES"));
-static DISALLOWED_TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_DISALLOWED_TOOLS"));
-static TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_TOOLS"));
-static SETTINGS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SETTINGS"));
+    LazyLock::new(|| env_or_empty(guest_env::RESUME_SESSION_ID_ENV));
+static API_START_TIME: LazyLock<String> =
+    LazyLock::new(|| env_or_empty(guest_env::API_START_TIME_ENV));
+static SECRET_VALUES: LazyLock<String> =
+    LazyLock::new(|| env_or_empty(guest_env::SECRET_VALUES_ENV));
+static DISALLOWED_TOOLS: LazyLock<String> =
+    LazyLock::new(|| env_or_empty(guest_env::DISALLOWED_TOOLS_ENV));
+static TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_env::TOOLS_ENV));
+static SETTINGS: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_env::SETTINGS_ENV));
 static CHAT_STREAM_CHANNEL: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_CHAT_STREAM_CHANNEL"));
+    LazyLock::new(|| env_or_empty(guest_env::CHAT_STREAM_CHANNEL_ENV));
 static CHAT_STREAM_TOPIC: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_CHAT_STREAM_TOPIC"));
+    LazyLock::new(|| env_or_empty(guest_env::CHAT_STREAM_TOPIC_ENV));
 static CHAT_STREAM_TOKEN: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_CHAT_STREAM_TOKEN"));
+    LazyLock::new(|| env_or_empty(guest_env::CHAT_STREAM_TOKEN_ENV));
 static CHAT_STREAM_ABLY_BASE: LazyLock<String> =
-    LazyLock::new(|| env_or_empty("VM0_CHAT_STREAM_ABLY_BASE"));
+    LazyLock::new(|| env_or_empty(guest_env::CHAT_STREAM_ABLY_BASE_ENV));
 static USE_MOCK_CLAUDE: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var("USE_MOCK_CLAUDE")
+    std::env::var(guest_env::USE_MOCK_CLAUDE_ENV)
         .map(|v| v == "true")
         .unwrap_or(false)
 });
@@ -101,14 +105,16 @@ pub const DEFAULT_MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
 /// integration tests to point at a cargo-built artifact; production
 /// runs fall through to `DEFAULT_MOCK_CLAUDE_PATH`.
 static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
-    std::env::var("VM0_MOCK_CLAUDE_PATH").unwrap_or_else(|_| DEFAULT_MOCK_CLAUDE_PATH.to_string())
+    std::env::var(guest_env::MOCK_CLAUDE_PATH_ENV)
+        .unwrap_or_else(|_| DEFAULT_MOCK_CLAUDE_PATH.to_string())
 });
 
 // ---------------------------------------------------------------------------
 // Codex framework env vars
 // ---------------------------------------------------------------------------
 
-static CLI_AGENT_TYPE: LazyLock<String> = LazyLock::new(|| env_or_empty("CLI_AGENT_TYPE"));
+static CLI_AGENT_TYPE: LazyLock<String> =
+    LazyLock::new(|| env_or_empty(guest_env::CLI_AGENT_TYPE_ENV));
 static USER_ENV: LazyLock<Result<HashMap<String, String>, String>> =
     LazyLock::new(load_user_env_from_process);
 
@@ -117,7 +123,7 @@ static USER_ENV: LazyLock<Result<HashMap<String, String>, String>> =
 /// claude-side `USE_MOCK_CLAUDE` historically only accepts `"true"`;
 /// the asymmetry is intentional.
 static USE_MOCK_CODEX: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var("USE_MOCK_CODEX")
+    std::env::var(guest_env::USE_MOCK_CODEX_ENV)
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false)
 });
@@ -127,7 +133,8 @@ static USE_MOCK_CODEX: LazyLock<bool> = LazyLock::new(|| {
 pub const DEFAULT_MOCK_CODEX_PATH: &str = "/usr/local/bin/guest-mock-codex";
 
 static MOCK_CODEX_PATH: LazyLock<String> = LazyLock::new(|| {
-    std::env::var("VM0_MOCK_CODEX_PATH").unwrap_or_else(|_| DEFAULT_MOCK_CODEX_PATH.to_string())
+    std::env::var(guest_env::MOCK_CODEX_PATH_ENV)
+        .unwrap_or_else(|_| DEFAULT_MOCK_CODEX_PATH.to_string())
 });
 
 /// `$HOME` is always set in the guest sandbox (rootfs init guarantees it),
@@ -170,7 +177,7 @@ fn u64_env_or(name: &str, default: u64) -> u64 {
 /// See: https://github.com/anthropics/claude-code/issues/11650
 static STUCK_TOOL_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
     u64_env_or(
-        "VM0_STUCK_TOOL_TIMEOUT_SECS",
+        guest_env::STUCK_TOOL_TIMEOUT_SECS_ENV,
         constants::STUCK_TOOL_TIMEOUT_SECS,
     )
 });
@@ -181,7 +188,7 @@ static STUCK_TOOL_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
 /// See: https://github.com/vm0-ai/vm0/issues/10879
 static POST_RESULT_SIGTERM_GRACE: LazyLock<u64> = LazyLock::new(|| {
     u64_env_or(
-        "VM0_POST_RESULT_SIGTERM_GRACE_SECS",
+        guest_env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
         constants::POST_RESULT_SIGTERM_GRACE_SECS,
     )
 });
@@ -190,7 +197,7 @@ static POST_RESULT_SIGTERM_GRACE: LazyLock<u64> = LazyLock::new(|| {
 /// override rationale as `POST_RESULT_SIGTERM_GRACE`.
 static POST_RESULT_SIGKILL_GRACE: LazyLock<u64> = LazyLock::new(|| {
     u64_env_or(
-        "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
+        guest_env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
         constants::POST_RESULT_SIGKILL_GRACE_SECS,
     )
 });
@@ -237,7 +244,7 @@ pub struct ArtifactEnv {
 /// run that looks successful in dashboards.
 #[allow(clippy::expect_used)]
 fn load_artifacts() -> Vec<ArtifactEnv> {
-    let raw = std::env::var("VM0_ARTIFACTS").unwrap_or_default();
+    let raw = std::env::var(guest_env::ARTIFACTS_ENV).unwrap_or_default();
     if raw.is_empty() {
         return Vec::new();
     }
@@ -307,7 +314,7 @@ fn validate_user_env_file_path(path: &Path) -> Result<(), String> {
 }
 
 fn guest_runtime_dir_for_user_env() -> Result<PathBuf, String> {
-    let run_id = env_or_empty("VM0_RUN_ID");
+    let run_id = env_or_empty(guest_env::RUN_ID_ENV);
     guest_runtime_dir_for_user_env_run_id(&run_id)
 }
 

@@ -88,13 +88,13 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "LD_AUDIT",
     "NODE_OPTIONS",
 ];
-const USER_ENV_FILE_ENV_KEY: &str = "VM0_USER_ENV_FILE";
+const USER_ENV_FILE_ENV_KEY: &str = guest_env::USER_ENV_FILE_ENV;
 const GUEST_USER_ENV_DIR_NAME: &str = "user-env";
 const GUEST_USER_ENV_FILENAME: &str = "env.json";
 const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
-    "VM0_STUCK_TOOL_TIMEOUT_SECS",
-    "VM0_POST_RESULT_SIGTERM_GRACE_SECS",
-    "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
+    guest_env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+    guest_env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+    guest_env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
 ];
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
     include_str!("../../scripts/agent-abnormal-exit-diagnostics.sh");

@@ -10,7 +10,7 @@ use sandbox::{
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::{info, warn};
 
-use super::env::RUNNER_OWNED_ENV_KEYS;
+use super::env::is_runner_owned_env_key;
 use super::{
     AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
     AGENT_ENV_KEY_DIAGNOSTIC_LIMIT, AGENT_ENV_KEY_MAX_CHARS, BOOTSTRAP_SENSITIVE_ENV_KEYS,
@@ -118,10 +118,6 @@ pub(super) fn sanitize_env_key_for_diagnostic(key: &str) -> String {
         truncated.push_str("...");
     }
     truncated
-}
-
-pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
-    key.starts_with("VM0_") || RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
 pub(super) fn should_collect_agent_abnormal_exit_diagnostics(

@@ -13,6 +13,7 @@ chrono = { workspace = true, features = ["clock"] }
 flate2.workspace = true
 process-control-ipc.workspace = true
 guest-common.workspace = true
+guest-env.workspace = true
 guest-runtime-paths.workspace = true
 http-body = "1"
 libc.workspace = true

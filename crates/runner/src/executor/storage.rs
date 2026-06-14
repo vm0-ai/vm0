@@ -123,7 +123,7 @@ pub(super) fn guest_download_env<'a>(
     runtime_dir: &'a str,
 ) -> [(&'static str, &'a str); 2] {
     [
-        ("VM0_RUN_ID", run_id),
+        (guest_env::RUN_ID_ENV, run_id),
         (guest_runtime_paths::GUEST_RUNTIME_DIR_ENV, runtime_dir),
     ]
 }

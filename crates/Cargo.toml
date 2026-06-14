@@ -7,6 +7,7 @@ members = [
     "guest-agent",
     "process-control-ipc",
     "guest-common",
+    "guest-env",
     "guest-runtime-paths",
     "guest-download",
     "guest-init",
@@ -37,6 +38,7 @@ api-contracts = { path = "api-contracts" }
 guest-agent = { path = "guest-agent" }
 process-control-ipc = { path = "process-control-ipc" }
 guest-common = { path = "guest-common" }
+guest-env = { path = "guest-env" }
 guest-runtime-paths = { path = "guest-runtime-paths" }
 guest-download = { path = "guest-download" }
 guest-init = { path = "guest-init" }

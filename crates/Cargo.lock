@@ -1270,6 +1270,7 @@ dependencies = [
  "chrono",
  "flate2",
  "guest-common",
+ "guest-env",
  "guest-runtime-paths",
  "hex",
  "http-body 1.0.1",
@@ -1299,6 +1300,7 @@ name = "guest-common"
 version = "0.2.8"
 dependencies = [
  "chrono",
+ "guest-env",
  "guest-runtime-paths",
  "serde",
  "serde_json",
@@ -1319,6 +1321,10 @@ dependencies = [
  "tempfile",
  "ureq",
 ]
+
+[[package]]
+name = "guest-env"
+version = "0.1.0"
 
 [[package]]
 name = "guest-init"
@@ -2584,6 +2590,7 @@ dependencies = [
  "futures-util",
  "guest-agent",
  "guest-download",
+ "guest-env",
  "guest-init",
  "guest-mock-claude",
  "guest-mock-codex",
