@@ -512,6 +512,15 @@ function autoGrowFeedbackNote(element: HTMLTextAreaElement | null): void {
   element.style.height = `${element.scrollHeight}px`;
 }
 
+function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
+  autoGrowFeedbackNote(element);
+}
+
+function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
+  element?.focus();
+  autoGrowFeedbackNote(element);
+}
+
 function ComposerFeedbackRow({
   item,
   autoFocus,
@@ -561,12 +570,7 @@ function ComposerFeedbackRow({
         </div>
       </div>
       <textarea
-        ref={(element) => {
-          if (autoFocus) {
-            element?.focus();
-          }
-          autoGrowFeedbackNote(element);
-        }}
+        ref={autoFocus ? focusFeedbackNoteRef : autoGrowFeedbackNoteRef}
         value={item.note}
         onChange={(event) => {
           autoGrowFeedbackNote(event.target);
