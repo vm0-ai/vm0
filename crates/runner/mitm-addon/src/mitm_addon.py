@@ -56,6 +56,9 @@ from auth import (
     clear_cached_firewall_headers,
     handle_firewall_request,
     is_billable_firewall,
+    mark_auth_base_request_length_required,
+    mark_auth_base_request_too_large,
+    prepare_firewall_metadata,
     request_force_refresh,
 )
 from logging_utils import (
@@ -125,6 +128,7 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
         "token",
     )
 )
+_AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
@@ -138,6 +142,21 @@ _TlsAdmissionKind = Literal[
     "invalid_registry_vm",
     "registry_unavailable",
 ]
+_RequestClassificationKind = Literal[
+    "no_client_ip",
+    "pass_through",
+    "registry_unavailable",
+    "stale_tls_admission",
+    "invalid_registry_vm",
+    "authority_denied",
+    "api_allow",
+    "browser_allow",
+    "firewall_block",
+    "firewall_allow",
+    "allow",
+]
+_AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
+_REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 
 
 @dataclass(frozen=True)
@@ -145,6 +164,25 @@ class _TlsAdmission:
     client_ip: str
     kind: _TlsAdmissionKind
     run_id: str | None = None
+
+
+@dataclass(frozen=True)
+class _RequestClassification:
+    kind: _RequestClassificationKind
+    vm_info: dict | None = None
+    registry_unavailable: registry.RegistryUnavailable | None = None
+    invalid_vm: registry.InvalidVmEntry | None = None
+    authority_error: AuthorityValidationError | None = None
+    firewall_block: matching.FirewallBlock | None = None
+    firewall_allow: matching.FirewallAllow | None = None
+    stale_tls_reason: str = ""
+
+
+@dataclass(frozen=True)
+class _AuthBaseBodyCheck:
+    kind: _AuthBaseBodyCheckKind
+    observed_size: int = 0
+    reason: str = ""
 
 
 _tls_admissions: dict[str, _TlsAdmission] = {}
@@ -436,6 +474,216 @@ def _active_firewall_names(vm_info: dict) -> set[str]:
         if isinstance(name, str) and name:
             names.add(name)
     return names
+
+
+def _store_registered_request_metadata(
+    flow: http.HTTPFlow,
+    *,
+    vm_info: dict,
+    run_id: str,
+) -> None:
+    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
+    flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
+    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
+    flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info.get("cliAgentType") or "claude-code"
+
+
+def _store_trusted_authority_metadata(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+    host: str,
+    port: int,
+) -> None:
+    flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = host
+    _set_network_log_target(
+        flow,
+        url=original_url,
+        host=host,
+        port=port,
+    )
+
+
+def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
+    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    tls_admission = _tls_admission_for_client(flow.client_conn)
+
+    if not client_ip:
+        if tls_admission is not None:
+            return _RequestClassification(
+                kind="stale_tls_admission",
+                stale_tls_reason="client_ip_missing",
+            )
+        return _RequestClassification(kind="no_client_ip")
+
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return _RequestClassification(
+            kind="registry_unavailable",
+            registry_unavailable=registry_state,
+        )
+
+    if tls_admission is not None and tls_admission.client_ip != client_ip:
+        return _RequestClassification(
+            kind="stale_tls_admission",
+            stale_tls_reason="client_ip_mismatch",
+        )
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        invalid_vm = registry_state.invalid_vms.get(client_ip)
+        if invalid_vm is not None:
+            return _RequestClassification(
+                kind="invalid_registry_vm",
+                invalid_vm=invalid_vm,
+            )
+        if tls_admission is not None:
+            return _RequestClassification(
+                kind="stale_tls_admission",
+                stale_tls_reason="registry_entry_missing",
+            )
+        return _RequestClassification(kind="pass_through")
+
+    run_id = vm_info.get("runId", "")
+    if (
+        tls_admission is not None
+        and tls_admission.run_id is not None
+        and tls_admission.run_id != run_id
+    ):
+        return _RequestClassification(
+            kind="stale_tls_admission",
+            vm_info=vm_info,
+            stale_tls_reason="run_id_mismatch",
+        )
+
+    _store_registered_request_metadata(flow, vm_info=vm_info, run_id=run_id)
+
+    if _is_browser_request(flow):
+        flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
+
+    try:
+        trusted_authority = get_trusted_authority(flow)
+    except AuthorityValidationError as e:
+        return _RequestClassification(
+            kind="authority_denied",
+            vm_info=vm_info,
+            authority_error=e,
+        )
+
+    original_url = trusted_authority.url
+    _store_trusted_authority_metadata(
+        flow,
+        original_url=original_url,
+        host=trusted_authority.host,
+        port=trusted_authority.port,
+    )
+
+    hostname = trusted_authority.host.lower()
+    api_url = get_api_url()
+    if api_url:
+        parsed_api = urllib.parse.urlparse(api_url)
+        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
+        if (
+            api_hostname
+            and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
+            and not flow.request.path.startswith("/api/test/")
+        ):
+            return _RequestClassification(kind="api_allow", vm_info=vm_info)
+
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+        return _RequestClassification(kind="browser_allow", vm_info=vm_info)
+
+    compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
+    compiled_network_policies = registry_state.compiled_network_policies[client_ip]
+    if compiled_firewalls:
+        result = matching.match_compiled_firewall_request(
+            original_url,
+            flow.request.method,
+            compiled_firewalls,
+            compiled_network_policies,
+        )
+        if isinstance(result, matching.FirewallBlock):
+            return _RequestClassification(
+                kind="firewall_block",
+                vm_info=vm_info,
+                firewall_block=result,
+            )
+        if isinstance(result, matching.FirewallAllow):
+            return _RequestClassification(
+                kind="firewall_allow",
+                vm_info=vm_info,
+                firewall_allow=result,
+            )
+
+    return _RequestClassification(kind="allow", vm_info=vm_info)
+
+
+def _classification_needs_request_timing(classification: _RequestClassification) -> bool:
+    return classification.kind in (
+        "authority_denied",
+        "api_allow",
+        "browser_allow",
+        "firewall_block",
+        "firewall_allow",
+        "allow",
+    )
+
+
+def _start_request_timing(flow: http.HTTPFlow) -> None:
+    if metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata:
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
+
+
+def _firewall_allow_auth_base(allow: matching.FirewallAllow) -> str | None:
+    auth_config = allow.api_entry.get("auth", {})
+    auth_base = auth_config.get("base") if isinstance(auth_config, dict) else None
+    return auth_base if isinstance(auth_base, str) and auth_base else None
+
+
+def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
+    if flow.request.headers.get_all("Transfer-Encoding"):
+        return _AuthBaseBodyCheck(kind="length_required", reason="transfer_encoding")
+
+    raw_content_lengths = flow.request.headers.get_all("Content-Length")
+    if not raw_content_lengths:
+        if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
+            return _AuthBaseBodyCheck(kind="length_required", reason="missing_content_length")
+        return _AuthBaseBodyCheck(kind="ok")
+
+    parsed_length: int | None = None
+    for raw_content_length in raw_content_lengths:
+        for part in raw_content_length.split(","):
+            candidate = _parse_auth_base_content_length_part(part)
+            if candidate is None:
+                return _AuthBaseBodyCheck(kind="length_required", reason="invalid_content_length")
+            if parsed_length is None:
+                parsed_length = candidate
+            elif parsed_length != candidate:
+                return _AuthBaseBodyCheck(
+                    kind="length_required",
+                    reason="conflicting_content_length",
+                )
+
+    observed_size = parsed_length if parsed_length is not None else 0
+    if observed_size > auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES:
+        return _AuthBaseBodyCheck(kind="too_large", observed_size=observed_size)
+    return _AuthBaseBodyCheck(kind="ok", observed_size=observed_size)
+
+
+def _parse_auth_base_content_length_part(value: str) -> int | None:
+    value = value.strip(" \t")
+    if not value:
+        return None
+    if not value.isascii() or not value.isdecimal():
+        return None
+    normalized = value.lstrip("0") or "0"
+    limit_text = str(auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES)
+    if len(normalized) > len(limit_text):
+        return auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1
+    return int(normalized)
 
 
 def _record_connector_diagnostic_candidate(
@@ -942,6 +1190,83 @@ def client_disconnected(client: connection.Client) -> None:
 # ============================================================================
 
 
+def requestheaders(flow: http.HTTPFlow) -> None:
+    """Terminate unsafe auth.base request bodies before mitmproxy buffers them."""
+    body_check = _auth_base_body_header_check(flow)
+    if body_check.kind == "ok":
+        return
+
+    classification = _classify_request(flow)
+    allow = classification.firewall_allow
+    vm_info = classification.vm_info
+    if classification.kind != "firewall_allow" or allow is None or vm_info is None:
+        return
+    if not _firewall_allow_auth_base(allow):
+        return
+
+    _start_request_timing(flow)
+    prepare_firewall_metadata(flow, allow, vm_info)
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+    if body_check.kind == "too_large":
+        mark_auth_base_request_too_large(
+            flow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+            observed_size=body_check.observed_size,
+        )
+    else:
+        mark_auth_base_request_length_required(
+            flow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+            reason=body_check.reason,
+        )
+    flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+    flow.kill()
+
+
+def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    if result.reason == "malformed_network_policy":
+        block_message = "malformed network policy"
+        response_message = "Request blocked: malformed network policy"
+    elif result.reason == "unsafe_path":
+        block_message = "unsafe path"
+        response_message = "Request blocked: unsafe path"
+    else:
+        block_message = "no matching permission"
+        response_message = "Request blocked: no matching permission rule"
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        f"Firewall {result.name}: {block_message} for {result.method} {result.path}",
+        type="firewall_block",
+        name=result.name,
+        reason=result.reason,
+    )
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
+    flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
+    flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
+    error_body = json.dumps(
+        {
+            "error": "permission_denied",
+            "message": response_message,
+            "method": result.method,
+            "path": result.path,
+            "name": result.name,
+            "permissions": list(result.permissions),
+            "reason": result.reason,
+            "base": result.base,
+        }
+    )
+    flow.response = http.Response.make(
+        403,
+        error_body.encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 async def request(flow: http.HTTPFlow) -> None:
     """
     Intercept request: inject firewall auth headers for configured firewall rules.
@@ -951,104 +1276,42 @@ async def request(flow: http.HTTPFlow) -> None:
     2. VM0 API auto-allow (agent must always reach the platform)
     3. Firewall match (inject auth headers for allowed requests)
     """
-    # Get client IP (source VM)
-    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
-    tls_admission = _tls_admission_for_client(flow.client_conn)
-
-    if not client_ip:
-        if tls_admission is not None:
-            _block_stale_tls_admission(flow, reason="client_ip_missing")
-            return
-        ctx.log.warn("No client IP available, passing through")
+    if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         return
 
-    registry_state = registry.load_registry_state(get_registry_path())
-    if isinstance(registry_state, registry.RegistryUnavailable):
-        _block_registry_unavailable(flow, registry_state)
-        return
+    classification = _classify_request(flow)
 
-    if tls_admission is not None and tls_admission.client_ip != client_ip:
-        _block_stale_tls_admission(flow, reason="client_ip_mismatch")
-        return
-
-    # Look up VM info from registry. This pass-through path is valid only after
-    # the registry file loaded successfully; unavailable registry is blocked above.
-    vm_info = registry_state.vms.get(client_ip)
-    if vm_info is None:
-        invalid_vm = registry_state.invalid_vms.get(client_ip)
-        if invalid_vm is not None:
-            _block_invalid_registry_vm(flow, invalid_vm)
-            return
-        if tls_admission is not None:
-            _block_stale_tls_admission(flow, reason="registry_entry_missing")
-            return
-        # Not a registered VM, pass through without proxying
-        return
-
-    run_id = vm_info.get("runId", "")
-    if (
-        tls_admission is not None
-        and tls_admission.run_id is not None
-        and tls_admission.run_id != run_id
-    ):
-        _block_stale_tls_admission(flow, reason="run_id_mismatch")
-        return
-    compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
-    compiled_network_policies = registry_state.compiled_network_policies[client_ip]
-
-    # Track request start time after early returns so unregistered flows do not carry it.
-    flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
+    if _classification_needs_request_timing(classification):
+        _start_request_timing(flow)
 
     try:
-        # Store info for response handler
-        flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
-        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
-        flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
-        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
-        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info.get("cliAgentType") or "claude-code"
-
-        if _is_browser_request(flow):
-            flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
-
-        try:
-            trusted_authority = get_trusted_authority(flow)
-        except AuthorityValidationError as e:
-            _block_authority_validation_error(flow, e)
+        if classification.kind == "no_client_ip":
+            ctx.log.warn("No client IP available, passing through")
             return
-
-        original_url = trusted_authority.url
-        flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
-        flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
-        _set_network_log_target(
-            flow,
-            url=original_url,
-            host=trusted_authority.host,
-            port=trusted_authority.port,
-        )
-
-        hostname = trusted_authority.host.lower()
-
-        # --- Step 2: Auto-allow VM0 API requests ---
-        # The agent MUST be able to communicate with the platform (heartbeat,
-        # logs, CLI auth, etc.). Exception: `/api/test/*` routes exist only to
-        # exercise the firewall pipeline itself (e.g. the test-oauth provider),
-        # so they must go through Step 3 and get their auth injected by the
-        # matching firewall — otherwise the E2E tests that back them would
-        # auto-allow past the thing they're supposed to exercise.
-        api_url = get_api_url()
-        if api_url:
-            parsed_api = urllib.parse.urlparse(api_url)
-            api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
-            if (
-                api_hostname
-                and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
-                and not flow.request.path.startswith("/api/test/")
-            ):
-                flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-                return
-
-        if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+        if classification.kind == "registry_unavailable":
+            unavailable = classification.registry_unavailable
+            if unavailable is not None:
+                _block_registry_unavailable(flow, unavailable)
+            return
+        if classification.kind == "stale_tls_admission":
+            _block_stale_tls_admission(flow, reason=classification.stale_tls_reason)
+            return
+        if classification.kind == "invalid_registry_vm":
+            invalid_vm = classification.invalid_vm
+            if invalid_vm is not None:
+                _block_invalid_registry_vm(flow, invalid_vm)
+            return
+        if classification.kind == "pass_through":
+            return
+        if classification.kind == "authority_denied":
+            authority_error = classification.authority_error
+            if authority_error is not None:
+                _block_authority_validation_error(flow, authority_error)
+            return
+        if classification.kind == "api_allow":
+            flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+            return
+        if classification.kind == "browser_allow":
             # User-Agent is client-controlled. This is a credential-flow skip
             # for browser-looking traffic, not proof that the request came from
             # a trusted browser integration. Registry and authority validation
@@ -1057,74 +1320,33 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
             return
-
-        # --- Step 3: Firewall match with permission check ---
-        # Match base URL, then check permission rules before injecting auth headers.
-        if compiled_firewalls:
-            result = matching.match_compiled_firewall_request(
-                original_url,
-                flow.request.method,
-                compiled_firewalls,
-                compiled_network_policies,
+        if classification.kind == "firewall_block":
+            firewall_block = classification.firewall_block
+            if firewall_block is not None:
+                _set_firewall_block_response(flow, firewall_block)
+            return
+        if classification.kind == "firewall_allow":
+            allow = classification.firewall_allow
+            vm_info = classification.vm_info
+            if allow is None or vm_info is None:
+                return
+            _maybe_track_usage_flow(
+                flow,
+                is_billable_firewall(allow.name, vm_info),
+                _is_model_provider_usage_observable(allow.name, vm_info),
             )
-            if isinstance(result, matching.FirewallBlock):
-                proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-                if result.reason == "malformed_network_policy":
-                    block_message = "malformed network policy"
-                    response_message = "Request blocked: malformed network policy"
-                elif result.reason == "unsafe_path":
-                    block_message = "unsafe path"
-                    response_message = "Request blocked: unsafe path"
-                else:
-                    block_message = "no matching permission"
-                    response_message = "Request blocked: no matching permission rule"
-                log_proxy_entry(
-                    proxy_log_path,
-                    "warn",
-                    f"Firewall {result.name}: {block_message} for {result.method} {result.path}",
-                    type="firewall_block",
-                    name=result.name,
-                    reason=result.reason,
-                )
-                flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
-                flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
-                flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
-                error_body = json.dumps(
-                    {
-                        "error": "permission_denied",
-                        "message": response_message,
-                        "method": result.method,
-                        "path": result.path,
-                        "name": result.name,
-                        "permissions": list(result.permissions),
-                        "reason": result.reason,
-                        "base": result.base,
-                    }
-                )
-                flow.response = http.Response.make(
-                    403,
-                    error_body.encode(),
-                    {"Content-Type": "application/json"},
-                )
-                return
-            if isinstance(result, matching.FirewallAllow):
-                _maybe_track_usage_flow(
-                    flow,
-                    is_billable_firewall(result.name, vm_info),
-                    _is_model_provider_usage_observable(result.name, vm_info),
-                )
-                auth_result = await handle_firewall_request(flow, result, vm_info)
-                if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
-                    # Local firewall/auth errors never reach a provider. They only
-                    # need pre-tracking to keep shutdown from racing while auth is
-                    # resolving, so release as soon as the local response exists.
-                    _release_tracked_usage_flow(flow)
-                return
+            auth_result = await handle_firewall_request(flow, allow, vm_info)
+            if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
+                # Local firewall/auth errors never reach a provider. They only
+                # need pre-tracking to keep shutdown from racing while auth is
+                # resolving, so release as soon as the local response exists.
+                _release_tracked_usage_flow(flow)
+            return
 
-        # No active firewall match — pass through directly. If the URL belongs
-        # to a built-in connector that is not active in this run, record only a
-        # diagnostic candidate. Response/error hooks decide whether a failed
-        # request should expose an agent-visible diagnostic body.
+        vm_info = classification.vm_info
+        if vm_info is None:
+            return
+        original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
         if not flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
             candidate = builtin_connector_diagnostics.find_candidate(
                 original_url,
