@@ -1,11 +1,14 @@
 """Tests for model provider usage reporting."""
 
-import json
 import uuid
 
 import pytest
 
 import usage
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+)
 
 
 class TestReportModelProviderUsage:
@@ -300,8 +303,8 @@ class TestReportModelProviderUsage:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 0
-        assert proxy_log.exists()
-        [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert jsonl_exists_after_flush(proxy_log)
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
         assert entry["level"] == "warn"
         assert entry["message"] == "Cannot report usage event: missing sandbox_token or api_url"
         assert entry["type"] == "usage_event"
@@ -321,8 +324,8 @@ class TestReportModelProviderUsage:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert proxy_log.exists()
-        [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert jsonl_exists_after_flush(proxy_log)
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
         assert entry["level"] == "warn"
         assert entry["message"] == "Cannot report usage event: missing sandbox_token or api_url"
         assert entry["type"] == "usage_event"

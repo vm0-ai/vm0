@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import inspect
-import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import usage.buffer as usage_buffer
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from usage.webhook import WebhookDeliveryOutcome
 
 
@@ -129,7 +129,7 @@ def payloads_from_enqueue_calls(calls: Sequence[RecordedEnqueueCall]) -> list[di
 
 def flush_log_entries(proxy_log_path: Path) -> list[dict]:
     return [
-        json.loads(line)
-        for line in proxy_log_path.read_text().splitlines()
-        if '"usage_event_buffer_flush"' in line
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log_path)
+        if entry.get("type") == "usage_event_buffer_flush"
     ]

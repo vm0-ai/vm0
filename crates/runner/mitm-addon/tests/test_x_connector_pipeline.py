@@ -11,6 +11,7 @@ import mitm_addon
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.x_flow_helpers import (
     json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
@@ -339,7 +340,7 @@ class TestXConnectorResponsePipeline:
 
         assert webhook.request_count == 0
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
-        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
         ]
@@ -373,7 +374,7 @@ class TestXConnectorResponsePipeline:
 
         assert webhook.request_count == 0
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
-        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        entries = read_jsonl_entries_after_flush(proxy_log)
         lost_visibility_entries = [
             entry for entry in entries if "unparseable" in entry["message"].lower()
         ]
@@ -408,7 +409,7 @@ class TestXConnectorResponsePipeline:
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
-        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        entries = read_jsonl_entries_after_flush(proxy_log)
         assert all(entry["level"] != "error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
         assert all("parse_error" not in entry for entry in entries)

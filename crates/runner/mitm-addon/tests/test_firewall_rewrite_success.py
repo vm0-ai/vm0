@@ -7,6 +7,7 @@ from mitmproxy import http
 
 import auth
 from tests.firewall_rewrite_helpers import make_allow, make_success_rewrite_inputs
+from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
 
 class TestAuthBaseUrlRewriteSuccess:
@@ -267,9 +268,7 @@ class TestAuthBaseUrlRewriteSuccess:
         # forward_request called with the rewritten URL
         call_args = mock_forward.call_args
         assert call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
-        log_text = await asyncio.to_thread(
-            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
-        )
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "Firewall URL rewrite:" in log_text
         assert f"Firewall {allow.api_entry['base']}:" in log_text
 

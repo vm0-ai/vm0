@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import usage
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
 
@@ -156,7 +157,7 @@ class TestUsagePendingCounter:
         finally:
             usage.counters.decrement_pending_reports()
 
-        entry = json.loads(proxy_log.read_text())
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
         assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
         assert entry["type"] == "usage_event"
         assert entry["payload_run_id"] == "run-1"

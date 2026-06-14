@@ -1,11 +1,10 @@
 """Tests for mitm addon logging utilities."""
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import flow_metadata_keys as metadata_keys
 import logging_utils
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
@@ -17,9 +16,9 @@ class TestLogNetworkEntry:
         with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
             logging_utils.log_network_entry(log_path, entry)
 
-        lines = Path(log_path).read_text().splitlines()
-        assert len(lines) == 1
-        parsed = json.loads(lines[0])
+        entries = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert len(entries) == 1
+        parsed = entries[0]
         assert parsed["action"] == "ALLOW"
         assert parsed["host"] == "example.com"
         assert_utc_millisecond_timestamp(parsed["timestamp"])
@@ -32,7 +31,7 @@ class TestLogNetworkEntry:
         with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
             logging_utils.log_network_entry(log_path, entry)
 
-        parsed = json.loads(Path(log_path).read_text().strip())
+        [parsed] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert_utc_millisecond_timestamp(parsed["timestamp"])
         assert parsed["timestamp"] != "caller-timestamp"
         assert entry["timestamp"] == "caller-timestamp"
@@ -44,8 +43,8 @@ class TestLogNetworkEntry:
             logging_utils.log_network_entry(log_path, {"n": 1})
             logging_utils.log_network_entry(log_path, {"n": 2})
 
-        lines = Path(log_path).read_text().splitlines()
-        assert len(lines) == 2
+        entries = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert len(entries) == 2
 
     def test_no_path_is_noop(self):
         log = MagicMock()
@@ -78,6 +77,7 @@ class TestLogNetworkEntry:
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]
         assert "Failed to encode network log: TypeError:" in warning
+        logging_utils.flush_log_path(str(log_path))
         assert not log_path.exists()
 
     def test_full_backlog_warns_without_creating_file(self, tmp_path):
@@ -93,6 +93,7 @@ class TestLogNetworkEntry:
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]
         assert warning == "Dropping network log because the JSONL writer backlog is full"
+        logging_utils.flush_log_path(str(log_path))
         assert not log_path.exists()
 
 

@@ -12,6 +12,10 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+)
 from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
@@ -45,7 +49,7 @@ class TestErrorHandler:
         assert body["base"] == "https://fal.run"
         assert body["upstreamStatus"] == 0
 
-        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert entry["status"] == 0
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
@@ -53,9 +57,7 @@ class TestErrorHandler:
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert entry["connector_diagnostic_base"] == "https://fal.run"
 
-        proxy_entries = [
-            json.loads(line) for line in (tmp_path / "proxy.jsonl").read_text().splitlines()
-        ]
+        proxy_entries = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
         assert proxy_entries[0]["type"] == "connector_diagnostic"
         assert proxy_entries[0]["upstream_status"] == 0
         assert proxy_entries[1]["type"] == "connection_error"
@@ -85,7 +87,7 @@ class TestErrorHandler:
             mitm_addon.error(flow)
 
         assert flow.response is None
-        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert entry["status"] == 0
         assert entry["browser_user_agent"] is True
         assert entry["error"] == "connection reset by peer"
@@ -114,7 +116,7 @@ class TestErrorHandler:
             mitm_addon.error(flow)
 
         assert flow.response is None
-        entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert entry["status"] == 0
         assert entry["error"] == "connection reset by peer"
         assert "connector_diagnostic_type" not in entry
@@ -241,9 +243,9 @@ class TestErrorHandler:
         with mitm_ctx():
             mitm_addon.error(flow)
 
-        lines = Path(log_path).read_text().splitlines()
-        assert len(lines) == 1
-        entry = json.loads(lines[0])
+        entries = read_jsonl_entries_after_flush(Path(log_path))
+        assert len(entries) == 1
+        entry = entries[0]
         assert entry["type"] == "http"
         assert entry["action"] == "ALLOW"
         assert entry["host"] == "slack.com"
@@ -274,7 +276,7 @@ class TestErrorHandler:
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
 
-        entry = json.loads((registry_file.parent / "network.jsonl").read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(registry_file.parent / "network.jsonl")
         assert entry["type"] == "http"
         assert entry["action"] == "ALLOW"
         assert entry["host"] == "api.anthropic.com"
@@ -298,7 +300,7 @@ class TestErrorHandler:
         with mitm_ctx():
             mitm_addon.error(flow)
 
-        entry = json.loads(Path(log_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["host"] == "fallback.example.com"
         assert entry["port"] == 9443
         assert entry["url"] == "https://invalid.example.com:bad/path"
@@ -320,7 +322,7 @@ class TestErrorHandler:
         with mitm_ctx():
             mitm_addon.error(flow)
 
-        entry = json.loads(Path(log_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["firewall_base"] == "https://slack.com/api"
         assert entry["firewall_name"] == "slack"
         assert "firewall_ref" not in entry
@@ -340,8 +342,8 @@ class TestErrorHandler:
 
         mitm_addon.error(flow)
 
-        assert proxy_log.exists()
-        entry = json.loads(proxy_log.read_text().strip())
+        assert jsonl_exists_after_flush(proxy_log)
+        [entry] = read_jsonl_entries_after_flush(proxy_log)
         assert entry["message"] == "Error: connection reset by peer: https://slack.com/api/test"
         assert "api_key=secret" not in entry["message"]
         assert "#frag" not in entry["message"]

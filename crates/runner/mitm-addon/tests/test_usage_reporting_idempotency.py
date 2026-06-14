@@ -1,6 +1,5 @@
 """Tests for usage reporting idempotency across mitmproxy hooks."""
 
-import json
 import time
 import uuid
 from pathlib import Path
@@ -12,6 +11,10 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+)
 from tests.usage_helpers import set_stream_buffer
 
 
@@ -55,8 +58,8 @@ class TestUsageReportingIdempotency:
         events = webhook.usage_events()
         assert [event["category"] for event in events] == ["tokens.output"]
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
-        if proxy_log.exists():
-            entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        if jsonl_exists_after_flush(proxy_log):
+            entries = read_jsonl_entries_after_flush(proxy_log)
             assert not any(
                 entry.get("message") == "Model provider JSON usage extraction failed"
                 for entry in entries

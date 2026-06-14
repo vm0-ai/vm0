@@ -12,10 +12,16 @@ import pytest
 import zstandard
 from mitmproxy.test import tutils
 
+import logging_utils
 import mitm_addon
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
+)
 from tests.usage_helpers import set_stream_buffer
 
 
@@ -412,7 +418,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
-        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
         assert len(entries) == 1
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
@@ -446,13 +452,13 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
-        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
         assert len(entries) == 1
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
         assert entries[0]["type"] == "usage_event"
         assert entries[0]["error"] == "string limit exceeded"
-        assert oversized_model not in proxy_log_path.read_text()
+        assert oversized_model not in read_jsonl_text_after_flush(proxy_log_path)
 
     def test_openai_json_fallback_parse_error_logs_proxy_warning(self, tmp_path, real_flow):
         """OpenAI fallback parse failures should use the same proxy warning."""
@@ -474,7 +480,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
-        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
         assert len(entries) == 1
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
@@ -524,7 +530,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
-        entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
         assert len(entries) == 1
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
@@ -577,8 +583,8 @@ class TestModelProviderResponseUsage:
         assert extracted["tokens.output"] == expected["tokens.output"]
         if provider_case.uses_openai_responses:
             assert extracted["tokens.cache_read"] == expected["tokens.cache_read"]
-        if proxy_log_path.exists():
-            entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        if jsonl_exists_after_flush(proxy_log_path):
+            entries = read_jsonl_entries_after_flush(proxy_log_path)
             assert not any(
                 entry.get("message") == "Model provider JSON usage extraction failed"
                 for entry in entries
@@ -635,8 +641,8 @@ class TestModelProviderResponseUsage:
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == _expected_event_quantities(provider_case)
-        if proxy_log_path.exists():
-            entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
+        if jsonl_exists_after_flush(proxy_log_path):
+            entries = read_jsonl_entries_after_flush(proxy_log_path)
             assert not any(
                 entry.get("message") == "Model provider JSON usage extraction failed"
                 for entry in entries
@@ -662,6 +668,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     def test_openai_json_fallback_valid_body_without_usage_stays_quiet(self, tmp_path, real_flow):
@@ -684,6 +691,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     @pytest.mark.parametrize(
@@ -736,6 +744,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     def test_anthropic_json_fallback_metadata_only_usage_stays_quiet(self, tmp_path, real_flow):
@@ -761,6 +770,7 @@ class TestModelProviderResponseUsage:
             "message_id": "msg_1",
             "model": "claude-sonnet-4-6",
         }
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     @pytest.mark.parametrize(
@@ -800,6 +810,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert flow.metadata["model_provider_usage"] == expected_usage
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     def test_codex_oauth_non_streaming_json_fallback(self, tmp_path, real_flow):
@@ -868,6 +879,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     def test_full_pipeline_large_model_json_uses_bounded_buffer(self, tmp_path, real_flow):
@@ -1038,7 +1050,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
-        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        entries = read_jsonl_entries_after_flush(proxy_log)
         usage_warnings = [
             entry
             for entry in entries
@@ -1125,6 +1137,7 @@ class TestModelProviderResponseUsage:
 
         assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
+        logging_utils.flush_log_path(str(proxy_log_path))
         assert not proxy_log_path.exists()
 
     @pytest.mark.parametrize("firewall_name", [None, 42])

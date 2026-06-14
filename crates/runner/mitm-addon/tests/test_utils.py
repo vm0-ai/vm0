@@ -1,12 +1,11 @@
 """Tests for URL and logging utility functions."""
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import logging_utils
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 from url_utils import AuthorityValidationError, get_original_url
 
@@ -108,7 +107,7 @@ class TestLogProxyEntry:
     def test_writes_jsonl(self, tmp_path):
         proxy_path = str(tmp_path / "proxy-test.jsonl")
         logging_utils.log_proxy_entry(proxy_path, "warn", "test message", extra_field="value")
-        entry = json.loads((tmp_path / "proxy-test.jsonl").read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "proxy-test.jsonl")
         assert entry["level"] == "warn"
         assert entry["message"] == "test message"
         assert entry["extra_field"] == "value"
@@ -126,7 +125,7 @@ class TestLogProxyEntry:
             raw_url_copy=raw_url,
         )
 
-        entry = json.loads(proxy_path.read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(proxy_path)
         assert entry["message"] == "url diagnostic"
         assert entry["url"] == "https://example.com/v1/search"
         assert entry["raw_url_copy"] == raw_url
@@ -135,10 +134,10 @@ class TestLogProxyEntry:
         proxy_path = str(tmp_path / "proxy-test.jsonl")
         logging_utils.log_proxy_entry(proxy_path, "info", "first")
         logging_utils.log_proxy_entry(proxy_path, "warn", "second")
-        lines = (tmp_path / "proxy-test.jsonl").read_text().strip().split("\n")
-        assert len(lines) == 2
-        assert json.loads(lines[0])["message"] == "first"
-        assert json.loads(lines[1])["message"] == "second"
+        entries = read_jsonl_entries_after_flush(tmp_path / "proxy-test.jsonl")
+        assert len(entries) == 2
+        assert entries[0]["message"] == "first"
+        assert entries[1]["message"] == "second"
 
     def test_empty_path_no_op(self, tmp_path):
         log = MagicMock()
@@ -189,6 +188,7 @@ class TestLogProxyEntry:
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]
         assert "Failed to encode proxy log: TypeError:" in warning
+        logging_utils.flush_log_path(str(proxy_path))
         assert not proxy_path.exists()
 
     def test_extra_cannot_override_reserved_fields(self, tmp_path):
@@ -205,7 +205,7 @@ class TestLogProxyEntry:
 
         logging_utils.log_proxy_entry(str(proxy_path), "warn", "logger-message", **extra)
 
-        entry = json.loads(Path(proxy_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(proxy_path)
         assert_utc_millisecond_timestamp(entry["timestamp"])
         assert entry["timestamp"] != "caller-timestamp"
         assert entry["level"] == "warn"

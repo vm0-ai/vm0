@@ -1,6 +1,5 @@
 """Tests for model-provider SSE usage reporting paths."""
 
-import json
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -13,6 +12,10 @@ from mitmproxy.test import tutils
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+)
 
 
 def _model_provider_sse_flow(
@@ -59,11 +62,11 @@ def _openai_responses_sse_flow(
 
 def _model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
     proxy_log = Path(flow.metadata["vm_proxy_log_path"])
-    if not proxy_log.exists():
+    if not jsonl_exists_after_flush(proxy_log):
         return []
     return [
         entry
-        for entry in (json.loads(line) for line in proxy_log.read_text().splitlines())
+        for entry in read_jsonl_entries_after_flush(proxy_log)
         if entry.get("message") == "Model provider SSE usage extraction failed"
     ]
 

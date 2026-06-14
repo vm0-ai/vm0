@@ -6,6 +6,7 @@ import pytest
 
 import usage
 import usage.buffer as usage_buffer
+from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from tests.pending_helpers import assert_pending
 from tests.usage_buffer_helpers import DeliveryOutcomeCallback, RecordingEnqueue, event
 
@@ -860,7 +861,7 @@ def test_permanent_sync_fallback_failure_does_not_requeue(tmp_path, fresh_usage_
         reports=0,
         flush_request_id="permanent-failure",
     )
-    assert "non-retryable" in proxy_log_path.read_text()
+    assert "non-retryable" in read_jsonl_text_after_flush(proxy_log_path)
     assert usage.flush_usage_events(trigger="test") == 0
 
 
