@@ -3917,9 +3917,6 @@ describe("chat lifecycle", () => {
     // an empty note, taking the composer position nearest Send.
     expect(comments[0]).toHaveValue("Assign each risk to an owner.");
     expect(comments[1]).toHaveValue("");
-    expect(
-      screen.getByText("Select more text to add another comment"),
-    ).toBeInTheDocument();
 
     // Removing the empty draft row leaves the noted fragment intact.
     await user.click(screen.getAllByLabelText("Remove feedback")[1]);
@@ -4004,7 +4001,16 @@ describe("chat lifecycle", () => {
       "What should change about this?",
     )[0];
     expect(editingComment).toHaveValue("Assign each risk to an owner.");
-    await fill(editingComment, "Assign named owners to each launch risk.");
+    await user.click(editingComment);
+    await user.keyboard("{Control>}a{/Control}");
+    await user.keyboard("Assign named owners to each launch risk.");
+    expect(editingComment).toHaveFocus();
+    expect(editingComment).toHaveValue(
+      "Assign named owners to each launch risk.",
+    );
+    expect(
+      screen.getAllByPlaceholderText("What should change about this?")[1],
+    ).toHaveValue("Mention launch dates before the risk summary.");
 
     await user.click(screen.getByLabelText("Send feedback"));
 

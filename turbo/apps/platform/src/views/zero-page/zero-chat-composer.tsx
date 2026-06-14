@@ -30,6 +30,7 @@ import {
   IconPlug,
   IconPhoto,
   IconPlus,
+  IconQuote,
   IconSearch,
   IconTemplate,
   IconVideo,
@@ -500,50 +501,84 @@ function QueuedMessagesStrip({
 // composer's toolbar and Send button.
 // ---------------------------------------------------------------------------
 
+// Grow the note input to fit its content so multi-line comments expand the
+// composer instead of scrolling inside a single row.
+function autoGrowFeedbackNote(element: HTMLTextAreaElement | null): void {
+  if (!element) {
+    return;
+  }
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
+function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
+  autoGrowFeedbackNote(element);
+}
+
 function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
   element?.focus();
+  autoGrowFeedbackNote(element);
 }
 
 function ComposerFeedbackRow({
   item,
   autoFocus,
+  showDivider,
   onChangeNote,
   onRemove,
   onKeyDown,
 }: {
   item: FeedbackItem;
   autoFocus: boolean;
+  showDivider: boolean;
   onChangeNote: (note: string) => void;
   onRemove: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 border-b border-dashed border-border/60 py-1.5">
-      <div className="flex items-center gap-2">
-        <span className="h-4 w-[3px] shrink-0 bg-muted-foreground/30" />
-        <span className="min-w-0 flex-1 truncate text-sm italic leading-snug text-muted-foreground">
-          {item.quote}
-        </span>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remove feedback"
-          title="Remove feedback"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <IconX size={15} stroke={2} />
-        </button>
+    <div
+      className={cn(
+        "flex flex-col gap-1.5 py-1.5",
+        showDivider && "border-t border-dashed border-border/60",
+      )}
+    >
+      {/* Quote reference reuses the selected-template chip treatment (bordered
+          pill, icon square, in-pill remove) so feedback references read the same
+          as template chips. */}
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted">
+            <IconQuote
+              size={12}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          </span>
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.quote}
+          </span>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove feedback"
+            title="Remove feedback"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
       </div>
       <textarea
-        ref={autoFocus ? focusFeedbackNoteRef : undefined}
+        ref={autoFocus ? focusFeedbackNoteRef : autoGrowFeedbackNoteRef}
         value={item.note}
         onChange={(event) => {
+          autoGrowFeedbackNote(event.target);
           return onChangeNote(event.target.value);
         }}
         onKeyDown={onKeyDown}
         rows={1}
         placeholder="What should change about this?"
-        className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+        className="w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
       />
     </div>
   );
@@ -566,13 +601,15 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
   const newestId = feedback.items[feedback.items.length - 1]?.id;
 
   return (
-    <div className="flex flex-col px-3 pb-2 pt-3">
-      {feedback.items.map((item) => {
+    // min-h keeps the card from shrinking below the textarea's resting height.
+    <div className="flex min-h-[96px] flex-col px-3 pb-2 pt-3">
+      {feedback.items.map((item, index) => {
         return (
           <ComposerFeedbackRow
             key={item.id}
             item={item}
             autoFocus={item.id === newestId}
+            showDivider={index > 0}
             onChangeNote={(note) => {
               return feedback.onChangeNote(item.id, note);
             }}
@@ -583,9 +620,6 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      <span className="px-1 pt-1.5 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
-        Select more text to add another comment
-      </span>
     </div>
   );
 }
