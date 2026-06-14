@@ -150,7 +150,6 @@ _RequestClassificationKind = Literal[
     "invalid_registry_vm",
     "authority_denied",
     "api_allow",
-    "browser_allow",
     "firewall_block",
     "firewall_allow",
     "allow",
@@ -593,9 +592,6 @@ def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
         ):
             return _RequestClassification(kind="api_allow", vm_info=vm_info)
 
-    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
-        return _RequestClassification(kind="browser_allow", vm_info=vm_info)
-
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
     compiled_network_policies = registry_state.compiled_network_policies[client_ip]
     if compiled_firewalls:
@@ -625,7 +621,6 @@ def _classification_needs_request_timing(classification: _RequestClassification)
     return classification.kind in (
         "authority_denied",
         "api_allow",
-        "browser_allow",
         "firewall_block",
         "firewall_allow",
         "allow",
@@ -1199,6 +1194,8 @@ def requestheaders(flow: http.HTTPFlow) -> None:
     classification = _classify_request(flow)
     allow = classification.firewall_allow
     vm_info = classification.vm_info
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+        return
     if classification.kind != "firewall_allow" or allow is None or vm_info is None:
         return
     if not _firewall_allow_auth_base(allow):
@@ -1267,6 +1264,21 @@ def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallB
     )
 
 
+def _record_browser_firewall_passthrough(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+) -> None:
+    """Record an allowed browser-looking firewall match without applying auth."""
+    api_entry = allow.api_entry
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.FIREWALL_BASE] = api_entry["base"]
+    flow.metadata[metadata_keys.FIREWALL_NAME] = allow.name
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = allow.permission or ""
+    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = allow.rule or ""
+    flow.metadata[metadata_keys.FIREWALL_PARAMS] = allow.params
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+
+
 async def request(flow: http.HTTPFlow) -> None:
     """
     Intercept request: inject firewall auth headers for configured firewall rules.
@@ -1311,15 +1323,6 @@ async def request(flow: http.HTTPFlow) -> None:
         if classification.kind == "api_allow":
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
             return
-        if classification.kind == "browser_allow":
-            # User-Agent is client-controlled. This is a credential-flow skip
-            # for browser-looking traffic, not proof that the request came from
-            # a trusted browser integration. Registry and authority validation
-            # have already run, but connector/model-provider auth is not fetched
-            # or injected on this path.
-            flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
-            return
         if classification.kind == "firewall_block":
             firewall_block = classification.firewall_block
             if firewall_block is not None:
@@ -1329,6 +1332,9 @@ async def request(flow: http.HTTPFlow) -> None:
             allow = classification.firewall_allow
             vm_info = classification.vm_info
             if allow is None or vm_info is None:
+                return
+            if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+                _record_browser_firewall_passthrough(flow, allow)
                 return
             _maybe_track_usage_flow(
                 flow,
