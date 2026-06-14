@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use guest_common::env as guest_env;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
 use super::session_restore::canonical_codex_thread_id;
@@ -109,10 +108,10 @@ pub(super) fn validate_claude_tool_lists(context: &ExecutionContext) -> Result<(
     }
 
     if let Some(tools) = &context.disallowed_tools {
-        validate_claude_tool_env_entries(guest_env::DISALLOWED_TOOLS_ENV, tools)?;
+        validate_claude_tool_env_entries(guest_common::env::DISALLOWED_TOOLS_ENV, tools)?;
     }
     if let Some(tools) = &context.tools {
-        validate_claude_tool_env_entries(guest_env::TOOLS_ENV, tools)?;
+        validate_claude_tool_env_entries(guest_common::env::TOOLS_ENV, tools)?;
     }
 
     Ok(())
@@ -230,31 +229,37 @@ pub(super) fn build_env_json_with_host_env(
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
 
-    env.insert(guest_env::API_URL_ENV.into(), api_url.into());
-    env.insert(guest_env::RUN_ID_ENV.into(), context.run_id.to_string());
+    env.insert(guest_common::env::API_URL_ENV.into(), api_url.into());
     env.insert(
-        guest_env::API_TOKEN_ENV.into(),
+        guest_common::env::RUN_ID_ENV.into(),
+        context.run_id.to_string(),
+    );
+    env.insert(
+        guest_common::env::API_TOKEN_ENV.into(),
         context.sandbox_token.clone(),
     );
-    env.insert(guest_env::SANDBOX_ID_ENV.into(), sandbox_id.into());
+    env.insert(guest_common::env::SANDBOX_ID_ENV.into(), sandbox_id.into());
     env.insert(
         guest_runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
         guest_runtime_dir(context.run_id)?,
     );
     env.insert(
-        guest_env::SANDBOX_REUSE_RESULT_ENV.into(),
+        guest_common::env::SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
     );
-    env.insert(guest_env::PROMPT_ENV.into(), context.prompt.clone());
+    env.insert(guest_common::env::PROMPT_ENV.into(), context.prompt.clone());
     insert_chat_stream_env(&mut env, context);
     insert_guest_agent_tuning_env(&mut env, context);
     if let Some(asp) = &context.append_system_prompt
         && !asp.is_empty()
     {
-        env.insert(guest_env::APPEND_SYSTEM_PROMPT_ENV.into(), asp.clone());
+        env.insert(
+            guest_common::env::APPEND_SYSTEM_PROMPT_ENV.into(),
+            asp.clone(),
+        );
     }
     env.insert(
-        guest_env::API_START_TIME_ENV.into(),
+        guest_common::env::API_START_TIME_ENV.into(),
         context
             .api_start_time
             .map(|t| t.to_string())
@@ -262,14 +267,14 @@ pub(super) fn build_env_json_with_host_env(
     );
     // The API omits cli_agent_type for claude-code agents (the default).
     env.insert(
-        guest_env::CLI_AGENT_TYPE_ENV.into(),
+        guest_common::env::CLI_AGENT_TYPE_ENV.into(),
         normalized_cli_agent_type(&context.cli_agent_type).into(),
     );
 
     // Vercel bypass
     if let Some(bypass) = &host_env.vercel_automation_bypass_secret {
         env.insert(
-            guest_env::VERCEL_PROTECTION_BYPASS_ENV.into(),
+            guest_common::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
             bypass.clone(),
         );
     }
@@ -313,7 +318,7 @@ pub(super) fn build_env_json_with_host_env(
         #[allow(clippy::expect_used)]
         let serialized = serde_json::to_string(&payload)
             .expect("VM0_ARTIFACTS payload must serialize (String-only Values)");
-        env.insert(guest_env::ARTIFACTS_ENV.into(), serialized);
+        env.insert(guest_common::env::ARTIFACTS_ENV.into(), serialized);
     }
 
     // Resume session ID
@@ -327,7 +332,7 @@ pub(super) fn build_env_json_with_host_env(
         } else {
             session.session_id.clone()
         };
-        env.insert(guest_env::RESUME_SESSION_ID_ENV.into(), session_id);
+        env.insert(guest_common::env::RESUME_SESSION_ID_ENV.into(), session_id);
     }
 
     // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_CoffeeSafeLocal...)
@@ -347,7 +352,10 @@ pub(super) fn build_env_json_with_host_env(
                     .map(|s| base64::engine::general_purpose::STANDARD.encode(s)),
             );
         }
-        env.insert(guest_env::SECRET_VALUES_ENV.into(), encoded.join(","));
+        env.insert(
+            guest_common::env::SECRET_VALUES_ENV.into(),
+            encoded.join(","),
+        );
     }
 
     match effective_cli_framework(&context.cli_agent_type) {
@@ -360,7 +368,7 @@ pub(super) fn build_env_json_with_host_env(
         && !flags.is_empty()
         && let Ok(json) = serde_json::to_string(flags)
     {
-        env.insert(guest_env::FEATURE_FLAGS_ENV.into(), json);
+        env.insert(guest_common::env::FEATURE_FLAGS_ENV.into(), json);
     }
 
     Ok(env)
@@ -375,9 +383,18 @@ fn insert_chat_stream_env(env: &mut HashMap<String, String>, context: &Execution
         return;
     };
 
-    env.insert(guest_env::CHAT_STREAM_CHANNEL_ENV.into(), channel.clone());
-    env.insert(guest_env::CHAT_STREAM_TOPIC_ENV.into(), topic.clone());
-    env.insert(guest_env::CHAT_STREAM_TOKEN_ENV.into(), token.clone());
+    env.insert(
+        guest_common::env::CHAT_STREAM_CHANNEL_ENV.into(),
+        channel.clone(),
+    );
+    env.insert(
+        guest_common::env::CHAT_STREAM_TOPIC_ENV.into(),
+        topic.clone(),
+    );
+    env.insert(
+        guest_common::env::CHAT_STREAM_TOKEN_ENV.into(),
+        token.clone(),
+    );
 }
 
 pub(super) fn insert_guest_agent_tuning_env(
@@ -405,8 +422,8 @@ impl HostEnv {
     pub(super) fn from_process() -> Self {
         Self {
             vercel_automation_bypass_secret: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
-            use_mock_claude: std::env::var(guest_env::USE_MOCK_CLAUDE_ENV).ok(),
-            use_mock_codex: std::env::var(guest_env::USE_MOCK_CODEX_ENV).ok(),
+            use_mock_claude: std::env::var(guest_common::env::USE_MOCK_CLAUDE_ENV).ok(),
+            use_mock_codex: std::env::var(guest_common::env::USE_MOCK_CODEX_ENV).ok(),
         }
     }
 }
@@ -428,10 +445,10 @@ pub(super) fn effective_cli_framework(cli_agent_type: &str) -> EffectiveCliFrame
 }
 
 const NON_VM0_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
-    guest_env::CLI_AGENT_TYPE_ENV,
-    guest_env::USE_MOCK_CLAUDE_ENV,
-    guest_env::USE_MOCK_CODEX_ENV,
-    guest_env::VERCEL_PROTECTION_BYPASS_ENV,
+    guest_common::env::CLI_AGENT_TYPE_ENV,
+    guest_common::env::USE_MOCK_CLAUDE_ENV,
+    guest_common::env::USE_MOCK_CODEX_ENV,
+    guest_common::env::VERCEL_PROTECTION_BYPASS_ENV,
 ];
 
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
@@ -454,26 +471,27 @@ pub(super) fn insert_claude_code_env(
     if let Some(val) = &host_env.use_mock_claude
         && !context.debug_no_mock_claude.unwrap_or(false)
     {
-        env.insert(guest_env::USE_MOCK_CLAUDE_ENV.into(), val.clone());
+        env.insert(guest_common::env::USE_MOCK_CLAUDE_ENV.into(), val.clone());
     }
 
     if let Some(tools) = &context.disallowed_tools
-        && let Some(serialized) = serialize_claude_tool_env(guest_env::DISALLOWED_TOOLS_ENV, tools)?
+        && let Some(serialized) =
+            serialize_claude_tool_env(guest_common::env::DISALLOWED_TOOLS_ENV, tools)?
     {
-        env.insert(guest_env::DISALLOWED_TOOLS_ENV.into(), serialized);
+        env.insert(guest_common::env::DISALLOWED_TOOLS_ENV.into(), serialized);
     }
 
     if let Some(tools) = &context.tools
-        && let Some(serialized) = serialize_claude_tool_env(guest_env::TOOLS_ENV, tools)?
+        && let Some(serialized) = serialize_claude_tool_env(guest_common::env::TOOLS_ENV, tools)?
     {
-        env.insert(guest_env::TOOLS_ENV.into(), serialized);
+        env.insert(guest_common::env::TOOLS_ENV.into(), serialized);
     }
 
     // Settings JSON (passed directly as single string)
     if let Some(settings) = &context.settings
         && !settings.is_empty()
     {
-        env.insert(guest_env::SETTINGS_ENV.into(), settings.clone());
+        env.insert(guest_common::env::SETTINGS_ENV.into(), settings.clone());
     }
 
     Ok(())
@@ -527,7 +545,7 @@ pub(super) fn insert_codex_env(
     if let Some(val) = &host_env.use_mock_codex
         && !context.debug_no_mock_codex.unwrap_or(false)
     {
-        env.insert(guest_env::USE_MOCK_CODEX_ENV.into(), val.clone());
+        env.insert(guest_common::env::USE_MOCK_CODEX_ENV.into(), val.clone());
     }
 }
 

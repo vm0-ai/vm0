@@ -14,13 +14,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use guest_common::env as guest_env;
-
 static RUNTIME_DIR: LazyLock<PathBuf> = LazyLock::new(default_run_dir);
 
 #[allow(clippy::panic)]
 fn default_run_dir() -> PathBuf {
-    let run_id = std::env::var(guest_env::RUN_ID_ENV).unwrap_or_default();
+    let run_id = std::env::var(guest_common::env::RUN_ID_ENV).unwrap_or_default();
     guest_runtime_paths::run_dir_from_env(&run_id)
         .unwrap_or_else(|error| panic!("failed to resolve guest runtime directory: {error}"))
 }

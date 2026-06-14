@@ -1,6 +1,5 @@
 //! Storage manifest filtering and guest download helpers.
 
-use guest_common::env as guest_env;
 use sandbox::{EXEC_OUTPUT_LIMIT_1_MIB, ExecRequest, Sandbox};
 use tracing::info;
 
@@ -124,7 +123,7 @@ pub(super) fn guest_download_env<'a>(
     runtime_dir: &'a str,
 ) -> [(&'static str, &'a str); 2] {
     [
-        (guest_env::RUN_ID_ENV, run_id),
+        (guest_common::env::RUN_ID_ENV, run_id),
         (guest_runtime_paths::GUEST_RUNTIME_DIR_ENV, runtime_dir),
     ]
 }
