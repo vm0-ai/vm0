@@ -230,7 +230,10 @@ pub(super) async fn collect_agent_abnormal_exit_diagnostics(
     }
 }
 pub(super) async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
-    let error_path = match guest_runtime_path(run_id, guest_runtime_paths::checkpoint_error_file) {
+    let error_path = match guest_runtime_path(
+        run_id,
+        guest_contracts::runtime_paths::checkpoint_error_file,
+    ) {
         Ok(path) => path,
         Err(e) => {
             warn!(run_id = %run_id, error = %e, "failed to resolve guest error file path");
@@ -257,7 +260,10 @@ pub(super) async fn read_guest_failure_diagnostic_file(
     sandbox: &dyn Sandbox,
     run_id: RunId,
 ) -> Option<FailureDiagnostic> {
-    let path = match guest_runtime_path(run_id, guest_runtime_paths::failure_diagnostic_file) {
+    let path = match guest_runtime_path(
+        run_id,
+        guest_contracts::runtime_paths::failure_diagnostic_file,
+    ) {
         Ok(path) => path,
         Err(e) => {
             warn!(run_id = %run_id, error = %e, "failed to resolve guest failure diagnostic path");
@@ -300,7 +306,7 @@ pub(super) async fn read_guest_failure_diagnostic_file(
 /// after the CLI emits its `system/init` event. On first runs (no
 /// `resume_session`), the runner uses this to park the VM for keep-alive.
 pub(super) async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
-    let path = match guest_runtime_path(run_id, guest_runtime_paths::session_id_file) {
+    let path = match guest_runtime_path(run_id, guest_contracts::runtime_paths::session_id_file) {
         Ok(path) => path,
         Err(e) => {
             warn!(run_id = %run_id, error = %e, "failed to resolve guest session id path");
@@ -492,11 +498,11 @@ pub(super) async fn copy_guest_logs(
 ) {
     let run_id = context.run_id;
     let files = match [
-        guest_runtime_path(run_id, guest_runtime_paths::system_log_file)
+        guest_runtime_path(run_id, guest_contracts::runtime_paths::system_log_file)
             .map(|path| (path, log_paths.system_log(run_id))),
-        guest_runtime_path(run_id, guest_runtime_paths::metrics_log_file)
+        guest_runtime_path(run_id, guest_contracts::runtime_paths::metrics_log_file)
             .map(|path| (path, log_paths.metrics_log(run_id))),
-        guest_runtime_path(run_id, guest_runtime_paths::sandbox_ops_log_file)
+        guest_runtime_path(run_id, guest_contracts::runtime_paths::sandbox_ops_log_file)
             .map(|path| (path, log_paths.sandbox_ops_log(run_id))),
     ]
     .into_iter()

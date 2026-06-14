@@ -323,9 +323,9 @@ fn guest_runtime_dir_for_user_env() -> Result<PathBuf, String> {
 }
 
 fn guest_runtime_dir_for_user_env_run_id(run_id: &str) -> Result<PathBuf, String> {
-    guest_runtime_paths::validate_run_id(run_id)
+    guest_contracts::runtime_paths::validate_run_id(run_id)
         .map_err(|e| format!("resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {e}"))?;
-    guest_runtime_paths::run_dir_from_env(run_id)
+    guest_contracts::runtime_paths::run_dir_from_env(run_id)
         .map_err(|e| format!("resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {e}"))
 }
 

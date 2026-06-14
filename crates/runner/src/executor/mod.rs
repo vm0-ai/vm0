@@ -115,7 +115,7 @@ use crate::workspace_image_cache::{
 
 fn guest_runtime_dir(run_id: RunId) -> RunnerResult<String> {
     let run_id = run_id.to_string();
-    let path = guest_runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
+    let path = guest_contracts::runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
         .map_err(|e| RunnerError::Internal(format!("guest runtime dir: {e}")))?;
     Ok(path.to_string_lossy().into_owned())
 }
@@ -125,8 +125,9 @@ fn guest_runtime_path(
     path: impl FnOnce(PathBuf) -> PathBuf,
 ) -> RunnerResult<String> {
     let run_id = run_id.to_string();
-    let run_dir = guest_runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
-        .map_err(|e| RunnerError::Internal(format!("guest runtime path: {e}")))?;
+    let run_dir =
+        guest_contracts::runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
+            .map_err(|e| RunnerError::Internal(format!("guest runtime path: {e}")))?;
     Ok(path(run_dir).to_string_lossy().into_owned())
 }
 

@@ -176,7 +176,11 @@ async fn read_guest_error_file_returns_content() {
     assert_eq!(calls.len(), 1);
     assert_eq!(
         calls[0].path,
-        guest_runtime_path(RunId::nil(), guest_runtime_paths::checkpoint_error_file).unwrap()
+        guest_runtime_path(
+            RunId::nil(),
+            guest_contracts::runtime_paths::checkpoint_error_file
+        )
+        .unwrap()
     );
     assert_eq!(calls[0].max_bytes, SMALL_GUEST_FILE_MAX_BYTES);
 }
@@ -217,7 +221,11 @@ async fn read_guest_session_id_returns_trimmed_content_from_runtime_path() {
     assert_eq!(calls.len(), 1);
     assert_eq!(
         calls[0].path,
-        guest_runtime_path(RunId::nil(), guest_runtime_paths::session_id_file).unwrap()
+        guest_runtime_path(
+            RunId::nil(),
+            guest_contracts::runtime_paths::session_id_file
+        )
+        .unwrap()
     );
     assert_eq!(calls[0].max_bytes, SMALL_GUEST_FILE_MAX_BYTES);
 }
@@ -257,7 +265,11 @@ async fn read_guest_failure_diagnostic_file_returns_valid_diagnostic() {
     assert_eq!(calls.len(), 1);
     assert_eq!(
         calls[0].path,
-        guest_runtime_path(RunId::nil(), guest_runtime_paths::failure_diagnostic_file).unwrap()
+        guest_runtime_path(
+            RunId::nil(),
+            guest_contracts::runtime_paths::failure_diagnostic_file
+        )
+        .unwrap()
     );
     assert_eq!(calls[0].max_bytes, SMALL_GUEST_FILE_MAX_BYTES);
 }
@@ -392,7 +404,11 @@ async fn copy_guest_logs_writes_files_to_host() {
     assert_eq!(calls.len(), 3);
     assert_eq!(
         calls[2].path,
-        guest_runtime_path(ctx.run_id, guest_runtime_paths::sandbox_ops_log_file).unwrap()
+        guest_runtime_path(
+            ctx.run_id,
+            guest_contracts::runtime_paths::sandbox_ops_log_file
+        )
+        .unwrap()
     );
     assert_eq!(calls[2].host_path, log_paths.sandbox_ops_log(ctx.run_id));
     assert_eq!(calls[0].max_bytes, GUEST_LOG_COPY_MAX_BYTES);

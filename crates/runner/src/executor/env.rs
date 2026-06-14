@@ -243,7 +243,7 @@ pub(super) fn build_env_json_with_host_env(
         sandbox_id.into(),
     );
     env.insert(
-        guest_runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
         guest_runtime_dir(context.run_id)?,
     );
     env.insert(

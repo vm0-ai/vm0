@@ -177,7 +177,8 @@ fn build_env_json_required_keys() {
     assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
     assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
-        env.get(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV).unwrap(),
+        env.get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+            .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
     assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
@@ -374,7 +375,7 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             "/legacy".into(),
         ),
         (
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
             "/user/controlled/runtime".into(),
         ),
         (
@@ -428,7 +429,7 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
     assert_eq!(bootstrap_env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
         bootstrap_env
-            .get(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV)
+            .get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
@@ -441,7 +442,7 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         guest_contracts::env::CHAT_STREAM_TOPIC_ENV,
         guest_contracts::env::CHAT_STREAM_TOKEN_ENV,
         guest_contracts::env::WORKING_DIR_ENV,
-        guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
         "VM0_FUTURE_RUNNER_KEY",
         RUNNER_CONCURRENCY_FACTOR_ENV,

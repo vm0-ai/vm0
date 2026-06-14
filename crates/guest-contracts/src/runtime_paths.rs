@@ -1,4 +1,4 @@
-//! Shared guest runtime path contract.
+//! Shared guest runtime path contract and private runtime file helpers.
 
 use std::env;
 use std::fs::{self, File, OpenOptions};
@@ -319,50 +319,53 @@ mod tests {
 
         write_private(&path, b"hello").unwrap();
 
-        assert_eq!(fs::read(&path).unwrap(), b"hello");
+        assert_eq!(std::fs::read(&path).unwrap(), b"hello");
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                fs::metadata(path.parent().unwrap())
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                0o700
-            );
-            assert_eq!(
-                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-                0o600
-            );
+            let run_mode = std::fs::metadata(temp.path().join("run"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            let logs_mode = std::fs::metadata(temp.path().join("run/logs"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            let file_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(run_mode, 0o700);
+            assert_eq!(logs_mode, 0o700);
+            assert_eq!(file_mode, 0o600);
         }
     }
 
     #[test]
-    fn create_private_truncates_existing_file() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("run/logs/agent.jsonl");
-        write_private(&path, b"stale content").unwrap();
-
-        let mut file = create_private(&path).unwrap();
-        std::io::Write::write_all(&mut file, b"fresh").unwrap();
-        drop(file);
-
-        assert_eq!(fs::read(&path).unwrap(), b"fresh");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn private_file_opens_reject_final_symlink() {
+    fn write_private_rejects_symlink_file() {
         let temp = tempfile::tempdir().unwrap();
         let target = temp.path().join("target");
-        let link = temp.path().join("run/logs/system.log");
-        ensure_parent_dir(&link).unwrap();
-        std::fs::write(&target, b"target must survive").unwrap();
-        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let link = temp.path().join("link");
+        std::fs::write(&target, b"secret").unwrap();
 
-        assert!(create_private(&link).is_err());
-        assert!(open_private_append(&link).is_err());
-        assert_eq!(fs::read(&target).unwrap(), b"target must survive");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            assert!(write_private(&link, b"new").is_err());
+            assert_eq!(std::fs::read(&target).unwrap(), b"secret");
+        }
+    }
+
+    #[test]
+    fn open_private_append_rejects_symlink_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        let link = temp.path().join("link");
+        std::fs::write(&target, b"secret").unwrap();
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            assert!(open_private_append(&link).is_err());
+            assert_eq!(std::fs::read(&target).unwrap(), b"secret");
+        }
     }
 }

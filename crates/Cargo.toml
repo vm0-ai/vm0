@@ -8,7 +8,6 @@ members = [
     "guest-contracts",
     "process-control-ipc",
     "guest-common",
-    "guest-runtime-paths",
     "guest-download",
     "guest-init",
     "guest-mock-claude",
@@ -39,7 +38,6 @@ guest-agent = { path = "guest-agent" }
 guest-contracts = { path = "guest-contracts" }
 process-control-ipc = { path = "process-control-ipc" }
 guest-common = { path = "guest-common" }
-guest-runtime-paths = { path = "guest-runtime-paths" }
 guest-download = { path = "guest-download" }
 guest-init = { path = "guest-init" }
 guest-mock-claude = { path = "guest-mock-claude" }

@@ -11,13 +11,16 @@ static RUN_ID: LazyLock<String> =
         Ok(run_id) if !run_id.is_empty() => run_id,
         _ => panic!("VM0_RUN_ID is required for guest system logging"),
     });
-static DEFAULT_SYSTEM_LOG_FILE: LazyLock<String> =
-    LazyLock::new(|| path_to_string(guest_runtime_paths::system_log_file(default_run_dir())));
+static DEFAULT_SYSTEM_LOG_FILE: LazyLock<String> = LazyLock::new(|| {
+    path_to_string(guest_contracts::runtime_paths::system_log_file(
+        default_run_dir(),
+    ))
+});
 static SYSTEM_LOG: Mutex<SystemLogState> = Mutex::new(SystemLogState::disabled());
 
 #[allow(clippy::panic)]
 fn default_run_dir() -> PathBuf {
-    guest_runtime_paths::run_dir_from_env(&RUN_ID)
+    guest_contracts::runtime_paths::run_dir_from_env(&RUN_ID)
         .unwrap_or_else(|error| panic!("failed to resolve guest system log path: {error}"))
 }
 
@@ -99,7 +102,7 @@ fn write_line_with_newline(writer: &mut impl Write, line: &str) -> io::Result<()
 }
 
 fn open_system_log_file(path: &Path) -> std::io::Result<File> {
-    guest_runtime_paths::open_private_append(path)
+    guest_contracts::runtime_paths::open_private_append(path)
         .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))
 }
 

@@ -1271,7 +1271,6 @@ dependencies = [
  "flate2",
  "guest-common",
  "guest-contracts",
- "guest-runtime-paths",
  "hex",
  "http-body 1.0.1",
  "httpmock",
@@ -1301,7 +1300,6 @@ version = "0.2.8"
 dependencies = [
  "chrono",
  "guest-contracts",
- "guest-runtime-paths",
  "serde",
  "serde_json",
  "tempfile",
@@ -1310,6 +1308,10 @@ dependencies = [
 [[package]]
 name = "guest-contracts"
 version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+]
 
 [[package]]
 name = "guest-download"
@@ -1317,7 +1319,7 @@ version = "0.20.23"
 dependencies = [
  "flate2",
  "guest-common",
- "guest-runtime-paths",
+ "guest-contracts",
  "httpmock",
  "serde",
  "serde_json",
@@ -1363,14 +1365,6 @@ name = "guest-reseed"
 version = "0.3.3"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "guest-runtime-paths"
-version = "0.1.1"
-dependencies = [
- "libc",
- "tempfile",
 ]
 
 [[package]]
@@ -2595,7 +2589,6 @@ dependencies = [
  "guest-mock-claude",
  "guest-mock-codex",
  "guest-reseed",
- "guest-runtime-paths",
  "guest-write-file",
  "hex",
  "httpmock",
