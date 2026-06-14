@@ -1,4 +1,4 @@
-//! Shared runner-to-guest environment variable name contract.
+//! Runner-to-guest environment variable name contract.
 
 pub const API_URL_ENV: &str = "VM0_API_URL";
 pub const RUN_ID_ENV: &str = "VM0_RUN_ID";

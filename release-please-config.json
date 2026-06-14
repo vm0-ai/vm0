@@ -66,6 +66,9 @@
         "crates/guest-agent": {
             "release-type": "rust"
         },
+        "crates/guest-contracts": {
+            "release-type": "rust"
+        },
         "crates/guest-common": {
             "release-type": "rust"
         },

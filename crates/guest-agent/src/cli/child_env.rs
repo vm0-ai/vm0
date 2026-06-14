@@ -8,7 +8,7 @@ const RUNNER_VISIBLE_CHILD_ENV_KEYS: &[&str] = &[
     // The sandbox CLI needs the same API origin as the guest-agent in local
     // development. Keep this list intentionally narrow: tokens and other VM0
     // bootstrap controls must stay private to the guest-agent.
-    guest_common::env::API_URL_ENV,
+    guest_contracts::env::API_URL_ENV,
 ];
 const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
     "USER",

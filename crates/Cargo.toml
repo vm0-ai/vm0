@@ -5,6 +5,7 @@ members = [
     "agent-diagnostics",
     "api-contracts",
     "guest-agent",
+    "guest-contracts",
     "process-control-ipc",
     "guest-common",
     "guest-runtime-paths",
@@ -35,6 +36,7 @@ ably-subscriber = { path = "ably-subscriber" }
 agent-diagnostics = { path = "agent-diagnostics" }
 api-contracts = { path = "api-contracts" }
 guest-agent = { path = "guest-agent" }
+guest-contracts = { path = "guest-contracts" }
 process-control-ipc = { path = "process-control-ipc" }
 guest-common = { path = "guest-common" }
 guest-runtime-paths = { path = "guest-runtime-paths" }
