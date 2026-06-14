@@ -97,6 +97,18 @@ pub struct DeviceRateLimits {
     pub network: NetworkRateLimits,
 }
 
+/// Host-local ext4 image seeding behavior for one sandbox workspace image.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkspaceDriveSeedImage {
+    /// Copy the host-local ext4 image into this sandbox's active workspace
+    /// image. The source must remain intact and must never be mounted
+    /// read-write by the provider.
+    Copy(PathBuf),
+    /// Move the host-local ext4 image into this sandbox's active workspace
+    /// image. The source is consumed when sandbox preparation succeeds.
+    Move(PathBuf),
+}
+
 /// Provider-neutral workspace block image configuration for one sandbox.
 ///
 /// The image is mounted by runner-controlled guest setup at the canonical
@@ -107,9 +119,9 @@ pub struct WorkspaceDriveConfig {
     /// Logical size in MiB for newly initialized workspace images.
     pub size_mb: u32,
     /// Optional host-local ext4 image used to seed this sandbox's active
-    /// workspace image. Providers must copy this image into the active image;
-    /// they must never mount the source image read-write.
-    pub seed_image: Option<PathBuf>,
+    /// workspace image. The seed variant determines whether providers must
+    /// preserve the source image or consume it with a move.
+    pub seed_image: Option<WorkspaceDriveSeedImage>,
 }
 
 /// Per-sandbox creation configuration passed to [`crate::SandboxFactory::create`].
