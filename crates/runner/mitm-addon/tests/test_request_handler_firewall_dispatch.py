@@ -10,6 +10,10 @@ import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
+from tests.jsonl_log_helpers import (
+    read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
+)
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import (
     _single_firewall_vm,
@@ -202,7 +206,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     assert body["permissions"] == []
     assert body["reason"] == "unknown_endpoint"
     assert body["base"] == "https://api.github.com"
-    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unknown_endpoint"
@@ -251,7 +255,7 @@ async def test_firewall_malformed_config_block_reports_reason(
     assert body["error"] == "permission_denied"
     assert body["permissions"] == []
     assert body["reason"] == "malformed_firewall_config"
-    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "malformed_firewall_config"
 
@@ -299,7 +303,7 @@ async def test_firewall_malformed_auth_config_block_reports_reason(
     assert body["error"] == "permission_denied"
     assert body["permissions"] == []
     assert body["reason"] == "malformed_firewall_config"
-    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "malformed_firewall_config"
 
@@ -347,7 +351,7 @@ async def test_firewall_malformed_network_policy_block_reports_reason(
     assert body["permissions"] == []
     assert body["message"] == "Request blocked: malformed network policy"
     assert body["reason"] == "malformed_network_policy"
-    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "malformed_network_policy"
     assert "networkPolicies" not in proxy_log_entry
@@ -396,7 +400,7 @@ async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
     assert body["permissions"] == []
     assert body["message"] == "Request blocked: malformed network policy"
     assert body["reason"] == "malformed_network_policy"
-    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "malformed_network_policy"
     assert "networkPolicies" not in proxy_log_entry
@@ -444,7 +448,7 @@ async def test_firewall_permission_denied_block_reports_reason(
     body = json.loads(flow.response.content)
     assert body["permissions"] == ["read-repos"]
     assert body["reason"] == "permission_denied"
-    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "permission_denied"
 
@@ -549,14 +553,14 @@ async def test_oversized_auth_base_request_does_not_capture_request_body(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
     assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
 
-    network_log_text = (tmp_path / "net.jsonl").read_text()
+    network_log_text = read_jsonl_text_after_flush(tmp_path / "net.jsonl")
     assert "super-secret-body" not in network_log_text
     network_log_entry = json.loads(network_log_text)
     assert "request_body" not in network_log_entry
     assert network_log_entry["request_body_truncated"] is True
     assert network_log_entry["firewall_error"] == "auth_base_request_body_too_large"
 
-    proxy_log_text = (tmp_path / "proxy.jsonl").read_text()
+    proxy_log_text = read_jsonl_text_after_flush(tmp_path / "proxy.jsonl")
     assert "super-secret-body" not in proxy_log_text
 
 
@@ -596,14 +600,14 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
     assert flow.live is False
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
 
-    network_log_text = (tmp_path / "net.jsonl").read_text()
+    network_log_text = read_jsonl_text_after_flush(tmp_path / "net.jsonl")
     network_log_entry = json.loads(network_log_text)
     assert network_log_entry["error"] == Error.KILLED_MESSAGE
     assert network_log_entry["request_size"] == 0
     assert "request_body" not in network_log_entry
     assert network_log_entry["firewall_error"] == "auth_base_request_body_too_large"
 
-    proxy_log_text = (tmp_path / "proxy.jsonl").read_text()
+    proxy_log_text = read_jsonl_text_after_flush(tmp_path / "proxy.jsonl")
     assert "auth.base request body too large" in proxy_log_text
 
 
@@ -941,7 +945,7 @@ async def test_browser_firewall_match_skips_auth_injection(
 
     flow.response = mitm_addon.http.Response.make(200)
     mitm_addon.response(flow)
-    network_log_entry = json.loads((tmp_path / "net.jsonl").read_text().splitlines()[0])
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
     assert network_log_entry["browser_user_agent"] is True
     assert "firewall_base" not in network_log_entry
 
@@ -1105,7 +1109,7 @@ async def test_browser_firewall_match_bypasses_explicit_denied_permission(
 
     flow.response = mitm_addon.http.Response.make(200)
     mitm_addon.response(flow)
-    network_log_entry = json.loads((tmp_path / "net.jsonl").read_text().splitlines()[0])
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
     assert network_log_entry["browser_user_agent"] is True
     assert "firewall_base" not in network_log_entry
 
@@ -1192,7 +1196,7 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     assert body["permissions"] == []
     assert body["reason"] == "unsafe_path"
     assert body["base"] == "https://api.github.com"
-    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unsafe_path"

@@ -6,6 +6,11 @@ import json
 import pytest
 
 import usage
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
+)
 
 
 def test_logs_single_resource_get(x_usage, tmp_path, real_flow):
@@ -285,8 +290,8 @@ def test_handles_unknown_includes_key(x_usage, tmp_path, real_flow):
         "includes.future_widget": 3,
     }
     proxy_log = tmp_path / "proxy.jsonl"
-    assert proxy_log.exists()
-    content = proxy_log.read_text()
+    assert jsonl_exists_after_flush(proxy_log)
+    content = read_jsonl_text_after_flush(proxy_log)
     assert "future_widget" in content
     assert "unrecognised" in content.lower()
     assert '"level":"warn"' in content or '"level": "warn"' in content
@@ -463,7 +468,7 @@ def test_tweet_counts_missing_total_skips_billing_and_logs_warning(x_usage, tmp_
     assert x_usage.call_and_get_billing(flow) == []
 
     proxy_log = tmp_path / "proxy.jsonl"
-    entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+    entries = read_jsonl_entries_after_flush(proxy_log)
     assert any(
         entry["level"] == "warn" and "total_tweet_count" in entry["message"] for entry in entries
     )
@@ -485,7 +490,7 @@ def test_tweet_counts_unparseable_ignores_request_hints_and_logs_error(
     assert x_usage.call_and_get_billing(flow) == []
 
     proxy_log = tmp_path / "proxy.jsonl"
-    entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+    entries = read_jsonl_entries_after_flush(proxy_log)
     assert any(
         entry["level"] == "error" and "count endpoint" in entry["message"] for entry in entries
     )

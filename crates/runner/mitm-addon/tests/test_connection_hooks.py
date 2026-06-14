@@ -16,6 +16,7 @@ import logging_utils
 import mitm_addon
 import registry
 import usage
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 from tests.usage_buffer_helpers import RecordingEnqueue, event
@@ -993,9 +994,9 @@ class TestTcpLog:
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
-        lines = Path(log_path).read_text().splitlines()
-        assert len(lines) == 1
-        entry = json.loads(lines[0])
+        entries = read_jsonl_entries_after_flush(Path(log_path))
+        assert len(entries) == 1
+        entry = entries[0]
         assert entry["type"] == "tcp"
         assert entry["host"] == "140.82.116.3"
         assert entry["port"] == 22
@@ -1016,8 +1017,7 @@ class TestTcpLog:
         with mitm_ctx():
             mitm_addon.tcp_error(flow)
 
-        lines = Path(log_path).read_text().splitlines()
-        entry = json.loads(lines[0])
+        entry = read_jsonl_entries_after_flush(Path(log_path))[0]
         assert entry["type"] == "tcp"
         assert entry["error"] == "connection reset by peer"
 
@@ -1029,6 +1029,7 @@ class TestTcpLog:
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
+        logging_utils.flush_log_path(log_path)
         assert not Path(log_path).exists()
 
     def test_handles_missing_server_addr(self, tmp_path, mitm_ctx, real_tcp_flow):
@@ -1042,7 +1043,7 @@ class TestTcpLog:
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
-        entry = json.loads(Path(log_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["host"] == "unknown"
         assert entry["port"] == 0
 
@@ -1055,7 +1056,7 @@ class TestTcpLog:
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
-        entry = json.loads(Path(log_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["latency_ms"] == 0
 
     def test_tcp_message_defers_registered_flow_drain(
@@ -1086,7 +1087,7 @@ class TestTcpLog:
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
-        entry = json.loads(Path(log_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["request_size"] == len(b"client-one") + len(b"client-two")
         assert entry["response_size"] == len(b"server-one")
 
@@ -1107,7 +1108,7 @@ class TestTcpLog:
             mitm_addon.tcp_message(flow)
             mitm_addon.tcp_end(flow)
 
-        entry = json.loads(Path(log_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["request_size"] == len(b"client")
         assert entry["response_size"] == len(b"server-response")
         assert flow.messages == []
@@ -1146,7 +1147,7 @@ class TestTcpLog:
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
-        entry = json.loads(Path(log_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["request_size"] == len(first_client.content) + len(second_client.content)
         assert entry["response_size"] == len(first_server.content) + len(second_server.content)
         assert flow.messages == []
@@ -1174,7 +1175,7 @@ class TestTcpLog:
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
-        entry = json.loads(Path(log_path).read_text().strip())
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["request_size"] == mitm_addon._MAX_SAFE_NETWORK_LOG_SIZE
         assert entry["response_size"] == 0
         assert flow.messages == []
