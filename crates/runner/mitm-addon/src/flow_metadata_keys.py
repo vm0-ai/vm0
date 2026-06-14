@@ -28,9 +28,8 @@ Request context
 - ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
   ``"claude-code"``. Read by model-provider usage protocol selection.
 - ``BROWSER_USER_AGENT``: ``bool`` written during request classification for
-  browser-looking user agents. Read by request dispatch to skip credential
-  mutation after a firewall allow decision and by network-log entry
-  construction.
+  browser-looking user agents. Read by request dispatch to skip firewall
+  matching and credential mutation, and by network-log entry construction.
 
 Timing context
 --------------
