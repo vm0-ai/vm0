@@ -662,6 +662,23 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
     ]);
   });
 
+  it("does not roll back usage when alert recipient lookup fails", async () => {
+    const fixture = await createUsageFixture({
+      beforeCredits: LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS + 600,
+      chargeCredits: 700,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValueOnce(
+      new Error("Clerk unavailable"),
+    );
+
+    await expect(processFixture(fixture)).resolves.toBeUndefined();
+
+    await expect(orgCredits(fixture.orgId)).resolves.toBe(
+      LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS - 100,
+    );
+    await expect(lowCreditAlerts(fixture)).resolves.toStrictEqual([]);
+  });
+
   it("does not enqueue an alert when the only current admin is unsubscribed", async () => {
     const admin = {
       ...member("org:admin"),
