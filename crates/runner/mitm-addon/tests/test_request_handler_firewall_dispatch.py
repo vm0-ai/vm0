@@ -1245,3 +1245,60 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unsafe_path"
+
+
+async def test_browser_firewall_unsafe_path_blocks_before_auth_injection(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Browser-looking UAs still enforce unsafe-path blocks."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "full-access",
+                        "rules": ["ANY /{path+}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/%2e%2e/admin",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("User-Agent", _BROWSER_USER_AGENT),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata["browser_user_agent"] is True
+    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata["firewall_base"] == "https://api.github.com"
+    assert flow.metadata["firewall_name"] == "github"
+    assert "Authorization" not in flow.request.headers
+    body = json.loads(flow.response.content)
+    assert body["error"] == "permission_denied"
+    assert body["reason"] == "unsafe_path"
