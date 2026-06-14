@@ -50,8 +50,20 @@
    Use var(--sat) / var(--sab) in components instead of env() directly. */
 :root {
   --sat: env(safe-area-inset-top, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
+  --sab-raw: env(safe-area-inset-bottom, 0px);
+  --sab: var(--sab-raw);
   --zero-desktop-titlebar-height: 48px;
+}
+
+:root:has(
+  :is(
+    input,
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable="false"])
+  ):focus-visible
+) {
+  --sab: 0px;
 }
 
 .zero-viewport-shell {
