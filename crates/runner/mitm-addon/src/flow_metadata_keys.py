@@ -106,8 +106,8 @@ Model-provider usage
 - ``MODEL_PROVIDER_USAGE_SOURCES``: ``dict`` keyed by WebSocket response id,
   with normalized token usage dict values. Written by WebSocket model-provider
   usage extraction and read by model usage-event and observation reporters.
-  Retained after terminal reporting for diagnostics, like
-  ``MODEL_PROVIDER_USAGE``.
+  Entries may be removed before ``websocket_end()`` once a terminal WebSocket
+  usage frame is accepted into the source-preserving usage buffer.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` model id from registry VM info.
   Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization

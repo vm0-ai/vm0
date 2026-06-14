@@ -5,7 +5,7 @@ Lifecycle:
   install the streaming callback, capped forensic buffer, and incremental
   usage parsers.
 - ``mitm_addon.websocket_message()`` calls ``feed_model_websocket_usage()`` for
-  server-side frames on model-provider WebSocket upgrades.
+  terminal server-side usage frames on model-provider WebSocket upgrades.
 - ``mitm_addon.response()`` finalizes HTTP model and connector usage before
   reporting it.
 - ``mitm_addon.error()`` may finalize partial SSE usage before terminal cleanup.
@@ -310,10 +310,11 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
 
     Called from ``websocket_message()`` only for server-originated frames. Reads
     ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via ``is_model_websocket_usage_enabled()``
-    and writes per-response sources to
-    ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES``. Frames without a response id
-    fall back to ``metadata_keys.MODEL_PROVIDER_USAGE``. This helper is not
-    idempotent for the same frame; callers must feed each server frame once.
+    and temporarily writes per-response sources to
+    ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES`` until they are accepted into
+    the source-preserving usage buffer. Frames without a response id fall back
+    to ``metadata_keys.MODEL_PROVIDER_USAGE``. This helper is not idempotent for
+    the same frame; callers must feed each server frame once.
     """
     if not is_model_websocket_usage_enabled(flow):
         return
@@ -332,6 +333,18 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
             usage_target = {}
             usage_sources[message_id] = usage_target
         usage.merge_openai_responses_usage_result(usage_target, usage_result)
+        run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+        release_source = usage.report_model_provider_usage_source(
+            flow,
+            run_id,
+            message_id,
+            usage_target,
+        )
+        # OpenAI Responses WebSocket usage extraction only returns terminal
+        # usage frames. Once the source is accepted into the source-preserving
+        # buffer, terminal end/error hooks do not need to retain it on the flow.
+        if release_source:
+            usage_sources.pop(message_id, None)
         return
 
     usage_target = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)

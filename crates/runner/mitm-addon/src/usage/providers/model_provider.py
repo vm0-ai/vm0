@@ -1,9 +1,11 @@
 """Model-provider usage reporting entry point.
 
-Buffers token counts already normalized by an addon-side provider extractor
-(stored in ``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]`` or
-``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES]``) for aggregate
-upload to the platform usage webhook endpoints.
+Buffers token counts already normalized by an addon-side provider extractor.
+Flow-terminal reporters aggregate usage stored in
+``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]`` or
+``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES]``. WebSocket
+response-id sources can also be buffered incrementally with their source
+idempotency keys preserved.
 
 Model-provider usage reporting is separate from platform billing. New run
 contexts set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the
@@ -25,7 +27,13 @@ import flow_metadata_keys as metadata_keys
 from auth import get_api_url
 from logging_utils import log_proxy_entry
 
-from ..buffer import UsageEvent, buffer_model_usage_observations, buffer_usage_events
+from ..buffer import (
+    UsageEvent,
+    buffer_model_usage_observations,
+    buffer_source_model_usage_observations,
+    buffer_source_usage_events,
+    buffer_usage_events,
+)
 from ..idempotency import (
     USAGE_EVENT_NAMESPACE_MODEL,
     USAGE_OBSERVATION_NAMESPACE_MODEL,
@@ -84,7 +92,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     if not events:
         return False
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
-    api_url = get_api_url()
+    api_url = get_api_url() if sandbox_token else ""
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if not sandbox_token or not api_url:
         log_proxy_entry(
@@ -136,7 +144,7 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
     if not events:
         return False
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
-    api_url = get_api_url()
+    api_url = get_api_url() if sandbox_token else ""
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if not sandbox_token or not api_url:
         log_proxy_entry(
@@ -154,6 +162,82 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
         events,
         proxy_log_path,
     )
+    return True
+
+
+def report_model_provider_usage_source(
+    flow: http.HTTPFlow,
+    run_id: str,
+    message_id: str,
+    source_usage: dict,
+) -> bool:
+    """Buffer one finalized WebSocket response usage source.
+
+    Unlike flow-terminal reporting, this preserves the source idempotency keys
+    in the webhook payload so the platform can dedupe one response source even
+    when a later lifecycle hook sees the same source again. Returns whether the
+    source can be released from flow metadata.
+    """
+    usage_events: list[UsageEvent] = []
+    observation_events: list[UsageEvent] = []
+    source_id = f"{flow.id}:{message_id}"
+    provider = _reported_model(flow, source_usage)
+    if _is_billable_model_provider(flow, run_id):
+        usage_events = _build_usage_events(
+            run_id,
+            source_id,
+            provider,
+            source_usage,
+            USAGE_EVENT_NAMESPACE_MODEL,
+        )
+    if run_id and is_model_provider_usage_observable(flow):
+        observation_events = _build_usage_events(
+            run_id,
+            source_id,
+            provider,
+            source_usage,
+            USAGE_OBSERVATION_NAMESPACE_MODEL,
+        )
+
+    if not usage_events and not observation_events:
+        return True
+
+    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
+    api_url = get_api_url() if sandbox_token else ""
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    if not sandbox_token or not api_url:
+        if usage_events:
+            log_proxy_entry(
+                proxy_log_path,
+                "warn",
+                "Cannot report usage event: missing sandbox_token or api_url",
+                type="usage_event",
+            )
+        if observation_events:
+            log_proxy_entry(
+                proxy_log_path,
+                "warn",
+                "Cannot report model usage observation: missing sandbox_token or api_url",
+                type="model_usage_observation",
+            )
+        return False
+
+    if usage_events:
+        buffer_source_usage_events(
+            f"{api_url}/api/webhooks/agent/usage-event",
+            sandbox_token,
+            run_id,
+            usage_events,
+            proxy_log_path,
+        )
+    if observation_events:
+        buffer_source_model_usage_observations(
+            f"{api_url}/api/webhooks/agent/model-usage-observation",
+            sandbox_token,
+            run_id,
+            observation_events,
+            proxy_log_path,
+        )
     return True
 
 
@@ -175,7 +259,7 @@ def _iter_model_provider_usage_sources(flow: http.HTTPFlow) -> Iterator[tuple[st
             for message_id, source_usage in usage_sources.items()
             if isinstance(message_id, str) and message_id and isinstance(source_usage, dict)
         )
-        for message_id, source_usage in sorted(valid_sources):
+        for message_id, source_usage in valid_sources:
             yield f"{flow.id}:{message_id}", source_usage
 
     usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
@@ -222,3 +306,12 @@ def _string_or_none(value: object) -> str | None:
     if not isinstance(value, str) or not value:
         return None
     return value
+
+
+def _is_billable_model_provider(flow: http.HTTPFlow, run_id: str) -> bool:
+    if not run_id:
+        return False
+    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
+    if not firewall_name.startswith("model-provider:"):
+        return False
+    return bool(flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False))
