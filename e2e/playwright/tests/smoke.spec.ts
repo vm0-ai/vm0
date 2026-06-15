@@ -60,10 +60,21 @@ async function signInThroughExternalOnboardingGate(
   email: string,
 ): Promise<void> {
   const deadline = Date.now() + 120_000;
+  const requirePrSessionReuse = shouldRequirePrExternalOnboardingSessionReuse();
 
   while (Date.now() < deadline) {
     const url = new URL(page.url());
     if (isAuthUrl(url)) {
+      if (requirePrSessionReuse) {
+        await continueExternalOnboardingWithExistingSession(
+          page,
+          email,
+          url.href,
+          deadline,
+        );
+        continue;
+      }
+
       const redirectUrl = redirectUrlFromAuthUrl(url);
       await signInWithEmailCode(
         page,
@@ -116,6 +127,51 @@ async function signInThroughExternalOnboardingGate(
 
   throw new Error(
     `Unable to complete external onboarding sign-in: ${page.url()}`,
+  );
+}
+
+function shouldRequirePrExternalOnboardingSessionReuse(): boolean {
+  return (process.env.JOB_REF ?? "").startsWith("pr-");
+}
+
+async function continueExternalOnboardingWithExistingSession(
+  page: Page,
+  email: string,
+  currentHref: string,
+  deadline: number,
+): Promise<void> {
+  const existingSession = page.locator("button").filter({ hasText: email });
+  if (await waitForVisible(existingSession.first(), 5_000)) {
+    await existingSession.first().click();
+  } else {
+    const identifierInput = page.locator('input[name="identifier"]').first();
+    if (await waitForVisible(identifierInput, 5_000)) {
+      await identifierInput.fill(email);
+      await page.getByRole("button", { name: "Continue" }).click();
+    } else {
+      const continueButton = page.getByRole("button", { name: "Continue" });
+      if (await waitForVisible(continueButton, 5_000)) {
+        await continueButton.click();
+      }
+    }
+  }
+
+  if (isOnboardingOrChatUrl(new URL(page.url()))) {
+    return;
+  }
+
+  if (
+    await waitForAuthOrOnboardingUrl(
+      page,
+      currentHref,
+      remainingTimeout(deadline, 30_000),
+    )
+  ) {
+    return;
+  }
+
+  throw new Error(
+    `PR external onboarding did not reuse Clerk session: ${page.url()}`,
   );
 }
 
