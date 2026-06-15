@@ -17,6 +17,7 @@ import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { describe, expect, it } from "vitest";
@@ -277,6 +278,9 @@ async function cleanupSlackSeedFixture(
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
 
   if (composeIds.length > 0) {
+    await writeDb
+      .delete(vm0ApiKeys)
+      .where(inArray(vm0ApiKeys.label, composeIds));
     await writeDb.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
     await writeDb
       .delete(agentComposeVersions)
@@ -809,5 +813,68 @@ describe("DELETE /api/test/slack-state", () => {
         return call.method;
       }),
     ).toStrictEqual(expect.arrayContaining([...fixture.mockCallMethods]));
+  });
+
+  it("removes vm0 managed keys seeded for the default Slack agent", async () => {
+    mockEnv("ENV", "development");
+    const id = suffix();
+    const teamId = `T_DELETE_AGENT_${id}`;
+    const orgId = `org_delete_agent_${id}`;
+    const userId = `user_delete_agent_${id}`;
+    await trackSlackSeedFixture(Promise.resolve({ teamId, orgId }));
+    mockTestUserMembership(userId, orgId);
+
+    const postResponse = await postSlackState({
+      team_id: teamId,
+      slack_user_id: "U_E2E_DELETE_AGENT",
+      seed_default_agent: true,
+    });
+    const postBody = await readJson<TestSlackStatePostResponse>(postResponse);
+    expect(postResponse.status).toBe(200);
+    if (!postBody.default_agent_id) {
+      throw new Error("Expected seeded default agent id");
+    }
+
+    const seededKeys = await writeDb
+      .select({
+        vendor: vm0ApiKeys.vendor,
+        model: vm0ApiKeys.model,
+        label: vm0ApiKeys.label,
+      })
+      .from(vm0ApiKeys)
+      .where(eq(vm0ApiKeys.label, postBody.default_agent_id));
+
+    expect(seededKeys).toHaveLength(3);
+    expect(seededKeys).toStrictEqual(
+      expect.arrayContaining([
+        {
+          vendor: "anthropic",
+          model: "claude-sonnet-4-6",
+          label: postBody.default_agent_id,
+        },
+        {
+          vendor: "deepseek",
+          model: "deepseek-v4-pro",
+          label: postBody.default_agent_id,
+        },
+        {
+          vendor: "moonshot",
+          model: "kimi-k2.7-code",
+          label: postBody.default_agent_id,
+        },
+      ]),
+    );
+
+    const deleteResponse = await requestApp(`${ROUTE}?team_id=${teamId}`, {
+      method: "DELETE",
+    });
+
+    expect(deleteResponse.status).toBe(200);
+    await expect(
+      writeDb
+        .select({ id: vm0ApiKeys.id })
+        .from(vm0ApiKeys)
+        .where(eq(vm0ApiKeys.label, postBody.default_agent_id)),
+    ).resolves.toStrictEqual([]);
   });
 });
