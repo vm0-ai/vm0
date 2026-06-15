@@ -38,6 +38,7 @@ import {
 import {
   BILLABLE_CONNECTORS,
   getConnectorFirewall,
+  getDefaultFirewallPolicies,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
@@ -50,6 +51,7 @@ import {
   type ExpandedFirewallConfig,
   type Firewall,
   type FirewallPolicies,
+  type FirewallPolicyValue,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -2098,6 +2100,14 @@ function collectPermissionNames(
   return [...names];
 }
 
+function defaultUnknownPolicyForFirewall(
+  firewallName: string,
+): FirewallPolicyValue {
+  return isFirewallConnectorType(firewallName)
+    ? (getDefaultFirewallPolicies(firewallName).unknownPolicy ?? "allow")
+    : "allow";
+}
+
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
@@ -2167,7 +2177,7 @@ function applyConnectorPolicies(
         allow: [...permissionNames],
         deny: [],
         ask: [],
-        unknownPolicy: "allow",
+        unknownPolicy: defaultUnknownPolicyForFirewall(firewall.name),
       };
       continue;
     }
@@ -2189,7 +2199,8 @@ function applyConnectorPolicies(
       allow,
       deny,
       ask,
-      unknownPolicy: policy.unknownPolicy ?? "allow",
+      unknownPolicy:
+        policy.unknownPolicy ?? defaultUnknownPolicyForFirewall(firewall.name),
     };
   }
 

@@ -5,6 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { permissionChangeCommand } from "../permission-change";
 
 describe("zero doctor permission-change command", () => {
@@ -93,6 +94,30 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).not.toContain("expiresIn=");
     expect(logCalls).not.toContain("Requested duration");
     expect(logCalls).not.toContain("admin approval");
+  });
+
+  it("outputs a deny grant link for unknown endpoints", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "cloudflare",
+      "--permission",
+      UNKNOWN_PERMISSION_GRANT,
+      "--disable",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain(
+      "You can deny unknown endpoints for your connector access",
+    );
+    expect(logCalls).toContain("[Manage Cloudflare permissions]");
+    expect(logCalls).toContain("ref=cloudflare");
+    expect(logCalls).toContain("permission=__unknown__");
+    expect(logCalls).toContain("action=deny");
+    expect(logCalls).not.toContain("expiresIn=");
   });
 
   it("does not include --reason text in the grant URL", async () => {
