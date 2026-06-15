@@ -12,6 +12,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { now } from "../external/time";
+import { upsertMemberRoleCache$ } from "../services/auth.service";
 import {
   addTrigger$,
   createAutomation$,
@@ -143,6 +144,17 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   signal.throwIfAborted();
 
+  if (auth.orgRole !== undefined) {
+    await set(
+      upsertMemberRoleCache$,
+      auth.orgId,
+      auth.userId,
+      auth.orgRole,
+      signal,
+    );
+    signal.throwIfAborted();
+  }
+
   const result = await set(
     createAutomation$,
     { userId: auth.userId, orgId: auth.orgId, body: bodyResult.data },
@@ -262,6 +274,17 @@ function makeSetEnabledInner(enabled: boolean) {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationsByRefContract.enable));
 
+    if (enabled && auth.orgRole !== undefined) {
+      await set(
+        upsertMemberRoleCache$,
+        auth.orgId,
+        auth.userId,
+        auth.orgRole,
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+
     const result = await set(
       setAutomationEnabled$,
       { userId: auth.userId, orgId: auth.orgId, ref: params.ref, enabled },
@@ -333,6 +356,17 @@ const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage(WEBHOOK_TRIGGERS_DISABLED_MESSAGE);
   }
   signal.throwIfAborted();
+
+  if (auth.orgRole !== undefined) {
+    await set(
+      upsertMemberRoleCache$,
+      auth.orgId,
+      auth.userId,
+      auth.orgRole,
+      signal,
+    );
+    signal.throwIfAborted();
+  }
 
   const result = await set(
     addTrigger$,

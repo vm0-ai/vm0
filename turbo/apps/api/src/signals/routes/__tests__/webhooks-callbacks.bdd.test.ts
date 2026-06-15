@@ -426,6 +426,73 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     expect(membershipDeleted.body).toBe("OK");
   });
 
+  it("suspends org-member automations after a verified organizationMembership.deleted event", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+
+    const member = bdd.user();
+    await runs.grantProEntitlement(member);
+    await runs.ensureOrgModelProvider(member);
+    await runs.enableAutomations(member);
+    const agent = await bdd.createAgent(member, {
+      displayName: "BDD Membership Deleted Agent",
+      visibility: "private",
+    });
+    const created = await runs.createAutomation(member, {
+      name: uniqueAutomationName("bdd-membership-deleted"),
+      agentId: agent.agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "membership deleted scheduled automation",
+      timezone: "UTC",
+      enabled: true,
+    });
+
+    const db = store.set(writeDb$);
+    const [initialTrigger] = await db
+      .select({
+        enabled: automationTriggers.enabled,
+        nextRunAt: automationTriggers.nextRunAt,
+      })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    expect(initialTrigger?.enabled).toBeTruthy();
+    expect(initialTrigger?.nextRunAt).not.toBeNull();
+
+    api.verifyNextClerkWebhook({
+      type: "organizationMembership.deleted",
+      data: {
+        id: "mem_bdd_deleted",
+        organization: { id: orgOf(member) },
+        publicUserData: { userId: member.userId },
+      },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    const [storedAutomation] = await db
+      .select({ enabled: automations.enabled })
+      .from(automations)
+      .where(eq(automations.id, created.automation.id));
+    expect(storedAutomation?.enabled).toBeFalsy();
+
+    const [storedTrigger] = await db
+      .select({
+        enabled: automationTriggers.enabled,
+        nextRunAt: automationTriggers.nextRunAt,
+      })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, created.automation.id));
+    expect(storedTrigger).toStrictEqual({
+      enabled: false,
+      nextRunAt: null,
+    });
+  });
+
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {
     api.configureGithubWebhookSecret();
 
