@@ -1,11 +1,10 @@
 """Generated builtin firewall catalog tests."""
 
 import generated.builtin_firewalls as builtin_firewalls
-from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
 
 def test_get_existing_builtin_firewall():
-    firewall = BUILTIN_FIREWALLS.get("github")
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS.get("github")
 
     assert isinstance(firewall, dict)
     assert firewall["name"] == "github"
@@ -19,31 +18,31 @@ def test_unknown_builtin_firewall_does_not_import(monkeypatch):
     sentinel = object()
     monkeypatch.setattr(builtin_firewalls, "load_json_parts", fail_load)
 
-    assert BUILTIN_FIREWALLS.get("__missing__") is None
-    assert BUILTIN_FIREWALLS.get("__missing__", sentinel) is sentinel
+    assert builtin_firewalls.BUILTIN_FIREWALLS.get("__missing__") is None
+    assert builtin_firewalls.BUILTIN_FIREWALLS.get("__missing__", sentinel) is sentinel
 
 
 def test_mapping_methods_use_deterministic_manifest_order():
-    keys = list(BUILTIN_FIREWALLS.keys())
-    values = list(BUILTIN_FIREWALLS.values())
-    items = list(BUILTIN_FIREWALLS.items())
+    keys = list(builtin_firewalls.BUILTIN_FIREWALLS.keys())
+    values = list(builtin_firewalls.BUILTIN_FIREWALLS.values())
+    items = list(builtin_firewalls.BUILTIN_FIREWALLS.items())
 
     assert keys == sorted(keys)
     assert [firewall["name"] for firewall in values] == keys
     assert [name for name, _firewall in items] == keys
-    assert list(iter(BUILTIN_FIREWALLS)) == keys
-    assert len(BUILTIN_FIREWALLS) == len(keys)
-    assert "github" in BUILTIN_FIREWALLS
-    assert "__missing__" not in BUILTIN_FIREWALLS
+    assert list(iter(builtin_firewalls.BUILTIN_FIREWALLS)) == keys
+    assert len(builtin_firewalls.BUILTIN_FIREWALLS) == len(keys)
+    assert "github" in builtin_firewalls.BUILTIN_FIREWALLS
+    assert "__missing__" not in builtin_firewalls.BUILTIN_FIREWALLS
 
 
 def test_builtin_firewalls_cache_loaded_values():
-    first = BUILTIN_FIREWALLS.get("github")
-    second = BUILTIN_FIREWALLS.get("github")
+    first = builtin_firewalls.BUILTIN_FIREWALLS.get("github")
+    second = builtin_firewalls.BUILTIN_FIREWALLS.get("github")
 
     assert first is second
-    assert BUILTIN_FIREWALLS["github"] is first
+    assert builtin_firewalls.BUILTIN_FIREWALLS["github"] is first
 
 
 def test_builtin_firewalls_mapping_is_read_only():
-    assert not hasattr(BUILTIN_FIREWALLS, "__setitem__")
+    assert not hasattr(builtin_firewalls.BUILTIN_FIREWALLS, "__setitem__")
