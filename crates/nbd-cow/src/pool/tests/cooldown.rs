@@ -159,3 +159,37 @@ async fn non_expiring_cooldown_does_not_block_acquire_after_scan_failure() {
             .is_some()
     );
 }
+
+#[tokio::test]
+async fn non_expiring_cooldown_does_not_block_multiple_acquires() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut pool = test_pool(0, Duration::MAX, dir.path(), always_free);
+    pool.in_flight.insert(3);
+    let handle = DevicePoolHandle::from_pool(pool);
+
+    handle.release_clean(lease(3, dir.path())).await;
+    let first = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.acquire().await }
+    });
+    let second = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.acquire().await }
+    });
+
+    let (first_result, second_result) = tokio::time::timeout(Duration::from_secs(1), async {
+        let first_result = first.await.expect("first acquire task panicked");
+        let second_result = second.await.expect("second acquire task panicked");
+        (first_result, second_result)
+    })
+    .await
+    .expect("acquires hung behind non-expiring cooldown");
+
+    assert!(matches!(first_result, Err(NbdCowError::NoFreeDevice)));
+    assert!(matches!(second_result, Err(NbdCowError::NoFreeDevice)));
+    let snapshot = handle.snapshot().await;
+    assert_eq!(snapshot.cooldown, vec![3]);
+    assert_eq!(snapshot.waiting_acquires, 0);
+
+    handle.cleanup().await;
+}
