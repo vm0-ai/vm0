@@ -8,3 +8,6 @@ docker/toolchain/Dockerfile
 # Firewall configs — placeholder tokens intentionally mimic real formats for proxy replacement
 turbo/packages/firewalls-generator/src/
 turbo/packages/connectors/src/firewalls/*.generated.ts
+
+# AWS firewall tests intentionally include fake SigV4 placeholder credentials
+crates/runner/mitm-addon/tests/test_aws_firewall_rules.py

@@ -35,7 +35,7 @@ def _sigv4_context(service, *, headers=(), body=None):
                 "Authorization",
                 "AWS4-HMAC-SHA256 "
                 "Credential="
-                "ASIAC0FFEE5AFE10CA1C"  # nosemgrep
+                "ASIAC0FFEE5AFE10CA1C"
                 f"/20240101/us-east-1/{service}/aws4_request, "
                 "SignedHeaders=host;x-amz-date, Signature=deadbeef",
             ),
