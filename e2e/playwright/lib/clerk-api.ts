@@ -36,6 +36,27 @@ export async function createUser(email: string): Promise<string> {
   return data.id;
 }
 
+export async function createSignInToken(userId: string): Promise<string> {
+  const response = await fetch(`${CLERK_API_BASE}/sign_in_tokens`, {
+    method: "POST",
+    headers: getClerkHeaders(),
+    body: JSON.stringify({
+      user_id: userId,
+      expires_in_seconds: 120,
+    }),
+  });
+  const data = (await response.json()) as {
+    token?: string;
+    errors?: unknown[];
+  };
+  if (!response.ok || !data.token) {
+    throw new Error(
+      `Failed to create Clerk sign-in token: ${JSON.stringify(data)}`,
+    );
+  }
+  return data.token;
+}
+
 export async function createOrganization(
   name: string,
   createdByUserId: string,
@@ -69,10 +90,10 @@ export async function deleteStaleTestUsers(): Promise<void> {
   for (const user of users) {
     const userEmail = user.email_addresses[0]?.email_address;
     if (userEmail?.startsWith(prefix)) {
-      const deleteResponse = await fetch(
-        `${CLERK_API_BASE}/users/${user.id}`,
-        { method: "DELETE", headers: getClerkHeaders() },
-      );
+      const deleteResponse = await fetch(`${CLERK_API_BASE}/users/${user.id}`, {
+        method: "DELETE",
+        headers: getClerkHeaders(),
+      });
       if (!deleteResponse.ok) {
         console.warn(
           `Failed to delete stale user ${user.id} (${userEmail}): ${deleteResponse.status}`,

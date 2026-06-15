@@ -2,11 +2,13 @@ import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 import { fillStripeCheckout } from "../lib/stripe-checkout";
+import { createSignInToken } from "../lib/clerk-api";
 
 test("sign in and complete onboarding to chat page", async ({ page }) => {
   test.setTimeout(240_000);
 
   const email = process.env.E2E_CLERK_USER_EMAIL!;
+  const userId = process.env.E2E_CLERK_USER_ID!;
   const appUrl = deriveAppUrl(process.env.VM0_API_URL!);
 
   await clerkSetup();
@@ -32,7 +34,7 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
 
   // Complete onboarding if needed
   if (page.url().includes("/onboarding")) {
-    await signInThroughExternalOnboardingGate(page, email);
+    await signInThroughExternalOnboardingGate(page, userId);
     await completeOnboarding(page);
   }
 
@@ -49,7 +51,7 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
 
 async function signInThroughExternalOnboardingGate(
   page: Page,
-  email: string,
+  userId: string,
 ): Promise<void> {
   const deadline = Date.now() + 120_000;
 
@@ -58,10 +60,7 @@ async function signInThroughExternalOnboardingGate(
     if (isAuthUrl(url)) {
       const redirectUrl = redirectUrlFromAuthUrl(url);
       const currentHref = url.href;
-      await clerk.signIn({ page, emailAddress: email });
-      if (redirectUrl && !isOnboardingOrChatUrl(new URL(page.url()))) {
-        await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
-      }
+      await signInWithToken(page, userId, url.origin, redirectUrl);
       await waitForAuthOrOnboardingUrl(
         page,
         currentHref,
@@ -113,6 +112,27 @@ async function signInThroughExternalOnboardingGate(
   throw new Error(
     `Unable to complete external onboarding sign-in: ${page.url()}`,
   );
+}
+
+async function signInWithToken(
+  page: Page,
+  userId: string,
+  authOrigin: string,
+  redirectUrl: string | null,
+): Promise<void> {
+  const token = await createSignInToken(userId);
+  const signInTokenUrl = new URL("/sign-in-token", authOrigin);
+  signInTokenUrl.searchParams.set("token", token);
+
+  await page.goto(signInTokenUrl.toString(), { waitUntil: "domcontentloaded" });
+  await page.waitForURL(
+    (url) => url.origin === authOrigin && url.pathname === "/",
+    { timeout: 30_000, waitUntil: "domcontentloaded" },
+  );
+
+  if (redirectUrl) {
+    await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
+  }
 }
 
 async function waitForVisible(

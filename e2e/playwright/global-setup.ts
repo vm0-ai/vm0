@@ -15,4 +15,5 @@ export default async function globalSetup(): Promise<void> {
   console.log("[globalSetup] userId:", userId, "orgId:", orgId);
 
   process.env.E2E_CLERK_USER_EMAIL = email;
+  process.env.E2E_CLERK_USER_ID = userId;
 }
