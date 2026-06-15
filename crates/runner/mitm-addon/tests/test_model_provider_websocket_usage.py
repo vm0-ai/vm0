@@ -253,6 +253,50 @@ class TestModelProviderWebSocketUsage:
             "tokens.output": 12,
         }
 
+    def test_model_websocket_zero_frame_model_is_used_by_later_positive_frame(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 0, "output_tokens": 0},
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "usage": {"input_tokens": 20, "output_tokens": 12},
+                    },
+                }
+            ).encode(),
+        )
+
+        assert _model_websocket_usage_sources(flow) == {}
+        assert {
+            (event["provider"], event["category"]): event["quantity"]
+            for event in webhook.usage_events()
+        } == {
+            ("gpt-5.5", "tokens.input"): 20,
+            ("gpt-5.5", "tokens.output"): 12,
+        }
+        assert {
+            (event["model"], event["category"]): event["quantity"]
+            for event in webhook.model_usage_observation_events()
+        } == {
+            ("gpt-5.5", "tokens.input"): 20,
+            ("gpt-5.5", "tokens.output"): 12,
+        }
+
     def test_full_pipeline_model_websocket_separates_response_id_models(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
 

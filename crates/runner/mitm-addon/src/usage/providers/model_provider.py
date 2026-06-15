@@ -182,7 +182,9 @@ def report_model_provider_usage_source(
     observation_events: list[UsageEvent] = []
     source_id = f"{flow.id}:{message_id}"
     provider = _reported_model(flow, source_usage)
-    if _is_billable_model_provider(flow, run_id):
+    can_report_usage = _is_billable_model_provider(flow, run_id)
+    can_report_observation = bool(run_id and is_model_provider_usage_observable(flow))
+    if can_report_usage:
         usage_events = _build_usage_events(
             run_id,
             source_id,
@@ -190,7 +192,7 @@ def report_model_provider_usage_source(
             source_usage,
             USAGE_EVENT_NAMESPACE_MODEL,
         )
-    if run_id and is_model_provider_usage_observable(flow):
+    if can_report_observation:
         observation_events = _build_usage_events(
             run_id,
             source_id,
@@ -200,7 +202,7 @@ def report_model_provider_usage_source(
         )
 
     if not usage_events and not observation_events:
-        return True
+        return not (can_report_usage or can_report_observation)
 
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
     api_url = get_api_url() if sandbox_token else ""
