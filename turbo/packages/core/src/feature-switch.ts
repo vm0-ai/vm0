@@ -358,7 +358,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Redirect admins who need workspace onboarding to the external paid-onboarding SO flow instead of the in-app /onboarding flow.",
-    enabled: false,
+    enabled: true,
   },
 };
 
