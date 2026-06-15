@@ -61,17 +61,31 @@ export const setSelectedSlashSkillIndex$ = command(({ set }, index: number) => {
   set(internalSelectedSlashSkillIndex$, index);
 });
 
-// Which connector drawer is open in the slash menu, or null at the top level.
-// Reset to null whenever the menu's editor content changes so reopening `/`
-// always starts at the top level (replaces a React useEffect/useState pair,
-// which are restricted in this app in favor of ccstate signals).
-const internalOpenSlashConnectorType$ = state<ConnectorType | null>(null);
-export const openSlashConnectorType$ = computed((get) => {
-  return get(internalOpenSlashConnectorType$);
+// Which connector's commands are expanded in the slash menu's right pane, or
+// null until the menu derives the first connected connector. Reset to null
+// whenever the menu's editor content changes so reopening `/` starts fresh
+// (replaces a React useEffect/useState pair, which are restricted in this app in
+// favor of ccstate signals).
+const internalActiveSlashConnectorType$ = state<ConnectorType | null>(null);
+export const activeSlashConnectorType$ = computed((get) => {
+  return get(internalActiveSlashConnectorType$);
 });
-export const setOpenSlashConnectorType$ = command(
+export const setActiveSlashConnectorType$ = command(
   ({ set }, type: ConnectorType | null) => {
-    set(internalOpenSlashConnectorType$, type);
+    set(internalActiveSlashConnectorType$, type);
+  },
+);
+
+// Which column of the slash menu's two-pane Commands block has keyboard focus:
+// the connector rail (left) or the command detail pane (right). Reset to "rail"
+// on content change so reopening `/` starts on the rail.
+const internalSlashMenuColumn$ = state<"rail" | "detail">("rail");
+export const slashMenuColumn$ = computed((get) => {
+  return get(internalSlashMenuColumn$);
+});
+export const setSlashMenuColumn$ = command(
+  ({ set }, column: "rail" | "detail") => {
+    set(internalSlashMenuColumn$, column);
   },
 );
 
