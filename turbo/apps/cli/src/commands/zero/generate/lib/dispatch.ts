@@ -46,7 +46,7 @@ function resolvePrompt(prompt: string | undefined): string | null {
     return prompt.trim();
   }
 
-  if (process.stdin.isTTY === false) {
+  if (!process.stdin.isTTY) {
     try {
       const piped = readFileSync("/dev/stdin", "utf8").trim();
       if (piped.length > 0) {
