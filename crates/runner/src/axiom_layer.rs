@@ -1,8 +1,10 @@
 //! Tracing layer that ships WARN+ events to Axiom.
 //!
-//! Disabled at construction when `AXIOM_TOKEN_TELEMETRY` or
-//! `AXIOM_DATASET_SUFFIX` is unset. Dual-write: the existing fmt subscriber
-//! keeps writing to stderr + file; this layer adds Axiom as an extra sink.
+//! Disabled at construction when no telemetry token or dataset suffix is
+//! provided. Production values come from service secrets first, with
+//! environment fallback for non-service commands. Dual-write: the existing fmt
+//! subscriber keeps writing to stderr + file; this layer adds Axiom as an extra
+//! sink.
 //!
 //! Uses the workspace reqwest client directly (no axiom-rs) so we don't pull
 //! a second reqwest major into the musl binary. Ingest endpoint:

@@ -49,7 +49,7 @@ struct ServiceRunArgs {
     /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
     #[arg(long)]
     name: String,
-    /// Environment variables to pass to the service (KEY=VALUE)
+    /// Non-secret environment variables to pass to the service (KEY=VALUE)
     #[arg(long, value_name = "KEY=VALUE")]
     env: Vec<String>,
     /// File containing allowlisted service secrets. Secret values are staged
@@ -287,15 +287,21 @@ fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
             )));
         };
         if eq_pos == 0 {
-            return Err(RunnerError::Config(format!(
-                "invalid --env value '{entry}': expected KEY=VALUE format"
-            )));
+            return Err(RunnerError::Config(
+                "invalid --env value: KEY must not be empty".to_string(),
+            ));
         }
-        let key = &entry[..eq_pos];
+        let raw_key = &entry[..eq_pos];
+        let key = raw_key.trim();
         if crate::service_secrets::is_service_secret_key(key) {
             return Err(RunnerError::Config(format!(
                 "invalid --env key {key}: service secrets must be passed with --service-secrets-file"
             )));
+        }
+        if key != raw_key {
+            return Err(RunnerError::Config(
+                "invalid --env value: KEY must not contain surrounding whitespace".to_string(),
+            ));
         }
     }
     Ok(())
@@ -1199,6 +1205,10 @@ async fn check_active_jobs_gate(
 async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
     validate_env_vars(&args.env)?;
+    // `service start` stages the same per-runner service secrets path as
+    // `service install`, while stop/uninstall may remove that path. Serialize
+    // all service lifecycle commands for the same unit.
+    let _service_lock = acquire_service_lock(&unit).await?;
 
     if is_unit_active(&unit).await? {
         return Err(RunnerError::Internal(format!(
@@ -2256,11 +2266,15 @@ mod tests {
         assert!(validate_env_vars(&["=VALUE".to_string()]).is_err());
         assert!(validate_env_vars(&["".to_string()]).is_err());
         assert!(validate_env_vars(&["SENTRY_DSN=secret".to_string()]).is_err());
+        assert!(validate_env_vars(&[" SENTRY_DSN=secret".to_string()]).is_err());
+        assert!(validate_env_vars(&["SENTRY_DSN =secret".to_string()]).is_err());
         assert!(validate_env_vars(&["AXIOM_TOKEN_TELEMETRY=secret".to_string()]).is_err());
         assert!(validate_env_vars(&["AXIOM_DATASET_SUFFIX=prod".to_string()]).is_err());
         assert!(
             validate_env_vars(&["VERCEL_AUTOMATION_BYPASS_SECRET=secret".to_string()]).is_err()
         );
+        assert!(validate_env_vars(&[" KEY=VALUE".to_string()]).is_err());
+        assert!(validate_env_vars(&["KEY =VALUE".to_string()]).is_err());
         // Bare newline / CR / NUL would silently corrupt the unit file.
         assert!(validate_env_vars(&["KEY=line1\nline2".to_string()]).is_err());
         assert!(validate_env_vars(&["KEY=foo\rbar".to_string()]).is_err());
