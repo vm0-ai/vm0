@@ -51,6 +51,7 @@ import {
   type ExpandedFirewallConfig,
   type Firewall,
   type FirewallPolicies,
+  type FirewallPolicy,
   type FirewallPolicyValue,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
@@ -2108,6 +2109,50 @@ function defaultUnknownPolicyForFirewall(
     : "allow";
 }
 
+function defaultPolicyForFirewall(
+  firewall: ExpandedFirewallConfig,
+  permissionNames: readonly string[],
+): FirewallPolicy {
+  if (isFirewallConnectorType(firewall.name)) {
+    return getDefaultFirewallPolicies(firewall.name);
+  }
+
+  return {
+    policies: Object.fromEntries(
+      permissionNames.map((name) => {
+        return [name, "allow" as const];
+      }),
+    ),
+    unknownPolicy: "allow",
+  };
+}
+
+function networkPolicyForFirewallPolicy(
+  permissionNames: readonly string[],
+  policy: FirewallPolicy,
+): NetworkPolicies[string] {
+  const allow: string[] = [];
+  const deny: string[] = [];
+  const ask: string[] = [];
+  for (const name of permissionNames) {
+    const value = policy.policies[name];
+    if (value === "allow") {
+      allow.push(name);
+    } else if (value === "deny") {
+      deny.push(name);
+    } else if (value === "ask") {
+      ask.push(name);
+    }
+  }
+
+  return {
+    allow,
+    deny,
+    ask,
+    unknownPolicy: policy.unknownPolicy ?? "allow",
+  };
+}
+
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
@@ -2173,35 +2218,22 @@ function applyConnectorPolicies(
     firewalls.push(entryForFirewall(firewall));
 
     if (!policy) {
-      networkPolicies[firewall.name] = {
-        allow: [...permissionNames],
-        deny: [],
-        ask: [],
-        unknownPolicy: defaultUnknownPolicyForFirewall(firewall.name),
-      };
+      networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
+        permissionNames,
+        defaultPolicyForFirewall(firewall, permissionNames),
+      );
       continue;
     }
 
-    const allow: string[] = [];
-    const deny: string[] = [];
-    const ask: string[] = [];
-    for (const name of permissionNames) {
-      const value = policy.policies[name];
-      if (value === "allow") {
-        allow.push(name);
-      } else if (value === "deny") {
-        deny.push(name);
-      } else if (value === "ask") {
-        ask.push(name);
-      }
-    }
-    networkPolicies[firewall.name] = {
-      allow,
-      deny,
-      ask,
-      unknownPolicy:
-        policy.unknownPolicy ?? defaultUnknownPolicyForFirewall(firewall.name),
-    };
+    networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
+      permissionNames,
+      {
+        ...policy,
+        unknownPolicy:
+          policy.unknownPolicy ??
+          defaultUnknownPolicyForFirewall(firewall.name),
+      },
+    );
   }
 
   return { firewalls, networkPolicies };

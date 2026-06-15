@@ -1508,6 +1508,50 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(overridden.deny).toContain("dns-firewall.write");
     expect(overridden.unknownPolicy).toBe("allow");
   });
+
+  it("applies connector default named policies to direct runs without explicit policies", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "cloudflare",
+      authMethod: "oauth",
+      accessToken: "cloudflare-direct-bdd-token",
+    });
+    const composeName = `bdd-cloudflare-direct-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "direct run cloudflare defaults",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const policy = claim.networkPolicies?.cloudflare;
+    if (!policy) {
+      throw new Error("Expected a cloudflare network policy on the claim");
+    }
+    expect(policy.allow).toContain("dns-firewall.read");
+    expect(policy.deny).toContain("dns-firewall.write");
+    expect(policy.unknownPolicy).toBe("deny");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
