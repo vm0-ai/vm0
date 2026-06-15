@@ -168,6 +168,18 @@ fn unit_file_path(name: &str) -> PathBuf {
     PathBuf::from(format!("/etc/systemd/system/{name}.service"))
 }
 
+fn unit_file_path_exists(name: &str) -> RunnerResult<bool> {
+    let path = unit_file_path(name);
+    match std::fs::symlink_metadata(&path) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "stat unit file {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
 async fn acquire_service_lock(unit: &str) -> RunnerResult<nix::fcntl::Flock<std::fs::File>> {
     let home = HomePaths::new()?;
     crate::lock::acquire(home.service_lock(unit)).await
@@ -1216,6 +1228,11 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
             args.name
         )));
     }
+    if unit_file_path_exists(&unit)? {
+        return Err(RunnerError::Config(format!(
+            "unit {unit} has a persistent unit file; use runner service install or uninstall it before transient service start"
+        )));
+    }
 
     let config_path = resolve_config_path(&args.config)?;
     let exe_path = validate_current_exe_path(
@@ -1269,7 +1286,18 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
 }
 
 async fn cleanup_failed_transient_start_service_secrets(unit: &str, suffix: &str, staged: bool) {
-    if !staged || unit_file_path(unit).exists() {
+    let persistent_unit_exists = match unit_file_path_exists(unit) {
+        Ok(exists) => exists,
+        Err(e) => {
+            warn!(
+                unit = %unit,
+                error = %e,
+                "skipping transient service secrets cleanup because persistent unit state is unknown"
+            );
+            true
+        }
+    };
+    if !staged || persistent_unit_exists {
         return;
     }
     if let Err(e) = remove_service_secrets_for_suffix(suffix).await {
@@ -1310,14 +1338,24 @@ async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
     // Clear "failed" latch so systemd fully unloads the transient unit.
     // (stop alone does not clear the failed state.)
     let _ = run_systemctl(&["reset-failed", &svc]).await;
-    if !unit_file_path(&unit).exists()
-        && let Err(e) = remove_service_secrets_for_suffix(&args.name).await
-    {
-        warn!(
-            unit = %unit,
-            error = %e,
-            "failed to remove transient service secrets file"
-        );
+    match unit_file_path_exists(&unit) {
+        Ok(false) => {
+            if let Err(e) = remove_service_secrets_for_suffix(&args.name).await {
+                warn!(
+                    unit = %unit,
+                    error = %e,
+                    "failed to remove transient service secrets file"
+                );
+            }
+        }
+        Ok(true) => {}
+        Err(e) => {
+            warn!(
+                unit = %unit,
+                error = %e,
+                "skipping transient service secrets cleanup because persistent unit state is unknown"
+            );
+        }
     }
     Ok(())
 }
