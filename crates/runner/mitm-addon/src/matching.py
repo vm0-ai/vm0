@@ -950,8 +950,10 @@ def _base_specificity(
 def _match_compiled_path_traversal(
     path_segs: list[str],
     pattern_segs: tuple[ParsedSegment, ...],
-) -> tuple[dict[str, str], int] | None:
-    params: dict[str, str] = {}
+    *,
+    capture_params: bool = True,
+) -> tuple[dict[str, str] | None, int] | None:
+    params: dict[str, str] | None = {} if capture_params else None
     pi = 0
 
     last_pattern_index = len(pattern_segs) - 1
@@ -975,7 +977,8 @@ def _match_compiled_path_traversal(
                 return None
             if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
                 return None
-            params[parsed.name] = "/".join(path_segs[pi:])
+            if params is not None:
+                params[parsed.name] = "/".join(path_segs[pi:])
             return params, len(path_segs)
         if parsed.greedy == "*":
             if _is_invalid_greedy_param(
@@ -985,7 +988,8 @@ def _match_compiled_path_traversal(
                 parsed.suffix,
             ):
                 return None
-            params[parsed.name] = "/".join(path_segs[pi:])
+            if params is not None:
+                params[parsed.name] = "/".join(path_segs[pi:])
             return params, len(path_segs)
         if pi >= len(path_segs):
             return None
@@ -994,12 +998,14 @@ def _match_compiled_path_traversal(
         if parsed.prefix == "" and parsed.suffix == "":
             if runtime == "":
                 return None
-            params[parsed.name] = runtime
+            if params is not None:
+                params[parsed.name] = runtime
         else:
             captured = _match_segment_literal(runtime, parsed.prefix, parsed.suffix)
             if captured is None:
                 return None
-            params[parsed.name] = captured
+            if params is not None:
+                params[parsed.name] = captured
         pi += 1
 
     return params, pi
@@ -1016,7 +1022,23 @@ def _match_compiled_path_segments(
     params, consumed = result
     if consumed != len(path_segs):
         return None
-    return params
+    return params or {}
+
+
+def _compiled_path_segments_match(
+    path_segs: list[str],
+    pattern_segs: tuple[ParsedSegment, ...],
+) -> bool:
+    result = _match_compiled_path_traversal(
+        path_segs,
+        pattern_segs,
+        capture_params=False,
+    )
+    if result is None:
+        return False
+
+    _params, consumed = result
+    return consumed == len(path_segs)
 
 
 def match_compiled_path(path: str, pattern: CompiledPathPattern) -> dict | None:
@@ -1028,7 +1050,12 @@ def _match_compiled_path_prefix(
     path_segs: list[str],
     pattern_segs: tuple[ParsedSegment, ...],
 ) -> tuple[dict[str, str], int] | None:
-    return _match_compiled_path_traversal(path_segs, pattern_segs)
+    result = _match_compiled_path_traversal(path_segs, pattern_segs)
+    if result is None:
+        return None
+
+    params, consumed = result
+    return params or {}, consumed
 
 
 def _match_compiled_host(
@@ -1478,42 +1505,6 @@ def _unknown_allow(
     return FirewallAllow(api_entry, name, None, params, None, rel_path)
 
 
-def _best_compiled_rule_candidates(
-    api_entry: _CompiledApi,
-    *,
-    upper_method: str,
-    rel_path: str,
-    base_params: dict[str, str],
-) -> list[_CompiledRuleCandidate]:
-    rel_path_segs = _split_path_segments(rel_path)
-    best_specificity: _PathSpecificity | None = None
-    best_candidates: list[_CompiledRuleCandidate] = []
-
-    for perm in api_entry.permissions:
-        for rule in perm.rules:
-            if rule.method not in ("ANY", upper_method):
-                continue
-
-            params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
-            if params is None:
-                continue
-
-            if best_specificity is None or rule.specificity > best_specificity:
-                best_specificity = rule.specificity
-                best_candidates = []
-            if rule.specificity == best_specificity:
-                best_candidates.append(
-                    _CompiledRuleCandidate(
-                        perm.name,
-                        rule.raw,
-                        rule.specificity,
-                        {**base_params, **params},
-                    )
-                )
-
-    return best_candidates
-
-
 FirewallBlockReason = Literal[
     "permission_denied",
     "unknown_endpoint",
@@ -1631,13 +1622,22 @@ class _FirewallDecisionState:
         if self.malformed_policy_match is None:
             self.malformed_policy_match = match
 
-    def accept_rule_candidate(self, candidate: _CompiledRuleCandidate) -> bool:
-        if self.best_rule_specificity is None or candidate.specificity > self.best_rule_specificity:
-            self.best_rule_specificity = candidate.specificity
+    def can_rule_specificity_affect_decision(self, specificity: _PathSpecificity) -> bool:
+        if self.best_rule_specificity is None:
+            return True
+        if specificity > self.best_rule_specificity:
+            return True
+        if specificity < self.best_rule_specificity:
+            return False
+        return self.allowed_match is None
+
+    def accept_rule_specificity(self, specificity: _PathSpecificity) -> bool:
+        if self.best_rule_specificity is None or specificity > self.best_rule_specificity:
+            self.best_rule_specificity = specificity
             self.allowed_match = None
             self.denied_match = None
             self.denied_permission_names = {}
-        elif candidate.specificity < self.best_rule_specificity:
+        elif specificity < self.best_rule_specificity:
             return False
 
         return True
@@ -1837,31 +1837,42 @@ def match_compiled_firewall_request(
             if not api_entry.permissions:
                 continue
 
-            candidates = _best_compiled_rule_candidates(
-                api_entry,
-                upper_method=upper_method,
-                rel_path=rel_path,
-                base_params=base_params,
-            )
-            if not candidates:
-                continue
+            rel_path_segs = _split_path_segments(rel_path)
+            for perm in api_entry.permissions:
+                permission_blocked = policy is not None and perm.name in policy.blocked_permissions
+                for rule in perm.rules:
+                    if rule.method not in ("ANY", upper_method):
+                        continue
+                    if not decision.can_rule_specificity_affect_decision(rule.specificity):
+                        continue
 
-            for candidate in candidates:
-                if not decision.accept_rule_candidate(candidate):
-                    continue
+                    if permission_blocked:
+                        if not _compiled_path_segments_match(rel_path_segs, rule.path.segments):
+                            continue
+                        if not decision.accept_rule_specificity(rule.specificity):
+                            continue
+                        decision.record_denied_rule(block_match, perm.name)
+                        continue
 
-                if policy is None or candidate.permission not in policy.blocked_permissions:
+                    params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
+                    if params is None:
+                        continue
+                    if not decision.accept_rule_specificity(rule.specificity):
+                        continue
+
                     decision.record_allowed_rule(
                         _AllowedRuleMatch(
                             api_entry.raw_api_entry,
                             fw_entry.name,
                             rel_path,
-                            candidate,
+                            _CompiledRuleCandidate(
+                                perm.name,
+                                rule.raw,
+                                rule.specificity,
+                                {**base_params, **params},
+                            ),
                         )
                     )
-                    continue
-
-                decision.record_denied_rule(block_match, candidate.permission)
 
     return _resolve_firewall_decision(
         decision,
