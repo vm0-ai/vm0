@@ -409,7 +409,7 @@ pub async fn execute_cli(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut failure_diagnostic = None;
-    let mut event_result: Result<(), AgentError> = loop {
+    let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             prompt_write_result = async {
                 match initial_prompt_write_handle.as_mut() {
@@ -418,9 +418,11 @@ pub async fn execute_cli(
                 }
             }, if initial_prompt_write_handle.is_some() => {
                 initial_prompt_write_handle = None;
+                let can_terminate_for_stdin_error =
+                    matches!(termination_state, TerminationState::Idle) && cli_status.is_none();
                 match prompt_write_result {
                     Some(Ok(Ok(()))) => {}
-                    Some(Ok(Err(error))) if termination_error.is_none() => {
+                    Some(Ok(Err(error))) if can_terminate_for_stdin_error => {
                         log_warn!(
                             LOG_TAG,
                             "Failed to write initial prompt to Claude stdin, SIGTERM pgid={}: {error}",
@@ -429,7 +431,6 @@ pub async fn execute_cli(
                         if let Some(pid) = pgid {
                             unsafe { libc::kill(-pid, libc::SIGTERM); }
                         }
-                        termination_error = Some(error);
                         termination_state = TerminationState::SigkillPending {
                             reason: TerminationReason::InitialPromptStdin,
                         };
@@ -439,19 +440,15 @@ pub async fn execute_cli(
                         );
                     }
                     Some(Ok(Err(_))) => {}
-                    Some(Err(error)) if termination_error.is_none() => {
-                        let error = AgentError::Execution(format!(
-                            "initial prompt stdin task failed: {error}"
-                        ));
+                    Some(Err(error)) if can_terminate_for_stdin_error => {
                         log_warn!(
                             LOG_TAG,
-                            "Initial prompt stdin task failed, SIGTERM pgid={}",
+                            "Initial prompt stdin task failed, SIGTERM pgid={}: {error}",
                             pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                         );
                         if let Some(pid) = pgid {
                             unsafe { libc::kill(-pid, libc::SIGTERM); }
                         }
-                        termination_error = Some(error);
                         termination_state = TerminationState::SigkillPending {
                             reason: TerminationReason::InitialPromptStdin,
                         };
@@ -815,25 +812,23 @@ pub async fn execute_cli(
         if handle.is_finished() {
             match handle.await {
                 Ok(Ok(())) => {}
-                Ok(Err(error)) if event_result.is_ok() => {
-                    event_result = Err(error);
+                Ok(Err(error)) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Initial prompt stdin write finished after CLI loop with error: {error}"
+                    );
                 }
-                Ok(Err(_)) => {}
-                Err(error) if event_result.is_ok() => {
-                    event_result = Err(AgentError::Execution(format!(
-                        "initial prompt stdin task failed: {error}"
-                    )));
+                Err(error) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Initial prompt stdin task failed after CLI loop: {error}"
+                    );
                 }
-                Err(_) => {}
             }
         } else {
             handle.abort();
             let _ = handle.await;
-            if event_result.is_ok() {
-                event_result = Err(AgentError::Execution(
-                    "initial prompt stdin task did not finish before CLI loop exited".into(),
-                ));
-            }
+            log_warn!(LOG_TAG, "Aborted unfinished initial prompt stdin task");
         }
     }
 
