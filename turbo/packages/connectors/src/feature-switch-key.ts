@@ -62,4 +62,5 @@ export enum FeatureSwitchKey {
   AssistantTextStreaming = "assistantTextStreaming",
   AutomationWebhookTriggers = "automationWebhookTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",
+  PaidOnboardingRedirect = "paidOnboardingRedirect",
 }
