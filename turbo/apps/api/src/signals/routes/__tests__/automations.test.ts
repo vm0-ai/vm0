@@ -23,7 +23,7 @@ import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
@@ -47,6 +47,16 @@ const mocks = createZeroRouteMocks(context);
 
 const SESSION_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const CRON_SECRET = "test-cron-secret";
+// Keep global-cron fixtures invisible to parallel test workers using real time.
+const ISOLATED_CRON_POLL_TIME_MS = Date.UTC(2099, 0, 1, 0, 0, 0);
+
+function isolatedCronPastDue(): Date {
+  return new Date(ISOLATED_CRON_POLL_TIME_MS - 60_000);
+}
+
+function isolateCronPollTime(): void {
+  mockNow(ISOLATED_CRON_POLL_TIME_MS);
+}
 
 afterEach(() => {
   resetSecretKmsClientForTests();
@@ -782,7 +792,7 @@ describe("Automations API", () => {
     setSecretKmsClientForTests(fakeKmsClient().client);
     mockEnv("CRON_SECRET", CRON_SECRET);
 
-    const pastDue = new Date(now() - 60_000);
+    const pastDue = isolatedCronPastDue();
     const fixture = await trackAutomations(
       store.set(
         seedAutomationsScenario$,
@@ -828,6 +838,7 @@ describe("Automations API", () => {
       .set({ enabled: true, nextRunAt: pastDue })
       .where(inArray(automationTriggers.automationId, [...zombieIds]));
 
+    isolateCronPollTime();
     const response = await accept(
       cronApi().execute({
         headers: { authorization: `Bearer ${CRON_SECRET}` },
@@ -878,7 +889,7 @@ describe("Automations API", () => {
     setSecretKmsClientForTests(fakeKmsClient().client);
     mockEnv("CRON_SECRET", CRON_SECRET);
 
-    const pastDue = new Date(now() - 60_000);
+    const pastDue = isolatedCronPastDue();
     const fixture = await trackAutomations(
       store.set(
         seedAutomationsScenario$,
@@ -910,6 +921,7 @@ describe("Automations API", () => {
       );
 
     const automationId = fixture.automationIds[0]!;
+    isolateCronPollTime();
     const response = await accept(
       cronApi().execute({
         headers: { authorization: `Bearer ${CRON_SECRET}` },

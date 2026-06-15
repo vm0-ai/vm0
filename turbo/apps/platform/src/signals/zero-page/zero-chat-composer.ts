@@ -105,36 +105,6 @@ export const setNewThreadComputerUseHostId$ = command(
   },
 );
 
-// -- Computer Use popover open state ----------------------------------------
-
-const internalComputerUsePopoverOpen$ = state(false);
-const internalComputerUsePopoverIgnoreClose$ = state(false);
-
-export const computerUsePopoverOpen$ = computed((get) => {
-  return get(internalComputerUsePopoverOpen$);
-});
-
-export const setComputerUsePopoverOpen$ = command(
-  ({ get, set }, open: boolean) => {
-    if (open) {
-      set(internalComputerUsePopoverOpen$, true);
-      set(internalComputerUsePopoverIgnoreClose$, true);
-      return;
-    }
-
-    if (get(internalComputerUsePopoverIgnoreClose$)) {
-      set(internalComputerUsePopoverIgnoreClose$, false);
-      return;
-    }
-
-    set(internalComputerUsePopoverOpen$, false);
-  },
-);
-
-export const clearComputerUsePopoverCloseSuppression$ = command(({ set }) => {
-  set(internalComputerUsePopoverIgnoreClose$, false);
-});
-
 const internalComputerUseDownloadDialogOpen$ = state(false);
 export const computerUseDownloadDialogOpen$ = computed((get) => {
   return get(internalComputerUseDownloadDialogOpen$);

@@ -80,6 +80,7 @@ import {
   readThreadMeta$,
 } from "../external/idb-thread-meta-store.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
+import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
 import {
   applyStreamingDelta$,
   clearStreamingDraftsForThread$,
@@ -464,7 +465,9 @@ export interface ChatThreadSignals {
     [ModelProviderSelection | null, AbortSignal]
   >;
   computerUseHostId$: Computed<Promise<string | null>>;
+  computerUseHostIdExplicit$: Computed<boolean>;
   setComputerUseHostId$: Command<void, [string | null]>;
+  clearComputerUseHostIdOverride$: Command<void, []>;
   sendMessage$: Command<
     Promise<void>,
     [
@@ -476,7 +479,12 @@ export interface ChatThreadSignals {
   >;
   queueMessage$: Command<
     Promise<void>,
-    [string, GenerationTemplateRequest | undefined, string | null, AbortSignal]
+    [
+      string,
+      GenerationTemplateRequest | undefined,
+      string | null | undefined,
+      AbortSignal,
+    ]
   >;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
@@ -641,15 +649,25 @@ function createComputerUseHostSelection(
     return thread?.computerUseHostId ?? null;
   });
 
+  const computerUseHostIdExplicit$ = computed((get): boolean => {
+    return get(internalUserOverride$).kind === "set";
+  });
+
   const setComputerUseHostId$ = command(
     ({ set }, computerUseHostId: string | null) => {
       set(internalUserOverride$, { kind: "set", value: computerUseHostId });
     },
   );
 
+  const clearComputerUseHostIdOverride$ = command(({ set }) => {
+    set(internalUserOverride$, { kind: "unset" });
+  });
+
   return {
     computerUseHostId$,
+    computerUseHostIdExplicit$,
     setComputerUseHostId$,
+    clearComputerUseHostIdOverride$,
   };
 }
 
@@ -1976,6 +1994,7 @@ function createRunTracking({
     await Promise.all([
       set(backfillHistoryBoundary$, signal),
       set(markThreadReadIfNeeded$, signal),
+      set(subscribeComputerUseHostsChanged$, signal),
       set(
         dataSource.subscribeRealtime$,
         {
@@ -2236,7 +2255,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       { get, set },
       prompt: string,
       generationTemplate: GenerationTemplateRequest | undefined,
-      computerUseHostId: string | null,
+      computerUseHostId: string | null | undefined,
       signal: AbortSignal,
     ) => {
       L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
@@ -2303,7 +2322,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
             hasTextContent: result.hasTextContent,
             modelSelection,
             generationTemplate,
-            computerUseHostId,
+            ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
           },
           signal,
         ),
@@ -2553,8 +2572,7 @@ export function createChatThreadSignals(
     threadData$,
     dataSource,
   );
-  const { computerUseHostId$, setComputerUseHostId$ } =
-    createComputerUseHostSelection(threadData$);
+  const computerUseHostSelection = createComputerUseHostSelection(threadData$);
   const { recordScrollHeightForPrepend$, ...scrollSignals } =
     createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
@@ -2636,8 +2654,7 @@ export function createChatThreadSignals(
     threadData$,
     modelSelection$,
     setModelSelection$,
-    computerUseHostId$,
-    setComputerUseHostId$,
+    ...computerUseHostSelection,
     ...messageCommands,
     cancelRun$,
     ...scrollSignals,

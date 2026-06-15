@@ -212,9 +212,9 @@ import {
   threadGenerationTemplate$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
-  onlineComputerUseHosts$,
-  reloadOnlineComputerUseHosts$,
-  selectedOnlineComputerUseHostId,
+  computerUseHosts$,
+  selectedComputerUseHostId as resolveSelectedComputerUseHostId,
+  visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
@@ -3282,12 +3282,14 @@ function useChatComposerModel(
 function useChatThreadComposerSendState({
   thread,
   modelSelection,
-  computerUseHostId,
+  computerUseHostIdForSend,
+  clearComputerUseHostOverride,
   setInput,
 }: {
   thread: ChatThreadSignals;
   modelSelection: ModelProviderSelection | null;
-  computerUseHostId: string | null;
+  computerUseHostIdForSend: string | null | undefined;
+  clearComputerUseHostOverride: () => void;
   setInput: (text: string) => void;
 }) {
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
@@ -3311,6 +3313,10 @@ function useChatThreadComposerSendState({
     clearGenerationTemplate();
     detach(
       (async () => {
+        const computerUsePatch =
+          computerUseHostIdForSend === undefined
+            ? {}
+            : { computerUseHostId: computerUseHostIdForSend };
         await send(
           text,
           modelSelection,
@@ -3318,10 +3324,11 @@ function useChatThreadComposerSendState({
             ...(selectedGenerationTemplate
               ? { generationTemplate: selectedGenerationTemplate }
               : {}),
-            computerUseHostId,
+            ...computerUsePatch,
           },
           rootSignal,
         );
+        clearComputerUseHostOverride();
       })(),
       Reason.DomCallback,
     );
@@ -3335,12 +3342,14 @@ function useChatThreadComposerSendState({
     clearGenerationTemplate();
     detach(
       (async () => {
+        const computerUseHostId = computerUseHostIdForSend;
         await queueMessage(
           text,
           selectedGenerationTemplate,
           computerUseHostId,
           rootSignal,
         );
+        clearComputerUseHostOverride();
       })(),
       Reason.DomCallback,
     );
@@ -3362,37 +3371,49 @@ function useChatThreadComposerSendState({
 function useChatThreadComputerUse(thread: ChatThreadSignals) {
   const features = useLastResolved(featureSwitch$);
   const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
-  const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
-  const lastResolvedComputerUseHosts =
-    useLastResolved(onlineComputerUseHosts$) ?? [];
+  const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
+  const lastResolvedComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
       : lastResolvedComputerUseHosts;
   const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
-  const reloadComputerUseHosts = useSet(reloadOnlineComputerUseHosts$);
+  const computerUseHostIdExplicit = useGet(thread.computerUseHostIdExplicit$);
   const selectedComputerUseHostId =
     computerUseHostsLoadable.state === "hasData" || computerUseHosts.length > 0
-      ? selectedOnlineComputerUseHostId(
+      ? resolveSelectedComputerUseHostId(
           computerUseHosts,
           storedComputerUseHostId,
         )
       : (storedComputerUseHostId ?? null);
+  const visibleHosts = visibleComputerUseHosts(
+    computerUseHosts,
+    selectedComputerUseHostId,
+  );
   const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
+  const clearComputerUseHostOverride = useSet(
+    thread.clearComputerUseHostIdOverride$,
+  );
+  const computerUseHostIdForSend = computerUseHostIdExplicit
+    ? selectedComputerUseHostId
+    : undefined;
 
   return {
     selectedComputerUseHostId: computerUseEnabled
       ? selectedComputerUseHostId
       : null,
+    computerUseHostIdForSend: computerUseEnabled
+      ? computerUseHostIdForSend
+      : undefined,
+    clearComputerUseHostOverride,
     computerUse: computerUseEnabled
       ? {
-          hosts: computerUseHosts,
+          hosts: visibleHosts,
           loading:
             computerUseHostsLoadable.state === "loading" &&
             computerUseHosts.length === 0,
           selectedHostId: selectedComputerUseHostId,
           onChange: setComputerUseHostId,
-          onRefresh: reloadComputerUseHosts,
           downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
         }
       : undefined,
@@ -3491,8 +3512,11 @@ function ChatThreadComposer({
   const setInputRef = useSet(thread.setInputRef$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
   const pageSignal = useGet(pageSignal$);
-  const { selectedComputerUseHostId, computerUse } =
-    useChatThreadComputerUse(thread);
+  const {
+    computerUseHostIdForSend,
+    clearComputerUseHostOverride,
+    computerUse,
+  } = useChatThreadComputerUse(thread);
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
@@ -3508,7 +3532,8 @@ function ChatThreadComposer({
     useChatThreadComposerSendState({
       thread,
       modelSelection,
-      computerUseHostId: selectedComputerUseHostId,
+      computerUseHostIdForSend,
+      clearComputerUseHostOverride,
       setInput,
     });
   const sending = (allFinishedResolved && !allFinished) || sendLoading;
