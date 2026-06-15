@@ -293,6 +293,28 @@ impl ExecWaitCore {
             }
         }
     }
+
+    pub(in crate::exec_operation) async fn wait_for_dispatched_terminal(
+        &mut self,
+        lifecycle: ExecWaitLifecycle,
+    ) -> io::Result<ExecOperationResult> {
+        // The state lock already proved dispatch removed the operation; only the
+        // terminal result delivery remains.
+        self.active_seq_or_closed(Self::operation_closed_message(lifecycle))?;
+        let rx = self.result_rx.as_mut().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                Self::operation_closed_message(lifecycle),
+            )
+        })?;
+
+        let result = rx
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"));
+        self.seq = None;
+        self.result_rx = None;
+        result?
+    }
 }
 
 impl ExecOperationHandle {
@@ -369,10 +391,18 @@ impl ExecOperationHandle {
             ExecCancelFrameWriteOutcome::AlreadyTerminal => None,
         };
 
-        let result = self
-            .wait_core
-            .wait_with_timeout(timeout, cancel_seq.is_some(), ExecWaitLifecycle::OneShot)
-            .await?;
+        let result = match cancel_seq {
+            Some(_) => {
+                self.wait_core
+                    .wait_with_timeout(timeout, true, ExecWaitLifecycle::OneShot)
+                    .await?
+            }
+            None => {
+                self.wait_core
+                    .wait_for_dispatched_terminal(ExecWaitLifecycle::OneShot)
+                    .await?
+            }
+        };
         Ok(ExecCancelWaitResult { result, cancel_seq })
     }
 }
@@ -567,10 +597,18 @@ impl SupervisedExecHandle {
         if cancel_seq.is_some() {
             self.clear_unclaimed_stream_sender();
         }
-        let result = self
-            .wait_core
-            .wait_with_timeout(timeout, cancel_seq.is_some(), ExecWaitLifecycle::Supervised)
-            .await?;
+        let result = match cancel_seq {
+            Some(_) => {
+                self.wait_core
+                    .wait_with_timeout(timeout, true, ExecWaitLifecycle::Supervised)
+                    .await?
+            }
+            None => {
+                self.wait_core
+                    .wait_for_dispatched_terminal(ExecWaitLifecycle::Supervised)
+                    .await?
+            }
+        };
         Ok(ExecCancelWaitResult { result, cancel_seq })
     }
 }

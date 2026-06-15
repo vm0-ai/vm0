@@ -257,8 +257,7 @@ async fn supervised_exec_cancel_terminal_before_cancel_write_returns_result() {
     let handle = task.await.unwrap().unwrap();
 
     let writer_guard = host.shared.writer.lock().await;
-    let cancel_task =
-        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
+    let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
     tokio::task::yield_now().await;
 
     send_exec_result(
@@ -272,7 +271,11 @@ async fn supervised_exec_cancel_terminal_before_cancel_write_returns_result() {
     wait_for_operation_count(&host, 0).await;
 
     drop(writer_guard);
-    let result = cancel_task.await.unwrap().unwrap();
+    let result = tokio::time::timeout(Duration::from_secs(5), cancel_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert!(is_connected(&host));
     assert_eq!(
