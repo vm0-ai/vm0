@@ -1909,6 +1909,33 @@ PY
             );
         }
 
+        let generated_builtin_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("mitm-addon/src/generated/builtin_firewalls");
+        let mut expected_generated_builtin_files: Vec<String> =
+            std::fs::read_dir(&generated_builtin_dir)
+                .unwrap_or_else(|error| panic!("read {}: {error}", generated_builtin_dir.display()))
+                .map(|entry| entry.unwrap())
+                .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("py"))
+                .map(|entry| {
+                    format!(
+                        "generated/builtin_firewalls/{}",
+                        entry.file_name().to_string_lossy()
+                    )
+                })
+                .collect();
+        expected_generated_builtin_files.sort();
+        assert!(
+            !expected_generated_builtin_files.is_empty(),
+            "expected generated builtin firewall files under {}",
+            generated_builtin_dir.display()
+        );
+        for expected in expected_generated_builtin_files {
+            assert!(
+                files.contains(&expected.as_str()),
+                "addon files should include generated builtin firewall file {expected}, got: {files:?}"
+            );
+        }
+
         let (_, content) = ADDON_FILES
             .iter()
             .find(|(name, _)| *name == "mitm_addon.py")
