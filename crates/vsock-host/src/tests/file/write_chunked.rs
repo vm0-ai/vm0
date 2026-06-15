@@ -535,13 +535,11 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
                     shell_quote_for_test(target_path)
                 );
                 assert_eq!(decoded.command, expected_command);
-                assert!(!decoded.command.contains(failed_temp));
                 successful_temp_renamed = true;
             }
             "exec-cleanup" => {
                 let expected_command = format!("rm -f -- {}", shell_quote_for_test(failed_temp));
                 assert_eq!(decoded.command, expected_command);
-                assert!(!decoded.command.contains(success_temp));
                 failed_temp_cleaned = true;
             }
             label => panic!("unexpected exec label {label}"),
