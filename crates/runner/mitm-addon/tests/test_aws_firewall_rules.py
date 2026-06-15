@@ -224,6 +224,80 @@ def test_s3_rest_subresource_distinguishes_permissions():
     assert get_tagging.rule == "GET /{Bucket}/{Key+}?tagging AWS sigv4=s3"
 
 
+def test_s3_virtual_hosted_style_rest_rules_use_bucket_from_host():
+    firewalls = [
+        firewall_entry(
+            "aws",
+            firewall_api(
+                AWS_BASE,
+                [
+                    firewall_permission(
+                        "s3:GetObject",
+                        "GET /{Bucket}/{Key+} AWS sigv4=s3",
+                    ),
+                ],
+                auth=AWS_AUTH,
+            ),
+            firewall_api(
+                "https://{Bucket+}.s3.{Region}.amazonaws.com",
+                [
+                    firewall_permission(
+                        "s3:GetObject",
+                        "GET /{Key+} AWS sigv4=s3",
+                    ),
+                    firewall_permission(
+                        "s3:GetObjectTagging",
+                        "GET /{Key+}?tagging AWS sigv4=s3",
+                    ),
+                    firewall_permission(
+                        "s3:PutBucketAcl",
+                        "PUT /?acl AWS sigv4=s3",
+                    ),
+                ],
+                auth=AWS_AUTH,
+            ),
+        )
+    ]
+    policies = {"aws": network_policy(deny=["s3:PutBucketAcl"], unknown_policy="deny")}
+
+    get_object = match_compiled_firewalls(
+        "https://my-bucket.s3.us-east-1.amazonaws.com/path/to/key",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(get_object, matching.FirewallAllow)
+    assert get_object.permission == "s3:GetObject"
+    assert get_object.rule == "GET /{Key+} AWS sigv4=s3"
+    assert get_object.params == {
+        "Bucket": "my-bucket",
+        "Region": "us-east-1",
+        "Key": "path/to/key",
+    }
+
+    get_tagging = match_compiled_firewalls(
+        "https://my-bucket.s3.us-east-1.amazonaws.com/path/to/key?tagging",
+        firewalls,
+        policies,
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(get_tagging, matching.FirewallAllow)
+    assert get_tagging.permission == "s3:GetObjectTagging"
+
+    put_bucket_acl = match_compiled_firewalls(
+        "https://my-bucket.s3.us-east-1.amazonaws.com/?acl",
+        firewalls,
+        policies,
+        method="PUT",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(put_bucket_acl, matching.FirewallBlock)
+    assert put_bucket_acl.reason == "permission_denied"
+    assert put_bucket_acl.permissions == ("s3:PutBucketAcl",)
+
+
 def test_s3_unknown_subresource_uses_unknown_policy():
     firewalls = _aws_firewall(
         firewall_permission(

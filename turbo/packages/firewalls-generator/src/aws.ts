@@ -31,6 +31,18 @@ const AWS_BASES = [
   "https://{awsHost+}.api.aws",
 ] as const;
 
+const S3_VIRTUAL_HOSTED_BASES = [
+  "https://{Bucket+}.s3.amazonaws.com",
+  "https://{Bucket+}.s3.{Region}.amazonaws.com",
+  "https://{Bucket+}.s3.dualstack.{Region}.amazonaws.com",
+  "https://{Bucket+}.s3-fips.{Region}.amazonaws.com",
+  "https://{Bucket+}.s3.{Region}.amazonaws.com.cn",
+  "https://{Bucket+}.s3.dualstack.{Region}.amazonaws.com.cn",
+  "https://{Bucket+}.s3-fips.{Region}.amazonaws.com.cn",
+  "https://{Bucket+}.s3-accelerate.amazonaws.com",
+  "https://{Bucket+}.s3-accelerate.dualstack.amazonaws.com",
+] as const;
+
 export const AWS_SERVICE_REFERENCE_URLS = {
   ec2: "https://servicereference.us-east-1.amazonaws.com/v1/ec2/ec2.json",
   dynamodb:
@@ -99,6 +111,7 @@ interface BotocoreOperation {
 
 interface BuildResult {
   readonly permissions: PermissionGroup[];
+  readonly s3VirtualHostedPermissions: PermissionGroup[];
   readonly defaultAllowed: string[];
 }
 
@@ -282,10 +295,24 @@ function restRules(
   return [`${method} ${requestUri} AWS sigv4=${sigv4Service}`];
 }
 
+function s3VirtualHostedRequestUri(requestUri: string): string | null {
+  if (requestUri === "/{Bucket}") {
+    return "/";
+  }
+  if (requestUri.startsWith("/{Bucket}/")) {
+    return `/${requestUri.slice("/{Bucket}/".length)}`;
+  }
+  if (requestUri.startsWith("/{Bucket}?")) {
+    return `/${requestUri.slice("/{Bucket}".length)}`;
+  }
+  return null;
+}
+
 function rulesForOperation(
   service: AwsServiceConfig,
   model: BotocoreModel,
   operationName: string,
+  options?: { readonly s3VirtualHosted: boolean },
 ): string[] {
   const rawOperation = loadBotocoreOperations(model)[operationName];
   if (!isBotocoreOperation(rawOperation)) {
@@ -314,6 +341,15 @@ function rulesForOperation(
     );
   }
   if (protocol === "rest-xml" || protocol === "rest-json") {
+    if (options?.s3VirtualHosted) {
+      const virtualHostedRequestUri = s3VirtualHostedRequestUri(requestUri);
+      if (service.key !== "s3" || virtualHostedRequestUri === null) {
+        throw new Error(
+          `Cannot derive virtual-hosted S3 URI for ${service.key}.${operationName}`,
+        );
+      }
+      return restRules(method, virtualHostedRequestUri, service.sigv4Service);
+    }
     return restRules(method, requestUri, service.sigv4Service);
   }
   throw new Error(`Unsupported AWS protocol for ${service.key}: ${protocol}`);
@@ -326,6 +362,7 @@ async function loadJson<T>(url: string, label: string): Promise<T> {
 
 async function buildAwsPermissions(): Promise<BuildResult> {
   const permissions: PermissionGroup[] = [];
+  const s3VirtualHostedPermissions: PermissionGroup[] = [];
   const defaultAllowed: string[] = [];
 
   for (const service of AWS_SERVICES) {
@@ -364,6 +401,14 @@ async function buildAwsPermissions(): Promise<BuildResult> {
         name,
         rules: rulesForOperation(service, model, operationName),
       });
+      if (service.key === "s3") {
+        s3VirtualHostedPermissions.push({
+          name,
+          rules: rulesForOperation(service, model, operationName, {
+            s3VirtualHosted: true,
+          }),
+        });
+      }
       if (isDefaultAllowed(action)) {
         defaultAllowed.push(name);
       }
@@ -373,9 +418,13 @@ async function buildAwsPermissions(): Promise<BuildResult> {
   permissions.sort((left, right) => {
     return left.name.localeCompare(right.name);
   });
+  s3VirtualHostedPermissions.sort((left, right) => {
+    return left.name.localeCompare(right.name);
+  });
 
   return {
     permissions,
+    s3VirtualHostedPermissions,
     defaultAllowed: sortedUnique(defaultAllowed),
   };
 }
@@ -409,6 +458,20 @@ function renderPermissions(
   }
 }
 
+function renderApiEntry(
+  lines: string[],
+  base: string,
+  permissions: PermissionGroup[],
+): void {
+  lines.push("    {");
+  lines.push(`      base: "${base}",`);
+  renderAwsSigv4Auth(lines);
+  lines.push("      permissions: [");
+  renderPermissions(lines, permissions, "        ");
+  lines.push("      ],");
+  lines.push("    },");
+}
+
 function generateTypeScript(result: BuildResult): string {
   const lines: string[] = [
     "// Auto-generated from AWS Service Authorization Reference and Botocore models.",
@@ -434,13 +497,10 @@ function generateTypeScript(result: BuildResult): string {
   ];
 
   for (const base of AWS_BASES) {
-    lines.push("    {");
-    lines.push(`      base: "${base}",`);
-    renderAwsSigv4Auth(lines);
-    lines.push("      permissions: [");
-    renderPermissions(lines, result.permissions, "        ");
-    lines.push("      ],");
-    lines.push("    },");
+    renderApiEntry(lines, base, result.permissions);
+  }
+  for (const base of S3_VIRTUAL_HOSTED_BASES) {
+    renderApiEntry(lines, base, result.s3VirtualHostedPermissions);
   }
 
   lines.push("  ],");

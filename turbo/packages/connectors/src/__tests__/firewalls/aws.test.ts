@@ -39,6 +39,15 @@ describe("aws firewall", () => {
       "https://{awsHost+}.amazonaws.com",
       "https://{awsHost+}.amazonaws.com.cn",
       "https://{awsHost+}.api.aws",
+      "https://{Bucket+}.s3.amazonaws.com",
+      "https://{Bucket+}.s3.{Region}.amazonaws.com",
+      "https://{Bucket+}.s3.dualstack.{Region}.amazonaws.com",
+      "https://{Bucket+}.s3-fips.{Region}.amazonaws.com",
+      "https://{Bucket+}.s3.{Region}.amazonaws.com.cn",
+      "https://{Bucket+}.s3.dualstack.{Region}.amazonaws.com.cn",
+      "https://{Bucket+}.s3-fips.{Region}.amazonaws.com.cn",
+      "https://{Bucket+}.s3-accelerate.amazonaws.com",
+      "https://{Bucket+}.s3-accelerate.dualstack.amazonaws.com",
     ]);
     for (const api of firewall.apis) {
       expect(api.auth).toStrictEqual({
@@ -48,6 +57,10 @@ describe("aws firewall", () => {
           sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
         },
       });
+    }
+
+    const standardApis = firewall.apis.slice(0, 3);
+    for (const api of standardApis) {
       expect(
         api.permissions?.map((permission) => {
           return permission.name;
@@ -65,7 +78,25 @@ describe("aws firewall", () => {
       );
     }
 
-    const permissions = firewall.apis[0]!.permissions ?? [];
+    const virtualHostedApis = firewall.apis.slice(3);
+    for (const api of virtualHostedApis) {
+      expect(
+        api.permissions?.map((permission) => {
+          return permission.name;
+        }),
+      ).toStrictEqual([
+        "s3:GetBucketAcl",
+        "s3:GetBucketPolicy",
+        "s3:GetObject",
+        "s3:GetObjectTagging",
+        "s3:PutBucketAcl",
+        "s3:PutBucketPolicy",
+        "s3:PutObject",
+        "s3:PutObjectTagging",
+      ]);
+    }
+
+    const permissions = standardApis[0]!.permissions ?? [];
     expect(
       permissions.find((permission) => {
         return permission.name === "ec2:DescribeInstances";
@@ -86,6 +117,23 @@ describe("aws firewall", () => {
         return permission.name === "s3:GetObjectTagging";
       })?.rules,
     ).toStrictEqual(["GET /{Bucket}/{Key+}?tagging AWS sigv4=s3"]);
+
+    const virtualHostedPermissions = virtualHostedApis[0]!.permissions ?? [];
+    expect(
+      virtualHostedPermissions.find((permission) => {
+        return permission.name === "s3:GetBucketAcl";
+      })?.rules,
+    ).toStrictEqual(["GET /?acl AWS sigv4=s3"]);
+    expect(
+      virtualHostedPermissions.find((permission) => {
+        return permission.name === "s3:GetObject";
+      })?.rules,
+    ).toStrictEqual(["GET /{Key+} AWS sigv4=s3"]);
+    expect(
+      virtualHostedPermissions.find((permission) => {
+        return permission.name === "s3:GetObjectTagging";
+      })?.rules,
+    ).toStrictEqual(["GET /{Key+}?tagging AWS sigv4=s3"]);
 
     expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
       "AWS_ACCESS_KEY_ID",
