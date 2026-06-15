@@ -93,7 +93,9 @@ async fn expired_cooldown_with_failed_recheck_drops_claim_and_scans() {
     pool.process_expired_cooldown();
     pool.ensure_waiting_progress(0);
 
-    let result = response.await.expect("waiter should receive scan failure");
+    let result = response
+        .try_recv()
+        .expect("waiter should receive scan failure");
     assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
     assert!(
         device_lock::try_acquire_device_claim_in(3, dir.path())
@@ -138,13 +140,13 @@ async fn non_expiring_cooldown_does_not_block_deferred_scan_failure() {
     pool.in_flight.insert(3);
 
     pool.release_claim(claim(3, dir.path()));
-    let (respond_to, response) = oneshot::channel();
+    let (respond_to, mut response) = oneshot::channel();
     pool.waiting_acquires.push_back(respond_to);
     pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
     pool.ensure_waiting_progress(0);
 
     let result = response
-        .await
+        .try_recv()
         .expect("waiter should receive scan failure behind non-expiring cooldown");
     assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
     assert_eq!(pool.snapshot().cooldown, vec![3]);
