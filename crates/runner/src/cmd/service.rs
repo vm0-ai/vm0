@@ -1326,6 +1326,10 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
 
     cleanup_unit_staging_files(&upath)?;
     write_unit_file(&upath, &unit_content)?;
+
+    // Reload before removing stale secrets so systemd never restarts with an
+    // old ExecStart that references a deleted secrets file.
+    run_systemctl(&["daemon-reload"]).await?;
     if service_secrets_file.is_none()
         && let Err(e) = remove_service_secrets_for_suffix(&args.name).await
     {
@@ -1335,8 +1339,6 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
             "failed to remove stale service secrets file"
         );
     }
-
-    run_systemctl(&["daemon-reload"]).await?;
     let svc = format!("{unit}.service");
     run_systemctl(&["enable", "--now", &svc]).await?;
 
