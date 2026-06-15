@@ -26,22 +26,31 @@ import {
   setSlashSkillCaretIndex$,
   selectedSlashSkillIndex$,
   setSelectedSlashSkillIndex$,
-  openSlashConnectorType$,
-  setOpenSlashConnectorType$,
+  activeSlashConnectorType$,
+  setActiveSlashConnectorType$,
+  slashMenuColumn$,
+  setSlashMenuColumn$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   buildComposerSlashSkills,
+  commandOptionId,
+  connectorOptionId,
   findActiveSlashSkillRange,
   matchesSkillQuery,
-  scrollSlashMenuItemIntoView,
+  scrollSlashOptionIntoView,
+  skillOptionId,
   skillTokenPattern,
   SlashSkillMenu,
   type ComposerSlashSkill,
   type SlashConnectorGroup,
+  type SlashMenuColumn,
   type SlashMenuItem,
   type SlashSkillRange,
 } from "./slash-skill.tsx";
-import { CONNECTOR_COMMAND_GROUPS } from "./connector-commands.ts";
+import {
+  CONNECTOR_COMMAND_GROUPS,
+  type ConnectorCommand,
+} from "./connector-commands.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
 // Match the textarea metrics so swapping inputs is visually seamless. The editor
@@ -211,54 +220,80 @@ function insertPromptText(
     .run();
 }
 
+// Two-column keyboard navigation over the slash menu. The "rail" column holds
+// connectors then skills; the "detail" column holds the active connector's
+// commands. Returns true when it consumes the event.
 interface SlashMenuKeyContext {
-  readonly items: readonly SlashMenuItem[];
+  readonly column: SlashMenuColumn;
+  readonly railCount: number;
+  readonly commandCount: number;
   readonly selectedIndex: number;
-  readonly setSelectedIndex: (index: number) => void;
-  readonly setCaretIndex: (index: number) => void;
-  readonly onSelect: (item: SlashMenuItem) => void;
-  // Set while a connector drawer is open; Escape returns to the top level
-  // instead of closing the menu.
-  readonly onBack: (() => void) | null;
+  readonly railItemIsConnector: (index: number) => boolean;
+  readonly moveSelection: (next: number) => void;
+  readonly enterDetail: () => void;
+  readonly exitDetail: () => void;
+  readonly selectRailAt: (index: number) => void;
+  readonly selectCommandAt: (index: number) => void;
+  readonly close: () => void;
 }
 
-// Drives the suggestion menu from the keyboard. Returns true when it consumes the
-// event so the editor can stop handling that keystroke.
 function handleSlashMenuKey(
   event: KeyboardEvent,
   ctx: SlashMenuKeyContext,
 ): boolean {
+  const length = ctx.column === "detail" ? ctx.commandCount : ctx.railCount;
   if (event.key === "ArrowDown") {
     event.preventDefault();
-    const next = Math.min(
-      ctx.selectedIndex + 1,
-      Math.max(ctx.items.length - 1, 0),
-    );
-    ctx.setSelectedIndex(next);
-    scrollSlashMenuItemIntoView(ctx.items[next]);
+    ctx.moveSelection(Math.min(ctx.selectedIndex + 1, Math.max(length - 1, 0)));
     return true;
   }
   if (event.key === "ArrowUp") {
     event.preventDefault();
-    const next = Math.max(ctx.selectedIndex - 1, 0);
-    ctx.setSelectedIndex(next);
-    scrollSlashMenuItemIntoView(ctx.items[next]);
+    ctx.moveSelection(Math.max(ctx.selectedIndex - 1, 0));
     return true;
   }
-  if ((event.key === "Enter" || event.key === "Tab") && ctx.items[0]) {
-    event.preventDefault();
-    const item = ctx.items[Math.min(ctx.selectedIndex, ctx.items.length - 1)];
-    if (item) {
-      ctx.onSelect(item);
+  if (event.key === "ArrowRight") {
+    if (
+      ctx.column === "rail" &&
+      ctx.railItemIsConnector(ctx.selectedIndex) &&
+      ctx.commandCount > 0
+    ) {
+      event.preventDefault();
+      ctx.enterDetail();
+      return true;
     }
+    return false;
+  }
+  if (event.key === "ArrowLeft") {
+    if (ctx.column === "detail") {
+      event.preventDefault();
+      ctx.exitDetail();
+      return true;
+    }
+    return false;
+  }
+  if (event.key === "Enter" || event.key === "Tab") {
+    if (ctx.column === "detail") {
+      if (ctx.commandCount === 0) {
+        return false;
+      }
+      event.preventDefault();
+      ctx.selectCommandAt(Math.min(ctx.selectedIndex, ctx.commandCount - 1));
+      return true;
+    }
+    if (ctx.railCount === 0) {
+      return false;
+    }
+    event.preventDefault();
+    ctx.selectRailAt(Math.min(ctx.selectedIndex, ctx.railCount - 1));
     return true;
   }
   if (event.key === "Escape") {
     event.preventDefault();
-    if (ctx.onBack) {
-      ctx.onBack();
+    if (ctx.column === "detail") {
+      ctx.exitDetail();
     } else {
-      ctx.setCaretIndex(-1);
+      ctx.close();
     }
     return true;
   }
@@ -274,9 +309,9 @@ interface EditorOptionsParams {
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly setSelectedSkillIndex: (index: number) => void;
   readonly setCaretIndex: (index: number) => void;
-  // Drop back to the menu's top level when the content changes, so a connector
-  // drawer never silently reopens on the next `/`.
-  readonly resetConnectorDrawer: () => void;
+  // Reset the menu's two-pane state (active connector + focused column) when the
+  // content changes, so reopening `/` always starts fresh on the rail.
+  readonly resetSlashMenuState: () => void;
   readonly onEditorKeyDown: (event: KeyboardEvent) => boolean;
 }
 
@@ -315,7 +350,7 @@ function buildEditorOptions(
         params.onInputChange(value);
       }
       params.setSelectedSkillIndex(0);
-      params.resetConnectorDrawer();
+      params.resetSlashMenuState();
       params.setCaretIndex(caretStringIndex(editor));
     },
     onSelectionUpdate: ({ editor }) => {
@@ -386,28 +421,35 @@ function buildConnectorGroups(
 }
 
 interface SlashMenuModel {
-  readonly menuItems: readonly SlashMenuItem[];
-  readonly menuMode: "top" | "drawer";
-  readonly openGroup: SlashConnectorGroup | null;
+  readonly filteredConnectorGroups: readonly SlashConnectorGroup[];
+  readonly suggestions: readonly ComposerSlashSkill[];
+  readonly railItems: readonly SlashMenuItem[];
+  readonly activeGroup: SlashConnectorGroup | null;
+  readonly activeRailIndex: number;
+  readonly commands: readonly ConnectorCommand[];
+  readonly column: SlashMenuColumn;
   readonly showMenu: boolean;
 }
 
-// Builds the ordered rows for the current menu level plus whether the menu is
-// shown, from the active slash query, the agent's skills, and the connected
-// connector groups. Kept pure so the component stays small. The menu renders and
-// keys off the same array, so the keyboard selection index always agrees.
+// Builds the two-pane menu model from the active slash query, the agent's
+// skills, the connected connector groups, and the current active connector /
+// focused column. Kept pure so the component stays small. The menu renders and
+// keys off the same derived arrays, so the keyboard selection index always
+// agrees with what is shown.
 function buildSlashMenuModel({
   slashRange,
   composerSkills,
   connectorGroups,
-  openConnectorType,
+  activeConnectorType,
+  column,
   isLoadingOrgSkills,
   showSkillsPageLink,
 }: {
   readonly slashRange: SlashSkillRange | null;
   readonly composerSkills: readonly ComposerSlashSkill[];
   readonly connectorGroups: readonly SlashConnectorGroup[];
-  readonly openConnectorType: ConnectorType | null;
+  readonly activeConnectorType: ConnectorType | null;
+  readonly column: SlashMenuColumn;
   readonly isLoadingOrgSkills: boolean;
   readonly showSkillsPageLink: boolean;
 }): SlashMenuModel {
@@ -424,101 +466,45 @@ function buildSlashMenuModel({
       : connectorGroups.filter((group) => {
           return group.label.toLowerCase().includes(query.toLowerCase());
         });
-  const openGroup =
-    connectorGroups.find((group) => {
-      return group.connectorType === openConnectorType;
-    }) ?? null;
-  const menuItems: readonly SlashMenuItem[] = openGroup
-    ? openGroup.commands.map((command, index) => {
-        return { kind: "command", command, index } as const;
+  // The active connector (whose commands fill the right pane) follows the user's
+  // choice, defaulting to the first connector so the pane is never empty.
+  const activeGroup =
+    filteredConnectorGroups.find((group) => {
+      return group.connectorType === activeConnectorType;
+    }) ??
+    filteredConnectorGroups[0] ??
+    null;
+  const activeRailIndex = activeGroup
+    ? filteredConnectorGroups.findIndex((group) => {
+        return group.connectorType === activeGroup.connectorType;
       })
-    : [
-        ...filteredConnectorGroups.map((group) => {
-          return { kind: "connector", group } as const;
-        }),
-        ...suggestions.map((skill) => {
-          return { kind: "skill", skill } as const;
-        }),
-      ];
+    : 0;
+  const commands = activeGroup?.commands ?? [];
+  const railItems: readonly SlashMenuItem[] = [
+    ...filteredConnectorGroups.map((group) => {
+      return { kind: "connector", group } as const;
+    }),
+    ...suggestions.map((skill) => {
+      return { kind: "skill", skill } as const;
+    }),
+  ];
   const showMenu =
     slashRange !== null &&
     (isLoadingOrgSkills ||
       composerSkills.length > 0 ||
       showSkillsPageLink ||
-      filteredConnectorGroups.length > 0 ||
-      openGroup !== null);
+      filteredConnectorGroups.length > 0);
   return {
-    menuItems,
-    menuMode: openGroup ? "drawer" : "top",
-    openGroup,
+    filteredConnectorGroups,
+    suggestions,
+    railItems,
+    activeGroup,
+    activeRailIndex,
+    commands,
+    // The detail column only makes sense when the active connector has commands.
+    column: commands.length > 0 ? column : "rail",
     showMenu,
   };
-}
-
-interface SlashSelectContext {
-  readonly editor: Editor | null;
-  readonly slashRange: SlashSkillRange | null;
-  readonly input: string;
-  readonly onDraftChange: (() => void) | undefined;
-  readonly openDrawer: (connectorType: ConnectorType) => void;
-}
-
-// Applies a chosen menu row: connectors open their command drawer; skills and
-// commands insert their text via the shared insertion path.
-function selectSlashMenuItem(
-  item: SlashMenuItem,
-  ctx: SlashSelectContext,
-): void {
-  if (item.kind === "connector") {
-    ctx.openDrawer(item.group.connectorType);
-    return;
-  }
-  if (!ctx.editor || !ctx.slashRange) {
-    return;
-  }
-  if (item.kind === "skill") {
-    insertSkillToken(ctx.editor, ctx.slashRange, ctx.input, item.skill);
-  } else {
-    insertPromptText(ctx.editor, ctx.slashRange, item.command.prompt);
-  }
-  ctx.onDraftChange?.();
-}
-
-interface ComposerKeyContext {
-  readonly showMenu: boolean;
-  readonly menuItems: readonly SlashMenuItem[];
-  readonly selectedIndex: number;
-  readonly setSelectedIndex: (index: number) => void;
-  readonly setCaretIndex: (index: number) => void;
-  readonly onSelect: (item: SlashMenuItem) => void;
-  readonly onBack: (() => void) | null;
-  readonly onKeyDown: (event: KeyboardEventLike) => void;
-}
-
-// Lets the open suggestion menu consume navigation/selection keys first, then
-// defers to the parent for send / global shortcuts.
-function handleComposerKeyDown(
-  event: KeyboardEvent,
-  ctx: ComposerKeyContext,
-): boolean {
-  if (
-    ctx.showMenu &&
-    handleSlashMenuKey(event, {
-      items: ctx.menuItems,
-      selectedIndex: ctx.selectedIndex,
-      setSelectedIndex: ctx.setSelectedIndex,
-      setCaretIndex: ctx.setCaretIndex,
-      onSelect: ctx.onSelect,
-      onBack: ctx.onBack,
-    })
-  ) {
-    return true;
-  }
-  // Defer to the parent for send / global shortcuts. If it consumes the event
-  // (e.g. Enter-to-send) it calls preventDefault; otherwise the editor handles
-  // the keystroke (e.g. Shift+Enter or mobile Enter inserts a newline).
-  ctx.onKeyDown(event);
-  return event.defaultPrevented;
 }
 
 // Presentational shell: the TipTap editor with its placeholder, anchored to the
@@ -530,27 +516,35 @@ function SlashComposerShell({
   input,
   sending,
   showMenu,
-  menuItems,
-  menuMode,
-  drawerLabel,
-  loading,
+  connectorGroups,
+  activeConnectorType,
+  commands,
+  skills,
+  column,
   selectedIndex,
+  railSkillStartIndex,
+  loading,
   showSkillsPageLink,
-  onSelect,
-  onBack,
+  onActivateConnector,
+  onSelectCommand,
+  onSelectSkill,
 }: {
   readonly editor: Editor | null;
   readonly input: string;
   readonly sending: boolean | undefined;
   readonly showMenu: boolean;
-  readonly menuItems: readonly SlashMenuItem[];
-  readonly menuMode: "top" | "drawer";
-  readonly drawerLabel: string | null;
-  readonly loading: boolean;
+  readonly connectorGroups: readonly SlashConnectorGroup[];
+  readonly activeConnectorType: ConnectorType | null;
+  readonly commands: readonly ConnectorCommand[];
+  readonly skills: readonly ComposerSlashSkill[];
+  readonly column: SlashMenuColumn;
   readonly selectedIndex: number;
+  readonly railSkillStartIndex: number;
+  readonly loading: boolean;
   readonly showSkillsPageLink: boolean;
-  readonly onSelect: (item: SlashMenuItem) => void;
-  readonly onBack: () => void;
+  readonly onActivateConnector: (connectorType: ConnectorType) => void;
+  readonly onSelectCommand: (command: ConnectorCommand) => void;
+  readonly onSelectSkill: (skill: ComposerSlashSkill) => void;
 }) {
   return (
     <Popover open={showMenu}>
@@ -571,14 +565,18 @@ function SlashComposerShell({
       </PopoverAnchor>
       {showMenu && (
         <SlashSkillMenu
-          items={menuItems}
-          mode={menuMode}
-          drawerLabel={drawerLabel}
-          loading={loading}
+          connectorGroups={connectorGroups}
+          activeConnectorType={activeConnectorType}
+          commands={commands}
+          skills={skills}
+          column={column}
           selectedIndex={selectedIndex}
+          railSkillStartIndex={railSkillStartIndex}
+          loading={loading}
           showSkillsPageLink={showSkillsPageLink}
-          onSelect={onSelect}
-          onBack={onBack}
+          onActivateConnector={onActivateConnector}
+          onSelectCommand={onSelectCommand}
+          onSelectSkill={onSelectSkill}
         />
       )}
     </Popover>
@@ -606,13 +604,14 @@ export function TiptapSkillComposer({
 }) {
   const caretIndex = useGet(slashSkillCaretIndex$);
   const setCaretIndex = useSet(setSlashSkillCaretIndex$);
-  const selectedSkillIndex = useGet(selectedSlashSkillIndex$);
-  const setSelectedSkillIndex = useSet(setSelectedSlashSkillIndex$);
-  // Which connector drawer is open, or null at the top level. Lives in a signal
-  // (React state is restricted here) and resets on content change so reopening
-  // `/` always starts at the top level.
-  const openConnectorType = useGet(openSlashConnectorType$);
-  const setOpenConnectorType = useSet(setOpenSlashConnectorType$);
+  const selectedIndex = useGet(selectedSlashSkillIndex$);
+  const setSelectedIndex = useSet(setSelectedSlashSkillIndex$);
+  // Two-pane state lives in signals (React state is restricted here) and resets
+  // on content change so reopening `/` always starts fresh on the rail.
+  const activeConnectorType = useGet(activeSlashConnectorType$);
+  const setActiveConnectorType = useSet(setActiveSlashConnectorType$);
+  const column = useGet(slashMenuColumn$);
+  const setColumn = useSet(setSlashMenuColumn$);
   const currentAgent = useLastResolved(currentChatAgent$);
   const features = useLastResolved(featureSwitch$);
   const orgSkillsLoadable = useLastLoadable(orgSkills$);
@@ -637,11 +636,21 @@ export function TiptapSkillComposer({
     features?.[FeatureSwitchKey.ChatConnectorCommands] ?? false,
     connectorStatuses,
   );
-  const { menuItems, menuMode, openGroup, showMenu } = buildSlashMenuModel({
+  const {
+    filteredConnectorGroups,
+    suggestions,
+    railItems,
+    activeGroup,
+    activeRailIndex,
+    commands,
+    column: menuColumn,
+    showMenu,
+  } = buildSlashMenuModel({
     slashRange,
     composerSkills,
     connectorGroups,
-    openConnectorType,
+    activeConnectorType,
+    column,
     isLoadingOrgSkills,
     showSkillsPageLink,
   });
@@ -656,24 +665,18 @@ export function TiptapSkillComposer({
       onInputChange,
       onPaste,
       setInputRef,
-      setSelectedSkillIndex,
+      setSelectedSkillIndex: setSelectedIndex,
       setCaretIndex,
-      resetConnectorDrawer: () => {
-        if (openConnectorType !== null) {
-          setOpenConnectorType(null);
+      resetSlashMenuState: () => {
+        if (activeConnectorType !== null) {
+          setActiveConnectorType(null);
+        }
+        if (column !== "rail") {
+          setColumn("rail");
         }
       },
       onEditorKeyDown: (event) => {
-        return handleComposerKeyDown(event, {
-          showMenu,
-          menuItems,
-          selectedIndex: selectedSkillIndex,
-          setSelectedIndex: setSelectedSkillIndex,
-          setCaretIndex,
-          onSelect: selectItem,
-          onBack: openGroup ? closeConnectorDrawer : null,
-          onKeyDown,
-        });
+        return handleEditorKeyDown(event);
       },
     }),
   );
@@ -682,24 +685,108 @@ export function TiptapSkillComposer({
     syncEditorState(editor, skillNames, input);
   }
 
-  function openConnectorDrawer(connectorType: ConnectorType): void {
-    setOpenConnectorType(connectorType);
-    setSelectedSkillIndex(0);
-  }
-
-  function closeConnectorDrawer(): void {
-    setOpenConnectorType(null);
-    setSelectedSkillIndex(0);
-  }
-
-  function selectItem(item: SlashMenuItem): void {
-    selectSlashMenuItem(item, {
-      editor,
-      slashRange,
-      input,
-      onDraftChange,
-      openDrawer: openConnectorDrawer,
+  function activateConnector(connectorType: ConnectorType): void {
+    setActiveConnectorType(connectorType);
+    setColumn("rail");
+    const index = filteredConnectorGroups.findIndex((group) => {
+      return group.connectorType === connectorType;
     });
+    setSelectedIndex(index >= 0 ? index : 0);
+  }
+
+  function moveSelection(next: number): void {
+    setSelectedIndex(next);
+    if (menuColumn === "detail") {
+      scrollSlashOptionIntoView(commandOptionId(next));
+      return;
+    }
+    const item = railItems[next];
+    if (item?.kind === "connector") {
+      setActiveConnectorType(item.group.connectorType);
+      scrollSlashOptionIntoView(connectorOptionId(item.group.connectorType));
+    } else if (item?.kind === "skill") {
+      scrollSlashOptionIntoView(skillOptionId(item.skill.name));
+    }
+  }
+
+  function enterDetail(): void {
+    if (commands.length === 0) {
+      return;
+    }
+    setColumn("detail");
+    setSelectedIndex(0);
+    scrollSlashOptionIntoView(commandOptionId(0));
+  }
+
+  function exitDetail(): void {
+    setColumn("rail");
+    setSelectedIndex(activeRailIndex);
+  }
+
+  function insertSkill(skill: ComposerSlashSkill): void {
+    if (!editor || !slashRange) {
+      return;
+    }
+    insertSkillToken(editor, slashRange, input, skill);
+    onDraftChange?.();
+  }
+
+  function insertCommand(command: ConnectorCommand): void {
+    if (!editor || !slashRange) {
+      return;
+    }
+    insertPromptText(editor, slashRange, command.prompt);
+    onDraftChange?.();
+  }
+
+  function selectRailAt(index: number): void {
+    const item = railItems[index];
+    if (!item) {
+      return;
+    }
+    if (item.kind === "connector") {
+      activateConnector(item.group.connectorType);
+      enterDetail();
+    } else {
+      insertSkill(item.skill);
+    }
+  }
+
+  function selectCommandAt(index: number): void {
+    const command = commands[index];
+    if (command) {
+      insertCommand(command);
+    }
+  }
+
+  function handleEditorKeyDown(event: KeyboardEvent): boolean {
+    if (
+      showMenu &&
+      handleSlashMenuKey(event, {
+        column: menuColumn,
+        railCount: railItems.length,
+        commandCount: commands.length,
+        selectedIndex,
+        railItemIsConnector: (index) => {
+          return railItems[index]?.kind === "connector";
+        },
+        moveSelection,
+        enterDetail,
+        exitDetail,
+        selectRailAt,
+        selectCommandAt,
+        close: () => {
+          setCaretIndex(-1);
+        },
+      })
+    ) {
+      return true;
+    }
+    // Defer to the parent for send / global shortcuts. If it consumes the event
+    // (e.g. Enter-to-send) it calls preventDefault; otherwise the editor handles
+    // the keystroke (e.g. Shift+Enter or mobile Enter inserts a newline).
+    onKeyDown(event);
+    return event.defaultPrevented;
   }
 
   return (
@@ -708,14 +795,18 @@ export function TiptapSkillComposer({
       input={input}
       sending={sending}
       showMenu={showMenu}
-      menuItems={menuItems}
-      menuMode={menuMode}
-      drawerLabel={openGroup ? openGroup.label : null}
+      connectorGroups={filteredConnectorGroups}
+      activeConnectorType={activeGroup ? activeGroup.connectorType : null}
+      commands={commands}
+      skills={suggestions}
+      column={menuColumn}
+      selectedIndex={selectedIndex}
+      railSkillStartIndex={filteredConnectorGroups.length}
       loading={isLoadingOrgSkills}
-      selectedIndex={selectedSkillIndex}
       showSkillsPageLink={showSkillsPageLink}
-      onSelect={selectItem}
-      onBack={closeConnectorDrawer}
+      onActivateConnector={activateConnector}
+      onSelectCommand={insertCommand}
+      onSelectSkill={insertSkill}
     />
   );
 }

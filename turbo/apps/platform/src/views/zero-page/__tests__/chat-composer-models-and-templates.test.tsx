@@ -697,7 +697,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("opens a connected connector's command drawer and inserts its prompt", async () => {
+  it("auto-expands a connected connector's commands and inserts one", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent({ customSkills: [] });
@@ -720,19 +720,13 @@ describe("chat composer models", () => {
     await user.keyboard("/");
 
     const menu = await screen.findByTestId("slash-skill-menu");
-    await user.click(await within(menu).findByText("GitHub"));
+    // The first connector is active by default, so its commands show in the
+    // right pane immediately — no drill-in or back step.
+    expect(await within(menu).findByText("GitHub")).toBeInTheDocument();
+    expect(await within(menu).findByText("List PRs")).toBeInTheDocument();
+    expect(within(menu).getByText("Create issue")).toBeInTheDocument();
 
-    // Drilling into the connector drawer reveals its curated commands.
-    await expect(
-      within(screen.getByTestId("slash-skill-menu")).findByText("List PRs"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("slash-skill-menu")).getByText("Create issue"),
-    ).toBeInTheDocument();
-
-    await user.click(
-      within(screen.getByTestId("slash-skill-menu")).getByText("List PRs"),
-    );
+    await user.click(within(menu).getByText("List PRs"));
 
     // Picking a command drops its natural-language prompt into the composer.
     await waitFor(() => {
