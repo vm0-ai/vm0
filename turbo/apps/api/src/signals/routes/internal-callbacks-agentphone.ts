@@ -23,7 +23,7 @@ import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
-import { formatRunErrorLikeWebMessage } from "../services/zero-chat-thread.service";
+import { formatRunErrorForRunOwner$ } from "../services/zero-chat-thread.service";
 import {
   formatAgentPhoneAuditLink,
   isAgentPhoneChannel,
@@ -422,7 +422,7 @@ const handleAgentPhoneCallback$ = command(
         return get(userFeatureSwitchOverrides(orgId, userId));
       },
       formatRunError: (params) => {
-        return get(formatRunErrorLikeWebMessage(params));
+        return set(formatRunErrorForRunOwner$, params, signal);
       },
       signal,
     });

@@ -32,7 +32,7 @@ import {
 } from "../external/telegram-official";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
-import { formatRunErrorLikeWebMessage } from "../services/zero-chat-thread.service";
+import { formatRunErrorForRunOwner$ } from "../services/zero-chat-thread.service";
 import {
   saveTelegramThreadSession,
   storeTelegramBotMessage,
@@ -522,7 +522,7 @@ const handleTelegramCallback$ = command(
         return get(userFeatureSwitchOverrides(orgId, userId));
       },
       formatRunError: (params) => {
-        return get(formatRunErrorLikeWebMessage(params));
+        return set(formatRunErrorForRunOwner$, params, signal);
       },
       signal,
     });

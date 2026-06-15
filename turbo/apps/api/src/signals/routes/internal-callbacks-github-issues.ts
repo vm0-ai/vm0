@@ -30,7 +30,7 @@ import {
 import { getRunOutputText } from "../services/run-output.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { resolveGithubAgentReplyFooterText } from "../services/zero-github-footer.service";
-import { formatRunErrorLikeWebMessage } from "../services/zero-chat-thread.service";
+import { formatRunErrorForRunOwner$ } from "../services/zero-chat-thread.service";
 
 const L = logger("InternalCallbacksGithubIssues");
 const RUN_COMPLETED_FALLBACK_MESSAGE = "Task completed successfully.";
@@ -448,7 +448,7 @@ const handleGithubIssuesCallback$ = command(
         return get(userFeatureSwitchOverrides(orgId, userId));
       },
       formatRunError: (params) => {
-        return get(formatRunErrorLikeWebMessage(params));
+        return set(formatRunErrorForRunOwner$, params, signal);
       },
       signal,
     });

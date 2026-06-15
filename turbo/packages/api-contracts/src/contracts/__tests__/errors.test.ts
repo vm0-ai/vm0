@@ -116,6 +116,76 @@ describe("formatRunErrorForExternalSurface", () => {
     expect(isGenericRunErrorForDisplay(unrelatedRateLimit)).toBe(true);
   });
 
+  it("shows Claude Code subscription reconnect guidance for upstream 401s", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message:
+          "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+        claudeCodeCredentialRecovery: {
+          modelProviderType: "claude-code-oauth-token",
+          modelProviderCredentialScope: "member",
+          canManageOrgModelProviders: false,
+          modelProvidersUrl: "https://app.example.test/?settings=model",
+        },
+      }),
+    ).toBe(
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.example.test/?settings=model",
+    );
+  });
+
+  it("shows Anthropic API key update guidance for org admins on Claude Code upstream 401s", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message:
+          "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+        claudeCodeCredentialRecovery: {
+          modelProviderType: "anthropic-api-key",
+          modelProviderCredentialScope: "org",
+          canManageOrgModelProviders: true,
+          modelProvidersUrl: "https://app.example.test/?settings=providers",
+        },
+      }),
+    ).toBe(
+      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.example.test/?settings=providers",
+    );
+  });
+
+  it("asks non-admins to contact an admin on Claude Code Anthropic API key upstream 401s", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message:
+          "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+        claudeCodeCredentialRecovery: {
+          modelProviderType: "anthropic-api-key",
+          modelProviderCredentialScope: "org",
+          canManageOrgModelProviders: false,
+          modelProvidersUrl: "https://app.example.test/?settings=providers",
+        },
+      }),
+    ).toBe(
+      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.example.test/?settings=providers",
+    );
+  });
+
+  it("keeps upstream 401s generic without Claude Code provider context", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message:
+          "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+        claudeCodeCredentialRecovery: {
+          modelProviderType: "openai-api-key",
+          modelProviderCredentialScope: "org",
+          canManageOrgModelProviders: true,
+          modelProvidersUrl: "https://app.example.test/?settings=providers",
+        },
+      }),
+    ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+  });
+
   it("keeps unrelated Claude limit errors generic", () => {
     const unrelatedClaudeLimit =
       "Claude process memory limit reached while preparing the sandbox.";

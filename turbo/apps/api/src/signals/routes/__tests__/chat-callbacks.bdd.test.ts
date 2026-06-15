@@ -7,10 +7,16 @@ import type {
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
+import { nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { writeDb$ } from "../../external/db";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -23,8 +29,9 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  *
  * Every signed callback in this file originates from the real dispatcher
  * (sandbox complete/cancel webhooks and the sandbox heartbeat route) and is
- * either proxied into the app or captured for verbatim replay — no
- * hand-signed bodies and no direct database fixtures.
+ * either proxied into the app or captured for verbatim replay. Tests create
+ * runs through public APIs; scenarios about persisted run context may adjust
+ * that context directly before sending the real callback.
  */
 
 const context = testContext();
@@ -33,11 +40,15 @@ const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const store = createStore();
 
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
+type TestModelProviderType = "anthropic-api-key" | "claude-code-oauth-token";
+type TestCredentialScope = "member" | "org";
+type TestOrgRole = "admin" | "member";
 
 interface EntitledChatActor {
   readonly actor: ApiTestUser;
@@ -144,6 +155,46 @@ async function claimChatRun(
   await api.heartbeatRunner(runnerGroup);
   const claim = await api.claimRunnerJob(runId);
   return { authorization: `Bearer ${claim.sandboxToken}` };
+}
+
+async function setRunModelProvider(
+  runId: string,
+  params: {
+    readonly modelProvider: TestModelProviderType;
+    readonly credentialScope: TestCredentialScope;
+  },
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .update(zeroRuns)
+    .set({
+      modelProvider: params.modelProvider,
+      modelProviderCredentialScope: params.credentialScope,
+    })
+    .where(eq(zeroRuns.id, runId));
+}
+
+async function seedOrgMemberRole(
+  actor: ApiTestUser,
+  role: TestOrgRole,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor");
+  }
+
+  await store
+    .set(writeDb$)
+    .insert(orgMembersCache)
+    .values({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      role,
+      cachedAt: nowDate(),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: { role, cachedAt: nowDate() },
+    });
 }
 
 async function waitForArrayLength<T>(
@@ -1032,6 +1083,83 @@ describe("CHAT-02: failed chat callbacks", () => {
       body: "Task failed: Oops, something went wrong. Please try again later.",
       url: `/chats/${threadId}`,
     });
+  }, 90_000);
+
+  it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.proxyChatCallbackToApp();
+    const upstreamAuthError =
+      "Failed to authenticate. API Error: 401 Invalid authentication credentials";
+
+    async function failAndReadError(params: {
+      readonly prompt: string;
+      readonly modelProvider: TestModelProviderType;
+      readonly credentialScope: TestCredentialScope;
+      readonly orgRole?: TestOrgRole;
+    }): Promise<string> {
+      if (params.orgRole !== undefined) {
+        await seedOrgMemberRole(actor, params.orgRole);
+      }
+      const run = await startChatRun(actor, {
+        agentId,
+        prompt: params.prompt,
+      });
+      await setRunModelProvider(run.runId, {
+        modelProvider: params.modelProvider,
+        credentialScope: params.credentialScope,
+      });
+      const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+      await failChatRun(run.runId, sandboxHeaders, upstreamAuthError);
+
+      const page = await waitForThreadMessages(
+        actor,
+        run.threadId,
+        (messages) => {
+          return lifecycleMarkers(messages, run.runId, "failed").some(
+            (message) => {
+              return message.error !== undefined;
+            },
+          );
+        },
+      );
+      const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
+      if (!marker?.error) {
+        throw new Error("Expected failed chat callback to store an error");
+      }
+      expect(marker.content).toBe(marker.error);
+      expect(marker.error).not.toContain("Report this issue");
+      return marker.error;
+    }
+
+    await expect(
+      failAndReadError({
+        prompt: "subscription credential failed",
+        modelProvider: "claude-code-oauth-token",
+        credentialScope: "member",
+      }),
+    ).resolves.toBe(
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: http://localhost:3002/?settings=model",
+    );
+    await expect(
+      failAndReadError({
+        prompt: "org key failed for admin",
+        modelProvider: "anthropic-api-key",
+        credentialScope: "org",
+        orgRole: "admin",
+      }),
+    ).resolves.toBe(
+      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: http://localhost:3002/?settings=providers",
+    );
+    await expect(
+      failAndReadError({
+        prompt: "org key failed for member",
+        modelProvider: "anthropic-api-key",
+        credentialScope: "org",
+        orgRole: "member",
+      }),
+    ).resolves.toBe(
+      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: http://localhost:3002/?settings=providers",
+    );
   }, 90_000);
 });
 

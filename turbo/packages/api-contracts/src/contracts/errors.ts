@@ -1,4 +1,8 @@
 import { z } from "zod";
+import type {
+  ModelProviderCredentialScope,
+  ModelProviderType,
+} from "./model-providers";
 
 /**
  * API error definitions with associated HTTP status codes
@@ -122,6 +126,15 @@ export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
 const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
   "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
 
+const CLAUDE_CODE_SUBSCRIPTION_RECONNECT_REQUIRED_MESSAGE =
+  "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.";
+
+const CLAUDE_CODE_ANTHROPIC_API_KEY_ADMIN_MESSAGE =
+  "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.";
+
+const CLAUDE_CODE_ANTHROPIC_API_KEY_MEMBER_MESSAGE =
+  "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.";
+
 const CLAUDE_CODE_LIMIT_SNIPPETS = [
   "usage limit",
   "usage_limit",
@@ -173,7 +186,20 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "session limit",
   "weekly limit",
   CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
+  CLAUDE_CODE_SUBSCRIPTION_RECONNECT_REQUIRED_MESSAGE,
+  CLAUDE_CODE_ANTHROPIC_API_KEY_ADMIN_MESSAGE,
+  CLAUDE_CODE_ANTHROPIC_API_KEY_MEMBER_MESSAGE,
 ] as const;
+
+type ClaudeCodeCredentialRecovery = {
+  readonly modelProviderType: ModelProviderType | null | undefined;
+  readonly modelProviderCredentialScope:
+    | ModelProviderCredentialScope
+    | null
+    | undefined;
+  readonly canManageOrgModelProviders: boolean;
+  readonly modelProvidersUrl: string | undefined;
+};
 
 function isJsonWhitespace(char: string | undefined): boolean {
   return char === " " || char === "\n" || char === "\r" || char === "\t";
@@ -300,11 +326,62 @@ function isClaudeCodeLimitError(errorMessage: string): boolean {
   });
 }
 
+export function isClaudeCodeAuthenticationCredentialsError(
+  errorMessage: string,
+): boolean {
+  const normalized = errorMessage.toLowerCase();
+  return (
+    normalized.includes("401") &&
+    normalized.includes("invalid authentication credentials")
+  );
+}
+
 export function isActionableRunError(errorMessage: string): boolean {
   return (
     isCodexOAuthReconnectRequiredRunError(errorMessage) ||
     isClaudeCodeLimitError(errorMessage) ||
     hasActionableRunErrorSnippet(errorMessage)
+  );
+}
+
+function withOptionalActionUrl(
+  message: string,
+  label: string,
+  url: string | undefined,
+): string {
+  return url ? `${message}\n\n${label}: ${url}` : message;
+}
+
+function formatClaudeCodeCredentialRecoveryMessage(
+  recovery: ClaudeCodeCredentialRecovery,
+): string | undefined {
+  if (recovery.modelProviderType === "claude-code-oauth-token") {
+    return withOptionalActionUrl(
+      CLAUDE_CODE_SUBSCRIPTION_RECONNECT_REQUIRED_MESSAGE,
+      "Reconnect Claude Code",
+      recovery.modelProvidersUrl,
+    );
+  }
+
+  if (recovery.modelProviderType !== "anthropic-api-key") {
+    return undefined;
+  }
+
+  if (
+    recovery.modelProviderCredentialScope === "org" &&
+    !recovery.canManageOrgModelProviders
+  ) {
+    return withOptionalActionUrl(
+      CLAUDE_CODE_ANTHROPIC_API_KEY_MEMBER_MESSAGE,
+      "Share with an admin",
+      recovery.modelProvidersUrl,
+    );
+  }
+
+  return withOptionalActionUrl(
+    CLAUDE_CODE_ANTHROPIC_API_KEY_ADMIN_MESSAGE,
+    "Open Model Providers",
+    recovery.modelProvidersUrl,
   );
 }
 
@@ -321,6 +398,7 @@ export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
 export function formatRunErrorForExternalSurface(params: {
   readonly code: string;
   readonly message: string;
+  readonly claudeCodeCredentialRecovery?: ClaudeCodeCredentialRecovery;
   readonly insufficientCredits?:
     | {
         readonly canManageBilling: boolean;
@@ -334,6 +412,18 @@ export function formatRunErrorForExternalSurface(params: {
       };
 }): string {
   const errorMessage = params.message.trim() || "Run failed";
+
+  if (
+    params.claudeCodeCredentialRecovery !== undefined &&
+    isClaudeCodeAuthenticationCredentialsError(errorMessage)
+  ) {
+    const recoveryMessage = formatClaudeCodeCredentialRecoveryMessage(
+      params.claudeCodeCredentialRecovery,
+    );
+    if (recoveryMessage !== undefined) {
+      return recoveryMessage;
+    }
+  }
 
   if (
     params.code === "INSUFFICIENT_CREDITS" &&
