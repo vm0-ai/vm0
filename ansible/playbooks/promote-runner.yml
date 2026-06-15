@@ -39,30 +39,38 @@
     # ========================================
     # Phase 3b: Install systemd service (traffic cutover point)
     # ========================================
-    - name: Write runner service secrets file
-      copy:
-        dest: "{{ runner_dir }}/service-secrets.env"
-        owner: root
-        group: root
-        mode: "0600"
-        content: |
-          {% if sentry_dsn is defined and sentry_dsn %}
-          SENTRY_DSN={{ sentry_dsn }}
-          {% endif %}
-          {% if axiom_token_telemetry is defined and axiom_token_telemetry %}
-          AXIOM_TOKEN_TELEMETRY={{ axiom_token_telemetry }}
-          {% endif %}
-          {% if axiom_dataset_suffix is defined and axiom_dataset_suffix %}
-          AXIOM_DATASET_SUFFIX={{ axiom_dataset_suffix }}
-          {% endif %}
-      no_log: true
+    - name: Install runner service with private service secrets
+      block:
+        - name: Write runner service secrets source file
+          copy:
+            dest: "{{ runner_dir }}/.service-secrets.env.source"
+            owner: root
+            group: root
+            mode: "0600"
+            content: |
+              {% if sentry_dsn is defined and sentry_dsn %}
+              SENTRY_DSN={{ sentry_dsn }}
+              {% endif %}
+              {% if axiom_token_telemetry is defined and axiom_token_telemetry %}
+              AXIOM_TOKEN_TELEMETRY={{ axiom_token_telemetry }}
+              {% endif %}
+              {% if axiom_dataset_suffix is defined and axiom_dataset_suffix %}
+              AXIOM_DATASET_SUFFIX={{ axiom_dataset_suffix }}
+              {% endif %}
+          no_log: true
 
-    - name: Install and start runner service
-      command: >
-        {{ bin_dir }}/runner service install
-        --name {{ runner_name }}
-        --config {{ runner_dir }}/runner.yaml
-        --service-secrets-file {{ runner_dir }}/service-secrets.env
+        - name: Install and start runner service
+          command: >
+            {{ bin_dir }}/runner service install
+            --name {{ runner_name }}
+            --config {{ runner_dir }}/runner.yaml
+            --service-secrets-file {{ runner_dir }}/.service-secrets.env.source
+      always:
+        - name: Remove runner service secrets source file
+          file:
+            path: "{{ runner_dir }}/.service-secrets.env.source"
+            state: absent
+          no_log: true
 
     # ========================================
     # Phase 4: Health check

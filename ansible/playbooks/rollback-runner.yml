@@ -399,30 +399,35 @@
       set_fact:
         service_secrets_file_supported: "{{ '--service-secrets-file' in (service_install_help.stdout ~ service_install_help.stderr) }}"
 
-    - name: Write target runner service secrets file
+    - name: Install target runner service with private service secrets
       when:
         - not (skip_install | default(false))
         - service_secrets_file_supported | default(false)
-      copy:
-        dest: "{{ runner_dir }}/service-secrets.env"
-        owner: root
-        group: root
-        mode: "0600"
-        content: |
-          {% if sentry_dsn is defined and sentry_dsn %}
-          SENTRY_DSN={{ sentry_dsn }}
-          {% endif %}
-      no_log: true
+      block:
+        - name: Write target runner service secrets source file
+          copy:
+            dest: "{{ runner_dir }}/.service-secrets.env.source"
+            owner: root
+            group: root
+            mode: "0600"
+            content: |
+              {% if sentry_dsn is defined and sentry_dsn %}
+              SENTRY_DSN={{ sentry_dsn }}
+              {% endif %}
+          no_log: true
 
-    - name: Install and start target runner service
-      when:
-        - not (skip_install | default(false))
-        - service_secrets_file_supported | default(false)
-      command: >
-        {{ bin_dir }}/runner service install
-        --name {{ runner_name }}
-        --config {{ runner_dir }}/runner.yaml
-        --service-secrets-file {{ runner_dir }}/service-secrets.env
+        - name: Install and start target runner service
+          command: >
+            {{ bin_dir }}/runner service install
+            --name {{ runner_name }}
+            --config {{ runner_dir }}/runner.yaml
+            --service-secrets-file {{ runner_dir }}/.service-secrets.env.source
+      always:
+        - name: Remove target runner service secrets source file
+          file:
+            path: "{{ runner_dir }}/.service-secrets.env.source"
+            state: absent
+          no_log: true
 
     - name: Install and start target runner service with legacy env
       when:
