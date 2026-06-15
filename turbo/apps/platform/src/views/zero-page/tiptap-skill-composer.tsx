@@ -167,8 +167,14 @@ function isIOS(): boolean {
   );
 }
 
-// Replace the active `/query` text with the chosen token (plus a trailing space
-// unless one already follows). The decoration plugin colors it automatically.
+// Replace the active `/query` text with the chosen token (reusing the space that
+// already follows the query, or appending one). The caret is moved past that
+// space so the inserted `/skill` reads as a finished token: typing the next word
+// can't merge into it, and — since menu visibility is a pure function of the
+// caret position — `beforeCaret` no longer ends in a live `/token`, so the menu
+// closes. Without this, selecting a skill when text already follows the query
+// left the caret between the token and its space, keeping the menu open. The
+// decoration plugin colors the token automatically.
 function insertSkillToken(
   editor: Editor,
   slashRange: SlashSkillRange,
@@ -177,13 +183,16 @@ function insertSkillToken(
 ): void {
   const head = editor.state.selection.head;
   const span = slashRange.end - slashRange.start;
+  const from = head - span;
+  const token = `/${skill.name}`;
   const suffix = input.slice(slashRange.end).startsWith(" ") ? "" : " ";
   editor
     .chain()
     .focus()
-    .insertContentAt({ from: head - span, to: head }, [
-      { type: "text", text: `/${skill.name}${suffix}` },
+    .insertContentAt({ from, to: head }, [
+      { type: "text", text: `${token}${suffix}` },
     ])
+    .setTextSelection(from + token.length + 1)
     .run();
 }
 
