@@ -432,6 +432,76 @@ function createExportSlideScript(): string {
     return ancestors;
   };
 
+  const isTransparentColor = (color) => {
+    const normalized = color.trim().toLowerCase();
+    return (
+      normalized === "" ||
+      normalized === "transparent" ||
+      normalized === "rgba(0, 0, 0, 0)" ||
+      normalized === "rgba(0,0,0,0)"
+    );
+  };
+
+  const hasBackgroundImage = (style) => {
+    return style.backgroundImage && style.backgroundImage !== "none";
+  };
+
+  const hasVisibleBackground = (style) => {
+    return !isTransparentColor(style.backgroundColor) || hasBackgroundImage(style);
+  };
+
+  const copyInheritedSlideBackgrounds = (nodes) => {
+    for (const node of nodes) {
+      if (!(node instanceof HTMLElement)) {
+        continue;
+      }
+      const nodeStyle = window.getComputedStyle(node);
+      if (hasVisibleBackground(nodeStyle)) {
+        continue;
+      }
+      const sourceStyle = [
+        ...ancestorsUntilBody(node),
+        document.body,
+        document.documentElement,
+      ]
+        .filter(Boolean)
+        .map((element) => window.getComputedStyle(element))
+        .find(hasVisibleBackground);
+      if (!sourceStyle) {
+        continue;
+      }
+      if (!isTransparentColor(sourceStyle.backgroundColor)) {
+        node.style.setProperty(
+          "background-color",
+          sourceStyle.backgroundColor,
+          "important",
+        );
+      }
+      if (hasBackgroundImage(sourceStyle)) {
+        node.style.setProperty(
+          "background-image",
+          sourceStyle.backgroundImage,
+          "important",
+        );
+        node.style.setProperty(
+          "background-position",
+          sourceStyle.backgroundPosition,
+          "important",
+        );
+        node.style.setProperty(
+          "background-repeat",
+          sourceStyle.backgroundRepeat,
+          "important",
+        );
+        node.style.setProperty(
+          "background-size",
+          sourceStyle.backgroundSize,
+          "important",
+        );
+      }
+    }
+  };
+
   const waitForImages = async (nodes) => {
     const images = nodes.flatMap((node) => {
       const nested = Array.from(node.querySelectorAll("img"));
@@ -550,6 +620,7 @@ function createExportRunnerScript(): string {
       throw new Error("Presentation HTML has no exportable content");
     }
     revealSlideNodes(nodes);
+    copyInheritedSlideBackgrounds(nodes);
     await waitForExportReadiness(nodes);
     const blob = await window.domToPptx.exportToPptx(nodes, options);
     post({ status: "success", blob });
