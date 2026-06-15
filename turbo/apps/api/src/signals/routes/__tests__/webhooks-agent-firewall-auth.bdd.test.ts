@@ -673,6 +673,7 @@ describe("FW-4: test-oauth connector refresh", () => {
   it("logs OAuth refresh error subtype without changing reconnect behavior", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
+    const longSubtype = `invalid_rapt:${"x".repeat(200)}`;
     await fw.seedTestConnector(actor, {
       connectorName: "test-oauth",
       authMethod: "oauth",
@@ -685,7 +686,7 @@ describe("FW-4: test-oauth connector refresh", () => {
         {
           error: "invalid_grant",
           error_description: "Session control expired",
-          error_subtype: "invalid_rapt",
+          error_subtype: longSubtype,
         },
         { status: 400 },
       );
@@ -716,7 +717,7 @@ describe("FW-4: test-oauth connector refresh", () => {
         errorCode: "invalid_grant",
         failureReason: "reconnect_required",
         oauthError: "invalid_grant",
-        oauthErrorSubtype: "invalid_rapt",
+        oauthErrorSubtype: `${longSubtype.slice(0, 125)}...`,
         oauthStatus: 400,
       }),
     );
