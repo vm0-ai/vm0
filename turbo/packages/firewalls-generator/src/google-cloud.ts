@@ -122,7 +122,6 @@ const GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES = new Set([
   "getEffectiveFirewalls",
   "getFromFamily",
   "getIamPolicy",
-  "getMacsecConfig",
   "getMetadata",
   "getRoutePolicy",
   "getShieldedInstanceIdentity",
@@ -144,6 +143,8 @@ const GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES = new Set([
 ]);
 
 const GOOGLE_CLOUD_DEFAULT_DENIED_PERMISSIONS = new Set([
+  // Returns MACsec CAK/CKN pre-shared key material.
+  "compute.interconnects.getMacsecConfig",
   // Read-shaped permissions that can expose sensitive VM runtime data.
   "compute.instances.getGuestAttributes",
   "compute.instances.getScreenshot",

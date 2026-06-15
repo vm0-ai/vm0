@@ -388,6 +388,9 @@ describe("google-cloud firewall", () => {
     expect(policy.policies["cloudfunctions.functions.sourceCodeGet"]).toBe(
       "deny",
     );
+    expect(policy.policies["compute.interconnects.getMacsecConfig"]).toBe(
+      "deny",
+    );
     expect(policy.policies["compute.instances.getGuestAttributes"]).toBe(
       "deny",
     );
@@ -424,6 +427,9 @@ describe("google-cloud firewall", () => {
     );
     expect(googleCloudDefaultAllowed).not.toContain(
       "cloudfunctions.functions.sourceCodeGet",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "compute.interconnects.getMacsecConfig",
     );
     expect(googleCloudDefaultAllowed).not.toContain(
       "compute.instances.getGuestAttributes",
