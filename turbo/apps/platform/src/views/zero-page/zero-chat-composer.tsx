@@ -538,8 +538,13 @@ function ComposerFeedbackRow({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1.5 py-1.5",
-        showDivider && "border-t border-dashed border-border/60",
+        // Bottom padding on every row; top padding only when a dashed divider
+        // separates stacked fragments. The first row gets no top inset so the
+        // quote chip sits as high as the attachment chips do (matching the
+        // composer's pt-3), letting the card extend upward instead of leaving a
+        // gap above the chip.
+        "flex flex-col gap-1.5 pb-1.5",
+        showDivider && "border-t border-dashed border-border/60 pt-1.5",
       )}
     >
       {/* Quote reference reuses the selected-template chip treatment (bordered
@@ -602,7 +607,9 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
 
   return (
     // min-h keeps the card from shrinking below the textarea's resting height.
-    <div className="flex min-h-[96px] flex-col px-3 pb-2 pt-3">
+    // px-4 / pt-3 mirror the attachment-chips inset so the feedback chip lines
+    // up with attachments on both the left and top edges.
+    <div className="flex min-h-[96px] flex-col px-4 pb-2 pt-3">
       {feedback.items.map((item, index) => {
         return (
           <ComposerFeedbackRow
