@@ -63,7 +63,7 @@ async function signInThroughExternalOnboardingGate(
       continue;
     }
 
-    if (isOnboardingOrChatUrl(url)) {
+    if (/\/agents\/.*\/chat/.test(url.pathname)) {
       return;
     }
 
@@ -72,8 +72,19 @@ async function signInThroughExternalOnboardingGate(
     });
     if (await waitForVisible(continueToSignUp, 2_000)) {
       await continueToSignUp.click();
-      await waitForAuthUrl(page);
+      if (!(await waitForAuthUrl(page, 30_000))) {
+        throw new Error(
+          `Expected onboarding gate to redirect to auth: ${page.url()}`,
+        );
+      }
       continue;
+    }
+
+    if (url.pathname.includes("/onboarding")) {
+      if (await waitForAuthUrl(page, attempt === 0 ? 10_000 : 3_000)) {
+        continue;
+      }
+      return;
     }
   }
 
@@ -101,11 +112,14 @@ async function waitForAuthOrOnboardingUrl(page: Page): Promise<void> {
   );
 }
 
-async function waitForAuthUrl(page: Page): Promise<void> {
-  await page.waitForURL(isAuthUrl, {
-    timeout: 30_000,
-    waitUntil: "domcontentloaded",
-  });
+async function waitForAuthUrl(page: Page, timeout: number): Promise<boolean> {
+  return await page
+    .waitForURL(isAuthUrl, {
+      timeout,
+      waitUntil: "domcontentloaded",
+    })
+    .then(() => true)
+    .catch(() => false);
 }
 
 function isAuthUrl(url: URL): boolean {
