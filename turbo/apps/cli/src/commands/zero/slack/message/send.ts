@@ -1,8 +1,8 @@
-import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
 import { sendSlackMessage } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
+import { readPipedStdin } from "../../../../lib/utils/prompt-utils";
 
 export const sendCommand = new Command()
   .name("send")
@@ -54,16 +54,9 @@ Notes:
           });
         }
 
-        // Read from stdin if text not provided and stdin is not a TTY
-        // (isTTY is true only for an interactive terminal, undefined when
-        // piped or in a test runner — so guard with !isTTY, not === false).
-        if (!text && !process.stdin.isTTY) {
-          try {
-            text = readFileSync("/dev/stdin", "utf8").trim();
-          } catch {
-            // stdin not readable (e.g. test runner with no piped input);
-            // fall through to the missing-text error below.
-          }
+        // Read from stdin when --text was not provided.
+        if (!text) {
+          text = readPipedStdin();
         }
 
         // Parse blocks JSON if provided

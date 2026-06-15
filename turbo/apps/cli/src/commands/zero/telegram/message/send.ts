@@ -1,8 +1,8 @@
-import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
 import { sendTelegramMessage } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
+import { readPipedStdin } from "../../../../lib/utils/prompt-utils";
 
 function parsePositiveInteger(value: string, flag: string): number {
   const parsed = Number(value);
@@ -42,13 +42,8 @@ Notes:
         messageThreadId?: string;
       }) => {
         let text = options.text;
-        if (!text && !process.stdin.isTTY) {
-          try {
-            text = readFileSync("/dev/stdin", "utf8").trim();
-          } catch {
-            // stdin not readable (e.g. test runner with no piped input);
-            // fall through to the missing-text error below.
-          }
+        if (!text) {
+          text = readPipedStdin();
         }
 
         if (!text) {

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readPipedStdin } from "../../../../lib/utils/prompt-utils";
 import { printConnectorGuidance } from "./connector-guidance";
 import { runLister, type GenerationType } from "./lister";
 
@@ -46,17 +46,5 @@ function resolvePrompt(prompt: string | undefined): string | null {
     return prompt.trim();
   }
 
-  if (!process.stdin.isTTY) {
-    try {
-      const piped = readFileSync("/dev/stdin", "utf8").trim();
-      if (piped.length > 0) {
-        return piped;
-      }
-    } catch {
-      // stdin not readable (e.g. test runner with no piped input);
-      // treat as no piped prompt and fall through to lister.
-    }
-  }
-
-  return null;
+  return readPipedStdin() ?? null;
 }
