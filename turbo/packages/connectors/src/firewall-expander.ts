@@ -33,6 +33,135 @@ const VALID_RULE_METHODS = new Set([
   "OPTIONS",
   "ANY",
 ]);
+const AWS_RULE_SEPARATOR = " AWS ";
+const AWS_PREDICATE_VALUE_RE = /^[A-Za-z0-9._:-]+$/;
+const AWS_SUBRESOURCE_QUERY_RE = /^[A-Za-z0-9._~-]+$/;
+const VALID_AWS_PREDICATE_KEYS = new Set(["sigv4", "action", "target"]);
+
+interface ParsedRuleRemainder {
+  readonly path: string;
+  readonly querySubresource?: string;
+  readonly awsPredicates?: ReadonlyMap<string, string>;
+}
+
+function parseAwsPredicates(
+  predicateText: string,
+  rule: string,
+  permName: string,
+  serviceName: string,
+): ReadonlyMap<string, string> {
+  if (predicateText === "") {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS predicates are required after "AWS"`,
+    );
+  }
+
+  const predicates = new Map<string, string>();
+  for (const token of predicateText.split(" ")) {
+    if (token === "") {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS predicates must be separated by a single space`,
+      );
+    }
+    const [key, value, extra] = token.split("=");
+    if (extra !== undefined || !key || !value) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS predicate "${token}" must be key=value`,
+      );
+    }
+    if (!VALID_AWS_PREDICATE_KEYS.has(key)) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": unsupported AWS predicate "${key}"`,
+      );
+    }
+    if (predicates.has(key)) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": duplicate AWS predicate "${key}"`,
+      );
+    }
+    if (!AWS_PREDICATE_VALUE_RE.test(value)) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS predicate "${key}" has an invalid value`,
+      );
+    }
+    predicates.set(key, value);
+  }
+
+  if (!predicates.has("sigv4")) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS predicate "sigv4" is required`,
+    );
+  }
+  if (predicates.has("action") && predicates.has("target")) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS predicates "action" and "target" cannot be combined`,
+    );
+  }
+
+  return predicates;
+}
+
+function parseRuleRemainder(
+  rest: string,
+  rule: string,
+  permName: string,
+  serviceName: string,
+): ParsedRuleRemainder {
+  const separatorIndex = rest.indexOf(AWS_RULE_SEPARATOR);
+  if (separatorIndex === -1) {
+    return { path: rest };
+  }
+  if (rest.indexOf(AWS_RULE_SEPARATOR, separatorIndex + 1) !== -1) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS predicates may appear only once`,
+    );
+  }
+
+  const rawPath = rest.slice(0, separatorIndex);
+  const predicateText = rest.slice(separatorIndex + AWS_RULE_SEPARATOR.length);
+  if (!rawPath) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must start with "/"`,
+    );
+  }
+
+  const queryIndex = rawPath.indexOf("?");
+  if (queryIndex === -1) {
+    return {
+      path: rawPath,
+      awsPredicates: parseAwsPredicates(
+        predicateText,
+        rule,
+        permName,
+        serviceName,
+      ),
+    };
+  }
+
+  const path = rawPath.slice(0, queryIndex);
+  const querySubresource = rawPath.slice(queryIndex + 1);
+  if (
+    querySubresource === "" ||
+    querySubresource.includes("=") ||
+    querySubresource.includes("&") ||
+    !AWS_SUBRESOURCE_QUERY_RE.test(querySubresource)
+  ) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": AWS subresource query must be a single query key`,
+    );
+  }
+
+  return {
+    path,
+    querySubresource,
+    awsPredicates: parseAwsPredicates(
+      predicateText,
+      rule,
+      permName,
+      serviceName,
+    ),
+  };
+}
 
 function validatePathSegments(
   path: string,
@@ -120,7 +249,8 @@ export function validateRule(
     );
   }
 
-  validatePathSegments(rest, rule, permName, serviceName);
+  const parsed = parseRuleRemainder(rest, rule, permName, serviceName);
+  validatePathSegments(parsed.path, rule, permName, serviceName);
 }
 
 /**

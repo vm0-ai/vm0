@@ -65,16 +65,30 @@ def compile_firewalls_or_fail(firewalls):
     return compiled
 
 
-def match_compiled_firewalls(url, firewalls, network_policies, *, method="GET"):
+def match_compiled_firewalls(
+    url,
+    firewalls,
+    network_policies,
+    *,
+    method="GET",
+    request_context=None,
+):
     return matching.match_compiled_firewall_request(
         url,
         method,
         compile_firewalls_or_fail(firewalls),
         network_policies,
+        request_context,
     )
 
 
-def match_request_with_raw_firewalls(url, method, firewalls, network_policies=None):
+def match_request_with_raw_firewalls(
+    url,
+    method,
+    firewalls,
+    network_policies=None,
+    request_context=None,
+):
     """Match raw firewall config through the production compiled matcher."""
     compiled_firewalls = matching.compile_firewalls(firewalls)
     return matching.match_compiled_firewall_request(
@@ -82,6 +96,7 @@ def match_request_with_raw_firewalls(url, method, firewalls, network_policies=No
         method,
         compiled_firewalls,
         network_policies,
+        request_context,
     )
 
 

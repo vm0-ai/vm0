@@ -77,6 +77,13 @@ def test_malformed_rule_blocks_unknown_policy_allow():
         ("GET /files/{path*}/admin", "https://api.github.com/files/readme"),
         ("GET /files/{path+}.json", "https://api.github.com/files/readme.json"),
         ("GET /repos/{id}/{id}", REPO_URL),
+        ("POST / AWS action=DescribeInstances", "https://api.github.com/"),
+        ("POST / AWS sigv4=ec2 sigv4=s3", "https://api.github.com/"),
+        (
+            "POST / AWS sigv4=ec2 action=DescribeInstances target=DynamoDB_20120810.GetItem",
+            "https://api.github.com/",
+        ),
+        ("GET /{Bucket}?acl=1 AWS sigv4=s3", "https://api.github.com/bucket"),
     ],
 )
 def test_malformed_rule_syntax_fails_closed_before_unknown_allow(rule, url):

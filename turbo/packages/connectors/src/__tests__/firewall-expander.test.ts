@@ -373,6 +373,30 @@ describe("validateRule", () => {
     }).not.toThrow();
   });
 
+  it("should accept AWS predicates after HTTP rules", () => {
+    expect(() => {
+      return validateRule(
+        "POST / AWS sigv4=ec2 action=DescribeInstances",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+    expect(() => {
+      return validateRule(
+        "POST / AWS sigv4=dynamodb target=DynamoDB_20120810.GetItem",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+    expect(() => {
+      return validateRule(
+        "GET /{Bucket}/{Key+}?tagging AWS sigv4=s3",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
   it("should reject missing path", () => {
     expect(() => {
       return validateRule("GET", "read", "github");
@@ -401,6 +425,28 @@ describe("validateRule", () => {
     expect(() => {
       return validateRule("GET /foo?bar=1", "read", "github");
     }).toThrow("must not contain query string or fragment");
+  });
+
+  it("should reject malformed AWS predicates", () => {
+    expect(() => {
+      return validateRule("POST / AWS action=DescribeInstances", "p", "fw");
+    }).toThrow('AWS predicate "sigv4" is required');
+    expect(() => {
+      return validateRule("POST / AWS sigv4=ec2 sigv4=dynamodb", "p", "fw");
+    }).toThrow('duplicate AWS predicate "sigv4"');
+    expect(() => {
+      return validateRule(
+        "POST / AWS sigv4=ec2 action=DescribeInstances target=Target",
+        "p",
+        "fw",
+      );
+    }).toThrow('AWS predicates "action" and "target" cannot be combined');
+    expect(() => {
+      return validateRule("POST / AWS sigv4=ec2 body=Action", "p", "fw");
+    }).toThrow('unsupported AWS predicate "body"');
+    expect(() => {
+      return validateRule("GET /?acl=1 AWS sigv4=s3", "p", "fw");
+    }).toThrow("AWS subresource query must be a single query key");
   });
 
   it("should reject path with fragment", () => {

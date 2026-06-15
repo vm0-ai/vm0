@@ -57,7 +57,7 @@ import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { atlascloudFirewall } from "./atlascloud.generated";
 import { aviationstackFirewall } from "./aviationstack.generated";
-import { awsFirewall } from "./aws.generated";
+import { awsDefaultAllowed, awsFirewall } from "./aws.generated";
 // NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
 // mathpix/nyne/openrouter/openweather/reducto were added in the same
 // Sponge-catalog batch and are wired below.
@@ -824,6 +824,7 @@ const DEFAULT_ALLOWED: Partial<
   clerk: clerkDefaultAllowed,
   cloudflare: cloudflareDefaultAllowed,
   "google-cloud": googleCloudDefaultAllowed,
+  aws: awsDefaultAllowed,
   gmail: gmailDefaultAllowed,
   slack: slackDefaultAllowed,
   stripe: stripeDefaultAllowed,

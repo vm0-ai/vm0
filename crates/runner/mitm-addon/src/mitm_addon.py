@@ -635,6 +635,10 @@ def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
             flow.request.method,
             compiled_firewalls,
             compiled_network_policies,
+            matching.FirewallRequestContext(
+                headers=tuple(flow.request.headers.items(multi=True)),
+                body=flow.request.raw_content,
+            ),
         )
         if isinstance(result, matching.FirewallBlock):
             return _RequestClassification(

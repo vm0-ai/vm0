@@ -201,7 +201,9 @@ function matchingRulePath(rule: string, upperMethod: string): string | null {
   const ruleMethod = rule.slice(0, spaceIdx);
   if (!VALID_RULE_METHODS.has(ruleMethod)) return null;
   if (ruleMethod !== "ANY" && ruleMethod !== upperMethod) return null;
-  return rule.slice(spaceIdx + 1);
+  const rest = rule.slice(spaceIdx + 1);
+  if (rest.includes(" AWS ")) return null;
+  return rest;
 }
 
 function isValidPermissionName(permissionName: string): boolean {

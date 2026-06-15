@@ -1,4 +1,12 @@
 {
+  "aws": {
+    "https://raw.githubusercontent.com/boto/botocore/develop/botocore/data/dynamodb/2012-08-10/service-2.json": "b180021688e8721f44d4f03a033b75370b5e4b969d9556a2cbd086d09a6ae746",
+    "https://raw.githubusercontent.com/boto/botocore/develop/botocore/data/ec2/2016-11-15/service-2.json": "5e0bba9852024940fdba36ba2df08c7f1bfb8d639c66f5a12ffd97e90f8d0842",
+    "https://raw.githubusercontent.com/boto/botocore/develop/botocore/data/s3/2006-03-01/service-2.json": "f11e9149d16fcc226a85456d1d5d4a2258041818f1a64027007f76ce535f2eb3",
+    "https://servicereference.us-east-1.amazonaws.com/v1/dynamodb/dynamodb.json": "1a134eb8d49655d52401611c4a370b469f824f803e6dabf5ce1bb4c52de68a5d",
+    "https://servicereference.us-east-1.amazonaws.com/v1/ec2/ec2.json": "81bf55960ba834df15bf5530dabf747f7d6b0eb07afb3fba4bd34a024e7cc6f7",
+    "https://servicereference.us-east-1.amazonaws.com/v1/s3/s3.json": "2e842224579707a157db4500ceb8b3e811265fcf22004e34b9abc9b0c05cb7b7"
+  },
   "axiom": {
     "https://axiom.co/docs/restapi/versions/v1-edge-ingest.json": "a285eddb0526aac63d795c2947ca488be1530bc5d006fffbd087ec2131a39999",
     "https://axiom.co/docs/restapi/versions/v1-edge-query.json": "3fefcf8963a5ab62f40f3ba5824aa093424109f0180c6918422353dec876cbd6",

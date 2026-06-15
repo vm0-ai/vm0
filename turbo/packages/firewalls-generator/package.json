@@ -6,6 +6,7 @@
   "scripts": {
     "check-types": "tsc --noEmit",
     "update-specs": "tsx src/update-specs.ts",
+    "update-specs:aws": "tsx src/update-specs.ts aws",
     "update-specs:axiom": "tsx src/update-specs.ts axiom",
     "update-specs:clerk": "tsx src/update-specs.ts clerk",
     "update-specs:cloudflare": "tsx src/update-specs.ts cloudflare",

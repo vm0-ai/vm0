@@ -23,6 +23,7 @@ import {
   CLOUDFLARE_OAUTH_SCOPES_URL,
   CLOUDFLARE_OPENAPI_URL,
 } from "./cloudflare-sources";
+import { AWS_BOTOCORE_MODEL_URLS, AWS_SERVICE_REFERENCE_URLS } from "./aws";
 import { CLERK_OPENAPI_URL } from "./clerk";
 import {
   GOOGLE_CLOUD_DISCOVERY_URLS,
@@ -288,6 +289,10 @@ const cloudflareUpdater: Updater = {
 const UPDATERS: Updater[] = [
   // Static generators
   staticUpdater("clerk", [CLERK_OPENAPI_URL]),
+  staticUpdater("aws", [
+    ...Object.values(AWS_SERVICE_REFERENCE_URLS),
+    ...Object.values(AWS_BOTOCORE_MODEL_URLS),
+  ]),
   cloudflareUpdater,
   staticUpdater("axiom", [
     "https://axiom.co/docs/restapi/versions/v2.json",

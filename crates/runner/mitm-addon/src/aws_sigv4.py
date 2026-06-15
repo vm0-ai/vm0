@@ -159,6 +159,24 @@ def sign_request(
     )
 
 
+def inspect_sigv4_service(
+    *,
+    url: str,
+    headers: list[tuple[str, str]],
+) -> str | None:
+    """Return the SigV4 signing service without mutating or re-signing.
+
+    This is intentionally narrower than ``sign_request``: firewall permission
+    matching only needs the request-observable signing service. Malformed or
+    unsupported SigV4 metadata returns ``None`` so the permission rule does not
+    match and the normal unknown-policy path decides the request.
+    """
+    try:
+        return _classify_request(url, headers).scope.service
+    except AwsSigV4SigningError:
+        return None
+
+
 def _classify_request(
     url: str,
     headers: list[tuple[str, str]],

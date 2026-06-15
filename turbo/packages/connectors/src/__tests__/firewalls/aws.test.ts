@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { extractSecretNamesFromApis } from "../../firewall-types";
-import { matchFirewallBaseUrl } from "../../firewall-rule-matcher";
+import {
+  findMatchingPermissions,
+  matchFirewallBaseUrl,
+} from "../../firewall-rule-matcher";
 import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
@@ -23,46 +26,67 @@ function expectRecognizablePlaceholder(value: string | undefined): void {
 }
 
 describe("aws firewall", () => {
-  it("registers AWS as an auth-only SigV4 firewall connector", () => {
+  it("registers AWS as a SigV4 firewall connector with generated permissions", () => {
     expect(isFirewallConnectorType("aws")).toBe(true);
     const firewall = getConnectorFirewall("aws");
 
     expect(firewall.name).toBe("aws");
-    expect(firewall.apis).toStrictEqual([
-      {
-        base: "https://{awsHost+}.amazonaws.com",
-        auth: {
-          awsSigv4: {
-            accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
-            secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-            sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
-          },
-        },
-        permissions: [],
-      },
-      {
-        base: "https://{awsHost+}.amazonaws.com.cn",
-        auth: {
-          awsSigv4: {
-            accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
-            secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-            sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
-          },
-        },
-        permissions: [],
-      },
-      {
-        base: "https://{awsHost+}.api.aws",
-        auth: {
-          awsSigv4: {
-            accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
-            secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-            sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
-          },
-        },
-        permissions: [],
-      },
+    expect(
+      firewall.apis.map((api) => {
+        return api.base;
+      }),
+    ).toStrictEqual([
+      "https://{awsHost+}.amazonaws.com",
+      "https://{awsHost+}.amazonaws.com.cn",
+      "https://{awsHost+}.api.aws",
     ]);
+    for (const api of firewall.apis) {
+      expect(api.auth).toStrictEqual({
+        awsSigv4: {
+          accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+          secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+          sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
+        },
+      });
+      expect(
+        api.permissions?.map((permission) => {
+          return permission.name;
+        }),
+      ).toEqual(
+        expect.arrayContaining([
+          "ec2:DescribeInstances",
+          "ec2:RunInstances",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "s3:GetObject",
+          "s3:GetObjectTagging",
+          "s3:PutBucketAcl",
+        ]),
+      );
+    }
+
+    const permissions = firewall.apis[0]!.permissions ?? [];
+    expect(
+      permissions.find((permission) => {
+        return permission.name === "ec2:DescribeInstances";
+      })?.rules,
+    ).toStrictEqual([
+      "GET / AWS sigv4=ec2 action=DescribeInstances",
+      "POST / AWS sigv4=ec2 action=DescribeInstances",
+    ]);
+    expect(
+      permissions.find((permission) => {
+        return permission.name === "dynamodb:GetItem";
+      })?.rules,
+    ).toStrictEqual([
+      "POST / AWS sigv4=dynamodb target=DynamoDB_20120810.GetItem",
+    ]);
+    expect(
+      permissions.find((permission) => {
+        return permission.name === "s3:GetObjectTagging";
+      })?.rules,
+    ).toStrictEqual(["GET /{Bucket}/{Key+}?tagging AWS sigv4=s3"]);
+
     expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
       "AWS_ACCESS_KEY_ID",
       "AWS_SECRET_ACCESS_KEY",
@@ -80,10 +104,26 @@ describe("aws firewall", () => {
     expectRecognizablePlaceholder(firewall.placeholders?.AWS_ACCESS_KEY_ID);
     expectRecognizablePlaceholder(firewall.placeholders?.AWS_SECRET_ACCESS_KEY);
     expectRecognizablePlaceholder(firewall.placeholders?.AWS_SESSION_TOKEN);
-    expect(getDefaultFirewallPolicies("aws")).toStrictEqual({
-      policies: {},
-      unknownPolicy: "allow",
-    });
+
+    const defaults = getDefaultFirewallPolicies("aws");
+    expect(defaults.unknownPolicy).toBe("allow");
+    expect(defaults.policies["ec2:DescribeInstances"]).toBe("allow");
+    expect(defaults.policies["ec2:RunInstances"]).toBe("deny");
+    expect(defaults.policies["ec2:CreateTags"]).toBe("deny");
+    expect(defaults.policies["dynamodb:GetItem"]).toBe("allow");
+    expect(defaults.policies["dynamodb:PutItem"]).toBe("deny");
+    expect(defaults.policies["s3:GetObject"]).toBe("allow");
+    expect(defaults.policies["s3:PutBucketAcl"]).toBe("deny");
+    expect(defaults.policies["s3:PutObjectTagging"]).toBe("deny");
+  });
+
+  it("does not treat AWS predicate rules as plain path rules in the TypeScript matcher", () => {
+    const firewall = getConnectorFirewall("aws");
+
+    expect(findMatchingPermissions("GET", "/", firewall)).toStrictEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/bucket/key", firewall),
+    ).toStrictEqual([]);
   });
 
   it("matches common AWS-owned endpoints", () => {

@@ -12,7 +12,9 @@ import { parseSegment, splitPathSegments } from "./segment-parser";
 
 /**
  * Firewall permission schema — a named permission group with matching rules.
- * Rules use the format `METHOD /path` where path is relative to the API entry's base URL.
+ * Rules use the format `METHOD /path` where path is relative to the API
+ * entry's base URL. AWS SigV4 connector rules may append scoped predicates,
+ * for example `POST / AWS sigv4=ec2 action=DescribeInstances`.
  */
 export const firewallPermissionSchema = z.object({
   name: z.string(),
