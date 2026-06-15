@@ -1948,6 +1948,7 @@ jobs:
             local SERVICE_SECRETS_SOURCE="${RUNNER_DIR}/.service-secrets.env.source"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -f ${SERVICE_SECRETS_SOURCE}"
+            # shellcheck disable=SC2029
             if ! printf 'VERCEL_AUTOMATION_BYPASS_SECRET=%s\n' "$VERCEL_BYPASS" \
               | ssh "$REMOTE" "sudo sh -c 'umask 077; cat > \"\$1\" && chmod 600 \"\$1\"' sh ${SERVICE_SECRETS_SOURCE}"; then
               # shellcheck disable=SC2029
