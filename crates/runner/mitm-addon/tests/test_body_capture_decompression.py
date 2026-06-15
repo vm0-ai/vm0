@@ -144,17 +144,26 @@ class TestDecompression:
         add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "hello world"}'
 
-    def test_invalid_gzip_marks_binary(self, real_flow):
-        """Invalid gzip data should fall back to original bytes and be marked binary."""
+    def test_invalid_gzip_text_fallback_captures_original_utf8_body(self, real_flow):
+        """Invalid gzip falls back to original bytes, then normal text capture rules apply."""
         flow = self._make_flow_with_compressed_buffer(
             real_flow, b"not gzip at all", "gzip", content_type="text/plain"
         )
         entry = {}
         add_capture_fields(flow, entry)
-        # Original compressed bytes are not valid UTF-8 text, but this happens
-        # to be valid UTF-8 so it gets captured as-is
         assert "response_body" in entry
         assert entry["response_body"] == "not gzip at all"
+        assert entry["response_body_encoding"] == "utf-8"
+
+    def test_invalid_gzip_non_text_fallback_marks_binary(self, real_flow):
+        """Binary marking comes from normal capture rules after invalid gzip fallback."""
+        flow = self._make_flow_with_compressed_buffer(
+            real_flow, b"not gzip at all", "gzip", content_type="application/octet-stream"
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
 
     def test_unknown_encoding_passes_through(self, real_flow):
         flow = self._make_flow_with_compressed_buffer(real_flow, b'{"ok": true}', "x-custom")
