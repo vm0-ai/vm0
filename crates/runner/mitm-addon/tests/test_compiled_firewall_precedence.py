@@ -1211,6 +1211,46 @@ def test_more_specific_parameter_shape_wins(
     assert result.params == expected_params
 
 
+def test_denied_mixed_parameter_rule_uses_non_empty_segment_match():
+    api_entry = {
+        "base": "https://api.example.com",
+        "auth": {"headers": {"Authorization": "Bearer token"}},
+        "permissions": [
+            {"name": "file-download", "rules": ["GET /files/file-{slug}"]},
+        ],
+    }
+    fws = wrap_firewalls([api_entry], name="example")
+    policies = {
+        "example": {
+            "allow": [],
+            "deny": ["file-download"],
+            "unknownPolicy": "deny",
+        }
+    }
+
+    denied = matching.match_compiled_firewall_request(
+        "https://api.example.com/files/file-readme",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(denied, matching.FirewallBlock)
+    assert denied.reason == "permission_denied"
+    assert denied.permissions == ("file-download",)
+
+    empty_capture = matching.match_compiled_firewall_request(
+        "https://api.example.com/files/file-",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(empty_capture, matching.FirewallBlock)
+    assert empty_capture.reason == "unknown_endpoint"
+    assert empty_capture.permissions == ()
+
+
 def test_many_lower_specificity_denies_do_not_shadow_later_literal_allow():
     broad_permissions = [
         {"name": f"broad-{index}", "rules": ["GET /{path+}"]} for index in range(24)
