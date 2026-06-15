@@ -1548,6 +1548,9 @@ mod tests {
     use super::*;
     use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission};
     use std::os::unix::fs::PermissionsExt;
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     fn write_fake_listening_mitmdump(path: &Path) {
         std::fs::write(
@@ -1597,6 +1600,26 @@ PY
         );
     }
 
+    fn capture_mitmdump_stderr_log(line: &str) -> CapturedEvent {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            log_mitmdump_stderr_line(line);
+        });
+        let events = captured.entries();
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        events[0].clone()
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+    }
+
     #[test]
     fn parse_mitmdump_usage_underbilling_stderr_extracts_fields() {
         let signal = parse_mitmdump_usage_underbilling_stderr(
@@ -1624,6 +1647,22 @@ PY
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn mitmdump_underbilling_stderr_reemits_structured_error() {
+        let line = "[error] type=usage_underbilling reason=pending_snapshot_write_failed \
+                    underbilling_class=risk component=mitm_addon Failed to write pending count";
+
+        let event = capture_mitmdump_stderr_log(line);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_event_field(&event, "message", "mitmdump usage underbilling signal");
+        assert_event_field(&event, "type", "usage_underbilling");
+        assert_event_field(&event, "reason", "pending_snapshot_write_failed");
+        assert_event_field(&event, "underbilling_class", "risk");
+        assert_event_field(&event, "component", "mitm_addon");
+        assert_event_field(&event, "mitmdump_stderr", line);
     }
 
     #[cfg(target_os = "linux")]
