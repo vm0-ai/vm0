@@ -301,18 +301,17 @@ impl ExecWaitCore {
         // The state lock already proved dispatch removed the operation; only the
         // terminal result delivery remains.
         self.active_seq_or_closed(Self::operation_closed_message(lifecycle))?;
-        let rx = self.result_rx.as_mut().ok_or_else(|| {
+        let rx = self.result_rx.take().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::ConnectionReset,
                 Self::operation_closed_message(lifecycle),
             )
         })?;
+        self.seq = None;
 
         let result = rx
             .await
             .map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"));
-        self.seq = None;
-        self.result_rx = None;
         result?
     }
 }
