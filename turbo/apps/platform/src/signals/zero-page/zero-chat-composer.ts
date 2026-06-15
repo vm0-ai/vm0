@@ -135,6 +135,16 @@ export const clearComputerUsePopoverCloseSuppression$ = command(({ set }) => {
   set(internalComputerUsePopoverIgnoreClose$, false);
 });
 
+const internalComputerUseDownloadDialogOpen$ = state(false);
+export const computerUseDownloadDialogOpen$ = computed((get) => {
+  return get(internalComputerUseDownloadDialogOpen$);
+});
+export const setComputerUseDownloadDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalComputerUseDownloadDialogOpen$, open);
+  },
+);
+
 // -- Model picker open state ------------------------------------------------
 
 const internalModelPickerOpen$ = state(false);

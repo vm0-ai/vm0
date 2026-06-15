@@ -47,6 +47,20 @@ export const desktopUpdatesContract = c.router({
     },
     summary: "Redirect to the current desktop release page",
   },
+  dmgDownload: {
+    method: "GET",
+    path: "/api/zero/desktop/updates/:channel/:platform/:arch/dmg",
+    pathParams: z.object({
+      channel: desktopUpdateChannelSchema,
+      platform: desktopUpdatePlatformSchema,
+      arch: desktopUpdateArchitectureSchema,
+    }),
+    responses: {
+      302: c.noBody(),
+      404: apiErrorSchema,
+    },
+    summary: "Redirect to the current desktop DMG download",
+  },
   feed: {
     method: "GET",
     path: "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",

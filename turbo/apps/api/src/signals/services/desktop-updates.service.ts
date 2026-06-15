@@ -13,6 +13,9 @@ const DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
 const DESKTOP_RELEASE_PAGE_URL_PREFIX =
   "https://github.com/vm0-ai/vm0/releases/tag/desktop-v";
+const DESKTOP_RELEASE_DOWNLOAD_URL_PREFIX =
+  "https://github.com/vm0-ai/vm0/releases/download";
+const MIN_DESKTOP_DMG_VERSION = "0.12.0";
 
 const DESKTOP_UPDATE_MANIFEST_CACHE_TTL_MS = 60_000;
 
@@ -127,6 +130,17 @@ function desktopReleasePageUrl(
   )}`;
 }
 
+function desktopDmgDownloadUrl(
+  release: DesktopUpdateManifest["releases"][string],
+  request: DesktopUpdateFeedRequest,
+): string {
+  const tagName = `desktop-v${release.version}`;
+  const assetName = `Zero-${request.platform}-${request.arch}-${release.version}.dmg`;
+  return `${DESKTOP_RELEASE_DOWNLOAD_URL_PREFIX}/${encodeURIComponent(
+    tagName,
+  )}/${encodeURIComponent(assetName)}`;
+}
+
 function selectDesktopRelease(
   manifest: DesktopUpdateManifest,
   request: DesktopUpdateFeedRequest,
@@ -236,4 +250,20 @@ export async function loadDesktopReleasePageUrl(
   const manifest = await loadDesktopUpdateManifest(signal);
   const selected = selectDesktopRelease(manifest, request);
   return selected ? desktopReleasePageUrl(selected.release) : null;
+}
+
+export async function loadDesktopDmgDownloadUrl(
+  request: DesktopUpdateFeedRequest,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const manifest = await loadDesktopUpdateManifest(signal);
+  const selected = selectDesktopRelease(manifest, request);
+  if (
+    !selected ||
+    compareDesktopVersions(selected.release.version, MIN_DESKTOP_DMG_VERSION) <
+      0
+  ) {
+    return null;
+  }
+  return desktopDmgDownloadUrl(selected.release, request);
 }
