@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.143.0](https://github.com/vm0-ai/vm0/compare/api-v1.142.0...api-v1.143.0) (2026-06-15)
+
+
+### Features
+
+* redirect onboarding to so site ([#17654](https://github.com/vm0-ai/vm0/issues/17654)) ([55dd940](https://github.com/vm0-ai/vm0/commit/55dd940a002c83356545486c884021d8d3d427fd))
+
+
+### Bug Fixes
+
+* add usage underbilling alert signals ([#17691](https://github.com/vm0-ai/vm0/issues/17691)) ([4edf467](https://github.com/vm0-ai/vm0/commit/4edf467d84ec10bcd7138ba90d44330e94083f35))
+* store credit purchases with distinct source ([#17729](https://github.com/vm0-ai/vm0/issues/17729)) ([2b4a8f0](https://github.com/vm0-ai/vm0/commit/2b4a8f02460a8c9f8c59a74f238c4ca12c1f68f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.94.1
+    * @vm0/connectors bumped to 1.78.0
+    * @vm0/core bumped to 8.340.0
+    * @vm0/db bumped to 1.52.1
+
 ## [1.142.0](https://github.com/vm0-ai/vm0/compare/api-v1.141.0...api-v1.142.0) (2026-06-15)
 
 

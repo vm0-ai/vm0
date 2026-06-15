@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.454.0](https://github.com/vm0-ai/vm0/compare/app-v0.453.0...app-v0.454.0) (2026-06-15)
+
+
+### Features
+
+* gate API keys settings for staff ([#17590](https://github.com/vm0-ai/vm0/issues/17590)) ([b45a627](https://github.com/vm0-ai/vm0/commit/b45a6276ad06810010743d5af5baa4318e8b3439))
+* redirect onboarding to so site ([#17654](https://github.com/vm0-ai/vm0/issues/17654)) ([55dd940](https://github.com/vm0-ai/vm0/commit/55dd940a002c83356545486c884021d8d3d427fd))
+
+
+### Bug Fixes
+
+* restore native image context menu in lightbox ([#17725](https://github.com/vm0-ai/vm0/issues/17725)) ([d842d5d](https://github.com/vm0-ai/vm0/commit/d842d5d4a876596ae2572db962a70e114ea70498)), closes [#17672](https://github.com/vm0-ai/vm0/issues/17672)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.94.1
+    * @vm0/connectors bumped to 1.78.0
+    * @vm0/core bumped to 8.340.0
+
 ## [0.453.0](https://github.com/vm0-ai/vm0/compare/app-v0.452.0...app-v0.453.0) (2026-06-15)
 
 

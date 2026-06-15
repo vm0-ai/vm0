@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.13.0...desktop-v0.14.0) (2026-06-15)
+
+
+### Features
+
+* open desktop setup when launch needs attention ([#17739](https://github.com/vm0-ai/vm0/issues/17739)) ([58d918f](https://github.com/vm0-ai/vm0/commit/58d918f94b78c6f83cf2532a7e78a1abcd9cee20))
+
 ## [0.13.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.12.0...desktop-v0.13.0) (2026-06-15)
 
 
