@@ -32,6 +32,7 @@ from ..idempotency import (
     derive_usage_idempotency_key,
 )
 from ..model_tokens import MODEL_USAGE_CATEGORIES
+from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
 
@@ -70,8 +71,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
 
     Returns whether usage was accepted into the reporting path. All failed
     gates are silent by design except missing sandbox token or API URL, which
-    writes a proxy warning because that indicates an environment/reporting setup
-    problem.
+    writes an underbilling signal because billable usage cannot be reported.
     """
     if not run_id:
         return False
@@ -87,11 +87,15 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     api_url = get_api_url()
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if not sandbox_token or not api_url:
-        log_proxy_entry(
+        log_usage_underbilling(
             proxy_log_path,
-            "warn",
             "Cannot report usage event: missing sandbox_token or api_url",
-            type="usage_event",
+            "missing_reporting_context",
+            "confirmed",
+            run_id=run_id,
+            firewall_name=firewall_name,
+            missing_sandbox_token=not bool(sandbox_token),
+            missing_api_url=not bool(api_url),
         )
         return False
     url = f"{api_url}/api/webhooks/agent/usage-event"

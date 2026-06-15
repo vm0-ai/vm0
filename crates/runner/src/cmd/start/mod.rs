@@ -37,7 +37,7 @@ use sandbox::{RuntimeProvider, SandboxRuntime};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::ids::RunId;
 
@@ -1375,7 +1375,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Mitmproxy crash detection
             _ = mitm_crash_rx.recv() => {
-                warn!("mitmproxy exited unexpectedly, scheduling restart");
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_restart_in_memory_usage_risk",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    "mitmproxy exited unexpectedly, scheduling restart"
+                );
                 mitm_retry.schedule();
             }
             // Mitmproxy restart result (background task)
@@ -1487,7 +1493,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     }
                 }
                 _ = mitm_crash_rx.recv() => {
-                    warn!("mitmproxy exited unexpectedly, scheduling restart");
+                    error!(
+                        r#type = "usage_underbilling",
+                        reason = "mitm_restart_in_memory_usage_risk",
+                        underbilling_class = "risk",
+                        component = "runner",
+                        "mitmproxy exited unexpectedly, scheduling restart"
+                    );
                     mitm_retry.schedule();
                 }
                 result = recv_retry(&mut mitm_retry.handle) => {
@@ -1570,11 +1582,24 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         warn!("usage flush did not complete, some reports may be lost");
                     }
                 } else {
-                    warn!("failed to request proxy usage flush, skipping usage wait");
+                    error!(
+                        r#type = "usage_underbilling",
+                        reason = "usage_flush_request_failed",
+                        underbilling_class = "risk",
+                        component = "runner",
+                        "failed to request proxy usage flush, skipping usage wait"
+                    );
                 }
             }
             Err(e) => {
-                warn!(error = %e, "failed to create proxy usage flush request, skipping usage wait");
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_request_create_failed",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    error = %e,
+                    "failed to create proxy usage flush request, skipping usage wait"
+                );
             }
         }
     } else {

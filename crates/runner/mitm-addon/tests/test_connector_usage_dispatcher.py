@@ -89,8 +89,8 @@ class TestConnectorUsageDispatcher:
 
         assert self._call_and_get_billing(flow) == []
 
-    def test_warns_once_per_unregistered_firewall_name(self, tmp_path, real_flow):
-        """First billable flow for an unregistered firewall_name emits a warn;
+    def test_logs_underbilling_once_per_unregistered_firewall_name(self, tmp_path, real_flow):
+        """First billable flow for an unregistered firewall_name emits an error;
         subsequent flows for the same name stay silent (one-shot guard)."""
         proxy_log = tmp_path / "proxy.jsonl"
         for _ in range(3):
@@ -104,13 +104,16 @@ class TestConnectorUsageDispatcher:
             if "no registered handler" in entry["message"]
         ]
         assert len(lines) == 1
-        assert lines[0]["level"] == "warn"
+        assert lines[0]["level"] == "error"
         assert lines[0]["firewall_name"] == "github"
-        assert lines[0]["type"] == "usage_event"
+        assert lines[0]["type"] == "usage_underbilling"
+        assert lines[0]["reason"] == "unregistered_billable_handler"
+        assert lines[0]["underbilling_class"] == "confirmed"
+        assert lines[0]["component"] == "mitm_addon"
 
-    def test_warns_separately_per_firewall_name(self, tmp_path, real_flow):
+    def test_logs_underbilling_separately_per_firewall_name(self, tmp_path, real_flow):
         """One-shot guard is per-firewall-name, not global; a new desynced
-        connector name still surfaces even after an earlier one warned."""
+        connector name still surfaces even after an earlier one logged."""
         proxy_log = tmp_path / "proxy.jsonl"
         for name in ("github", "slack", "github"):  # github repeats; slack new
             flow = self._make_x_flow(real_flow, tmp_path)

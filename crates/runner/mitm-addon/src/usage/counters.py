@@ -132,8 +132,11 @@ def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
             # runner's drain timeout and mitmdump stop timeout.
             if not _pending_write_error_logged:
                 _pending_write_error_logged = True
-                ctx.log.warn(
-                    f"Failed to write pending count to {pending_path!r}: {exc}.  "
+                ctx.log.error(
+                    "type=usage_underbilling reason=pending_snapshot_write_failed "
+                    "underbilling_class=risk component=mitm_addon "
+                    "Failed to write pending count: "
+                    f"pending_path={pending_path!r} error={exc!r}.  "
                     "Subsequent failures in this process will be silent; runner "
                     "shutdown may hit the bounded proxy stop timeout."
                 )

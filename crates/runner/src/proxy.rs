@@ -50,7 +50,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -437,7 +437,14 @@ impl MitmProxy {
     pub fn usage_flush_target(&mut self) -> Option<UsageFlushTarget> {
         let child_exited = match self.child.as_mut()?.try_wait() {
             Ok(Some(status)) => {
-                warn!(code = status.code(), "mitmdump exited before usage flush");
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_exited_before_usage_flush",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    code = status.code(),
+                    "mitmdump exited before usage flush"
+                );
                 true
             }
             Ok(None) => false,
@@ -465,7 +472,11 @@ impl MitmProxy {
         };
         match child.try_wait() {
             Ok(Some(status)) => {
-                warn!(
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_exited_before_usage_flush",
+                    underbilling_class = "risk",
+                    component = "runner",
                     code = status.code(),
                     "mitmdump exited before usage flush request"
                 );
@@ -480,13 +491,23 @@ impl MitmProxy {
 
         let signaled = send_usage_flush_signal(child);
         if !signaled {
-            warn!("failed to request mitmdump usage flush");
+            error!(
+                r#type = "usage_underbilling",
+                reason = "usage_flush_request_failed",
+                underbilling_class = "risk",
+                component = "runner",
+                "failed to request mitmdump usage flush"
+            );
             return false;
         }
 
         match child.try_wait() {
             Ok(Some(status)) => {
-                warn!(
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_request_failed",
+                    underbilling_class = "risk",
+                    component = "runner",
                     code = status.code(),
                     "mitmdump exited after usage flush request"
                 );
@@ -522,9 +543,26 @@ impl MitmProxy {
         // regardless of scheduling order between `kill().await` and
         // the stdout-pipe drain.
         self.stopping.store(true, Ordering::Release);
-        if let Some(ref mut child) = self.child {
+        if let Some(mut child) = self.child.take() {
+            match child.try_wait() {
+                Ok(Some(_status)) => {}
+                Ok(None) => error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_restart_in_memory_usage_risk",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    "restarting mitmdump by killing live child; in-memory usage may be lost"
+                ),
+                Err(e) => error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_restart_in_memory_usage_risk",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    error = %e,
+                    "failed to query mitmdump status before restart kill; in-memory usage may be lost"
+                ),
+            }
             let _ = child.kill().await;
-            self.child = None;
         }
         // Fresh flag for the incoming process's monitor.
         let new_stopping = Arc::new(AtomicBool::new(false));
@@ -897,8 +935,14 @@ pub async fn wait_usage_flush_requesting(
         let now = tokio::time::Instant::now();
         if now >= next_flush_request_at {
             if !request_flush() {
-                warn!(
-                    reason = %not_ready,
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_request_failed",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    not_ready = %not_ready,
+                    request_usage_state_id = %request.expected_usage_state_id,
+                    request_id = %request.flush_request_id,
                     "usage flush request failed, proceeding with proxy stop"
                 );
                 return false;
@@ -907,9 +951,13 @@ pub async fn wait_usage_flush_requesting(
         }
         if now >= deadline {
             match snapshot {
-                Some(snapshot) => warn!(
+                Some(snapshot) => error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_timeout",
+                    underbilling_class = "risk",
+                    component = "runner",
                     timeout_secs = timeout.as_secs(),
-                    reason = %not_ready,
+                    not_ready = %not_ready,
                     pid = snapshot.pid,
                     usage_state_id = %snapshot.usage_state_id,
                     updated_at_ms = snapshot.updated_at_ms,
@@ -919,9 +967,15 @@ pub async fn wait_usage_flush_requesting(
                     flush_request_id = snapshot.flush_request_id.as_deref().unwrap_or(""),
                     "usage flush timed out, proceeding with proxy stop"
                 ),
-                None => warn!(
+                None => error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_timeout",
+                    underbilling_class = "risk",
+                    component = "runner",
                     timeout_secs = timeout.as_secs(),
-                    reason = %not_ready,
+                    not_ready = %not_ready,
+                    request_usage_state_id = %request.expected_usage_state_id,
+                    request_id = %request.flush_request_id,
                     "usage flush timed out, proceeding with proxy stop"
                 ),
             }

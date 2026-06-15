@@ -23,6 +23,7 @@ from logging_utils import log_proxy_entry
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
 from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
+from ...underbilling import log_usage_underbilling, underbilling_fields
 from .response_parser import ConnectorResponseParser
 from .x_billing import (
     bucket_needs_body_refinement,
@@ -999,7 +1000,13 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
                 if req_meta.get("is_count_endpoint")
                 else "X response unparseable and request carries no count hints — skipping billing"
             ),
-            **log_context,
+            **{
+                **log_context,
+                **underbilling_fields(
+                    "unparseable_usage_response",
+                    "confirmed",
+                ),
+            },
             **log_extra,
         )
 
@@ -1007,11 +1014,16 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
     api_url = get_api_url()
     if not sandbox_token or not api_url:
-        log_proxy_entry(
+        log_usage_underbilling(
             proxy_log_path,
-            "warn",
             "Cannot report usage event: missing sandbox_token or api_url",
-            type="usage_event",
+            "missing_reporting_context",
+            "confirmed",
+            run_id=run_id,
+            firewall_name=firewall_name,
+            permission=permission,
+            missing_sandbox_token=not bool(sandbox_token),
+            missing_api_url=not bool(api_url),
         )
         return
     url = f"{api_url}/api/webhooks/agent/usage-event"

@@ -132,4 +132,5 @@ def flush_log_entries(proxy_log_path: Path) -> list[dict]:
         entry
         for entry in read_jsonl_entries_after_flush(proxy_log_path)
         if entry.get("type") == "usage_event_buffer_flush"
+        or (entry.get("type") == "usage_underbilling" and "phase" in entry)
     ]

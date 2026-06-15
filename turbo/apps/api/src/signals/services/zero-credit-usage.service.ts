@@ -8,6 +8,7 @@ import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { logger } from "../../lib/log";
+import { usageUnderbillingFields } from "../usage-underbilling";
 import { tapError } from "../utils";
 import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import {
@@ -185,6 +186,7 @@ async function processOrgUsageEventsInTransaction(
         })
         .where(eq(usageEvent.id, record.id));
       L.error("Missing usage_pricing — charged zero", {
+        ...usageUnderbillingFields("missing_pricing", "confirmed"),
         orgId,
         runId: record.runId,
         idempotencyKey: record.idempotencyKey,
@@ -199,6 +201,7 @@ async function processOrgUsageEventsInTransaction(
 
     if (!exactPricing) {
       L.error("Missing usage_pricing — billed at fallback rate", {
+        ...usageUnderbillingFields("fallback_pricing", "confirmed"),
         orgId,
         runId: record.runId,
         idempotencyKey: record.idempotencyKey,
