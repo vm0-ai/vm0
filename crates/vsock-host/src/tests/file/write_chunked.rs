@@ -26,6 +26,7 @@ struct ChunkedWriteFixture {
     guest: UnixStream,
     target_path: &'static str,
     temp_path: Option<String>,
+    sudo: bool,
 }
 
 fn shell_quote_for_test(value: &str) -> String {
@@ -40,6 +41,7 @@ impl ChunkedWriteFixture {
             guest,
             target_path,
             temp_path: None,
+            sudo: false,
         }
     }
 
@@ -51,20 +53,24 @@ impl ChunkedWriteFixture {
         vec![0xABu8; Self::chunk_limit() + 100]
     }
 
-    fn spawn_write(&self, content: Vec<u8>, sudo: bool) -> JoinHandle<io::Result<()>> {
+    fn spawn_write(&mut self, content: Vec<u8>, sudo: bool) -> JoinHandle<io::Result<()>> {
+        self.sudo = sudo;
         spawn_write_file(Arc::clone(&self.host), self.target_path, content, sudo)
     }
 
     async fn expect_chunk(&mut self) -> WriteFileFrame {
         let frame = expect_write_file(&mut self.guest).await;
+        assert_eq!(frame.sudo, self.sudo);
         if let Some(temp_path) = &self.temp_path {
             assert_eq!(frame.path.as_str(), temp_path);
+            assert!(frame.append);
         } else {
             assert!(
                 frame
                     .path
                     .starts_with(&format!("{}.vm0tmp-", self.target_path))
             );
+            assert!(!frame.append);
             self.temp_path = Some(frame.path.clone());
         }
         frame
@@ -73,6 +79,7 @@ impl ChunkedWriteFixture {
     async fn expect_rename(&mut self) -> ExecStartFrame {
         let frame = expect_exec_start(&mut self.guest).await;
         assert_eq!(frame.label, "write-file-rename");
+        assert_eq!(frame.sudo, self.sudo);
         assert_eq!(frame.command, self.expected_rename_command());
         frame
     }
@@ -80,6 +87,7 @@ impl ChunkedWriteFixture {
     async fn expect_cleanup(&mut self) -> ExecStartFrame {
         let frame = expect_exec_start(&mut self.guest).await;
         assert_eq!(frame.label, "exec-cleanup");
+        assert_eq!(frame.sudo, self.sudo);
         assert_eq!(frame.command, self.expected_cleanup_command());
         frame
     }
@@ -225,6 +233,52 @@ async fn test_write_file_chunked() {
     .await;
 
     write_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn write_file_chunked_preserves_sudo_on_chunks_rename_and_cleanup() {
+    let mut rename_fixture = ChunkedWriteFixture::new("/tmp/sudo-big.bin").await;
+    let rename_task = rename_fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), true);
+
+    let first = rename_fixture.expect_chunk().await;
+    send_write_file_success(&mut rename_fixture.guest, first.seq()).await;
+
+    let second = rename_fixture.expect_chunk().await;
+    send_write_file_success(&mut rename_fixture.guest, second.seq()).await;
+
+    let rename = rename_fixture.expect_rename().await;
+    send_exec_result(
+        &mut rename_fixture.guest,
+        rename.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    rename_task.await.unwrap().unwrap();
+
+    let mut cleanup_fixture = ChunkedWriteFixture::new("/tmp/sudo-cleanup.bin").await;
+    let cleanup_task = cleanup_fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), true);
+
+    let first = cleanup_fixture.expect_chunk().await;
+    send_write_file_success(&mut cleanup_fixture.guest, first.seq()).await;
+
+    let second = cleanup_fixture.expect_chunk().await;
+    send_write_file_failure(&mut cleanup_fixture.guest, second.seq(), "disk full").await;
+
+    let cleanup = cleanup_fixture.expect_cleanup().await;
+    send_exec_result(
+        &mut cleanup_fixture.guest,
+        cleanup.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    let err = cleanup_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("disk full"));
 }
 
 #[tokio::test]
@@ -631,14 +685,17 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
             let msg = guest.read_message().await;
             match msg.msg_type {
                 MSG_WRITE_FILE => {
-                    let (path, _chunk, _sudo, _append) =
+                    let (path, _chunk, sudo, append) =
                         vsock_proto::decode_write_file(&msg.payload).unwrap();
+                    assert!(!sudo);
                     if let Some(temp_path) = &temp_path {
                         assert_eq!(path, temp_path);
+                        assert!(append);
                         continue;
                     }
 
                     assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                    assert!(!append);
                     temp_path = Some(path.to_string());
                     send_write_file_success(guest.stream_mut(), msg.seq).await;
                     if let Some(tx) = first_chunk_tx.take() {
