@@ -1,6 +1,6 @@
 import { ProviderHttpError } from "../provider-error";
 
-const MAX_BODY_LENGTH = 500;
+const MAX_DIAGNOSTIC_LENGTH = 500;
 
 export class OAuthProviderHttpError extends ProviderHttpError {
   readonly oauthError: string | undefined;
@@ -98,7 +98,7 @@ function responseBodyDetail(raw: string): string {
 }
 
 function truncatedDiagnostic(value: string): string {
-  return value.length > MAX_BODY_LENGTH
-    ? `${value.slice(0, MAX_BODY_LENGTH)}...`
+  return value.length > MAX_DIAGNOSTIC_LENGTH
+    ? `${value.slice(0, MAX_DIAGNOSTIC_LENGTH)}...`
     : value;
 }
