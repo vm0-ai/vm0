@@ -73,25 +73,27 @@ impl ChunkedWriteFixture {
     async fn expect_rename(&mut self) -> ExecStartFrame {
         let frame = expect_exec_start(&mut self.guest).await;
         assert_eq!(frame.label, "write-file-rename");
-        assert!(frame.command.contains("mv -f --"));
-        assert!(frame.command.ends_with(&format!(
-            " {} {}",
-            shell_quote_for_test(self.temp_path()),
-            shell_quote_for_test(self.target_path)
-        )));
+        assert_eq!(frame.command, self.expected_rename_command());
         frame
     }
 
     async fn expect_cleanup(&mut self) -> ExecStartFrame {
         let frame = expect_exec_start(&mut self.guest).await;
         assert_eq!(frame.label, "exec-cleanup");
-        assert!(frame.command.contains("rm -f --"));
-        assert!(
-            frame
-                .command
-                .ends_with(&format!(" {}", shell_quote_for_test(self.temp_path())))
-        );
+        assert_eq!(frame.command, self.expected_cleanup_command());
         frame
+    }
+
+    fn expected_rename_command(&self) -> String {
+        format!(
+            "mv -f -- {} {}",
+            shell_quote_for_test(self.temp_path()),
+            shell_quote_for_test(self.target_path)
+        )
+    }
+
+    fn expected_cleanup_command(&self) -> String {
+        format!("rm -f -- {}", shell_quote_for_test(self.temp_path()))
     }
 
     fn assert_readiness(&self, expected: NormalOperationReadiness) {
@@ -646,8 +648,9 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
                 MSG_EXEC_START => {
                     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
                     let temp_path = temp_path.as_ref().expect("temp path");
-                    assert!(decoded.command.contains("rm -f --"));
-                    assert!(decoded.command.contains(temp_path));
+                    let expected_cleanup_command =
+                        format!("rm -f -- {}", shell_quote_for_test(temp_path));
+                    assert_eq!(decoded.command, expected_cleanup_command.as_str());
                     assert_eq!(decoded.label, "exec-cleanup");
                     if let Some(tx) = cleanup_tx.take() {
                         let _ = tx.send(decoded.command.to_string());
