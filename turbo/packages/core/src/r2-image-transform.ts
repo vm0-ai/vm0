@@ -1,6 +1,10 @@
 const R2_IMAGE_TRANSFORM_HOSTS = new Set(["cdn.vm0.io", "cdn.vm7.io"]);
 const R2_IMAGE_TRANSFORM_PREFIX = "/cdn-cgi/image/";
 
+// Output quality for Cloudflare Image Resizing. Tuned to stay crisp on
+// text-heavy presentation thumbnails while still shrinking payloads.
+const R2_IMAGE_TRANSFORM_QUALITY = 85;
+
 export interface R2ImageTransformOptions {
   readonly width?: number;
   readonly height?: number;
@@ -14,9 +18,7 @@ function normalizedDimension(value: number | undefined): number | null {
   return Math.round(value);
 }
 
-function r2ImageTransformDirectives(
-  options: R2ImageTransformOptions,
-): string | null {
+function r2ImageTransformDirectives(options: R2ImageTransformOptions): string {
   const directives: string[] = [];
   const width = normalizedDimension(options.width);
   const height = normalizedDimension(options.height);
@@ -28,8 +30,13 @@ function r2ImageTransformDirectives(
     directives.push(`height=${String(height)}`);
   }
   directives.push(`fit=${options.fit ?? "scale-down"}`);
+  // Negotiate AVIF/WebP from the request Accept header, cap quality, and drop
+  // metadata so previews download as little as possible.
+  directives.push("format=auto");
+  directives.push(`quality=${String(R2_IMAGE_TRANSFORM_QUALITY)}`);
+  directives.push("metadata=none");
 
-  return directives.length > 1 ? directives.join(",") : null;
+  return directives.join(",");
 }
 
 function parseAbsoluteUrl(url: string): URL | null {
@@ -57,9 +64,5 @@ export function r2ImageTransformUrl(
   }
 
   const directives = r2ImageTransformDirectives(options);
-  if (directives === null) {
-    return url;
-  }
-
   return `${parsed.origin}${R2_IMAGE_TRANSFORM_PREFIX}${directives}${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
