@@ -795,6 +795,79 @@ describe("chat composer models", () => {
     expect(within(menu).queryByText("GitHub")).not.toBeInTheDocument();
   });
 
+  it("navigates connector commands with the keyboard and inserts one", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent({ customSkills: [] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
+        [FeatureSwitchKey.ChatConnectorCommands]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+
+    const menu = await screen.findByTestId("slash-skill-menu");
+    await within(menu).findByText("List PRs");
+
+    // ArrowRight moves focus from the connector rail into the command pane,
+    // ArrowDown selects the second command, Enter inserts it.
+    await user.keyboard("{ArrowRight}{ArrowDown}{Enter}");
+
+    await waitFor(() => {
+      expect(editor.textContent).toContain(
+        "Review this pull request and tell me what needs changing",
+      );
+    });
+  });
+
+  it("inserts a skill when arrowing past the connector rail", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent({ customSkills: ["sales-research"] });
+    context.mocks.api(zeroSkillsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        { name: "sales-research", displayName: null, description: null },
+      ]);
+    });
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatSlashSkillCommands]: true,
+        [FeatureSwitchKey.ChatConnectorCommands]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+
+    const menu = await screen.findByTestId("slash-skill-menu");
+    expect(await within(menu).findByText("GitHub")).toBeInTheDocument();
+    expect(within(menu).getByText("/sales-research")).toBeInTheDocument();
+
+    // The rail is the connector then the skill; ArrowDown moves to the skill and
+    // Enter inserts it.
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    await waitFor(() => {
+      expect(editor.textContent).toContain("/sales-research");
+    });
+  });
+
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
