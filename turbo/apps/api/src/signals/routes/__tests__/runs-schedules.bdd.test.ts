@@ -50,8 +50,8 @@ import {
  *   which expose the runId. Cron count fields are never asserted strictly
  *   because the cron processes due schedules across all organizations.
  * - SCHED-02 sync-skills valid-path coverage needs a focused external GitHub
- *   tarball/S3 helper; this file keeps cron auth and safe no-work cron routes
- *   route-based without adding that external fixture.
+ *   tarball/S3 helper; this file keeps shared cron auth rejection route-based
+ *   without running valid global sweeps from the wrong owner file.
  */
 
 const context = testContext();
@@ -2004,7 +2004,7 @@ describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
 });
 
 describe("SCHED-02: cron routes", () => {
-  it("rejects invalid cron auth and accepts safe no-work cron routes with valid auth", async () => {
+  it("rejects invalid cron auth on shared cron routes", async () => {
     const api = createRunsAutomationsApi(context);
 
     const invalidExecute = await api.executeAutomationsCron(false);
@@ -2014,26 +2014,12 @@ describe("SCHED-02: cron routes", () => {
     expectApiError(invalidExecute.body);
     expect(invalidExecute.body.error.code).toBe("UNAUTHORIZED");
 
-    const invalidCronRoutes = await api.runSafeCronRoutes(false);
+    const invalidCronRoutes = await api.requestSharedCronRoutesWithoutAuth();
     expect(
       Object.values(invalidCronRoutes).every((response) => {
         return response.status === 401;
       }),
     ).toBeTruthy();
-
-    context.mocks.axiom.query.mockResolvedValue([]);
-    const validCronRoutes = await api.runSafeCronRoutes(true);
-    expect(
-      Object.values(validCronRoutes).every((response) => {
-        return response.status === 200;
-      }),
-    ).toBeTruthy();
-
-    const execute = await api.executeAutomationsCron(true);
-    if (execute.status !== 200) {
-      throw new Error("Expected execute schedules cron to succeed");
-    }
-    expect(execute.body.success).toBeTruthy();
   });
 });
 

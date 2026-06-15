@@ -2,27 +2,44 @@
 // Do not edit by hand.
 // Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 
+//! Generated Rust route bindings for selected `@vm0/api-contracts` routes.
+//! Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.
+//! Route descriptions are generated from TypeScript contract summaries.
+
+/// Generated route bindings under `runners`.
 pub mod runners {
+    /// Generated route bindings under `runners::heartbeat`.
     pub mod heartbeat {
+        /// Report runner heartbeat with capacity and state.
+        /// Route contract: `POST /api/runners/heartbeat`.
         pub const HEARTBEAT: crate::Route = crate::Route {
             method: crate::Method::Post,
             path: "/api/runners/heartbeat",
         };
     }
 
+    /// Generated route bindings under `runners::jobs`.
     pub mod jobs {
+        /// Generated route bindings under `runners::jobs::by_id`.
         pub mod by_id {
+            /// Generated route bindings under `runners::jobs::by_id::claim`.
             pub mod claim {
+                /// Claim a pending job for execution.
+                /// Route contract: `POST /api/runners/jobs/:id/claim`.
                 pub const CLAIM: crate::RouteTemplate = crate::RouteTemplate {
                     method: crate::Method::Post,
                     path: "/api/runners/jobs/:id/claim",
                 };
 
+                /// Path parameters for `POST /api/runners/jobs/:id/claim`.
                 #[derive(Debug, Clone, Copy)]
                 pub struct Params<'a> {
+                    /// Value for the `:id` path parameter.
                     pub id: &'a str,
                 }
 
+                /// Build the concrete path for `POST /api/runners/jobs/:id/claim`.
+                /// Percent-encodes each path parameter as a URL path segment.
                 #[must_use]
                 pub fn path(params: Params<'_>) -> String {
                     format!(
@@ -31,6 +48,7 @@ pub mod runners {
                     )
                 }
 
+                /// Build a resolved route for `POST /api/runners/jobs/:id/claim`.
                 #[must_use]
                 pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
                     crate::ResolvedRoute::new(CLAIM.method, path(params))
@@ -39,15 +57,22 @@ pub mod runners {
         }
     }
 
+    /// Generated route bindings under `runners::poll`.
     pub mod poll {
+        /// Poll for pending jobs (long-polling with 30s timeout).
+        /// Route contract: `POST /api/runners/poll`.
         pub const POLL: crate::Route = crate::Route {
             method: crate::Method::Post,
             path: "/api/runners/poll",
         };
     }
 
+    /// Generated route bindings under `runners::realtime`.
     pub mod realtime {
+        /// Generated route bindings under `runners::realtime::token`.
         pub mod token {
+            /// Get Ably token for runner group job notifications.
+            /// Route contract: `POST /api/runners/realtime/token`.
             pub const CREATE: crate::Route = crate::Route {
                 method: crate::Method::Post,
                 path: "/api/runners/realtime/token",
@@ -56,15 +81,23 @@ pub mod runners {
     }
 }
 
+/// Generated route bindings under `webhooks`.
 pub mod webhooks {
+    /// Generated route bindings under `webhooks::agent`.
     pub mod agent {
+        /// Generated route bindings under `webhooks::agent::checkpoints`.
         pub mod checkpoints {
+            /// Create checkpoint for agent run.
+            /// Route contract: `POST /api/webhooks/agent/checkpoints`.
             pub const CREATE: crate::Route = crate::Route {
                 method: crate::Method::Post,
                 path: "/api/webhooks/agent/checkpoints",
             };
 
+            /// Generated route bindings under `webhooks::agent::checkpoints::prepare_history`.
             pub mod prepare_history {
+                /// Get presigned URL for uploading session history to S3.
+                /// Route contract: `POST /api/webhooks/agent/checkpoints/prepare-history`.
                 pub const PREPARE: crate::Route = crate::Route {
                     method: crate::Method::Post,
                     path: "/api/webhooks/agent/checkpoints/prepare-history",
@@ -72,36 +105,52 @@ pub mod webhooks {
             }
         }
 
+        /// Generated route bindings under `webhooks::agent::complete`.
         pub mod complete {
+            /// Handle agent run completion.
+            /// Route contract: `POST /api/webhooks/agent/complete`.
             pub const COMPLETE: crate::Route = crate::Route {
                 method: crate::Method::Post,
                 path: "/api/webhooks/agent/complete",
             };
         }
 
+        /// Generated route bindings under `webhooks::agent::events`.
         pub mod events {
+            /// Receive agent events from sandbox.
+            /// Route contract: `POST /api/webhooks/agent/events`.
             pub const SEND: crate::Route = crate::Route {
                 method: crate::Method::Post,
                 path: "/api/webhooks/agent/events",
             };
         }
 
+        /// Generated route bindings under `webhooks::agent::heartbeat`.
         pub mod heartbeat {
+            /// Receive heartbeat from sandbox.
+            /// Route contract: `POST /api/webhooks/agent/heartbeat`.
             pub const SEND: crate::Route = crate::Route {
                 method: crate::Method::Post,
                 path: "/api/webhooks/agent/heartbeat",
             };
         }
 
+        /// Generated route bindings under `webhooks::agent::storages`.
         pub mod storages {
+            /// Generated route bindings under `webhooks::agent::storages::commit`.
             pub mod commit {
+                /// Commit uploaded storage from sandbox.
+                /// Route contract: `POST /api/webhooks/agent/storages/commit`.
                 pub const COMMIT: crate::Route = crate::Route {
                     method: crate::Method::Post,
                     path: "/api/webhooks/agent/storages/commit",
                 };
             }
 
+            /// Generated route bindings under `webhooks::agent::storages::prepare`.
             pub mod prepare {
+                /// Prepare for direct S3 upload from sandbox.
+                /// Route contract: `POST /api/webhooks/agent/storages/prepare`.
                 pub const PREPARE: crate::Route = crate::Route {
                     method: crate::Method::Post,
                     path: "/api/webhooks/agent/storages/prepare",
@@ -109,7 +158,10 @@ pub mod webhooks {
             }
         }
 
+        /// Generated route bindings under `webhooks::agent::telemetry`.
         pub mod telemetry {
+            /// Receive telemetry data from sandbox.
+            /// Route contract: `POST /api/webhooks/agent/telemetry`.
             pub const SEND: crate::Route = crate::Route {
                 method: crate::Method::Post,
                 path: "/api/webhooks/agent/telemetry",

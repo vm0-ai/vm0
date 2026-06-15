@@ -347,6 +347,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AutomationMultiTrigger]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the resource-aware Automation trigger section in Apps/platform. While off, platform keeps the legacy single-time-trigger editing projection.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
