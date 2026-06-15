@@ -36,11 +36,12 @@ async function runInRollbackTransaction(
 }
 
 describe("migration 0461 remove YouTube API key connections", () => {
-  it("removes YouTube connector state without deleting user-scoped data", async () => {
+  it("removes YouTube API key connector state without deleting OAuth or user-scoped data", async () => {
     await runInRollbackTransaction(async (tx) => {
       const orgId = uniqueId("org");
       const userId = uniqueId("user");
       const disconnectedUserId = uniqueId("disconnected");
+      const youtubeOauthUserId = uniqueId("youtube-oauth");
 
       await tx.insert(connectors).values([
         {
@@ -53,6 +54,12 @@ describe("migration 0461 remove YouTube API key connections", () => {
           orgId,
           userId,
           type: "cloudflare",
+          authMethod: "oauth",
+        },
+        {
+          orgId,
+          userId: youtubeOauthUserId,
+          type: "youtube",
           authMethod: "oauth",
         },
       ]);
@@ -100,6 +107,20 @@ describe("migration 0461 remove YouTube API key connections", () => {
           encryptedValue: "encrypted-disconnected-token",
           type: "connector",
         },
+        {
+          orgId,
+          userId: youtubeOauthUserId,
+          name: "YOUTUBE_ACCESS_TOKEN",
+          encryptedValue: "encrypted-oauth-access-token",
+          type: "connector",
+        },
+        {
+          orgId,
+          userId: youtubeOauthUserId,
+          name: "YOUTUBE_REFRESH_TOKEN",
+          encryptedValue: "encrypted-oauth-refresh-token",
+          type: "connector",
+        },
       ]);
 
       await tx.insert(variables).values([
@@ -131,6 +152,7 @@ describe("migration 0461 remove YouTube API key connections", () => {
 
       const connectorRows = await tx
         .select({
+          userId: connectors.userId,
           type: connectors.type,
           authMethod: connectors.authMethod,
         })
@@ -138,10 +160,14 @@ describe("migration 0461 remove YouTube API key connections", () => {
         .where(
           and(
             eq(connectors.orgId, orgId),
-            inArray(connectors.userId, [userId, disconnectedUserId]),
+            inArray(connectors.userId, [
+              userId,
+              disconnectedUserId,
+              youtubeOauthUserId,
+            ]),
           ),
         )
-        .orderBy(asc(connectors.type));
+        .orderBy(asc(connectors.type), asc(connectors.userId));
 
       const secretRows = await tx
         .select({
@@ -154,7 +180,11 @@ describe("migration 0461 remove YouTube API key connections", () => {
         .where(
           and(
             eq(secrets.orgId, orgId),
-            inArray(secrets.userId, [userId, disconnectedUserId]),
+            inArray(secrets.userId, [
+              userId,
+              disconnectedUserId,
+              youtubeOauthUserId,
+            ]),
           ),
         )
         .orderBy(asc(secrets.userId), asc(secrets.type), asc(secrets.name));
@@ -171,7 +201,13 @@ describe("migration 0461 remove YouTube API key connections", () => {
 
       expect(connectorRows).toStrictEqual([
         {
+          userId,
           type: "cloudflare",
+          authMethod: "oauth",
+        },
+        {
+          userId: youtubeOauthUserId,
+          type: "youtube",
           authMethod: "oauth",
         },
       ]);
@@ -193,6 +229,18 @@ describe("migration 0461 remove YouTube API key connections", () => {
           name: "YOUTUBE_TOKEN",
           encryptedValue: "encrypted-user-token",
           type: "user",
+        },
+        {
+          userId: youtubeOauthUserId,
+          name: "YOUTUBE_ACCESS_TOKEN",
+          encryptedValue: "encrypted-oauth-access-token",
+          type: "connector",
+        },
+        {
+          userId: youtubeOauthUserId,
+          name: "YOUTUBE_REFRESH_TOKEN",
+          encryptedValue: "encrypted-oauth-refresh-token",
+          type: "connector",
         },
       ]);
       expect(variableRows).toStrictEqual([
