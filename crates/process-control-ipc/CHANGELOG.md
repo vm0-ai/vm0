@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.2.1...process-control-ipc-v0.2.2) (2026-06-15)
+
+
+### Refactoring
+
+* split process-control ipc modules ([#17742](https://github.com/vm0-ai/vm0/issues/17742)) ([83cdf5b](https://github.com/vm0-ai/vm0/commit/83cdf5b87c79408f24957e7315a2a4aa37f86fa3))
+
 ## [0.2.1](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.2.0...process-control-ipc-v0.2.1) (2026-05-20)
 
 
