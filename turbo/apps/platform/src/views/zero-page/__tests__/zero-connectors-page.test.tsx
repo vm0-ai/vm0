@@ -21,6 +21,9 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { search } from "../../../signals/location.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -260,6 +263,15 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(screen.queryByText("Slack")).not.toBeInTheDocument();
+    expect(search()).toBe("?keywords=vcs");
+
+    context.store.set(detachedNavigateTo$, ROUTES.connectors);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Find connectors")).toHaveValue("");
+      expect(search()).toBe("");
+    });
+    expect(screen.getByText("Slack")).toBeInTheDocument();
   });
 
   it("filters connectors by capability keywords", async () => {
@@ -274,6 +286,22 @@ describe("connectors page", () => {
     await fill(searchInput, "logs");
 
     await waitFor(() => {
+      expect(screen.getByText("Axiom")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+  });
+
+  it("hydrates connector search from URL keywords", async () => {
+    mockConnectors([
+      { type: "github", externalUsername: "octocat" },
+      { type: "axiom", authMethod: "api-token" },
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors?keywords=logs" });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
+    await waitFor(() => {
+      expect(searchInput).toHaveValue("logs");
       expect(screen.getByText("Axiom")).toBeInTheDocument();
     });
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();

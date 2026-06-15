@@ -42,6 +42,7 @@ import {
   deleteConnector$,
   reloadConnectors$,
 } from "../../external/connectors.ts";
+import { replaceSearchParams$, searchParams$ } from "../../route.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import {
   jsonParseOr,
@@ -495,12 +496,27 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
 // Search filter
 // ---------------------------------------------------------------------------
 
-const internalConnectorsSearch$ = state("");
+const CONNECTORS_SEARCH_PARAM = "keywords";
 export const connectorsSearch$ = computed((get) => {
-  return get(internalConnectorsSearch$);
+  return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
 });
-export const setConnectorsSearch$ = command(({ set }, v: string) => {
-  set(internalConnectorsSearch$, v);
+
+export const filteredConnectorTypes$ = computed(async (get) => {
+  const keyword = get(connectorsSearch$);
+  const allConnectorTypes = await get(allConnectorTypes$);
+  return allConnectorTypes.filter((connector) => {
+    return matchesConnectorSearch(keyword, connector);
+  });
+});
+
+export const setConnectorsSearch$ = command(({ get, set }, value: string) => {
+  const params = new URLSearchParams(get(searchParams$));
+  if (value.trim()) {
+    params.set(CONNECTORS_SEARCH_PARAM, value);
+  } else {
+    params.delete(CONNECTORS_SEARCH_PARAM);
+  }
+  set(replaceSearchParams$, params);
 });
 
 // ---------------------------------------------------------------------------

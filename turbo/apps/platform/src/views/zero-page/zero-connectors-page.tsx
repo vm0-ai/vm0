@@ -34,6 +34,7 @@ import {
   connectConnectorOAuthAuthCode$,
   connectorsSearch$,
   disconnectConnector$,
+  filteredConnectorTypes$,
   setConnectorsSearch$,
   selectedConnectorType$,
   setSelectedConnectorType$,
@@ -45,7 +46,6 @@ import {
   permissionDialogType$,
   setPermissionDialogType$,
   isStandaloneMode,
-  matchesConnectorSearch,
   getAvailableAuthCodeAuthMethod,
   getOnlyAvailableAuthCodeAuthMethod,
   getConnectorConnectLaunchMode,
@@ -595,6 +595,7 @@ function renderBuiltinList({
 
 export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const filteredTypesLoadable = useLastLoadable(filteredConnectorTypes$);
   const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
   const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
@@ -615,7 +616,7 @@ export function ZeroConnectorsPage() {
   const attachScrollTracking = useSet(attachConnectorCategoryScrollTracking$);
   const resetActiveCategory = useSet(resetActiveConnectorCategory$);
   const categoryTrackingEnabled =
-    activeTab === "builtin" && allTypesLoadable.state === "hasData";
+    activeTab === "builtin" && filteredTypesLoadable.state === "hasData";
   const scrollContainerRef = useScrollTrackingRef(
     categoryTrackingEnabled,
     attachScrollTracking,
@@ -625,16 +626,14 @@ export function ZeroConnectorsPage() {
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
 
+  const filteredConnectors =
+    filteredTypesLoadable.state === "hasData" ? filteredTypesLoadable.data : [];
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const disconnecting = disconnectLoadable.state === "loading";
 
-  const filtered = allConnectors.filter((c) => {
-    return matchesConnectorSearch(search, c);
-  });
-
   const connectHandler = (type: ConnectorType) => {
-    const ct = allConnectors.find((c) => {
+    const ct = filteredConnectors.find((c) => {
       return c.type === type;
     });
     if (!ct) {
@@ -712,13 +711,13 @@ export function ZeroConnectorsPage() {
   };
 
   const grouped = groupConnectorsByCategory(
-    filtered.map(getOptimisticConnector),
+    filteredConnectors.map(getOptimisticConnector),
   );
 
   const builtinList = renderBuiltinList({
-    loadingState: allTypesLoadable.state,
+    loadingState: filteredTypesLoadable.state,
     grouped,
-    filteredCount: filtered.length,
+    filteredCount: filteredConnectors.length,
     renderCard,
     search,
   });
@@ -760,12 +759,13 @@ export function ZeroConnectorsPage() {
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="relative mx-auto w-full max-w-[900px]">
-          {activeTab === "builtin" && allTypesLoadable.state === "hasData" && (
-            <ConnectorCategoryMenu
-              activeCategoryId={activeCategoryId}
-              groups={grouped}
-            />
-          )}
+          {activeTab === "builtin" &&
+            filteredTypesLoadable.state === "hasData" && (
+              <ConnectorCategoryMenu
+                activeCategoryId={activeCategoryId}
+                groups={grouped}
+              />
+            )}
 
           <div className="min-w-0 flex w-full max-w-[900px] flex-col gap-6">
             <div className="flex items-center justify-between">
