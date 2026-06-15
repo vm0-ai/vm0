@@ -430,10 +430,9 @@ export function createChatFilesBddApi(context: TestContext) {
     async listThreads(
       actor: ApiTestUser,
       query: {
-        readonly agentId?: string;
-        readonly limit?: number;
+        readonly agentId: string;
         readonly cursor?: string;
-      } = {},
+      },
     ): Promise<{
       readonly pinned: readonly ChatThreadListItem[];
       readonly threads: readonly ChatThreadListItem[];
@@ -453,8 +452,7 @@ export function createChatFilesBddApi(context: TestContext) {
     async requestListThreads(
       actor: ApiTestUser | null,
       query: {
-        readonly agentId?: string;
-        readonly limit?: number;
+        readonly agentId: string;
         readonly cursor?: string;
       },
       statuses: readonly (200 | 401 | 404)[],
