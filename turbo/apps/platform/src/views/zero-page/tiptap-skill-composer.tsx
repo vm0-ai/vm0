@@ -2,6 +2,7 @@
 // inline decorations rather than a transparent-textarea + colored overlay, so the
 // color lives in the same layer as the text and moves/scrolls with it — there is
 // no second layer to keep aligned when the input scrolls (issue #17539).
+import { useRef } from "react";
 import {
   useGet,
   useSet,
@@ -185,6 +186,26 @@ function insertSkillToken(
       { type: "text", text: `/${skill.name}${suffix}` },
     ])
     .run();
+}
+
+// A virtual Popover anchor that tracks the slash character rather than the whole
+// input box, so the suggestion menu opens at the `/` the user typed instead of a
+// fixed corner. `getBoundingClientRect` reads live, so Floating UI keeps the menu
+// aligned as the input scrolls or the window resizes.
+interface SlashAnchor {
+  getBoundingClientRect: () => DOMRect;
+}
+
+// Screen rect of the slash that started the active query. The slash and caret sit
+// on the same line (the range regex never spans a newline), so their distance in
+// string offsets equals their distance in ProseMirror positions.
+function slashCaretRect(editor: Editor, slashRange: SlashSkillRange): DOMRect {
+  const slashPos = Math.max(
+    editor.state.selection.head - (slashRange.end - slashRange.start),
+    0,
+  );
+  const coords = editor.view.coordsAtPos(slashPos);
+  return new DOMRect(coords.left, coords.top, 0, coords.bottom - coords.top);
 }
 
 interface SlashMenuKeyContext {
@@ -390,6 +411,19 @@ export function TiptapSkillComposer({
     syncEditorState(editor, skillNames, input);
   }
 
+  // Stable virtual anchor; its rect is refreshed each render to follow the active
+  // slash, so the menu opens at the `/` without re-registering the anchor.
+  const slashAnchorRef = useRef<SlashAnchor>({
+    getBoundingClientRect: () => {
+      return new DOMRect();
+    },
+  });
+  slashAnchorRef.current.getBoundingClientRect = () => {
+    return editor && slashRange
+      ? slashCaretRect(editor, slashRange)
+      : new DOMRect();
+  };
+
   function insertSkill(skill: ComposerSlashSkill): void {
     if (!editor || !slashRange) {
       return;
@@ -419,25 +453,25 @@ export function TiptapSkillComposer({
   }
 
   return (
-    // Radix Popover (Floating UI) positions the menu cross-browser; the anchor
-    // is the input region so the menu sits above it. `open` is fully controlled
-    // by composer state, so Escape/typing close it via showSlashSkillMenu.
+    // Radix Popover (Floating UI) positions the menu cross-browser; the anchor is
+    // a virtual element tracking the slash the user typed, so the menu opens at
+    // the `/` rather than a fixed corner. `open` is fully controlled by composer
+    // state, so Escape/typing close it via showSlashSkillMenu.
     <Popover open={showSlashSkillMenu}>
-      <PopoverAnchor asChild>
-        <div className="relative min-h-[96px]">
-          {input === "" && (
-            <div
-              className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
-              aria-hidden="true"
-            >
-              {sending
-                ? "Type your next message…"
-                : "Ask me to automate workflows, manage tasks..."}
-            </div>
-          )}
-          <EditorContent editor={editor} />
-        </div>
-      </PopoverAnchor>
+      <PopoverAnchor virtualRef={slashAnchorRef} />
+      <div className="relative min-h-[96px]">
+        {input === "" && (
+          <div
+            className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
+            aria-hidden="true"
+          >
+            {sending
+              ? "Type your next message…"
+              : "Ask me to automate workflows, manage tasks..."}
+          </div>
+        )}
+        <EditorContent editor={editor} />
+      </div>
       {showSlashSkillMenu && (
         <SlashSkillMenu
           skills={suggestions}
