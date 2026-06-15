@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.33](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.32...vsock-host-v0.17.33) (2026-06-15)
+
+
+### Bug Fixes
+
+* bound exec cancel_and_wait timeout ([#17744](https://github.com/vm0-ai/vm0/issues/17744)) ([0b2eb3e](https://github.com/vm0-ai/vm0/commit/0b2eb3e7c9350f6f754b44833cfb295f7f97f7d0))
+
 ## [0.17.32](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.31...vsock-host-v0.17.32) (2026-06-15)
 
 
