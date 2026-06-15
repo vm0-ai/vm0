@@ -123,7 +123,7 @@ export const automationTriggers = pgTable(
         { onDelete: "cascade" },
       ),
 
-    // Trigger kind discriminator: "webhook" | "cron" | "once" | "loop".
+    // Trigger kind discriminator: "webhook" | "cron" | "once" | "loop" | "event".
     kind: varchar("kind", { length: 32 }).notNull(),
 
     // Kind-specific extensibility.
@@ -181,7 +181,8 @@ export const automationTriggers = pgTable(
         sql`(kind = 'cron' AND cron_expression IS NOT NULL AND at_time IS NULL AND interval_seconds IS NULL)
           OR (kind = 'once' AND at_time IS NOT NULL AND cron_expression IS NULL AND interval_seconds IS NULL)
           OR (kind = 'loop' AND interval_seconds IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL)
-          OR (kind = 'webhook' AND webhook_token IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL AND interval_seconds IS NULL)`,
+          OR (kind = 'webhook' AND webhook_token IS NOT NULL AND cron_expression IS NULL AND at_time IS NULL AND interval_seconds IS NULL)
+          OR (kind = 'event' AND config IS NOT NULL AND webhook_token IS NULL AND cron_expression IS NULL AND at_time IS NULL AND interval_seconds IS NULL)`,
       ),
     ];
   },

@@ -27,6 +27,7 @@ import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations"
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
+import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronSummarizeMemoryRoutes } from "./routes/cron-summarize-memory";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
@@ -45,6 +46,7 @@ import { internalCallbacksGithubIssuesRoutes } from "./routes/internal-callbacks
 import { internalCallbacksSlackOrgRoutes } from "./routes/internal-callbacks-slack-org";
 import { internalCallbacksTelegramRoutes } from "./routes/internal-callbacks-telegram";
 import { internalCallbacksTriggerRoutes } from "./routes/internal-callbacks-trigger";
+import { internalWebhooksGmailRoutes } from "./routes/internal-webhooks-gmail";
 import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-event-consumers-agentphone-typing";
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
@@ -214,6 +216,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalCallbacksSlackOrgRoutes,
   ...internalCallbacksTelegramRoutes,
   ...internalCallbacksTriggerRoutes,
+  ...internalWebhooksGmailRoutes,
   ...internalEventConsumerAgentPhoneTypingRoutes,
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,
@@ -248,6 +251,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCleanupSandboxesRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteAutomationsRoutes,
+  ...cronRenewGmailWatchesRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,

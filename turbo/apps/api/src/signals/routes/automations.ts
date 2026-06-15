@@ -3,6 +3,7 @@ import {
   automationsByRefContract,
   automationsMainContract,
   automationTriggersContract,
+  gmailLabelAppliedEventConfigSchema,
   type AutomationResponse,
   type AutomationTriggerResponse,
 } from "@vm0/api-contracts/contracts/automations";
@@ -87,6 +88,13 @@ function triggerResponse(
       webhookUrl: webhookUrlForToken(trigger.webhookToken),
     };
   }
+  if (trigger.kind === "event") {
+    return {
+      ...base,
+      kind: "event",
+      config: gmailLabelAppliedEventConfigSchema.parse(trigger.config),
+    };
+  }
   // The B4 CHECK constraint guarantees each kind carries exactly its config.
   throw new Error(`Malformed automation trigger row ${trigger.id}`);
 }
@@ -129,6 +137,21 @@ const webhookTriggersEnabled$ = computed(async (get) => {
 const WEBHOOK_TRIGGERS_DISABLED_MESSAGE =
   "Webhook triggers are not enabled for this workspace";
 
+const gmailEventTriggersEnabled$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  return isFeatureEnabled(FeatureSwitchKey.AutomationGmailEventTriggers, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
+});
+
+const GMAIL_EVENT_TRIGGERS_DISABLED_MESSAGE =
+  "Gmail event triggers are not enabled for this workspace";
+
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(bodyResultOf(automationsMainContract.create));
@@ -141,6 +164,12 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     !(await get(webhookTriggersEnabled$))
   ) {
     return badRequestMessage(WEBHOOK_TRIGGERS_DISABLED_MESSAGE);
+  }
+  if (
+    bodyResult.data.trigger?.kind === "event" &&
+    !(await get(gmailEventTriggersEnabled$))
+  ) {
+    return badRequestMessage(GMAIL_EVENT_TRIGGERS_DISABLED_MESSAGE);
   }
   signal.throwIfAborted();
 
@@ -354,6 +383,12 @@ const addTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     !(await get(webhookTriggersEnabled$))
   ) {
     return badRequestMessage(WEBHOOK_TRIGGERS_DISABLED_MESSAGE);
+  }
+  if (
+    bodyResult.data.kind === "event" &&
+    !(await get(gmailEventTriggersEnabled$))
+  ) {
+    return badRequestMessage(GMAIL_EVENT_TRIGGERS_DISABLED_MESSAGE);
   }
   signal.throwIfAborted();
 

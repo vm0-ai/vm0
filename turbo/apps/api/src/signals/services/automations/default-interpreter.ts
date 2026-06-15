@@ -33,7 +33,13 @@ interface Automation {
   readonly chatThreadId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
-  readonly triggerType: "cron" | "once" | "loop" | "webhook" | "manual";
+  readonly triggerType:
+    | "cron"
+    | "once"
+    | "loop"
+    | "webhook"
+    | "gmail"
+    | "manual";
   readonly cronExpression: string | null;
   readonly timezone: string;
 }
@@ -88,6 +94,20 @@ export interface WebhookTriggerEvent {
   readonly body: unknown;
 }
 
+export interface GmailTriggerEvent {
+  readonly kind: "gmail";
+  readonly triggerId: string;
+  readonly emailAddress: string;
+  readonly historyId: string;
+  readonly messageId: string;
+  readonly threadId: string | null;
+  readonly labelId: string;
+  readonly labelName: string | null;
+  readonly from: string | null;
+  readonly subject: string | null;
+  readonly snippet: string | null;
+}
+
 /**
  * Trigger event for an automation-table time fire (the trigger poller, U4).
  * It is instruction-only — no inbound payload — and tags the run with the
@@ -119,6 +139,7 @@ interface ManualTriggerEvent {
 type TriggerEvent =
   | AutomationTimeTriggerEvent
   | WebhookTriggerEvent
+  | GmailTriggerEvent
   | ManualTriggerEvent;
 
 /**
@@ -146,6 +167,30 @@ export function webhookRowToAutomation(row: {
     prompt: row.instruction,
     appendSystemPrompt: row.appendSystemPrompt,
     triggerType: "webhook",
+    cronExpression: null,
+    timezone: "UTC",
+  };
+}
+
+export function gmailRowToAutomation(row: {
+  readonly id: string;
+  readonly agentId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly instruction: string;
+  readonly appendSystemPrompt: string | null;
+}): Automation {
+  return {
+    interpreterKind: "default",
+    id: row.id,
+    agentId: row.agentId,
+    orgId: row.orgId,
+    userId: row.userId,
+    chatThreadId: row.chatThreadId,
+    prompt: row.instruction,
+    appendSystemPrompt: row.appendSystemPrompt,
+    triggerType: "gmail",
     cronExpression: null,
     timezone: "UTC",
   };
@@ -264,6 +309,48 @@ function buildWebhookAppendSystemPrompt(event: WebhookTriggerEvent): string {
   ].join("\n");
 }
 
+function buildGmailAppendSystemPrompt(event: GmailTriggerEvent): string {
+  const payload = JSON.stringify(
+    {
+      emailAddress: event.emailAddress,
+      historyId: event.historyId,
+      messageId: event.messageId,
+      threadId: event.threadId,
+      labelId: event.labelId,
+      labelName: event.labelName,
+      from: event.from,
+      subject: event.subject,
+      snippet: event.snippet,
+    },
+    null,
+    2,
+  );
+  return [
+    "# Current Integration",
+    "You are currently running inside: Gmail label automation",
+    "",
+    "This automation fired because the configured Gmail label was applied to an email message. The triggering message context is below as JSON.",
+    "",
+    "```json",
+    payload,
+    "```",
+    "",
+    "Use the connected Gmail tool to inspect the message or thread when needed, then create a draft reply in Gmail. Do not send the email.",
+    "",
+    "This run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread.",
+  ].join("\n");
+}
+
+function buildGmailAutomationAppendSystemPrompt(
+  automation: Automation,
+  event: GmailTriggerEvent,
+): string {
+  const gmailContext = buildGmailAppendSystemPrompt(event);
+  return automation.appendSystemPrompt
+    ? `${gmailContext}\n\n${automation.appendSystemPrompt}`
+    : gmailContext;
+}
+
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
@@ -356,6 +443,23 @@ export class DefaultInterpreter {
         agentId: automation.agentId,
         chatThreadId: automation.chatThreadId,
         appendSystemPrompt: buildWebhookAppendSystemPrompt(triggerEvent),
+        callbacks: [buildChatCallback(automation)],
+        zeroRunMetadata: {
+          automationId: automation.id,
+          triggerId: triggerEvent.triggerId,
+        },
+      });
+    }
+
+    if (triggerEvent.kind === "gmail") {
+      return Promise.resolve({
+        prompt: automation.prompt,
+        agentId: automation.agentId,
+        chatThreadId: automation.chatThreadId,
+        appendSystemPrompt: buildGmailAutomationAppendSystemPrompt(
+          automation,
+          triggerEvent,
+        ),
         callbacks: [buildChatCallback(automation)],
         zeroRunMetadata: {
           automationId: automation.id,

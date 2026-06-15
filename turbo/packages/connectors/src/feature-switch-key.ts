@@ -63,4 +63,5 @@ export enum FeatureSwitchKey {
   AutomationWebhookTriggers = "automationWebhookTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",
   PaidOnboardingRedirect = "paidOnboardingRedirect",
+  AutomationGmailEventTriggers = "automationGmailEventTriggers",
 }

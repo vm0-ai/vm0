@@ -31,6 +31,13 @@ const timeTriggerRuntimeShape = {
   consecutiveFailures: z.number(),
 };
 
+export const gmailLabelAppliedEventConfigSchema = z.object({
+  provider: z.literal("gmail"),
+  event: z.literal("label_applied"),
+  labelId: z.string().min(1),
+  labelName: z.string().min(1).optional(),
+});
+
 export const automationTriggerResponseSchema = z.discriminatedUnion("kind", [
   z.object({
     ...triggerBaseShape,
@@ -58,6 +65,11 @@ export const automationTriggerResponseSchema = z.discriminatedUnion("kind", [
     // creation or rotation).
     webhookToken: z.string(),
     webhookUrl: z.string(),
+  }),
+  z.object({
+    ...triggerBaseShape,
+    kind: z.literal("event"),
+    config: gmailLabelAppliedEventConfigSchema,
   }),
 ]);
 
@@ -98,6 +110,11 @@ const loopTriggerConfigSchema = z.object({
   intervalSeconds: z.number().int().positive(),
 });
 
+const eventTriggerConfigSchema = z.object({
+  kind: z.literal("event"),
+  config: gmailLabelAppliedEventConfigSchema,
+});
+
 /**
  * Trigger creation input: the kind plus exactly its own config. Webhook
  * triggers mint their token + HMAC secret server-side.
@@ -106,6 +123,7 @@ export const createTriggerRequestSchema = z.discriminatedUnion("kind", [
   cronTriggerConfigSchema,
   onceTriggerConfigSchema,
   loopTriggerConfigSchema,
+  eventTriggerConfigSchema,
   z.object({
     kind: z.literal("webhook"),
   }),

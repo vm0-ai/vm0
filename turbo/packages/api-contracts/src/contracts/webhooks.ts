@@ -100,6 +100,22 @@ export const webhookAutomationInboundContract = c.router({
   },
 });
 
+export const webhookGmailPubSubContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/internal/webhooks/gmail",
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle authenticated Gmail Pub/Sub push events",
+  },
+});
+
 export const webhookBuiltInGenerationFalContract = c.router({
   post: {
     method: "POST",

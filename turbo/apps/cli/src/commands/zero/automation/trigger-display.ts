@@ -24,11 +24,13 @@ export function formatTriggerConfig(
       return `every ${formatDurationSeconds(trigger.intervalSeconds)}`;
     case "webhook":
       return trigger.webhookUrl;
+    case "event":
+      return `${trigger.config.provider} ${trigger.config.event}: ${trigger.config.labelName ?? trigger.config.labelId}`;
   }
 }
 
 function formatNextRun(trigger: AutomationTriggerResponse): string {
-  if (trigger.kind === "webhook") {
+  if (trigger.kind === "webhook" || trigger.kind === "event") {
     return chalk.dim("-");
   }
   if (!trigger.nextRunAt) {
@@ -118,9 +120,17 @@ export function printTriggerDetails(trigger: AutomationTriggerResponse): void {
     case "webhook":
       console.log(`${"Webhook URL:".padEnd(14)}${trigger.webhookUrl}`);
       break;
+    case "event":
+      console.log(`${"Provider:".padEnd(14)}${trigger.config.provider}`);
+      console.log(`${"Event:".padEnd(14)}${trigger.config.event}`);
+      console.log(`${"Label ID:".padEnd(14)}${trigger.config.labelId}`);
+      if (trigger.config.labelName) {
+        console.log(`${"Label:".padEnd(14)}${trigger.config.labelName}`);
+      }
+      break;
   }
 
-  if (trigger.kind !== "webhook") {
+  if (trigger.kind !== "webhook" && trigger.kind !== "event") {
     console.log(`${"Timezone:".padEnd(14)}${trigger.timezone}`);
     console.log(
       `${"Next run:".padEnd(14)}${

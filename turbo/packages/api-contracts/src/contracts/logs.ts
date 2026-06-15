@@ -50,6 +50,7 @@ export const triggerSourceSchema = z.enum([
   "cli",
   "agent",
   "webhook",
+  "gmail",
 ]);
 
 export type TriggerSource = z.infer<typeof triggerSourceSchema>;

@@ -364,6 +364,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Redirect admins who need workspace onboarding to the external paid-onboarding SO flow instead of the in-app /onboarding flow.",
     enabled: true,
   },
+  [FeatureSwitchKey.AutomationGmailEventTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow Gmail label event triggers on automations, including watch registration, Pub/Sub push ingestion, Gmail history reconciliation, and draft-reply automation runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
