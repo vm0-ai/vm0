@@ -72,9 +72,19 @@ _VALID_AUTH_BASE_SCHEME = "https"
 _VALID_AWS_PREDICATE_KEYS = frozenset(("sigv4", "action", "target"))
 _AWS_PREDICATE_VALUE_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
 _AWS_SUBRESOURCE_QUERY_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
+# SigV4 query auth keys and S3 REST operation parameters that do not select a
+# different S3 subresource operation.
 _AWS_IGNORED_QUERY_KEYS = frozenset(
     key.lower()
     for key in (
+        "partNumber",
+        "response-cache-control",
+        "response-content-disposition",
+        "response-content-encoding",
+        "response-content-language",
+        "response-content-type",
+        "response-expires",
+        "versionId",
         "X-Amz-Algorithm",
         "X-Amz-Credential",
         "X-Amz-Date",
@@ -1646,6 +1656,15 @@ def _query_has_only_ignored_aws_keys(query_pairs: list[tuple[str, str]]) -> bool
     return all(key.lower() in _AWS_IGNORED_QUERY_KEYS for key, _value in query_pairs)
 
 
+def _query_has_only_subresource_or_ignored_aws_keys(
+    query_pairs: list[tuple[str, str]],
+    subresource: str,
+) -> bool:
+    return all(
+        key == subresource or key.lower() in _AWS_IGNORED_QUERY_KEYS for key, _value in query_pairs
+    )
+
+
 def _aws_subresource_matches(
     query_subresource: str | None,
     *,
@@ -1653,7 +1672,12 @@ def _aws_subresource_matches(
 ) -> bool:
     if query_subresource is None:
         return _query_has_only_ignored_aws_keys(query_pairs)
-    return len(_query_values(query_pairs, query_subresource)) == 1
+    return len(_query_values(query_pairs, query_subresource)) == 1 and (
+        _query_has_only_subresource_or_ignored_aws_keys(
+            query_pairs,
+            query_subresource,
+        )
+    )
 
 
 def _aws_predicates_match(

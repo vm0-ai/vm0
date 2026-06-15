@@ -300,6 +300,34 @@ def test_s3_virtual_hosted_style_rest_rules_use_bucket_from_host():
     assert put_bucket_acl.permissions == ("s3:PutBucketAcl",)
 
 
+def test_s3_rest_operation_query_parameters_match_base_operation():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:GetObject",
+            "GET /{Bucket}/{Key+} AWS sigv4=s3",
+        )
+    )
+    versioned_object = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?versionId=1",
+        firewalls,
+        {"aws": network_policy(unknown_policy="deny")},
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(versioned_object, matching.FirewallAllow)
+    assert versioned_object.permission == "s3:GetObject"
+
+    response_override = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?response-content-type=text%2Fplain",
+        firewalls,
+        {"aws": network_policy(unknown_policy="deny")},
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+    assert isinstance(response_override, matching.FirewallAllow)
+    assert response_override.permission == "s3:GetObject"
+
+
 def test_s3_unknown_subresource_uses_unknown_policy():
     firewalls = _aws_firewall(
         firewall_permission(
@@ -308,7 +336,26 @@ def test_s3_unknown_subresource_uses_unknown_policy():
         )
     )
     result = match_compiled_firewalls(
-        "https://s3.amazonaws.com/my-bucket/my-key?versionId=1",
+        "https://s3.amazonaws.com/my-bucket/my-key?acl",
+        firewalls,
+        {"aws": network_policy(unknown_policy="deny")},
+        method="GET",
+        request_context=_sigv4_context("s3"),
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "unknown_endpoint"
+
+
+def test_s3_subresource_rejects_ambiguous_extra_subresource():
+    firewalls = _aws_firewall(
+        firewall_permission(
+            "s3:GetObjectTagging",
+            "GET /{Bucket}/{Key+}?tagging AWS sigv4=s3",
+        )
+    )
+    result = match_compiled_firewalls(
+        "https://s3.amazonaws.com/my-bucket/my-key?tagging&acl",
         firewalls,
         {"aws": network_policy(unknown_policy="deny")},
         method="GET",
