@@ -32,6 +32,7 @@ export enum FeatureSwitchKey {
   GoogleMapsConnector = "googleMapsConnector",
   GoogleAnalyticsConnector = "googleAnalyticsConnector",
   GoogleSearchConsoleConnector = "googleSearchConsoleConnector",
+  YouTubeConnector = "youtubeConnector",
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
   GitHubIntegration = "githubIntegration",
