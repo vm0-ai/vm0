@@ -1800,7 +1800,7 @@ function TemplatePickerTabs({
               )}
               stroke={1.8}
             />
-            PPT
+            Presentation
           </TabsTrigger>
         )}
         {hasIllustrationTab && (
