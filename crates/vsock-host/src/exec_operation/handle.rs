@@ -14,8 +14,8 @@ use super::EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT;
 use super::diagnostics::ExecOperationDiagnostic;
 use super::frame::{
     ExecCancelFrameWriteOutcome, clear_exec_operation_stream_sender, exec_cancel_write_observer,
-    mark_pending_exec_control_possible_guest_write, send_exec_cancel_frame_for_wait,
-    write_frame, write_frame_with_pre_write,
+    mark_pending_exec_control_possible_guest_write, send_exec_cancel_frame_for_wait, write_frame,
+    write_frame_with_pre_write,
 };
 use super::state::{PendingExecControl, PendingExecControlGuard};
 use super::types::{
@@ -300,11 +300,11 @@ impl ExecWaitCore {
     ) -> io::Result<ExecOperationResult> {
         // The state lock already proved dispatch removed the operation; only the
         // terminal result delivery remains.
-        self.active_seq_or_closed(Self::operation_closed_message(lifecycle))?;
+        self.active_seq_or_closed(lifecycle.operation_closed_message())?;
         let rx = self.result_rx.take().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::ConnectionReset,
-                Self::operation_closed_message(lifecycle),
+                lifecycle.operation_closed_message(),
             )
         })?;
         self.seq = None;
