@@ -2737,7 +2737,7 @@ function ConnectorsPopoverButton({
       ? sorted.filter((c) => {
           return matchesConnectorSearch(search, c);
         })
-      : sorted.slice(0, 5);
+      : sorted;
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
