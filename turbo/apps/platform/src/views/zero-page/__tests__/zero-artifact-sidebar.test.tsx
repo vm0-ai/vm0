@@ -192,6 +192,55 @@ function presentationHtml(): string {
 </html>`;
 }
 
+function presentationHtmlWithDeckBackground(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Dog world</title>
+    <style>
+      :root {
+        --bg: #000000;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+      }
+      .deck {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      .slide {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        opacity: 0;
+      }
+      .slide.is-active {
+        opacity: 1;
+      }
+      .cover-bg {
+        position: absolute;
+        inset: 0;
+        background: var(--bg);
+        z-index: -1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="deck">
+      <section class="slide is-active" data-slide-id="slide-intro">
+        <div class="cover-bg"></div>
+        <h1>狗狗的世界</h1>
+      </section>
+    </div>
+  </body>
+</html>`;
+}
+
 function presentationPptxBlob(): Promise<Blob> {
   const zip = new JSZip();
   zip.file(
@@ -788,6 +837,49 @@ describe("zero artifact sidebar", () => {
 
     await waitFor(() => {
       expect(downloads).toContain("quarterly-roadmap.pptx");
+      expect(
+        document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("preserves deck-level slide backgrounds for editable PPTX export", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/dog-world.html";
+    const downloads = captureDownloads(context.signal);
+    setupPresentationArtifactThread(
+      presentationUrl,
+      presentationHtmlWithDeckBackground(),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
+    });
+    click(menuItemByText("Download (.pptx)"));
+
+    const exportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+
+    expect(exportFrame.srcdoc).toContain(
+      "copyInheritedSlideBackgrounds(nodes);",
+    );
+    expect(exportFrame.srcdoc).toContain("background: var(--bg)");
+    expect(exportFrame.srcdoc).toContain("狗狗的世界");
+
+    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+
+    await waitFor(() => {
+      expect(downloads).toContain("dog-world.pptx");
       expect(
         document.querySelector('iframe[title="Presentation PPTX export"]'),
       ).not.toBeInTheDocument();
