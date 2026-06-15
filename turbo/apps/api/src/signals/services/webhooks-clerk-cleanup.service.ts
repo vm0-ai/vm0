@@ -33,10 +33,11 @@ import { variables } from "@vm0/db/schema/variable";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, count, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { deleteS3Objects, listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
@@ -50,6 +51,7 @@ import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 
 const L = logger("WebhookClerkCleanup");
+const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
 
 async function publishCancelBestEffort(
   runnerGroup: string | null,
@@ -446,7 +448,9 @@ const cleanupUserExternalServices$ = command(
 
 async function emptyOrgIdsAfterDeletingUser(
   db: Db,
+  clerk: ReturnType<typeof clerk$.read>,
   userId: string,
+  signal: AbortSignal,
 ): Promise<readonly string[]> {
   const membershipRows = await db
     .select({ orgId: orgMembersCache.orgId })
@@ -467,22 +471,64 @@ async function emptyOrgIdsAfterDeletingUser(
 
   const emptyOrgIds: string[] = [];
   for (const orgId of candidateOrgIds) {
-    const [remainingMember] = await db
-      .select({ userId: orgMembersCache.userId })
-      .from(orgMembersCache)
-      .where(
-        and(
-          eq(orgMembersCache.orgId, orgId),
-          ne(orgMembersCache.userId, userId),
-        ),
-      )
-      .limit(1);
-    if (!remainingMember) {
+    if (await isClerkOrgEmptyAfterDeletingUser(clerk, orgId, userId, signal)) {
       emptyOrgIds.push(orgId);
     }
   }
 
   return emptyOrgIds;
+}
+
+function isClerkNotFound(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  return (
+    Reflect.get(error, "statusCode") === 404 ||
+    Reflect.get(error, "code") === "NOT_FOUND" ||
+    Reflect.get(error, "name") === "NotFoundError"
+  );
+}
+
+async function isClerkOrgEmptyAfterDeletingUser(
+  clerk: ReturnType<typeof clerk$.read>,
+  orgId: string,
+  userId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  for (let offset = 0; ; offset += CLERK_ORG_MEMBERSHIP_PAGE_SIZE) {
+    const memberships = await settle(
+      clerk.organizations.getOrganizationMembershipList({
+        organizationId: orgId,
+        limit: CLERK_ORG_MEMBERSHIP_PAGE_SIZE,
+        offset,
+      }),
+    );
+    signal.throwIfAborted();
+
+    if (!memberships.ok) {
+      if (isClerkNotFound(memberships.error)) {
+        return true;
+      }
+      L.warn("failed to query Clerk organization memberships for deletion", {
+        orgId,
+        userId,
+        error: memberships.error,
+      });
+      return false;
+    }
+
+    for (const membership of memberships.value.data) {
+      const memberUserId = membership.publicUserData?.userId;
+      if (!memberUserId || memberUserId !== userId) {
+        return false;
+      }
+    }
+
+    if (memberships.value.data.length < CLERK_ORG_MEMBERSHIP_PAGE_SIZE) {
+      return true;
+    }
+  }
 }
 
 function deleteObjectsForPrefixes(
@@ -726,7 +772,12 @@ export const cleanupClerkDeletedOrg$ = command(
 export const cleanupClerkDeletedUser$ = command(
   async ({ get, set }, userId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
-    const emptyOrgIds = await emptyOrgIdsAfterDeletingUser(db, userId);
+    const emptyOrgIds = await emptyOrgIdsAfterDeletingUser(
+      db,
+      get(clerk$),
+      userId,
+      signal,
+    );
     signal.throwIfAborted();
 
     await set(cleanupUserExternalServices$, db, userId, signal);

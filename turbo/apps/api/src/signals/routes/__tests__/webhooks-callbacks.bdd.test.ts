@@ -3269,6 +3269,60 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       .toStrictEqual([0, 0, 0]);
   });
 
+  it("preserves org data when a deleted user leaves an uncached Clerk member", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+
+    const doomed = bdd.user();
+    const granted = await runs.grantProEntitlement(doomed);
+    const orgId = orgOf(doomed);
+    const peer = bdd.user({ orgId, orgRole: "org:member" });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [{ publicUserData: { userId: peer.userId } }],
+      },
+    );
+    context.mocks.stripe.subscriptions.list.mockClear();
+    context.mocks.stripe.subscriptions.update.mockClear();
+    context.mocks.stripe.subscriptions.cancel.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    api.verifyNextClerkWebhook({
+      type: "user.deleted",
+      data: { id: doomed.userId },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+
+    await expect
+      .poll(async () => {
+        const rows = await readOrgCleanupRows(orgId);
+        return [rows.metadata.length, rows.members.length];
+      })
+      .toStrictEqual([1, 0]);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledWith({
+      organizationId: orgId,
+      limit: 100,
+      offset: 0,
+    });
+    expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    expect((await readOrgCleanupRows(orgId)).metadata).toStrictEqual([
+      {
+        stripeCustomerId: granted.customerId,
+        stripeSubscriptionId: granted.subscriptionId,
+      },
+    ]);
+  });
+
   it("does not update a Stripe subscription already canceled upstream", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);
