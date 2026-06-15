@@ -870,7 +870,9 @@ describe("zero artifact sidebar", () => {
       return frame as HTMLIFrameElement;
     });
 
-    expect(exportFrame.srcdoc).toContain("copyInheritedSlideBackgrounds(nodes);");
+    expect(exportFrame.srcdoc).toContain(
+      "copyInheritedSlideBackgrounds(nodes);",
+    );
     expect(exportFrame.srcdoc).toContain("background: var(--bg)");
     expect(exportFrame.srcdoc).toContain("狗狗的世界");
 
