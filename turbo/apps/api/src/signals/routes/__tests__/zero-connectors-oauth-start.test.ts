@@ -6,7 +6,6 @@ import {
   type ConnectorAuthMethodId,
 } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
