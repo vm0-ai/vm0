@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -12,7 +13,7 @@ use vsock_proto::{ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_WRITE_F
 use super::super::support::{
     MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
     make_pair, normal_operation_readiness, operation_count, pending_request_count,
-    send_exec_result, setup_host_and_guest,
+    read_guest_message, send_exec_result, setup_host_and_guest,
 };
 use super::support::{
     ExecStartFrame, WriteFileFrame, expect_exec_start, expect_write_file, send_guest_error,
@@ -337,6 +338,98 @@ async fn write_file_chunked_quotes_target_path_with_single_quote() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("permission denied"));
+}
+
+#[tokio::test]
+async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_paths() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let target_path = "/tmp/shared.bin";
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
+    let write_a = spawn_write_file(
+        Arc::clone(&host),
+        target_path,
+        vec![0xAA; chunk_limit + 1],
+        false,
+    );
+    let write_b = spawn_write_file(
+        Arc::clone(&host),
+        target_path,
+        vec![0xBB; chunk_limit + 1],
+        false,
+    );
+    let mut chunks_by_temp: BTreeMap<String, (u8, usize)> = BTreeMap::new();
+    let mut temp_by_marker: BTreeMap<u8, String> = BTreeMap::new();
+    let mut renamed_temps = BTreeSet::new();
+
+    while renamed_temps.len() < 2 {
+        let msg = read_guest_message(&mut guest).await;
+        match msg.msg_type {
+            MSG_WRITE_FILE => {
+                let (path, content, sudo, append) =
+                    vsock_proto::decode_write_file(&msg.payload).unwrap();
+                assert!(!sudo);
+                assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
+                let marker = *content.first().expect("chunk content");
+                assert!(matches!(marker, 0xAA | 0xBB));
+                assert!(content.iter().all(|byte| *byte == marker));
+
+                if let Some((known_marker, chunk_count)) = chunks_by_temp.get_mut(path) {
+                    assert_eq!(*known_marker, marker);
+                    assert!(append);
+                    assert_eq!(content.len(), 1);
+                    *chunk_count += 1;
+                } else {
+                    assert!(!append);
+                    assert_eq!(content.len(), chunk_limit);
+                    assert!(temp_by_marker.insert(marker, path.to_string()).is_none());
+                    chunks_by_temp.insert(path.to_string(), (marker, 1));
+                }
+
+                send_write_file_success(&mut guest, msg.seq).await;
+            }
+            MSG_EXEC_START => {
+                let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
+                assert_eq!(decoded.label, "write-file-rename");
+                assert!(!decoded.sudo);
+                assert_eq!(decoded.stdout, helper_exec_capture_policy());
+                assert_eq!(decoded.stderr, helper_exec_capture_policy());
+                assert!(decoded.expected_exit_codes.is_empty());
+
+                let renamed_temp = chunks_by_temp
+                    .iter()
+                    .find_map(|(temp_path, (_marker, chunk_count))| {
+                        let expected_command = format!(
+                            "mv -f -- {} {}",
+                            shell_quote_for_test(temp_path),
+                            shell_quote_for_test(target_path)
+                        );
+                        (decoded.command == expected_command && *chunk_count == 2)
+                            .then(|| temp_path.clone())
+                    })
+                    .expect("rename should target a completed temp path");
+                assert!(renamed_temps.insert(renamed_temp));
+
+                send_exec_result(
+                    &mut guest,
+                    msg.seq,
+                    ExecTermination::Exited { exit_code: 0 },
+                    &[],
+                    &[],
+                )
+                .await;
+            }
+            _ => panic!("unexpected guest message type {:#04x}", msg.msg_type),
+        }
+    }
+
+    assert_eq!(chunks_by_temp.len(), 2);
+    assert_eq!(temp_by_marker.len(), 2);
+    assert_ne!(temp_by_marker.get(&0xAA), temp_by_marker.get(&0xBB));
+    assert!(chunks_by_temp.values().all(|(_marker, count)| *count == 2));
+
+    write_a.await.unwrap().unwrap();
+    write_b.await.unwrap().unwrap();
 }
 
 #[tokio::test]
