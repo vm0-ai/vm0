@@ -12,7 +12,6 @@ export enum FeatureSwitchKey {
   DocuSignConnector = "docusignConnector",
   DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
-  GoogleCloudConnector = "googleCloudConnector",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   GarminConnectConnector = "garminConnectConnector",
@@ -32,7 +31,6 @@ export enum FeatureSwitchKey {
   GoogleMapsConnector = "googleMapsConnector",
   GoogleAnalyticsConnector = "googleAnalyticsConnector",
   GoogleSearchConsoleConnector = "googleSearchConsoleConnector",
-  YouTubeConnector = "youtubeConnector",
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
   GitHubIntegration = "githubIntegration",
@@ -62,4 +60,5 @@ export enum FeatureSwitchKey {
   AssistantTextStreaming = "assistantTextStreaming",
   AutomationWebhookTriggers = "automationWebhookTriggers",
   AutomationMultiTrigger = "automationMultiTrigger",
+  PaidOnboardingRedirect = "paidOnboardingRedirect",
 }

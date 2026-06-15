@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.117.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.117.1...runner-rs-v0.117.2) (2026-06-15)
+
+
+### Bug Fixes
+
+* add usage underbilling alert signals ([#17691](https://github.com/vm0-ai/vm0/issues/17691)) ([4edf467](https://github.com/vm0-ai/vm0/commit/4edf467d84ec10bcd7138ba90d44330e94083f35))
+
 ## [0.117.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.117.0...runner-rs-v0.117.1) (2026-06-15)
 
 

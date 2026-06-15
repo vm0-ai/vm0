@@ -89,4 +89,8 @@ def assert_lost_visibility_error(proxy_log: Path) -> dict[str, Any]:
         if entry["level"] == "error" and "unparseable" in entry["message"].lower()
     ]
     assert len(matching_entries) == 1
+    assert matching_entries[0]["type"] == "usage_underbilling"
+    assert matching_entries[0]["reason"] == "unparseable_usage_response"
+    assert matching_entries[0]["underbilling_class"] == "confirmed"
+    assert matching_entries[0]["component"] == "mitm_addon"
     return matching_entries[0]

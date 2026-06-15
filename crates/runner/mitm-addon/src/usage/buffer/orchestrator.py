@@ -45,6 +45,21 @@ _DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
 _EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
 
 
+def _log_shutdown_retained_batches(
+    trigger: UsageFlushTrigger,
+    flush_sequence: int,
+    retained_batches: list[_PendingBatch],
+) -> None:
+    if not retained_batches or trigger != "shutdown":
+        return
+    _log_flush_summaries(
+        "retained",
+        trigger,
+        flush_sequence,
+        _build_flush_summaries([pending_batch.batch for pending_batch in retained_batches]),
+    )
+
+
 class _FlushOwnerLock(Protocol):
     def acquire(self, blocking: bool = True) -> bool:
         raise NotImplementedError
@@ -220,6 +235,11 @@ class UsageEventBuffer:
                         pending_flush.flush_sequence,
                         retain_result.dropped_batches,
                     )
+                _log_shutdown_retained_batches(
+                    trigger,
+                    pending_flush.flush_sequence,
+                    retain_result.retained_batches,
+                )
                 if timer_to_start is not None:
                     timer_to_start.start()
                 raise exc.original from exc
@@ -236,6 +256,11 @@ class UsageEventBuffer:
                         pending_flush.flush_sequence,
                         retain_result.dropped_batches,
                     )
+                _log_shutdown_retained_batches(
+                    trigger,
+                    pending_flush.flush_sequence,
+                    retain_result.retained_batches,
+                )
                 if timer_to_start is not None:
                     timer_to_start.start()
                 raise

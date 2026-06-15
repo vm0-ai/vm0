@@ -12,10 +12,32 @@ use super::lease::DeviceLease;
 use super::scan::ScanRequest;
 use super::{DEFAULT_COOLDOWN_MS, DeviceFreeCheck, MAX_PENDING};
 
-/// A device claim with a timestamp marking when it was released.
+#[derive(Clone, Copy)]
+enum CooldownExpiration {
+    At(Instant),
+    Never,
+}
+
+impl CooldownExpiration {
+    fn from_release(released_at: Instant, cooldown: Duration) -> Self {
+        match released_at.checked_add(cooldown) {
+            Some(deadline) => Self::At(deadline),
+            None => Self::Never,
+        }
+    }
+
+    fn deadline(self) -> Option<Instant> {
+        match self {
+            Self::At(deadline) => Some(deadline),
+            Self::Never => None,
+        }
+    }
+}
+
+/// A device claim waiting for its cooldown expiration.
 pub(super) struct CooldownSlot {
     claim: NbdDeviceClaim,
-    pub(super) released_at: Instant,
+    expiration: CooldownExpiration,
 }
 
 impl CooldownSlot {
@@ -23,14 +45,22 @@ impl CooldownSlot {
         self.claim.index()
     }
 
-    fn deadline(&self, cooldown: Duration) -> Instant {
-        self.released_at + cooldown
+    fn deadline(&self) -> Option<Instant> {
+        self.expiration.deadline()
+    }
+
+    #[cfg(test)]
+    pub(super) fn expire_for_test(&mut self) {
+        self.expiration = CooldownExpiration::At(Instant::now());
     }
 }
 
 /// Configuration for the device pool.
 pub struct DevicePoolConfig {
     /// Cooldown period before a released device can be reused.
+    ///
+    /// If a released claim's deadline cannot be represented as an [`Instant`],
+    /// the claim remains in a non-expiring cooldown until pool cleanup or drop.
     pub cooldown: Duration,
 }
 
@@ -157,7 +187,7 @@ impl DevicePool {
 
         if pending_scans == 0
             && !self.deferred_acquire_errors.is_empty()
-            && self.cooldown.is_empty()
+            && !self.cooldown_timer_pending()
         {
             self.fail_deferred_acquire_errors();
         }
@@ -295,7 +325,7 @@ impl DevicePool {
         }
         self.cooldown.push_back(CooldownSlot {
             claim,
-            released_at: Instant::now(),
+            expiration: CooldownExpiration::from_release(Instant::now(), self.config.cooldown),
         });
     }
 
@@ -359,7 +389,10 @@ impl DevicePool {
     pub(super) fn process_expired_cooldown(&mut self) {
         let now = Instant::now();
         while let Some(slot) = self.cooldown.front() {
-            if slot.deadline(self.config.cooldown) > now {
+            let Some(deadline) = slot.deadline() else {
+                break;
+            };
+            if deadline > now {
                 break;
             }
             let Some(slot) = self.cooldown.pop_front() else {
@@ -385,9 +418,13 @@ impl DevicePool {
     }
 
     pub(super) fn next_cooldown_deadline(&self) -> Option<Instant> {
-        self.cooldown
-            .front()
-            .map(|slot| slot.deadline(self.config.cooldown))
+        self.cooldown.front().and_then(CooldownSlot::deadline)
+    }
+
+    fn cooldown_timer_pending(&self) -> bool {
+        // Cooldown slots are FIFO and every slot uses the same pool cooldown, so
+        // only the front slot can produce the next timer-driven state change.
+        self.next_cooldown_deadline().is_some()
     }
 
     /// Collect all indices currently tracked by the pool (cooldown + in-flight)

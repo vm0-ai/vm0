@@ -8,6 +8,7 @@ import { HTTPException } from "hono/http-exception";
 import { routePath } from "hono/route";
 
 import { corsMiddleware } from "./lib/cors";
+import { env } from "./lib/env";
 import { flushLogs, logger } from "./lib/log";
 import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
@@ -15,6 +16,8 @@ import { ROUTES, type RouteEntry } from "./signals/route";
 import { isAbortError } from "./signals/utils";
 
 const L = logger("App");
+
+const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
 
 // Stamp the matched route template into OTel baggage so child spans (db
 // queries, outbound fetches) can carry `http.route` without reaching back
@@ -51,6 +54,15 @@ function captureError(error: Error): void {
   if (shouldCaptureError(error)) {
     Sentry.captureException(error);
   }
+}
+
+function redirectToWeb(context: Context): Response {
+  const incoming = new URL(context.req.url);
+  const target = new URL(
+    `${incoming.pathname}${incoming.search}`,
+    env("VM0_WEB_URL"),
+  );
+  return context.redirect(target.toString());
 }
 
 function handleError(error: Error, context: Context): Response {
@@ -95,6 +107,11 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
     await next();
     waitUntil(flushLogs());
   });
+
+  for (const path of WEB_AUTH_PATHS) {
+    app.get(path, redirectToWeb);
+    app.get(`${path}/*`, redirectToWeb);
+  }
 
   for (const { route, handler } of routes) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));

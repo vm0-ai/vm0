@@ -1,7 +1,9 @@
 import { command, computed, state } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
+import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
   initProfileName$,
   setActiveOrgManageTab$,
@@ -177,6 +179,8 @@ export const checkUnifiedSettingsParam$ = command(
     const opensBuyCredits = section === "billing" && billingView === "credits";
     const isAdmin = await get(isOrgAdmin$);
     signal.throwIfAborted();
+    const features = get(featureSwitch$);
+    const apiKeysEnabled = Boolean(features[FeatureSwitchKey.ApiKeys]);
 
     const orgManageTab = orgManageTabForSettingsSection(section);
     if (orgManageTab && isAdmin) {
@@ -198,6 +202,7 @@ export const checkUnifiedSettingsParam$ = command(
 
     const resolved: SettingsSection =
       !isSettingsSection(section) ||
+      (section === "api-keys" && !apiKeysEnabled) ||
       (!isAdmin && isAdminOnlySettingsSection(section))
         ? "preference"
         : section;

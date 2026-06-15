@@ -2621,27 +2621,19 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ]);
   });
 
-  it("exposes Google Cloud OAuth only when its switch is enabled", () => {
+  it("exposes Google Cloud OAuth without a feature switch", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-cloud", {}),
-    ).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethodIds("google-cloud", {
-        [FeatureSwitchKey.GoogleCloudConnector]: true,
-      }),
     ).toStrictEqual(["oauth"]);
   });
 
-  it("exposes YouTube OAuth only when its switch is enabled", () => {
+  it("exposes YouTube OAuth without a feature switch", () => {
     expect(getConfiguredConnectorAuthMethodIds("youtube")).toStrictEqual([
       "oauth",
     ]);
-    expect(getAvailableConnectorAuthMethodIds("youtube", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethodIds("youtube", {
-        [FeatureSwitchKey.YouTubeConnector]: true,
-      }),
-    ).toStrictEqual(["oauth"]);
+    expect(getAvailableConnectorAuthMethodIds("youtube", {})).toStrictEqual([
+      "oauth",
+    ]);
   });
 
   it("exposes Doubao API-token auth without a feature switch", () => {

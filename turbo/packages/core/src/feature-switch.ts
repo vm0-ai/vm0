@@ -74,11 +74,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Figma design connector",
     enabled: false,
   },
-  [FeatureSwitchKey.GoogleCloudConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Google Cloud connector integration",
-    enabled: false,
-  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Mercury banking connector",
@@ -168,17 +163,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GoogleAnalyticsConnector]: {
     maintainer: "linghan@vm0.ai",
     description: "Enable the Google Analytics connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
     maintainer: "linghan@vm0.ai",
     description: "Enable the Google Search Console connector",
     enabled: true,
-  },
-  [FeatureSwitchKey.YouTubeConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the YouTube connector",
-    enabled: false,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -259,6 +249,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -353,6 +344,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the resource-aware Automation trigger section in Apps/platform. While off, platform keeps the legacy single-time-trigger editing projection.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PaidOnboardingRedirect]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Redirect admins who need workspace onboarding to the external paid-onboarding SO flow instead of the in-app /onboarding flow.",
+    enabled: true,
   },
 };
 

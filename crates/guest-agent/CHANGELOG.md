@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.36.0...guest-agent-v0.36.1) (2026-06-15)
+
+
+### Bug Fixes
+
+* increase stuck tool watchdog timeout ([#17734](https://github.com/vm0-ai/vm0/issues/17734)) ([5b4a76e](https://github.com/vm0-ai/vm0/commit/5b4a76e0ec1b81fb9a9f4817092b058e5d01d4a6))
+
 ## [0.36.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.6...guest-agent-v0.36.0) (2026-06-15)
 
 

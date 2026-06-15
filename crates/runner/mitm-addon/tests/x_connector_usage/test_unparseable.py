@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import usage
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
@@ -164,6 +165,31 @@ def test_unparseable_no_hints_writes_error_to_proxy_log(x_usage, tmp_path, real_
     assert entry["permission"] == "tweet.read"
     assert entry["url"] == "https://api.x.com:8443/2/tweets/search/recent"
     assert "parse_error" not in entry
+
+
+def test_unparseable_no_hints_without_proxy_log_path_logs_stderr(
+    x_usage, tmp_path, real_flow, mitm_ctx
+):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets/search/recent",
+        body=b"not json",
+        rule="GET /2/tweets/search/recent",
+    )
+    flow.metadata["vm_proxy_log_path"] = ""
+
+    with mitm_ctx(api_url="https://api.vm0.ai") as log:
+        usage.report_connector_usage(flow, "run-abc-123")
+
+    messages = [call.args[0] for call in log.error.call_args_list]
+    assert any(
+        message.startswith(
+            "type=usage_underbilling reason=unparseable_usage_response "
+            "underbilling_class=confirmed component=mitm_addon "
+        )
+        for message in messages
+    )
 
 
 def test_unparseable_x_json_state_logs_parse_error(x_usage, tmp_path, real_flow):

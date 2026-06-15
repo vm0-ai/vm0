@@ -166,13 +166,7 @@ runs:
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
-          # Only the dedicated "staging" preview has a matching paid-onboarding
-          # origin; ad-hoc PR previews have none, so leave it unset there.
-          if [[ "$INPUT_JOB_REF" == "staging" ]]; then
-            paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL_STAGING)" "https://staging-so.vm6.ai")"
-          else
-            paid_onboarding_url=""
-          fi
+          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL_STAGING)" "https://staging-so.vm6.ai")"
           api_url="$INPUT_API_URL"
           api_backend_url="$INPUT_API_BACKEND_URL"
           axiom_dataset_suffix="dev"

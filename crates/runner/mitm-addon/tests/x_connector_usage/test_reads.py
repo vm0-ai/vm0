@@ -445,7 +445,9 @@ def test_tweet_counts_path_matching_requires_exact_endpoint(x_usage, tmp_path, r
     assert p["quantity"] == 3
 
 
-def test_tweet_counts_missing_total_skips_billing_and_logs_warning(x_usage, tmp_path, real_flow):
+def test_tweet_counts_missing_total_skips_billing_and_logs_underbilling(
+    x_usage, tmp_path, real_flow
+):
     """Parsed count endpoint responses without total_tweet_count should not bill buckets."""
     body = json.dumps(
         {
@@ -469,9 +471,17 @@ def test_tweet_counts_missing_total_skips_billing_and_logs_warning(x_usage, tmp_
 
     proxy_log = tmp_path / "proxy.jsonl"
     entries = read_jsonl_entries_after_flush(proxy_log)
-    assert any(
-        entry["level"] == "warn" and "total_tweet_count" in entry["message"] for entry in entries
-    )
+    matching_entries = [
+        entry for entry in entries if entry["reason"] == "missing_count_endpoint_total"
+    ]
+    assert len(matching_entries) == 1
+    assert matching_entries[0]["level"] == "error"
+    assert matching_entries[0]["type"] == "usage_underbilling"
+    assert matching_entries[0]["underbilling_class"] == "confirmed"
+    assert matching_entries[0]["component"] == "mitm_addon"
+    assert matching_entries[0]["firewall_name"] == "x"
+    assert matching_entries[0]["permission"] == "tweet.read"
+    assert matching_entries[0]["response_data_count"] == 2
 
 
 def test_tweet_counts_unparseable_ignores_request_hints_and_logs_error(

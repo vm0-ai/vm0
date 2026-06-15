@@ -286,10 +286,8 @@ class TestReportModelProviderUsage:
 
         assert webhook.request_count == 0
 
-    def test_warns_when_missing_sandbox_token(
-        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
-        """Should write to proxy log and skip when sandbox_token is empty."""
+    def test_logs_underbilling_when_missing_sandbox_token(self, tmp_path, real_flow, mitm_ctx):
+        """Should emit an alertable underbilling signal when sandbox_token is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
@@ -298,20 +296,25 @@ class TestReportModelProviderUsage:
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
 
-        with usage_webhook_api() as webhook:
+        with mitm_ctx(api_url="https://api.vm0.ai"):
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert webhook.request_count == 0
         assert jsonl_exists_after_flush(proxy_log)
         [entry] = read_jsonl_entries_after_flush(proxy_log)
-        assert entry["level"] == "warn"
+        assert entry["level"] == "error"
         assert entry["message"] == "Cannot report usage event: missing sandbox_token or api_url"
-        assert entry["type"] == "usage_event"
+        assert entry["type"] == "usage_underbilling"
+        assert entry["reason"] == "missing_reporting_context"
+        assert entry["underbilling_class"] == "confirmed"
+        assert entry["component"] == "mitm_addon"
+        assert entry["run_id"] == "run-abc-123"
+        assert entry["firewall_name"] == "model-provider:anthropic-api-key"
+        assert entry["missing_sandbox_token"] is True
 
-    def test_warns_when_missing_api_url(self, tmp_path, real_flow, fresh_usage_executor, mitm_ctx):
-        """Should write to proxy log and skip when api_url is empty."""
+    def test_logs_underbilling_when_missing_api_url(
+        self, tmp_path, real_flow, fresh_usage_executor, mitm_ctx
+    ):
+        """Should emit an alertable underbilling signal when api_url is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
@@ -327,9 +330,16 @@ class TestReportModelProviderUsage:
 
         assert jsonl_exists_after_flush(proxy_log)
         [entry] = read_jsonl_entries_after_flush(proxy_log)
-        assert entry["level"] == "warn"
+        assert entry["level"] == "error"
         assert entry["message"] == "Cannot report usage event: missing sandbox_token or api_url"
-        assert entry["type"] == "usage_event"
+        assert entry["type"] == "usage_underbilling"
+        assert entry["reason"] == "missing_reporting_context"
+        assert entry["underbilling_class"] == "confirmed"
+        assert entry["component"] == "mitm_addon"
+        assert entry["run_id"] == "run-abc-123"
+        assert entry["firewall_name"] == "model-provider:anthropic-api-key"
+        assert entry["missing_sandbox_token"] is False
+        assert entry["missing_api_url"] is True
 
     def test_source_dedupe_uses_flow_id_when_message_id_missing(
         self, real_flow, fresh_usage_executor, usage_webhook_api

@@ -20,8 +20,8 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
-from logging_utils import log_proxy_entry
 
+from ...underbilling import log_usage_underbilling
 from . import x
 from .response_parser import ConnectorResponseParser
 
@@ -87,13 +87,13 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     if handler is None:
         if firewall_name and firewall_name not in _unregistered_handler_warned:
             _unregistered_handler_warned.add(firewall_name)
-            log_proxy_entry(
+            log_usage_underbilling(
                 flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
-                "warn",
                 f"Billable firewall {firewall_name!r} has no registered handler — "
                 "billing records for this firewall will be dropped.  Check that "
                 "BILLABLE_CONNECTORS in @vm0/core and _HANDLERS here are in sync.",
-                type="usage_event",
+                "unregistered_billable_handler",
+                "confirmed",
                 firewall_name=firewall_name,
             )
         return

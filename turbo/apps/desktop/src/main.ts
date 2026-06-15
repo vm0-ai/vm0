@@ -32,6 +32,7 @@ import {
   type DesktopComputerUseState,
 } from "./computer-use-types";
 import {
+  isComputerUseSetupRequired,
   resolveComputerUseStartupGate,
   type ComputerUseStartupGate,
 } from "./computer-use-startup-gate";
@@ -243,6 +244,10 @@ function appIconPath(): string {
 
 function trayIconPath(): string {
   return path.join(__dirname, "..", "assets", "tray-iconTemplate.png");
+}
+
+function trayIconDisabledPath(): string {
+  return path.join(__dirname, "..", "assets", "tray-iconDisabled.png");
 }
 
 function desktopPreferencesPath(): string {
@@ -504,6 +509,7 @@ function installTray(): void {
   desktopTray = installDesktopTray({
     displayName: config.identity.displayName,
     iconPath: trayIconPath(),
+    disabledIconPath: trayIconDisabledPath(),
     getComputerUseState: getComputerUseBridgeState,
     getAuthState: () => getAuthSession().getAuthState(),
     showMainWindow: async () => {
@@ -611,6 +617,10 @@ function logDesktopAuthError(error: unknown): void {
 
 function logComputerUseAutoStartError(error: unknown): void {
   console.error("Desktop Computer Use auto-start failed", error);
+}
+
+function logComputerUseLaunchError(error: unknown): void {
+  console.error("Desktop Computer Use launch setup check failed", error);
 }
 
 async function loadAuthUrl(window: BrowserWindow, url: string): Promise<void> {
@@ -898,6 +908,16 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   }
 }
 
+async function shouldOpenComputerUseSetupWindowOnLaunch(): Promise<boolean> {
+  const permissions = await refreshComputerUsePermissionState();
+  if (!hasRequiredComputerUsePermissions(permissions)) {
+    return true;
+  }
+
+  const authState = await getAuthSession().getAuthState();
+  return isComputerUseSetupRequired({ authState, permissions });
+}
+
 function handleDesktopAuthCallback(rawUrl: string): void {
   openDesktopAuthCallback(rawUrl);
 }
@@ -1026,10 +1046,15 @@ if (!hasSingleInstanceLock) {
       pendingCallback: desktopAuthSession.takePendingCallback(),
       consumeAuthCallback: (callback) =>
         desktopAuthSession.consumeCode(callback.code, callback.handoffId),
+      isComputerUseSetupRequired: shouldOpenComputerUseSetupWindowOnLaunch,
+      openSetupWindow: async () => {
+        await createMainWindow();
+      },
       requestAutoStartComputerUse: () => {
         computerUseAutoStart.requestStart();
       },
       logAuthError: logDesktopAuthError,
+      logLaunchError: logComputerUseLaunchError,
     });
 
     app.on("activate", () => {

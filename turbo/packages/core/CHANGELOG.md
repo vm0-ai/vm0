@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.340.0](https://github.com/vm0-ai/vm0/compare/core-v8.339.0...core-v8.340.0) (2026-06-15)
+
+
+### Features
+
+* enable google analytics connector ([#17325](https://github.com/vm0-ai/vm0/issues/17325)) ([df3f7c4](https://github.com/vm0-ai/vm0/commit/df3f7c4d363b710838bba1b61a47e26f02bb0369))
+* gate API keys settings for staff ([#17590](https://github.com/vm0-ai/vm0/issues/17590)) ([b45a627](https://github.com/vm0-ai/vm0/commit/b45a6276ad06810010743d5af5baa4318e8b3439))
+* redirect onboarding to so site ([#17654](https://github.com/vm0-ai/vm0/issues/17654)) ([55dd940](https://github.com/vm0-ai/vm0/commit/55dd940a002c83356545486c884021d8d3d427fd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.94.1
+    * @vm0/connectors bumped to 1.78.0
+
 ## [8.339.0](https://github.com/vm0-ai/vm0/compare/core-v8.338.0...core-v8.339.0) (2026-06-15)
 
 

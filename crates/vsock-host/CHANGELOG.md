@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.32](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.31...vsock-host-v0.17.32) (2026-06-15)
+
+
+### Bug Fixes
+
+* handle exec cancel terminal race ([#17721](https://github.com/vm0-ai/vm0/issues/17721)) ([ff4e352](https://github.com/vm0-ai/vm0/commit/ff4e352becb58b67d20b8fcab34b07ac59e03831))
+
 ## [0.17.31](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.30...vsock-host-v0.17.31) (2026-06-15)
 
 

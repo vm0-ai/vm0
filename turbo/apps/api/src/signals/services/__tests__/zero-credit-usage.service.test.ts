@@ -732,3 +732,101 @@ describe("processOrgUsageEvents$ low-credit alerts", () => {
     await expect(lowCreditAlerts(fixture)).resolves.toStrictEqual([]);
   });
 });
+
+describe("processOrgUsageEvents$ usage underbilling signals", () => {
+  it("logs alertable underbilling fields when pricing is missing", async () => {
+    const fixture = await createUsageFixture({
+      beforeCredits: 1_000_000,
+      chargeCredits: 25,
+    });
+    const db = store.set(writeDb$);
+    await db
+      .delete(usagePricing)
+      .where(eq(usagePricing.provider, fixture.provider));
+
+    await processFixture(fixture);
+
+    const [record] = await db
+      .select({
+        creditsCharged: usageEvent.creditsCharged,
+        billingError: usageEvent.billingError,
+        status: usageEvent.status,
+      })
+      .from(usageEvent)
+      .where(eq(usageEvent.orgId, fixture.orgId))
+      .limit(1);
+    expect(record).toMatchObject({
+      creditsCharged: 0,
+      billingError: "missing_pricing",
+      status: "processed",
+    });
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Missing usage_pricing — charged zero",
+      expect.objectContaining({
+        type: "usage_underbilling",
+        reason: "missing_pricing",
+        underbilling_class: "confirmed",
+        component: "api",
+        context: "CreditUsage",
+        orgId: fixture.orgId,
+        userId: fixture.billingUserId,
+        kind: TEST_KIND,
+        provider: fixture.provider,
+        category: TEST_CATEGORY,
+        quantity: 25,
+      }),
+    );
+  });
+
+  it("logs alertable underbilling fields when fallback pricing is used", async () => {
+    const fixture = await createUsageFixture({
+      beforeCredits: 1_000_000,
+      chargeCredits: 7,
+    });
+    const db = store.set(writeDb$);
+    await db
+      .delete(usagePricing)
+      .where(eq(usagePricing.provider, fixture.provider));
+    await db.insert(usagePricing).values({
+      kind: TEST_KIND,
+      provider: fixture.provider,
+      category: "__fallback__",
+      unitPrice: 2,
+      unitSize: 1,
+    });
+
+    await processFixture(fixture);
+
+    const [record] = await db
+      .select({
+        creditsCharged: usageEvent.creditsCharged,
+        billingError: usageEvent.billingError,
+        status: usageEvent.status,
+      })
+      .from(usageEvent)
+      .where(eq(usageEvent.orgId, fixture.orgId))
+      .limit(1);
+    expect(record).toMatchObject({
+      creditsCharged: 14,
+      billingError: "fallback_pricing",
+      status: "processed",
+    });
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Missing usage_pricing — billed at fallback rate",
+      expect.objectContaining({
+        type: "usage_underbilling",
+        reason: "fallback_pricing",
+        underbilling_class: "confirmed",
+        component: "api",
+        context: "CreditUsage",
+        orgId: fixture.orgId,
+        userId: fixture.billingUserId,
+        kind: TEST_KIND,
+        provider: fixture.provider,
+        category: TEST_CATEGORY,
+        quantity: 7,
+        fallbackUnitPrice: 2,
+      }),
+    );
+  });
+});

@@ -66,9 +66,12 @@ impl Operations {
         self.operations.get_mut(&seq)
     }
 
-    pub(in crate::exec_operation) fn mark_host_cancel_requested(&mut self, seq: u32) {
+    pub(in crate::exec_operation) fn mark_host_cancel_requested(&mut self, seq: u32) -> bool {
         if let Some(operation) = self.operations.get_mut(&seq) {
             operation.host_cancel_requested = true;
+            true
+        } else {
+            false
         }
     }
 

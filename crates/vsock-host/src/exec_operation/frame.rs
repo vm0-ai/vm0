@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use tokio::io::AsyncWriteExt;
 use tokio::time::Instant;
-use vsock_proto::{ExecControlStatus, MSG_EXEC_START};
+use vsock_proto::{ExecControlStatus, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
 use crate::{ConnectionState, FrameWriteObserver, Shared, normal_operation_transition_error};
 
@@ -18,6 +18,18 @@ use super::{
 pub(in crate::exec_operation) struct ExecOperationFrameWriteGuard {
     pub(in crate::exec_operation) shared: Arc<Shared>,
     pub(in crate::exec_operation) state: Arc<AtomicU8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::exec_operation) enum ExecCancelFrameWriteOutcome {
+    Sent,
+    AlreadyTerminal,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FrameWriteDecision {
+    Write,
+    Skip,
 }
 
 impl ExecOperationFrameWriteGuard {
@@ -50,6 +62,51 @@ fn mark_exec_operation_host_cancel_requested(shared: &Arc<Shared>, seq: u32) {
     if let ConnectionState::Connected { operations, .. } = &mut *guard {
         operations.mark_host_cancel_requested(seq);
     }
+}
+
+fn mark_exec_operation_host_cancel_requested_for_wait(
+    shared: &Arc<Shared>,
+    seq: u32,
+) -> io::Result<ExecCancelFrameWriteOutcome> {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &mut *guard {
+        ConnectionState::Connected { operations, .. } => {
+            if operations.mark_host_cancel_requested(seq) {
+                Ok(ExecCancelFrameWriteOutcome::Sent)
+            } else {
+                Ok(ExecCancelFrameWriteOutcome::AlreadyTerminal)
+            }
+        }
+        ConnectionState::Closed => Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        )),
+    }
+}
+
+pub(in crate::exec_operation) async fn send_exec_cancel_frame_for_wait(
+    shared: &Arc<Shared>,
+    seq: u32,
+    diagnostic: &ExecOperationDiagnostic,
+) -> io::Result<ExecCancelFrameWriteOutcome> {
+    let payload = vsock_proto::encode_exec_cancel();
+    let decision = write_frame_with_pre_write_decision(
+        shared,
+        MSG_EXEC_CANCEL,
+        seq,
+        &payload,
+        Some(diagnostic.frame("cancel")),
+        || match mark_exec_operation_host_cancel_requested_for_wait(shared, seq)? {
+            ExecCancelFrameWriteOutcome::Sent => Ok(FrameWriteDecision::Write),
+            ExecCancelFrameWriteOutcome::AlreadyTerminal => Ok(FrameWriteDecision::Skip),
+        },
+    )
+    .await?;
+
+    Ok(match decision {
+        FrameWriteDecision::Write => ExecCancelFrameWriteOutcome::Sent,
+        FrameWriteDecision::Skip => ExecCancelFrameWriteOutcome::AlreadyTerminal,
+    })
 }
 
 fn mark_exec_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> io::Result<()> {
@@ -175,6 +232,23 @@ pub(in crate::exec_operation) async fn write_frame_with_pre_write(
     diagnostic: Option<ExecOperationFrameDiagnostic>,
     pre_write: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
+    let _decision =
+        write_frame_with_pre_write_decision(shared, msg_type, seq, payload, diagnostic, || {
+            pre_write()?;
+            Ok(FrameWriteDecision::Write)
+        })
+        .await?;
+    Ok(())
+}
+
+async fn write_frame_with_pre_write_decision(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    seq: u32,
+    payload: &[u8],
+    diagnostic: Option<ExecOperationFrameDiagnostic>,
+    pre_write: impl FnOnce() -> io::Result<FrameWriteDecision>,
+) -> io::Result<FrameWriteDecision> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
     let state = Arc::new(AtomicU8::new(EXEC_OPERATION_FRAME_WRITE_NOT_STARTED));
@@ -183,7 +257,10 @@ pub(in crate::exec_operation) async fn write_frame_with_pre_write(
     let wait_started_at = Instant::now();
     let mut writer = shared.writer.lock().await;
     let wait_elapsed_ms = wait_started_at.elapsed().as_millis();
-    pre_write()?;
+    let decision = pre_write()?;
+    if decision == FrameWriteDecision::Skip {
+        return Ok(FrameWriteDecision::Skip);
+    }
     state.store(EXEC_OPERATION_FRAME_WRITE_STARTED, Ordering::Release);
     let write_started_at = Instant::now();
     let result = writer.write_all(&data).await;
@@ -236,5 +313,5 @@ pub(in crate::exec_operation) async fn write_frame_with_pre_write(
 
     drop(guard);
 
-    Ok(())
+    Ok(FrameWriteDecision::Write)
 }
