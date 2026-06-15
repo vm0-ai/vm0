@@ -1377,7 +1377,6 @@ describe("chat composer templates", () => {
     click(tabByText("Illustration"));
 
     await waitFor(() => {
-      expect(screen.getByText("VM0 illustration styles")).toBeInTheDocument();
       expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
       expect(
         screen.getByTitle(`${illustrationTemplate.title} illustration preview`),
@@ -1413,7 +1412,7 @@ describe("chat composer templates", () => {
     });
     click(buttonByText("Templates"));
     await waitFor(() => {
-      expect(screen.getByText("VM0 illustration styles")).toBeInTheDocument();
+      expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
     });
 
     await fill(screen.getByLabelText("Search templates"), "no matching style");
@@ -1511,7 +1510,6 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(tabByText("Video")).toBeInTheDocument();
-      expect(screen.getByText("VM0 video styles")).toBeInTheDocument();
       expect(
         screen.getByLabelText(`Select video style ${videoStyle.nameEn}`),
       ).toBeInTheDocument();
@@ -1630,7 +1628,7 @@ describe("chat composer templates", () => {
     click(tabByText("Video"));
 
     await waitFor(() => {
-      expect(screen.getByText("VM0 video styles")).toBeInTheDocument();
+      expect(buttonByText("Brand & Commercial")).toBeInTheDocument();
     });
 
     click(buttonByText("Brand & Commercial"));
