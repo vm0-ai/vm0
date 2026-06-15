@@ -108,8 +108,10 @@ describe("zero API keys page", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("button", { name: "API Keys" }),
-    ).not.toBeInTheDocument();
+      queryAllByRoleFast("button").find((button) => {
+        return button.textContent?.replace(/\s+/g, " ").trim() === "API Keys";
+      }),
+    ).toBeUndefined();
     expect(
       screen.queryByText("Create and manage API keys for programmatic access."),
     ).not.toBeInTheDocument();
