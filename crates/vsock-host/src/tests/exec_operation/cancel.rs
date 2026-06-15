@@ -255,6 +255,31 @@ async fn exec_cancel_writer_lock_timeout_before_write_does_not_poison_or_send_fr
 }
 
 #[tokio::test]
+async fn exec_cancel_oversized_timeout_cleans_without_cancel_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let handle = start_capture_operation(&host, "cancel-timeout-overflow").await;
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+
+    let err = handle.cancel_and_wait(Duration::MAX).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("oversized timeout must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after oversized timeout: {err}"),
+    }
+}
+
+#[tokio::test]
 async fn exec_cancel_terminal_result_wins_while_cancel_write_is_blocked() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
