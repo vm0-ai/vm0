@@ -168,7 +168,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GoogleAnalyticsConnector]: {
     maintainer: "linghan@vm0.ai",
     description: "Enable the Google Analytics connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
     maintainer: "linghan@vm0.ai",
