@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.27](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.26...sandbox-fc-v0.37.27) (2026-06-15)
+
+
+### Bug Fixes
+
+* bound factory cleanup post-abort drain ([#17630](https://github.com/vm0-ai/vm0/issues/17630)) ([3a0b07a](https://github.com/vm0-ai/vm0/commit/3a0b07af9a1735348bda16ed25fc16ed744a36f0))
+
+
+### Performance Improvements
+
+* **runner:** move workspace cache hits into sandboxes ([#17629](https://github.com/vm0-ai/vm0/issues/17629)) ([3ec0448](https://github.com/vm0-ai/vm0/commit/3ec04481481f46589b219dfbf08d80555e86ed95))
+
 ## [0.37.26](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.25...sandbox-fc-v0.37.26) (2026-06-12)
 
 ## [0.37.25](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.24...sandbox-fc-v0.37.25) (2026-06-12)

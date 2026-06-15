@@ -5674,9 +5674,46 @@ function formatUsageIdentifier(value: string): string {
     .join(" ");
 }
 
+function isUsageModelBackedKind(kind: string): boolean {
+  return kind === "model" || kind === "image" || kind === "video";
+}
+
+function isUsageCategoryPart(part: string): boolean {
+  return part.startsWith("tokens.") || part.startsWith("output_");
+}
+
+function stripUsageProviderPrefix(value: string): string {
+  const normalized = value.trim();
+  if (normalized.startsWith("fal-ai/")) {
+    return normalized.slice("fal-ai/".length);
+  }
+  if (normalized.startsWith("bytedance/")) {
+    return normalized.slice("bytedance/".length);
+  }
+  if (normalized.startsWith("dreamina-")) {
+    return normalized.slice("dreamina-".length);
+  }
+  return normalized;
+}
+
+function getUsageModelDisplayName(model: string): string {
+  const directDisplayName = getModelDisplayName(model);
+  if (directDisplayName !== model) {
+    return directDisplayName;
+  }
+
+  const strippedModel = stripUsageProviderPrefix(model);
+  const strippedDisplayName = getModelDisplayName(strippedModel);
+  if (strippedDisplayName !== strippedModel) {
+    return strippedDisplayName;
+  }
+
+  return formatUsageIdentifier(strippedModel);
+}
+
 function usageDisplayLabel(kind: string, provider: string): string {
-  if (kind === "model") {
-    return getModelDisplayName(provider);
+  if (isUsageModelBackedKind(kind) && provider && provider !== "unknown") {
+    return getUsageModelDisplayName(provider);
   }
 
   if (provider && provider !== "unknown") {
@@ -5692,12 +5729,12 @@ function parseUsageKind(kind: string): {
 } {
   const parts = kind.split("/");
   const parsedKind = parts[0];
-  if (parsedKind === "model" && parts.length >= 3) {
+  if (isUsageModelBackedKind(parsedKind) && parts.length >= 2) {
     const categoryIndex = parts.findIndex((part, index) => {
-      return index > 1 && part.startsWith("tokens.");
+      return index > 1 && isUsageCategoryPart(part);
     });
     const providerParts =
-      categoryIndex > 1 ? parts.slice(1, categoryIndex) : parts.slice(1, 2);
+      categoryIndex > 1 ? parts.slice(1, categoryIndex) : parts.slice(1);
     const provider = providerParts.join("/");
     if (provider) {
       return { kind: parsedKind, provider };
@@ -5747,58 +5784,45 @@ function UsageChip({
 }) {
   const total = formatCredits(usage.totalCredits);
   const displayRows = buildRunUsageDisplayRows(usage);
+  const showTooltip = () => {
+    setOpen(true);
+  };
+  const hideTooltip = () => {
+    setOpen(false);
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open}>
       <PopoverAnchor asChild>
-        <button
-          type="button"
+        <span
+          tabIndex={0}
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          onClick={() => {
-            setOpen(true);
+          onFocus={showTooltip}
+          onBlur={hideTooltip}
+          onPointerDown={(event) => {
+            event.preventDefault();
           }}
-          onFocus={() => {
-            setOpen(true);
+          onClick={(event) => {
+            event.preventDefault();
           }}
-          onBlur={() => {
-            setOpen(false);
-          }}
-          onMouseEnter={() => {
-            setOpen(true);
-          }}
-          onMouseLeave={() => {
-            setOpen(false);
-          }}
-          onPointerEnter={() => {
-            setOpen(true);
-          }}
-          onPointerLeave={() => {
-            setOpen(false);
-          }}
+          onMouseEnter={showTooltip}
+          onMouseLeave={hideTooltip}
+          onPointerEnter={showTooltip}
+          onPointerLeave={hideTooltip}
         >
           <IconCoins size={17} stroke={1.5} />
           <span>{total}</span>
-        </button>
+        </span>
       </PopoverAnchor>
       <PopoverContent
         side="bottom"
         align={contentAlign}
         className="w-72 p-3"
-        onPointerEnter={() => {
-          setOpen(true);
-        }}
-        onPointerLeave={() => {
-          setOpen(false);
-        }}
-        onMouseEnter={() => {
-          setOpen(true);
-        }}
-        onMouseLeave={() => {
-          setOpen(false);
-        }}
+        onPointerEnter={showTooltip}
+        onPointerLeave={hideTooltip}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         <div className="flex items-center justify-between gap-3 text-sm font-medium">
           <span>{title}</span>

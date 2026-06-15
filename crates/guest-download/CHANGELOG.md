@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.24](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.23...guest-download-v0.20.24) (2026-06-15)
+
+
+### Bug Fixes
+
+* **guest-download:** retry transient http body failures ([#17625](https://github.com/vm0-ai/vm0/issues/17625)) ([df81d5d](https://github.com/vm0-ai/vm0/commit/df81d5d523302b067e7c8b1985c92e095b2cc4d7))
+
+
+### Refactoring
+
+* centralize guest env key names ([#17626](https://github.com/vm0-ai/vm0/issues/17626)) ([476546d](https://github.com/vm0-ai/vm0/commit/476546de9d385733c481558b422511b30b1cc45a))
+
 ## [0.20.23](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.22...guest-download-v0.20.23) (2026-06-11)
 
 

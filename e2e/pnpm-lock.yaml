@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       '@clerk/testing':
-        specifier: ^2.0.35
-        version: 2.0.35(@playwright/test@1.60.0)
+        specifier: ^2.1.1
+        version: 2.1.1(@playwright/test@1.60.0)
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
       '@types/node':
-        specifier: ^25.9.2
-        version: 25.9.2
+        specifier: ^25.9.3
+        version: 25.9.3
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -27,12 +27,12 @@ importers:
 
 packages:
 
-  '@clerk/backend@3.5.0':
-    resolution: {integrity: sha512-g1bjzqj7/mb6rnrQ5zr+ybjpilTIWADaCoHE1HnEAjQfbcdfn3gb9PPX0wJ1KWw8OOQEQYSjzXPzvofEB1j+ww==}
+  '@clerk/backend@3.7.0':
+    resolution: {integrity: sha512-tdURxlfJ8sYR+zM6bUNsG4/BpxH7MV66E5NmHbjIoggUm48SdVoBtKUSjxT0uVa8MpdYHqPk/I0mMdI/EC1B/g==}
     engines: {node: '>=20.9.0'}
 
-  '@clerk/shared@4.15.0':
-    resolution: {integrity: sha512-uX8nfLb69m8mA6KWKWfuPSwoVNDRyUdufeCeTEZsdZxbRUsEYT/c0KWFN28IOQCtK09tpVtzrUHvW44v5Dc5OA==}
+  '@clerk/shared@4.17.1':
+    resolution: {integrity: sha512-9Ej2bLA7pWY1e07/PHmPNtQwiV1594rwacNYbppoDUPq9yRkBRZ+pDcpySkfpokS5YXvOUv6aFoPPbEMbQUVgw==}
     engines: {node: '>=20.9.0'}
     peerDependencies:
       react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
@@ -43,8 +43,8 @@ packages:
       react-dom:
         optional: true
 
-  '@clerk/testing@2.0.35':
-    resolution: {integrity: sha512-VOSyWnmu2ldcUKboMZHDDNCFEFjXmrnbcrMoFb1kw1yAJejqfvIrVD06MJYiWWW9rWi0fWZWaMjwG7Lbm864YQ==}
+  '@clerk/testing@2.1.1':
+    resolution: {integrity: sha512-UDwqP5we5/4PSO8fqpRPlme/x7oftI7xcChgnRHqRbZRs6KSf8w0I5lTS9MDSyKxYGRwezeZSCjM7dDKpPHyRQ==}
     engines: {node: '>=20.9.0'}
     peerDependencies:
       '@playwright/test': ^1
@@ -222,8 +222,8 @@ packages:
   '@tanstack/query-core@5.101.0':
     resolution: {integrity: sha512-cQetA74EB+seWySv1TTKr828TnP0u39m6LykwDXIo84SNortpDkp30TMEjkqtYCNP9c40uT/iwl6MLiufEt0Ow==}
 
-  '@types/node@25.9.2':
-    resolution: {integrity: sha512-G05zqtJhcDLb8uslf5EjCxXg9G1KQxiV8OS0R26IC//Eoyitzqe8z37I7cqvnZlrlSfgocQRfSn/AHBZJJFyGw==}
+  '@types/node@25.9.3':
+    resolution: {integrity: sha512-603BddQMv3pUcr4U2dhujk83N2tTDVr/34wII2B6bJy6g+8WD6yUb11jszNs0gdi4PesVWl7ABt8nYMVpnLUcg==}
 
   dequal@2.0.3:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
@@ -288,26 +288,26 @@ packages:
 
 snapshots:
 
-  '@clerk/backend@3.5.0':
+  '@clerk/backend@3.7.0':
     dependencies:
-      '@clerk/shared': 4.15.0
+      '@clerk/shared': 4.17.1
       standardwebhooks: 1.0.0
       tslib: 2.8.1
     transitivePeerDependencies:
       - react
       - react-dom
 
-  '@clerk/shared@4.15.0':
+  '@clerk/shared@4.17.1':
     dependencies:
       '@tanstack/query-core': 5.101.0
       dequal: 2.0.3
       glob-to-regexp: 0.4.1
       js-cookie: 3.0.7
 
-  '@clerk/testing@2.0.35(@playwright/test@1.60.0)':
+  '@clerk/testing@2.1.1(@playwright/test@1.60.0)':
     dependencies:
-      '@clerk/backend': 3.5.0
-      '@clerk/shared': 4.15.0
+      '@clerk/backend': 3.7.0
+      '@clerk/shared': 4.17.1
       dotenv: 17.2.2
     optionalDependencies:
       '@playwright/test': 1.60.0
@@ -401,7 +401,7 @@ snapshots:
 
   '@tanstack/query-core@5.101.0': {}
 
-  '@types/node@25.9.2':
+  '@types/node@25.9.3':
     dependencies:
       undici-types: 7.24.6
 

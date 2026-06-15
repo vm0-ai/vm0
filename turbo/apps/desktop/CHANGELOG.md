@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.12.0...desktop-v0.13.0) (2026-06-15)
+
+
+### Features
+
+* **desktop:** add styled macos dmg installer ([#17670](https://github.com/vm0-ai/vm0/issues/17670)) ([738a001](https://github.com/vm0-ai/vm0/commit/738a0015e8a4e18f5b729ac1ce650351b8971c89))
+
+
+### Bug Fixes
+
+* remove api web fallback ([#17509](https://github.com/vm0-ai/vm0/issues/17509)) ([dab9e38](https://github.com/vm0-ai/vm0/commit/dab9e3819b42fbd6aaacb6f1d0ef39a4928c8c54))
+
 ## [0.12.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.11.2...desktop-v0.12.0) (2026-06-12)
 
 
