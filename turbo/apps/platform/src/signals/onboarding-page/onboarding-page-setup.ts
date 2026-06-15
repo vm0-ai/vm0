@@ -40,6 +40,14 @@ export const setupOnboardingPage$ = command(
     signal.throwIfAborted();
 
     const params = get(searchParams$);
+    const promptParam = params.get("prompt");
+    const hasUseCaseLink = (promptParam?.length ?? 0) > 0;
+
+    // Seed use-case mode before async status checks so the visible onboarding
+    // step cannot race ahead as the regular connector flow.
+    if (promptParam !== null && promptParam.length > 0) {
+      set(markUseCaseMode$, promptParam);
+    }
 
     const completedBillingCheckoutState = get(completedBillingCheckout$);
     if (completedBillingCheckoutState) {
@@ -54,9 +62,6 @@ export const setupOnboardingPage$ = command(
         return;
       }
     }
-
-    const promptParam = params.get("prompt");
-    const hasUseCaseLink = (promptParam?.length ?? 0) > 0;
 
     // Use-case deep links intentionally land already-onboarded users here, so
     // compute that before deciding whether the page should send users home.
@@ -119,10 +124,6 @@ export const setupOnboardingPage$ = command(
     // an editable prompt draft and switch onboarding into condensed mode
     // where the flow collapses to step 3, which grows a composer + "Try It"
     // CTA that goes straight to the web chat.
-    if (promptParam !== null && promptParam.length > 0) {
-      set(markUseCaseMode$, promptParam);
-    }
-
     const effectiveStep = await get(onboardingEffectiveStep$);
     signal.throwIfAborted();
     if (effectiveStep === "4") {
