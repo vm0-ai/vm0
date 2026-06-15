@@ -230,26 +230,13 @@ pub(super) fn validate_archive_inputs(
 }
 
 fn validate_archive_file(root: &Path, entry: &FileEntry) -> Result<(), ArchiveError> {
-    let (file, _) = open_manifest_file(root, entry)?;
-    let mut reader = ArchiveFileReader::new(file, entry.size);
-    io::copy(&mut reader, &mut io::sink()).map_err(|source| ArchiveError::Verify {
-        path: entry.path.clone(),
-        source,
-    })?;
-    let actual_hash = reader
-        .finish_hash()
-        .map_err(|source| ArchiveError::Verify {
+    consume_verified_archive_file(root, entry, |_, reader| {
+        io::copy(reader, &mut io::sink()).map_err(|source| ArchiveError::Verify {
             path: entry.path.clone(),
             source,
         })?;
-    if actual_hash != entry.hash {
-        return Err(ArchiveError::HashMismatch {
-            path: entry.path.clone(),
-            expected: entry.hash.clone(),
-            actual: actual_hash,
-        });
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 fn append_archive_file<W: io::Write>(
@@ -257,21 +244,32 @@ fn append_archive_file<W: io::Write>(
     builder: &mut tar::Builder<W>,
     entry: &FileEntry,
 ) -> Result<(), ArchiveError> {
-    let (file, metadata) = open_manifest_file(root, entry)?;
+    consume_verified_archive_file(root, entry, |metadata, reader| {
+        let mut header = tar::Header::new_gnu();
+        header.set_metadata(metadata);
+        header.set_entry_type(tar::EntryType::Regular);
+        header.set_mode(archive_mode(metadata));
+        header.set_size(entry.size);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, Path::new(entry.path.as_str()), reader)
+            .map_err(|source| ArchiveError::Append {
+                path: entry.path.clone(),
+                source,
+            })?;
+        Ok(())
+    })
+}
 
-    let mut header = tar::Header::new_gnu();
-    header.set_metadata(&metadata);
-    header.set_entry_type(tar::EntryType::Regular);
-    header.set_mode(archive_mode(&metadata));
-    header.set_size(entry.size);
-    header.set_cksum();
+fn consume_verified_archive_file(
+    root: &Path,
+    entry: &FileEntry,
+    consume: impl FnOnce(&Metadata, &mut ArchiveFileReader<File>) -> Result<(), ArchiveError>,
+) -> Result<(), ArchiveError> {
+    let (file, metadata) = open_manifest_file(root, entry)?;
     let mut reader = ArchiveFileReader::new(file, entry.size);
-    builder
-        .append_data(&mut header, Path::new(entry.path.as_str()), &mut reader)
-        .map_err(|source| ArchiveError::Append {
-            path: entry.path.clone(),
-            source,
-        })?;
+    consume(&metadata, &mut reader)?;
+
     let actual_hash = reader
         .finish_hash()
         .map_err(|source| ArchiveError::Verify {
@@ -520,6 +518,18 @@ mod tests {
 
     fn disable_system_log() {
         guest_common::log::clear_system_log_file();
+    }
+
+    struct FailingWriter;
+
+    impl io::Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("forced append failure"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 
     fn select_manifest_entries(files: &[FileEntry], expected_paths: &[&str]) -> Vec<FileEntry> {
@@ -848,6 +858,28 @@ mod tests {
 
         assert_eq!(entry.path().unwrap().as_ref(), Path::new("script.sh"));
         assert_eq!(entry.header().mode().unwrap() & 0o7777, 0o755);
+    }
+
+    #[test]
+    fn archive_append_failure_remains_append_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("target.txt"), "content").unwrap();
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+        let entry = files.iter().find(|file| file.path == "target.txt").unwrap();
+        let mut builder = tar::Builder::new(FailingWriter);
+
+        let err = append_archive_file(root, &mut builder, entry).unwrap_err();
+
+        let ArchiveError::Append { path, source } = err else {
+            panic!("expected append error, got: {err}");
+        };
+        assert_eq!(path, "target.txt");
+        assert!(
+            source.to_string().contains("forced append failure"),
+            "got: {source}"
+        );
     }
 
     #[test]
