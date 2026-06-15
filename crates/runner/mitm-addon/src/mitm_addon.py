@@ -274,10 +274,27 @@ def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
 
 
 def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -> None:
-    acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
-    if not acquired:
-        raise AssertionError("runner usage flush worker did not stop")
-    _usage_flush_signal_lock.release()
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("runner usage flush worker did not stop")
+
+        if _usage_flush_requested.is_set():
+            time.sleep(0)
+            if _usage_flush_requested.is_set():
+                _start_usage_flush_worker()
+            continue
+
+        acquired = _usage_flush_signal_lock.acquire(timeout=remaining)
+        if not acquired:
+            raise AssertionError("runner usage flush worker did not stop")
+        try:
+            if not _usage_flush_requested.is_set():
+                return
+        finally:
+            _usage_flush_signal_lock.release()
+        time.sleep(0)
 
 
 def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:

@@ -544,6 +544,25 @@ class TestRunnerUsageFlushSignal:
         assert not worker_timed_out.is_set()
         assert flush_triggers == ["runner", "runner"]
 
+    def test_wait_for_worker_drains_stranded_pending_signal(self):
+        flush_count = 0
+
+        def flush_usage_for_runner_request() -> None:
+            nonlocal flush_count
+            flush_count += 1
+
+        mitm_addon._usage_flush_requested.set()
+        with (
+            patch.object(
+                mitm_addon,
+                "_flush_usage_for_runner_request",
+                side_effect=flush_usage_for_runner_request,
+            ),
+            patch.object(mitm_addon, "_flush_jsonl_for_runner_request"),
+        ):
+            wait_for_usage_flush_worker_to_stop()
+            assert flush_count == 1
+
     def test_failed_signal_flush_releases_worker_for_later_signal(self, mitm_ctx):
         second_flush_completed = threading.Event()
         flush_triggers: list[str] = []
