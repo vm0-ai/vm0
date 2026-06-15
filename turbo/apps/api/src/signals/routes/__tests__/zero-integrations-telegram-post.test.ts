@@ -239,6 +239,12 @@ const seedTelegramPostFixture$ = command(
         apiKey: `vm0-key-deepseek-${composeId}`,
         label: composeId,
       },
+      {
+        vendor: "moonshot",
+        model: "kimi-k2.7-code",
+        apiKey: `vm0-key-moonshot-${composeId}`,
+        label: composeId,
+      },
     ]);
     signal.throwIfAborted();
 
