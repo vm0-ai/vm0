@@ -152,20 +152,18 @@ function buildIllustrationGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown generation image style" };
   }
 
+  // Context, not control: state the facts (which style is attached, that it
+  // persists, how it reaches image generation) and let the agent act on them.
+  // Replaces the earlier "Resolve the image style from the resource registry"
+  // instruction, which named a step without the facts to do it, so when unsure
+  // the agent re-asked for an already-selected style (vm0-ai/vm0#17525).
   return {
     status: "resolved",
     prompt: [
-      "# Generation Template",
-      "Use the following registered resources for this run.",
-      `Type: ${generationTemplate.type}`,
-      "Tag: illustration",
-      `Image style ID: ${imageStyle.id}`,
-      `Image style name: ${imageStyle.name}`,
+      "# Attached illustration style",
       "",
-      "Instructions:",
-      "- Resolve the image style from the resource registry.",
-      "- Apply it as a generation constraint for the artifact.",
-      "- Keep the user's prompt as the source of the requested content.",
+      `"${imageStyle.name}" (${imageStyle.id}), attached to this chat and persisting across follow-up messages.`,
+      `Apply it with \`zero generate image --style ${imageStyle.id}\`.`,
     ].join("\n"),
   };
 }
