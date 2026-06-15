@@ -1,6 +1,6 @@
 use std::io;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
