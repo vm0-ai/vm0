@@ -406,7 +406,7 @@ describe("google-cloud firewall", () => {
     ).toBe("deny");
     expect(policy.policies["pubsub.topics.publish"]).toBe("deny");
     expect(policy.policies["pubsub.subscriptions.consume"]).toBe("deny");
-    expect(policy.unknownPolicy).toBe("allow");
+    expect(policy.unknownPolicy).toBe("deny");
   });
 
   it("generates Google Cloud default-allowed permissions from read-like IAM names", () => {
