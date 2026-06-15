@@ -142,6 +142,16 @@ describe("throwOAuthError", () => {
 
     await expect(
       throwOAuthError("Stripe", "refresh", response),
-    ).rejects.toThrow("Stripe token refresh failed: 400 ");
+    ).rejects.toThrow(
+      'Stripe token refresh failed: 400 {"message":"something went wrong","code":123}',
+    );
+  });
+
+  it("includes valid JSON scalar response bodies", async () => {
+    const response = makeResponse(400, JSON.stringify("temporarily down"));
+
+    await expect(
+      throwOAuthError("Stripe", "refresh", response),
+    ).rejects.toThrow('Stripe token refresh failed: 400 "temporarily down"');
   });
 });

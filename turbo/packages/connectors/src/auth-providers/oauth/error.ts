@@ -65,19 +65,13 @@ export async function throwOAuthError(
           oauthErrorSubtype = errorSubtype ?? undefined;
           detail = errorDesc ? ` ${errorCode} (${errorDesc})` : ` ${errorCode}`;
         } else {
-          const truncated =
-            raw.length > MAX_BODY_LENGTH
-              ? raw.slice(0, MAX_BODY_LENGTH) + "..."
-              : raw;
-          detail = ` ${truncated}`;
+          detail = responseBodyDetail(raw);
         }
+      } else {
+        detail = responseBodyDetail(raw);
       }
     } catch {
-      const truncated =
-        raw.length > MAX_BODY_LENGTH
-          ? raw.slice(0, MAX_BODY_LENGTH) + "..."
-          : raw;
-      detail = ` ${truncated}`;
+      detail = responseBodyDetail(raw);
     }
   }
 
@@ -87,4 +81,10 @@ export async function throwOAuthError(
     oauthError,
     oauthErrorSubtype,
   );
+}
+
+function responseBodyDetail(raw: string): string {
+  const truncated =
+    raw.length > MAX_BODY_LENGTH ? `${raw.slice(0, MAX_BODY_LENGTH)}...` : raw;
+  return ` ${truncated}`;
 }
