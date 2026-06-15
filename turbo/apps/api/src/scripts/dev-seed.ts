@@ -1,5 +1,7 @@
 #!/usr/bin/env tsx
 
+import { pathToFileURL } from "node:url";
+
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@vm0/core/github-url";
@@ -411,12 +413,18 @@ function getVendorApiKeyEnvVars(vendor: string): string[] {
   return [envVar];
 }
 
+type OptionalEnvReader = (name: string) => string | undefined;
+type LineWriter = (message: string) => void;
+
 /**
  * Build vm0_api_keys entries from environment variables.
  * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER
  * so new models are automatically picked up.
  */
-function buildVm0ApiKeys(): (typeof vm0ApiKeys.$inferInsert)[] {
+export function buildVm0ApiKeys(
+  readEnv: OptionalEnvReader = optionalEnv,
+  logLine: LineWriter = writeLine,
+): (typeof vm0ApiKeys.$inferInsert)[] {
   // Group models by vendor from the canonical mapping
   const vendorModels = new Map<string, string[]>();
   for (const [model, { vendor }] of Object.entries(VM0_MODEL_TO_PROVIDER)) {
@@ -430,15 +438,13 @@ function buildVm0ApiKeys(): (typeof vm0ApiKeys.$inferInsert)[] {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {
-        return optionalEnv(name);
+        return readEnv(name);
       })
       .find((value): value is string => {
         return typeof value === "string" && value.length > 0;
       });
     if (!apiKey) {
-      writeLine(
-        `Skipping ${vendor}: ${envVars.join(" or ")} is not configured`,
-      );
+      logLine(`Skipping ${vendor}: ${envVars.join(" or ")} is not configured`);
       continue;
     }
     for (const model of models) {
@@ -559,8 +565,22 @@ async function devSeed() {
   }
 }
 
-const result = await settle(devSeed());
-await closeDbPool();
-if (!result.ok) {
-  throw result.error;
+function isMainModule(): boolean {
+  const entrypoint = process.argv[1];
+  return (
+    entrypoint !== undefined &&
+    import.meta.url === pathToFileURL(entrypoint).href
+  );
+}
+
+async function runDevSeed(): Promise<void> {
+  const result = await settle(devSeed());
+  await closeDbPool();
+  if (!result.ok) {
+    throw result.error;
+  }
+}
+
+if (isMainModule()) {
+  await runDevSeed();
 }
