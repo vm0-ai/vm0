@@ -9,6 +9,7 @@ export interface R2ImageTransformOptions {
   readonly width?: number;
   readonly height?: number;
   readonly fit?: "scale-down";
+  readonly quality?: number;
 }
 
 function normalizedDimension(value: number | undefined): number | null {
@@ -18,10 +19,18 @@ function normalizedDimension(value: number | undefined): number | null {
   return Math.round(value);
 }
 
+function normalizedQuality(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return R2_IMAGE_TRANSFORM_QUALITY;
+  }
+  return Math.max(1, Math.min(100, Math.round(value)));
+}
+
 function r2ImageTransformDirectives(options: R2ImageTransformOptions): string {
   const directives: string[] = [];
   const width = normalizedDimension(options.width);
   const height = normalizedDimension(options.height);
+  const quality = normalizedQuality(options.quality);
 
   if (width !== null) {
     directives.push(`width=${String(width)}`);
@@ -33,7 +42,7 @@ function r2ImageTransformDirectives(options: R2ImageTransformOptions): string {
   // Negotiate AVIF/WebP from the request Accept header, cap quality, and drop
   // metadata so previews download as little as possible.
   directives.push("format=auto");
-  directives.push(`quality=${String(R2_IMAGE_TRANSFORM_QUALITY)}`);
+  directives.push(`quality=${String(quality)}`);
   directives.push("metadata=none");
 
   return directives.join(",");

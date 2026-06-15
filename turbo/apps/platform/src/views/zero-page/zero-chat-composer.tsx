@@ -335,7 +335,16 @@ type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 const TEMPLATE_CARD_PREVIEW_SIZE = { width: 640, height: 360 } as const;
 const TEMPLATE_DETAIL_PREVIEW_SIZE = { width: 1600, height: 900 } as const;
 const TEMPLATE_STRIP_THUMB_SIZE = { width: 200, height: 112 } as const;
-const ILLUSTRATION_CARD_PREVIEW_SIZE = { width: 768, height: 768 } as const;
+const ILLUSTRATION_CARD_PREVIEW_SIZE = {
+  width: 768,
+  height: 768,
+  quality: 72,
+} as const;
+const ILLUSTRATION_VARIANT_THUMB_SIZE = {
+  width: 96,
+  height: 96,
+  quality: 65,
+} as const;
 const SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE = { width: 40, height: 40 } as const;
 
 // ---------------------------------------------------------------------------
@@ -1450,7 +1459,7 @@ function IllustrationTemplateHero({
   item: IllustrationTemplateItem;
   source: string;
 }) {
-  const heroImage = r2ImageTransformUrl(source, ILLUSTRATION_CARD_PREVIEW_SIZE);
+  const heroImage = illustrationHeroImageUrl(source);
 
   return (
     <div
@@ -1460,9 +1469,8 @@ function IllustrationTemplateHero({
       <img
         key={source}
         src={heroImage}
-        alt=""
-        title={`${item.title} illustration preview`}
-        className="absolute inset-0 h-full w-full object-contain opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
+        alt={`${item.title} illustration preview`}
+        className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100"
         loading="lazy"
         decoding="async"
         fetchPriority="low"
@@ -1492,6 +1500,8 @@ function IllustrationTemplateHero({
 
 interface IllustrationPreviewImageCache {
   readonly decoded: Set<string>;
+  readonly pendingDecodes: Map<string, Promise<void>>;
+  readonly preloads: Map<string, HTMLImageElement>;
 }
 
 function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
@@ -1505,9 +1515,81 @@ function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
 
   const cache: IllustrationPreviewImageCache = {
     decoded: new Set<string>(),
+    pendingDecodes: new Map<string, Promise<void>>(),
+    preloads: new Map<string, HTMLImageElement>(),
   };
   Reflect.set(globalThis, cacheKey, cache);
   return cache;
+}
+
+function illustrationHeroImageUrl(source: string): string {
+  return r2ImageTransformUrl(source, ILLUSTRATION_CARD_PREVIEW_SIZE);
+}
+
+function preloadIllustrationPreviewImage(
+  url: string,
+): HTMLImageElement | undefined {
+  if (typeof Image === "undefined") {
+    return undefined;
+  }
+
+  const cache = illustrationPreviewImageCache();
+  const cachedImage = cache.preloads.get(url);
+  if (cachedImage !== undefined) {
+    return cachedImage;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.src = url;
+  cache.preloads.set(url, image);
+  return image;
+}
+
+async function decodeIllustrationPreviewImage(url: string): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  if (cache.decoded.has(url)) {
+    return;
+  }
+
+  if (isHappyDomTestEnvironment()) {
+    cache.decoded.add(url);
+    return;
+  }
+
+  const pendingDecode = cache.pendingDecodes.get(url);
+  if (pendingDecode !== undefined) {
+    await pendingDecode;
+    return;
+  }
+
+  const image = preloadIllustrationPreviewImage(url);
+  if (image === undefined) {
+    return;
+  }
+
+  if (image.decode === undefined) {
+    if (image.complete && image.naturalWidth > 0) {
+      cache.decoded.add(url);
+    }
+    return;
+  }
+
+  const decode = markIllustrationPreviewImageDecoded(url, image);
+  cache.pendingDecodes.set(url, decode);
+  await decode;
+}
+
+async function markIllustrationPreviewImageDecoded(
+  url: string,
+  image: HTMLImageElement,
+): Promise<void> {
+  const cache = illustrationPreviewImageCache();
+  await tapError(image.decode(), () => {});
+  if (image.complete && image.naturalWidth > 0) {
+    cache.decoded.add(url);
+  }
+  cache.pendingDecodes.delete(url);
 }
 
 async function markIllustrationPreviewImageLoaded(
@@ -1525,6 +1607,32 @@ async function markIllustrationPreviewImageLoaded(
   image.parentElement
     ?.querySelector<HTMLElement>("[data-illustration-preview-error]")
     ?.setAttribute("hidden", "");
+}
+
+function illustrationPreviewImageDecoded(url: string): boolean {
+  return illustrationPreviewImageCache().decoded.has(url);
+}
+
+async function selectDecodedIllustrationVariant({
+  card,
+  imageUrl,
+  index,
+  item,
+  onVariantChange,
+}: {
+  card: HTMLElement;
+  imageUrl: string;
+  index: number;
+  item: IllustrationTemplateItem;
+  onVariantChange: (slug: string, index: number) => void;
+}): Promise<void> {
+  await decodeIllustrationPreviewImage(imageUrl);
+  if (
+    card.dataset.targetVariantIndex === String(index) &&
+    illustrationPreviewImageDecoded(imageUrl)
+  ) {
+    onVariantChange(item.slug, index);
+  }
 }
 
 function IllustrationTemplateCard({
@@ -1546,6 +1654,7 @@ function IllustrationTemplateCard({
 
   return (
     <div
+      data-illustration-template-card=""
       className={cn(
         "group mb-4 break-inside-avoid overflow-hidden rounded-xl border bg-card shadow-sm transition-colors",
         selected
@@ -1555,12 +1664,12 @@ function IllustrationTemplateCard({
     >
       <IllustrationTemplateHero item={item} source={heroSource} />
       {images.length > 1 && (
-        <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3">
+        <div className="flex items-center gap-2 overflow-x-auto px-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {images.map((image, index) => {
             const active = index === safeIndex;
             const thumbnailImage = r2ImageTransformUrl(
               image,
-              TEMPLATE_STRIP_THUMB_SIZE,
+              ILLUSTRATION_VARIANT_THUMB_SIZE,
             );
             return (
               <button
@@ -1572,8 +1681,41 @@ function IllustrationTemplateCard({
                   "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active ? "border-primary" : "border-border",
                 )}
-                onClick={() => {
-                  onVariantChange(item.slug, index);
+                onFocus={() => {
+                  preloadIllustrationPreviewImage(
+                    illustrationHeroImageUrl(image),
+                  );
+                }}
+                onMouseEnter={() => {
+                  preloadIllustrationPreviewImage(
+                    illustrationHeroImageUrl(image),
+                  );
+                }}
+                onClick={(event) => {
+                  const imageUrl = illustrationHeroImageUrl(image);
+                  const card = event.currentTarget.closest<HTMLElement>(
+                    "[data-illustration-template-card]",
+                  );
+                  if (
+                    card === null ||
+                    index === safeIndex ||
+                    illustrationPreviewImageDecoded(imageUrl)
+                  ) {
+                    onVariantChange(item.slug, index);
+                    return;
+                  }
+
+                  card.dataset.targetVariantIndex = String(index);
+                  detach(
+                    selectDecodedIllustrationVariant({
+                      card,
+                      imageUrl,
+                      index,
+                      item,
+                      onVariantChange,
+                    }),
+                    Reason.DomCallback,
+                  );
                 }}
               >
                 <img
