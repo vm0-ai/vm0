@@ -121,13 +121,10 @@ const GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES = new Set([
   "getDiskShrinkConfig",
   "getEffectiveFirewalls",
   "getFromFamily",
-  "getGuestAttributes",
   "getIamPolicy",
   "getMacsecConfig",
   "getMetadata",
   "getRoutePolicy",
-  "getScreenshot",
-  "getSerialPortOutput",
   "getShieldedInstanceIdentity",
   "list",
   "listAvailableFeatures",
@@ -147,6 +144,7 @@ const GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES = new Set([
 ]);
 
 const GOOGLE_CLOUD_DEFAULT_DENIED_PERMISSIONS = new Set([
+  // Read-shaped permissions that can expose sensitive VM runtime data.
   "compute.instances.getGuestAttributes",
   "compute.instances.getScreenshot",
   "compute.instances.getSerialPortOutput",
