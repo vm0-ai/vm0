@@ -3,15 +3,15 @@
  *
  * Data source: https://developers.google.com/maps/documentation
  *
- * Google Maps Platform authenticates with an API key passed as the
- * `key` query parameter on every request.
+ * Google Maps Platform connector auth uses a Google OAuth access token passed
+ * as a Bearer token.
  */
 
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developers.google.com/maps/documentation";
-// Format: AIza + 35 chars (gitleaks: gcp-api-key)
-const PLACEHOLDER_VALUE = "AIzaCoffeeSafeLocalCoffeeSafeLocalCoffe";
+const PLACEHOLDER_VALUE =
+  "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [
@@ -33,8 +33,8 @@ function generateTypeScript(): string {
     "    {",
     '      base: "https://maps.googleapis.com",',
     "      auth: {",
-    "        query: {",
-    '          key: "${{ secrets.GOOGLE_MAPS_TOKEN }}",',
+    "        headers: {",
+    '          Authorization: "Bearer ${{ secrets.GOOGLE_MAPS_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",

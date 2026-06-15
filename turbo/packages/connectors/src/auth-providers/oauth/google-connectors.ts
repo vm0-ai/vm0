@@ -11,6 +11,7 @@ export const GOOGLE_OAUTH_CONNECTOR_TYPES = [
   "google-cloud",
   "google-docs",
   "google-drive",
+  "google-maps",
   "google-meet",
   "google-search-console",
   "google-sheets",

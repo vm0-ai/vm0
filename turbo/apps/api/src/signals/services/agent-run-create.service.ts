@@ -1182,6 +1182,10 @@ function providerEnvironmentFromSecretMap(
   return environment;
 }
 
+function vm0ApiKeySelectionOrder() {
+  return sql`case when ${vm0ApiKeys.label} = 'dev-seed' then 0 else 1 end`;
+}
+
 function modelProviderRefreshMaps(
   providerType: ModelProviderType,
   sourceUserId: string,
@@ -1316,7 +1320,7 @@ async function vm0ModelProviderEnvironment(
     .select({ apiKey: vm0ApiKeys.apiKey })
     .from(vm0ApiKeys)
     .where(and(eq(vm0ApiKeys.vendor, vendor), eq(vm0ApiKeys.model, apiModel)))
-    .orderBy(sql`random()`)
+    .orderBy(vm0ApiKeySelectionOrder(), sql`random()`)
     .limit(1);
   const fallbackRows =
     exactRows.length > 0
@@ -1325,7 +1329,7 @@ async function vm0ModelProviderEnvironment(
           .select({ apiKey: vm0ApiKeys.apiKey })
           .from(vm0ApiKeys)
           .where(eq(vm0ApiKeys.vendor, vendor))
-          .orderBy(sql`random()`)
+          .orderBy(vm0ApiKeySelectionOrder(), sql`random()`)
           .limit(1);
   const apiKey = fallbackRows[0]?.apiKey;
   const secretName = getSecretNameForType(concreteType);
