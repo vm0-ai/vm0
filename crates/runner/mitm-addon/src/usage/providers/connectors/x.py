@@ -800,17 +800,7 @@ def _compute_billable_counts(
     if resp_meta.get("body_parsed"):
         if req_meta.get("is_count_endpoint"):
             total = _as_non_bool_int(resp_meta.get("response_total_tweet_count"))
-            if total is None:
-                log_warn(
-                    "X count endpoint response missing total_tweet_count; skipping primary billing",
-                    {
-                        "category": endpoint_bucket,
-                        "response_data_count": data,
-                    },
-                )
-                primary = 0
-            else:
-                primary = total
+            primary = 0 if total is None else total
         else:
             # Body was parsed — trust actual response counts.
             # Soft errors (no data field) and empty searches correctly yield 0.
@@ -1003,6 +993,22 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
             "confirmed",
             **log_context,
             **log_extra,
+        )
+
+    if (
+        flow.request.method == "GET"
+        and req_meta.get("is_count_endpoint")
+        and resp_meta.get("body_parsed")
+        and _as_non_bool_int(resp_meta.get("response_total_tweet_count")) is None
+    ):
+        log_usage_underbilling(
+            proxy_log_path,
+            "X count endpoint response missing total_tweet_count — skipping billing",
+            "missing_count_endpoint_total",
+            "confirmed",
+            **log_context,
+            body_truncated=bool(resp_meta.get("body_truncated")),
+            response_data_count=resp_meta.get("response_data_count") or 0,
         )
 
     # Buffer usage events for aggregate platform upload.
