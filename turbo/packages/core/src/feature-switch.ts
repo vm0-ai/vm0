@@ -176,7 +176,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: true,
   },
   [FeatureSwitchKey.YouTubeConnector]: {
-    maintainer: "linghan@vm0.ai",
+    maintainer: "liangyou@vm0.ai",
     description: "Enable the YouTube connector",
     enabled: false,
   },
