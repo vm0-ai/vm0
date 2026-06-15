@@ -60,12 +60,12 @@ export const VM0_ORG_SLUG = "vm0";
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-opus-4-8",
   "claude-sonnet-4-6",
-  "deepseek-v4-pro",
+  "kimi-k2.7-code",
   "gpt-5.5",
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "deepseek-v4-pro" as const satisfies SupportedRunModel;
+  "kimi-k2.7-code" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 

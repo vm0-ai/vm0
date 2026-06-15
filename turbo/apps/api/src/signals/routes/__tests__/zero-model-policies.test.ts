@@ -441,7 +441,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       "claude-opus-4-8",
       "claude-opus-4-6",
       "claude-sonnet-4-6",
-      "deepseek-v4-pro",
+      "kimi-k2.7-code",
       "gpt-5.5",
     ]);
   });

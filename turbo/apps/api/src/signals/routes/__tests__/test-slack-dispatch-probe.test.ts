@@ -23,6 +23,7 @@ const store = createStore();
 const ROUTE = "/api/test/slack-dispatch-probe";
 const TEST_VM0_ANTHROPIC_KEY = "vm0-key-slack-dispatch-probe-claude-sonnet-4-6";
 const TEST_VM0_DEEPSEEK_KEY = "vm0-key-slack-dispatch-probe-deepseek-v4-pro";
+const TEST_VM0_MOONSHOT_KEY = "vm0-key-slack-dispatch-probe-kimi-k2-7-code";
 
 afterEach(async () => {
   const db = store.set(writeDb$);
@@ -32,6 +33,9 @@ afterEach(async () => {
   await db
     .delete(vm0ApiKeys)
     .where(eq(vm0ApiKeys.apiKey, TEST_VM0_DEEPSEEK_KEY));
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_MOONSHOT_KEY));
 });
 
 async function seedVm0ManagedKeys(): Promise<void> {
@@ -42,6 +46,9 @@ async function seedVm0ManagedKeys(): Promise<void> {
   await db
     .delete(vm0ApiKeys)
     .where(eq(vm0ApiKeys.apiKey, TEST_VM0_DEEPSEEK_KEY));
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_MOONSHOT_KEY));
   await db.insert(vm0ApiKeys).values([
     {
       vendor: "anthropic",
@@ -52,6 +59,11 @@ async function seedVm0ManagedKeys(): Promise<void> {
       vendor: "deepseek",
       model: "deepseek-v4-pro",
       apiKey: TEST_VM0_DEEPSEEK_KEY,
+    },
+    {
+      vendor: "moonshot",
+      model: "kimi-k2.7-code",
+      apiKey: TEST_VM0_MOONSHOT_KEY,
     },
   ]);
 }
