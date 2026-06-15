@@ -7,6 +7,7 @@ import {
 
 const CATEGORIZED_CONNECTORS = [
   "cloudflare",
+  "google-cloud",
   "slack",
   "gmail",
   "stripe",
