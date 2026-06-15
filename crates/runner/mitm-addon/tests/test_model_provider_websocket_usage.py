@@ -10,6 +10,7 @@ from mitmproxy import http
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.model_provider_websocket_helpers import (
@@ -150,7 +151,7 @@ class TestModelProviderWebSocketUsage:
 
         events = webhook.usage_events()
         by_category = _sum_quantities_by_category(events)
-        assert flow.metadata["model_provider_usage"] == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert _model_websocket_usage_sources(flow) == {}
         assert by_category == {
             "tokens.input": 40,
@@ -360,7 +361,7 @@ class TestModelProviderWebSocketUsage:
             ),
         )
 
-        assert flow.metadata["model_provider_usage"] == {
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
             "model": "gpt-5.5",
             "tokens.input": 7,
             "tokens.output": 1,
@@ -604,7 +605,7 @@ class TestModelProviderWebSocketUsage:
         webhook = self._run_websocket_message_and_end(flow)
 
         assert webhook.request_count == 0
-        assert flow.metadata["model_provider_usage"] == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert _model_websocket_usage_sources(flow) == {}
 
     def test_model_websocket_deferred_trim_keeps_latest_server_message(
@@ -634,7 +635,7 @@ class TestModelProviderWebSocketUsage:
             "tokens.input": 10,
             "tokens.output": 4,
         }
-        assert flow.metadata["model_provider_usage"] == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert len(deferred_websocket_trim_scheduler) == 1
 
         _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
@@ -658,7 +659,7 @@ class TestModelProviderWebSocketUsage:
 
         mitm_addon.websocket_message(flow)
 
-        assert flow.metadata["model_provider_usage"] == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert _model_websocket_usage_sources(flow) == {}
         assert len(deferred_websocket_trim_scheduler) == 1
 
@@ -708,7 +709,7 @@ class TestModelProviderWebSocketUsage:
             "tokens.input": 11,
             "tokens.output": 5,
         }
-        assert flow.metadata["model_provider_usage"] == {}
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
 
     def test_non_model_websocket_message_retention_is_unchanged(
         self,
@@ -716,7 +717,7 @@ class TestModelProviderWebSocketUsage:
         deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
     ):
         flow = real_flow(with_response=False, host="example.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         first = _append_websocket_message(flow, from_client=True, content=b"client")
         second = _append_websocket_message(flow, from_client=False, content=b"server")
 

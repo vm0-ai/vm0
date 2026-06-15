@@ -7,15 +7,16 @@ from pathlib import Path
 import pytest
 from mitmproxy import http
 from mitmproxy.flow import Error
-from mitmproxy.test import tutils
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
-from tests.flow_helpers import header_map, response_stream
+from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
+from tests.model_provider_flow_helpers import make_model_provider_sse_flow
 
 
 def _model_provider_sse_flow(
@@ -27,24 +28,14 @@ def _model_provider_sse_flow(
     firewall_name: str,
     cli_agent_type: str | None = None,
 ) -> http.HTTPFlow:
-    flow = real_flow(with_response=False, host=host)
-    flow.metadata["vm_run_id"] = "run-abc-123"
-    flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-    flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-    flow.metadata["firewall_action"] = "ALLOW"
-    flow.metadata["original_url"] = original_url
-    flow.metadata["firewall_name"] = firewall_name
-    flow.metadata["firewall_billable"] = True
-    flow.metadata["vm_sandbox_token"] = "tok-xyz"
-    if cli_agent_type is not None:
-        flow.metadata["cli_agent_type"] = cli_agent_type
-    flow.response = tutils.tresp(
-        status_code=200,
-        headers=header_map({"content-type": "text/event-stream"}),
+    return make_model_provider_sse_flow(
+        real_flow,
+        tmp_path,
+        host=host,
+        original_url=original_url,
+        firewall_name=firewall_name,
+        cli_agent_type=cli_agent_type,
     )
-
-    mitm_addon.responseheaders(flow)
-    return flow
 
 
 def _openai_responses_sse_flow(
@@ -61,7 +52,7 @@ def _openai_responses_sse_flow(
 
 
 def _model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
-    proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
     if not jsonl_exists_after_flush(proxy_log):
         return []
     return [
