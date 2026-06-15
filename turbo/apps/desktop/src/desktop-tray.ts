@@ -16,6 +16,7 @@ import {
 interface DesktopTrayControllerOptions {
   readonly displayName: string;
   readonly iconPath: string;
+  readonly disabledIconPath: string;
   readonly getComputerUseState: () => DesktopComputerUseState;
   readonly getAuthState: () => Promise<DesktopAuthState>;
   readonly showMainWindow: () => Promise<void>;
@@ -33,12 +34,19 @@ interface DesktopTrayControllerOptions {
   readonly quit: () => void;
 }
 
-function desktopTrayIcon(iconPath: string): NativeImage {
+function desktopTrayIcon(
+  iconPath: string,
+  options: { readonly template: boolean },
+): NativeImage {
   const image = nativeImage.createFromPath(iconPath);
-  if (process.platform === "darwin") {
+  if (options.template && process.platform === "darwin") {
     image.setTemplateImage(true);
   }
   return image;
+}
+
+function isOnlineTrayIconState(state: DesktopComputerUseState): boolean {
+  return state.host.status === "online";
 }
 
 function electronMenuItem(
@@ -79,6 +87,8 @@ export class DesktopTrayController {
   private authLoading = true;
   private authError: string | null = null;
   private authRefreshVersion = 0;
+  private iconState: boolean | null = null;
+  private readonly iconCache = new Map<boolean, NativeImage>();
   private menuSignature: string | null = null;
 
   constructor(options: DesktopTrayControllerOptions) {
@@ -90,7 +100,10 @@ export class DesktopTrayController {
       return;
     }
 
-    this.tray = new Tray(desktopTrayIcon(this.options.iconPath));
+    const computerUseState = this.options.getComputerUseState();
+    const iconState = isOnlineTrayIconState(computerUseState);
+    this.tray = new Tray(this.iconForState(iconState));
+    this.iconState = iconState;
     this.tray.setToolTip(this.options.displayName);
     this.refresh();
     this.refreshAuth();
@@ -103,9 +116,11 @@ export class DesktopTrayController {
     }
 
     const actions = this.menuActions();
+    const computerUseState = this.options.getComputerUseState();
+    this.refreshIcon(tray, computerUseState);
     const items = buildDesktopTrayMenuItems(
       {
-        computerUse: this.options.getComputerUseState(),
+        computerUse: computerUseState,
         auth: this.authState,
         authLoading: this.authLoading,
         authError: this.authError,
@@ -120,6 +135,32 @@ export class DesktopTrayController {
     }
     this.menuSignature = signature;
     tray.setContextMenu(Menu.buildFromTemplate(electronMenuTemplate(items)));
+  }
+
+  private iconForState(online: boolean): NativeImage {
+    const cached = this.iconCache.get(online);
+    if (cached) {
+      return cached;
+    }
+
+    const image = desktopTrayIcon(
+      online ? this.options.iconPath : this.options.disabledIconPath,
+      { template: online },
+    );
+    this.iconCache.set(online, image);
+    return image;
+  }
+
+  private refreshIcon(
+    tray: Tray,
+    computerUseState: DesktopComputerUseState,
+  ): void {
+    const iconState = isOnlineTrayIconState(computerUseState);
+    if (iconState === this.iconState) {
+      return;
+    }
+    this.iconState = iconState;
+    tray.setImage(this.iconForState(iconState));
   }
 
   refreshAuth(): void {
