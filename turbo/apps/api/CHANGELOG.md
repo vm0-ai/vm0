@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.141.0](https://github.com/vm0-ai/vm0/compare/api-v1.140.1...api-v1.141.0) (2026-06-15)
+
+
+### Features
+
+* add desktop dmg download dialog ([#17706](https://github.com/vm0-ai/vm0/issues/17706)) ([7586bbc](https://github.com/vm0-ai/vm0/commit/7586bbc2cf3c6272717639c05bdd49c88a294952))
+* replace YouTube API key auth with OAuth ([#17661](https://github.com/vm0-ai/vm0/issues/17661)) ([c548213](https://github.com/vm0-ai/vm0/commit/c54821371703d3be2c996db429630b36b1404e67))
+* send low credit balance alerts ([#17595](https://github.com/vm0-ai/vm0/issues/17595)) ([8c4037b](https://github.com/vm0-ai/vm0/commit/8c4037bb1eef85a4d544463f8c22b26144397f1e))
+
+
+### Bug Fixes
+
+* disable org-member automations on removal ([#17689](https://github.com/vm0-ai/vm0/issues/17689)) ([13c48dc](https://github.com/vm0-ai/vm0/commit/13c48dc8c7b82ad79d2e901e969c9278bcef5392))
+* give agent context for attached illustration style ([#17525](https://github.com/vm0-ai/vm0/issues/17525)) ([#17657](https://github.com/vm0-ai/vm0/issues/17657)) ([cf2d344](https://github.com/vm0-ai/vm0/commit/cf2d344c737dc2467c5338739453935f43668c6b))
+* remove api web fallback ([#17509](https://github.com/vm0-ai/vm0/issues/17509)) ([dab9e38](https://github.com/vm0-ai/vm0/commit/dab9e3819b42fbd6aaacb6f1d0ef39a4928c8c54))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.93.0
+    * @vm0/connectors bumped to 1.76.0
+    * @vm0/core bumped to 8.338.0
+    * @vm0/db bumped to 1.51.0
+
 ## [1.140.1](https://github.com/vm0-ai/vm0/compare/api-v1.140.0...api-v1.140.1) (2026-06-14)
 
 

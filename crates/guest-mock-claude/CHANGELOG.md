@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.19.0...guest-mock-claude-v0.19.1) (2026-06-15)
+
+
+### Refactoring
+
+* centralize mock claude scenario markers ([#17690](https://github.com/vm0-ai/vm0/issues/17690)) ([f154d2e](https://github.com/vm0-ai/vm0/commit/f154d2e854296ff5b52683886ec1bdd1ef95a68f))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.10...guest-mock-claude-v0.19.0) (2026-06-12)
 
 
