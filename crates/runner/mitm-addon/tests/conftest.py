@@ -62,11 +62,11 @@ def _reset_module_state() -> Iterator[None]:
     logging_utils.reset_log_writer_for_tests()
     yield
     mitm_addon.reset_runner_usage_flush_state_for_tests()
+    usage.reset_usage_buffer_for_tests()
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
-    usage.reset_usage_buffer_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
 
