@@ -87,7 +87,7 @@ describe("throwOAuthError", () => {
     ).toBeUndefined();
   });
 
-  it("preserves standard OAuth diagnostic fields", async () => {
+  it("preserves provider-specific OAuth error subtype", async () => {
     const response = makeResponse(
       400,
       JSON.stringify({

@@ -2,10 +2,6 @@ import { ProviderHttpError } from "../provider-error";
 
 const MAX_BODY_LENGTH = 500;
 
-interface OAuthProviderHttpErrorDetails {
-  readonly oauthErrorSubtype?: string | undefined;
-}
-
 export class OAuthProviderHttpError extends ProviderHttpError {
   readonly oauthError: string | undefined;
   readonly oauthErrorSubtype: string | undefined;
@@ -14,12 +10,12 @@ export class OAuthProviderHttpError extends ProviderHttpError {
     message: string,
     status: number,
     oauthError: string | undefined = undefined,
-    details: OAuthProviderHttpErrorDetails = {},
+    oauthErrorSubtype: string | undefined = undefined,
   ) {
     super(message, status);
     this.name = "OAuthProviderHttpError";
     this.oauthError = oauthError;
-    this.oauthErrorSubtype = details.oauthErrorSubtype;
+    this.oauthErrorSubtype = oauthErrorSubtype;
   }
 }
 
@@ -31,10 +27,11 @@ export function isOAuthProviderHttpError(
 
 /**
  * Read the response body from a failed OAuth request and throw an error
- * with full diagnostic context (status code, error reason, description).
+ * with diagnostic context (status code, error reason, description).
  *
  * Attempts to parse the body as JSON to extract standard OAuth error fields
- * (`error`, `error_description`). Falls back to raw text if not JSON.
+ * (`error`, `error_description`) and provider-specific subtype details
+ * (`error_subtype`). Falls back to raw text if not JSON.
  * Truncates long bodies to avoid noisy logs.
  */
 export async function throwOAuthError(
@@ -88,8 +85,6 @@ export async function throwOAuthError(
     `${provider} token ${operation} failed: ${status}${detail}`,
     status,
     oauthError,
-    {
-      oauthErrorSubtype,
-    },
+    oauthErrorSubtype,
   );
 }
