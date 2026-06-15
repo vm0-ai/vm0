@@ -41,9 +41,17 @@
     # ========================================
     - name: Install runner service with private service secrets
       block:
+        - name: Create runner service secrets source file
+          tempfile:
+            state: file
+            path: "{{ runner_dir }}"
+            prefix: ".service-secrets.env.source."
+          register: service_secrets_source
+          no_log: true
+
         - name: Write runner service secrets source file
           copy:
-            dest: "{{ runner_dir }}/.service-secrets.env.source"
+            dest: "{{ service_secrets_source.path }}"
             owner: root
             group: root
             mode: "0600"
@@ -64,12 +72,13 @@
             {{ bin_dir }}/runner service install
             --name {{ runner_name }}
             --config {{ runner_dir }}/runner.yaml
-            --service-secrets-file {{ runner_dir }}/.service-secrets.env.source
+            --service-secrets-file {{ service_secrets_source.path }}
       always:
         - name: Remove runner service secrets source file
           file:
-            path: "{{ runner_dir }}/.service-secrets.env.source"
+            path: "{{ service_secrets_source.path }}"
             state: absent
+          when: service_secrets_source is defined and service_secrets_source.path is defined
           no_log: true
 
     # ========================================

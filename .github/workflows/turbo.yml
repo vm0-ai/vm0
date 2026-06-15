@@ -1945,7 +1945,7 @@ jobs:
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
 
-            local SERVICE_SECRETS_SOURCE="${RUNNER_DIR}/.service-secrets.env.source"
+            local SERVICE_SECRETS_SOURCE="${RUNNER_DIR}/.service-secrets.env.source.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.${HOST_INDEX}"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -f ${SERVICE_SECRETS_SOURCE}"
             # shellcheck disable=SC2029
