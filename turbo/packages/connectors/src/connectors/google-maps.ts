@@ -8,35 +8,9 @@ export const googleMaps = {
     helpText:
       "Connect Google Maps Platform to access geocoding, places, directions, and other Maps APIs",
     authMethods: {
-      "api-token": {
-        featureFlag: FeatureSwitchKey.GoogleMapsConnector,
-        label: "API Key",
-        helpText:
-          "1. Open [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials)\n2. Select or create a project and enable the Maps APIs you need (Geocoding, Places, Directions, etc.)\n3. Go to **APIs & Services -> Credentials** and click **Create credentials -> API key**\n4. Copy the API key (format: `AIza...`) and restrict it to the APIs and referrers/IPs you trust",
-        storage: {
-          secrets: ["GOOGLE_MAPS_TOKEN"],
-          variables: [],
-        },
-        grant: {
-          kind: "manual",
-          fields: {
-            GOOGLE_MAPS_TOKEN: {
-              label: "API Key",
-              required: true,
-              placeholder: "AIza...",
-            },
-          },
-        },
-        access: {
-          kind: "static",
-          envBindings: {
-            GOOGLE_MAPS_TOKEN: "$secrets.GOOGLE_MAPS_TOKEN",
-          },
-        },
-        revoke: { kind: "none" },
-      },
       oauth: {
         featureFlag: FeatureSwitchKey.GoogleMapsConnector,
+        showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText:
           "Sign in with Google to grant Google Maps Platform access. Google Cloud IAM and enabled Maps APIs determine which resources and actions are available.",
