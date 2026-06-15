@@ -73,6 +73,7 @@ export type RustMethodVariant =
 export interface NormalizedRouteBinding {
   readonly method: HttpMethod;
   readonly path: string;
+  readonly summary: string;
   readonly pathParams: readonly PathParamBinding[];
   readonly rustMethodVariant: RustMethodVariant;
   readonly rustModulePath: readonly string[];
@@ -88,6 +89,12 @@ interface ModuleNode {
   readonly routes: NormalizedRouteBinding[];
   readonly children: Map<string, ModuleNode>;
 }
+
+const rustRouteRootDoc = [
+  "Generated Rust route bindings for selected `@vm0/api-contracts` routes.",
+  "Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
+  "Route descriptions are generated from TypeScript contract summaries.",
+] as const;
 
 export interface NormalizedTypeBinding {
   readonly schema: JsonObject;
@@ -214,6 +221,7 @@ export function normalizeRouteBindings(
     const label = routeLabel(binding);
     const method = validateHttpMethod(binding.route.method, label);
     const path = validateRoutePath(binding.route.path, label);
+    const summary = validateRouteSummary(binding.route.summary, label);
     const pathParams = extractPathParams(path, label);
     const rustModulePath = validateRustModulePath(
       binding.rustModulePath,
@@ -236,6 +244,7 @@ export function normalizeRouteBindings(
     normalized.push({
       method,
       path,
+      summary,
       pathParams,
       rustMethodVariant: toRustMethodVariant(method),
       rustModulePath,
@@ -256,7 +265,9 @@ export function renderRustRoutes(
     "// Do not edit by hand.",
     "// Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust",
     "",
-    ...renderModuleNode(root, ""),
+    ...renderInnerRustDoc(rustRouteRootDoc),
+    "",
+    ...renderModuleNode(root, "", []),
   ];
 
   return `${lines.join("\n")}\n`;
@@ -463,6 +474,23 @@ function validateRoutePath(value: unknown, label: string): string {
   }
 
   return value;
+}
+
+function validateRouteSummary(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`${label} is missing route summary`);
+  }
+
+  if (value.includes("\n") || value.includes("\r")) {
+    throw new Error(`${label} has multiline route summary`);
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`${label} is missing route summary`);
+  }
+
+  return trimmed;
 }
 
 function extractPathParams(
@@ -1319,7 +1347,11 @@ function renderStringEnum(
   return typeName;
 }
 
-function renderModuleNode(node: ModuleNode, indent: string): string[] {
+function renderModuleNode(
+  node: ModuleNode,
+  indent: string,
+  modulePath: readonly string[],
+): string[] {
   const lines: string[] = [];
   const routes = [...node.routes].sort(compareRouteBindings);
   const children = [...node.children.entries()].sort(
@@ -1331,6 +1363,7 @@ function renderModuleNode(node: ModuleNode, indent: string): string[] {
   for (const route of routes) {
     const routeType = route.pathParams.length > 0 ? "RouteTemplate" : "Route";
     appendBlankLineIfNeeded(lines);
+    lines.push(...renderRouteConstDoc(route, indent));
     lines.push(
       `${indent}pub const ${route.rustConstName}: crate::${routeType} = crate::${routeType} {`,
     );
@@ -1342,18 +1375,22 @@ function renderModuleNode(node: ModuleNode, indent: string): string[] {
 
     if (route.pathParams.length > 0) {
       lines.push("");
+      lines.push(...renderParamsDoc(route, indent));
       lines.push(`${indent}#[derive(Debug, Clone, Copy)]`);
       lines.push(`${indent}pub struct Params<'a> {`);
       for (const param of route.pathParams) {
+        lines.push(...renderPathParamDoc(param, `${indent}    `));
         lines.push(`${indent}    pub ${param.rustName}: &'a str,`);
       }
       lines.push(`${indent}}`);
       lines.push("");
+      lines.push(...renderPathHelperDoc(route, indent));
       lines.push(`${indent}#[must_use]`);
       lines.push(`${indent}pub fn path(params: Params<'_>) -> String {`);
       lines.push(...renderParameterizedPath(route, `${indent}    `));
       lines.push(`${indent}}`);
       lines.push("");
+      lines.push(...renderRouteHelperDoc(route, indent));
       lines.push(`${indent}#[must_use]`);
       lines.push(
         `${indent}pub fn route(params: Params<'_>) -> crate::ResolvedRoute {`,
@@ -1367,12 +1404,85 @@ function renderModuleNode(node: ModuleNode, indent: string): string[] {
 
   for (const [moduleName, child] of children) {
     appendBlankLineIfNeeded(lines);
+    const childPath = [...modulePath, moduleName];
+    lines.push(...renderRouteModuleDoc(childPath, indent));
     lines.push(`${indent}pub mod ${moduleName} {`);
-    lines.push(...renderModuleNode(child, `${indent}    `));
+    lines.push(...renderModuleNode(child, `${indent}    `, childPath));
     lines.push(`${indent}}`);
   }
 
   return lines;
+}
+
+function renderRouteModuleDoc(
+  modulePath: readonly string[],
+  indent: string,
+): string[] {
+  return renderOuterRustDoc(
+    [`Generated route bindings under \`${modulePath.join("::")}\`.`],
+    indent,
+  );
+}
+
+function renderRouteConstDoc(
+  route: NormalizedRouteBinding,
+  indent: string,
+): string[] {
+  return renderOuterRustDoc(
+    [
+      rustDocSentence(route.summary),
+      `Route contract: \`${routeContract(route)}\`.`,
+    ],
+    indent,
+  );
+}
+
+function renderParamsDoc(
+  route: NormalizedRouteBinding,
+  indent: string,
+): string[] {
+  return renderOuterRustDoc(
+    [`Path parameters for \`${routeContract(route)}\`.`],
+    indent,
+  );
+}
+
+function renderPathParamDoc(param: PathParamBinding, indent: string): string[] {
+  return renderOuterRustDoc(
+    [`Value for the \`:${param.routeName}\` path parameter.`],
+    indent,
+  );
+}
+
+function renderPathHelperDoc(
+  route: NormalizedRouteBinding,
+  indent: string,
+): string[] {
+  return renderOuterRustDoc(
+    [
+      `Build the concrete path for \`${routeContract(route)}\`.`,
+      "Percent-encodes each path parameter as a URL path segment.",
+    ],
+    indent,
+  );
+}
+
+function renderRouteHelperDoc(
+  route: NormalizedRouteBinding,
+  indent: string,
+): string[] {
+  return renderOuterRustDoc(
+    [`Build a resolved route for \`${routeContract(route)}\`.`],
+    indent,
+  );
+}
+
+function routeContract(route: NormalizedRouteBinding): string {
+  return `${route.method} ${route.path}`;
+}
+
+function rustDocSentence(value: string): string {
+  return /[.!?]$/.test(value) ? value : `${value}.`;
 }
 
 function renderParameterizedPath(

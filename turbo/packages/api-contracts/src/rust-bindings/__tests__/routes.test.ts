@@ -80,7 +80,11 @@ function validBinding(
   overrides: Partial<RustRouteBinding> = {},
 ): RustRouteBinding {
   return {
-    route: { method: "POST", path: "/api/webhooks/agent/events" },
+    route: {
+      method: "POST",
+      path: "/api/webhooks/agent/events",
+      summary: "Send an example route",
+    },
     rustModulePath: ["webhooks", "agent", "events"],
     rustConstName: "SEND",
     ...overrides,
@@ -135,12 +139,41 @@ describe("Rust route bindings", () => {
     expect(rendered).toContain("crate::route::encode_path_segment(params.id)");
   });
 
+  it("renders Rust docs for route modules, constants, params, and helpers", () => {
+    const rendered = renderRustRoutes(rustRouteBindings);
+
+    expect(rendered).toContain(
+      "//! Generated Rust route bindings for selected `@vm0/api-contracts` routes.",
+    );
+    expect(rendered).toContain(
+      "/// Generated route bindings under `runners::jobs::by_id::claim`.",
+    );
+    expect(rendered).toContain("/// Claim a pending job for execution.");
+    expect(rendered).toContain(
+      "/// Route contract: `POST /api/runners/jobs/:id/claim`.",
+    );
+    expect(rendered).toContain(
+      "/// Path parameters for `POST /api/runners/jobs/:id/claim`.",
+    );
+    expect(rendered).toContain("/// Value for the `:id` path parameter.");
+    expect(rendered).toContain(
+      "/// Build the concrete path for `POST /api/runners/jobs/:id/claim`.",
+    );
+    expect(rendered).toContain(
+      "/// Percent-encodes each path parameter as a URL path segment.",
+    );
+    expect(rendered).toContain(
+      "/// Build a resolved route for `POST /api/runners/jobs/:id/claim`.",
+    );
+  });
+
   it("renders Rust-safe field names for keyword path params", () => {
     const rendered = renderRustRoutes([
       validBinding({
         route: {
           method: "POST",
           path: "/api/items/:async/:await/:dyn/:gen/:try/:union/:type",
+          summary: "Fetch an item by keyword parameters",
         },
         rustModulePath: ["items", "by_keyword"],
         rustConstName: "FETCH",
@@ -162,7 +195,11 @@ describe("Rust route bindings", () => {
   it("renders typed params for routes with multiple path params", () => {
     const rendered = renderRustRoutes([
       validBinding({
-        route: { method: "POST", path: "/api/orgs/:orgId/items/:itemId" },
+        route: {
+          method: "POST",
+          path: "/api/orgs/:orgId/items/:itemId",
+          summary: "Fetch an organization item",
+        },
         rustModulePath: ["orgs", "items"],
         rustConstName: "FETCH",
       }),
@@ -178,7 +215,11 @@ describe("Rust route bindings", () => {
   it("escapes Rust format braces in static route segments with path params", () => {
     const rendered = renderRustRoutes([
       validBinding({
-        route: { method: "POST", path: "/api/{version}/items/:id" },
+        route: {
+          method: "POST",
+          path: "/api/{version}/items/:id",
+          summary: "Fetch an item for a literal version route",
+        },
         rustModulePath: ["items", "by_id"],
         rustConstName: "FETCH",
       }),
@@ -190,7 +231,11 @@ describe("Rust route bindings", () => {
   it("fails clearly when a registry entry is malformed", () => {
     const malformedBindings = [
       validBinding({
-        route: { method: "TRACE", path: "/api/webhooks/agent/events" },
+        route: {
+          method: "TRACE",
+          path: "/api/webhooks/agent/events",
+          summary: "Send an example route",
+        },
       }),
     ];
 
@@ -202,7 +247,11 @@ describe("Rust route bindings", () => {
   it("fails clearly when a route path is invalid", () => {
     const malformedBindings = [
       validBinding({
-        route: { method: "POST", path: "api/webhooks/agent/events" },
+        route: {
+          method: "POST",
+          path: "api/webhooks/agent/events",
+          summary: "Send an example route",
+        },
       }),
     ];
 
@@ -214,7 +263,11 @@ describe("Rust route bindings", () => {
   it("fails clearly when route path param syntax is unsupported", () => {
     const malformedBindings = [
       validBinding({
-        route: { method: "POST", path: "/api/runners/jobs/prefix-:id" },
+        route: {
+          method: "POST",
+          path: "/api/runners/jobs/prefix-:id",
+          summary: "Send an example route",
+        },
       }),
     ];
 
@@ -226,7 +279,11 @@ describe("Rust route bindings", () => {
   it("fails clearly when a route path param name is invalid", () => {
     const malformedBindings = [
       validBinding({
-        route: { method: "POST", path: "/api/runners/jobs/:1id" },
+        route: {
+          method: "POST",
+          path: "/api/runners/jobs/:1id",
+          summary: "Send an example route",
+        },
       }),
     ];
 
@@ -238,7 +295,11 @@ describe("Rust route bindings", () => {
   it("fails clearly when route path params are duplicated", () => {
     const malformedBindings = [
       validBinding({
-        route: { method: "POST", path: "/api/runners/jobs/:id/:id" },
+        route: {
+          method: "POST",
+          path: "/api/runners/jobs/:id/:id",
+          summary: "Send an example route",
+        },
       }),
     ];
 
@@ -250,7 +311,11 @@ describe("Rust route bindings", () => {
   it("fails clearly when path params collide as Rust field names", () => {
     const malformedBindings = [
       validBinding({
-        route: { method: "POST", path: "/api/:fooBar/:foo_bar" },
+        route: {
+          method: "POST",
+          path: "/api/:fooBar/:foo_bar",
+          summary: "Send an example route",
+        },
       }),
     ];
 
@@ -287,7 +352,11 @@ describe("Rust route bindings", () => {
     const malformedBindings = [
       validBinding(),
       validBinding({
-        route: { method: "POST", path: "/api/webhooks/agent/heartbeat" },
+        route: {
+          method: "POST",
+          path: "/api/webhooks/agent/heartbeat",
+          summary: "Send an example route",
+        },
       }),
     ];
 
@@ -307,5 +376,37 @@ describe("Rust route bindings", () => {
     expect(() => {
       normalizeRouteBindings(malformedBindings);
     }).toThrow("duplicate route binding");
+  });
+
+  it("fails clearly when a route summary is invalid", () => {
+    for (const route of [
+      {
+        method: "POST",
+        path: "/api/webhooks/agent/events",
+      },
+      {
+        method: "POST",
+        path: "/api/webhooks/agent/events",
+        summary: "",
+      },
+    ]) {
+      expect(() => {
+        normalizeRouteBindings([validBinding({ route })]);
+      }).toThrow("missing route summary");
+    }
+  });
+
+  it("fails clearly when a route summary spans multiple lines", () => {
+    expect(() => {
+      normalizeRouteBindings([
+        validBinding({
+          route: {
+            method: "POST",
+            path: "/api/webhooks/agent/events",
+            summary: "Send an example route\nwith extra detail",
+          },
+        }),
+      ]);
+    }).toThrow("multiline route summary");
   });
 });
