@@ -417,7 +417,7 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
       runId,
     });
 
-    const threads = await chat.listThreads(actor);
+    const threads = await chat.listThreads(actor, { agentId });
     expect(
       [...threads.pinned, ...threads.threads].map((thread) => {
         return thread.id;
@@ -1446,7 +1446,7 @@ describe("CHAT-02: server-side model switches", () => {
       await chat.requestReadThread(actor, removedThreadId, [404]);
     }
 
-    const threads = await chat.listThreads(actor);
+    const threads = await chat.listThreads(actor, { agentId: agent.agentId });
     expect(threads.pinned).toHaveLength(0);
     expect(threads.threads).toHaveLength(0);
   }, 60_000);
@@ -1772,7 +1772,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       expect(rejected.body.error.message).toBe(arm.message);
     }
 
-    const threads = await chat.listThreads(actor);
+    const threads = await chat.listThreads(actor, { agentId: agent.agentId });
     expect(threads.pinned).toHaveLength(0);
     expect(threads.threads).toHaveLength(0);
   }, 60_000);

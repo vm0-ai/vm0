@@ -860,13 +860,11 @@ function cursorAdvanceFilter(cursor: ChatThreadListCursor) {
 export function zeroChatThreadList(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly agentComposeId?: string;
-  readonly limit?: number;
+  readonly agentComposeId: string;
   readonly cursor?: string;
 }): Computed<Promise<ChatThreadListPage>> {
   return computed(async (get): Promise<ChatThreadListPage> => {
     const db = get(db$);
-    const limit = args.limit ?? SIDEBAR_CHAT_THREAD_LIMIT;
     const cursor = decodeChatThreadListCursor(args.cursor);
 
     const projection = chatThreadListProjection();
@@ -874,10 +872,8 @@ export function zeroChatThreadList(args: {
     const scopedFilters = [
       eq(chatThreads.userId, args.userId),
       eq(zeroAgents.orgId, args.orgId),
+      eq(chatThreads.agentComposeId, args.agentComposeId),
     ];
-    if (args.agentComposeId) {
-      scopedFilters.push(eq(chatThreads.agentComposeId, args.agentComposeId));
-    }
 
     const nonPinnedFilters = [...scopedFilters, isNull(chatThreads.pinnedAt)];
     if (cursor) {
@@ -907,11 +903,13 @@ export function zeroChatThreadList(args: {
         .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
         .where(and(...nonPinnedFilters))
         .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
-        .limit(limit + 1),
+        .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1),
     ]);
 
-    const hasMore = nonPinnedRows.length > limit;
-    const pageRows = hasMore ? nonPinnedRows.slice(0, limit) : nonPinnedRows;
+    const hasMore = nonPinnedRows.length > SIDEBAR_CHAT_THREAD_LIMIT;
+    const pageRows = hasMore
+      ? nonPinnedRows.slice(0, SIDEBAR_CHAT_THREAD_LIMIT)
+      : nonPinnedRows;
     const lastRow = hasMore ? pageRows[pageRows.length - 1] : undefined;
     const nextCursor = lastRow
       ? encodeChatThreadListCursor({

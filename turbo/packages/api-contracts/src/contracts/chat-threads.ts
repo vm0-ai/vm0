@@ -368,13 +368,7 @@ export const chatThreadsContract = c.router({
     path: "/api/zero/chat-threads",
     headers: authHeadersSchema,
     query: z.object({
-      agentId: z.string().min(1).optional(),
-      /**
-       * Maximum number of non-pinned threads to return in this page. Pinned
-       * threads are always returned in full and do not count against `limit`.
-       * Defaults to 25 (sidebar default).
-       */
-      limit: z.coerce.number().int().min(1).max(100).optional(),
+      agentId: z.string().min(1),
       /**
        * Opaque cursor returned by a prior page in `nextCursor`. When set,
        * `pinned` is empty (pinned threads are only included on the first
@@ -387,7 +381,7 @@ export const chatThreadsContract = c.router({
         /**
          * All pinned threads in the caller's org, ordered by last activity desc.
          * Always returned in full on the first page (no `cursor`) and empty on
-         * subsequent pages — pagination only applies to the non-pinned segment.
+         * subsequent pages. Non-pinned threads use the fixed sidebar page size.
          */
         pinned: z.array(chatThreadListItemSchema),
         /**
@@ -407,7 +401,7 @@ export const chatThreadsContract = c.router({
       401: apiErrorSchema,
     },
     summary:
-      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId. An unknown agentId yields an empty list. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads are cursor-paginated.",
+      "List chat threads for an agent. An unknown agentId yields an empty list. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads use cursor pagination with a fixed sidebar page size.",
   },
   drafts: {
     method: "GET",
