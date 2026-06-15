@@ -5,7 +5,12 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
+
+function unknownPermissionChangeCommand(connectorRef: string): string {
+  return `zero doctor permission-change ${connectorRef} --permission ${UNKNOWN_PERMISSION_GRANT} --enable --duration 1h`;
+}
 
 export const permissionDenyCommand = new Command()
   .name("permission-deny")
@@ -55,6 +60,12 @@ Notes:
 
         if (permissions.length === 0) {
           console.log("No named permission was found covering this request.");
+          console.log(
+            "This request is governed by the unknown endpoint policy.",
+          );
+          console.log(
+            `To allow unknown endpoints, run: ${unknownPermissionChangeCommand(connectorRef)}`,
+          );
           return;
         }
 

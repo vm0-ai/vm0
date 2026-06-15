@@ -1184,6 +1184,77 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain('Result: "echo" is in the allow list');
     });
 
+    it("should suggest an unknown endpoint permission request for unmatched denied URLs", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["test-oauth"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "test-oauth",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "test-oauth",
+                apis: [
+                  {
+                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
+                    permissions: [
+                      {
+                        name: "echo",
+                        description:
+                          "Test echo endpoint used to verify token injection",
+                        rules: ["GET /echo"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              "test-oauth": {
+                allow: ["echo"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/unknown",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "No named permission matches GET /unknown. This request falls through to the unknown-endpoint policy.",
+      );
+      expect(output).toContain(
+        "Result: No permission matched. The unknown endpoint policy applies: deny.",
+      );
+      expect(output).toContain(
+        "zero doctor permission-change test-oauth --permission __unknown__ --enable --duration 1h",
+      );
+    });
+
     it("should fail for unrecognized URL", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([

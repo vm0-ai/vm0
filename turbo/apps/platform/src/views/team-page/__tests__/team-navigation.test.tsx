@@ -622,6 +622,54 @@ describe("team page navigation", () => {
     });
   });
 
+  it("uses Cloudflare unknown endpoint deny as the permissions drawer default", async () => {
+    mockTeamAPIs();
+    context.mocks.data.connectors([createConnector("cloudflare", "cf-team")]);
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@cf-team")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Cloudflare permissions"));
+
+    const permissionsDialog = await screen.findByRole("dialog");
+    expect(
+      within(permissionsDialog).getByText("Cloudflare permissions"),
+    ).toBeInTheDocument();
+
+    const unknownRow = unknownEndpointsRow(permissionsDialog);
+    expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
+
+    click(buttonByText("Allow", unknownRow));
+    await waitFor(() => {
+      expect(buttonByText("Allow", unknownRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(buttonByText("Restore", permissionsDialog)).toBeEnabled();
+    });
+
+    click(buttonByText("Restore", permissionsDialog));
+    await waitFor(() => {
+      expect(buttonByText("Deny", unknownRow)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
+    });
+  });
+
   it("saves permission duration changes from an agent page", async () => {
     mockNow();
     mockTeamAPIs();

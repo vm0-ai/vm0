@@ -55,14 +55,14 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.unknownPolicy).toBe("allow");
   });
 
-  it("should default Cloudflare read-only permissions to allow and write permissions to deny", () => {
+  it("should default Cloudflare read-only permissions to allow, write permissions to deny, and unknown endpoints to deny", () => {
     const policy = getDefaultFirewallPolicies("cloudflare");
 
     expect(policy.policies["dns-firewall.read"]).toBe("allow");
     expect(policy.policies["dns-firewall.write"]).toBe("deny");
     expect(policy.policies["account-waf.read"]).toBe("allow");
     expect(policy.policies["account-waf.write"]).toBe("deny");
-    expect(policy.unknownPolicy).toBe("allow");
+    expect(policy.unknownPolicy).toBe("deny");
   });
 });
 
@@ -115,6 +115,19 @@ describe("resolveFirewallPolicies", () => {
     };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
     expect(resolved!["slack"]!.unknownPolicy).toBe("allow");
+  });
+
+  it("should use connector-specific unknownPolicy defaults when not stored", () => {
+    const resolved = resolveFirewallPolicies(null, ["cloudflare"]);
+    expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
+  });
+
+  it("should preserve stored unknownPolicy override over connector-specific defaults", () => {
+    const stored = {
+      cloudflare: { policies: {}, unknownPolicy: "allow" as const },
+    };
+    const resolved = resolveFirewallPolicies(stored, ["cloudflare"]);
+    expect(resolved!["cloudflare"]!.unknownPolicy).toBe("allow");
   });
 
   it("should preserve stored overrides for connectors without default-allowed list", () => {

@@ -5,6 +5,7 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
@@ -18,6 +19,7 @@ const PERMISSION_GRANT_DURATIONS = [
 
 function findPermissionInConfig(ref: string, permissionName: string): boolean {
   if (!isFirewallConnectorType(ref)) return false;
+  if (permissionName === UNKNOWN_PERMISSION_GRANT) return true;
   const config = getConnectorFirewall(ref);
   for (const api of config.apis) {
     if (!api.permissions) continue;
@@ -29,6 +31,13 @@ function findPermissionInConfig(ref: string, permissionName: string): boolean {
 }
 
 type PermissionAction = "enable" | "disable";
+
+function permissionDescription(permission: string): string {
+  return permission === UNKNOWN_PERMISSION_GRANT
+    ? "unknown endpoints"
+    : `the "${permission}" permission`;
+}
+
 function printSensitivePermissionGuidance(
   connectorRef: string,
   permission: string,
@@ -76,7 +85,7 @@ function printPermissionActionMessage(args: {
 }): void {
   const grantAction = args.action === "enable" ? "allow" : "deny";
   console.log(
-    `You can ${grantAction} the "${args.permission}" permission for your connector access: [Manage ${args.label} permissions](${args.url})`,
+    `You can ${grantAction} ${permissionDescription(args.permission)} for your connector access: [Manage ${args.label} permissions](${args.url})`,
   );
   if (args.duration) {
     console.log(
@@ -160,9 +169,11 @@ Examples:
   zero doctor permission-change github --permission contents:read --enable
   zero doctor permission-change github --permission contents:write --enable --duration 24h
   zero doctor permission-change slack --permission chat:write --disable
+  zero doctor permission-change cloudflare --permission __unknown__ --disable
 
 Notes:
   - Outputs a platform URL for the user to adjust the permission
+  - Use --permission __unknown__ to change unknown endpoint policy
   - Enable requests default to --duration 1h; use 24h or 7d for longer user-approved work
   - Use --duration always only when the user explicitly asks for persistent access
   - Permission changes update the current user's connector grants`,

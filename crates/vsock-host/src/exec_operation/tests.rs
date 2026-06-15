@@ -19,8 +19,7 @@ use crate::{ConnectionState, Shared};
 
 use super::diagnostics::*;
 use super::dispatch::dispatch_result;
-use super::frame::send_supervised_exec_cancel_frame;
-use super::handle::{ExecOperationHandle, ExecWaitCore};
+use super::handle::{ExecOperationHandle, ExecWaitCore, ExecWaitLifecycle, send_exec_cancel_frame};
 use super::state::*;
 use super::types::ExecOperationResult;
 use super::{
@@ -544,7 +543,7 @@ async fn supervised_cancel_frame_marks_terminal_result_as_host_requested_cancel(
         false,
     );
 
-    send_supervised_exec_cancel_frame(&shared, 7, &diagnostic)
+    send_exec_cancel_frame(&shared, 7, &diagnostic, ExecWaitLifecycle::Supervised)
         .await
         .unwrap();
 

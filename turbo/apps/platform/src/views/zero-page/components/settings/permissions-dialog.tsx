@@ -313,6 +313,20 @@ function buildDefaultPolicyState(
   };
 }
 
+function buildInitialUnknownPolicy(
+  ref: ConnectorType,
+  config: FirewallConfig | null,
+  initialPolicies: FirewallPolicies,
+): FirewallPolicyValue {
+  if (!config || !isFirewallConnectorType(ref)) {
+    return "allow";
+  }
+  return (
+    resolveFirewallPolicies(initialPolicies, [ref])?.[ref]?.unknownPolicy ??
+    "allow"
+  );
+}
+
 function mergeDrawerPolicies({
   initialPolicies,
   ref,
@@ -1214,7 +1228,11 @@ export function PermissionsDrawer({
 
   const config = permissionDrawerConfig(ref);
 
-  const initialUnknownPolicy = initialPolicies[ref]?.unknownPolicy ?? "allow";
+  const initialUnknownPolicy = buildInitialUnknownPolicy(
+    ref,
+    config,
+    initialPolicies,
+  );
   const initialPolicyState = buildInitialPolicies(ref, config, initialPolicies);
   const defaultPolicyState = buildDefaultPolicyState(ref, config);
   const explicitGrants = buildExplicitGrantMap(ref, initialGrants);

@@ -4,6 +4,7 @@ import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -183,6 +184,79 @@ describe("chat message action cards", () => {
         permission: "admin.analytics:read",
         action: "allow",
         expiresIn: "7d",
+      });
+    });
+  });
+
+  it("lets users confirm unknown endpoint permissions from assistant messages", async () => {
+    const user = userEvent.setup({ delay: null });
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
+    let capturedBody: unknown = null;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.upsert,
+      ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
+          agentId: body.agentId,
+          connectorRef: body.connectorRef,
+          permission: body.permission,
+          action: body.action,
+          expiresAt: "2026-06-09T12:00:00.000Z",
+          createdAt: "2026-06-09T11:00:00Z",
+          updatedAt: "2026-06-09T11:01:00Z",
+        });
+      },
+    );
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-unknown-permission`,
+      threadTitle: "Unknown permission",
+      chatMessages: [
+        {
+          id: "msg-user-unknown-permission-request",
+          role: "user",
+          content: "Allow the Cloudflare request",
+          runId: "run-unknown-permission",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-unknown-permission-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-unknown-permission",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-unknown-permission`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    expect(
+      within(permissionCard).getByText("Cloudflare permissions"),
+    ).toBeInTheDocument();
+    expect(
+      within(permissionCard).getByText(`Allow ${UNKNOWN_PERMISSION_GRANT}`),
+    ).toBeInTheDocument();
+
+    await user.click(within(permissionCard).getByText("Confirm"));
+
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+      expect(capturedBody).toMatchObject({
+        agentId: AGENT_ID,
+        connectorRef: "cloudflare",
+        permission: UNKNOWN_PERMISSION_GRANT,
+        action: "allow",
+        expiresIn: "1h",
       });
     });
   });
