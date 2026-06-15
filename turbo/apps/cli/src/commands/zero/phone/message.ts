@@ -1,8 +1,8 @@
+import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
 import { sendPhoneMessage } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-import { readPipedStdin } from "../../../lib/utils/prompt-utils";
 
 export const messageCommand = new Command()
   .name("message")
@@ -25,8 +25,8 @@ Notes:
     withErrorHandler(
       async (options: { to: string; agentId?: string; text?: string }) => {
         let text = options.text;
-        if (!text) {
-          text = readPipedStdin();
+        if (!text && !process.stdin.isTTY) {
+          text = readFileSync("/dev/stdin", "utf8").trim();
         }
 
         if (!text) {

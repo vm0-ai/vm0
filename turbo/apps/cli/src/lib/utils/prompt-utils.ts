@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import prompts from "prompts";
 
 /**
@@ -7,32 +6,6 @@ import prompts from "prompts";
  */
 export function isInteractive(): boolean {
   return process.stdout.isTTY === true;
-}
-
-/**
- * Read text piped on stdin, if any.
- *
- * `process.stdin.isTTY` is `true` only for an interactive terminal and
- * `undefined` when stdin is piped/redirected or there is no TTY context
- * (e.g. a test runner), so we guard with `!isTTY` rather than `=== false`
- * — the latter never matches the piped case and silently drops the input.
- *
- * Returns the trimmed piped text, or `undefined` when stdin is an
- * interactive terminal, unreadable, or empty.
- */
-export function readPipedStdin(): string | undefined {
-  if (process.stdin.isTTY) {
-    return undefined;
-  }
-
-  try {
-    const piped = readFileSync("/dev/stdin", "utf8").trim();
-    return piped.length > 0 ? piped : undefined;
-  } catch {
-    // stdin not readable (e.g. test runner with no piped input);
-    // treat as no piped input.
-    return undefined;
-  }
 }
 
 /**
