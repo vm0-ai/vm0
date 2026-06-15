@@ -16,6 +16,7 @@ import {
 import {
   extractSecretNamesFromApis,
   resolveFirewallBaseUrlVars,
+  UNKNOWN_PERMISSION_GRANT,
   type FirewallConfig,
   type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
@@ -447,6 +448,10 @@ function checkPermissionPolicy(
   console.log("");
 }
 
+function unknownPermissionChangeCommand(connectorRef: string): string {
+  return `zero doctor permission-change ${connectorRef} --permission ${UNKNOWN_PERMISSION_GRANT} --enable --duration 1h`;
+}
+
 /**
  * When --url is provided, auto-detect the matching permission by running
  * the URL's relative path against the connector's firewall rules.
@@ -520,6 +525,11 @@ function resolvePermissionFromUrl(
     console.log(
       `Result: No permission matched. The unknown endpoint policy applies: ${connectorPolicies.unknownPolicy}.`,
     );
+    if (connectorPolicies.unknownPolicy !== "allow") {
+      console.log(
+        `To allow unknown endpoints, run: ${unknownPermissionChangeCommand(connectorType)}`,
+      );
+    }
   } else {
     for (const perm of matchedPermissions) {
       const isInAllow = connectorPolicies.allow.includes(perm);
