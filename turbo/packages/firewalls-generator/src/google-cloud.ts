@@ -64,6 +64,9 @@ const GOOGLE_CLOUD_PERMISSION_ROLE_PATHS = [
   "storage",
 ] as const;
 
+// vm0-maintained display grouping derived from Google IAM permission prefixes.
+// Google documents permission names as SERVICE.RESOURCE.VERB, but does not
+// expose a structured per-permission category taxonomy like some providers do.
 const GOOGLE_CLOUD_PERMISSION_PREFIX_CATEGORIES: Record<string, string> = {
   appengine: "App Engine",
   artifactregistry: "Artifact Registry",
@@ -112,10 +115,31 @@ const GOOGLE_CLOUD_CATEGORY_ORDER = [
 
 const GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES = new Set([
   "beginReadOnlyTransaction",
+  "get",
   "getData",
   "getDdl",
+  "getDiskShrinkConfig",
+  "getEffectiveFirewalls",
+  "getFromFamily",
+  "getGuestAttributes",
   "getIamPolicy",
+  "getMacsecConfig",
   "getMetadata",
+  "getRoutePolicy",
+  "getScreenshot",
+  "getSerialPortOutput",
+  "getShieldedInstanceIdentity",
+  "list",
+  "listAvailableFeatures",
+  "listBgpRoutes",
+  "listEntraIdCertificates",
+  "listPeeringRoutes",
+  "listReferrers",
+  "listRevisions",
+  "listRoutePolicies",
+  "listRuntimes",
+  "listServerCas",
+  "listServerCertificates",
   "partitionQuery",
   "partitionRead",
   "read",
@@ -125,6 +149,7 @@ const GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES = new Set([
 const GOOGLE_CLOUD_DEFAULT_DENIED_PERMISSIONS = new Set([
   "iam.serviceAccounts.signBlob",
   "iam.serviceAccounts.signJwt",
+  "monitoring.notificationChannels.getVerificationCode",
   "pubsub.subscriptions.consume",
   "secretmanager.versions.access",
 ]);
@@ -1107,11 +1132,7 @@ function isGoogleCloudDefaultAllowedPermission(permission: string): boolean {
   }
 
   const suffix = permissionSuffix(permission);
-  return (
-    GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES.has(suffix) ||
-    suffix.startsWith("get") ||
-    suffix.startsWith("list")
-  );
+  return GOOGLE_CLOUD_READ_LIKE_PERMISSION_SUFFIXES.has(suffix);
 }
 
 function googleCloudDefaultAllowedPermissions(

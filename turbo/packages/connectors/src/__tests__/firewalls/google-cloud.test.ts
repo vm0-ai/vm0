@@ -387,6 +387,9 @@ describe("google-cloud firewall", () => {
     expect(policy.policies["secretmanager.versions.access"]).toBe("deny");
     expect(policy.policies["iam.serviceAccounts.signBlob"]).toBe("deny");
     expect(policy.policies["iam.serviceAccounts.signJwt"]).toBe("deny");
+    expect(
+      policy.policies["monitoring.notificationChannels.getVerificationCode"],
+    ).toBe("deny");
     expect(policy.policies["pubsub.topics.publish"]).toBe("deny");
     expect(policy.policies["pubsub.subscriptions.consume"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("allow");
@@ -410,6 +413,9 @@ describe("google-cloud firewall", () => {
     );
     expect(googleCloudDefaultAllowed).not.toContain(
       "iam.serviceAccounts.signBlob",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "monitoring.notificationChannels.getVerificationCode",
     );
     expect(googleCloudDefaultAllowed).not.toContain(
       "pubsub.subscriptions.consume",
