@@ -42,10 +42,29 @@ async function completeWorkspaceStep(): Promise<void> {
 }
 
 describe("zero onboarding", () => {
+  it("redirects admins who need onboarding to paid onboarding with query params", async () => {
+    mockOnboardingNeeded();
+
+    detachedSetupPage({
+      context,
+      path: "/?prompt=hello%20world&connector=github&vm0_source=presentation",
+    });
+
+    await waitFor(() => {
+      const url = new URL(window.location.href);
+      expect(url.origin).toBe("https://so.vm7.ai:8441");
+      expect(url.pathname).toBe("/onboarding/2afcf6");
+      expect(url.searchParams.get("prompt")).toBe("hello world");
+      expect(url.searchParams.get("connector")).toBe("github");
+      expect(url.searchParams.get("vm0_source")).toBe("presentation");
+      expect(url.searchParams.get("domain")).toBe("pr-123-api.vm6.ai");
+    });
+  });
+
   it("lets an admin create a workspace, choose connectors, and reach trial", async () => {
     mockOnboardingNeeded();
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/onboarding" });
 
     await waitFor(() => {
       expect(
@@ -117,7 +136,7 @@ describe("zero onboarding", () => {
   it("shows an empty connector search result while choosing tools", async () => {
     mockOnboardingNeeded();
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/onboarding" });
 
     await completeWorkspaceStep();
 

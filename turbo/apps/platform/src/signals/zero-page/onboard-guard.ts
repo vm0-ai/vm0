@@ -1,13 +1,43 @@
 import { command } from "ccstate";
 import { clerk$, resolveWebOrigin } from "../auth.ts";
-import { detachedNavigateTo$, searchParams$ } from "../route.ts";
+import { searchParams$ } from "../route.ts";
 import {
   onboardingEagerInitialized$,
   zeroOnboardingStatus$,
   zeroNeedsOnboarding$,
 } from "./zero-onboarding.ts";
 
-const FORWARDED_ONBOARDING_PARAMS = ["prompt", "connector"] as const;
+const PAID_ONBOARDING_PATH = "/onboarding/2afcf6";
+
+function paidOnboardingUrl(searchParams: URLSearchParams): string {
+  const configuredUrl = import.meta.env.VITE_PAID_ONBOARDING_URL as
+    | string
+    | undefined;
+  const configuredDomain = import.meta.env.VITE_PAID_ONBOARDING_DOMAIN as
+    | string
+    | undefined;
+  if (!configuredUrl) {
+    throw new Error("Missing VITE_PAID_ONBOARDING_URL environment variable");
+  }
+
+  const url = new URL(PAID_ONBOARDING_PATH, configuredUrl);
+  const search = searchParams.toString();
+  if (search) {
+    url.search = search;
+  }
+  if (configuredDomain) {
+    url.searchParams.set("domain", configuredDomain);
+  }
+  return url.toString();
+}
+
+export const redirectToPaidOnboarding$ = command(
+  ({ get }, searchParams?: URLSearchParams) => {
+    window.location.href = paidOnboardingUrl(
+      searchParams ?? get(searchParams$),
+    );
+  },
+);
 
 /**
  * Check whether the current user needs onboarding and redirect if so.
@@ -15,7 +45,8 @@ const FORWARDED_ONBOARDING_PARAMS = ["prompt", "connector"] as const;
  * `false` otherwise.
  *
  * Onboarding is purely admin workspace setup — only an admin whose org has no
- * default agent yet is sent to `/onboarding`. Non-admins never go through it.
+ * default agent yet is sent to the paid-onboarding site. Non-admins never go
+ * through it.
  *
  * When the backend cannot resolve the current org (e.g. it was deleted) but the
  * user still belongs to other orgs, redirect to the web app's
@@ -50,21 +81,7 @@ export const onboardGuard$ = command(
       }
     }
 
-    // Forward `?prompt=` and `?connector=` from the entry URL so the
-    // onboarding page can pre-select connectors and the post-onboarding
-    // navigation can pre-fill the chat composer.
-    const incoming = get(searchParams$);
-    const forwarded = new URLSearchParams();
-    for (const key of FORWARDED_ONBOARDING_PARAMS) {
-      const value = incoming.get(key);
-      if (value !== null) {
-        forwarded.set(key, value);
-      }
-    }
-    set(detachedNavigateTo$, "/onboarding", {
-      replace: true,
-      searchParams: forwarded.toString().length > 0 ? forwarded : undefined,
-    });
+    set(redirectToPaidOnboarding$);
     return true;
   },
 );
