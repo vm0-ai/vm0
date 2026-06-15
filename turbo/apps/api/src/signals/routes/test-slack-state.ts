@@ -12,6 +12,7 @@ import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -211,7 +212,33 @@ async function seedDefaultAgent(
       });
   });
 
+  await seedVm0ManagedKeys(db, composeId);
+
   return { composeId, versionId, agentId: composeId };
+}
+
+async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
+  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
+  await db.insert(vm0ApiKeys).values([
+    {
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: `vm0-key-anthropic-${composeId}`,
+      label: composeId,
+    },
+    {
+      vendor: "deepseek",
+      model: "deepseek-v4-pro",
+      apiKey: `vm0-key-deepseek-${composeId}`,
+      label: composeId,
+    },
+    {
+      vendor: "moonshot",
+      model: "kimi-k2.7-code",
+      apiKey: `vm0-key-moonshot-${composeId}`,
+      label: composeId,
+    },
+  ]);
 }
 
 async function getOrInsertCompose(
