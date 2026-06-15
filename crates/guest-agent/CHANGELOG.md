@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.6...guest-agent-v0.36.0) (2026-06-15)
+
+
+### Features
+
+* send Claude prompt over stream-json stdin ([#17710](https://github.com/vm0-ai/vm0/issues/17710)) ([857762b](https://github.com/vm0-ai/vm0/commit/857762b76ed511314e37b145fa879309fe955fee))
+
 ## [0.35.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.5...guest-agent-v0.35.6) (2026-06-15)
 
 

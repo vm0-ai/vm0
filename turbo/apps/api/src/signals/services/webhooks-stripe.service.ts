@@ -594,7 +594,7 @@ async function handleCreditPurchaseInvoicePaid(
 
   await db.transaction(async (tx) => {
     const inserted = await createExpiresRecord(tx, orgId, {
-      source: "auto_recharge",
+      source: "credit_purchase",
       stripeInvoiceId: invoice.id,
       amount: creditsAmount,
       expiresAt,
@@ -706,7 +706,7 @@ async function handleCreditPurchaseCompleted(
 
   await db.transaction(async (tx) => {
     const inserted = await createExpiresRecord(tx, orgId, {
-      source: "auto_recharge",
+      source: "credit_purchase",
       stripeInvoiceId: session.id,
       amount: creditsAmount,
       expiresAt,

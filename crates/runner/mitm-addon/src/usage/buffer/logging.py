@@ -7,6 +7,7 @@ from collections.abc import Iterable
 
 from logging_utils import log_proxy_entry
 
+from ..underbilling import log_usage_underbilling
 from .models import (
     UsageFlushTrigger,
     _FlushSummary,
@@ -46,8 +47,6 @@ def _log_flush_summaries(
     retained_retry_count: int | None = None,
 ) -> None:
     for summary in summaries:
-        if not summary.proxy_log_path:
-            continue
         retained_webhook_batch_count = summary.retained_webhook_batch_count
         retained_source_event_count = summary.retained_source_event_count
         if phase == "retained":
@@ -87,6 +86,27 @@ def _log_flush_summaries(
             message = "Usage event buffer flush dropped retained batches"
         elif phase == "enqueued" and summary.retained_webhook_batch_count:
             message = "Usage event buffer flush retained webhook batches for retry"
+        if phase == "dropped":
+            log_usage_underbilling(
+                summary.proxy_log_path,
+                message,
+                reason or "retry_budget_exhausted",
+                "confirmed",
+                **extra,
+            )
+            continue
+        if trigger == "shutdown" and retained_webhook_batch_count:
+            message = "Usage event buffer retained shutdown batches without retry"
+            log_usage_underbilling(
+                summary.proxy_log_path,
+                message,
+                "shutdown_retained_without_retry",
+                "risk",
+                **extra,
+            )
+            continue
+        if not summary.proxy_log_path:
+            continue
         log_proxy_entry(
             summary.proxy_log_path,
             level,

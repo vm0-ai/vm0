@@ -69,10 +69,10 @@ export async function deleteStaleTestUsers(): Promise<void> {
   for (const user of users) {
     const userEmail = user.email_addresses[0]?.email_address;
     if (userEmail?.startsWith(prefix)) {
-      const deleteResponse = await fetch(
-        `${CLERK_API_BASE}/users/${user.id}`,
-        { method: "DELETE", headers: getClerkHeaders() },
-      );
+      const deleteResponse = await fetch(`${CLERK_API_BASE}/users/${user.id}`, {
+        method: "DELETE",
+        headers: getClerkHeaders(),
+      });
       if (!deleteResponse.ok) {
         console.warn(
           `Failed to delete stale user ${user.id} (${userEmail}): ${deleteResponse.status}`,

@@ -42,7 +42,7 @@ class TestUsagePendingCounter:
         state = assert_pending(next_pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] != "before-reset"
 
-    def test_reset_for_tests_reenables_pending_write_failure_warning(self, tmp_path):
+    def test_reset_for_tests_reenables_pending_write_failure_signal(self, tmp_path):
         mock_log = MagicMock()
         with (
             patch.object(usage.counters.ctx, "log", mock_log, create=True),
@@ -56,7 +56,13 @@ class TestUsagePendingCounter:
             usage.set_pending_path(str(tmp_path / "usage-pending-after-reset"))
             usage.write_pending_snapshot(flush_request_id="after-reset")
 
-        assert mock_log.warn.call_count == 2
+        assert mock_log.error.call_count == 2
+        assert mock_log.warn.call_count == 0
+        messages = [call.args[0] for call in mock_log.error.call_args_list]
+        assert all("type=usage_underbilling" in message for message in messages)
+        assert all("reason=pending_snapshot_write_failed" in message for message in messages)
+        assert all("underbilling_class=risk" in message for message in messages)
+        assert all("component=mitm_addon" in message for message in messages)
 
     def test_increment_decrement_in_flight_flows(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -328,11 +334,11 @@ class TestUsagePendingCounter:
         assert usage.counters._in_flight_flows == 0
         assert usage.counters._pending_reports == 0
 
-    # ---- one-shot warn on write failure (issue #10483) ----
+    # ---- one-shot error signal on write failure (issue #10483) ----
 
-    def test_write_failure_warns_once_per_process(self, tmp_path):
+    def test_write_failure_logs_underbilling_once_per_process(self, tmp_path):
         """Repeated OSErrors from pending snapshot writes emit exactly one
-        ``ctx.log.warn`` per addon process — enough to seed FS-trouble
+        ``ctx.log.error`` per addon process — enough to seed FS-trouble
         investigation without spamming logs on sustained failure."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
 
@@ -344,9 +350,15 @@ class TestUsagePendingCounter:
             for _ in range(3):
                 usage.write_pending_snapshot(flush_request_id="request-1")
 
-        assert mock_log.warn.call_count == 1
-        assert "Failed to write pending count" in mock_log.warn.call_args[0][0]
-        assert "disk full" in mock_log.warn.call_args[0][0]
+        assert mock_log.error.call_count == 1
+        assert mock_log.warn.call_count == 0
+        message = mock_log.error.call_args[0][0]
+        assert "type=usage_underbilling" in message
+        assert "reason=pending_snapshot_write_failed" in message
+        assert "underbilling_class=risk" in message
+        assert "component=mitm_addon" in message
+        assert "Failed to write pending count" in message
+        assert "disk full" in message
 
     def test_write_failure_does_not_raise(self, tmp_path):
         """Write failures stay best-effort after the one-shot warn — callers

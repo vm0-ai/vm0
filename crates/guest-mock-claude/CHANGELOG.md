@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.19.1...guest-mock-claude-v0.20.0) (2026-06-15)
+
+
+### Features
+
+* send Claude prompt over stream-json stdin ([#17710](https://github.com/vm0-ai/vm0/issues/17710)) ([857762b](https://github.com/vm0-ai/vm0/commit/857762b76ed511314e37b145fa879309fe955fee))
+
 ## [0.19.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.19.0...guest-mock-claude-v0.19.1) (2026-06-15)
 
 

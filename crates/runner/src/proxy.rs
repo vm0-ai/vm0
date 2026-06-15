@@ -50,7 +50,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -437,7 +437,14 @@ impl MitmProxy {
     pub fn usage_flush_target(&mut self) -> Option<UsageFlushTarget> {
         let child_exited = match self.child.as_mut()?.try_wait() {
             Ok(Some(status)) => {
-                warn!(code = status.code(), "mitmdump exited before usage flush");
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_exited_before_usage_flush",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    code = status.code(),
+                    "mitmdump exited before usage flush"
+                );
                 true
             }
             Ok(None) => false,
@@ -465,7 +472,11 @@ impl MitmProxy {
         };
         match child.try_wait() {
             Ok(Some(status)) => {
-                warn!(
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_exited_before_usage_flush",
+                    underbilling_class = "risk",
+                    component = "runner",
                     code = status.code(),
                     "mitmdump exited before usage flush request"
                 );
@@ -480,13 +491,23 @@ impl MitmProxy {
 
         let signaled = send_usage_flush_signal(child);
         if !signaled {
-            warn!("failed to request mitmdump usage flush");
+            error!(
+                r#type = "usage_underbilling",
+                reason = "usage_flush_request_failed",
+                underbilling_class = "risk",
+                component = "runner",
+                "failed to request mitmdump usage flush"
+            );
             return false;
         }
 
         match child.try_wait() {
             Ok(Some(status)) => {
-                warn!(
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_request_failed",
+                    underbilling_class = "risk",
+                    component = "runner",
                     code = status.code(),
                     "mitmdump exited after usage flush request"
                 );
@@ -522,7 +543,25 @@ impl MitmProxy {
         // regardless of scheduling order between `kill().await` and
         // the stdout-pipe drain.
         self.stopping.store(true, Ordering::Release);
-        if let Some(ref mut child) = self.child {
+        if let Some(child) = self.child.as_mut() {
+            match child.try_wait() {
+                Ok(Some(_status)) => {}
+                Ok(None) => error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_restart_in_memory_usage_risk",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    "restarting mitmdump by killing live child; in-memory usage may be lost"
+                ),
+                Err(e) => error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_restart_in_memory_usage_risk",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    error = %e,
+                    "failed to query mitmdump status before restart kill; in-memory usage may be lost"
+                ),
+            }
             let _ = child.kill().await;
             self.child = None;
         }
@@ -897,8 +936,14 @@ pub async fn wait_usage_flush_requesting(
         let now = tokio::time::Instant::now();
         if now >= next_flush_request_at {
             if !request_flush() {
-                warn!(
-                    reason = %not_ready,
+                error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_request_failed",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    not_ready = %not_ready,
+                    request_usage_state_id = %request.expected_usage_state_id,
+                    request_id = %request.flush_request_id,
                     "usage flush request failed, proceeding with proxy stop"
                 );
                 return false;
@@ -907,9 +952,13 @@ pub async fn wait_usage_flush_requesting(
         }
         if now >= deadline {
             match snapshot {
-                Some(snapshot) => warn!(
+                Some(snapshot) => error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_timeout",
+                    underbilling_class = "risk",
+                    component = "runner",
                     timeout_secs = timeout.as_secs(),
-                    reason = %not_ready,
+                    not_ready = %not_ready,
                     pid = snapshot.pid,
                     usage_state_id = %snapshot.usage_state_id,
                     updated_at_ms = snapshot.updated_at_ms,
@@ -919,9 +968,15 @@ pub async fn wait_usage_flush_requesting(
                     flush_request_id = snapshot.flush_request_id.as_deref().unwrap_or(""),
                     "usage flush timed out, proceeding with proxy stop"
                 ),
-                None => warn!(
+                None => error!(
+                    r#type = "usage_underbilling",
+                    reason = "usage_flush_timeout",
+                    underbilling_class = "risk",
+                    component = "runner",
                     timeout_secs = timeout.as_secs(),
-                    reason = %not_ready,
+                    not_ready = %not_ready,
+                    request_usage_state_id = %request.expected_usage_state_id,
+                    request_id = %request.flush_request_id,
                     "usage flush timed out, proceeding with proxy stop"
                 ),
             }
@@ -1004,6 +1059,90 @@ async fn wait_jsonl_flush_requesting(
         }
         tokio::time::sleep(std::cmp::min(JSONL_FLUSH_POLL, deadline - now)).await;
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct MitmdumpUsageUnderbillingStderr<'a> {
+    reason: &'a str,
+    underbilling_class: &'a str,
+    component: &'a str,
+}
+
+fn mitmdump_underbilling_fields(line: &str) -> Option<&str> {
+    let mut rest = line.trim_start();
+
+    while let Some(after_open) = rest.strip_prefix('[') {
+        let Some(end) = after_open.find(']') else {
+            break;
+        };
+        rest = after_open[end + 1..].trim_start();
+    }
+
+    for prefix in ["Addon error:", "error:", "ERROR:"] {
+        if let Some(after_prefix) = rest.strip_prefix(prefix) {
+            rest = after_prefix.trim_start();
+            break;
+        }
+    }
+
+    if rest.starts_with("type=") {
+        Some(rest)
+    } else {
+        None
+    }
+}
+
+fn parse_mitmdump_usage_underbilling_stderr(
+    line: &str,
+) -> Option<MitmdumpUsageUnderbillingStderr<'_>> {
+    let fields = mitmdump_underbilling_fields(line)?;
+    let mut tokens = fields.split_whitespace();
+    let (key, value) = tokens.next()?.split_once('=')?;
+    if key != "type" || value.trim_end_matches([',', ';']) != "usage_underbilling" {
+        return None;
+    }
+
+    let mut reason = None;
+    let mut underbilling_class = None;
+    let mut component = None;
+
+    for token in tokens {
+        let Some((key, value)) = token.split_once('=') else {
+            break;
+        };
+        let value = value.trim_end_matches([',', ';']);
+        match key {
+            "reason" => reason = Some(value),
+            "underbilling_class" if value == "confirmed" || value == "risk" => {
+                underbilling_class = Some(value);
+            }
+            "component" if !value.is_empty() => component = Some(value),
+            _ => {}
+        }
+    }
+
+    Some(MitmdumpUsageUnderbillingStderr {
+        reason: reason?,
+        underbilling_class: underbilling_class?,
+        component: component?,
+    })
+}
+
+fn log_mitmdump_stderr_line(line: &str) {
+    if let Some(signal) = parse_mitmdump_usage_underbilling_stderr(line) {
+        error!(
+            target: "mitmdump",
+            r#type = "usage_underbilling",
+            reason = signal.reason,
+            underbilling_class = signal.underbilling_class,
+            component = signal.component,
+            mitmdump_stderr = %line,
+            "mitmdump usage underbilling signal"
+        );
+        return;
+    }
+
+    warn!(target: "mitmdump", "stderr: {line}");
 }
 
 #[cfg(test)]
@@ -1170,7 +1309,7 @@ pub(crate) async fn spawn_mitmdump(
             let mut lines = tokio::io::BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 if !line.is_empty() {
-                    warn!(target: "mitmdump", "stderr: {line}");
+                    log_mitmdump_stderr_line(&line);
                 }
             }
         });
@@ -1435,6 +1574,9 @@ mod tests {
     use super::*;
     use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission};
     use std::os::unix::fs::PermissionsExt;
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     fn write_fake_listening_mitmdump(path: &Path) {
         std::fs::write(
@@ -1482,6 +1624,136 @@ PY
             "mkfifo failed: {}",
             std::io::Error::last_os_error()
         );
+    }
+
+    fn capture_mitmdump_stderr_log(line: &str) -> CapturedEvent {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            log_mitmdump_stderr_line(line);
+        });
+        let events = captured.entries();
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        events[0].clone()
+    }
+
+    async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+    }
+
+    #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_extracts_fields() {
+        let signal = parse_mitmdump_usage_underbilling_stderr(
+            "[error] type=usage_underbilling reason=pending_snapshot_write_failed \
+             underbilling_class=risk component=mitm_addon Failed to write pending count",
+        )
+        .unwrap();
+
+        assert_eq!(
+            signal,
+            MitmdumpUsageUnderbillingStderr {
+                reason: "pending_snapshot_write_failed",
+                underbilling_class: "risk",
+                component: "mitm_addon",
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_allows_timestamped_error_prefix() {
+        let signal = parse_mitmdump_usage_underbilling_stderr(
+            "[12:34:56.789] [error] type=usage_underbilling \
+             reason=pending_snapshot_write_failed underbilling_class=risk \
+             component=mitm_addon Failed to write pending count",
+        )
+        .unwrap();
+
+        assert_eq!(
+            signal,
+            MitmdumpUsageUnderbillingStderr {
+                reason: "pending_snapshot_write_failed",
+                underbilling_class: "risk",
+                component: "mitm_addon",
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_allows_mitmproxy_timestamp_prefix() {
+        let signal = parse_mitmdump_usage_underbilling_stderr(
+            "[12:34:56.789] type=usage_underbilling \
+             reason=pending_snapshot_write_failed underbilling_class=risk \
+             component=mitm_addon Failed to write pending count",
+        )
+        .unwrap();
+
+        assert_eq!(
+            signal,
+            MitmdumpUsageUnderbillingStderr {
+                reason: "pending_snapshot_write_failed",
+                underbilling_class: "risk",
+                component: "mitm_addon",
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_ignores_regular_stderr() {
+        assert!(parse_mitmdump_usage_underbilling_stderr("ordinary mitmdump warning").is_none());
+        assert!(
+            parse_mitmdump_usage_underbilling_stderr(
+                "type=usage_underbilling reason=missing_fields"
+            )
+            .is_none()
+        );
+        assert!(
+            parse_mitmdump_usage_underbilling_stderr(
+                "ordinary stderr type=usage_underbilling reason=pending_snapshot_write_failed \
+                 underbilling_class=risk component=mitm_addon"
+            )
+            .is_none()
+        );
+        assert!(
+            parse_mitmdump_usage_underbilling_stderr(
+                "url=https://example.test/?type=usage_underbilling \
+                 reason=pending_snapshot_write_failed underbilling_class=risk component=mitm_addon"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn mitmdump_underbilling_stderr_reemits_structured_error() {
+        let line = "[error] type=usage_underbilling reason=pending_snapshot_write_failed \
+                    underbilling_class=risk component=mitm_addon Failed to write pending count";
+
+        let event = capture_mitmdump_stderr_log(line);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_event_field(&event, "message", "mitmdump usage underbilling signal");
+        assert_event_field(&event, "type", "usage_underbilling");
+        assert_event_field(&event, "reason", "pending_snapshot_write_failed");
+        assert_event_field(&event, "underbilling_class", "risk");
+        assert_event_field(&event, "component", "mitm_addon");
+        assert_event_field(&event, "mitmdump_stderr", line);
     }
 
     #[cfg(target_os = "linux")]
@@ -3386,15 +3658,31 @@ while True:
         let request_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let requests = std::sync::Arc::clone(&request_count);
-        let flushed =
-            wait_usage_flush_requesting(dir.path(), Duration::from_secs(5), &request, || {
+        let (flushed, events) = capture_async_log_events(wait_usage_flush_requesting(
+            dir.path(),
+            Duration::from_secs(5),
+            &request,
+            || {
                 requests.fetch_add(1, Ordering::SeqCst);
                 false
-            })
-            .await;
+            },
+        ))
+        .await;
 
         assert!(!flushed);
         assert_eq!(request_count.load(Ordering::SeqCst), 1);
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        let event = &events[0];
+        assert_eq!(event.level, Level::ERROR);
+        assert_event_field(
+            event,
+            "message",
+            "usage flush request failed, proceeding with proxy stop",
+        );
+        assert_event_field(event, "type", "usage_underbilling");
+        assert_event_field(event, "reason", "usage_flush_request_failed");
+        assert_event_field(event, "underbilling_class", "risk");
+        assert_event_field(event, "component", "runner");
     }
 
     #[tokio::test(start_paused = true)]
@@ -3403,7 +3691,26 @@ while True:
         let request = usage_request();
         std::fs::write(dir.path().join("usage-pending"), usage_state(1, 0, 3)).unwrap();
         // Very short timeout — should return false.
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
+        let (flushed, events) = capture_async_log_events(wait_usage_flush(
+            dir.path(),
+            Duration::from_millis(50),
+            &request,
+        ))
+        .await;
+
+        assert!(!flushed);
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        let event = &events[0];
+        assert_eq!(event.level, Level::ERROR);
+        assert_event_field(
+            event,
+            "message",
+            "usage flush timed out, proceeding with proxy stop",
+        );
+        assert_event_field(event, "type", "usage_underbilling");
+        assert_event_field(event, "reason", "usage_flush_timeout");
+        assert_event_field(event, "underbilling_class", "risk");
+        assert_event_field(event, "component", "runner");
     }
 
     #[tokio::test(start_paused = true)]

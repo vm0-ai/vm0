@@ -136,6 +136,40 @@ const getAxiomLogger = singleton((): AxiomLogger | null => {
   });
 });
 
+type UsageUnderbillingClass = "confirmed" | "risk";
+
+interface UsageUnderbillingRootFields {
+  readonly type: "usage_underbilling";
+  readonly reason: string;
+  readonly underbilling_class: UsageUnderbillingClass;
+  readonly component: string;
+}
+
+function usageUnderbillingRootFields(
+  fields: Record<string, unknown>,
+): UsageUnderbillingRootFields | null {
+  const type = fields.type;
+  const reason = fields.reason;
+  const underbillingClass = fields.underbilling_class;
+  const component = fields.component;
+
+  if (
+    type !== "usage_underbilling" ||
+    typeof reason !== "string" ||
+    (underbillingClass !== "confirmed" && underbillingClass !== "risk") ||
+    typeof component !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    type,
+    reason,
+    underbilling_class: underbillingClass,
+    component,
+  };
+}
+
 function logToAxiom(level: Level, name: string, args: unknown[]): void {
   const alog = getAxiomLogger();
   if (!alog) {
@@ -143,9 +177,14 @@ function logToAxiom(level: Level, name: string, args: unknown[]): void {
   }
 
   const message = formatMessage(args);
+  const fields = extractFields(args);
+  const underbillingRootFields = usageUnderbillingRootFields(fields);
   const data = {
-    [EVENT]: { source: "api" },
-    ...extractFields(args),
+    [EVENT]: {
+      source: "api",
+      ...underbillingRootFields,
+    },
+    ...fields,
     context: name,
   };
 

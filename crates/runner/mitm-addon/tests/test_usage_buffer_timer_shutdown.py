@@ -334,12 +334,13 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
 
     enqueue = RecordingEnqueue(side_effect=fail_enqueue)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
+    proxy_log_path = tmp_path / "proxy.jsonl"
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
         "token-a",
         "run-1",
         [event(source_key="source-1")],
-        str(tmp_path / "proxy.jsonl"),
+        str(proxy_log_path),
     )
     assert len(timers) == 1
 
@@ -349,6 +350,18 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
     assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 1
     assert timers[0].cancelled is True
+    retained_entries = [
+        entry
+        for entry in flush_log_entries(proxy_log_path)
+        if entry.get("reason") == "shutdown_retained_without_retry"
+    ]
+    assert len(retained_entries) == 1
+    assert retained_entries[0]["level"] == "error"
+    assert retained_entries[0]["type"] == "usage_underbilling"
+    assert retained_entries[0]["underbilling_class"] == "risk"
+    assert retained_entries[0]["component"] == "mitm_addon"
+    assert retained_entries[0]["retained_source_event_count"] == 1
+    assert retained_entries[0]["retained_webhook_batch_count"] == 1
 
     enqueue.side_effect = None
     enqueue.clear()
@@ -360,6 +373,7 @@ def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_p
 
 
 def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
+    proxy_log_path = tmp_path / "proxy.jsonl"
     enqueue = RecordingEnqueue(return_value=False)
     timers = install_recording_usage_timer(enqueue_webhook=enqueue)
     usage.buffer_usage_events(
@@ -367,7 +381,7 @@ def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
         "token-a",
         "run-1",
         [event(source_key="source-1")],
-        str(tmp_path / "proxy.jsonl"),
+        str(proxy_log_path),
     )
     assert len(timers) == 1
 
@@ -377,6 +391,20 @@ def test_shutdown_saturated_flush_retains_without_rescheduling_timer(tmp_path):
     assert usage.counters._buffered_usage_events == 1
     assert len(timers) == 1
     assert timers[0].cancelled is True
+    retained_entries = [
+        entry
+        for entry in flush_log_entries(proxy_log_path)
+        if entry.get("reason") == "shutdown_retained_without_retry"
+    ]
+    assert len(retained_entries) == 1
+    assert retained_entries[0]["level"] == "error"
+    assert retained_entries[0]["type"] == "usage_underbilling"
+    assert retained_entries[0]["reason"] == "shutdown_retained_without_retry"
+    assert retained_entries[0]["underbilling_class"] == "risk"
+    assert retained_entries[0]["component"] == "mitm_addon"
+    assert retained_entries[0]["trigger"] == "shutdown"
+    assert retained_entries[0]["retained_source_event_count"] == 1
+    assert retained_entries[0]["retained_webhook_batch_count"] == 1
 
     enqueue.return_value = True
     enqueue.clear()
@@ -619,7 +647,10 @@ def test_timer_delivery_retry_budget_exhaustion_drops_retained_usage(tmp_path):
     dropped_entries = [entry for entry in entries if entry["phase"] == "dropped"]
     assert len(dropped_entries) == 1
     assert dropped_entries[0]["level"] == "error"
+    assert dropped_entries[0]["type"] == "usage_underbilling"
     assert dropped_entries[0]["reason"] == "retry_budget_exhausted"
+    assert dropped_entries[0]["underbilling_class"] == "confirmed"
+    assert dropped_entries[0]["component"] == "mitm_addon"
     assert dropped_entries[0]["source_event_count"] == 1
     assert dropped_entries[0]["dropped_source_event_count"] == 1
     assert dropped_entries[0]["dropped_webhook_batch_count"] == 1
@@ -660,8 +691,49 @@ def test_shutdown_saturated_retry_budget_exhaustion_drops_without_rescheduling_t
         entry for entry in flush_log_entries(proxy_log_path) if entry["phase"] == "dropped"
     ]
     assert len(dropped_entries) == 1
+    assert dropped_entries[0]["level"] == "error"
+    assert dropped_entries[0]["type"] == "usage_underbilling"
     assert dropped_entries[0]["trigger"] == "shutdown"
     assert dropped_entries[0]["reason"] == "retry_budget_exhausted"
+    assert dropped_entries[0]["underbilling_class"] == "confirmed"
+    assert dropped_entries[0]["component"] == "mitm_addon"
+
+
+def test_shutdown_retry_exhaustion_logs_underbilling_without_proxy_log_path(mitm_ctx):
+    enqueue = RecordingEnqueue(return_value=False)
+    install_recording_usage_timer(
+        enqueue_webhook=enqueue,
+        max_retained_batch_retries=1,
+    )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "secret-token",
+        "run-1",
+        [event(source_key="source-1")],
+        "",
+    )
+
+    with mitm_ctx() as log:
+        assert usage.flush_usage_events(trigger="shutdown") == 0
+        enqueue.clear()
+        assert usage.flush_usage_events(trigger="shutdown") == 0
+
+    messages = [call.args[0] for call in log.error.call_args_list]
+    assert any(
+        message.startswith(
+            "type=usage_underbilling reason=shutdown_retained_without_retry "
+            "underbilling_class=risk component=mitm_addon "
+        )
+        for message in messages
+    )
+    assert any(
+        message.startswith(
+            "type=usage_underbilling reason=retry_budget_exhausted "
+            "underbilling_class=confirmed component=mitm_addon "
+        )
+        for message in messages
+    )
+    assert all("secret-token" not in message for message in messages)
 
 
 def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):
