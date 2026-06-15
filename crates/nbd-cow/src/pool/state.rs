@@ -422,6 +422,8 @@ impl DevicePool {
     }
 
     fn cooldown_timer_pending(&self) -> bool {
+        // Cooldown slots are FIFO and every slot uses the same pool cooldown, so
+        // only the front slot can produce the next timer-driven state change.
         self.next_cooldown_deadline().is_some()
     }
 
