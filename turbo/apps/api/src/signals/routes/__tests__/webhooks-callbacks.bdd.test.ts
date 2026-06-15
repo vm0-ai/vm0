@@ -2507,7 +2507,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(afterLegacyCredit.creditGrants).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          source: "auto_recharge",
+          source: "credit_purchase",
           amount: 100_000,
           expiresAt: checkoutCreditExpiresAt,
         }),
@@ -2564,7 +2564,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(afterInvoiceCredit.creditGrants).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          source: "auto_recharge",
+          source: "credit_purchase",
           amount: 100_000,
           expiresAt: new Date(invoiceCreditExpiresAt * 1000).toISOString(),
         }),

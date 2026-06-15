@@ -109,6 +109,10 @@ function planTierFromAmount(amount: number): PlanCreditTier | null {
   return null;
 }
 
+function isPayAsYouGoCreditSource(source: string): boolean {
+  return source === "auto_recharge" || source === "credit_purchase";
+}
+
 function labelForCreditRecord(
   record: Pick<ActiveCreditRecord, "source" | "amount">,
 ): string {
@@ -128,7 +132,7 @@ function labelForCreditRecord(
   if (record.source === "one_time_purchase") {
     return "Promotional";
   }
-  if (record.source === "auto_recharge") {
+  if (isPayAsYouGoCreditSource(record.source)) {
     return "Pay as you go";
   }
   return "Credits";
@@ -187,7 +191,7 @@ function buildCreditBreakdown(args: {
         label: "Promotional",
         credits: record.remaining,
       });
-    } else if (record.source === "auto_recharge") {
+    } else if (isPayAsYouGoCreditSource(record.source)) {
       addSegment({
         category: "payAsYouGo",
         label: "Pay as you go",
