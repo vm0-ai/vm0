@@ -152,20 +152,43 @@ function buildIllustrationGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown generation image style" };
   }
 
+  // Context, not control: state the facts about the style the user attached to
+  // this chat and their likely intent, then surface the concrete capability
+  // fact (the style id is passed to `zero generate image --style`). The agent
+  // decides how to act. This replaces the earlier "Resolve the image style from
+  // the resource registry" instruction, which told the agent what to do without
+  // the facts needed to do it — so when unsure it asked the user to re-pick a
+  // style that was already selected (vm0-ai/vm0#17525).
   return {
     status: "resolved",
     prompt: [
-      "# Generation Template",
-      "Use the following registered resources for this run.",
-      `Type: ${generationTemplate.type}`,
-      "Tag: illustration",
-      `Image style ID: ${imageStyle.id}`,
-      `Image style name: ${imageStyle.name}`,
+      "# User context",
       "",
-      "Instructions:",
-      "- Resolve the image style from the resource registry.",
-      "- Apply it as a generation constraint for the artifact.",
-      "- Keep the user's prompt as the source of the requested content.",
+      "The user has attached an illustration style to this chat:",
+      `- Image style ID: ${imageStyle.id}`,
+      `- Image style name: ${imageStyle.name}`,
+      `- Style summary: ${imageStyle.description}`,
+      "",
+      "This style stays attached to the chat until the user changes or removes",
+      "it, so it also applies to follow-up messages — not just the current one.",
+      "",
+      "# Likely intent",
+      "",
+      "Users attach an illustration style when they want images drawn in that",
+      "style. When this user asks you to draw, illustrate, or generate an image",
+      '— including follow-ups like "another one", "make it landscape", or',
+      '"change the background" — they most likely want it rendered in the',
+      `"${imageStyle.name}" style. They have already chosen it, so you do not`,
+      "need to ask which style to use.",
+      "",
+      "# How to honor it",
+      "",
+      "The `zero generate image` capability accepts this style directly via",
+      "`--style`, with the user's request as the image content. For example:",
+      "",
+      `  zero generate image --style ${imageStyle.id} --prompt "<the scene the user described>"`,
+      "",
+      "Run `zero generate image --help` for the full set of options.",
     ].join("\n"),
   };
 }
