@@ -15,6 +15,7 @@ import { user$ } from "../../signals/auth.ts";
 import {
   findPermission,
   permissionAllowAction$,
+  permissionAllowActionParam$,
   permissionAllowAgent$,
   permissionAllowAgentId$,
   permissionAllowExpiresIn$,
@@ -406,6 +407,7 @@ export function PermissionAllowPage() {
   const agentId = useGet(permissionAllowAgentId$);
   const ref = useGet(permissionAllowRef$);
   const permission = useGet(permissionAllowPermission$);
+  const actionParam = useGet(permissionAllowActionParam$);
   const action = useGet(permissionAllowAction$);
   const expiresIn = useGet(permissionAllowExpiresIn$);
 
@@ -419,6 +421,12 @@ export function PermissionAllowPage() {
 
   if (!isFirewallConnectorType(ref)) {
     return <ErrorMessage message={`Unknown connector: ${ref}`} />;
+  }
+
+  if (actionParam !== null && action === null) {
+    return (
+      <ErrorMessage message={`Unknown permission action: ${actionParam}`} />
+    );
   }
 
   return (

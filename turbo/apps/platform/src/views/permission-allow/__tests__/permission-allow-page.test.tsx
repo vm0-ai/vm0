@@ -15,6 +15,27 @@ const context = testContext();
 const user = userEvent.setup();
 
 describe("permission allow page", () => {
+  it("rejects unsupported permission actions instead of defaulting to allow", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000000";
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=approve`,
+      user: {
+        id: "test-user-123",
+        fullName: "Dana Analyst",
+        firstName: "Dana",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Unknown permission action: approve"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+  });
+
   it("lets a user grant an expiring connector permission to an agent", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
 

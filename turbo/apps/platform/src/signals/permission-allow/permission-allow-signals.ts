@@ -39,8 +39,12 @@ export const permissionAllowPermission$ = computed((get) => {
   return get(searchParams$).get("permission") ?? null;
 });
 
+export const permissionAllowActionParam$ = computed((get) => {
+  return get(searchParams$).get("action");
+});
+
 export const permissionAllowAction$ = computed((get) => {
-  const action = get(searchParams$).get("action");
+  const action = get(permissionAllowActionParam$);
   return action === "allow" || action === "deny" ? action : null;
 });
 
