@@ -193,13 +193,13 @@ pub(crate) fn connect_device_with_state(
     block_size: u64,
 ) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
     let sockets_payload_len = validate_connect_socket_count(client_fds.len())?;
-    let sockets_nla = build_sockets_nla(client_fds, sockets_payload_len);
 
     let sock =
         socket::open_genl_socket().map_err(|source| ConnectDeviceError::NotSent { source })?;
     let family_id =
         resolve_nbd_family(&sock).map_err(|source| ConnectDeviceError::NotSent { source })?;
 
+    let sockets_nla = build_sockets_nla(client_fds, sockets_payload_len);
     let flags =
         NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_CAN_MULTI_CONN;
 
