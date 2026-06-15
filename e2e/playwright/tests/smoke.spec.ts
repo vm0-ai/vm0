@@ -126,7 +126,8 @@ async function signInWithToken(
 
   await page.goto(signInTokenUrl.toString(), { waitUntil: "domcontentloaded" });
   await page.waitForURL(
-    (url) => url.origin === authOrigin && url.pathname === "/",
+    (url) =>
+      url.origin === authOrigin && !url.pathname.includes("/sign-in-token"),
     { timeout: 30_000, waitUntil: "domcontentloaded" },
   );
 
