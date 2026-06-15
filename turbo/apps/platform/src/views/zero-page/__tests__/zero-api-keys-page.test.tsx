@@ -93,6 +93,30 @@ function mockApiKeyStory(): void {
 }
 
 describe("zero API keys page", () => {
+  it("hides the settings dialog entry when the API keys feature is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/?settings=api-keys",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Settings" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Preference" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      queryAllByRoleFast("button").find((button) => {
+        return button.textContent?.replace(/\s+/g, " ").trim() === "API Keys";
+      }),
+    ).toBeUndefined();
+    expect(
+      screen.queryByText("Create and manage API keys for programmatic access."),
+    ).not.toBeInTheDocument();
+  });
+
   it("creates, copies, and revokes an API key from the settings page", async () => {
     context.mocks.browser.clipboardWriteText();
     mockApiKeyStory();
