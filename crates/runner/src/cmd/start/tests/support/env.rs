@@ -253,6 +253,7 @@ fn build_mock_run_config_with_runtime(
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             mitm_jsonl_flush: None,
             home,
+            host_env: executor::HostEnv::default(),
             workspace_cache: None,
         }),
         shutdown: ShutdownHandles {

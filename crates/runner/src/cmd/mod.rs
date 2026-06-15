@@ -22,5 +22,5 @@ pub use kill::{KillArgs, run_kill};
 pub use local::{LocalArgs, run_local};
 pub use service::{ServiceArgs, run_service};
 pub use setup::run_setup;
-pub use start::{StartArgs, run_start};
+pub(crate) use start::{StartArgs, run_start_with_service_secrets};
 pub use workspace_image_cache::{WorkspaceImageCacheArgs, run_workspace_image_cache};

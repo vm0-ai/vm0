@@ -210,16 +210,6 @@ pub(super) async fn write_user_env_file(
 ///
 /// This intentionally excludes `context.environment`. User/model/connector
 /// environment is transferred separately and injected only into the CLI child.
-pub(super) fn build_env_json(
-    context: &ExecutionContext,
-    api_url: &str,
-    sandbox_id: &str,
-    reuse_result: SandboxReuseResult,
-) -> RunnerResult<HashMap<String, String>> {
-    let host_env = HostEnv::from_process();
-    build_env_json_with_host_env(context, api_url, sandbox_id, reuse_result, &host_env)
-}
-
 pub(super) fn build_env_json_with_host_env(
     context: &ExecutionContext,
     api_url: &str,
@@ -421,16 +411,20 @@ pub(super) fn insert_guest_agent_tuning_env(
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(super) struct HostEnv {
-    pub(super) vercel_automation_bypass_secret: Option<String>,
-    pub(super) use_mock_claude: Option<String>,
-    pub(super) use_mock_codex: Option<String>,
+pub(crate) struct HostEnv {
+    pub(crate) vercel_automation_bypass_secret: Option<String>,
+    pub(crate) use_mock_claude: Option<String>,
+    pub(crate) use_mock_codex: Option<String>,
 }
 
 impl HostEnv {
-    pub(super) fn from_process() -> Self {
+    pub(crate) fn from_service_secrets(
+        service_secrets: &crate::service_secrets::ServiceSecrets,
+    ) -> Self {
         Self {
-            vercel_automation_bypass_secret: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+            vercel_automation_bypass_secret: service_secrets
+                .vercel_automation_bypass_secret()
+                .map(str::to_owned),
             use_mock_claude: std::env::var(guest_contracts::env::USE_MOCK_CLAUDE_ENV).ok(),
             use_mock_codex: std::env::var(guest_contracts::env::USE_MOCK_CODEX_ENV).ok(),
         }

@@ -15,7 +15,7 @@ use super::diagnostics::{
     log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
 };
-use super::env::{build_env_json, build_user_env_json, write_user_env_file};
+use super::env::{build_env_json_with_host_env, build_user_env_json, write_user_env_file};
 use super::guest_state::{fix_guest_clock, reseed_guest_entropy, sync_guest_timezone};
 use super::session_restore::restore_session;
 use super::storage::{download_storages, filter_unchanged_storages};
@@ -211,7 +211,13 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // into the CLI child after guest-agent has started.
     let user_env_map = build_user_env_json(context);
     let user_env_file = write_user_env_file(sandbox, context.run_id, &user_env_map).await?;
-    let mut env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result)?;
+    let mut env_map = build_env_json_with_host_env(
+        context,
+        &config.api_url,
+        sandbox.id(),
+        start.reuse_result,
+        &config.host_env,
+    )?;
     if let Some(path) = user_env_file {
         env_map.insert(USER_ENV_FILE_ENV_KEY.into(), path);
     }

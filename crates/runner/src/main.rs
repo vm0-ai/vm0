@@ -37,6 +37,7 @@ mod run_cancellation;
 mod run_resolution;
 mod runner_dirname;
 mod runtime_overrides;
+mod service_secrets;
 mod state_file;
 mod status;
 mod storage_cache;
@@ -204,12 +205,40 @@ fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
         .init();
 }
 
+async fn load_cli_service_secrets(
+    cli: &Cli,
+) -> error::RunnerResult<service_secrets::ServiceSecrets> {
+    let service_secrets = match &cli.command {
+        Command::Start(args) => {
+            service_secrets::load_start_service_secrets(args.service_secrets_file.as_deref())
+                .await?
+        }
+        _ => service_secrets::ServiceSecrets::default(),
+    };
+    Ok(service_secrets.with_env_fallback())
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
-    // Initialize Sentry panic reporting before anything else.
-    // Disabled (zero overhead) when SENTRY_DSN is not set.
+    if !nix::unistd::getuid().is_root() {
+        eprintln!("error: runner must be run as root");
+        return ExitCode::FAILURE;
+    }
+
+    let cli = Cli::parse();
+    let service_secrets = match load_cli_service_secrets(&cli).await {
+        Ok(service_secrets) => service_secrets,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // Initialize Sentry panic reporting after CLI parsing so `runner start`
+    // can source service DSNs from --service-secrets-file. Disabled (zero
+    // overhead) when neither the service secret nor SENTRY_DSN is set.
     let _sentry_guard = sentry::init((
-        std::env::var("SENTRY_DSN").unwrap_or_default(),
+        service_secrets.sentry_dsn().unwrap_or_default().to_string(),
         sentry::ClientOptions {
             release: Some(env!("CARGO_PKG_VERSION").into()),
             default_integrations: false,
@@ -218,16 +247,12 @@ async fn main() -> ExitCode {
         .add_integration(sentry::integrations::panic::PanicIntegration::default()),
     ));
 
-    if !nix::unistd::getuid().is_root() {
-        eprintln!("error: runner must be run as root");
-        return ExitCode::FAILURE;
-    }
-
-    let cli = Cli::parse();
-
     // Axiom layer (dual-write with fmt). Returns None — zero overhead — when
     // AXIOM_TOKEN_TELEMETRY / AXIOM_DATASET_SUFFIX are unset.
-    let (axiom_layer, axiom_guard) = match axiom_layer::init() {
+    let (axiom_layer, axiom_guard) = match axiom_layer::init_with_values(
+        service_secrets.axiom_token_telemetry().map(str::to_owned),
+        service_secrets.axiom_dataset_suffix().map(str::to_owned),
+    ) {
         Some((layer, guard)) => (Some(layer), Some(guard)),
         None => (None, None),
     };
@@ -268,9 +293,13 @@ async fn main() -> ExitCode {
         }
         Command::Exec(args) => cmd::run_exec(args, &sandbox_fc::FirecrackerControl).await,
         Command::Kill(args) => cmd::run_kill(args, &sandbox_fc::FirecrackerControl).await,
-        Command::Start(args) => cmd::run_start(*args, &sandbox_fc::FirecrackerRuntimeProvider)
-            .await
-            .map(|()| ExitCode::SUCCESS),
+        Command::Start(args) => cmd::run_start_with_service_secrets(
+            *args,
+            &sandbox_fc::FirecrackerRuntimeProvider,
+            service_secrets,
+        )
+        .await
+        .map(|()| ExitCode::SUCCESS),
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
         Command::WorkspaceImageCache(args) => cmd::run_workspace_image_cache(args)

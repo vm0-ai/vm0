@@ -60,6 +60,7 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::SharedRunCancellationMap;
+use crate::service_secrets::ServiceSecrets;
 use crate::status::{RunnerMode, StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
@@ -159,6 +160,9 @@ pub struct StartArgs {
     /// Runner authentication token (overrides config)
     #[arg(long, env = "VM0_RUNNER_TOKEN")]
     token: Option<String>,
+    /// Path to a private service secrets file staged by `runner service`.
+    #[arg(long, hide = true)]
+    pub(crate) service_secrets_file: Option<PathBuf>,
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
     local: bool,
@@ -220,18 +224,19 @@ async fn shutdown_startup_resources_after_factory_failure(
     status.set_mode(RunnerMode::Stopped).await;
 }
 
-/// Load config and run the main poll loop.
-pub async fn run_start(
+pub(crate) async fn run_start_with_service_secrets(
     args: StartArgs,
     runtime_provider: &dyn RuntimeProvider,
+    service_secrets: ServiceSecrets,
 ) -> RunnerResult<()> {
-    run_start_with_home(args, runtime_provider, HomePaths::new).await
+    run_start_with_home(args, runtime_provider, HomePaths::new, service_secrets).await
 }
 
 async fn run_start_with_home(
     args: StartArgs,
     runtime_provider: &dyn RuntimeProvider,
     load_home: impl FnOnce() -> RunnerResult<HomePaths>,
+    service_secrets: ServiceSecrets,
 ) -> RunnerResult<()> {
     // Register lifecycle signals (SIGTERM/SIGINT/SIGUSR1/SIGUSR2) before
     // any slow startup work. Tokio's `signal()` installs the process-wide
@@ -371,7 +376,9 @@ async fn run_start_with_home(
     let cancel = CancellationToken::new();
     let http = HttpClient::new(HttpClientConfig {
         api_url: server.url.clone(),
-        vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+        vercel_bypass: service_secrets
+            .vercel_automation_bypass_secret()
+            .map(str::to_owned),
     })?;
     let name = runner_config.name;
     let group = runner_config.group;
@@ -565,6 +572,7 @@ async fn run_start_with_home(
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
         home: home.clone(),
+        host_env: crate::executor::HostEnv::from_service_secrets(&service_secrets),
         workspace_cache: Some(SessionWorkspaceCache::shared(
             paths.clone(),
             &home,

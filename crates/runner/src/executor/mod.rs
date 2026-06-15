@@ -113,6 +113,8 @@ use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceImageActiveLeaseRequest, WorkspaceImageLease,
 };
 
+pub(crate) use env::HostEnv;
+
 fn guest_runtime_dir(run_id: RunId) -> RunnerResult<String> {
     let run_id = run_id.to_string();
     let path = guest_contracts::runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
@@ -141,6 +143,7 @@ pub struct ExecutorConfig {
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
     pub home: HomePaths,
+    pub host_env: HostEnv,
     pub workspace_cache: Option<SessionWorkspaceCache>,
 }
 

@@ -443,10 +443,12 @@ server:
             config: config_path,
             api_url: None,
             token: None,
+            service_secrets_file: None,
             local: true,
         },
         &provider,
         || Ok(home),
+        crate::service_secrets::ServiceSecrets::default(),
     )
     .await
     .expect_err("local provider setup should fail before runtime creation");

@@ -52,6 +52,10 @@ struct ServiceRunArgs {
     /// Environment variables to pass to the service (KEY=VALUE)
     #[arg(long, value_name = "KEY=VALUE")]
     env: Vec<String>,
+    /// File containing allowlisted service secrets. Secret values are staged
+    /// privately and passed to the service by path, not systemd environment.
+    #[arg(long)]
+    service_secrets_file: Option<PathBuf>,
     /// Use local file queue provider instead of API
     #[arg(long)]
     local: bool,
@@ -218,6 +222,7 @@ fn generate_unit_file(
     exe_path: &Path,
     config_path: &Path,
     env_vars: &[String],
+    service_secrets_file: Option<&Path>,
     local: bool,
 ) -> String {
     let mut env_lines = String::new();
@@ -226,6 +231,12 @@ fn generate_unit_file(
         env_lines.push_str(&format!("Environment=\"{escaped}\"\n"));
     }
     let local_flag = if local { " --local" } else { "" };
+    let service_secrets_arg = service_secrets_file
+        .map(|path| {
+            let path = escape_systemd_value(&path.display().to_string());
+            format!(" --service-secrets-file \"{path}\"")
+        })
+        .unwrap_or_default();
     let exe = escape_systemd_value(&exe_path.display().to_string());
     let config = escape_systemd_value(&config_path.display().to_string());
     format!(
@@ -237,7 +248,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=\"{exe}\" start --config \"{config}\"{local_flag}
+ExecStart=\"{exe}\" start --config \"{config}\"{service_secrets_arg}{local_flag}
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
@@ -270,13 +281,93 @@ fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
             ));
         }
         let eq_pos = entry.find('=');
-        if eq_pos.is_none_or(|p| p == 0) {
+        let Some(eq_pos) = eq_pos else {
+            return Err(RunnerError::Config(format!(
+                "invalid --env value '{entry}': expected KEY=VALUE format"
+            )));
+        };
+        if eq_pos == 0 {
             return Err(RunnerError::Config(format!(
                 "invalid --env value '{entry}': expected KEY=VALUE format"
             )));
         }
+        let key = &entry[..eq_pos];
+        if crate::service_secrets::is_service_secret_key(key) {
+            return Err(RunnerError::Config(format!(
+                "invalid --env key {key}: service secrets must be passed with --service-secrets-file"
+            )));
+        }
     }
     Ok(())
+}
+
+fn service_secrets_path_for_suffix(suffix: &str) -> RunnerResult<PathBuf> {
+    let home = HomePaths::new()?;
+    Ok(crate::service_secrets::canonical_service_secrets_path(
+        &home, suffix,
+    ))
+}
+
+async fn stage_service_secrets_for_suffix(
+    suffix: &str,
+    source: Option<&Path>,
+) -> RunnerResult<Option<PathBuf>> {
+    let Some(source) = source else {
+        return Ok(None);
+    };
+    validate_systemd_path("service secrets source file path", source)?;
+    let destination = service_secrets_path_for_suffix(suffix)?;
+    crate::service_secrets::stage_service_secrets_file(source, &destination).await?;
+    Ok(Some(destination))
+}
+
+async fn remove_service_secrets_for_suffix(suffix: &str) -> RunnerResult<()> {
+    let path = service_secrets_path_for_suffix(suffix)?;
+    crate::service_secrets::remove_service_secrets_file(&path).await
+}
+
+fn unit_suffix(unit: &str) -> Option<&str> {
+    unit.strip_prefix(UNIT_PREFIX)
+}
+
+fn build_systemd_run_args(
+    unit: &str,
+    exe_path: &Path,
+    config_path: &Path,
+    env_vars: &[String],
+    service_secrets_file: Option<&Path>,
+    local: bool,
+) -> Vec<OsString> {
+    let unit_arg = format!("--unit={unit}");
+    let desc_arg = format!("--description=VM0 Runner ({unit})");
+    let syslog_arg = format!("--property=SyslogIdentifier={unit}");
+    let mut args = vec![
+        OsString::from(unit_arg),
+        OsString::from(desc_arg),
+        OsString::from("--property=Type=exec"),
+        OsString::from("--property=Restart=on-failure"),
+        OsString::from("--property=RestartSec=5"),
+        OsString::from("--property=StandardOutput=journal"),
+        OsString::from("--property=StandardError=journal"),
+        OsString::from("--property=KillSignal=SIGTERM"),
+        OsString::from("--property=TimeoutStopSec=300"),
+        OsString::from(syslog_arg),
+    ];
+    for entry in env_vars {
+        args.push(OsString::from(format!("--setenv={entry}")));
+    }
+    args.push(exe_path.as_os_str().to_os_string());
+    args.push(OsString::from("start"));
+    args.push(OsString::from("--config"));
+    args.push(config_path.as_os_str().to_os_string());
+    if let Some(path) = service_secrets_file {
+        args.push(OsString::from("--service-secrets-file"));
+        args.push(path.as_os_str().to_os_string());
+    }
+    if local {
+        args.push(OsString::from("--local"));
+    }
+    args
 }
 
 fn validate_systemd_path(label: &str, path: &Path) -> RunnerResult<()> {
@@ -558,8 +649,8 @@ fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
         drop(file);
         if let Err(e) = std::fs::rename(&tmp, path) {
             // Unlike short-lived dirs elsewhere in the crate, unit files live
-            // in /etc/systemd/system/ which no GC path sweeps, and the staged
-            // content contains Environment= secrets.
+            // in /etc/systemd/system/ which no GC path sweeps, so failed
+            // staging must not leave unit content behind.
             let _ = std::fs::remove_file(&tmp);
             return Err(RunnerError::Internal(format!(
                 "rename {} -> {}: {e}",
@@ -1122,32 +1213,22 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     )?;
     validate_systemd_path("current executable path", &exe_path)?;
     validate_systemd_path("config path", &config_path)?;
+    let service_secrets_file =
+        stage_service_secrets_for_suffix(&args.name, args.service_secrets_file.as_deref()).await?;
+    if let Some(path) = &service_secrets_file {
+        validate_systemd_path("service secrets file path", path)?;
+    }
 
-    let unit_arg = format!("--unit={unit}");
-    let desc_arg = format!("--description=VM0 Runner ({unit})");
-    let syslog_arg = format!("--property=SyslogIdentifier={unit}");
     let mut cmd = tokio::process::Command::new("systemd-run");
-    cmd.args([
-        &*unit_arg,
-        &*desc_arg,
-        "--property=Type=exec",
-        "--property=Restart=on-failure",
-        "--property=RestartSec=5",
-        "--property=StandardOutput=journal",
-        "--property=StandardError=journal",
-        "--property=KillSignal=SIGTERM",
-        "--property=TimeoutStopSec=300",
-        &*syslog_arg,
-    ]);
-    for entry in &args.env {
-        cmd.arg(format!("--setenv={entry}"));
-    }
-    cmd.arg(&exe_path)
-        .args(["start", "--config"])
-        .arg(&config_path);
-    if args.local {
-        cmd.arg("--local");
-    }
+    let command_args = build_systemd_run_args(
+        &unit,
+        &exe_path,
+        &config_path,
+        &args.env,
+        service_secrets_file.as_deref(),
+        args.local,
+    );
+    cmd.args(&command_args);
 
     let status = cmd
         .status()
@@ -1172,6 +1253,7 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
 /// See [`check_active_jobs_gate`] for the policy.
 async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
+    let _service_lock = acquire_service_lock(&unit).await?;
     check_active_jobs_gate(&unit, &args.name, args.force, "stop").await?;
     let svc = format!("{unit}.service");
 
@@ -1191,6 +1273,15 @@ async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
     // Clear "failed" latch so systemd fully unloads the transient unit.
     // (stop alone does not clear the failed state.)
     let _ = run_systemctl(&["reset-failed", &svc]).await;
+    if !unit_file_path(&unit).exists()
+        && let Err(e) = remove_service_secrets_for_suffix(&args.name).await
+    {
+        warn!(
+            unit = %unit,
+            error = %e,
+            "failed to remove transient service secrets file"
+        );
+    }
     Ok(())
 }
 
@@ -1207,12 +1298,33 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     )?;
     validate_systemd_path("current executable path", &exe_path)?;
     validate_systemd_path("config path", &config_path)?;
+    let service_secrets_file =
+        stage_service_secrets_for_suffix(&args.name, args.service_secrets_file.as_deref()).await?;
+    if let Some(path) = &service_secrets_file {
+        validate_systemd_path("service secrets file path", path)?;
+    }
 
-    let unit_content = generate_unit_file(&unit, &exe_path, &config_path, &args.env, args.local);
+    let unit_content = generate_unit_file(
+        &unit,
+        &exe_path,
+        &config_path,
+        &args.env,
+        service_secrets_file.as_deref(),
+        args.local,
+    );
     let upath = unit_file_path(&unit);
 
     cleanup_unit_staging_files(&upath)?;
     write_unit_file(&upath, &unit_content)?;
+    if service_secrets_file.is_none()
+        && let Err(e) = remove_service_secrets_for_suffix(&args.name).await
+    {
+        warn!(
+            unit = %unit,
+            error = %e,
+            "failed to remove stale service secrets file"
+        );
+    }
 
     run_systemctl(&["daemon-reload"]).await?;
     let svc = format!("{unit}.service");
@@ -1245,6 +1357,12 @@ pub(crate) async fn uninstall_service_unit(unit: &str) -> RunnerResult<()> {
 
     if let Err(e) = run_systemctl(&["daemon-reload"]).await {
         warn!(unit = %unit, error = %e, "failed to reload systemd daemon");
+    }
+
+    if let Some(suffix) = unit_suffix(unit)
+        && let Err(e) = remove_service_secrets_for_suffix(suffix).await
+    {
+        warn!(unit = %unit, error = %e, "failed to remove service secrets file");
     }
 
     info!(unit = %unit, "service uninstalled");
@@ -1898,6 +2016,7 @@ mod tests {
             Path::new("/var/lib/vm0-runner/bin/v0.1.0/vm0-runner"),
             Path::new("/home/ubuntu/runner.yaml"),
             &[],
+            None,
             false,
         );
         assert!(content.contains("Description=VM0 Runner (vm0-runner-v0.1.0)"));
@@ -1918,7 +2037,6 @@ mod tests {
     #[test]
     fn test_generate_unit_file_with_env() {
         let env = vec![
-            "VERCEL_AUTOMATION_BYPASS_SECRET=xxx".to_string(),
             "USE_MOCK_CLAUDE=true".to_string(),
             "MY_DESC=hello world".to_string(),
         ];
@@ -1927,18 +2045,60 @@ mod tests {
             Path::new("/var/lib/vm0-runner/bin/v0.1.0/vm0-runner"),
             Path::new("/home/ubuntu/runner.yaml"),
             &env,
+            None,
             false,
         );
         assert!(!content.contains("EnvironmentFile="));
-        assert!(content.contains("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\""));
         assert!(content.contains("Environment=\"USE_MOCK_CLAUDE=true\""));
         assert!(content.contains("Environment=\"MY_DESC=hello world\""));
         let first_env_pos = content
-            .find("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\"")
+            .find("Environment=\"USE_MOCK_CLAUDE=true\"")
             .unwrap();
         let install_pos = content.find("[Install]").unwrap();
         assert!(first_env_pos < install_pos);
         assert!(content.contains("\n\n[Install]"));
+    }
+
+    #[test]
+    fn test_generate_unit_file_with_service_secrets_file() {
+        let env = vec!["USE_MOCK_CLAUDE=true".to_string()];
+        let content = generate_unit_file(
+            "vm0-runner-v0.1.0",
+            Path::new("/usr/bin/runner"),
+            Path::new("/etc/runner.yaml"),
+            &env,
+            Some(Path::new(
+                "/var/lib/vm0-runner/runners/v0.1.0/service-secrets.env",
+            )),
+            false,
+        );
+
+        assert!(content.contains(
+            "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --service-secrets-file \"/var/lib/vm0-runner/runners/v0.1.0/service-secrets.env\"\n"
+        ));
+        assert!(content.contains("Environment=\"USE_MOCK_CLAUDE=true\""));
+        assert!(!content.contains("SENTRY_DSN="));
+        assert!(!content.contains("AXIOM_TOKEN_TELEMETRY="));
+        assert!(!content.contains("VERCEL_AUTOMATION_BYPASS_SECRET="));
+        assert!(!content.contains("EnvironmentFile="));
+    }
+
+    #[test]
+    fn test_generate_unit_file_escapes_service_secrets_file_path() {
+        let content = generate_unit_file(
+            "vm0-runner-v0.1.0",
+            Path::new("/usr/bin/runner"),
+            Path::new("/etc/runner.yaml"),
+            &[],
+            Some(Path::new(
+                "/var/lib/vm0-runner/runners/v0%1/service \"secrets\".env",
+            )),
+            false,
+        );
+
+        assert!(content.contains(
+            r#"--service-secrets-file "/var/lib/vm0-runner/runners/v0%%1/service \"secrets\".env""#
+        ));
     }
 
     #[test]
@@ -1948,6 +2108,7 @@ mod tests {
             Path::new("/opt/my runner/vm0-runner"),
             Path::new("/opt/my config/runner.yaml"),
             &[],
+            None,
             false,
         );
         assert!(content.contains(
@@ -1963,6 +2124,7 @@ mod tests {
             Path::new("/usr/bin/runner"),
             Path::new("/etc/runner.yaml"),
             &[],
+            None,
             true,
         );
         assert!(content.contains(
@@ -2044,6 +2206,7 @@ mod tests {
             Path::new("/usr/bin/runner"),
             Path::new("/etc/runner.yaml"),
             &env,
+            None,
             false,
         );
         assert!(content.contains(r#"Environment="MSG=say \"hi\"""#));
@@ -2062,6 +2225,7 @@ mod tests {
             Path::new("/opt/runner-v1%2.0/bin/runner"),
             Path::new("/etc/cache%20.yaml"),
             &[],
+            None,
             false,
         );
         assert!(content.contains(
@@ -2091,10 +2255,49 @@ mod tests {
         assert!(validate_env_vars(&["NOEQUALS".to_string()]).is_err());
         assert!(validate_env_vars(&["=VALUE".to_string()]).is_err());
         assert!(validate_env_vars(&["".to_string()]).is_err());
+        assert!(validate_env_vars(&["SENTRY_DSN=secret".to_string()]).is_err());
+        assert!(validate_env_vars(&["AXIOM_TOKEN_TELEMETRY=secret".to_string()]).is_err());
+        assert!(validate_env_vars(&["AXIOM_DATASET_SUFFIX=prod".to_string()]).is_err());
+        assert!(
+            validate_env_vars(&["VERCEL_AUTOMATION_BYPASS_SECRET=secret".to_string()]).is_err()
+        );
         // Bare newline / CR / NUL would silently corrupt the unit file.
         assert!(validate_env_vars(&["KEY=line1\nline2".to_string()]).is_err());
         assert!(validate_env_vars(&["KEY=foo\rbar".to_string()]).is_err());
         assert!(validate_env_vars(&["KEY=with\0nul".to_string()]).is_err());
+    }
+
+    #[test]
+    fn build_systemd_run_args_passes_service_secrets_file_without_setenv() {
+        let env = vec!["USE_MOCK_CLAUDE=true".to_string()];
+        let args = build_systemd_run_args(
+            "vm0-runner-v0.1.0",
+            Path::new("/usr/bin/runner"),
+            Path::new("/etc/runner.yaml"),
+            &env,
+            Some(Path::new(
+                "/var/lib/vm0-runner/runners/v0.1.0/service-secrets.env",
+            )),
+            true,
+        );
+
+        let rendered: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert!(rendered.contains(&"--setenv=USE_MOCK_CLAUDE=true".to_string()));
+        assert!(rendered.contains(&"--service-secrets-file".to_string()));
+        assert!(
+            rendered
+                .contains(&"/var/lib/vm0-runner/runners/v0.1.0/service-secrets.env".to_string())
+        );
+        assert!(rendered.contains(&"--local".to_string()));
+        assert!(!rendered.iter().any(|arg| arg.contains("SENTRY_DSN=")));
+        assert!(
+            !rendered
+                .iter()
+                .any(|arg| arg.contains("VERCEL_AUTOMATION_BYPASS_SECRET="))
+        );
     }
 
     #[test]
@@ -2292,9 +2495,8 @@ mod tests {
     #[test]
     fn write_unit_file_cleans_up_staging_on_rename_failure() {
         // Rename fails when the target path is an existing directory
-        // (EISDIR). Verifies the staged content — which may contain
-        // Environment= secrets — is removed so it doesn't persist in
-        // /etc/systemd/system/.
+        // (EISDIR). Verifies staged unit content is removed so it doesn't
+        // persist in /etc/systemd/system/.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("target.service");
         std::fs::create_dir(&path).unwrap();
