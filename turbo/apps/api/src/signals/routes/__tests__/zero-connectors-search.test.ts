@@ -327,38 +327,20 @@ describe("GET /api/zero/connectors/search", () => {
     ).toBeUndefined();
   });
 
-  it("matches connector tags while preserving feature-switch visibility", async () => {
+  it("matches Google Cloud connector tags without a feature switch", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const disabledResponse = await accept(
+    const response = await accept(
       client.search({
         query: { keyword: "gcp" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
-    expect(
-      disabledResponse.body.connectors.some((connector) => {
-        return connector.id === "google-cloud";
-      }),
-    ).toBeFalsy();
-
-    seededFeatureSwitches.push({ orgId, userId });
-    await enableFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.GoogleCloudConnector]: true,
-    });
-
-    const enabledResponse = await accept(
-      client.search({
-        query: { keyword: "gcp" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    const connector = enabledResponse.body.connectors.find((candidate) => {
+    const connector = response.body.connectors.find((candidate) => {
       return candidate.id === "google-cloud";
     });
     expect(connector).toBeDefined();

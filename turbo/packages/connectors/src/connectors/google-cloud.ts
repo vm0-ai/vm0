@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const googleCloud = {
   "google-cloud": {
@@ -17,7 +16,6 @@ export const googleCloud = {
       "Connect your Google account to access Google Cloud resources through Google Cloud APIs. Google IAM and enabled APIs determine which projects, resources, and actions are available.",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.GoogleCloudConnector,
         label: "OAuth (Recommended)",
         helpText:
           "Sign in with Google to grant Google Cloud access. The connector is not bound to one project; Google IAM controls accessible resources.",
