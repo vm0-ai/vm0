@@ -25,3 +25,25 @@ def test_underbilling_log_fields_cannot_be_overridden_by_context(tmp_path):
     assert entry["underbilling_class"] == "risk"
     assert entry["component"] == "mitm_addon"
     assert entry["run_id"] == "run-1"
+
+
+def test_underbilling_log_without_proxy_path_uses_stderr(mitm_ctx):
+    with mitm_ctx() as log:
+        log_usage_underbilling(
+            "",
+            "Usage underbilling signal",
+            "expected_reason",
+            "risk",
+            type="usage_event",
+            reason="wrong_reason",
+            component="wrong_component",
+            underbilling_class="confirmed",
+        )
+
+    log.error.assert_called_once()
+    message = log.error.call_args.args[0]
+    assert message.startswith(
+        "type=usage_underbilling reason=expected_reason "
+        "underbilling_class=risk component=mitm_addon "
+    )
+    assert message.endswith("Usage underbilling signal")

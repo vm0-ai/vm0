@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from mitmproxy import ctx
+
 from logging_utils import log_proxy_entry
 
 UnderbillingClass = Literal["confirmed", "risk"]
@@ -35,9 +37,18 @@ def log_usage_underbilling(
     /,
     **extra: object,
 ) -> None:
+    fields = underbilling_fields(reason, underbilling_class, **extra)
+    if not proxy_log_path:
+        ctx.log.error(
+            f"type={USAGE_UNDERBILLING_LOG_TYPE} reason={reason} "
+            f"underbilling_class={underbilling_class} "
+            f"component={USAGE_UNDERBILLING_COMPONENT_MITM_ADDON} {message}"
+        )
+        return
+
     log_proxy_entry(
         proxy_log_path,
         "error",
         message,
-        **underbilling_fields(reason, underbilling_class, **extra),
+        **fields,
     )
