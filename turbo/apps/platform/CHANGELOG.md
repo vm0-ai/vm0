@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.451.1](https://github.com/vm0-ai/vm0/compare/app-v0.451.0...app-v0.451.1) (2026-06-14)
+
+
+### Bug Fixes
+
+* lock pwa root viewport ([#17628](https://github.com/vm0-ai/vm0/issues/17628)) ([1a663c0](https://github.com/vm0-ai/vm0/commit/1a663c08647fca62969cc1ca61cbd02ebd788996))
+
+## [0.451.0](https://github.com/vm0-ai/vm0/compare/app-v0.450.1...app-v0.451.0) (2026-06-14)
+
+
+### Features
+
+* add connector quick commands to chat composer slash menu ([#17588](https://github.com/vm0-ai/vm0/issues/17588)) ([d2a3723](https://github.com/vm0-ai/vm0/commit/d2a372307137de87c491019a2698acaa3eb92f0c))
+
+
+### Bug Fixes
+
+* avoid keyboard safe area gap ([#17618](https://github.com/vm0-ai/vm0/issues/17618)) ([7602604](https://github.com/vm0-ai/vm0/commit/7602604c9b836a6d58b7566867700d056939ed0d))
+* keep feedback composer height stable and grow note inputs ([#17526](https://github.com/vm0-ai/vm0/issues/17526)) ([c00f7ce](https://github.com/vm0-ai/vm0/commit/c00f7ce788073c5ec8d9b2c5f9321d4e71a0ac44))
+* reset stale chat idb cache ([#17604](https://github.com/vm0-ai/vm0/issues/17604)) ([aa1b14d](https://github.com/vm0-ai/vm0/commit/aa1b14d5a7fcf24dd782cda7e36610bdd36e1cef))
+
+
+### Refactoring
+
+* remove chat recommended followups switch ([#17608](https://github.com/vm0-ai/vm0/issues/17608)) ([8e03d5a](https://github.com/vm0-ai/vm0/commit/8e03d5a65d4b2a666c56e0cea534402d12a947ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.92.1
+    * @vm0/connectors bumped to 1.75.0
+    * @vm0/core bumped to 8.337.0
+
 ## [0.450.1](https://github.com/vm0-ai/vm0/compare/app-v0.450.0...app-v0.450.1) (2026-06-13)
 
 

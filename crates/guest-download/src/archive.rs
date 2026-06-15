@@ -1,11 +1,16 @@
 use crate::LOG_TAG;
 use crate::error::DownloadError;
+use crate::source::{ArchiveSource, HttpBodyReadFailure};
 use guest_common::log_warn;
-use std::io::Read;
+use std::io;
 use std::path::{Component, Path, PathBuf};
 
 /// Extract a gzip-compressed tar archive into `target_path`.
-pub(crate) fn extract_tar_gz(reader: impl Read, target_path: &str) -> Result<(), DownloadError> {
+pub(crate) fn extract_tar_gz(
+    source: ArchiveSource,
+    target_path: &str,
+) -> Result<(), DownloadError> {
+    let (reader, http_body_read_failure) = source.into_parts();
     let decoder = flate2::read::GzDecoder::new(reader);
     let mut archive = tar::Archive::new(decoder);
 
@@ -18,14 +23,15 @@ pub(crate) fn extract_tar_gz(reader: impl Read, target_path: &str) -> Result<(),
 
     for entry in archive
         .entries()
-        .map_err(|e| DownloadError::fatal(format!("Failed to read archive entries: {e}")))?
+        .map_err(|e| archive_error(&http_body_read_failure, "Failed to read archive entries", e))?
     {
-        let mut entry = entry
-            .map_err(|e| DownloadError::fatal(format!("Failed to read archive entry: {e}")))?;
+        let mut entry = entry.map_err(|e| {
+            archive_error(&http_body_read_failure, "Failed to read archive entry", e)
+        })?;
 
         let entry_path = entry
             .path()
-            .map_err(|e| DownloadError::fatal(format!("Failed to read entry path: {e}")))?
+            .map_err(|e| archive_error(&http_body_read_failure, "Failed to read entry path", e))?
             .into_owned();
 
         let entry_type = entry.header().entry_type();
@@ -46,6 +52,13 @@ pub(crate) fn extract_tar_gz(reader: impl Read, target_path: &str) -> Result<(),
         if entry_type.is_symlink() {
             let link_target = match entry.link_name() {
                 Ok(Some(t)) => t,
+                Err(e) if http_body_read_failure.failed() => {
+                    return Err(archive_error(
+                        &http_body_read_failure,
+                        format!("Failed to read symlink target {}", entry_path.display()),
+                        e,
+                    ));
+                }
                 _ => {
                     log_warn!(
                         LOG_TAG,
@@ -72,6 +85,13 @@ pub(crate) fn extract_tar_gz(reader: impl Read, target_path: &str) -> Result<(),
         if entry_type == tar::EntryType::Link {
             let link_name = match entry.link_name() {
                 Ok(Some(t)) => t,
+                Err(e) if http_body_read_failure.failed() => {
+                    return Err(archive_error(
+                        &http_body_read_failure,
+                        format!("Failed to read hardlink source {}", entry_path.display()),
+                        e,
+                    ));
+                }
                 _ => {
                     log_warn!(
                         LOG_TAG,
@@ -111,14 +131,28 @@ pub(crate) fn extract_tar_gz(reader: impl Read, target_path: &str) -> Result<(),
         // archive stream, so no external actor can modify the filesystem between our checks
         // and the extraction below.
         entry.unpack_in(&target).map_err(|e| {
-            DownloadError::fatal(format!(
-                "Failed to extract entry {}: {e}",
-                entry_path.display()
-            ))
+            archive_error(
+                &http_body_read_failure,
+                format!("Failed to extract entry {}", entry_path.display()),
+                e,
+            )
         })?;
     }
 
     Ok(())
+}
+
+fn archive_error(
+    http_body_read_failure: &HttpBodyReadFailure,
+    message: impl Into<String>,
+    error: io::Error,
+) -> DownloadError {
+    let message = format!("{}: {error}", message.into());
+    if http_body_read_failure.failed() {
+        DownloadError::transport(message, true, None)
+    } else {
+        DownloadError::fatal(message)
+    }
 }
 
 /// Lexically normalize a path by collapsing `.` and `..` components.
@@ -295,7 +329,11 @@ mod tests {
 
     fn extract_archive(tar_gz: Vec<u8>, mount: &Path) -> bool {
         std::fs::create_dir_all(mount).unwrap();
-        extract_tar_gz(Cursor::new(tar_gz), mount.to_str().unwrap()).is_ok()
+        extract_tar_gz(
+            ArchiveSource::local(Cursor::new(tar_gz)),
+            mount.to_str().unwrap(),
+        )
+        .is_ok()
     }
 
     #[test]

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.35.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.4...guest-agent-v0.35.5) (2026-06-14)
+
+
+### Bug Fixes
+
+* classify claude monthly spend limits ([#17627](https://github.com/vm0-ai/vm0/issues/17627)) ([1d33872](https://github.com/vm0-ai/vm0/commit/1d338727d1886ff129603bc3c808e83ed97c1bc5))
+
+## [0.35.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.3...guest-agent-v0.35.4) (2026-06-14)
+
+
+### Refactoring
+
+* **guest-agent:** share system log test guard ([#17582](https://github.com/vm0-ai/vm0/issues/17582)) ([edcd791](https://github.com/vm0-ai/vm0/commit/edcd79197e44c4f16a4f8ab06f01d3523b181f77))
+
 ## [0.35.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.2...guest-agent-v0.35.3) (2026-06-13)
 
 ## [0.35.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.35.1...guest-agent-v0.35.2) (2026-06-13)

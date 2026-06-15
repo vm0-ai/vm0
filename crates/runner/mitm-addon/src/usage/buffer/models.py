@@ -52,6 +52,12 @@ class _AggregateBucket:
 
 
 @dataclass(frozen=True)
+class _BufferedSourceEvent:
+    run_id: str
+    event: UsageEvent
+
+
+@dataclass(frozen=True)
 class _FlushEvent:
     payload: dict
     source_event_count: int

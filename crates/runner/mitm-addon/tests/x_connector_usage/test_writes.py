@@ -8,6 +8,10 @@ from unittest.mock import patch
 import pytest
 
 from body_limits import STREAM_BUFFER_LIMIT
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+)
 from tests.x_flow_helpers import (
     json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
@@ -62,8 +66,8 @@ def test_x_json_parse_error_on_write_does_not_emit_lost_visibility_log(
 
     assert p["category"] == "content.create_with_url"
     assert p["quantity"] == 1
-    assert proxy_log.exists()
-    entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+    assert jsonl_exists_after_flush(proxy_log)
+    entries = read_jsonl_entries_after_flush(proxy_log)
     assert all(entry["level"] != "error" for entry in entries)
     assert all("unparseable" not in entry["message"].lower() for entry in entries)
     assert all("parse_error" not in entry for entry in entries)

@@ -3228,6 +3228,13 @@
       "when": 1781331595077,
       "tag": "0460_add_kimi_k2_7_code",
       "breakpoints": true
+    },
+    {
+      "idx": 461,
+      "version": "7",
+      "when": 1781492563747,
+      "tag": "0461_remove_youtube_api_key_connections",
+      "breakpoints": true
     }
   ]
 }

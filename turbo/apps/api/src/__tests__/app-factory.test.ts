@@ -7,7 +7,6 @@ import { createApp } from "../app-factory";
 import { mockEnv } from "../lib/env";
 import { flushWaitUntilForTest } from "../signals/context/wait-until";
 import { ROUTES } from "../signals/route";
-import { useUndiciMock } from "./setup";
 import { accept, setupApp, testContext } from "./test-helpers";
 
 // eslint-disable-next-line api/no-test-vi-mocks
@@ -26,60 +25,6 @@ vi.mock("../lib/log", async () => {
     await vi.importActual<typeof import("../lib/log")>("../lib/log");
   return { ...actual, flushLogs: mockFlushLogs };
 });
-
-function headerValue(headers: unknown, name: string): string | undefined {
-  if (!headers) {
-    return undefined;
-  }
-  const lower = name.toLowerCase();
-  if (typeof (headers as { get?: unknown }).get === "function") {
-    const result = (headers as { get(n: string): string | null }).get(name);
-    return result ?? undefined;
-  }
-  for (const [key, value] of Object.entries(
-    headers as Record<string, string>,
-  )) {
-    if (key.toLowerCase() === lower) {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-async function readBodyAsString(body: unknown): Promise<string> {
-  if (typeof body === "string") {
-    return body;
-  }
-  if (body instanceof Buffer) {
-    return body.toString("utf8");
-  }
-  if (body instanceof Uint8Array) {
-    return Buffer.from(body).toString("utf8");
-  }
-  if (body === null) {
-    return "";
-  }
-  if (
-    typeof (body as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
-  ) {
-    const chunks: Buffer[] = [];
-    for await (const chunk of body as AsyncIterable<
-      Buffer | Uint8Array | string
-    >) {
-      if (typeof chunk === "string") {
-        chunks.push(Buffer.from(chunk));
-      } else if (Buffer.isBuffer(chunk)) {
-        chunks.push(chunk);
-      } else {
-        chunks.push(Buffer.from(chunk));
-      }
-    }
-    return Buffer.concat(chunks).toString("utf8");
-  }
-  throw new Error(
-    `Unexpected mock body type: ${(body as object).constructor.name}`,
-  );
-}
 
 const c = initContract();
 
@@ -188,210 +133,26 @@ describe("createApp", () => {
     expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
   });
 
-  describe("legacy fallthrough proxy", () => {
-    it("proxies unmatched paths to VM0_WEB_URL when configured", async () => {
-      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
-      let observedPath: string | undefined;
-      let observedAuthorization: string | undefined;
-      useUndiciMock()
-        .get("https://www.vm0.ai")
-        .intercept({ path: "/api/legacy/fallthrough?limit=5", method: "GET" })
-        .reply((opts) => {
-          observedPath = opts.path;
-          observedAuthorization = headerValue(opts.headers, "authorization");
-          return {
-            statusCode: 200,
-            data: JSON.stringify({ runs: [] }),
-            responseOptions: {
-              headers: { "content-type": "application/json" },
-            },
-          };
-        });
-
+  describe("not found", () => {
+    it("returns a 404 JSON response for unmatched routes", async () => {
       const app = createApp({ signal: context.signal });
       const response = await app.request("/api/legacy/fallthrough?limit=5", {
         method: "GET",
         headers: { authorization: "Bearer legacy" },
       });
 
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toStrictEqual({ runs: [] });
-      expect(observedPath).toBe("/api/legacy/fallthrough?limit=5");
-      expect(observedAuthorization).toBe("Bearer legacy");
-    });
-
-    it("forwards POST bodies to the upstream", async () => {
-      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
-      let observedBody: Promise<string> | undefined;
-      const proxyPath = "/__legacy/proxy/post-body";
-      useUndiciMock()
-        .get("https://www.vm0.ai")
-        .intercept({ path: proxyPath, method: "POST" })
-        .reply((opts) => {
-          observedBody = readBodyAsString(opts.body);
-          return { statusCode: 202, data: "" };
-        });
-
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(proxyPath, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: '{"hello":"world"}',
-      });
-
-      expect(response.status).toBe(202);
-      await expect(observedBody).resolves.toBe('{"hello":"world"}');
-    });
-
-    it("proxies unmatched POST requests without stale forwarded host metadata", async () => {
-      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
-      const proxyPath = "/__legacy/proxy/realtime-token";
-      const captured: {
-        paths: string[];
-        authorization: string[];
-        origins: string[];
-        bodies: Promise<string>[];
-        forwarded: (string | undefined)[];
-        forwardedHost: (string | undefined)[];
-        forwardedPort: (string | undefined)[];
-        forwardedProto: (string | undefined)[];
-      } = {
-        paths: [],
-        authorization: [],
-        origins: [],
-        bodies: [],
-        forwarded: [],
-        forwardedHost: [],
-        forwardedPort: [],
-        forwardedProto: [],
-      };
-      useUndiciMock()
-        .get("https://www.vm0.ai")
-        .intercept({ path: proxyPath, method: "POST" })
-        .reply((opts) => {
-          captured.paths.push(opts.path);
-          captured.authorization.push(
-            headerValue(opts.headers, "authorization") ?? "",
-          );
-          captured.origins.push(headerValue(opts.headers, "origin") ?? "");
-          captured.bodies.push(readBodyAsString(opts.body));
-          captured.forwarded.push(headerValue(opts.headers, "forwarded"));
-          captured.forwardedHost.push(
-            headerValue(opts.headers, "x-forwarded-host"),
-          );
-          captured.forwardedPort.push(
-            headerValue(opts.headers, "x-forwarded-port"),
-          );
-          captured.forwardedProto.push(
-            headerValue(opts.headers, "x-forwarded-proto"),
-          );
-          return {
-            statusCode: 200,
-            data: JSON.stringify({ token: "proxied" }),
-            responseOptions: {
-              headers: { "content-type": "application/json" },
-            },
-          };
-        });
-
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(proxyPath, {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-          forwarded: "host=api.vm0.ai;proto=https",
-          origin: "https://app.vm0.ai",
-          "x-forwarded-host": "api.vm0.ai",
-          "x-forwarded-port": "443",
-          "x-forwarded-proto": "https",
-        },
-        body: "{}",
-      });
-
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(404);
       await expect(response.json()).resolves.toStrictEqual({
-        token: "proxied",
+        error: "Not found",
       });
-      expect(captured.paths).toStrictEqual([proxyPath]);
-      expect(captured.authorization).toStrictEqual(["Bearer clerk-session"]);
-      expect(captured.origins).toStrictEqual(["https://app.vm0.ai"]);
-      await expect(Promise.all(captured.bodies)).resolves.toStrictEqual(["{}"]);
-      expect(captured.forwarded).toStrictEqual([undefined]);
-      expect(captured.forwardedHost).toStrictEqual([undefined]);
-      expect(captured.forwardedPort).toStrictEqual([undefined]);
-      expect(captured.forwardedProto).toStrictEqual([undefined]);
     });
 
-    it("preserves multiple set-cookie response headers", async () => {
-      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
-      const proxyPath = "/__legacy/proxy/oauth-cookie-roundtrip";
-      useUndiciMock()
-        .get("https://www.vm0.ai")
-        .intercept({
-          path: proxyPath,
-          method: "GET",
-        })
-        .reply(302, "", {
-          headers: {
-            location: "https://github.com/login/oauth/authorize",
-            "set-cookie": [
-              "oauth_state=abc; Path=/; HttpOnly",
-              "oauth_pkce=def; Path=/; HttpOnly",
-            ],
-          },
-        });
-
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(proxyPath, {
-        method: "GET",
-      });
-
-      expect(response.status).toBe(302);
-      expect(response.headers.get("location")).toBe(
-        "https://github.com/login/oauth/authorize",
-      );
-      expect(response.headers.getSetCookie()).toStrictEqual([
-        "oauth_state=abc; Path=/; HttpOnly",
-        "oauth_pkce=def; Path=/; HttpOnly",
-      ]);
-    });
-
-    it("does not proxy when a registered route matches", async () => {
-      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    it("keeps registered routes matched normally", async () => {
       const app = createApp({ signal: context.signal });
       const response = await app.request("/health", { method: "GET" });
 
       expect(response.status).toBe(200);
     });
-
-    it.each([204, 205, 304])(
-      "forwards null-body status %s without constructing a Response with a stream",
-      async (statusCode) => {
-        // Uses a path that has not been migrated to apps/api so the request
-        // hits the legacy fallthrough proxy. Originally targeted PATCH
-        // /api/zero/chat-threads/:id; now that route is handled in api, so
-        // the test re-targets an unmigrated agent path.
-        mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
-        useUndiciMock()
-          .get("https://www.vm0.ai")
-          .intercept({
-            path: "/api/agent/runs/abc",
-            method: "PATCH",
-          })
-          .reply(statusCode, "");
-
-        const app = createApp({ signal: context.signal });
-        const response = await app.request("/api/agent/runs/abc", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: '{"foo":"bar"}',
-        });
-
-        expect(response.status).toBe(statusCode);
-        await expect(response.text()).resolves.toBe("");
-      },
-    );
   });
 
   describe("cors", () => {

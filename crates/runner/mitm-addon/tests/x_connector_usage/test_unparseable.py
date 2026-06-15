@@ -4,6 +4,11 @@ import json
 
 import pytest
 
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
+)
 from tests.x_connector_usage.helpers import assert_lost_visibility_error
 
 
@@ -79,8 +84,8 @@ def test_legacy_x_json_fallback_ignores_boolean_result_count(x_usage, tmp_path, 
     payloads = x_usage.call_and_get_billing(flow)
 
     assert payloads == []
-    if proxy_log.exists():
-        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+    if jsonl_exists_after_flush(proxy_log):
+        entries = read_jsonl_entries_after_flush(proxy_log)
         assert all(entry["level"] != "error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
 
@@ -95,7 +100,7 @@ def test_truncated_buffer_with_no_hints_skips_billing(x_usage, tmp_path, real_fl
 
     assert x_usage.call_and_get_billing(flow) == []
 
-    entry = json.loads(proxy_log.read_text().splitlines()[0])
+    entry = read_jsonl_entries_after_flush(proxy_log)[0]
     assert entry["level"] == "error"
     assert "unparseable" in entry["message"].lower()
     assert entry["body_truncated"] is True
@@ -143,8 +148,8 @@ def test_unparseable_no_hints_writes_error_to_proxy_log(x_usage, tmp_path, real_
     )
     proxy_log = tmp_path / "proxy.jsonl"
     assert x_usage.call_and_get_billing(flow) == []
-    assert proxy_log.exists()
-    content = proxy_log.read_text()
+    assert jsonl_exists_after_flush(proxy_log)
+    content = read_jsonl_text_after_flush(proxy_log)
     assert sensitive_query not in content
     entries = [json.loads(line) for line in content.splitlines()]
     matching_entries = [
@@ -178,7 +183,7 @@ def test_unparseable_x_json_state_logs_parse_error(x_usage, tmp_path, real_flow)
 
     assert x_usage.call_and_get_billing(flow) == []
 
-    entry = json.loads(proxy_log.read_text().splitlines()[0])
+    entry = read_jsonl_entries_after_flush(proxy_log)[0]
     assert entry["level"] == "error"
     assert "unparseable" in entry["message"].lower()
     assert entry["parse_error"] == "incomplete json"
@@ -207,7 +212,7 @@ def test_unparseable_x_json_state_omits_invalid_parse_error(
 
     assert x_usage.call_and_get_billing(flow) == []
 
-    entry = json.loads(proxy_log.read_text().splitlines()[0])
+    entry = read_jsonl_entries_after_flush(proxy_log)[0]
     assert entry["level"] == "error"
     assert "unparseable" in entry["message"].lower()
     assert "parse_error" not in entry
@@ -299,8 +304,8 @@ def test_oversized_fallback_query_suppresses_request_hints(x_usage, tmp_path, re
 
     assert x_usage.call_and_get_billing(flow) == []
 
-    assert proxy_log.exists()
-    content = proxy_log.read_text()
+    assert jsonl_exists_after_flush(proxy_log)
+    content = read_jsonl_text_after_flush(proxy_log)
     assert "unparseable" in content.lower()
     assert '"level":"error"' in content or '"level": "error"' in content
 
@@ -507,8 +512,8 @@ def test_x_json_parse_error_with_request_hints_uses_fallback_without_error_log(
 
     assert p["category"] == expected_category
     assert p["quantity"] == expected_quantity
-    assert proxy_log.exists()
-    entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+    assert jsonl_exists_after_flush(proxy_log)
+    entries = read_jsonl_entries_after_flush(proxy_log)
     assert all(entry["level"] != "error" for entry in entries)
     assert all("unparseable" not in entry["message"].lower() for entry in entries)
     assert all("parse_error" not in entry for entry in entries)
@@ -719,8 +724,8 @@ def test_billable_counts_fallback_empty_id_segments_are_no_hint(x_usage, tmp_pat
     flow = x_usage.make_flow(real_flow, tmp_path, query="ids=,,", body=b"not json")
     proxy_log = tmp_path / "proxy.jsonl"
     assert x_usage.call_and_get_billing(flow) == []
-    assert proxy_log.exists()
-    content = proxy_log.read_text()
+    assert jsonl_exists_after_flush(proxy_log)
+    content = read_jsonl_text_after_flush(proxy_log)
     assert "unparseable" in content.lower()
     assert '"level":"error"' in content or '"level": "error"' in content
 

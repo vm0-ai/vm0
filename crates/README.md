@@ -16,7 +16,8 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **vsock-test** | Integration tests for vsock — real host + real guest over Unix sockets |
 | **guest-init** | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest |
 | **guest-agent** | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM |
-| **guest-common** | Shared utilities for guest crates — logging macros, telemetry recording, environment accessors |
+| **guest-contracts** | Runner/guest contracts — bootstrap environment variables, runtime path layout, and private runtime file helpers |
+| **guest-common** | Guest-only shared utilities — logging macros and telemetry recording |
 | **guest-download** | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic |
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
 | **guest-mock-codex** | Mock Codex CLI for testing — emits Codex JSONL protocol on stdout and persists JSONL session files |

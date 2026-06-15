@@ -12,6 +12,7 @@ import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
@@ -210,6 +211,13 @@ export const seedAutomationsScenario$ = command(
     });
     signal.throwIfAborted();
 
+    await writeDb.insert(orgMembersCache).values({
+      userId,
+      orgId,
+      role: "member",
+    });
+    signal.throwIfAborted();
+
     const automationIds: string[] = [];
     for (const seed of values.automations) {
       const automationId = await seedAutomation(writeDb, {
@@ -342,6 +350,15 @@ export const deleteAutomationsScenario$ = command(
         and(
           eq(orgMembersMetadata.orgId, fixture.orgId),
           eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    await writeDb
+      .delete(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, fixture.orgId),
+          eq(orgMembersCache.userId, fixture.userId),
         ),
       );
     signal.throwIfAborted();

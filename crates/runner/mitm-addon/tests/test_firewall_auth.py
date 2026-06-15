@@ -24,6 +24,8 @@ from tests.auth_state_helpers import (
     set_cached_headers,
 )
 from tests.firewall_helpers import cancel_pending_task
+from tests.jsonl_log_helpers import read_jsonl_text_after_flush
+from url_utils import get_original_url
 
 _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
 
@@ -743,9 +745,7 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_permission"] == "repo-read"
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
-        log_text = await asyncio.to_thread(
-            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
-        )
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "Firewall https://api.github.com: api.github.com" in log_text
 
     async def test_standard_auth_filters_unsafe_resolved_headers(
@@ -826,6 +826,7 @@ class TestHandleFirewallRequest:
             ),
         )
         flow.metadata["vm_run_id"] = "test-run"
+        flow.metadata["original_url"] = get_original_url(flow)
         api_entry = _api_entry(
             base="https://sts.amazonaws.com",
             auth_config={
@@ -1260,9 +1261,7 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
-        log_text = await asyncio.to_thread(
-            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
-        )
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "invalid expiresAt" in log_text
 
     async def test_no_response_set_on_success(self, real_flow, headers, mitm_ctx):

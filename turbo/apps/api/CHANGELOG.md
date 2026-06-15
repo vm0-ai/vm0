@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.140.1](https://github.com/vm0-ai/vm0/compare/api-v1.140.0...api-v1.140.1) (2026-06-14)
+
+
+### Refactoring
+
+* remove chat recommended followups switch ([#17608](https://github.com/vm0-ai/vm0/issues/17608)) ([8e03d5a](https://github.com/vm0-ai/vm0/commit/8e03d5a65d4b2a666c56e0cea534402d12a947ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.92.1
+    * @vm0/connectors bumped to 1.75.0
+    * @vm0/core bumped to 8.337.0
+    * @vm0/db bumped to 1.50.1
+
 ## [1.140.0](https://github.com/vm0-ai/vm0/compare/api-v1.139.3...api-v1.140.0) (2026-06-13)
 
 

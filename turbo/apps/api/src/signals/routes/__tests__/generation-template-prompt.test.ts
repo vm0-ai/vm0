@@ -34,12 +34,16 @@ describe("buildGenerationTemplatePrompt", () => {
       },
     });
 
-    expect(result).toStrictEqual({
-      status: "resolved",
-      prompt: expect.stringContaining(
-        `Image style ID: ${item.illustrationStyleId}`,
-      ),
-    });
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    // Names the attached style and the capability fact that applies it, so the
+    // agent does not re-ask for an already-selected style (vm0-ai/vm0#17525).
+    expect(result.prompt).toContain(item.illustrationStyleId);
+    expect(result.prompt).toContain(
+      `zero generate image --style ${item.illustrationStyleId}`,
+    );
   });
 
   it("builds video template preset guidance", () => {

@@ -16,7 +16,23 @@ use tracing::{info, warn};
 /// These tasks own normal destroy/rollback cleanup work. If they stall, abort
 /// them before shutting down leak cleanup and factory-owned pools; runner GC
 /// remains the final backstop for orphaned host resources.
+#[cfg(not(test))]
 const FACTORY_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+#[cfg(test)]
+const FACTORY_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Maximum time to observe prompt cancellation after aborting cleanup tasks.
+///
+/// This is not a second cleanup window. It only gives already-cancelled tasks a
+/// chance to finish their cooperative cancellation path. Any task still running
+/// after this window is detached so factory shutdown can continue to leak
+/// cleanup and runner GC fallback paths.
+#[cfg(not(test))]
+const FACTORY_CLEANUP_POST_ABORT_DRAIN_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_millis(250);
+#[cfg(test)]
+const FACTORY_CLEANUP_POST_ABORT_DRAIN_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_millis(20);
 
 #[derive(Clone, Copy)]
 pub(super) enum FactoryCleanupTaskKind {
@@ -155,6 +171,13 @@ impl FactoryCleanupBatch<'_> {
 
     fn records(&self) -> impl Iterator<Item = &FactoryCleanupTaskRecord> {
         self.tasks.iter().map(FactoryCleanupTaskHandle::record)
+    }
+
+    fn detach_all(&mut self) -> Vec<FactoryCleanupTaskRecord> {
+        std::mem::take(&mut self.tasks)
+            .into_iter()
+            .map(|task| task.record)
+            .collect()
     }
 
     async fn next_finished(
@@ -401,13 +424,40 @@ impl FactoryCleanupGroup {
                         );
                     }
                     batch.abort_all();
-                    while !batch.is_empty() {
-                        let Some((record, result)) = batch.next_finished().await else {
-                            break;
-                        };
-                        Self::handle_join_result(record, result, true);
-                    }
+                    Self::drain_aborted_batch(batch).await;
                     return true;
+                }
+            }
+        }
+    }
+
+    async fn drain_aborted_batch(batch: &mut FactoryCleanupBatch<'_>) {
+        let timeout = tokio::time::sleep(FACTORY_CLEANUP_POST_ABORT_DRAIN_TIMEOUT);
+        tokio::pin!(timeout);
+
+        loop {
+            if batch.is_empty() {
+                return;
+            }
+
+            tokio::select! {
+                biased;
+                result = batch.next_finished() => {
+                    let Some((record, result)) = result else {
+                        return;
+                    };
+                    Self::handle_join_result(record, result, true);
+                }
+                () = timeout.as_mut() => {
+                    for record in batch.detach_all() {
+                        warn!(
+                            kind = record.kind.as_str(),
+                            label = %record.label,
+                            timeout_ms = FACTORY_CLEANUP_POST_ABORT_DRAIN_TIMEOUT.as_millis() as u64,
+                            "detaching aborted factory cleanup task after post-abort drain timeout"
+                        );
+                    }
+                    return;
                 }
             }
         }
@@ -437,12 +487,7 @@ impl FactoryCleanupGroup {
                 );
             }
             batch.abort_all();
-            while !batch.is_empty() {
-                let Some((record, result)) = batch.next_finished().await else {
-                    break;
-                };
-                Self::handle_join_result(record, result, true);
-            }
+            Self::drain_aborted_batch(&mut batch).await;
         }
     }
 
@@ -595,6 +640,26 @@ mod tests {
     struct SpawnLateCleanupOnDrop {
         group: Arc<FactoryCleanupGroup>,
         late_aborted: Arc<AtomicBool>,
+    }
+
+    struct BlockingPollCleanup {
+        started_tx: Option<tokio::sync::oneshot::Sender<()>>,
+        release: Arc<AtomicBool>,
+    }
+
+    impl Future for BlockingPollCleanup {
+        type Output = ();
+
+        fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let this = self.get_mut();
+            if let Some(started_tx) = this.started_tx.take() {
+                let _ = started_tx.send(());
+            }
+            while !this.release.load(Ordering::SeqCst) {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            Poll::Ready(())
+        }
     }
 
     impl Drop for SpawnLateCleanupOnDrop {
@@ -917,6 +982,46 @@ mod tests {
         shutdown.await;
 
         assert!(late_aborted.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn factory_cleanup_group_shutdown_detaches_unfinished_aborted_task_after_timeout() {
+        let group = Arc::new(FactoryCleanupGroup::new());
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let release = Arc::new(AtomicBool::new(false));
+        let cleanup_release = Arc::clone(&release);
+
+        let waiter = group.spawn(
+            FactoryCleanupTaskKind::Destroy,
+            "blocking-poll",
+            BlockingPollCleanup {
+                started_tx: Some(started_tx),
+                release: cleanup_release,
+            },
+        );
+        drop(waiter);
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), started_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        let shutdown_group = Arc::clone(&group);
+        let mut shutdown_task = tokio::spawn(async move {
+            shutdown_group.shutdown().await;
+        });
+
+        let shutdown_result =
+            tokio::time::timeout(std::time::Duration::from_secs(1), &mut shutdown_task).await;
+        release.store(true, Ordering::SeqCst);
+
+        match shutdown_result {
+            Ok(result) => result.unwrap(),
+            Err(_) => {
+                let _ =
+                    tokio::time::timeout(std::time::Duration::from_secs(1), shutdown_task).await;
+                panic!("shutdown timed out waiting for an aborted cleanup task");
+            }
+        }
     }
 
     #[tokio::test]

@@ -18,7 +18,6 @@ import json
 import uuid
 from collections.abc import Callable, Iterator
 from concurrent.futures import Future
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -39,7 +38,7 @@ from usage.providers import connectors as _usage_connectors
 
 
 @pytest.fixture(autouse=True)
-def _reset_module_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _reset_module_state() -> Iterator[None]:
     """Clear cached singletons between tests.
 
     ``registry`` and ``auth`` cache registry data and firewall header
@@ -59,26 +58,6 @@ def _reset_module_state(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.reset_usage_buffer_for_tests()
     logging_utils.reset_log_writer_for_tests()
-
-    original_read_text = Path.read_text
-    original_exists = Path.exists
-
-    def read_text_after_jsonl_flush(
-        path: Path,
-        *args: Any,
-        **kwargs: Any,
-    ) -> str:
-        if path.suffix == ".jsonl":
-            logging_utils.flush_all_logs()
-        return original_read_text(path, *args, **kwargs)
-
-    def exists_after_jsonl_flush(path: Path) -> bool:
-        if path.suffix == ".jsonl":
-            logging_utils.flush_all_logs()
-        return original_exists(path)
-
-    monkeypatch.setattr(Path, "read_text", read_text_after_jsonl_flush)
-    monkeypatch.setattr(Path, "exists", exists_after_jsonl_flush)
     yield
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()

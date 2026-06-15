@@ -61,20 +61,6 @@ export const setSelectedSlashSkillIndex$ = command(({ set }, index: number) => {
   set(internalSelectedSlashSkillIndex$, index);
 });
 
-// Which connector drawer is open in the slash menu, or null at the top level.
-// Reset to null whenever the menu's editor content changes so reopening `/`
-// always starts at the top level (replaces a React useEffect/useState pair,
-// which are restricted in this app in favor of ccstate signals).
-const internalOpenSlashConnectorType$ = state<ConnectorType | null>(null);
-export const openSlashConnectorType$ = computed((get) => {
-  return get(internalOpenSlashConnectorType$);
-});
-export const setOpenSlashConnectorType$ = command(
-  ({ set }, type: ConnectorType | null) => {
-    set(internalOpenSlashConnectorType$, type);
-  },
-);
-
 // -- Add-connectors dialog search filter ------------------------------------
 
 const internalAddDialogSearch$ = state("");

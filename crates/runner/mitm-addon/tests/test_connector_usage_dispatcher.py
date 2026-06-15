@@ -5,6 +5,11 @@ import json
 import pytest
 
 import usage
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
+)
 from tests.x_flow_helpers import make_x_usage_flow
 
 
@@ -48,8 +53,8 @@ class TestConnectorUsageDispatcher:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         assert self._call_and_get_billing(flow) == []
         proxy_log = tmp_path / "proxy.jsonl"
-        if proxy_log.exists():
-            assert "no registered handler" not in proxy_log.read_text()
+        if jsonl_exists_after_flush(proxy_log):
+            assert "no registered handler" not in read_jsonl_text_after_flush(proxy_log)
 
     @pytest.mark.parametrize("firewall_name", [None, 42])
     def test_skips_malformed_firewall_name_without_warning(
@@ -64,8 +69,8 @@ class TestConnectorUsageDispatcher:
         assert self._call_and_get_billing(flow) == []
 
         proxy_log = tmp_path / "proxy.jsonl"
-        if proxy_log.exists():
-            assert "no registered handler" not in proxy_log.read_text()
+        if jsonl_exists_after_flush(proxy_log):
+            assert "no registered handler" not in read_jsonl_text_after_flush(proxy_log)
 
     def test_skips_for_non_x_billable_firewall(self, tmp_path, real_flow):
         """Billable non-x connectors (hypothetical future additions to
@@ -94,9 +99,9 @@ class TestConnectorUsageDispatcher:
             assert self._call_and_get_billing(flow) == []
 
         lines = [
-            json.loads(line)
-            for line in proxy_log.read_text().splitlines()
-            if "no registered handler" in line
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if "no registered handler" in entry["message"]
         ]
         assert len(lines) == 1
         assert lines[0]["level"] == "warn"
@@ -113,9 +118,9 @@ class TestConnectorUsageDispatcher:
             assert self._call_and_get_billing(flow) == []
 
         warned_names = [
-            json.loads(line)["firewall_name"]
-            for line in proxy_log.read_text().splitlines()
-            if "no registered handler" in line
+            entry["firewall_name"]
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if "no registered handler" in entry["message"]
         ]
         assert warned_names == ["github", "slack"]
 
@@ -127,8 +132,8 @@ class TestConnectorUsageDispatcher:
         flow.metadata["firewall_name"] = ""
         assert self._call_and_get_billing(flow) == []
 
-        if proxy_log.exists():
-            assert "no registered handler" not in proxy_log.read_text()
+        if jsonl_exists_after_flush(proxy_log):
+            assert "no registered handler" not in read_jsonl_text_after_flush(proxy_log)
 
     def test_registered_x_usage_requires_original_url(self, tmp_path, real_flow, mitm_ctx):
         flow = self._make_x_flow(real_flow, tmp_path)

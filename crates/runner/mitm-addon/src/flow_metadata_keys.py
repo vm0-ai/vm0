@@ -27,9 +27,9 @@ Request context
   handling. Read by body capture to mark oversized request bodies truncated.
 - ``CLI_AGENT_TYPE``: ``str`` copied from registry VM info, defaulting to
   ``"claude-code"``. Read by model-provider usage protocol selection.
-- ``BROWSER_USER_AGENT``: ``bool`` written by ``request()`` for browser-looking
-  user agents. Read by request dispatch to skip the firewall credential flow for
-  that request and by network-log entry construction.
+- ``BROWSER_USER_AGENT``: ``bool`` written during request classification for
+  browser-looking user agents. Read by request dispatch to skip firewall
+  matching and credential mutation, and by network-log entry construction.
 
 Timing context
 --------------
@@ -106,8 +106,8 @@ Model-provider usage
 - ``MODEL_PROVIDER_USAGE_SOURCES``: ``dict`` keyed by WebSocket response id,
   with normalized token usage dict values. Written by WebSocket model-provider
   usage extraction and read by model usage-event and observation reporters.
-  Retained after terminal reporting for diagnostics, like
-  ``MODEL_PROVIDER_USAGE``.
+  Entries may be removed before ``websocket_end()`` once a terminal WebSocket
+  usage frame is accepted into the source-preserving usage buffer.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` model id from registry VM info.
   Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization

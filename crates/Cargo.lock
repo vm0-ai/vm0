@@ -984,9 +984,6 @@ name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
-dependencies = [
- "powerfmt",
-]
 
 [[package]]
 name = "diff"
@@ -1263,7 +1260,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.35.3"
+version = "0.35.5"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1273,7 +1270,7 @@ dependencies = [
  "chrono",
  "flate2",
  "guest-common",
- "guest-runtime-paths",
+ "guest-contracts",
  "hex",
  "http-body 1.0.1",
  "httpmock",
@@ -1302,9 +1299,17 @@ name = "guest-common"
 version = "0.2.8"
 dependencies = [
  "chrono",
- "guest-runtime-paths",
+ "guest-contracts",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "guest-contracts"
+version = "0.1.0"
+dependencies = [
+ "libc",
  "tempfile",
 ]
 
@@ -1314,7 +1319,7 @@ version = "0.20.23"
 dependencies = [
  "flate2",
  "guest-common",
- "guest-runtime-paths",
+ "guest-contracts",
  "httpmock",
  "serde",
  "serde_json",
@@ -1360,14 +1365,6 @@ name = "guest-reseed"
 version = "0.3.3"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "guest-runtime-paths"
-version = "0.1.1"
-dependencies = [
- "libc",
- "tempfile",
 ]
 
 [[package]]
@@ -2571,7 +2568,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.116.5"
+version = "0.116.7"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2586,12 +2583,12 @@ dependencies = [
  "flate2",
  "futures-util",
  "guest-agent",
+ "guest-contracts",
  "guest-download",
  "guest-init",
  "guest-mock-claude",
  "guest-mock-codex",
  "guest-reseed",
- "guest-runtime-paths",
  "guest-write-file",
  "hex",
  "httpmock",
@@ -3298,12 +3295,11 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.47"
+version = "0.3.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
+checksum = "711a53c2d47bbd818258c498c8dbfe186a2526c631495cfe7e078567f86b8469"
 dependencies = [
  "deranged",
- "itoa",
  "num-conv",
  "powerfmt",
  "serde_core",
@@ -3313,15 +3309,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
+checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
 
 [[package]]
 name = "time-macros"
-version = "0.2.27"
+version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
+checksum = "71c652a3727a9cbb9a02f707f530b618ce00d0ccd762009c8c23bd191df3c17d"
 dependencies = [
  "num-conv",
  "time-core",

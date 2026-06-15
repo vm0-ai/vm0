@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxError, SandboxFactory, SandboxInitializationPhase,
-    SandboxInvalidStateContext,
+    SandboxInvalidStateContext, WorkspaceDriveSeedImage,
 };
 use tracing::{info, warn};
 
@@ -486,17 +486,31 @@ pub(crate) async fn prepare_workspace_drive_image(
             })?;
     }
 
-    if let Some(source_image) = config.seed_image.as_ref() {
-        if let Some(timing) = timing.as_deref_mut() {
-            timing.mark_workspace_seed_image_used();
+    match config.seed_image.as_ref() {
+        Some(WorkspaceDriveSeedImage::Copy(source_image)) => {
+            if let Some(timing) = timing.as_deref_mut() {
+                timing.mark_workspace_seed_image_used();
+            }
+            return copy_workspace_drive_seed_image(
+                path,
+                source_image,
+                workspace_drive_size_bytes(config.size_mb),
+                timing,
+            )
+            .await;
         }
-        return copy_workspace_drive_seed_image(
-            path,
-            source_image,
-            workspace_drive_size_bytes(config.size_mb),
-            timing,
-        )
-        .await;
+        Some(WorkspaceDriveSeedImage::Move(source_image)) => {
+            if let Some(timing) = timing.as_deref_mut() {
+                timing.mark_workspace_seed_image_used();
+            }
+            return move_workspace_drive_seed_image(
+                path,
+                source_image,
+                workspace_drive_size_bytes(config.size_mb),
+            )
+            .await;
+        }
+        None => {}
     }
 
     let file = tokio::fs::File::create(path)
@@ -546,33 +560,7 @@ async fn copy_workspace_drive_seed_image(
     expected_size_bytes: u64,
     timing: Option<&mut SandboxCreateTiming>,
 ) -> sandbox::Result<()> {
-    let source_metadata =
-        tokio::fs::metadata(source)
-            .await
-            .map_err(|e| SandboxError::Initialization {
-                phase: SandboxInitializationPhase::SandboxAllocation,
-                message: format!("read workspace seed image {}: {e}", source.display()),
-            })?;
-    if !source_metadata.is_file() {
-        return Err(SandboxError::Initialization {
-            phase: SandboxInitializationPhase::SandboxAllocation,
-            message: format!(
-                "workspace seed image is not a regular file: {}",
-                source.display()
-            ),
-        });
-    }
-    if source_metadata.len() != expected_size_bytes {
-        return Err(SandboxError::Initialization {
-            phase: SandboxInitializationPhase::SandboxAllocation,
-            message: format!(
-                "workspace seed image size mismatch for {}: expected {} bytes, got {} bytes",
-                source.display(),
-                expected_size_bytes,
-                source_metadata.len()
-            ),
-        });
-    }
+    validate_workspace_seed_source(source, expected_size_bytes).await?;
 
     let source_str = source
         .to_str()
@@ -611,18 +599,88 @@ async fn copy_workspace_drive_seed_image(
         result
     }?;
 
-    let target_metadata =
-        tokio::fs::metadata(target)
+    validate_workspace_seed_target(target, expected_size_bytes, "copied").await
+}
+
+async fn move_workspace_drive_seed_image(
+    target: &Path,
+    source: &Path,
+    expected_size_bytes: u64,
+) -> sandbox::Result<()> {
+    validate_workspace_seed_source(source, expected_size_bytes).await?;
+    if let Err(e) = std::fs::rename(source, target) {
+        return Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!(
+                "move workspace seed image {} to {}: {e}",
+                source.display(),
+                target.display()
+            ),
+        });
+    }
+    validate_workspace_seed_target(target, expected_size_bytes, "moved").await
+}
+
+async fn validate_workspace_seed_source(
+    source: &Path,
+    expected_size_bytes: u64,
+) -> sandbox::Result<()> {
+    let source_metadata =
+        tokio::fs::symlink_metadata(source)
             .await
             .map_err(|e| SandboxError::Initialization {
                 phase: SandboxInitializationPhase::SandboxAllocation,
-                message: format!("read copied workspace image {}: {e}", target.display()),
+                message: format!("read workspace seed image {}: {e}", source.display()),
             })?;
+    if !source_metadata.is_file() {
+        return Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!(
+                "workspace seed image is not a regular file: {}",
+                source.display()
+            ),
+        });
+    }
+    if source_metadata.len() != expected_size_bytes {
+        return Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!(
+                "workspace seed image size mismatch for {}: expected {} bytes, got {} bytes",
+                source.display(),
+                expected_size_bytes,
+                source_metadata.len()
+            ),
+        });
+    }
+    Ok(())
+}
+
+async fn validate_workspace_seed_target(
+    target: &Path,
+    expected_size_bytes: u64,
+    action: &str,
+) -> sandbox::Result<()> {
+    let target_metadata =
+        tokio::fs::symlink_metadata(target)
+            .await
+            .map_err(|e| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!("read {action} workspace image {}: {e}", target.display()),
+            })?;
+    if !target_metadata.is_file() {
+        return Err(SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!(
+                "{action} workspace image is not a regular file: {}",
+                target.display()
+            ),
+        });
+    }
     if target_metadata.len() != expected_size_bytes {
         return Err(SandboxError::Initialization {
             phase: SandboxInitializationPhase::SandboxAllocation,
             message: format!(
-                "copied workspace image size mismatch for {}: expected {} bytes, got {} bytes",
+                "{action} workspace image size mismatch for {}: expected {} bytes, got {} bytes",
                 target.display(),
                 expected_size_bytes,
                 target_metadata.len()
@@ -801,7 +859,7 @@ mod tests {
             &target,
             &sandbox::WorkspaceDriveConfig {
                 size_mb: 1,
-                seed_image: Some(source.clone()),
+                seed_image: Some(WorkspaceDriveSeedImage::Copy(source.clone())),
             },
             Some(&mut timing),
         )
@@ -848,7 +906,7 @@ mod tests {
             &target,
             &sandbox::WorkspaceDriveConfig {
                 size_mb: 1,
-                seed_image: Some(source),
+                seed_image: Some(WorkspaceDriveSeedImage::Copy(source)),
             },
             None,
         )
@@ -862,6 +920,136 @@ mod tests {
             }
             other => panic!("expected workspace seed initialization error, got {other:?}"),
         }
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn prepare_workspace_drive_image_moves_seed_image() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("seed.ext4");
+        let target = tmp.path().join("nested").join("workspace.ext4");
+        let marker_offset = 4096;
+        let marker = b"vm0";
+        let mut timing = SandboxCreateTiming::new("sandbox".into(), "vm0/default".into());
+
+        let mut source_file = tokio::fs::File::create(&source).await.unwrap();
+        source_file
+            .set_len(workspace_drive_size_bytes(1))
+            .await
+            .unwrap();
+        source_file
+            .seek(SeekFrom::Start(marker_offset))
+            .await
+            .unwrap();
+        source_file.write_all(marker).await.unwrap();
+        source_file.flush().await.unwrap();
+        drop(source_file);
+
+        prepare_workspace_drive_image(
+            &target,
+            &sandbox::WorkspaceDriveConfig {
+                size_mb: 1,
+                seed_image: Some(WorkspaceDriveSeedImage::Move(source.clone())),
+            },
+            Some(&mut timing),
+        )
+        .await
+        .unwrap();
+
+        assert!(!source.exists());
+        let metadata = tokio::fs::metadata(&target).await.unwrap();
+        assert_eq!(metadata.len(), workspace_drive_size_bytes(1));
+        assert!(
+            timing
+                .stage_duration_for_test(SandboxCreateStage::WorkspaceSeedSparseCopy)
+                .is_none()
+        );
+        assert!(
+            timing
+                .stage_duration_for_test(SandboxCreateStage::WorkspaceFreshFormat)
+                .is_none()
+        );
+
+        let mut target_file = tokio::fs::File::open(&target).await.unwrap();
+        target_file
+            .seek(SeekFrom::Start(marker_offset))
+            .await
+            .unwrap();
+        let mut moved_marker = [0; 3];
+        target_file.read_exact(&mut moved_marker).await.unwrap();
+        assert_eq!(&moved_marker, marker);
+    }
+
+    #[tokio::test]
+    async fn prepare_workspace_drive_image_rejects_move_seed_image_size_mismatch_without_moving() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("seed.ext4");
+        let target = tmp.path().join("workspace.ext4");
+
+        let source_file = tokio::fs::File::create(&source).await.unwrap();
+        source_file
+            .set_len(workspace_drive_size_bytes(1) - 1)
+            .await
+            .unwrap();
+        drop(source_file);
+
+        let err = prepare_workspace_drive_image(
+            &target,
+            &sandbox::WorkspaceDriveConfig {
+                size_mb: 1,
+                seed_image: Some(WorkspaceDriveSeedImage::Move(source.clone())),
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        match err {
+            SandboxError::Initialization { phase, message } => {
+                assert_eq!(phase, SandboxInitializationPhase::SandboxAllocation);
+                assert!(message.contains("workspace seed image size mismatch"));
+            }
+            other => panic!("expected workspace seed initialization error, got {other:?}"),
+        }
+        assert!(source.exists());
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn prepare_workspace_drive_image_rejects_move_seed_symlink_without_moving() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real_source = tmp.path().join("real-seed.ext4");
+        let source_link = tmp.path().join("seed-link.ext4");
+        let target = tmp.path().join("workspace.ext4");
+
+        let source_file = tokio::fs::File::create(&real_source).await.unwrap();
+        source_file
+            .set_len(workspace_drive_size_bytes(1))
+            .await
+            .unwrap();
+        drop(source_file);
+        std::os::unix::fs::symlink(&real_source, &source_link).unwrap();
+
+        let err = prepare_workspace_drive_image(
+            &target,
+            &sandbox::WorkspaceDriveConfig {
+                size_mb: 1,
+                seed_image: Some(WorkspaceDriveSeedImage::Move(source_link.clone())),
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        match err {
+            SandboxError::Initialization { phase, message } => {
+                assert_eq!(phase, SandboxInitializationPhase::SandboxAllocation);
+                assert!(message.contains("workspace seed image is not a regular file"));
+            }
+            other => panic!("expected workspace seed initialization error, got {other:?}"),
+        }
+        assert!(real_source.exists());
+        assert!(source_link.exists());
         assert!(!target.exists());
     }
 

@@ -30,6 +30,7 @@ import {
   IconPlug,
   IconPhoto,
   IconPlus,
+  IconQuote,
   IconSearch,
   IconTemplate,
   IconVideo,
@@ -500,50 +501,89 @@ function QueuedMessagesStrip({
 // composer's toolbar and Send button.
 // ---------------------------------------------------------------------------
 
+// Grow the note input to fit its content so multi-line comments expand the
+// composer instead of scrolling inside a single row.
+function autoGrowFeedbackNote(element: HTMLTextAreaElement | null): void {
+  if (!element) {
+    return;
+  }
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
+function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
+  autoGrowFeedbackNote(element);
+}
+
 function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
   element?.focus();
+  autoGrowFeedbackNote(element);
 }
 
 function ComposerFeedbackRow({
   item,
   autoFocus,
+  showDivider,
   onChangeNote,
   onRemove,
   onKeyDown,
 }: {
   item: FeedbackItem;
   autoFocus: boolean;
+  showDivider: boolean;
   onChangeNote: (note: string) => void;
   onRemove: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 border-b border-dashed border-border/60 py-1.5">
-      <div className="flex items-center gap-2">
-        <span className="h-4 w-[3px] shrink-0 bg-muted-foreground/30" />
-        <span className="min-w-0 flex-1 truncate text-sm italic leading-snug text-muted-foreground">
-          {item.quote}
-        </span>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remove feedback"
-          title="Remove feedback"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <IconX size={15} stroke={2} />
-        </button>
+    <div
+      className={cn(
+        // Bottom padding on every row; top padding only when a dashed divider
+        // separates stacked fragments. The first row gets no top inset so the
+        // quote chip sits as high as the attachment chips do (matching the
+        // composer's pt-3), letting the card extend upward instead of leaving a
+        // gap above the chip.
+        "flex flex-col gap-1.5 pb-1.5",
+        showDivider && "border-t border-dashed border-border/60 pt-1.5",
+      )}
+    >
+      {/* Quote reference reuses the selected-template chip treatment (bordered
+          pill, icon square, in-pill remove) so feedback references read the same
+          as template chips. */}
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted">
+            <IconQuote
+              size={12}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          </span>
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.quote}
+          </span>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove feedback"
+            title="Remove feedback"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
       </div>
       <textarea
-        ref={autoFocus ? focusFeedbackNoteRef : undefined}
+        ref={autoFocus ? focusFeedbackNoteRef : autoGrowFeedbackNoteRef}
         value={item.note}
         onChange={(event) => {
+          autoGrowFeedbackNote(event.target);
           return onChangeNote(event.target.value);
         }}
         onKeyDown={onKeyDown}
         rows={1}
         placeholder="What should change about this?"
-        className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+        className="w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
       />
     </div>
   );
@@ -566,13 +606,17 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
   const newestId = feedback.items[feedback.items.length - 1]?.id;
 
   return (
-    <div className="flex flex-col px-3 pb-2 pt-3">
-      {feedback.items.map((item) => {
+    // min-h keeps the card from shrinking below the textarea's resting height.
+    // px-4 / pt-3 mirror the attachment-chips inset so the feedback chip lines
+    // up with attachments on both the left and top edges.
+    <div className="flex min-h-[96px] flex-col px-4 pb-2 pt-3">
+      {feedback.items.map((item, index) => {
         return (
           <ComposerFeedbackRow
             key={item.id}
             item={item}
             autoFocus={item.id === newestId}
+            showDivider={index > 0}
             onChangeNote={(note) => {
               return feedback.onChangeNote(item.id, note);
             }}
@@ -583,9 +627,6 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
           />
         );
       })}
-      <span className="px-1 pt-1.5 font-serif text-[13px] italic leading-snug text-muted-foreground/50">
-        Select more text to add another comment
-      </span>
     </div>
   );
 }
@@ -865,25 +906,6 @@ function VideoTemplateGrid({
           />
         );
       })}
-    </div>
-  );
-}
-
-function TemplateSectionHeader({
-  label,
-  count,
-}: {
-  label: string;
-  count: number;
-}) {
-  return (
-    <div className="mb-4 flex items-center gap-3">
-      <h3 className="rounded-md bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-        {label}
-      </h3>
-      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-        {count}
-      </span>
     </div>
   );
 }
@@ -1260,7 +1282,7 @@ function TemplatePreviewPage({
             Templates
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">PPT</span>
+          <span className="shrink-0 text-muted-foreground">Presentation</span>
           <span className="shrink-0 text-muted-foreground">/</span>
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
@@ -1759,7 +1781,7 @@ function TemplatePickerTabs({
               )}
               stroke={1.8}
             />
-            PPT
+            Presentation
           </TabsTrigger>
         )}
         {hasIllustrationTab && (
@@ -2030,10 +2052,6 @@ function TemplatePickerDialog({
             </div>
             {selectedCategory === "slides" && hasPptTab && (
               <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4">
-                <TemplateSectionHeader
-                  label="VM0 templates"
-                  count={filteredPptItems.length}
-                />
                 {filteredPptItems.length > 0 ? (
                   <PptTemplateGrid
                     items={filteredPptItems}
@@ -2054,10 +2072,6 @@ function TemplatePickerDialog({
                 data-illustration-template-grid-scroll=""
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <TemplateSectionHeader
-                  label="VM0 illustration styles"
-                  count={filteredIllustrationItems.length}
-                />
                 {filteredIllustrationItems.length > 0 ? (
                   <IllustrationTemplateGrid
                     items={filteredIllustrationItems}
@@ -2078,10 +2092,6 @@ function TemplatePickerDialog({
                 data-video-template-grid-scroll=""
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <TemplateSectionHeader
-                  label="VM0 video styles"
-                  count={filteredVideoItems.length}
-                />
                 <div className="mb-4 flex flex-wrap gap-2">
                   {videoGroupFilters.map((group) => {
                     const selected = videoGroup === group.tag;
@@ -2128,32 +2138,43 @@ function TemplatePickerDialog({
 
 function SelectedTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: PresentationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   const label = formatPresentationTemplateKind(item.templateId);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={r2ImageTransformUrl(
-                item.previewImage,
-                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-              )}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Presentation
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">{label}</span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${label}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Presentation
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {label}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${label}`}
@@ -2171,29 +2192,38 @@ function SelectedTemplateChip({
 
 function SelectedVideoTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: VideoStylePreset;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <IconVideo
-              size={12}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Video
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.nameEn}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview video style ${item.nameEn}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconVideo
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Video
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.nameEn}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove video style ${item.nameEn}`}
@@ -2211,33 +2241,42 @@ function SelectedVideoTemplateChip({
 
 function SelectedIllustrationTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: IllustrationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={r2ImageTransformUrl(
-                item.previewImage,
-                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-              )}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Illustration
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.title}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Illustration
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${item.title}`}
@@ -2260,16 +2299,35 @@ function SelectedTemplateChipSlot({
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
 }) {
+  const setOpen = useSet(setTemplatePickerOpen$);
+  const setCategory = useSet(setTemplatePickerCategory$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   if (!picker) {
     return null;
   }
+  // Reopen the picker on the tab matching the selected template's type so the
+  // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
+  const openPicker = (category: string) => {
+    setSearch("");
+    setVideoGroup("all");
+    setPreviewSlug(null);
+    setSelectedSlideIndex(0);
+    setCategory(category);
+    setOpen(true);
+  };
   if (presentationItem) {
     return (
       <SelectedTemplateChip
         item={presentationItem}
+        onOpen={() => {
+          return openPicker("slides");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2281,6 +2339,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedVideoTemplateChip
         item={videoItem}
+        onOpen={() => {
+          return openPicker("video");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2292,6 +2353,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedIllustrationTemplateChip
         item={illustrationItem}
+        onOpen={() => {
+          return openPicker("illustration");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();

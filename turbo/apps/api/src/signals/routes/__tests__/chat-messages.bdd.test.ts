@@ -1499,7 +1499,6 @@ describe("CHAT-02: prior rounds and thread titles", () => {
   it("carries prior completed rounds, generates the thread title, and rejects lifecycle follow-up revokes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.proxyChatCallbackToApp();
-    await chatCallbacks.enableChatRecommendedFollowups(actor);
     mockOptionalEnv("OPENROUTER_API_KEY", "title-key");
     let upstreamAuthorization: string | null = null;
     let titleRequests = 0;

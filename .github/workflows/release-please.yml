@@ -282,8 +282,6 @@ jobs:
           forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Computer Use-darwin-arm64-$DESKTOP_VERSION.zip"
           zip_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
           dmg_artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.dmg"
-          dmg_source="$RUNNER_TEMP/zero-desktop-dmg-source"
-          unsigned_dmg="$RUNNER_TEMP/Zero-darwin-arm64-$DESKTOP_VERSION.unsigned.dmg"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge zip artifact found: $forge_zip"
@@ -297,18 +295,10 @@ jobs:
           fi
 
           cp "$forge_zip" "$zip_artifact_path"
-
-          rm -rf "$dmg_source" "$unsigned_dmg" "$dmg_artifact_path"
-          mkdir -p "$dmg_source"
-          ditto "$app_dir" "$dmg_source/Zero Computer Use.app"
-          ln -s /Applications "$dmg_source/Applications"
-          hdiutil create \
-            -volname "Zero Computer Use" \
-            -srcfolder "$dmg_source" \
-            -ov \
-            -format UDZO \
-            "$unsigned_dmg"
-          cp "$unsigned_dmg" "$dmg_artifact_path"
+          node apps/desktop/scripts/create-styled-dmg.mjs \
+            --app "$app_dir" \
+            --out "$dmg_artifact_path" \
+            --volume-name "Zero Computer Use"
           codesign --force --sign "$VM0_DESKTOP_SIGNING_IDENTITY" --timestamp "$dmg_artifact_path"
           xcrun notarytool submit "$dmg_artifact_path" \
             --key "$VM0_DESKTOP_NOTARIZE_API_KEY_PATH" \
@@ -384,6 +374,17 @@ jobs:
             readlink "$dmg_mount/Applications" || true
             exit 1
           fi
+          if [ ! -f "$dmg_mount/.background/background.png" ]; then
+            echo "DMG should contain the Finder background image"
+            find "$dmg_mount" -maxdepth 3 -print || true
+            exit 1
+          fi
+          background_info="$(sips -g pixelWidth -g pixelHeight -g dpiWidth -g dpiHeight "$dmg_mount/.background/background.png")"
+          echo "$background_info"
+          echo "$background_info" | grep -q "pixelWidth: 1320"
+          echo "$background_info" | grep -q "pixelHeight: 800"
+          echo "$background_info" | grep -q "dpiWidth: 144.000"
+          echo "$background_info" | grep -q "dpiHeight: 144.000"
           codesign --verify --deep --strict --verbose=2 "$dmg_mount/Zero Computer Use.app"
           xcrun stapler validate "$dmg_mount/Zero Computer Use.app"
 

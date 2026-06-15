@@ -13,8 +13,8 @@ impl RuntimeLogPaths {
     fn new(dir: &TempDir) -> Self {
         let runtime_dir = dir.path().join("guest-runtime");
         Self {
-            system_log: guest_runtime_paths::system_log_file(&runtime_dir),
-            ops_log: guest_runtime_paths::sandbox_ops_log_file(&runtime_dir),
+            system_log: guest_contracts::runtime_paths::system_log_file(&runtime_dir),
+            ops_log: guest_contracts::runtime_paths::sandbox_ops_log_file(&runtime_dir),
             runtime_dir,
         }
     }
@@ -31,7 +31,7 @@ fn binary_writes_system_log_to_guest_common_default_path() {
         .arg(&manifest_path)
         .env("VM0_RUN_ID", &run_id)
         .env(
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &logs.runtime_dir,
         )
         .output()
@@ -72,7 +72,7 @@ fn binary_writes_system_log_on_manifest_read_failure() {
         .arg("/tmp/nonexistent-guest-download-manifest.json")
         .env("VM0_RUN_ID", &run_id)
         .env(
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &logs.runtime_dir,
         )
         .output()
@@ -108,7 +108,7 @@ fn binary_without_manifest_path_logs_usage() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
         .env("VM0_RUN_ID", &run_id)
         .env(
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &logs.runtime_dir,
         )
         .output()
@@ -194,7 +194,7 @@ fn binary_does_not_log_http_archive_url_on_success() {
         .arg(&manifest)
         .env("VM0_RUN_ID", &run_id)
         .env(
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &logs.runtime_dir,
         )
         .output()
@@ -250,7 +250,7 @@ fn binary_does_not_log_http_archive_url_on_fatal_status() {
         .arg(&manifest)
         .env("VM0_RUN_ID", &run_id)
         .env(
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &logs.runtime_dir,
         )
         .output()
@@ -316,7 +316,7 @@ fn binary_does_not_log_file_archive_path_on_missing_local_file() {
         .arg(&manifest)
         .env("VM0_RUN_ID", &run_id)
         .env(
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &logs.runtime_dir,
         )
         .output()

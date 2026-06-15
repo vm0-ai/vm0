@@ -175,6 +175,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Google Search Console connector",
     enabled: true,
   },
+  [FeatureSwitchKey.YouTubeConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the YouTube connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Spotify connector integration",
@@ -302,12 +307,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatRecommendedFollowups]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Generate and show recommended follow-up prompts after completed chat runs.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ChatRunUsage]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -331,13 +330,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable slash command suggestions for the current agent's skills in the Zero chat composer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatConnectorCommands]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Show connected connectors and their curated quick commands in the Zero chat composer slash menu, so users discover what the agent can do with each connector.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -50,7 +50,10 @@ async fn codex_setup_stderr_masking_masks_failure() -> Result<(), Box<dyn std::e
         std::env::set_var("VM0_PROMPT", "test prompt");
         std::env::set_var("VM0_SECRET_VALUES", encoded_other_secret);
         std::env::set_var("VM0_USER_ENV_FILE", &user_env_path);
-        std::env::set_var(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV, &runtime_dir);
+        std::env::set_var(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &runtime_dir,
+        );
         std::env::set_var("HOME", tmp.path());
         std::env::set_var("PATH", path);
     }

@@ -13,14 +13,17 @@ async fn post_result_reap_sigterm_kills_hung_cli() -> Result<(), Box<dyn std::er
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     unsafe {
-        // Fast convergence: 1s sigterm grace + 1s sigkill grace.
-        common::setup_env(&mock, tmp.path(), "@hang-after-result", 1, 1)?;
+        // Fast SIGTERM convergence, with extra SIGKILL margin for slow
+        // runners. A SIGTERM regression still escalates before the 15s
+        // outer timeout can leave the long-lived mock behind.
+        common::setup_env(&mock, tmp.path(), "@hang-after-result", 1, 5)?;
     }
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
-    // Budget: sigterm grace (1s) + stdout drain (5s) + slack = 15s.
+    // Budget: sigterm grace (1s) + sigkill margin (5s) +
+    // stdout drain (5s) + slack = 15s.
     // Mock hangs 3600s, so any completion under this cap came from the
     // reap. Locally runs in ~1s.
     let result = tokio::time::timeout(
@@ -37,13 +40,11 @@ async fn post_result_reap_sigterm_kills_hung_cli() -> Result<(), Box<dyn std::er
     let result = result.expect("execute_cli returned Err");
     let exit_code = result.exit_code;
 
-    // On pathologically slow runners the sigkill escalation may fire
-    // before SIGTERM actually terminates the mock; accept either.
-    assert!(
-        exit_code == common::SIGTERM_EXIT || exit_code == common::SIGKILL_EXIT,
-        "expected signal-based exit ({} or {}), got {exit_code}",
+    assert_eq!(
+        exit_code,
         common::SIGTERM_EXIT,
-        common::SIGKILL_EXIT
+        "expected SIGTERM exit ({}) for the post-result reap path, got {exit_code}; SIGKILL escalation is covered by post_result_reap_sigkill",
+        common::SIGTERM_EXIT
     );
     Ok(())
 }

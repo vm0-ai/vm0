@@ -44,6 +44,7 @@ interface PresentationHtmlEditorProps {
 }
 
 type EditorDraft = PresentationEditDraft & {
+  readonly editorSession: PresentationEditorSession;
   readonly publicUrl: string;
 };
 
@@ -51,8 +52,40 @@ interface MutableValue<T> {
   current: T;
 }
 
+interface PresentationEditorSession {
+  readonly activeSlideIdRef: MutableValue<string>;
+  readonly blocksRef: MutableValue<readonly PresentationEditBlock[]>;
+  readonly busyRef: MutableValue<SVGSVGElement | null>;
+  readonly pendingThumbnailSlideIdRef: MutableValue<string | null>;
+  readonly previewFrameRef: MutableValue<HTMLIFrameElement | null>;
+  readonly publishedSignatureRef: MutableValue<string>;
+  readonly publishingRef: MutableValue<boolean>;
+  readonly slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
+  readonly statusRef: MutableValue<HTMLDivElement | null>;
+  readonly thumbnailUpdateFrameRef: MutableValue<number | null>;
+}
+
 function mutableValue<T>(current: T): MutableValue<T> {
   return { current };
+}
+
+function createPresentationEditorSession(
+  draft: PresentationEditDraft,
+): PresentationEditorSession {
+  return {
+    activeSlideIdRef: mutableValue(draft.slides[0]?.id ?? ""),
+    blocksRef: mutableValue<readonly PresentationEditBlock[]>(draft.blocks),
+    busyRef: mutableValue<SVGSVGElement | null>(null),
+    pendingThumbnailSlideIdRef: mutableValue<string | null>(null),
+    previewFrameRef: mutableValue<HTMLIFrameElement | null>(null),
+    publishedSignatureRef: mutableValue(
+      editSignature({ blocks: draft.blocks, slides: draft.slides }),
+    ),
+    publishingRef: mutableValue(false),
+    slidesRef: mutableValue<readonly PresentationSlideDraft[]>(draft.slides),
+    statusRef: mutableValue<HTMLDivElement | null>(null),
+    thumbnailUpdateFrameRef: mutableValue<number | null>(null),
+  };
 }
 
 const presentationDraftByUrl = createPresentationDraftByUrlFactory<EditorDraft>(
@@ -67,7 +100,11 @@ const presentationDraftByUrl = createPresentationDraftByUrlFactory<EditorDraft>(
       throw new Error(`Failed to fetch presentation HTML (${response.status})`);
     }
     const draft = parsePresentationEditDraft(await response.text());
-    return { ...draft, publicUrl };
+    return {
+      ...draft,
+      editorSession: createPresentationEditorSession(draft),
+      publicUrl,
+    };
   },
 );
 const THUMBNAIL_CANVAS_WIDTH = 1920;
@@ -1068,22 +1105,18 @@ function PresentationEditorReady({
   const refreshPresentationHtmlPreviews = useSet(
     refreshPresentationHtmlPreviews$,
   );
-  const initialSlides = draft.slides;
-  const blocksRef = mutableValue<readonly PresentationEditBlock[]>(
-    draft.blocks,
-  );
-  const slidesRef =
-    mutableValue<readonly PresentationSlideDraft[]>(initialSlides);
-  const activeSlideIdRef = mutableValue(initialSlides[0]?.id ?? "");
-  const publishedSignatureRef = mutableValue(
-    editSignature({ blocks: draft.blocks, slides: initialSlides }),
-  );
-  const publishingRef = mutableValue(false);
-  const statusRef = mutableValue<HTMLDivElement | null>(null);
-  const busyRef = mutableValue<SVGSVGElement | null>(null);
-  const previewFrameRef = mutableValue<HTMLIFrameElement | null>(null);
-  const thumbnailUpdateFrameRef = mutableValue<number | null>(null);
-  const pendingThumbnailSlideIdRef = mutableValue<string | null>(null);
+  const {
+    activeSlideIdRef,
+    blocksRef,
+    busyRef,
+    pendingThumbnailSlideIdRef,
+    previewFrameRef,
+    publishedSignatureRef,
+    publishingRef,
+    slidesRef,
+    statusRef,
+    thumbnailUpdateFrameRef,
+  } = draft.editorSession;
   const controller = createPresentationEditorController({
     activeSlideIdRef,
     blocksRef,

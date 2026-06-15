@@ -34,7 +34,7 @@ use super::support::{
     test_device_rate_limits, test_executor_config, test_telemetry,
 };
 use crate::ids::RunId;
-use crate::paths::RunnerPaths;
+use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key};
 use crate::types::{ResumeSession, SandboxReuseResult};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
@@ -825,7 +825,9 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
         configs[0].workspace_drive,
         Some(sandbox::WorkspaceDriveConfig {
             size_mb: 16,
-            seed_image: Some(expected_seed.clone()),
+            seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(
+                expected_seed.clone(),
+            )),
         })
     );
     assert_eq!(
@@ -887,7 +889,7 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
         configs[0].workspace_drive,
         Some(sandbox::WorkspaceDriveConfig {
             size_mb: 16,
-            seed_image: Some(seeded_cache),
+            seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(seeded_cache)),
         })
     );
 }
@@ -1722,10 +1724,24 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
         ..default_params()
     };
     let session_id = "sess-cache-unconfigured-reuse-invalidate-error";
-    let (idle_sandbox, current_image, overrides) =
-        reusable_idle_sandbox_with_workspace_promotion(&cache, &runner_paths, &params, session_id)
-            .await;
-    tokio::fs::remove_file(&current_image).await.unwrap();
+    let (idle_sandbox, overrides) = reusable_idle_sandbox_with_unlocked_workspace_promotion(
+        &cache,
+        &runner_paths,
+        &params,
+        session_id,
+    )
+    .await;
+    let cache_key = scoped_session_workspace_cache_key(
+        "",
+        &params.profile_name,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        u64::from(params.workspace_disk_mb) * 1024 * 1024,
+    );
+    let current_image = runner_paths.session_workspace_cache_current_image(&cache_key);
+    tokio::fs::create_dir_all(current_image.parent().unwrap())
+        .await
+        .unwrap();
     tokio::fs::create_dir(&current_image).await.unwrap();
 
     let mut ctx = minimal_context();

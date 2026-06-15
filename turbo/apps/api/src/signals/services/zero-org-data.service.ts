@@ -1,5 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -23,6 +23,7 @@ import { fetchClerkMembershipRequests } from "../external/clerk-membership-reque
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { settle } from "../utils";
+import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 
 const clerkOrgIdentitySchema = z.object({
   slug: z.string().nullable().optional(),
@@ -138,67 +139,6 @@ function isReservedSlug(slug: string): boolean {
     slug === "app" ||
     slug === "www"
   );
-}
-
-async function cleanupOrgMember(
-  writeDb: Db,
-  args: Pick<LeaveZeroOrgArgs, "orgId" | "userId">,
-  signal: AbortSignal,
-): Promise<void> {
-  const [installation] = await writeDb
-    .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.orgId, args.orgId))
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (installation) {
-    const connections = await writeDb
-      .select({ id: slackOrgConnections.id })
-      .from(slackOrgConnections)
-      .where(
-        and(
-          eq(slackOrgConnections.vm0UserId, args.userId),
-          eq(
-            slackOrgConnections.slackWorkspaceId,
-            installation.slackWorkspaceId,
-          ),
-        ),
-      );
-    signal.throwIfAborted();
-
-    if (connections.length > 0) {
-      await writeDb.delete(slackOrgConnections).where(
-        inArray(
-          slackOrgConnections.id,
-          connections.map((connection) => {
-            return connection.id;
-          }),
-        ),
-      );
-      signal.throwIfAborted();
-    }
-  }
-
-  await writeDb
-    .delete(orgMembersCache)
-    .where(
-      and(
-        eq(orgMembersCache.userId, args.userId),
-        eq(orgMembersCache.orgId, args.orgId),
-      ),
-    );
-  signal.throwIfAborted();
-
-  await writeDb
-    .delete(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.userId, args.userId),
-        eq(orgMembersMetadata.orgId, args.orgId),
-      ),
-    );
-  signal.throwIfAborted();
 }
 
 function isClerkNotFound(error: unknown): boolean {
@@ -402,7 +342,7 @@ export const leaveZeroOrg$ = command(
     });
     signal.throwIfAborted();
 
-    await cleanupOrgMember(set(writeDb$), args, signal);
+    await cleanupOrgMemberResources(set(writeDb$), args, signal);
     signal.throwIfAborted();
 
     return { message: "Left org" };
@@ -453,7 +393,7 @@ export const removeZeroOrgMember$ = command(
     });
     signal.throwIfAborted();
 
-    await cleanupOrgMember(
+    await cleanupOrgMemberResources(
       set(writeDb$),
       { orgId: args.orgId, userId: target.id },
       signal,

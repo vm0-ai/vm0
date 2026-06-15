@@ -31,6 +31,7 @@ from auth_base_forwarder import (
 )
 from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
 from logging_utils import log_proxy_entry
+from url_syntax import has_unsafe_runtime_url_syntax
 from url_utils import build_rewrite_url
 
 
@@ -204,6 +205,15 @@ def _prepare_firewall_metadata(
     flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = vm_info.get("modelUsageProvider")
 
 
+def prepare_firewall_metadata(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+) -> None:
+    """Store matched-firewall metadata for callers outside this module."""
+    _prepare_firewall_metadata(flow, allow, vm_info)
+
+
 def _build_firewall_auth_context(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
@@ -249,8 +259,7 @@ def _set_matched_firewall_failure_response(
     # an auth or forwarding error when the firewall granted the request but
     # the addon could not fulfill it. See #10493.
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-    flow.metadata[metadata_keys.FIREWALL_ACTION] = action
-    flow.metadata[metadata_keys.FIREWALL_ERROR] = error_code
+    _mark_matched_firewall_failure(flow, action=action, error_code=error_code)
     body: dict[str, object] = {
         "error": error_code,
         "message": message,
@@ -266,6 +275,16 @@ def _set_matched_firewall_failure_response(
         json.dumps(body).encode(),
         {"Content-Type": "application/json"},
     )
+
+
+def _mark_matched_firewall_failure(
+    flow: http.HTTPFlow,
+    *,
+    action: str,
+    error_code: str,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = action
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = error_code
 
 
 def request_force_refresh(cache_key: tuple[str, str]) -> None:
@@ -797,13 +816,44 @@ def _apply_header_query_injection(
             flow.request.query[key] = value
 
 
+def _trusted_aws_sigv4_url(flow: http.HTTPFlow) -> str:
+    url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(url, str):
+        raise AwsSigV4SigningError("AWS request URL is unavailable")
+    if has_unsafe_runtime_url_syntax(url, allow_backslash=True):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
+
+    try:
+        original = urllib.parse.urlsplit(url)
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+
+    if has_unsafe_runtime_url_syntax(flow.request.path, allow_backslash=True):
+        raise AwsSigV4SigningError("AWS request URL is malformed")
+    try:
+        current_query = urllib.parse.urlsplit(flow.request.path).query
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL is malformed") from e
+    if current_query == original.query:
+        return url
+    return urllib.parse.urlunsplit(
+        (original.scheme, original.netloc, original.path, current_query, original.fragment)
+    )
+
+
+def _request_path_query(flow: http.HTTPFlow) -> str:
+    if has_unsafe_runtime_url_syntax(flow.request.path, allow_backslash=True):
+        raise ValueError("unsafe request target")
+    return urllib.parse.urlparse(flow.request.path).query
+
+
 def _sign_flow_request_with_aws_sigv4(
     flow: http.HTTPFlow,
     credentials: AwsSigV4Credentials,
 ) -> None:
     signed_url, signed_headers = sign_request(
         method=flow.request.method,
-        url=flow.request.url,
+        url=_trusted_aws_sigv4_url(flow),
         headers=header_pairs(flow.request.headers),
         body=flow.request.raw_content,
         credentials=credentials,
@@ -862,15 +912,16 @@ def _request_body_exceeds_auth_base_limit(flow: http.HTTPFlow) -> bool:
     return body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES
 
 
-def _set_auth_base_request_too_large(
+def _log_auth_base_request_too_large(
     flow: http.HTTPFlow,
     *,
-    allow: matching.FirewallAllow,
     proxy_log_path: str,
     firewall_base: str,
+    observed_size: int | None = None,
 ) -> None:
-    body = flow.request.raw_content
-    observed_size = len(body) if body is not None else 0
+    if observed_size is None:
+        body = flow.request.raw_content
+        observed_size = len(body) if body is not None else 0
     flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
     log_proxy_entry(
         proxy_log_path,
@@ -881,6 +932,22 @@ def _set_auth_base_request_too_large(
         request_body_size_bytes=observed_size,
         request_body_limit_bytes=MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     )
+
+
+def _set_auth_base_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+    observed_size: int | None = None,
+) -> None:
+    _log_auth_base_request_too_large(
+        flow,
+        proxy_log_path=proxy_log_path,
+        firewall_base=firewall_base,
+        observed_size=observed_size,
+    )
     _set_matched_firewall_failure_response(
         flow,
         status=413,
@@ -888,6 +955,52 @@ def _set_auth_base_request_too_large(
         error_code="auth_base_request_body_too_large",
         message="auth.base request body too large",
         permission=allow.name,
+    )
+
+
+def mark_auth_base_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    proxy_log_path: str,
+    firewall_base: str,
+    observed_size: int,
+) -> None:
+    """Record an auth.base oversized-body failure before killing the flow."""
+    _log_auth_base_request_too_large(
+        flow,
+        proxy_log_path=proxy_log_path,
+        firewall_base=firewall_base,
+        observed_size=observed_size,
+    )
+    _mark_matched_firewall_failure(
+        flow,
+        action="ALLOW",
+        error_code="auth_base_request_body_too_large",
+    )
+
+
+def mark_auth_base_request_length_required(
+    flow: http.HTTPFlow,
+    *,
+    proxy_log_path: str,
+    firewall_base: str,
+    reason: str,
+) -> None:
+    """Record unbounded auth.base body framing before killing the flow."""
+    flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base request body requires a valid Content-Length",
+        type="firewall",
+        firewall_base=firewall_base,
+        framing_error=reason,
+        request_body_limit_bytes=MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    )
+    _mark_matched_firewall_failure(
+        flow,
+        action="ALLOW",
+        error_code="auth_base_request_body_length_required",
     )
 
 
@@ -1074,8 +1187,8 @@ async def _apply_url_rewrite(
     # The addon forwards the request itself because mitmproxy's eager
     # connection already connected to the placeholder IP. Setting
     # flow.response bypasses the upstream connection entirely.
-    orig_query = urllib.parse.urlparse(flow.request.path).query
     try:
+        orig_query = _request_path_query(flow)
         new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
     except ValueError as e:
         _set_url_rewrite_forward_failed(

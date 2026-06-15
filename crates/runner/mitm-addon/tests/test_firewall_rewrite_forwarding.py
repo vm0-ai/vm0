@@ -10,6 +10,7 @@ import auth_base_forwarder as forwarder
 from aws_sigv4 import AwsSigV4Credentials
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
+from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
 
 def _templated_builtin_auth_header_names() -> list[str]:
@@ -721,9 +722,7 @@ class TestAuthBaseUrlRewriteForwarding:
         assert "api_key" not in flow.request.query
         assert flow.request.query["client"] == "visible"
         # Success-path log line must not be written.
-        log_text = await asyncio.to_thread(
-            lambda: proxy_log_path.read_text() if proxy_log_path.exists() else ""
-        )
+        log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "URL rewrite forward failed" in log_text
         assert "Firewall URL rewrite:" not in log_text
         assert f"Firewall {allow.api_entry['base']}:" not in log_text

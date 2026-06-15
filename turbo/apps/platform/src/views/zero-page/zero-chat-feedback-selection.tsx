@@ -73,13 +73,13 @@ function FeedbackToolbar({
       onOpenAutoFocus={(event) => {
         return event.preventDefault();
       }}
-      className="w-auto rounded-xl border-0 bg-foreground p-1 text-background shadow-lg"
+      className="w-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg"
     >
       <div className="flex items-center gap-0.5">
         <button
           type="button"
           onClick={onCopy}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-background/10"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           {copied ? (
             <IconCheck size={14} stroke={2} />
@@ -88,11 +88,11 @@ function FeedbackToolbar({
           )}
           {copied ? "Copied" : "Copy"}
         </button>
-        <div className="h-4 w-px bg-background/20" />
+        <div className="h-4 w-px bg-border" />
         <button
           type="button"
           onClick={onProvideFeedback}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-background/10"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <IconMessageCircle size={14} stroke={2} />
           Provide feedback

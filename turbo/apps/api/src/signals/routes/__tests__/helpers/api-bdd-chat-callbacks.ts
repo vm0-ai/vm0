@@ -2,9 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { z } from "zod";
 
 import { createApp } from "../../../../app-factory";
@@ -107,10 +105,6 @@ function capturedRunContextSnapshot(
 }
 
 export function createChatCallbacksApi(context: TestContext) {
-  function featureSwitchesClient() {
-    return setupApp({ context })(zeroFeatureSwitchesContract);
-  }
-
   function pushSubscriptionsClient() {
     return setupApp({ context })(pushSubscriptionsContract);
   }
@@ -218,18 +212,6 @@ export function createChatCallbacksApi(context: TestContext) {
     disableVapid(): void {
       mockOptionalEnv("VAPID_PUBLIC_KEY", undefined);
       mockOptionalEnv("VAPID_PRIVATE_KEY", undefined);
-    },
-
-    async enableChatRecommendedFollowups(actor: ApiTestUser): Promise<void> {
-      await accept(
-        featureSwitchesClient().update({
-          headers: authenticate(context, actor),
-          body: {
-            switches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
-          },
-        }),
-        [200],
-      );
     },
 
     /** Replaces the org model-first policy set through the public route. */

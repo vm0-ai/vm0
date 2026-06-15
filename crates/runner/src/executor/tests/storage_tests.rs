@@ -54,7 +54,10 @@ fn guest_download_env_includes_run_id_for_guest_common_logs() {
 
     assert_eq!(env[0].0, "VM0_RUN_ID");
     assert_eq!(env[0].1, run_id);
-    assert_eq!(env[1].0, guest_runtime_paths::GUEST_RUNTIME_DIR_ENV);
+    assert_eq!(
+        env[1].0,
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV
+    );
     assert_eq!(env[1].1, runtime_dir);
 }
 

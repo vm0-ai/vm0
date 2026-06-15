@@ -22,7 +22,7 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
     unsafe {
         std::env::set_var("VM0_RUN_ID", &run_id);
         std::env::set_var(
-            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             runtime_dir.as_os_str(),
         );
         std::env::set_var("VM0_PROMPT", "@exit-after-result");
