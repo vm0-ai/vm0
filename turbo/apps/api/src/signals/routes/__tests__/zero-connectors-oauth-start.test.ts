@@ -172,25 +172,6 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
-  it("rejects YouTube OAuth start when the connector feature is disabled", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
-
-    const response = await requestOauthStart("youtube", {
-      headers: { authorization: "Bearer clerk-session" },
-    });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: "youtube connector is not available",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("rejects OAuth start when the auth method is statically hidden", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -293,17 +274,12 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
   });
 
-  it("starts YouTube OAuth when the connector feature is enabled", async () => {
+  it("starts YouTube OAuth without a feature switch", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     orgIds.push(orgId);
     mocks.clerk.session(userId, orgId);
     const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.YouTubeConnector]: true },
-    });
 
     const response = await requestOauthStart("youtube", {
       headers: { authorization: "Bearer clerk-session" },
