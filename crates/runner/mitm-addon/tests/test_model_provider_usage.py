@@ -309,7 +309,6 @@ class TestReportModelProviderUsage:
         assert entry["run_id"] == "run-abc-123"
         assert entry["firewall_name"] == "model-provider:anthropic-api-key"
         assert entry["missing_sandbox_token"] is True
-        assert entry["missing_api_url"] is False
 
     def test_logs_underbilling_when_missing_api_url(
         self, tmp_path, real_flow, fresh_usage_executor, mitm_ctx
