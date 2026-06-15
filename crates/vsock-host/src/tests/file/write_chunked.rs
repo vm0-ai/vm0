@@ -263,6 +263,48 @@ async fn test_write_file_chunked() {
 }
 
 #[tokio::test]
+async fn write_file_chunked_quotes_target_path_with_single_quote() {
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big'quote.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
+
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
+
+    let second = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, second.seq()).await;
+
+    let rename = fixture.expect_rename().await;
+    assert!(rename.command.contains("'/tmp/big'\\''quote.bin.vm0tmp-"));
+    assert!(rename.command.ends_with(" '/tmp/big'\\''quote.bin'"));
+    send_exec_result(
+        &mut fixture.guest,
+        rename.seq(),
+        ExecTermination::Exited { exit_code: 1 },
+        &[],
+        b"permission denied",
+    )
+    .await;
+
+    let cleanup = fixture.expect_cleanup().await;
+    assert!(
+        cleanup
+            .command
+            .starts_with("rm -f -- '/tmp/big'\\''quote.bin.vm0tmp-")
+    );
+    send_exec_result(
+        &mut fixture.guest,
+        cleanup.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("permission denied"));
+}
+
+#[tokio::test]
 async fn write_file_chunked_preserves_sudo_on_chunks_rename_cleanup_and_retry() {
     let mut rename_fixture = ChunkedWriteFixture::new("/tmp/sudo-big.bin").await;
     let rename_task = rename_fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), true);
