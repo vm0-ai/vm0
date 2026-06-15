@@ -1755,14 +1755,40 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(secondPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, second.runId);
 
-    // A brand-new thread starts clean: the style does not carry over.
+    // Turn 3: attaching a video preset in the same thread keeps it alongside the
+    // illustration style — multiple template types coexist per thread.
+    const preset = VIDEO_STYLE_PRESETS.find((item) => {
+      return item.id === "tech-minimalist-reveal";
+    });
+    if (!preset) {
+      throw new Error("Expected the tech-minimalist-reveal video preset");
+    }
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "now make a video",
+      generationTemplate: {
+        type: "video",
+        selection: { stylePresetId: preset.id },
+      },
+    });
+    const thirdPrompt = (await api.readRun(actor, third.runId))
+      .appendSystemPrompt;
+    expect(thirdPrompt).toContain("# Video Template Preset");
+    expect(thirdPrompt).toContain(`- Preset name: ${preset.nameEn}`);
+    expect(thirdPrompt).toContain("# Attached illustration style");
+    expect(thirdPrompt).toContain(style.illustrationStyleId);
+    await cancelChatRun(actor, third.runId);
+
+    // A brand-new thread starts clean: neither template carries over.
     const fresh = await sendChatRun(actor, { agentId, prompt: "draw a cat" });
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
     expect(freshPrompt).not.toContain("# Attached illustration style");
+    expect(freshPrompt).not.toContain("# Video Template Preset");
     expect(freshPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, fresh.runId);
-  }, 90_000);
+  }, 120_000);
 
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();

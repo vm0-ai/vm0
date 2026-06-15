@@ -933,6 +933,16 @@ export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
 export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;
+export type GenerationTemplateType = GenerationTemplateRequest["type"];
+/**
+ * Per-thread sticky generation templates, keyed by template type so a single
+ * thread can keep an illustration style, a video preset, and a presentation
+ * design active at the same time. Each explicit selection updates only its own
+ * type's slot, leaving the others untouched.
+ */
+export type ThreadGenerationTemplates = Partial<
+  Record<GenerationTemplateType, GenerationTemplateRequest>
+>;
 export type PresentationGenerationTemplateRequest = z.infer<
   typeof presentationGenerationTemplateRequestSchema
 >;
