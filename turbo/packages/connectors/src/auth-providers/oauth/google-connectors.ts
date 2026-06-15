@@ -14,6 +14,7 @@ export const GOOGLE_OAUTH_CONNECTOR_TYPES = [
   "google-meet",
   "google-search-console",
   "google-sheets",
+  "youtube",
 ] as const satisfies readonly AuthCodeGrantConnectorType[];
 
 export type GoogleOAuthConnectorType =
