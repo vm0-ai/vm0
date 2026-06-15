@@ -20,7 +20,43 @@ function buildDeepSeekKeys(
   });
 }
 
+function buildAnthropicKeys(
+  values: Readonly<Record<string, string | undefined>>,
+): ReturnType<typeof buildVm0ApiKeys> {
+  return buildVm0ApiKeys(readEnvFrom(values), () => {
+    // Suppress expected skip logs for vendors that are not configured in tests.
+  }).filter((key) => {
+    return key.vendor === "anthropic";
+  });
+}
+
 describe("buildVm0ApiKeys", () => {
+  it("falls back to ANTHROPIC_API_KEY for Anthropic dev seed rows", () => {
+    const anthropicKeys = buildAnthropicKeys({
+      DEV_MODEL_ANTHROPIC_KEY: "",
+      ANTHROPIC_API_KEY: "provider-anthropic-key",
+    });
+
+    expect(anthropicKeys.length).toBeGreaterThan(0);
+    expect(anthropicKeys).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          apiKey: "provider-anthropic-key",
+          label: "dev-seed",
+          model: "claude-sonnet-4-6",
+          vendor: "anthropic",
+        }),
+      ]),
+    );
+    expect(
+      new Set(
+        anthropicKeys.map((key) => {
+          return key.apiKey;
+        }),
+      ),
+    ).toStrictEqual(new Set(["provider-anthropic-key"]));
+  });
+
   it("builds DeepSeek dev seed rows from DEV_MODEL_DEEPSEEK_KEY", () => {
     const deepSeekKeys = buildDeepSeekKeys({
       DEV_MODEL_DEEPSEEK_KEY: "dev-deepseek-key",
