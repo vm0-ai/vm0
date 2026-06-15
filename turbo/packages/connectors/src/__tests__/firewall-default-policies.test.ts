@@ -64,6 +64,14 @@ describe("getDefaultFirewallPolicies", () => {
     expect(policy.policies["account-waf.write"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("deny");
   });
+
+  it("should default Google Cloud unknown endpoints to deny", () => {
+    const policy = getDefaultFirewallPolicies("google-cloud");
+
+    expect(policy.policies["compute.instances.get"]).toBe("allow");
+    expect(policy.policies["compute.instances.create"]).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
 });
 
 describe("resolveFirewallPolicies", () => {
