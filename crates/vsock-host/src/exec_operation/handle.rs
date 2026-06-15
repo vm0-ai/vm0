@@ -315,10 +315,11 @@ impl ExecOperationHandle {
 
     /// Send an explicit cancel request and wait for a cancelled terminal result.
     ///
-    /// If the terminal result is already available before cancel is sent, this
-    /// returns that result without sending a duplicate cancel frame. If cancel
-    /// is sent but the terminal result does not arrive before `timeout`, the
-    /// connection is poisoned because guest process state is no longer known.
+    /// If terminal dispatch wins the race before cancel reaches the write
+    /// boundary, this returns that result without sending a stale cancel frame.
+    /// If cancel is sent but the terminal result does not arrive before
+    /// `timeout`, the connection is poisoned because guest process state is no
+    /// longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
         let registered_at = self.wait_core.diagnostic().registered_at;
@@ -518,10 +519,11 @@ impl SupervisedExecHandle {
 
     /// Send `MSG_EXEC_CANCEL` and wait for the terminal exec result.
     ///
-    /// If the terminal result is already available before cancel is sent, this
-    /// returns that result without sending a duplicate cancel frame. If cancel
-    /// is sent but the terminal result does not arrive before `timeout`, the
-    /// connection is poisoned because guest process state is no longer known.
+    /// If terminal dispatch wins the race before cancel reaches the write
+    /// boundary, this returns that result without sending a stale cancel frame.
+    /// If cancel is sent but the terminal result does not arrive before
+    /// `timeout`, the connection is poisoned because guest process state is no
+    /// longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
         let registered_at = self.wait_core.diagnostic().registered_at;
