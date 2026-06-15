@@ -433,6 +433,116 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
 }
 
 #[tokio::test]
+async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let target_path = "/tmp/shared-failure.bin";
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
+    let success_marker = 0xAA;
+    let failure_marker = 0xBB;
+    let successful_write = spawn_write_file(
+        Arc::clone(&host),
+        target_path,
+        vec![success_marker; chunk_limit + 1],
+        false,
+    );
+    let failing_write = spawn_write_file(
+        Arc::clone(&host),
+        target_path,
+        vec![failure_marker; chunk_limit + 1],
+        false,
+    );
+    let mut chunks_by_temp: BTreeMap<String, (u8, usize)> = BTreeMap::new();
+    let mut temp_by_marker: BTreeMap<u8, String> = BTreeMap::new();
+    let mut successful_temp_renamed = false;
+    let mut failed_temp_cleaned = false;
+
+    while !(successful_temp_renamed && failed_temp_cleaned) {
+        let msg = read_guest_message(&mut guest).await;
+        match msg.msg_type {
+            MSG_WRITE_FILE => {
+                let (path, content, sudo, append) =
+                    vsock_proto::decode_write_file(&msg.payload).unwrap();
+                assert!(!sudo);
+                assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
+                let marker = *content.first().expect("chunk content");
+                assert!(matches!(marker, 0xAA | 0xBB));
+                assert!(content.iter().all(|byte| *byte == marker));
+
+                let chunk_count =
+                    if let Some((known_marker, chunk_count)) = chunks_by_temp.get_mut(path) {
+                        assert_eq!(*known_marker, marker);
+                        assert!(append);
+                        assert_eq!(content.len(), 1);
+                        *chunk_count += 1;
+                        *chunk_count
+                    } else {
+                        assert!(!append);
+                        assert_eq!(content.len(), chunk_limit);
+                        assert!(temp_by_marker.insert(marker, path.to_string()).is_none());
+                        chunks_by_temp.insert(path.to_string(), (marker, 1));
+                        1
+                    };
+
+                if marker == failure_marker && chunk_count == 2 {
+                    send_write_file_failure(&mut guest, msg.seq, "disk full").await;
+                } else {
+                    send_write_file_success(&mut guest, msg.seq).await;
+                }
+            }
+            MSG_EXEC_START => {
+                let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
+                assert!(!decoded.sudo);
+                assert_eq!(decoded.stdout, helper_exec_capture_policy());
+                assert_eq!(decoded.stderr, helper_exec_capture_policy());
+                assert!(decoded.expected_exit_codes.is_empty());
+                let success_temp = temp_by_marker
+                    .get(&success_marker)
+                    .expect("successful temp path");
+                let failed_temp = temp_by_marker
+                    .get(&failure_marker)
+                    .expect("failed temp path");
+
+                match decoded.label {
+                    "write-file-rename" => {
+                        let expected_command = format!(
+                            "mv -f -- {} {}",
+                            shell_quote_for_test(success_temp),
+                            shell_quote_for_test(target_path)
+                        );
+                        assert_eq!(decoded.command, expected_command);
+                        assert!(!decoded.command.contains(failed_temp));
+                        successful_temp_renamed = true;
+                    }
+                    "exec-cleanup" => {
+                        let expected_command =
+                            format!("rm -f -- {}", shell_quote_for_test(failed_temp));
+                        assert_eq!(decoded.command, expected_command);
+                        assert!(!decoded.command.contains(success_temp));
+                        failed_temp_cleaned = true;
+                    }
+                    label => panic!("unexpected exec label {label}"),
+                }
+
+                send_exec_result(
+                    &mut guest,
+                    msg.seq,
+                    ExecTermination::Exited { exit_code: 0 },
+                    &[],
+                    &[],
+                )
+                .await;
+            }
+            _ => panic!("unexpected guest message type {:#04x}", msg.msg_type),
+        }
+    }
+
+    successful_write.await.unwrap().unwrap();
+    let err = failing_write.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("disk full"));
+}
+
+#[tokio::test]
 async fn write_file_chunked_preserves_sudo_on_chunks_rename_cleanup_and_retry() {
     let mut rename_fixture = ChunkedWriteFixture::new("/tmp/sudo-big.bin").await;
     let rename_task = rename_fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), true);
