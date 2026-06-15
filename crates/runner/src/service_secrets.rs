@@ -183,10 +183,30 @@ async fn read_private_service_secrets(path: &Path) -> RunnerResult<ServiceSecret
 }
 
 async fn read_source_file_to_string(path: &Path) -> RunnerResult<String> {
-    let file = tokio::fs::File::open(path).await.map_err(|e| {
+    let file = open_source_file(path).await?;
+    read_limited_utf8(file, path).await
+}
+
+async fn open_source_file(path: &Path) -> RunnerResult<tokio::fs::File> {
+    let mut options = tokio::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        options.custom_flags(nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
+    }
+    let file = options.open(path).await.map_err(|e| {
         RunnerError::Config(format!("open service secrets file {}: {e}", path.display()))
     })?;
-    read_limited_utf8(file, path).await
+    let metadata = file.metadata().await.map_err(|e| {
+        RunnerError::Config(format!("stat service secrets file {}: {e}", path.display()))
+    })?;
+    if !metadata.is_file() {
+        return Err(RunnerError::Config(format!(
+            "service secrets file {} is not a regular file",
+            path.display()
+        )));
+    }
+    Ok(file)
 }
 
 async fn read_limited_utf8(file: tokio::fs::File, path: &Path) -> RunnerResult<String> {
@@ -420,5 +440,25 @@ mod tests {
         let loaded = read_private_service_secrets(&destination).await.unwrap();
         assert_eq!(loaded.sentry_dsn(), Some("sentry"));
         assert_eq!(loaded.axiom_dataset_suffix(), Some("prod"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stage_service_secrets_file_rejects_fifo_source_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.env");
+        nix::unistd::mkfifo(&source, nix::sys::stat::Mode::from_bits_truncate(0o600)).unwrap();
+        let destination = dir
+            .path()
+            .join("runners")
+            .join("v0.1.0")
+            .join(SERVICE_SECRETS_FILE_NAME);
+
+        let err = stage_service_secrets_file(&source, &destination)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("is not a regular file"));
     }
 }
