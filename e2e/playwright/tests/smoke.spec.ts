@@ -51,41 +51,63 @@ async function signInThroughExternalOnboardingGate(
   page: Page,
   email: string,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  const deadline = Date.now() + 120_000;
+
+  while (Date.now() < deadline) {
     const url = new URL(page.url());
     if (isAuthUrl(url)) {
       const redirectUrl = redirectUrlFromAuthUrl(url);
+      const currentHref = url.href;
       await clerk.signIn({ page, emailAddress: email });
       if (redirectUrl && !isOnboardingOrChatUrl(new URL(page.url()))) {
         await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
       }
-      await waitForAuthOrOnboardingUrl(page);
+      await waitForAuthOrOnboardingUrl(
+        page,
+        currentHref,
+        remainingTimeout(deadline, 30_000),
+      );
       continue;
     }
 
-    if (/\/agents\/.*\/chat/.test(url.pathname)) {
+    if (isChatUrl(url)) {
       return;
     }
 
     const continueToSignUp = page.getByRole("link", {
       name: "Continue to sign up",
     });
-    if (await waitForVisible(continueToSignUp, 2_000)) {
+    if (
+      await waitForVisible(continueToSignUp, remainingTimeout(deadline, 2_000))
+    ) {
       await continueToSignUp.click();
-      if (!(await waitForAuthUrl(page, 30_000))) {
-        throw new Error(
-          `Expected onboarding gate to redirect to auth: ${page.url()}`,
-        );
-      }
+      await waitForAuthOrOnboardingUrl(
+        page,
+        url.href,
+        remainingTimeout(deadline, 30_000),
+      );
       continue;
     }
 
     if (url.pathname.includes("/onboarding")) {
-      if (await waitForAuthUrl(page, attempt === 0 ? 10_000 : 3_000)) {
+      if (
+        await waitForOnboardingStep(page, remainingTimeout(deadline, 5_000))
+      ) {
+        return;
+      }
+
+      if (await waitForAuthUrl(page, remainingTimeout(deadline, 10_000))) {
         continue;
       }
-      return;
+
+      continue;
     }
+
+    await waitForAuthOrOnboardingUrl(
+      page,
+      url.href,
+      remainingTimeout(deadline, 5_000),
+    );
   }
 
   throw new Error(
@@ -103,13 +125,42 @@ async function waitForVisible(
     .catch(() => false);
 }
 
-async function waitForAuthOrOnboardingUrl(page: Page): Promise<void> {
-  await page.waitForURL(
-    (url) => {
-      return isAuthUrl(url) || isOnboardingOrChatUrl(url);
-    },
-    { timeout: 60_000, waitUntil: "domcontentloaded" },
-  );
+async function waitForOnboardingStep(
+  page: Page,
+  timeout: number,
+): Promise<boolean> {
+  const visibleChecks = [
+    page.getByPlaceholder("e.g. Acme Corp"),
+    page.getByTestId("onboarding-step-select-connectors"),
+    page.getByTestId("onboarding-step-trial"),
+  ].map((locator) => locator.waitFor({ state: "visible", timeout }));
+
+  return await Promise.any(visibleChecks)
+    .then(() => true)
+    .catch(() => false);
+}
+
+async function waitForAuthOrOnboardingUrl(
+  page: Page,
+  currentHref: string,
+  timeout: number,
+): Promise<boolean> {
+  return await page
+    .waitForURL(
+      (url) => {
+        return (
+          url.href !== currentHref &&
+          (isAuthUrl(url) || isOnboardingOrChatUrl(url))
+        );
+      },
+      { timeout, waitUntil: "domcontentloaded" },
+    )
+    .then(() => true)
+    .catch(() => false);
+}
+
+function remainingTimeout(deadline: number, maxTimeout: number): number {
+  return Math.max(1, Math.min(maxTimeout, deadline - Date.now()));
 }
 
 async function waitForAuthUrl(page: Page, timeout: number): Promise<boolean> {
@@ -124,6 +175,10 @@ async function waitForAuthUrl(page: Page, timeout: number): Promise<boolean> {
 
 function isAuthUrl(url: URL): boolean {
   return url.pathname.includes("/sign-up") || url.pathname.includes("/sign-in");
+}
+
+function isChatUrl(url: URL): boolean {
+  return /\/agents\/.*\/chat/.test(url.pathname);
 }
 
 function redirectUrlFromAuthUrl(url: URL): string | null {
@@ -143,10 +198,7 @@ function redirectUrlFromAuthUrl(url: URL): string | null {
 }
 
 function isOnboardingOrChatUrl(url: URL): boolean {
-  return (
-    url.pathname.includes("/onboarding") ||
-    /\/agents\/.*\/chat/.test(url.pathname)
-  );
+  return url.pathname.includes("/onboarding") || isChatUrl(url);
 }
 
 async function completeOnboarding(page: Page) {
