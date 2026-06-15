@@ -238,8 +238,9 @@ mod tests {
         }
         // SAFETY: parent still owns the read fd and transfers it to OwnedFd.
         let read_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let child = ChildGuard::new(pid);
         wait_for_child_ready(&read_fd);
-        ChildGuard::new(pid)
+        child
     }
 
     fn wait_for_child_ready(read_fd: &OwnedFd) {
