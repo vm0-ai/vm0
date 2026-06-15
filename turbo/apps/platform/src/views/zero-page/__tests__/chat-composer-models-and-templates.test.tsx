@@ -1670,4 +1670,126 @@ describe("chat composer templates", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  it("reopens the picker on the presentation tab from the selected chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.VideoTemplatePicker]: true,
+      },
+    });
+
+    await selectTemplate(user, template);
+
+    click(
+      await screen.findByLabelText(
+        `Preview template ${templateLabel(template)}`,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+  });
+
+  it("reopens on the illustration tab from the chip after the last-used tab changed", async () => {
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    // Select an illustration style, which leaves the picker on the
+    // Illustration tab.
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Illustration")).toBeInTheDocument();
+    });
+    click(tabByText("Illustration"));
+    click(
+      await screen.findByLabelText(
+        `Select template ${illustrationTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
+      ).toBeInTheDocument();
+    });
+
+    // Move the last-used tab back to Presentation, then close without changing
+    // the selection so the persisted tab no longer matches the selection.
+    click(screen.getByLabelText("Template"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    click(tabByText("Presentation"));
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    // Clicking the chip reopens on the tab matching the selection's type.
+    click(
+      screen.getByLabelText(`Preview template ${illustrationTemplate.title}`),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Illustration")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+  });
+
+  it("removes the selected template from the chip without opening the picker", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await selectTemplate(user, template);
+
+    click(screen.getByLabelText(`Remove template ${templateLabel(template)}`));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(`Preview template ${templateLabel(template)}`),
+    ).not.toBeInTheDocument();
+  });
 });

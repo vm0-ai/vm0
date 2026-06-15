@@ -2138,32 +2138,43 @@ function TemplatePickerDialog({
 
 function SelectedTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: PresentationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   const label = formatPresentationTemplateKind(item.templateId);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={r2ImageTransformUrl(
-                item.previewImage,
-                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-              )}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Presentation
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">{label}</span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${label}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Presentation
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {label}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${label}`}
@@ -2181,29 +2192,38 @@ function SelectedTemplateChip({
 
 function SelectedVideoTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: VideoStylePreset;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <IconVideo
-              size={12}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Video
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.nameEn}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview video style ${item.nameEn}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconVideo
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Video
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.nameEn}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove video style ${item.nameEn}`}
@@ -2221,33 +2241,42 @@ function SelectedVideoTemplateChip({
 
 function SelectedIllustrationTemplateChip({
   item,
+  onOpen,
   onRemove,
 }: {
   item: IllustrationTemplateItem;
+  onOpen: () => void;
   onRemove: () => void;
 }) {
   return (
     <div className="px-4 pt-3">
       <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-            <img
-              src={r2ImageTransformUrl(
-                item.previewImage,
-                SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-              )}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </span>
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Illustration
-          </span>
-          <span className="h-3.5 w-px shrink-0 bg-border/70" />
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.title}
-          </span>
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <img
+                src={r2ImageTransformUrl(
+                  item.previewImage,
+                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+                )}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Illustration
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
           <button
             type="button"
             aria-label={`Remove template ${item.title}`}
@@ -2270,16 +2299,35 @@ function SelectedTemplateChipSlot({
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
 }) {
+  const setOpen = useSet(setTemplatePickerOpen$);
+  const setCategory = useSet(setTemplatePickerCategory$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   if (!picker) {
     return null;
   }
+  // Reopen the picker on the tab matching the selected template's type so the
+  // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
+  const openPicker = (category: string) => {
+    setSearch("");
+    setVideoGroup("all");
+    setPreviewSlug(null);
+    setSelectedSlideIndex(0);
+    setCategory(category);
+    setOpen(true);
+  };
   if (presentationItem) {
     return (
       <SelectedTemplateChip
         item={presentationItem}
+        onOpen={() => {
+          return openPicker("slides");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2291,6 +2339,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedVideoTemplateChip
         item={videoItem}
+        onOpen={() => {
+          return openPicker("video");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
@@ -2302,6 +2353,9 @@ function SelectedTemplateChipSlot({
     return (
       <SelectedIllustrationTemplateChip
         item={illustrationItem}
+        onOpen={() => {
+          return openPicker("illustration");
+        }}
         onRemove={() => {
           picker.onChange(undefined);
           onDraftChange?.();
