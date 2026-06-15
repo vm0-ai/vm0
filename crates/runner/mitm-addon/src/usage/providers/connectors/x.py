@@ -23,6 +23,7 @@ from logging_utils import log_proxy_entry
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
 from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
+from ...underbilling import log_usage_underbilling
 from .response_parser import ConnectorResponseParser
 from .x_billing import (
     bucket_needs_body_refinement,
@@ -799,17 +800,7 @@ def _compute_billable_counts(
     if resp_meta.get("body_parsed"):
         if req_meta.get("is_count_endpoint"):
             total = _as_non_bool_int(resp_meta.get("response_total_tweet_count"))
-            if total is None:
-                log_warn(
-                    "X count endpoint response missing total_tweet_count; skipping primary billing",
-                    {
-                        "category": endpoint_bucket,
-                        "response_data_count": data,
-                    },
-                )
-                primary = 0
-            else:
-                primary = total
+            primary = 0 if total is None else total
         else:
             # Body was parsed — trust actual response counts.
             # Soft errors (no data field) and empty searches correctly yield 0.
@@ -991,27 +982,52 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         parse_error = resp_meta.get("parse_error")
         if isinstance(parse_error, str) and (parse_error := parse_error.strip()):
             log_extra["parse_error"] = parse_error
-        log_proxy_entry(
+        log_usage_underbilling(
             proxy_log_path,
-            "error",
             (
                 "X count endpoint response unparseable — skipping billing"
                 if req_meta.get("is_count_endpoint")
                 else "X response unparseable and request carries no count hints — skipping billing"
             ),
+            "unparseable_usage_response",
+            "confirmed",
             **log_context,
             **log_extra,
         )
 
+    if (
+        flow.request.method == "GET"
+        and req_meta.get("is_count_endpoint")
+        and resp_meta.get("body_parsed")
+        and _as_non_bool_int(resp_meta.get("response_total_tweet_count")) is None
+    ):
+        log_usage_underbilling(
+            proxy_log_path,
+            "X count endpoint response missing total_tweet_count — skipping billing",
+            "missing_count_endpoint_total",
+            "confirmed",
+            **log_context,
+            body_truncated=bool(resp_meta.get("body_truncated")),
+            response_data_count=resp_meta.get("response_data_count") or 0,
+        )
+
     # Buffer usage events for aggregate platform upload.
+    if not billable_counts:
+        return
+
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
     api_url = get_api_url()
     if not sandbox_token or not api_url:
-        log_proxy_entry(
+        log_usage_underbilling(
             proxy_log_path,
-            "warn",
             "Cannot report usage event: missing sandbox_token or api_url",
-            type="usage_event",
+            "missing_reporting_context",
+            "confirmed",
+            run_id=run_id,
+            firewall_name=firewall_name,
+            permission=permission,
+            missing_sandbox_token=not bool(sandbox_token),
+            missing_api_url=not bool(api_url),
         )
         return
     url = f"{api_url}/api/webhooks/agent/usage-event"

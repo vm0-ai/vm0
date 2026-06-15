@@ -31,6 +31,7 @@ import {
   getSandboxAuthForRun,
   unauthorizedRunMismatch,
 } from "./agent-webhook-auth";
+import { usageUnderbillingFields } from "../usage-underbilling";
 
 const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
@@ -150,8 +151,10 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!insertResult.ok) {
     if (isForeignKeyViolation(insertResult.error)) {
-      L.debug("Run not found for usage event, dropping", {
+      L.error("Run not found for usage event, dropping", {
+        ...usageUnderbillingFields("run_not_found", "confirmed"),
         runId: body.runId,
+        orgId: auth.orgId,
         eventCount: body.events.length,
       });
       return notFound("Run not found");
