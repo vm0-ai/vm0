@@ -172,25 +172,6 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
-  it("rejects Google Cloud OAuth start when the connector feature is disabled", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
-
-    const response = await requestOauthStart("google-cloud", {
-      headers: { authorization: "Bearer clerk-session" },
-    });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: "google-cloud connector is not available",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("rejects YouTube OAuth start when the connector feature is disabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -215,12 +196,6 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     const orgId = `org_${randomUUID()}`;
     orgIds.push(orgId);
     mocks.clerk.session(userId, orgId);
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.GoogleCloudConnector]: true },
-    });
 
     const authMethods = CONNECTOR_TYPES["google-cloud"].authMethods;
     const originalOauth = authMethods.oauth;
@@ -253,17 +228,12 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
-  it("starts Google Cloud OAuth when the connector feature is enabled", async () => {
+  it("starts Google Cloud OAuth without a feature switch", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     orgIds.push(orgId);
     mocks.clerk.session(userId, orgId);
     const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.GoogleCloudConnector]: true },
-    });
 
     const response = await requestOauthStart("google-cloud", {
       headers: { authorization: "Bearer clerk-session" },

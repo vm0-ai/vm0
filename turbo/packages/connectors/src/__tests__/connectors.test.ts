@@ -2621,14 +2621,9 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ]);
   });
 
-  it("exposes Google Cloud OAuth only when its switch is enabled", () => {
+  it("exposes Google Cloud OAuth without a feature switch", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-cloud", {}),
-    ).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethodIds("google-cloud", {
-        [FeatureSwitchKey.GoogleCloudConnector]: true,
-      }),
     ).toStrictEqual(["oauth"]);
   });
 
