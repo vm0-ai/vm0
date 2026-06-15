@@ -655,13 +655,8 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     serviceName: "youtube",
     serviceDescription: "YouTube Data API",
     placeholderKey: "YOUTUBE_TOKEN",
-    // Format: AIza + 35 word chars (gitleaks: gcp-api-key)
-    placeholderValue: "AIzaSyBCoffeeSafeLocalCoffeeSafeLocalCo",
-    auth: {
-      headers: {
-        "X-Goog-Api-Key": "${{ secrets.YOUTUBE_TOKEN }}",
-      },
-    },
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("YOUTUBE_TOKEN"),
   },
 };
 

@@ -910,25 +910,6 @@ function VideoTemplateGrid({
   );
 }
 
-function TemplateSectionHeader({
-  label,
-  count,
-}: {
-  label: string;
-  count: number;
-}) {
-  return (
-    <div className="mb-4 flex items-center gap-3">
-      <h3 className="rounded-md bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-        {label}
-      </h3>
-      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-        {count}
-      </span>
-    </div>
-  );
-}
-
 function TemplateEmptyPanel({
   title,
   description,
@@ -1301,7 +1282,7 @@ function TemplatePreviewPage({
             Templates
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
-          <span className="shrink-0 text-muted-foreground">PPT</span>
+          <span className="shrink-0 text-muted-foreground">Presentation</span>
           <span className="shrink-0 text-muted-foreground">/</span>
           <span className="min-w-0 truncate">{item.title}</span>
         </DialogTitle>
@@ -1800,7 +1781,7 @@ function TemplatePickerTabs({
               )}
               stroke={1.8}
             />
-            PPT
+            Presentation
           </TabsTrigger>
         )}
         {hasIllustrationTab && (
@@ -2071,10 +2052,6 @@ function TemplatePickerDialog({
             </div>
             {selectedCategory === "slides" && hasPptTab && (
               <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4">
-                <TemplateSectionHeader
-                  label="VM0 templates"
-                  count={filteredPptItems.length}
-                />
                 {filteredPptItems.length > 0 ? (
                   <PptTemplateGrid
                     items={filteredPptItems}
@@ -2095,10 +2072,6 @@ function TemplatePickerDialog({
                 data-illustration-template-grid-scroll=""
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <TemplateSectionHeader
-                  label="VM0 illustration styles"
-                  count={filteredIllustrationItems.length}
-                />
                 {filteredIllustrationItems.length > 0 ? (
                   <IllustrationTemplateGrid
                     items={filteredIllustrationItems}
@@ -2119,10 +2092,6 @@ function TemplatePickerDialog({
                 data-video-template-grid-scroll=""
                 className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
               >
-                <TemplateSectionHeader
-                  label="VM0 video styles"
-                  count={filteredVideoItems.length}
-                />
                 <div className="mb-4 flex flex-wrap gap-2">
                   {videoGroupFilters.map((group) => {
                     const selected = videoGroup === group.tag;

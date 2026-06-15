@@ -14,10 +14,11 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -866,6 +867,80 @@ describe("Automations API", () => {
       .from(zeroRuns)
       .where(inArray(zeroRuns.automationId, [...zombieIds]));
     expect(zombieRuns).toHaveLength(0);
+  });
+
+  it("suspends due time automations whose owner is no longer an org member", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    context.mocks.s3.send.mockResolvedValue({});
+    setSecretKmsClientForTests(fakeKmsClient().client);
+    mockEnv("CRON_SECRET", CRON_SECRET);
+
+    const pastDue = new Date(now() - 60_000);
+    const fixture = await trackAutomations(
+      store.set(
+        seedAutomationsScenario$,
+        {
+          automations: [
+            {
+              name: "orphaned-member",
+              prompt: "Should not run after membership removal",
+              triggerType: "cron",
+              cronExpression: "0 9 * * *",
+              enabled: true,
+              nextRunAt: pastDue,
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const db = store.set(writeDb$);
+    await db
+      .delete(orgMembersCache)
+      .where(
+        and(
+          eq(orgMembersCache.orgId, fixture.orgId),
+          eq(orgMembersCache.userId, fixture.userId),
+        ),
+      );
+
+    const automationId = fixture.automationIds[0]!;
+    const response = await accept(
+      cronApi().execute({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(response.body.skipped).toBeGreaterThanOrEqual(1);
+
+    const [storedAutomation] = await db
+      .select({ enabled: automations.enabled })
+      .from(automations)
+      .where(eq(automations.id, automationId));
+    expect(storedAutomation?.enabled).toBeFalsy();
+
+    const [storedTrigger] = await db
+      .select({
+        enabled: automationTriggers.enabled,
+        nextRunAt: automationTriggers.nextRunAt,
+        lastRunId: automationTriggers.lastRunId,
+      })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, automationId));
+    expect(storedTrigger).toStrictEqual({
+      enabled: false,
+      nextRunAt: null,
+      lastRunId: null,
+    });
+
+    const runs = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.automationId, automationId));
+    expect(runs).toHaveLength(0);
   });
 
   it("enables and disables a single trigger", async () => {

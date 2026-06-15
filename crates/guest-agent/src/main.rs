@@ -342,7 +342,7 @@ fn classify_cli_failure_reason(
     failure_message: &str,
 ) -> Option<FailureReason> {
     let normalized = failure_message.to_ascii_lowercase();
-    if normalized.contains("402 insufficient credits") {
+    if is_insufficient_credits_error(&normalized) {
         return Some(FailureReason::InsufficientCredits);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
@@ -376,6 +376,13 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::UsageLimit);
     }
     None
+}
+
+fn is_insufficient_credits_error(normalized: &str) -> bool {
+    normalized.contains("402 insufficient credits")
+        || (normalized.contains("api error: 402")
+            && normalized.contains("requires more credits")
+            && normalized.contains("can only afford"))
 }
 
 fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
@@ -1122,6 +1129,55 @@ mod tests {
         );
 
         assert_eq!(reason, Some(FailureReason::InsufficientCredits));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_provider_credit_affordability_error() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 402 This request requires more credits, or fewer max_tokens. You requested up to 64000 tokens, but can only afford 1600. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account",
+        );
+
+        assert_eq!(reason, Some(FailureReason::InsufficientCredits));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_result_credit_affordability_diagnostic() {
+        let message = "API Error: 402 This request requires more credits, or fewer max_tokens. You requested up to 64000 tokens, but can only afford 1600. To increase, visit https://openrouter.ai/settings/credits and upgrade to a paid account";
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic =
+            with_cli_failure_reason(diagnostic, msg.message.as_str(), msg.failure_reason);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(
+            diagnostic.failure_reason,
+            Some(FailureReason::InsufficientCredits)
+        );
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_generic_402_error() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "API Error: 402 Payment Required",
+        );
+
+        assert_eq!(reason, None);
     }
 
     #[test]

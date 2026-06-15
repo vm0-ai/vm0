@@ -1,5 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
 import { and, eq, inArray, lte } from "drizzle-orm";
@@ -21,6 +22,7 @@ import {
   automationRowToTimeAutomation,
   DefaultInterpreter,
 } from "./default-interpreter";
+import { suspendOrgMemberAutomations } from "./suspend";
 import { TimeTrigger } from "./time-trigger";
 
 const log = logger("api:automations:trigger-poller");
@@ -58,6 +60,19 @@ interface DueTrigger {
   };
 }
 
+interface DueTriggerRow {
+  readonly trigger: TriggerRow;
+  readonly automationId: string;
+  readonly agentId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly instruction: string;
+  readonly appendSystemPrompt: string | null;
+}
+
 interface ExecuteDueTriggersResult {
   readonly executed: number;
   readonly skipped: number;
@@ -91,6 +106,72 @@ type TriggerRunModelContext =
 
 function isActivePreviousRunStatus(status: string): boolean {
   return status === "pending" || status === "running";
+}
+
+function dueTriggerFromRow(row: DueTriggerRow): DueTrigger {
+  return {
+    trigger: row.trigger,
+    automation: {
+      id: row.automationId,
+      agentId: row.agentId,
+      orgId: row.orgId,
+      userId: row.userId,
+      chatThreadId: row.chatThreadId,
+      name: row.name,
+      description: row.description,
+      instruction: row.instruction,
+      appendSystemPrompt: row.appendSystemPrompt,
+    },
+  };
+}
+
+async function hasOrgMembership(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<boolean> {
+  const [membership] = await db
+    .select({ userId: orgMembersCache.userId })
+    .from(orgMembersCache)
+    .where(
+      and(
+        eq(orgMembersCache.orgId, args.orgId),
+        eq(orgMembersCache.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  return membership !== undefined;
+}
+
+async function suspendIfOwnerMissingMembership(
+  db: Db,
+  due: DueTrigger,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const ownerIsMember = await hasOrgMembership(db, {
+    orgId: due.automation.orgId,
+    userId: due.automation.userId,
+  });
+  signal.throwIfAborted();
+
+  if (ownerIsMember) {
+    return false;
+  }
+
+  log.warn("Suspending trigger: automation owner is no longer an org member", {
+    triggerId: due.trigger.id,
+    automationId: due.automation.id,
+    orgId: due.automation.orgId,
+    userId: due.automation.userId,
+  });
+  await suspendOrgMemberAutomations(db, {
+    orgId: due.automation.orgId,
+    userId: due.automation.userId,
+  });
+  signal.throwIfAborted();
+  return true;
 }
 
 function isRunTriggerFailure(error: unknown): error is RunTriggerFailure {
@@ -418,24 +499,17 @@ export const executeDueTriggers$ = command(
     let executed = 0;
     let skippedActiveRun = 0;
     let skippedClaimRace = 0;
+    let skippedMissingMembership = 0;
     let preRunFailures = 0;
     const timeTrigger = new TimeTrigger();
 
     for (const row of rows) {
-      const due: DueTrigger = {
-        trigger: row.trigger,
-        automation: {
-          id: row.automationId,
-          agentId: row.agentId,
-          orgId: row.orgId,
-          userId: row.userId,
-          chatThreadId: row.chatThreadId,
-          name: row.name,
-          description: row.description,
-          instruction: row.instruction,
-          appendSystemPrompt: row.appendSystemPrompt,
-        },
-      };
+      const due = dueTriggerFromRow(row);
+
+      if (await suspendIfOwnerMissingMembership(db, due, signal)) {
+        skippedMissingMembership++;
+        continue;
+      }
 
       if (row.trigger.lastRunId) {
         const [lastRun] = await db
@@ -489,7 +563,11 @@ export const executeDueTriggers$ = command(
       executed++;
     }
 
-    const skipped = skippedActiveRun + skippedClaimRace + preRunFailures;
+    const skipped =
+      skippedActiveRun +
+      skippedClaimRace +
+      skippedMissingMembership +
+      preRunFailures;
     // Per-tick metrics with the skip reason broken out (#17546): the previous
     // single "skipped" total hid whether the batch was draining real work or
     // just churning on active-run/claim-race rows. Routine diagnostic, so debug
@@ -499,6 +577,7 @@ export const executeDueTriggers$ = command(
       executed,
       skippedActiveRun,
       skippedClaimRace,
+      skippedMissingMembership,
       preRunFailures,
     });
     if (rows.length >= DUE_BATCH_LIMIT && executed === 0) {
@@ -513,6 +592,7 @@ export const executeDueTriggers$ = command(
           dueCount: rows.length,
           skippedActiveRun,
           skippedClaimRace,
+          skippedMissingMembership,
           preRunFailures,
         },
       );

@@ -32,6 +32,16 @@ const WEB_ORIGIN = "https://www.vm0.ai";
 const LOCAL_ORIGIN = "http://localhost:3000";
 const LOCAL_WEB_ORIGIN = "https://www.vm0.ai:8443";
 const AUTH_REQUEST_USER_ID_PREFIX = "user_zero_connectors_oauth_start_";
+const YOUTUBE_OAUTH_SCOPES = [
+  "https://www.googleapis.com/auth/youtube",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
+  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.channel-memberships.creator",
+  "https://www.googleapis.com/auth/youtubepartner",
+  "https://www.googleapis.com/auth/youtubepartner-channel-audit",
+  "https://www.googleapis.com/auth/userinfo.email",
+] as const;
 
 function oauthStartUrl(type: string, origin = BASE_URL): string {
   return new URL(`/api/zero/connectors/${type}/oauth/start`, origin).toString();
@@ -181,6 +191,25 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
+  it("rejects YouTube OAuth start when the connector feature is disabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+
+    const response = await requestOauthStart("youtube", {
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "youtube connector is not available",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
   it("rejects OAuth start when the auth method is statically hidden", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -289,6 +318,63 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       userId,
       orgId,
       redirectUri: `${WEB_ORIGIN}/api/connectors/google-cloud/callback`,
+      consumedAt: null,
+    });
+    expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+  });
+
+  it("starts YouTube OAuth when the connector feature is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.YouTubeConnector]: true },
+    });
+
+    const response = await requestOauthStart("youtube", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "google-test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${WEB_ORIGIN}/api/connectors/youtube/callback`,
+    );
+    expect(
+      authorizationUrl.searchParams.get("scope")?.split(" "),
+    ).toStrictEqual([...YOUTUBE_OAUTH_SCOPES]);
+    expect(authorizationUrl.searchParams.get("access_type")).toBe("offline");
+    expect(authorizationUrl.searchParams.get("prompt")).toBe("consent");
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/);
+
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState).toMatchObject({
+      state,
+      type: "youtube",
+      authMethod: "oauth",
+      userId,
+      orgId,
+      redirectUri: `${WEB_ORIGIN}/api/connectors/youtube/callback`,
       consumedAt: null,
     });
     expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());

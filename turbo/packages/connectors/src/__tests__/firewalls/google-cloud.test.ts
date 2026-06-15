@@ -5,7 +5,12 @@ import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
 } from "../../firewalls";
-import { googleCloudGenerationStats } from "../../firewalls/google-cloud.generated";
+import {
+  googleCloudCategories,
+  googleCloudCategoryOrder,
+  googleCloudDefaultAllowed,
+  googleCloudGenerationStats,
+} from "../../firewalls/google-cloud.generated";
 
 const googleCloudFirewall = getConnectorFirewall("google-cloud");
 
@@ -326,17 +331,126 @@ describe("google-cloud firewall", () => {
     expect(permissionNames()).not.toContain("storage.objects.write");
   });
 
-  it("keeps Google Cloud default policies non-breaking", () => {
+  it("groups Google Cloud permissions by IAM permission family", () => {
+    expect(googleCloudCategories["compute.instances.get"]).toBe(
+      "Compute Engine",
+    );
+    expect(googleCloudCategories["storage.objects.get"]).toBe("Cloud Storage");
+    expect(googleCloudCategories["bigquery.tables.get"]).toBe("BigQuery");
+    expect(googleCloudCategories["iam.serviceAccounts.get"]).toBe("IAM");
+    expect(googleCloudCategories["run.services.get"]).toBe("Cloud Run");
+    expect(googleCloudCategories["cloudbuild.builds.create"]).toBe(
+      "Cloud Build",
+    );
+    expect(googleCloudCategories["artifactregistry.repositories.get"]).toBe(
+      "Artifact Registry",
+    );
+    expect(googleCloudCategories["container.clusters.get"]).toBe(
+      "Google Kubernetes Engine",
+    );
+    expect(googleCloudCategories["secretmanager.versions.access"]).toBe(
+      "Secret Manager",
+    );
+    expect(googleCloudCategoryOrder).toContain("Compute Engine");
+    expect(googleCloudCategoryOrder).toContain("Cloud Storage");
+    expect(googleCloudCategoryOrder).toContain("IAM");
+    expect(googleCloudCategoryOrder).toContain("Secret Manager");
+  });
+
+  it("generates unique Google Cloud default-allowed permissions", () => {
+    expect(new Set(googleCloudDefaultAllowed).size).toBe(
+      googleCloudDefaultAllowed.length,
+    );
+  });
+
+  it("defaults Google Cloud read-like permissions to allow and sensitive operations to deny", () => {
     const policy = getDefaultFirewallPolicies("google-cloud");
 
-    expect(policy.policies["compute.instances.create"]).toBe("allow");
-    expect(policy.policies["resourcemanager.projects.setIamPolicy"]).toBe(
+    expect(policy.policies["compute.instances.get"]).toBe("allow");
+    expect(policy.policies["compute.instances.list"]).toBe("allow");
+    expect(policy.policies["resourcemanager.projects.get"]).toBe("allow");
+    expect(policy.policies["resourcemanager.projects.getIamPolicy"]).toBe(
       "allow",
     );
-    expect(policy.policies["serviceusage.services.enable"]).toBe("allow");
-    expect(policy.policies["storage.objects.create"]).toBe("allow");
-    expect(policy.policies["run.services.create"]).toBe("allow");
-    expect(policy.policies["secretmanager.versions.access"]).toBe("allow");
+    expect(policy.policies["storage.objects.get"]).toBe("allow");
+    expect(policy.policies["bigquery.tables.get"]).toBe("allow");
+    expect(policy.policies["spanner.databases.read"]).toBe("allow");
+    expect(policy.policies["spanner.databases.select"]).toBe("allow");
+
+    expect(policy.policies["compute.instances.create"]).toBe("deny");
+    expect(policy.policies["resourcemanager.projects.setIamPolicy"]).toBe(
+      "deny",
+    );
+    expect(policy.policies["serviceusage.services.enable"]).toBe("deny");
+    expect(policy.policies["storage.objects.create"]).toBe("deny");
+    expect(policy.policies["run.services.create"]).toBe("deny");
+    expect(policy.policies["artifactregistry.files.download"]).toBe("deny");
+    expect(policy.policies["cloudfunctions.functions.sourceCodeGet"]).toBe(
+      "deny",
+    );
+    expect(policy.policies["compute.interconnects.getMacsecConfig"]).toBe(
+      "deny",
+    );
+    expect(policy.policies["compute.instances.getGuestAttributes"]).toBe(
+      "deny",
+    );
+    expect(policy.policies["compute.instances.getScreenshot"]).toBe("deny");
+    expect(policy.policies["compute.instances.getSerialPortOutput"]).toBe(
+      "deny",
+    );
+    expect(policy.policies["secretmanager.versions.access"]).toBe("deny");
+    expect(policy.policies["iam.serviceAccounts.signBlob"]).toBe("deny");
+    expect(policy.policies["iam.serviceAccounts.signJwt"]).toBe("deny");
+    expect(
+      policy.policies["monitoring.notificationChannels.getVerificationCode"],
+    ).toBe("deny");
+    expect(policy.policies["pubsub.topics.publish"]).toBe("deny");
+    expect(policy.policies["pubsub.subscriptions.consume"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("allow");
+  });
+
+  it("generates Google Cloud default-allowed permissions from read-like IAM names", () => {
+    expect(googleCloudDefaultAllowed).toContain("compute.instances.get");
+    expect(googleCloudDefaultAllowed).toContain("compute.instances.list");
+    expect(googleCloudDefaultAllowed).toContain(
+      "resourcemanager.projects.getIamPolicy",
+    );
+    expect(googleCloudDefaultAllowed).toContain("storage.objects.get");
+    expect(googleCloudDefaultAllowed).toContain("spanner.databases.read");
+    expect(googleCloudDefaultAllowed).toContain("spanner.databases.select");
+    expect(googleCloudDefaultAllowed).not.toContain("compute.instances.create");
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "resourcemanager.projects.setIamPolicy",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "artifactregistry.files.download",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "cloudfunctions.functions.sourceCodeGet",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "compute.interconnects.getMacsecConfig",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "compute.instances.getGuestAttributes",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "compute.instances.getScreenshot",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "compute.instances.getSerialPortOutput",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "secretmanager.versions.access",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "iam.serviceAccounts.signBlob",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "monitoring.notificationChannels.getVerificationCode",
+    );
+    expect(googleCloudDefaultAllowed).not.toContain(
+      "pubsub.subscriptions.consume",
+    );
   });
 });

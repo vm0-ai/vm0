@@ -99,6 +99,7 @@ class UsageEventBuffer:
         resource_field_name: ResourceFieldName = "provider",
         include_kind: bool = True,
         log_type: str = "usage_event",
+        preserve_source_idempotency: bool = False,
     ) -> int:
         """Add source usage events and flush if the buffer exceeds a bound."""
         flush_now = False
@@ -113,6 +114,7 @@ class UsageEventBuffer:
                 resource_field_name=resource_field_name,
                 include_kind=include_kind,
                 log_type=log_type,
+                preserve_source_idempotency=preserve_source_idempotency,
             )
             if accepted_count == 0:
                 return 0

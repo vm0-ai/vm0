@@ -46,6 +46,7 @@ import { getStripeClient } from "../external/stripe-client";
 import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 
 const L = logger("WebhookClerkCleanup");
@@ -638,6 +639,19 @@ export const cleanupClerkDeletedUser$ = command(
     await get(deleteUserS3Data(db, userId));
     signal.throwIfAborted();
     await deleteUserData(db, userId);
+  },
+);
+
+export const cleanupClerkDeletedOrgMembership$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await cleanupOrgMemberResources(set(writeDb$), args, signal);
   },
 );
 

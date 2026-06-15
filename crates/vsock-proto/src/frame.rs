@@ -6,8 +6,14 @@ use std::convert::Infallible;
 /// A raw decoded message.
 #[derive(Debug, Clone)]
 pub struct RawMessage {
+    /// Wire message type byte.
     pub msg_type: u8,
+    /// Wire sequence number from the frame header.
+    ///
+    /// See the crate-level wire-format documentation for request-scoped and
+    /// unsolicited-frame sequence rules.
     pub seq: u32,
+    /// Owned type-specific payload bytes.
     pub payload: Vec<u8>,
 }
 
@@ -25,8 +31,14 @@ impl RawMessage {
 /// A raw decoded message that borrows its payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BorrowedRawMessage<'a> {
+    /// Wire message type byte.
     pub msg_type: u8,
+    /// Wire sequence number from the frame header.
+    ///
+    /// See the crate-level wire-format documentation for request-scoped and
+    /// unsolicited-frame sequence rules.
     pub seq: u32,
+    /// Borrowed type-specific payload bytes.
     pub payload: &'a [u8],
 }
 
@@ -70,6 +82,7 @@ pub struct Decoder {
 }
 
 impl Decoder {
+    /// Create an empty streaming decoder.
     pub fn new() -> Self {
         Self {
             buf: Vec::with_capacity(64 * 1024),

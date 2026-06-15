@@ -108,6 +108,7 @@ import { spotifyProvider } from "./connectors/spotify/provider";
 import { tiktokAdsProvider } from "./connectors/tiktok-ads/provider";
 import { xProvider } from "./connectors/x/provider";
 import { xeroProvider } from "./connectors/xero/provider";
+import { youtubeProvider } from "./connectors/youtube/provider";
 import { zoomProvider } from "./connectors/zoom/provider";
 import {
   testOauthApiTokenProvider,
@@ -525,6 +526,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   "tiktok-ads": { oauth: authCodeRefreshProviderEntry(tiktokAdsProvider) },
   x: { oauth: authCodeRefreshProviderEntry(xProvider) },
   xero: { oauth: authCodeRefreshProviderEntry(xeroProvider) },
+  youtube: { oauth: authCodeRefreshTokenRevokeProviderEntry(youtubeProvider) },
   zoom: { oauth: authCodeRefreshProviderEntry(zoomProvider) },
 } satisfies ConnectorAuthMethodProviderRegistry;
 

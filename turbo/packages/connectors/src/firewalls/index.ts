@@ -136,7 +136,12 @@ import { gitlabFirewall } from "./gitlab.generated";
 import { googleAdsFirewall } from "./google-ads.generated";
 import { googleAnalyticsFirewall } from "./google-analytics.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
-import { googleCloudFirewall } from "./google-cloud.generated";
+import {
+  googleCloudCategories,
+  googleCloudCategoryOrder,
+  googleCloudDefaultAllowed,
+  googleCloudFirewall,
+} from "./google-cloud.generated";
 import { googleMapsFirewall } from "./google-maps.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
@@ -689,6 +694,10 @@ const CONNECTOR_CATEGORIES: Partial<
     categories: cloudflareCategories,
     displayOrder: cloudflareCategoryOrder,
   },
+  "google-cloud": {
+    categories: googleCloudCategories,
+    displayOrder: googleCloudCategoryOrder,
+  },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   stripe: { categories: stripeCategories, displayOrder: stripeCategoryOrder },
@@ -812,6 +821,7 @@ const DEFAULT_ALLOWED: Partial<
 > = {
   clerk: clerkDefaultAllowed,
   cloudflare: cloudflareDefaultAllowed,
+  "google-cloud": googleCloudDefaultAllowed,
   gmail: gmailDefaultAllowed,
   slack: slackDefaultAllowed,
   stripe: stripeDefaultAllowed,
