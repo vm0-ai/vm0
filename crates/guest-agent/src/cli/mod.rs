@@ -51,20 +51,39 @@ use uuid::Uuid;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-fn claude_initial_prompt_frame(run_id: &str, prompt: &str) -> serde_json::Value {
-    let uuid = Uuid::new_v5(
+#[derive(serde::Serialize)]
+struct ClaudeInitialPromptFrame<'a> {
+    #[serde(rename = "type")]
+    event_type: &'static str,
+    uuid: String,
+    parent_tool_use_id: Option<&'static str>,
+    message: ClaudeInitialPromptMessage<'a>,
+}
+
+#[derive(serde::Serialize)]
+struct ClaudeInitialPromptMessage<'a> {
+    role: &'static str,
+    content: &'a str,
+}
+
+fn claude_initial_prompt_uuid(run_id: &str) -> String {
+    Uuid::new_v5(
         &Uuid::NAMESPACE_OID,
         format!("vm0:{run_id}:claude-initial-prompt").as_bytes(),
-    );
-    serde_json::json!({
-        "type": "user",
-        "uuid": uuid.to_string(),
-        "parent_tool_use_id": null,
-        "message": {
-            "role": "user",
-            "content": prompt,
+    )
+    .to_string()
+}
+
+fn claude_initial_prompt_frame<'a>(run_id: &str, prompt: &'a str) -> ClaudeInitialPromptFrame<'a> {
+    ClaudeInitialPromptFrame {
+        event_type: "user",
+        uuid: claude_initial_prompt_uuid(run_id),
+        parent_tool_use_id: None,
+        message: ClaudeInitialPromptMessage {
+            role: "user",
+            content: prompt,
         },
-    })
+    }
 }
 
 async fn write_claude_initial_prompt_to_stdin(
@@ -298,10 +317,10 @@ pub async fn execute_cli(
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
 
     let mut initial_prompt_write_handle = initial_prompt_stdin.map(|stdin| {
-        let run_id = env::run_id().to_string();
-        let prompt = env::prompt().to_string();
+        let run_id = env::run_id();
+        let prompt = env::prompt();
         tokio::spawn(
-            async move { write_claude_initial_prompt_to_stdin(stdin, &run_id, &prompt).await },
+            async move { write_claude_initial_prompt_to_stdin(stdin, run_id, prompt).await },
         )
     });
 
@@ -1007,7 +1026,8 @@ mod tests {
 
     #[test]
     fn claude_initial_prompt_frame_matches_stream_json_user_shape() {
-        let frame = claude_initial_prompt_frame("run_123", "hello stdin");
+        let frame = serde_json::to_value(claude_initial_prompt_frame("run_123", "hello stdin"))
+            .expect("serialize prompt frame");
 
         assert_eq!(
             frame.get("type").and_then(serde_json::Value::as_str),
