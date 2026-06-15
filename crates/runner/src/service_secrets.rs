@@ -242,7 +242,7 @@ async fn open_source_file(path: &Path) -> RunnerResult<tokio::fs::File> {
     options.read(true);
     #[cfg(unix)]
     {
-        options.custom_flags(nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
+        options.custom_flags(nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK | nix::libc::O_NOFOLLOW);
     }
     let file = options.open(path).await.map_err(|e| {
         RunnerError::Config(format!("open service secrets file {}: {e}", path.display()))
@@ -574,5 +574,32 @@ mod tests {
             .to_string();
 
         assert!(err.contains("is not a regular file"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stage_service_secrets_file_rejects_symlink_source() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.env");
+        let source = dir.path().join("source.env");
+        let destination = dir
+            .path()
+            .join("runners")
+            .join("v0.1.0")
+            .join(SERVICE_SECRETS_FILE_NAME);
+        tokio::fs::write(&target, "SENTRY_DSN=sentry\n")
+            .await
+            .unwrap();
+        symlink(&target, &source).unwrap();
+
+        let err = stage_service_secrets_file(&source, &destination)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("open service secrets file"));
+        assert!(!destination.exists());
     }
 }
