@@ -1483,7 +1483,7 @@ function ChatImagePreviewLink({
       href={imageUrl}
       onClick={openPreview}
       className={cn(
-        "group/image-preview relative inline-block overflow-hidden",
+        "group/image-preview relative inline-block self-start overflow-hidden",
         linkClassName,
       )}
       aria-label={ariaLabel}
@@ -1521,12 +1521,6 @@ function ChatImagePreviewLink({
           showPlaceholder && "absolute inset-0 opacity-0",
         )}
       />
-      <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100">
-        <IconPhoto
-          size={18}
-          className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
-        />
-      </span>
     </a>
   );
 }
