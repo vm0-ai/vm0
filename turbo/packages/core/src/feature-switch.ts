@@ -328,13 +328,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatConnectorCommands]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Show connected connectors and their curated quick commands in the Zero chat composer slash menu, so users discover what the agent can do with each connector.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.AssistantTextStreaming]: {
     maintainer: "ethan@vm0.ai",
     description:
