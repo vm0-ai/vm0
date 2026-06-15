@@ -46,6 +46,10 @@ impl CliFrameworkBehavior {
         matches!(self.framework, env::Framework::ClaudeCode)
     }
 
+    pub(super) fn uses_stream_json_stdin(self) -> bool {
+        matches!(self.framework, env::Framework::ClaudeCode)
+    }
+
     pub(super) fn track_claude_tool_events(
         self,
         event: &serde_json::Value,
@@ -111,6 +115,12 @@ mod tests {
             !CliFrameworkBehavior::new(env::Framework::ClaudeCode)
                 .handles_claude_result_event(&codex_terminal_event)
         );
+    }
+
+    #[test]
+    fn framework_behavior_stream_json_stdin_only_for_claude_code() {
+        assert!(CliFrameworkBehavior::new(env::Framework::ClaudeCode).uses_stream_json_stdin());
+        assert!(!CliFrameworkBehavior::new(env::Framework::Codex).uses_stream_json_stdin());
     }
 
     #[test]

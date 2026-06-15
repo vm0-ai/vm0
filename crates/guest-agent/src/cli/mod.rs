@@ -47,8 +47,56 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 use termination::{TerminationReason, TerminationState};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use uuid::Uuid;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+
+#[derive(serde::Serialize)]
+struct ClaudeInitialPromptFrame<'a> {
+    #[serde(rename = "type")]
+    event_type: &'static str,
+    uuid: String,
+    parent_tool_use_id: Option<&'static str>,
+    message: ClaudeInitialPromptMessage<'a>,
+}
+
+#[derive(serde::Serialize)]
+struct ClaudeInitialPromptMessage<'a> {
+    role: &'static str,
+    content: &'a str,
+}
+
+fn claude_initial_prompt_uuid(run_id: &str) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("vm0:{run_id}:claude-initial-prompt").as_bytes(),
+    )
+    .to_string()
+}
+
+fn claude_initial_prompt_frame<'a>(run_id: &str, prompt: &'a str) -> ClaudeInitialPromptFrame<'a> {
+    ClaudeInitialPromptFrame {
+        event_type: "user",
+        uuid: claude_initial_prompt_uuid(run_id),
+        parent_tool_use_id: None,
+        message: ClaudeInitialPromptMessage {
+            role: "user",
+            content: prompt,
+        },
+    }
+}
+
+async fn write_claude_initial_prompt_to_stdin(
+    mut stdin: tokio::process::ChildStdin,
+    run_id: &str,
+    prompt: &str,
+) -> Result<(), AgentError> {
+    let mut line = serde_json::to_vec(&claude_initial_prompt_frame(run_id, prompt))?;
+    line.push(b'\n');
+    stdin.write_all(&line).await?;
+    stdin.flush().await?;
+    Ok(())
+}
 
 async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
     match interval {
@@ -184,7 +232,11 @@ pub async fn execute_cli(
 
     let mut cmd = tokio::process::Command::new(bin);
     cmd.args(args)
-        .stdin(Stdio::null())
+        .stdin(if behavior.uses_stream_json_stdin() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
@@ -240,6 +292,17 @@ pub async fn execute_cli(
 
     let mut child = cmd.spawn()?;
 
+    let initial_prompt_stdin = if behavior.uses_stream_json_stdin() {
+        let Some(stdin) = child.stdin.take() else {
+            let _ = child.start_kill();
+            heartbeat_handle.abort();
+            return Err(AgentError::Execution("no stdin".into()));
+        };
+        Some(stdin)
+    } else {
+        None
+    };
+
     let stdout = child
         .stdout
         .take()
@@ -252,6 +315,14 @@ pub async fn execute_cli(
     // Stderr collector
     let mut stderr_handle =
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
+
+    let mut initial_prompt_write_handle = initial_prompt_stdin.map(|stdin| {
+        let run_id = env::run_id();
+        let prompt = env::prompt();
+        tokio::spawn(
+            async move { write_claude_initial_prompt_to_stdin(stdin, run_id, prompt).await },
+        )
+    });
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
     //
@@ -359,6 +430,56 @@ pub async fn execute_cli(
     let mut failure_diagnostic = None;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
+            prompt_write_result = async {
+                match initial_prompt_write_handle.as_mut() {
+                    Some(handle) => Some(handle.await),
+                    None => std::future::pending().await,
+                }
+            }, if initial_prompt_write_handle.is_some() => {
+                initial_prompt_write_handle = None;
+                let can_terminate_for_stdin_error =
+                    matches!(termination_state, TerminationState::Idle) && cli_status.is_none();
+                match prompt_write_result {
+                    Some(Ok(Ok(()))) => {}
+                    Some(Ok(Err(error))) if can_terminate_for_stdin_error => {
+                        log_warn!(
+                            LOG_TAG,
+                            "Failed to write initial prompt to Claude stdin, SIGTERM pgid={}: {error}",
+                            pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                        );
+                        if let Some(pid) = pgid {
+                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        }
+                        termination_state = TerminationState::SigkillPending {
+                            reason: TerminationReason::InitialPromptStdin,
+                        };
+                        termination_deadline.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                        );
+                    }
+                    Some(Ok(Err(_))) => {}
+                    Some(Err(error)) if can_terminate_for_stdin_error => {
+                        log_warn!(
+                            LOG_TAG,
+                            "Initial prompt stdin task failed, SIGTERM pgid={}: {error}",
+                            pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                        );
+                        if let Some(pid) = pgid {
+                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        }
+                        termination_state = TerminationState::SigkillPending {
+                            reason: TerminationReason::InitialPromptStdin,
+                        };
+                        termination_deadline.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                        );
+                    }
+                    Some(Err(_)) => {}
+                    None => {}
+                }
+            }
             line_result = reader.next_line(), if !stdout_eof => {
                 match line_result {
                     Ok(Some(line)) => {
@@ -706,6 +827,30 @@ pub async fn execute_cli(
         }
     };
 
+    if let Some(handle) = initial_prompt_write_handle.take() {
+        if handle.is_finished() {
+            match handle.await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Initial prompt stdin write finished after CLI loop with error: {error}"
+                    );
+                }
+                Err(error) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Initial prompt stdin task failed after CLI loop: {error}"
+                    );
+                }
+            }
+        } else {
+            handle.abort();
+            let _ = handle.await;
+            log_warn!(LOG_TAG, "Aborted unfinished initial prompt stdin task");
+        }
+    }
+
     let event_result = match termination_error {
         Some(err) => Err(err),
         None => event_result,
@@ -871,13 +1016,46 @@ fn with_carried_failure_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        CliFailureDiagnostic, chat_stream_delta_from_event, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason,
+        CliFailureDiagnostic, chat_stream_delta_from_event, claude_initial_prompt_frame,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
     };
     use crate::events;
     use crate::masker::SecretMasker;
     use agent_diagnostics::{FailureDetailSource, FailureReason};
     use serde_json::json;
+
+    #[test]
+    fn claude_initial_prompt_frame_matches_stream_json_user_shape() {
+        let frame = serde_json::to_value(claude_initial_prompt_frame("run_123", "hello stdin"))
+            .expect("serialize prompt frame");
+
+        assert_eq!(
+            frame.get("type").and_then(serde_json::Value::as_str),
+            Some("user")
+        );
+        assert_eq!(
+            frame
+                .pointer("/message/role")
+                .and_then(serde_json::Value::as_str),
+            Some("user")
+        );
+        assert_eq!(
+            frame
+                .pointer("/message/content")
+                .and_then(serde_json::Value::as_str),
+            Some("hello stdin")
+        );
+        assert!(
+            frame
+                .get("parent_tool_use_id")
+                .is_some_and(serde_json::Value::is_null)
+        );
+        let uuid = frame
+            .get("uuid")
+            .and_then(serde_json::Value::as_str)
+            .expect("uuid");
+        uuid::Uuid::parse_str(uuid).expect("valid uuid");
+    }
 
     #[tokio::test]
     async fn cli_current_dir_helper_sets_child_working_directory() {

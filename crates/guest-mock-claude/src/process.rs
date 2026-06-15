@@ -4,9 +4,10 @@ use crate::transcript::{
     JsonlTranscript, assistant_text_event, create_session_history, generate_session_id, init_event,
     is_valid_session_history_id, result_event, tool_result_event, tool_use_event,
 };
+use serde_json::Value;
 use serde_json::json;
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
@@ -14,7 +15,15 @@ use std::time::Duration;
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 
 pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
-    match MockScenario::from_prompt(&parsed.prompt) {
+    let prompt = match prompt_from_input(&parsed) {
+        Ok(prompt) => prompt,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::from(1);
+        }
+    };
+
+    match MockScenario::from_prompt(&prompt) {
         MockScenario::EchoJsonl(payload) => run_echo_jsonl_mode(payload),
         MockScenario::FailNoNewline(msg) => {
             eprint!("{msg}");
@@ -72,12 +81,52 @@ pub(crate) fn run(parsed: ParsedArgs) -> ExitCode {
             let session_id = generate_session_id();
 
             if parsed.output_format == "stream-json" {
-                run_stream_json_mode(&parsed.prompt, &session_id)
+                run_stream_json_mode(&prompt, &session_id)
             } else {
-                run_text_mode(&parsed.prompt)
+                run_text_mode(&prompt)
             }
         }
     }
+}
+
+fn prompt_from_input(parsed: &ParsedArgs) -> Result<String, String> {
+    if parsed.input_format == "stream-json" {
+        read_stream_json_prompt_from_stdin()
+    } else {
+        Ok(parsed.prompt.clone())
+    }
+}
+
+fn read_stream_json_prompt_from_stdin() -> Result<String, String> {
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .map_err(|e| format!("read stream-json stdin: {e}"))?;
+
+    let line = input
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .ok_or_else(|| "stream-json stdin did not contain a user message".to_string())?;
+    let event: Value =
+        serde_json::from_str(line).map_err(|e| format!("parse stream-json stdin: {e}"))?;
+
+    if event.get("type").and_then(Value::as_str) != Some("user") {
+        return Err("stream-json stdin first message must have type \"user\"".to_string());
+    }
+    if let Some(role) = event.pointer("/message/role").and_then(Value::as_str)
+        && role != "user"
+    {
+        return Err("stream-json stdin first message role must be \"user\"".to_string());
+    }
+
+    event
+        .pointer("/message/content")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            "stream-json stdin first message must contain string message.content".to_string()
+        })
 }
 
 fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
