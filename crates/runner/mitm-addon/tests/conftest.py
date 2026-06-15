@@ -45,8 +45,9 @@ def _reset_module_state() -> Iterator[None]:
     lookups in module-level dicts.  Without a reset, earlier tests leak
     entries that change later tests' behaviour.
 
-    The usage buffer owns a background timer in production, so tests reset
-    it before and after each case to avoid cross-test callbacks.
+    The usage buffer owns a background timer in production, and the runner
+    flush signal owns a background worker that can touch usage and JSONL state,
+    so tests reset them around each case to avoid cross-test callbacks.
     """
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
@@ -60,10 +61,10 @@ def _reset_module_state() -> Iterator[None]:
     usage.reset_usage_buffer_for_tests()
     logging_utils.reset_log_writer_for_tests()
     yield
+    mitm_addon.reset_runner_usage_flush_state_for_tests()
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
-    mitm_addon.reset_runner_usage_flush_state_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     usage.reset_usage_buffer_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
