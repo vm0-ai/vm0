@@ -417,9 +417,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
-    const unauthenticated = await app.request("/api/zero/chat-threads", {
-      headers: { authorization: "Bearer clerk-session" },
-    });
+    const unauthenticated = await app.request(
+      `/api/zero/chat-threads?agentId=${randomUUID()}`,
+      {
+        headers: { authorization: "Bearer clerk-session" },
+      },
+    );
     expect(unauthenticated.status).toBe(401);
     const unauthenticatedBody = (await unauthenticated.json()) as {
       readonly error: { readonly code: string };
