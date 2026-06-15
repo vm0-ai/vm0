@@ -3389,7 +3389,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(
         screen.getByLabelText(`Message template ${presentationTemplate.title}`),
-      ).toHaveTextContent("Slides");
+      ).toHaveTextContent("Presentation");
       expect(
         screen.getByLabelText(`Message template ${videoTemplate.nameEn}`),
       ).toHaveTextContent("Video");

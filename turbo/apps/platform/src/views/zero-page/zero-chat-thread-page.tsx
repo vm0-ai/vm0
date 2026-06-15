@@ -5367,7 +5367,7 @@ function generationTemplateTypeLabel(
   if (value.type === "illustration") {
     return "Illustration";
   }
-  return "Slides";
+  return "Presentation";
 }
 
 function UserMessageGenerationTemplate({
