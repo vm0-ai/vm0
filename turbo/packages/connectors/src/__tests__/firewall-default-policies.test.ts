@@ -126,8 +126,12 @@ describe("resolveFirewallPolicies", () => {
   });
 
   it("should use connector-specific unknownPolicy defaults when not stored", () => {
-    const resolved = resolveFirewallPolicies(null, ["cloudflare"]);
+    const resolved = resolveFirewallPolicies(null, [
+      "cloudflare",
+      "google-cloud",
+    ]);
     expect(resolved!["cloudflare"]!.unknownPolicy).toBe("deny");
+    expect(resolved!["google-cloud"]!.unknownPolicy).toBe("deny");
   });
 
   it("should preserve stored unknownPolicy override over connector-specific defaults", () => {
