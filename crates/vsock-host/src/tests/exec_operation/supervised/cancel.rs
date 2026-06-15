@@ -92,7 +92,8 @@ async fn supervised_exec_cancel_and_wait_writer_lock_timeout_before_write_cleans
     let handle = task.await.unwrap().unwrap();
     let writer_guard = host.shared.writer.lock().await;
 
-    let mut cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    let mut cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_millis(1)).await });
     let err = tokio::time::timeout(Duration::from_secs(1), &mut cancel_task)
         .await
         .expect("cancel_and_wait should return before the test guard")

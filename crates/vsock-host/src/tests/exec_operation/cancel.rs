@@ -229,7 +229,8 @@ async fn exec_cancel_writer_lock_timeout_before_write_does_not_poison_or_send_fr
     assert_eq!(start.msg_type, MSG_EXEC_START);
     let writer_guard = host.shared.writer.lock().await;
 
-    let mut cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
+    let mut cancel_task =
+        tokio::spawn(async move { handle.cancel_and_wait(Duration::from_millis(1)).await });
     let err = tokio::time::timeout(Duration::from_secs(1), &mut cancel_task)
         .await
         .expect("cancel_and_wait should return before the test guard")
