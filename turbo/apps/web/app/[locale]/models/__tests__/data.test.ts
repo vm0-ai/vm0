@@ -25,11 +25,19 @@ const REMOVED_MODEL_CONTENT_TERMS = [
   "DeepSeek V4 Pro (×0.3)",
   "DeepSeek V4 Pro (×0,3)",
   "DeepSeek V4 Pro（×0.3）",
+  "DeepSeek V4 Pro (×0.06)",
+  "DeepSeek V4 Pro (×0,06)",
+  "DeepSeek V4 Pro（×0.06）",
   "V4 Pro (×0.3)",
   "V4 Pro (×0,3)",
   "V4 Pro（×0.3",
+  "V4 Pro (×0.06)",
+  "V4 Pro (×0,06)",
+  "V4 Pro（×0.06",
   "VM0 Managed at ×0.3",
   "VM0 Managed at ×0,3",
+  "VM0 Managed at ×0.06",
+  "VM0 Managed at ×0,06",
 ] as const;
 
 function readModelContent(locale: (typeof MODEL_CONTENT_LOCALES)[number]) {
