@@ -543,7 +543,7 @@ impl MitmProxy {
         // regardless of scheduling order between `kill().await` and
         // the stdout-pipe drain.
         self.stopping.store(true, Ordering::Release);
-        if let Some(mut child) = self.child.take() {
+        if let Some(child) = self.child.as_mut() {
             match child.try_wait() {
                 Ok(Some(_status)) => {}
                 Ok(None) => error!(
@@ -563,6 +563,7 @@ impl MitmProxy {
                 ),
             }
             let _ = child.kill().await;
+            self.child = None;
         }
         // Fresh flag for the incoming process's monitor.
         let new_stopping = Arc::new(AtomicBool::new(false));
@@ -1067,21 +1068,50 @@ struct MitmdumpUsageUnderbillingStderr<'a> {
     component: &'a str,
 }
 
+fn mitmdump_underbilling_fields(line: &str) -> Option<&str> {
+    let mut rest = line.trim_start();
+
+    while let Some(after_open) = rest.strip_prefix('[') {
+        let Some(end) = after_open.find(']') else {
+            break;
+        };
+        rest = after_open[end + 1..].trim_start();
+    }
+
+    for prefix in ["Addon error:", "error:", "ERROR:"] {
+        if let Some(after_prefix) = rest.strip_prefix(prefix) {
+            rest = after_prefix.trim_start();
+            break;
+        }
+    }
+
+    if rest.starts_with("type=") {
+        Some(rest)
+    } else {
+        None
+    }
+}
+
 fn parse_mitmdump_usage_underbilling_stderr(
     line: &str,
 ) -> Option<MitmdumpUsageUnderbillingStderr<'_>> {
-    let mut has_underbilling_type = false;
+    let fields = mitmdump_underbilling_fields(line)?;
+    let mut tokens = fields.split_whitespace();
+    let (key, value) = tokens.next()?.split_once('=')?;
+    if key != "type" || value.trim_end_matches([',', ';']) != "usage_underbilling" {
+        return None;
+    }
+
     let mut reason = None;
     let mut underbilling_class = None;
     let mut component = None;
 
-    for token in line.split_whitespace() {
+    for token in tokens {
         let Some((key, value)) = token.split_once('=') else {
-            continue;
+            break;
         };
         let value = value.trim_end_matches([',', ';']);
         match key {
-            "type" if value == "usage_underbilling" => has_underbilling_type = true,
             "reason" => reason = Some(value),
             "underbilling_class" if value == "confirmed" || value == "risk" => {
                 underbilling_class = Some(value);
@@ -1091,15 +1121,11 @@ fn parse_mitmdump_usage_underbilling_stderr(
         }
     }
 
-    if has_underbilling_type {
-        Some(MitmdumpUsageUnderbillingStderr {
-            reason: reason?,
-            underbilling_class: underbilling_class?,
-            component: component?,
-        })
-    } else {
-        None
-    }
+    Some(MitmdumpUsageUnderbillingStderr {
+        reason: reason?,
+        underbilling_class: underbilling_class?,
+        component: component?,
+    })
 }
 
 fn log_mitmdump_stderr_line(line: &str) {
@@ -1639,11 +1665,63 @@ PY
     }
 
     #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_allows_timestamped_error_prefix() {
+        let signal = parse_mitmdump_usage_underbilling_stderr(
+            "[12:34:56.789] [error] type=usage_underbilling \
+             reason=pending_snapshot_write_failed underbilling_class=risk \
+             component=mitm_addon Failed to write pending count",
+        )
+        .unwrap();
+
+        assert_eq!(
+            signal,
+            MitmdumpUsageUnderbillingStderr {
+                reason: "pending_snapshot_write_failed",
+                underbilling_class: "risk",
+                component: "mitm_addon",
+            }
+        );
+    }
+
+    #[test]
+    fn parse_mitmdump_usage_underbilling_stderr_allows_mitmproxy_timestamp_prefix() {
+        let signal = parse_mitmdump_usage_underbilling_stderr(
+            "[12:34:56.789] type=usage_underbilling \
+             reason=pending_snapshot_write_failed underbilling_class=risk \
+             component=mitm_addon Failed to write pending count",
+        )
+        .unwrap();
+
+        assert_eq!(
+            signal,
+            MitmdumpUsageUnderbillingStderr {
+                reason: "pending_snapshot_write_failed",
+                underbilling_class: "risk",
+                component: "mitm_addon",
+            }
+        );
+    }
+
+    #[test]
     fn parse_mitmdump_usage_underbilling_stderr_ignores_regular_stderr() {
         assert!(parse_mitmdump_usage_underbilling_stderr("ordinary mitmdump warning").is_none());
         assert!(
             parse_mitmdump_usage_underbilling_stderr(
                 "type=usage_underbilling reason=missing_fields"
+            )
+            .is_none()
+        );
+        assert!(
+            parse_mitmdump_usage_underbilling_stderr(
+                "ordinary stderr type=usage_underbilling reason=pending_snapshot_write_failed \
+                 underbilling_class=risk component=mitm_addon"
+            )
+            .is_none()
+        );
+        assert!(
+            parse_mitmdump_usage_underbilling_stderr(
+                "url=https://example.test/?type=usage_underbilling \
+                 reason=pending_snapshot_write_failed underbilling_class=risk component=mitm_addon"
             )
             .is_none()
         );
