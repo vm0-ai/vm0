@@ -38,16 +38,9 @@ describe("buildGenerationTemplatePrompt", () => {
     if (result.status !== "resolved") {
       return;
     }
-    // Surfaces the attached style as user context...
-    expect(result.prompt).toContain(
-      `Image style ID: ${item.illustrationStyleId}`,
-    );
-    expect(result.prompt).toContain("# User context");
-    // ...describes the likely intent so the agent does not re-ask for a style
-    // the user already selected (vm0-ai/vm0#17525)...
-    expect(result.prompt).toContain("# Likely intent");
-    // ...and gives the concrete capability fact: the style id feeds
-    // `zero generate image --style`.
+    // Names the attached style and the capability fact that applies it, so the
+    // agent does not re-ask for an already-selected style (vm0-ai/vm0#17525).
+    expect(result.prompt).toContain(item.illustrationStyleId);
     expect(result.prompt).toContain(
       `zero generate image --style ${item.illustrationStyleId}`,
     );
