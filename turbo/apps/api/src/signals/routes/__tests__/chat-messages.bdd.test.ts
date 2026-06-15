@@ -436,7 +436,7 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
     expect(run.appendSystemPrompt).toContain(
       "You are currently running inside: Web",
     );
-    expect(run.appendSystemPrompt).not.toContain("# Generation Template");
+    expect(run.appendSystemPrompt).not.toContain("# Artifact Template Context");
 
     const messages = await waitForThreadMessages(
       actor,
@@ -1784,18 +1784,18 @@ describe("CHAT-02: generation templates and attachments", () => {
     const presentationRun = await api.readRun(actor, presentation.runId);
     expect(presentationRun.prompt).toBe("make a launch deck");
     const presentationPrompt = presentationRun.appendSystemPrompt ?? "";
-    expect(presentationPrompt).toContain("# Generation Template");
+    expect(presentationPrompt).toContain("# Artifact Template Context");
     expect(presentationPrompt).toContain(
-      "Use the following registered resources for this run.",
+      "The user selected a presentation artifact template",
     );
-    expect(presentationPrompt).toContain("Type: presentation");
+    expect(presentationPrompt).toContain("- Artifact type: presentation");
+    expect(presentationPrompt).toContain(`(${template.designSystemId})`);
+    expect(presentationPrompt).toContain(`(${template.templateId})`);
     expect(presentationPrompt).toContain(
-      `Design system ID: ${template.designSystemId}`,
+      "The user's prompt remains the source of truth",
     );
-    expect(presentationPrompt).toContain(`Template ID: ${template.templateId}`);
-    expect(presentationPrompt).toContain("Instructions:");
     expect(presentationPrompt).toContain(
-      "- Keep the user's prompt as the source of the requested content.",
+      `zero generate presentation --design-system ${template.designSystemId} --template ${template.templateId}`,
     );
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     await cancelChatRun(actor, presentation.runId);
@@ -1816,19 +1816,22 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const videoRun = await api.readRun(actor, video.runId);
     const videoPrompt = videoRun.appendSystemPrompt ?? "";
-    expect(videoPrompt).toContain("# Video Template Preset");
-    expect(videoPrompt).toContain(`- Preset name: ${preset.nameEn}`);
+    expect(videoPrompt).toContain("# Artifact Template Context");
     expect(videoPrompt).toContain(
-      `- Visual Tone: ${preset.dimensions.visualTone}`,
+      "The user selected a video artifact template preset",
+    );
+    expect(videoPrompt).toContain(`- Preset: ${preset.nameEn} (${preset.id})`);
+    expect(videoPrompt).toContain(
+      `- Visual tone: ${preset.dimensions.visualTone}`,
     );
     expect(videoPrompt).toContain(
-      `- Camera Style: ${preset.dimensions.cameraStyle}`,
+      `- Camera style: ${preset.dimensions.cameraStyle}`,
     );
     expect(videoPrompt).toContain(
-      `- Style Reference: ${preset.dimensions.styleReference}`,
+      `- Style reference: ${preset.dimensions.styleReference}`,
     );
     expect(videoPrompt).toContain(
-      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+      "zero generate video --provider built-in --prompt",
     );
     expect(videoPrompt).not.toContain(preset.scene);
     await cancelChatRun(actor, video.runId);
@@ -1853,7 +1856,10 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const firstPrompt = (await api.readRun(actor, first.runId))
       .appendSystemPrompt;
-    expect(firstPrompt).toContain("# Attached illustration style");
+    expect(firstPrompt).toContain("# Artifact Template Context");
+    expect(firstPrompt).toContain(
+      "The user selected an illustration artifact template style",
+    );
     expect(firstPrompt).toContain(style.illustrationStyleId);
 
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -1876,7 +1882,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const secondPrompt = (await api.readRun(actor, second.runId))
       .appendSystemPrompt;
-    expect(secondPrompt).toContain("# Attached illustration style");
+    expect(secondPrompt).toContain(
+      "The user selected an illustration artifact template style",
+    );
     expect(secondPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, second.runId);
 
@@ -1899,9 +1907,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const thirdPrompt = (await api.readRun(actor, third.runId))
       .appendSystemPrompt;
-    expect(thirdPrompt).toContain("# Video Template Preset");
-    expect(thirdPrompt).toContain(`- Preset name: ${preset.nameEn}`);
-    expect(thirdPrompt).toContain("# Attached illustration style");
+    expect(thirdPrompt).toContain(
+      "The user selected a video artifact template preset",
+    );
+    expect(thirdPrompt).toContain(`- Preset: ${preset.nameEn} (${preset.id})`);
+    expect(thirdPrompt).toContain(
+      "The user selected an illustration artifact template style",
+    );
     expect(thirdPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
 
@@ -1909,8 +1921,12 @@ describe("CHAT-02: generation templates and attachments", () => {
     const fresh = await sendChatRun(actor, { agentId, prompt: "draw a cat" });
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
-    expect(freshPrompt).not.toContain("# Attached illustration style");
-    expect(freshPrompt).not.toContain("# Video Template Preset");
+    expect(freshPrompt).not.toContain(
+      "The user selected an illustration artifact template style",
+    );
+    expect(freshPrompt).not.toContain(
+      "The user selected a video artifact template preset",
+    );
     expect(freshPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, fresh.runId);
   }, 120_000);

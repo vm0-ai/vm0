@@ -86,18 +86,24 @@ function buildPresentationGenerationTemplatePrompt(
   return {
     status: "resolved",
     prompt: [
-      "# Generation Template",
-      "Use the following registered resources for this run.",
-      `Type: ${generationTemplate.type}`,
-      `Design system ID: ${designSystem.id}`,
-      `Design system name: ${designSystem.name}`,
-      `Template ID: ${template.id}`,
-      `Template name: ${template.name}`,
+      "# Artifact Template Context",
       "",
-      "Instructions:",
-      "- Resolve the design system and template from the resource registry.",
-      "- Apply them as generation constraints for the artifact.",
-      "- Keep the user's prompt as the source of the requested content.",
+      "The user selected a presentation artifact template for this chat.",
+      "This is context, not control: the selection signals interest in this template and design-system style, and the user may want a presentation artifact if that fits the current request.",
+      "The user's prompt remains the source of truth for the task, content, output format, and whether to generate anything. Other artifact templates, files, or attachments may also be present.",
+      "",
+      "Selected presentation resources:",
+      `- Artifact type: ${generationTemplate.type}`,
+      `- Design system: ${designSystem.name} (${designSystem.id})`,
+      `- Design system description: ${designSystem.description}`,
+      `- Template: ${template.name} (${template.id})`,
+      `- Template description: ${template.description}`,
+      "",
+      "Relevant Zero generation commands:",
+      "- Run `zero generate presentation -h` to inspect the current flags.",
+      "- Run `zero generate presentation` to list available design systems and templates.",
+      `- If producing a presentation from the user's request, use \`zero generate presentation --design-system ${designSystem.id} --template ${template.id} --prompt "<user request>"\`.`,
+      "- Follow the returned authoring packet. For a static HTML presentation, author the artifact and publish it with `zero host <dir> --site <slug> --artifact-kind presentation-html`.",
     ].join("\n"),
   };
 }
@@ -120,24 +126,28 @@ function buildVideoGenerationTemplatePrompt(
   return {
     status: "resolved",
     prompt: [
-      "# Video Template Preset",
-      `- Preset ID: ${preset.id}`,
-      `- Preset name: ${preset.nameEn}`,
+      "# Artifact Template Context",
       "",
-      "- Apply all dimensions and constraints below as hard generation constraints.",
-      "- Keep the user's prompt as the source of the requested content.",
-      `- Visual Tone: ${describeSlug(preset.dimensions.visualTone)}`,
-      `- Camera Style: ${describeSlug(preset.dimensions.cameraStyle)}`,
-      `- Editing Pace: ${describeSlug(preset.dimensions.editingPace)}`,
-      `- Narrative Mode: ${describeSlug(preset.dimensions.narrativeMode)}`,
-      `- Production Type: ${describeSlug(preset.dimensions.productionType)}`,
-      `- Emotional Tone: ${describeSlug(preset.dimensions.emotionalTone)}`,
-      `- Style Reference: ${describeSlug(preset.dimensions.styleReference)}`,
+      "The user selected a video artifact template preset for this chat.",
+      "This is context, not control: the selection signals interest in this video style, and the user may want a video artifact if that fits the current request.",
+      "The user's prompt remains the source of truth for the task, content, output format, and whether to generate anything. Other artifact templates, files, or attachments may also be present.",
       "",
-      `- Style constraints (inject into the video prompt): ${preset.promptConstraints}`,
+      "Selected video style preset:",
+      "- Artifact type: video",
+      `- Preset: ${preset.nameEn} (${preset.id})`,
+      `- Visual tone: ${describeSlug(preset.dimensions.visualTone)}`,
+      `- Camera style: ${describeSlug(preset.dimensions.cameraStyle)}`,
+      `- Editing pace: ${describeSlug(preset.dimensions.editingPace)}`,
+      `- Narrative mode: ${describeSlug(preset.dimensions.narrativeMode)}`,
+      `- Production type: ${describeSlug(preset.dimensions.productionType)}`,
+      `- Emotional tone: ${describeSlug(preset.dimensions.emotionalTone)}`,
+      `- Style reference: ${describeSlug(preset.dimensions.styleReference)}`,
+      `- Prompt style notes: ${preset.promptConstraints}`,
       "",
-      `- In the final video prompt, reflect every dimension and constraint above for the style ${preset.nameEn}.`,
-      "- End the final video prompt with: safe for all audiences, positive and uplifting, no violence, no explicit content",
+      "Relevant Zero generation commands:",
+      "- Run `zero generate video -h` to inspect the current flags, models, and built-in options.",
+      "- Run `zero generate video` to list available providers for video generation.",
+      '- If producing a video from the user\'s request, use `zero generate video --provider built-in --prompt "<user request plus relevant style context>"` or follow connector guidance when a connector/provider is requested.',
     ].join("\n"),
   };
 }
@@ -152,18 +162,25 @@ function buildIllustrationGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown generation image style" };
   }
 
-  // Context, not control: state the facts (which style is attached, that it
-  // persists, how it reaches image generation) and let the agent act on them.
-  // Replaces the earlier "Resolve the image style from the resource registry"
-  // instruction, which named a step without the facts to do it, so when unsure
-  // the agent re-asked for an already-selected style (vm0-ai/vm0#17525).
   return {
     status: "resolved",
     prompt: [
-      "# Attached illustration style",
+      "# Artifact Template Context",
       "",
-      `"${imageStyle.name}" (${imageStyle.id}), attached to this chat and persisting across follow-up messages.`,
-      `Apply it with \`zero generate image --style ${imageStyle.id}\`.`,
+      "The user selected an illustration artifact template style for this chat.",
+      "This is context, not control: the selection signals interest in this illustration style, and the user may want an illustration or image artifact if that fits the current request.",
+      "The user's prompt remains the source of truth for the task, content, output format, and whether to generate anything. Other artifact templates, files, or attachments may also be present.",
+      "This selected illustration style can persist across follow-up messages in the same chat.",
+      "",
+      "Selected illustration style:",
+      "- Artifact type: illustration",
+      `- Style: ${imageStyle.name} (${imageStyle.id})`,
+      `- Style description: ${imageStyle.description}`,
+      "",
+      "Relevant Zero generation commands:",
+      "- Run `zero generate image -h` to inspect the current flags, models, providers, and style registry options.",
+      "- Run `zero generate image` to list available providers for image generation.",
+      `- If producing an illustration or image from the user's request, use \`zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>"\`.`,
     ].join("\n"),
   };
 }
