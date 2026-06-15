@@ -179,9 +179,9 @@ ensure_anthropic_model_provider() {
     run $VM0_CLI run "${AGENT_NAME}-flags" \
         --model-provider-type "anthropic-api-key" \
         --debug-no-mock-claude \
-        --append-system-prompt "Always end your final response with SIGNATURE=smoke-test" \
+        --append-system-prompt "In your final response, output exactly two lines and no extra text. Line 1: RESULT=<answer>. Line 2: SIGNATURE=smoke-test." \
         --disallowed-tools CronCreate CronList CronDelete \
-        -- "Compute 789+101 and reply with exactly: RESULT=<answer>"
+        -- "Compute 789+101 and follow the required final response format."
 
     assert_success
     assert_output --partial "◆ Claude Code Completed"
