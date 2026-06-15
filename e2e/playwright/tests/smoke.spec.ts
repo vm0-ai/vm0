@@ -153,7 +153,9 @@ async function signInWithEmailCode(
       .click();
   }
 
-  await submitEmailCode(page, remainingTimeout(deadline, 30_000));
+  if (flow !== "redirected") {
+    await submitEmailCode(page, remainingTimeout(deadline, 30_000));
+  }
 
   if (redirectUrl && !isOnboardingOrChatUrl(new URL(page.url()))) {
     await page.goto(redirectUrl, { waitUntil: "domcontentloaded" });
@@ -172,9 +174,14 @@ async function clickIfVisible(
 async function waitForEmailCodeFlow(
   page: Page,
   timeout: number,
-): Promise<"otp" | "alt"> {
+): Promise<"otp" | "alt" | "redirected"> {
   const result = await page.waitForFunction(
     () => {
+      const { pathname } = window.location;
+      if (!pathname.includes("/sign-up") && !pathname.includes("/sign-in")) {
+        return "redirected";
+      }
+
       const hasOtp = Boolean(
         document.querySelector('input[data-input-otp="true"]'),
       );
@@ -196,7 +203,7 @@ async function waitForEmailCodeFlow(
     { timeout },
   );
   const flow = await result.jsonValue();
-  if (flow === "otp" || flow === "alt") {
+  if (flow === "otp" || flow === "alt" || flow === "redirected") {
     return flow;
   }
   throw new Error(`Unexpected Clerk sign-in flow: ${String(flow)}`);
