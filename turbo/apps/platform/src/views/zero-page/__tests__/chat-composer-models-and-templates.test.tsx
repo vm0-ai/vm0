@@ -722,8 +722,12 @@ describe("chat composer models", () => {
     const menu = await screen.findByTestId("slash-skill-menu");
     // The first connector is active by default, so its commands show in the
     // right pane immediately — no drill-in or back step.
-    expect(await within(menu).findByText("GitHub")).toBeInTheDocument();
-    expect(await within(menu).findByText("List PRs")).toBeInTheDocument();
+    await expect(
+      within(menu).findByText("GitHub"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      within(menu).findByText("List PRs"),
+    ).resolves.toBeInTheDocument();
     expect(within(menu).getByText("Create issue")).toBeInTheDocument();
 
     await user.click(within(menu).getByText("List PRs"));
@@ -856,7 +860,9 @@ describe("chat composer models", () => {
     await user.keyboard("/");
 
     const menu = await screen.findByTestId("slash-skill-menu");
-    expect(await within(menu).findByText("GitHub")).toBeInTheDocument();
+    await expect(
+      within(menu).findByText("GitHub"),
+    ).resolves.toBeInTheDocument();
     expect(within(menu).getByText("/sales-research")).toBeInTheDocument();
 
     // The rail is the connector then the skill; ArrowDown moves to the skill and
