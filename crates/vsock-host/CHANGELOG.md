@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.31](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.30...vsock-host-v0.17.31) (2026-06-15)
+
+
+### Refactoring
+
+* consolidate exec cancel handling ([#17703](https://github.com/vm0-ai/vm0/issues/17703)) ([7db31ff](https://github.com/vm0-ai/vm0/commit/7db31ff9ad70af2c740ea854d97952325b858670))
+
 ## [0.17.30](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.29...vsock-host-v0.17.30) (2026-06-15)
 
 ## [0.17.29](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.28...vsock-host-v0.17.29) (2026-06-12)

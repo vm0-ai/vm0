@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.339.0](https://github.com/vm0-ai/vm0/compare/core-v8.338.0...core-v8.339.0) (2026-06-15)
+
+
+### Features
+
+* add automation multi trigger section ([#17720](https://github.com/vm0-ai/vm0/issues/17720)) ([715a9a8](https://github.com/vm0-ai/vm0/commit/715a9a86bc67fc504b91fb07a7e22e30df149ccb))
+* show illustration variations inline in a single template popup ([#17717](https://github.com/vm0-ai/vm0/issues/17717)) ([55f9f07](https://github.com/vm0-ai/vm0/commit/55f9f074f58164c5ec83718a954ccd02889a29d4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.94.0
+    * @vm0/connectors bumped to 1.77.0
+
 ## [8.338.0](https://github.com/vm0-ai/vm0/compare/core-v8.337.0...core-v8.338.0) (2026-06-15)
 
 

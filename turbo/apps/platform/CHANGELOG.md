@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.453.0](https://github.com/vm0-ai/vm0/compare/app-v0.452.0...app-v0.453.0) (2026-06-15)
+
+
+### Features
+
+* add automation multi trigger section ([#17720](https://github.com/vm0-ai/vm0/issues/17720)) ([715a9a8](https://github.com/vm0-ai/vm0/commit/715a9a86bc67fc504b91fb07a7e22e30df149ccb))
+* configure connector unknown endpoint defaults ([#17699](https://github.com/vm0-ai/vm0/issues/17699)) ([d9f193e](https://github.com/vm0-ai/vm0/commit/d9f193efdd6c2209b2de7aa96b6a3f8fddd023d1))
+* show illustration variations inline in a single template popup ([#17717](https://github.com/vm0-ai/vm0/issues/17717)) ([55f9f07](https://github.com/vm0-ai/vm0/commit/55f9f074f58164c5ec83718a954ccd02889a29d4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.94.0
+    * @vm0/connectors bumped to 1.77.0
+    * @vm0/core bumped to 8.339.0
+
 ## [0.452.0](https://github.com/vm0-ai/vm0/compare/app-v0.451.1...app-v0.452.0) (2026-06-15)
 
 

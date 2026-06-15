@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.117.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.117.0...runner-rs-v0.117.1) (2026-06-15)
+
+
+### Refactoring
+
+* centralize model-provider metadata test setup ([#17722](https://github.com/vm0-ai/vm0/issues/17722)) ([e6c880f](https://github.com/vm0-ai/vm0/commit/e6c880f7b3900b0de7a61378e2ed03f77ed64d3f))
+
 ## [0.117.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.116.7...runner-rs-v0.117.0) (2026-06-15)
 
 
