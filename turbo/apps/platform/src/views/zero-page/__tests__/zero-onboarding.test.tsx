@@ -50,6 +50,7 @@ describe("zero onboarding", () => {
     detachedSetupPage({
       context,
       path: "/?prompt=hello%20world&connector=github&vm0_source=presentation",
+      featureSwitches: { [FeatureSwitchKey.PaidOnboardingRedirect]: false },
     });
 
     await waitFor(() => {
