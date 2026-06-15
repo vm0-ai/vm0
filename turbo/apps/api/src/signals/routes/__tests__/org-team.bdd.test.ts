@@ -1,14 +1,21 @@
 import { randomUUID } from "node:crypto";
 
+import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
+import { writeDb$ } from "../../external/db";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import {
+  createRunsAutomationsApi,
+  uniqueAutomationName,
+} from "./helpers/api-bdd-runs-automations";
 import { expectApiError } from "./helpers/api-bdd";
 
 /*
@@ -32,6 +39,7 @@ zero-team, zero-default-agent, and zero-onboarding-setup route tests:
 
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
+const store = createStore();
 
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);
@@ -738,6 +746,101 @@ describe("ORG-02: membership admin matrix", () => {
 });
 
 describe("ORG-02: member cleanup detaches Slack connections", () => {
+  async function expectAutomationSuspended(
+    automationId: string,
+  ): Promise<void> {
+    const db = store.set(writeDb$);
+    const [storedAutomation] = await db
+      .select({ enabled: automations.enabled })
+      .from(automations)
+      .where(eq(automations.id, automationId));
+    expect(storedAutomation?.enabled).toBeFalsy();
+
+    const [storedTrigger] = await db
+      .select({
+        enabled: automationTriggers.enabled,
+        nextRunAt: automationTriggers.nextRunAt,
+      })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, automationId));
+    expect(storedTrigger).toStrictEqual({
+      enabled: false,
+      nextRunAt: null,
+    });
+  }
+
+  it("suspends member-owned org automations on leave and removal", async () => {
+    const runs = createRunsAutomationsApi(context);
+    const admin = api.user();
+    const leavingMember = api.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+      email: `leaving-${shortId()}@example.test`,
+    });
+    const removedMember = api.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+      email: `removed-${shortId()}@example.test`,
+    });
+
+    api.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    await onboardAdmin(admin, { slug: slug("bdd-r5-auto-cleanup") });
+
+    await runs.enableAutomations(leavingMember);
+    const leavingAgent = await api.createAgent(leavingMember, {
+      displayName: "BDD Leaving Member Automation Agent",
+      visibility: "private",
+    });
+    const leavingAutomation = await runs.createAutomation(leavingMember, {
+      name: uniqueAutomationName("bdd-leave-cleanup"),
+      agentId: leavingAgent.agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "leaving member scheduled automation",
+      timezone: "UTC",
+      enabled: true,
+    });
+
+    api.mockClerkOrg(leavingMember, {
+      members: [
+        { actor: admin, role: "org:admin" },
+        { actor: leavingMember, role: "org:member" },
+      ],
+    });
+    await expect(api.leaveOrg(leavingMember)).resolves.toStrictEqual({
+      message: "Left org",
+    });
+    await expectAutomationSuspended(leavingAutomation.automation.id);
+
+    await runs.enableAutomations(removedMember);
+    const removedAgent = await api.createAgent(removedMember, {
+      displayName: "BDD Removed Member Automation Agent",
+      visibility: "private",
+    });
+    const removedAutomation = await runs.createAutomation(removedMember, {
+      name: uniqueAutomationName("bdd-remove-cleanup"),
+      agentId: removedAgent.agentId,
+      cronExpression: "0 10 * * *",
+      prompt: "removed member scheduled automation",
+      timezone: "UTC",
+      enabled: true,
+    });
+
+    api.mockClerkOrg(admin, {
+      members: [
+        { actor: admin, role: "org:admin" },
+        { actor: removedMember, role: "org:member" },
+      ],
+    });
+    await expect(
+      api.removeMember(admin, { email: removedMember.email }),
+    ).resolves.toStrictEqual({
+      message: `Removed ${removedMember.email} from org`,
+    });
+    await expectAutomationSuspended(removedAutomation.automation.id);
+  });
+
   it("disconnects slack-linked members on leave, removal, and org deletion [ORG-SLACK-D]", async () => {
     const integrations = createBddIntegrationApi(context);
     const admin = api.user();
