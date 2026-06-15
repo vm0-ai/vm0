@@ -52,17 +52,6 @@ async function signInThroughExternalOnboardingGate(
   email: string,
 ): Promise<void> {
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const continueToSignUp = page.getByRole("link", {
-      name: "Continue to sign up",
-    });
-    if (
-      await waitForVisible(continueToSignUp, attempt === 0 ? 10_000 : 2_000)
-    ) {
-      await continueToSignUp.click();
-      await waitForAuthUrl(page);
-      continue;
-    }
-
     const url = new URL(page.url());
     if (isAuthUrl(url)) {
       const redirectUrl = redirectUrlFromAuthUrl(url);
@@ -76,6 +65,15 @@ async function signInThroughExternalOnboardingGate(
 
     if (isOnboardingOrChatUrl(url)) {
       return;
+    }
+
+    const continueToSignUp = page.getByRole("link", {
+      name: "Continue to sign up",
+    });
+    if (await waitForVisible(continueToSignUp, 2_000)) {
+      await continueToSignUp.click();
+      await waitForAuthUrl(page);
+      continue;
     }
   }
 
