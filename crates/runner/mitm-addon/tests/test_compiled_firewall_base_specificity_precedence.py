@@ -3,12 +3,6 @@
 import pytest
 
 import matching
-from tests.compiled_firewall_precedence_helpers import (
-    ADMIN_BASE,
-    ADMIN_DELETE_URL,
-    BROAD_BASE,
-    broad_firewall,
-)
 from tests.firewall_helpers import (
     compile_firewalls_or_fail,
     firewall_api,
@@ -18,6 +12,21 @@ from tests.firewall_helpers import (
     network_policy,
     wrap_firewalls,
 )
+
+BROAD_BASE = "https://api.example.com"
+ADMIN_BASE = "https://api.example.com/admin"
+ADMIN_DELETE_URL = "https://api.example.com/admin/delete"
+
+
+def broad_firewall(*, base=BROAD_BASE):
+    return firewall_entry(
+        "broad",
+        firewall_api(
+            base,
+            [firewall_permission("broad", "ANY /{path+}")],
+            auth_label="broad",
+        ),
+    )
 
 
 def test_more_specific_base_deny_blocks_earlier_broad_allow():
