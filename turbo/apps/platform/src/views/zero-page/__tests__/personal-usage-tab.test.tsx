@@ -216,7 +216,7 @@ describe("personal usage settings", () => {
     await expect(screen.findAllByText("Image 123")).resolves.not.toHaveLength(
       0,
     );
-    expect(screen.getAllByText("Nanobanana 2")).not.toHaveLength(0);
+    expect(screen.getAllByText("Nano Banana 2")).not.toHaveLength(0);
     expect(screen.queryByText("fal-ai/nano-banana-2")).not.toBeInTheDocument();
   });
 });
