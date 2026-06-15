@@ -219,7 +219,11 @@ async function seedDefaultAgent(
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
   await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
-  await db.insert(vm0ApiKeys).values([
+  await db.insert(vm0ApiKeys).values(vm0ManagedKeyRows(composeId));
+}
+
+function vm0ManagedKeyRows(composeId: string) {
+  return [
     {
       vendor: "anthropic",
       model: "claude-sonnet-4-6",
@@ -238,7 +242,43 @@ async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
       apiKey: `vm0-key-moonshot-${composeId}`,
       label: composeId,
     },
-  ]);
+  ];
+}
+
+async function deleteVm0ManagedKeysForSeededDefaultAgents(
+  db: Db,
+  orgId: string,
+): Promise<void> {
+  const composes = await db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, orgId),
+        eq(agentComposes.name, DEFAULT_AGENT_NAME),
+      ),
+    );
+
+  if (composes.length === 0) {
+    return;
+  }
+
+  const composeIds = composes.map((compose) => {
+    return compose.id;
+  });
+  const apiKeys = composes.flatMap((compose) => {
+    return vm0ManagedKeyRows(compose.id).map((row) => {
+      return row.apiKey;
+    });
+  });
+  await db
+    .delete(vm0ApiKeys)
+    .where(
+      and(
+        inArray(vm0ApiKeys.label, composeIds),
+        inArray(vm0ApiKeys.apiKey, apiKeys),
+      ),
+    );
 }
 
 async function getOrInsertCompose(
@@ -722,6 +762,9 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (existing?.orgId) {
+    await deleteVm0ManagedKeysForSeededDefaultAgents(db, existing.orgId);
+    signal.throwIfAborted();
+
     const slackAgentRuns = await db
       .select({ id: agentRuns.id })
       .from(agentRuns)
