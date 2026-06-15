@@ -539,6 +539,7 @@ function ComposerFeedbackRow({
   item,
   autoFocus,
   showDivider,
+  fill,
   onChangeNote,
   onRemove,
   onKeyDown,
@@ -546,6 +547,7 @@ function ComposerFeedbackRow({
   item: FeedbackItem;
   autoFocus: boolean;
   showDivider: boolean;
+  fill: boolean;
   onChangeNote: (note: string) => void;
   onRemove: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
@@ -598,7 +600,15 @@ function ComposerFeedbackRow({
         onKeyDown={onKeyDown}
         rows={1}
         placeholder="What should change about this?"
-        className="w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0"
+        className={cn(
+          "w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0",
+          // The active (newest) note carries the composer's resting height so the
+          // ghost text stays anchored above the toolbar — matching the textarea
+          // body. Quote chips then stack above it and grow the card upward,
+          // mirroring the attachment-chips layout, instead of the chip eating
+          // into a fixed-height container and pushing the ghost text down.
+          fill && "min-h-[96px]",
+        )}
       />
     </div>
   );
@@ -621,10 +631,12 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
   const newestId = feedback.items[feedback.items.length - 1]?.id;
 
   return (
-    // min-h keeps the card from shrinking below the textarea's resting height.
     // px-4 / pt-3 mirror the attachment-chips inset so the feedback chip lines
-    // up with attachments on both the left and top edges.
-    <div className="flex min-h-[96px] flex-col px-4 pb-2 pt-3">
+    // up with attachments on both the left and top edges. The resting height
+    // lives on the newest note (via `fill`) rather than this container, so the
+    // quote chip grows the card upward instead of being capped inside a fixed
+    // height — keeping the layout consistent with the attachment-chips band.
+    <div className="flex flex-col px-4 pb-2 pt-3">
       {feedback.items.map((item, index) => {
         return (
           <ComposerFeedbackRow
@@ -632,6 +644,7 @@ function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
             item={item}
             autoFocus={item.id === newestId}
             showDivider={index > 0}
+            fill={item.id === newestId}
             onChangeNote={(note) => {
               return feedback.onChangeNote(item.id, note);
             }}
