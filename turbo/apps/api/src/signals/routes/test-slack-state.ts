@@ -245,11 +245,11 @@ function vm0ManagedKeyRows(composeId: string) {
   ];
 }
 
-async function deleteVm0ManagedKeysForSeededDefaultAgents(
+async function deleteVm0ManagedKeysForSeededDefaultAgent(
   db: Db,
   orgId: string,
 ): Promise<void> {
-  const composes = await db
+  const [compose] = await db
     .select({ id: agentComposes.id })
     .from(agentComposes)
     .where(
@@ -257,25 +257,21 @@ async function deleteVm0ManagedKeysForSeededDefaultAgents(
         eq(agentComposes.orgId, orgId),
         eq(agentComposes.name, DEFAULT_AGENT_NAME),
       ),
-    );
+    )
+    .limit(1);
 
-  if (composes.length === 0) {
+  if (!compose) {
     return;
   }
 
-  const composeIds = composes.map((compose) => {
-    return compose.id;
-  });
-  const apiKeys = composes.flatMap((compose) => {
-    return vm0ManagedKeyRows(compose.id).map((row) => {
-      return row.apiKey;
-    });
+  const apiKeys = vm0ManagedKeyRows(compose.id).map((row) => {
+    return row.apiKey;
   });
   await db
     .delete(vm0ApiKeys)
     .where(
       and(
-        inArray(vm0ApiKeys.label, composeIds),
+        eq(vm0ApiKeys.label, compose.id),
         inArray(vm0ApiKeys.apiKey, apiKeys),
       ),
     );
@@ -752,7 +748,7 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (existing?.orgId) {
-    await deleteVm0ManagedKeysForSeededDefaultAgents(db, existing.orgId);
+    await deleteVm0ManagedKeysForSeededDefaultAgent(db, existing.orgId);
     signal.throwIfAborted();
   }
 
