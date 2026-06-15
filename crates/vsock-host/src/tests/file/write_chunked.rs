@@ -28,6 +28,10 @@ struct ChunkedWriteFixture {
     temp_path: Option<String>,
 }
 
+fn shell_quote_for_test(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 impl ChunkedWriteFixture {
     async fn new(target_path: &'static str) -> Self {
         let (host, guest) = setup_host_and_guest().await;
@@ -70,8 +74,11 @@ impl ChunkedWriteFixture {
         let frame = expect_exec_start(&mut self.guest).await;
         assert_eq!(frame.label, "write-file-rename");
         assert!(frame.command.contains("mv -f --"));
-        assert!(frame.command.contains(self.temp_path()));
-        assert!(frame.command.contains(self.target_path));
+        assert!(frame.command.ends_with(&format!(
+            " {} {}",
+            shell_quote_for_test(self.temp_path()),
+            shell_quote_for_test(self.target_path)
+        )));
         frame
     }
 
@@ -79,7 +86,11 @@ impl ChunkedWriteFixture {
         let frame = expect_exec_start(&mut self.guest).await;
         assert_eq!(frame.label, "exec-cleanup");
         assert!(frame.command.contains("rm -f --"));
-        assert!(frame.command.contains(self.temp_path()));
+        assert!(
+            frame
+                .command
+                .ends_with(&format!(" {}", shell_quote_for_test(self.temp_path())))
+        );
         frame
     }
 
