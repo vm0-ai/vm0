@@ -440,9 +440,15 @@ async function resolveZeroRunPermissionPolicies(
   );
   signal.throwIfAborted();
 
-  return resolveFirewallPolicies(permissionGrantsToFirewallPolicies(grants), [
-    ...args.allowedConnectorTypes,
-  ]);
+  const allowedConnectorTypeSet = new Set<string>(args.allowedConnectorTypes);
+  const allowedGrants = grants.filter((grant) => {
+    return allowedConnectorTypeSet.has(grant.connectorRef);
+  });
+
+  return resolveFirewallPolicies(
+    permissionGrantsToFirewallPolicies(allowedGrants),
+    [...args.allowedConnectorTypes],
+  );
 }
 
 async function loadUserInfo(

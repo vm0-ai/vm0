@@ -1296,6 +1296,64 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("applies explicit direct-run policies to a custom connector with a built-in slug", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: "cloudflare",
+      displayName: "BDD Cloudflare-Named Direct Custom API",
+      prefixes: ["https://direct-custom-cloudflare.example.test/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "direct-custom-cloudflare-secret",
+    );
+    const composeName = `bdd-custom-cloudflare-direct-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "direct run custom connector named like a built-in",
+      permissionPolicies: {
+        cloudflare: { policies: {}, unknownPolicy: "deny" },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const customApis = inlineFirewallApis(claim.firewalls, "cloudflare");
+    expect(customApis[0]?.base).toBe(
+      "https://direct-custom-cloudflare.example.test/api/",
+    );
+    expect(claim.networkPolicies?.cloudflare).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "deny",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsAutomationsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);

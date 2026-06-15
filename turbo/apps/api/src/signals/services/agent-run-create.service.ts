@@ -2308,9 +2308,7 @@ function buildPermissionManifest(args: {
   const customConnectorManifest = applyConnectorPolicies(
     resolvedCustomConnectorFirewalls,
     (firewall) => {
-      return isFirewallConnectorType(firewall.name)
-        ? undefined
-        : args.permissionPolicies?.[firewall.name];
+      return args.permissionPolicies?.[firewall.name];
     },
     inlineFirewallEntry,
     (_firewall, permissionNames) => {
