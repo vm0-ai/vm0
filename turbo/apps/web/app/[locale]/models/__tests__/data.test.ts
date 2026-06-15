@@ -6,6 +6,16 @@ import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-provid
 import { MODELS, isReasoningModel } from "../data";
 
 const MODEL_CONTENT_LOCALES = ["en", "de", "es", "ja"] as const;
+type ModelContent = Record<
+  string,
+  {
+    readonly alternatives?: readonly {
+      readonly reason?: string;
+      readonly slug?: string;
+    }[];
+  }
+>;
+
 const REMOVED_MODEL_CONTENT_TERMS = [
   "Claude Fable 5",
   "Fable 5",
@@ -25,11 +35,29 @@ const REMOVED_MODEL_CONTENT_TERMS = [
   "DeepSeek V4 Pro (×0.3)",
   "DeepSeek V4 Pro (×0,3)",
   "DeepSeek V4 Pro（×0.3）",
+  "DeepSeek V4 Pro (×0.06)",
+  "DeepSeek V4 Pro (×0,06)",
+  "DeepSeek V4 Pro（×0.06）",
   "V4 Pro (×0.3)",
   "V4 Pro (×0,3)",
   "V4 Pro（×0.3",
+  "V4 Pro (×0.06)",
+  "V4 Pro (×0,06)",
+  "V4 Pro（×0.06",
   "VM0 Managed at ×0.3",
   "VM0 Managed at ×0,3",
+  "VM0 Managed at ×0.06",
+  "VM0 Managed at ×0,06",
+] as const;
+const STALE_DEEPSEEK_V4_PRO_ALTERNATIVE_MULTIPLIERS = [
+  "×0.3",
+  "×0,3",
+  "x0.3",
+  "x0,3",
+  "×0.06",
+  "×0,06",
+  "x0.06",
+  "x0,06",
 ] as const;
 
 function readModelContent(locale: (typeof MODEL_CONTENT_LOCALES)[number]) {
@@ -39,10 +67,30 @@ function readModelContent(locale: (typeof MODEL_CONTENT_LOCALES)[number]) {
   );
   const messages = JSON.parse(json) as {
     readonly models?: {
-      readonly content?: unknown;
+      readonly content?: ModelContent;
     };
   };
-  return JSON.stringify(messages.models?.content ?? {});
+  return messages.models?.content ?? {};
+}
+
+function stringifyModelContent(locale: (typeof MODEL_CONTENT_LOCALES)[number]) {
+  return JSON.stringify(readModelContent(locale));
+}
+
+function readDeepSeekV4ProAlternativeReasons(
+  locale: (typeof MODEL_CONTENT_LOCALES)[number],
+) {
+  return Object.values(readModelContent(locale)).flatMap((model) => {
+    return (
+      model.alternatives
+        ?.filter((alternative) => {
+          return alternative.slug === "deepseek-v4-pro";
+        })
+        .map((alternative) => {
+          return alternative.reason ?? "";
+        }) ?? []
+    );
+  });
 }
 
 describe("models page data", () => {
@@ -108,9 +156,19 @@ describe("models page data", () => {
 
   it("omits removed model names from localized model content", () => {
     for (const locale of MODEL_CONTENT_LOCALES) {
-      const content = readModelContent(locale);
+      const content = stringifyModelContent(locale);
       for (const term of REMOVED_MODEL_CONTENT_TERMS) {
         expect(content).not.toContain(term);
+      }
+    }
+  });
+
+  it("omits stale DeepSeek V4 Pro alternative multipliers from localized model content", () => {
+    for (const locale of MODEL_CONTENT_LOCALES) {
+      for (const reason of readDeepSeekV4ProAlternativeReasons(locale)) {
+        for (const term of STALE_DEEPSEEK_V4_PRO_ALTERNATIVE_MULTIPLIERS) {
+          expect(reason).not.toContain(term);
+        }
       }
     }
   });

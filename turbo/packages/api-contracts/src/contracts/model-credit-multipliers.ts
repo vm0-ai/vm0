@@ -34,7 +34,7 @@ export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
   "claude-opus-4-7": 2,
   "claude-opus-4-6": 2,
   "claude-sonnet-4-6": 1,
-  "deepseek-v4-pro": 0.06,
+  "deepseek-v4-pro": 0.1,
   "kimi-k2.7-code": 0.3,
   "MiniMax-M3": 0.2,
   "glm-5.1": 0.4,

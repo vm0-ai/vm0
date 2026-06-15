@@ -245,14 +245,14 @@ describe("model-first canonical catalog", () => {
         "claude-opus-4-8": 2,
         "claude-opus-4-7": 2,
         "claude-opus-4-6": 2,
-        "deepseek-v4-pro": 0.06,
+        "deepseek-v4-pro": 0.1,
         "kimi-k2.7-code": 0.3,
       }),
     );
     expect(getVm0ModelMultiplier("claude-opus-4-8")).toBe(2);
     expect(getVm0ModelMultiplier("claude-opus-4-7")).toBe(2);
     expect(getVm0ModelMultiplier("claude-opus-4-6")).toBe(2);
-    expect(getVm0ModelMultiplier("deepseek-v4-pro")).toBe(0.06);
+    expect(getVm0ModelMultiplier("deepseek-v4-pro")).toBe(0.1);
     expect(getVm0ModelMultiplier("kimi-k2.7-code")).toBe(0.3);
     expect(getVm0ModelMultiplier("custom/model")).toBeUndefined();
   });
