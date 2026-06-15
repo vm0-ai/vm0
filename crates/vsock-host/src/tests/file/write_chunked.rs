@@ -4,20 +4,93 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
+use tokio::net::UnixStream;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use vsock_proto::{ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
 
 use super::super::support::{
     MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
     make_pair, normal_operation_readiness, operation_count, pending_request_count,
-    read_guest_message, send_exec_result, setup_host_and_guest,
+    send_exec_result, setup_host_and_guest,
 };
 use super::support::{
-    ChunkedWriteTempPath, expect_write_file, send_guest_error, send_write_file_failure,
-    send_write_file_success, spawn_write_file,
+    ExecStartFrame, WriteFileFrame, expect_exec_start, expect_write_file, send_guest_error,
+    send_write_file_failure, send_write_file_success, spawn_write_file,
 };
 use crate::file as file_impl;
-use crate::{FrameWriteObserver, operation_tracker::NormalOperationReadiness};
+use crate::{FrameWriteObserver, VsockHost, operation_tracker::NormalOperationReadiness};
+
+struct ChunkedWriteFixture {
+    host: Arc<VsockHost>,
+    guest: UnixStream,
+    target_path: &'static str,
+    temp_path: Option<String>,
+}
+
+impl ChunkedWriteFixture {
+    async fn new(target_path: &'static str) -> Self {
+        let (host, guest) = setup_host_and_guest().await;
+        Self {
+            host: Arc::new(host),
+            guest,
+            target_path,
+            temp_path: None,
+        }
+    }
+
+    fn chunk_limit() -> usize {
+        file_impl::test_support::WRITE_FILE_CHUNK_LIMIT
+    }
+
+    fn two_chunk_content() -> Vec<u8> {
+        vec![0xABu8; Self::chunk_limit() + 100]
+    }
+
+    fn spawn_write(&self, content: Vec<u8>, sudo: bool) -> JoinHandle<io::Result<()>> {
+        spawn_write_file(Arc::clone(&self.host), self.target_path, content, sudo)
+    }
+
+    async fn expect_chunk(&mut self) -> WriteFileFrame {
+        let frame = expect_write_file(&mut self.guest).await;
+        if let Some(temp_path) = &self.temp_path {
+            assert_eq!(frame.path.as_str(), temp_path);
+        } else {
+            assert!(
+                frame
+                    .path
+                    .starts_with(&format!("{}.vm0tmp-", self.target_path))
+            );
+            self.temp_path = Some(frame.path.clone());
+        }
+        frame
+    }
+
+    async fn expect_rename(&mut self) -> ExecStartFrame {
+        let frame = expect_exec_start(&mut self.guest).await;
+        assert_eq!(frame.label, "write-file-rename");
+        assert!(frame.command.contains("mv -f --"));
+        assert!(frame.command.contains(self.temp_path()));
+        assert!(frame.command.contains(self.target_path));
+        frame
+    }
+
+    async fn expect_cleanup(&mut self) -> ExecStartFrame {
+        let frame = expect_exec_start(&mut self.guest).await;
+        assert_eq!(frame.label, "exec-cleanup");
+        assert!(frame.command.contains("rm -f --"));
+        assert!(frame.command.contains(self.temp_path()));
+        frame
+    }
+
+    fn assert_readiness(&self, expected: NormalOperationReadiness) {
+        assert_eq!(normal_operation_readiness(&self.host), expected);
+    }
+
+    fn temp_path(&self) -> &str {
+        self.temp_path.as_deref().expect("temp path")
+    }
+}
 
 #[tokio::test]
 async fn write_file_chunked_cancelled_before_first_frame_write_does_not_cleanup() {
@@ -101,36 +174,24 @@ async fn write_file_chunked_rejects_invalid_path_before_cleanup_or_write() {
 
 #[tokio::test]
 async fn test_write_file_chunked() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-
-    // Content just over the chunk limit: 2 write messages + 1 exec (mv).
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = spawn_write_file(Arc::clone(&host), "/tmp/big.bin", content.clone(), false);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
+    let content = ChunkedWriteFixture::two_chunk_content();
+    let write_task = fixture.spawn_write(content.clone(), false);
 
     let mut chunks_received = Vec::new();
-    let mut temp_path = ChunkedWriteTempPath::default();
 
-    let first = expect_write_file(&mut guest).await;
-    temp_path.assert_next_chunk(&first.path, "/tmp/big.bin");
+    let first = fixture.expect_chunk().await;
     let first_seq = first.seq();
     chunks_received.push((first.append, first.content));
-    send_write_file_success(&mut guest, first_seq).await;
+    send_write_file_success(&mut fixture.guest, first_seq).await;
 
-    let second = expect_write_file(&mut guest).await;
-    temp_path.assert_next_chunk(&second.path, "/tmp/big.bin");
+    let second = fixture.expect_chunk().await;
     let second_seq = second.seq();
     chunks_received.push((second.append, second.content));
-    send_write_file_success(&mut guest, second_seq).await;
+    send_write_file_success(&mut fixture.guest, second_seq).await;
 
-    let rename = read_guest_message(&mut guest).await;
-    assert_eq!(rename.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&rename.payload).unwrap();
-    assert!(decoded.command.contains("mv -f --"));
-    assert!(decoded.command.contains(temp_path.path()));
-    assert!(decoded.command.contains("/tmp/big.bin"));
-    assert_eq!(decoded.label, "write-file-rename");
+    let rename = fixture.expect_rename().await;
 
     assert_eq!(chunks_received.len(), 2);
     assert!(!chunks_received[0].0);
@@ -142,8 +203,8 @@ async fn test_write_file_chunked() {
     assert_eq!(reassembled, content);
 
     send_exec_result(
-        &mut guest,
-        rename.seq,
+        &mut fixture.guest,
+        rename.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -155,44 +216,23 @@ async fn test_write_file_chunked() {
 
 #[tokio::test]
 async fn write_file_chunked_tracks_one_operation_until_rename_result() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
-    };
+    let first = fixture.expect_chunk().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Busy
-    );
-    send_write_file_success(&mut guest, first.seq).await;
+    let second = fixture.expect_chunk().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
+    send_write_file_success(&mut fixture.guest, second.seq()).await;
 
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Busy
-    );
-    send_write_file_success(&mut guest, second.seq).await;
-
-    let rename = read_guest_message(&mut guest).await;
-    assert_eq!(rename.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&rename.payload).unwrap();
-    assert_eq!(decoded.label, "write-file-rename");
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Busy
-    );
+    let rename = fixture.expect_rename().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
 
     send_exec_result(
-        &mut guest,
-        rename.seq,
+        &mut fixture.guest,
+        rename.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -200,46 +240,32 @@ async fn write_file_chunked_tracks_one_operation_until_rename_result() {
     .await;
 
     write_task.await.unwrap().unwrap();
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
 }
 
 #[tokio::test]
 async fn write_file_chunked_rename_result_before_connection_close_keeps_tracker_closed_not_not_parkable()
  {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
-    };
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, first.seq).await;
+    let second = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, second.seq()).await;
 
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, second.seq).await;
-
-    let rename = read_guest_message(&mut guest).await;
-    assert_eq!(rename.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&rename.payload).unwrap();
-    assert_eq!(decoded.label, "write-file-rename");
+    let rename = fixture.expect_rename().await;
     send_exec_result(
-        &mut guest,
-        rename.seq,
+        &mut fixture.guest,
+        rename.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
     )
     .await;
-    drop(guest);
+    let host = Arc::clone(&fixture.host);
+    drop(fixture.guest);
 
     write_task.await.unwrap().unwrap();
     assert_ne!(
@@ -250,36 +276,21 @@ async fn write_file_chunked_rename_result_before_connection_close_keeps_tracker_
 
 #[tokio::test]
 async fn write_file_chunked_failure_remains_busy_until_cleanup_result() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
-    };
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, first.seq).await;
+    let second = fixture.expect_chunk().await;
+    send_write_file_failure(&mut fixture.guest, second.seq(), "disk full").await;
 
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    send_write_file_failure(&mut guest, second.seq, "disk full").await;
-
-    let cleanup = read_guest_message(&mut guest).await;
-    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Busy
-    );
+    let cleanup = fixture.expect_cleanup().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
 
     send_exec_result(
-        &mut guest,
-        cleanup.seq,
+        &mut fixture.guest,
+        cleanup.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -288,43 +299,25 @@ async fn write_file_chunked_failure_remains_busy_until_cleanup_result() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("disk full"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
 }
 
 #[tokio::test]
 async fn write_file_chunked_error_response_cleans_up_and_releases_tracker() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
-    };
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, first.seq).await;
+    let second = fixture.expect_chunk().await;
+    send_guest_error(&mut fixture.guest, second.seq(), "guest write failed").await;
 
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    send_guest_error(&mut guest, second.seq, "guest write failed").await;
-
-    let cleanup = read_guest_message(&mut guest).await;
-    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Busy
-    );
+    let cleanup = fixture.expect_cleanup().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
     send_exec_result(
-        &mut guest,
-        cleanup.seq,
+        &mut fixture.guest,
+        cleanup.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -333,53 +326,34 @@ async fn write_file_chunked_error_response_cleans_up_and_releases_tracker() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("guest write failed"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
 }
 
 #[tokio::test]
 async fn write_file_chunked_unexpected_response_keeps_tracker_fail_closed() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
-    };
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, first.seq).await;
-
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    guest
-        .write_all(&vsock_proto::encode(MSG_EXEC_START, second.seq, &[]).unwrap())
+    let second = fixture.expect_chunk().await;
+    fixture
+        .guest
+        .write_all(&vsock_proto::encode(MSG_EXEC_START, second.seq(), &[]).unwrap())
         .await
         .unwrap();
 
     let err = write_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::NotParkable
-    );
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
 
-    let cleanup_retry =
-        tokio::time::timeout(Duration::from_secs(2), read_guest_message(&mut guest))
-            .await
-            .expect("cleanup retry was not sent after unexpected response");
-    assert_eq!(cleanup_retry.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup_retry.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    assert!(decoded.command.contains("rm -f --"));
+    let cleanup_retry = tokio::time::timeout(Duration::from_secs(2), fixture.expect_cleanup())
+        .await
+        .expect("cleanup retry was not sent after unexpected response");
     send_exec_result(
-        &mut guest,
-        cleanup_retry.seq,
+        &mut fixture.guest,
+        cleanup_retry.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -389,41 +363,23 @@ async fn write_file_chunked_unexpected_response_keeps_tracker_fail_closed() {
 
 #[tokio::test]
 async fn write_file_chunked_rename_error_response_cleans_up_and_releases_tracker() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
-    };
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, first.seq).await;
+    let second = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, second.seq()).await;
 
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, second.seq).await;
+    let rename = fixture.expect_rename().await;
+    send_guest_error(&mut fixture.guest, rename.seq(), "rename unavailable").await;
 
-    let rename = read_guest_message(&mut guest).await;
-    assert_eq!(rename.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&rename.payload).unwrap();
-    assert_eq!(decoded.label, "write-file-rename");
-    send_guest_error(&mut guest, rename.seq, "rename unavailable").await;
-
-    let cleanup = read_guest_message(&mut guest).await;
-    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Busy
-    );
+    let cleanup = fixture.expect_cleanup().await;
+    fixture.assert_readiness(NormalOperationReadiness::Busy);
     send_exec_result(
-        &mut guest,
-        cleanup.seq,
+        &mut fixture.guest,
+        cleanup.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -432,55 +388,33 @@ async fn write_file_chunked_rename_error_response_cleans_up_and_releases_tracker
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("rename unavailable"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::Idle
-    );
+    fixture.assert_readiness(NormalOperationReadiness::Idle);
 }
 
 #[tokio::test]
 async fn write_file_chunked_cleanup_error_retries_untracked_on_drop() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
-    };
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, first.seq).await;
+    let second = fixture.expect_chunk().await;
+    send_write_file_failure(&mut fixture.guest, second.seq(), "disk full").await;
 
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    send_write_file_failure(&mut guest, second.seq, "disk full").await;
-
-    let cleanup = read_guest_message(&mut guest).await;
-    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    send_guest_error(&mut guest, cleanup.seq, "cleanup unavailable").await;
+    let cleanup = fixture.expect_cleanup().await;
+    send_guest_error(&mut fixture.guest, cleanup.seq(), "cleanup unavailable").await;
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("disk full"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::NotParkable
-    );
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
 
-    let retry = tokio::time::timeout(Duration::from_secs(2), read_guest_message(&mut guest))
+    let retry = tokio::time::timeout(Duration::from_secs(2), fixture.expect_cleanup())
         .await
         .expect("cleanup retry was not sent after cleanup error");
-    assert_eq!(retry.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&retry.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    assert!(decoded.command.contains("rm -f --"));
     send_exec_result(
-        &mut guest,
-        retry.seq,
+        &mut fixture.guest,
+        retry.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -490,14 +424,12 @@ async fn write_file_chunked_cleanup_error_retries_untracked_on_drop() {
 
 #[tokio::test]
 async fn write_file_chunked_cleanup_retry_does_not_reuse_write_observer() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
+    let content = ChunkedWriteFixture::two_chunk_content();
     let write_task = {
-        let host = Arc::clone(&host);
+        let host = Arc::clone(&fixture.host);
         let write_start_count = Arc::clone(&write_start_count);
         tokio::spawn(async move {
             host.write_file_with_write_observer(
@@ -516,34 +448,25 @@ async fn write_file_chunked_cleanup_retry_does_not_reuse_write_observer() {
         })
     };
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, first.seq).await;
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    send_write_file_failure(&mut guest, second.seq, "disk full").await;
+    let second = fixture.expect_chunk().await;
+    send_write_file_failure(&mut fixture.guest, second.seq(), "disk full").await;
 
-    let cleanup = read_guest_message(&mut guest).await;
-    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    send_guest_error(&mut guest, cleanup.seq, "cleanup unavailable").await;
+    let cleanup = fixture.expect_cleanup().await;
+    send_guest_error(&mut fixture.guest, cleanup.seq(), "cleanup unavailable").await;
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("disk full"));
     assert_eq!(write_start_count.load(Ordering::SeqCst), 3);
 
-    let retry = tokio::time::timeout(Duration::from_secs(2), read_guest_message(&mut guest))
+    let retry = tokio::time::timeout(Duration::from_secs(2), fixture.expect_cleanup())
         .await
         .expect("cleanup retry was not sent after observer became inactive");
-    assert_eq!(retry.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&retry.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    assert!(decoded.command.contains("rm -f --"));
     send_exec_result(
-        &mut guest,
-        retry.seq,
+        &mut fixture.guest,
+        retry.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -554,31 +477,19 @@ async fn write_file_chunked_cleanup_retry_does_not_reuse_write_observer() {
 
 #[tokio::test]
 async fn write_file_chunked_cleanup_nonzero_exit_retries_untracked_on_drop() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
-    };
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = read_guest_message(&mut guest).await;
-    assert_eq!(first.msg_type, MSG_WRITE_FILE);
-    send_write_file_success(&mut guest, first.seq).await;
+    let second = fixture.expect_chunk().await;
+    send_write_file_failure(&mut fixture.guest, second.seq(), "disk full").await;
 
-    let second = read_guest_message(&mut guest).await;
-    assert_eq!(second.msg_type, MSG_WRITE_FILE);
-    send_write_file_failure(&mut guest, second.seq, "disk full").await;
-
-    let cleanup = read_guest_message(&mut guest).await;
-    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
+    let cleanup = fixture.expect_cleanup().await;
     send_exec_result(
-        &mut guest,
-        cleanup.seq,
+        &mut fixture.guest,
+        cleanup.seq(),
         ExecTermination::Exited { exit_code: 1 },
         &[],
         b"permission denied",
@@ -587,21 +498,14 @@ async fn write_file_chunked_cleanup_nonzero_exit_retries_untracked_on_drop() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("disk full"));
-    assert_eq!(
-        normal_operation_readiness(&host),
-        NormalOperationReadiness::NotParkable
-    );
+    fixture.assert_readiness(NormalOperationReadiness::NotParkable);
 
-    let retry = tokio::time::timeout(Duration::from_secs(2), read_guest_message(&mut guest))
+    let retry = tokio::time::timeout(Duration::from_secs(2), fixture.expect_cleanup())
         .await
         .expect("cleanup retry was not sent after nonzero cleanup exit");
-    assert_eq!(retry.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&retry.payload).unwrap();
-    assert_eq!(decoded.label, "exec-cleanup");
-    assert!(decoded.command.contains("rm -f --"));
     send_exec_result(
-        &mut guest,
-        retry.seq,
+        &mut fixture.guest,
+        retry.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -635,31 +539,19 @@ async fn test_write_file_at_chunk_limit_uses_single_message() {
 
 #[tokio::test]
 async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = spawn_write_file(Arc::clone(&host), "/tmp/big.bin", content, false);
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = expect_write_file(&mut guest).await;
-    assert!(first.path.starts_with("/tmp/big.bin.vm0tmp-"));
-    let temp_path = first.path.clone();
-    send_write_file_success(&mut guest, first.seq()).await;
+    let second = fixture.expect_chunk().await;
+    send_write_file_failure(&mut fixture.guest, second.seq(), "disk full").await;
 
-    let second = expect_write_file(&mut guest).await;
-    assert_eq!(second.path, temp_path);
-    send_write_file_failure(&mut guest, second.seq(), "disk full").await;
-
-    let cleanup = read_guest_message(&mut guest).await;
-    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
-    assert!(decoded.command.contains("rm -f --"));
-    assert!(decoded.command.contains(&temp_path));
-    assert_eq!(decoded.label, "exec-cleanup");
+    let cleanup = fixture.expect_cleanup().await;
     send_exec_result(
-        &mut guest,
-        cleanup.seq,
+        &mut fixture.guest,
+        cleanup.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],
@@ -672,46 +564,29 @@ async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
 
 #[tokio::test]
 async fn test_write_file_chunked_cleans_up_on_mv_failure() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
+    let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
+    let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit + 100];
-    let write_task = spawn_write_file(Arc::clone(&host), "/tmp/big.bin", content, false);
+    let first = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, first.seq()).await;
 
-    let first = expect_write_file(&mut guest).await;
-    assert!(first.path.starts_with("/tmp/big.bin.vm0tmp-"));
-    let temp_path = first.path.clone();
-    send_write_file_success(&mut guest, first.seq()).await;
+    let second = fixture.expect_chunk().await;
+    send_write_file_success(&mut fixture.guest, second.seq()).await;
 
-    let second = expect_write_file(&mut guest).await;
-    assert_eq!(second.path, temp_path);
-    send_write_file_success(&mut guest, second.seq()).await;
-
-    let rename = read_guest_message(&mut guest).await;
-    assert_eq!(rename.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&rename.payload).unwrap();
-    assert!(decoded.command.contains("mv -f --"));
-    assert!(decoded.command.contains(&temp_path));
-    assert_eq!(decoded.label, "write-file-rename");
+    let rename = fixture.expect_rename().await;
     send_exec_result(
-        &mut guest,
-        rename.seq,
+        &mut fixture.guest,
+        rename.seq(),
         ExecTermination::Exited { exit_code: 1 },
         &[],
         b"permission denied",
     )
     .await;
 
-    let cleanup = read_guest_message(&mut guest).await;
-    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
-    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
-    assert!(decoded.command.contains("rm -f --"));
-    assert!(decoded.command.contains(&temp_path));
-    assert_eq!(decoded.label, "exec-cleanup");
+    let cleanup = fixture.expect_cleanup().await;
     send_exec_result(
-        &mut guest,
-        cleanup.seq,
+        &mut fixture.guest,
+        cleanup.seq(),
         ExecTermination::Exited { exit_code: 0 },
         &[],
         &[],

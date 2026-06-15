@@ -218,23 +218,3 @@ pub(super) async fn send_guest_error(guest: &mut UnixStream, seq: u32, message: 
         .await
         .unwrap();
 }
-
-#[derive(Default)]
-pub(super) struct ChunkedWriteTempPath {
-    path: Option<String>,
-}
-
-impl ChunkedWriteTempPath {
-    pub(super) fn assert_next_chunk(&mut self, path: &str, target_path: &str) {
-        if let Some(temp_path) = &self.path {
-            assert_eq!(path, temp_path);
-        } else {
-            assert!(path.starts_with(&format!("{target_path}.vm0tmp-")));
-            self.path = Some(path.to_string());
-        }
-    }
-
-    pub(super) fn path(&self) -> &str {
-        self.path.as_deref().expect("temp path")
-    }
-}
