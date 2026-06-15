@@ -1006,6 +1006,9 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
         )
 
     # Buffer usage events for aggregate platform upload.
+    if not billable_counts:
+        return
+
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
     api_url = get_api_url()
     if not sandbox_token or not api_url:
