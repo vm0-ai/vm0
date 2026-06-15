@@ -1,0 +1,522 @@
+use std::path::{Path, PathBuf};
+
+use super::procfs::{read_cmdline, read_cwd, read_ppid, read_process_stat, scan_proc_cmdlines};
+use super::types::{
+    DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
+    MitmproxyProcessInfo, ProcessStat, process_stat_is_live,
+};
+
+/// Check if an argv belongs to a firecracker process.
+///
+/// Looks at the binary name (`argv[0]`) — the run ID and base directory
+/// are resolved from `/proc/{pid}/cwd` instead of argument parsing,
+/// since our sandbox always sets `current_dir` to the workspace.
+pub(crate) fn is_firecracker_cmdline(argv: &[String]) -> bool {
+    let Some(binary) = argv.first() else {
+        return false;
+    };
+    Path::new(binary).file_name().and_then(|n| n.to_str()) == Some("firecracker")
+}
+
+/// Parse a mitmdump argv for the listen port.
+///
+/// Identifies our mitmdump by `vm0_proxy_registry_path=` and extracts
+/// the `--listen-port` value.
+fn parse_mitmdump_cmdline(argv: &[String]) -> Option<u16> {
+    if !argv
+        .iter()
+        .any(|t| t.starts_with("vm0_proxy_registry_path="))
+    {
+        return None;
+    }
+    let pos = argv.iter().position(|t| t == "--listen-port")?;
+    argv.get(pos + 1)?.parse().ok()
+}
+
+/// Parse a dnsmasq argv for the listen port.
+///
+/// Identifies dnsmasq by binary name and extracts the `--port` value.
+fn parse_dnsmasq_cmdline(argv: &[String]) -> Option<u16> {
+    let binary = argv.first()?;
+    if !binary.ends_with("dnsmasq") {
+        return None;
+    }
+    let pos = argv.iter().position(|t| t == "--port")?;
+    argv.get(pos + 1)?.parse().ok()
+}
+
+/// Extract sandbox_id and base_dir from a firecracker workspace CWD.
+///
+/// CWD is `{base_dir}/workspaces/{sandbox_id}/`, so:
+/// - `sandbox_id` is the last component
+/// - `base_dir` is the grandparent of `workspaces`
+pub(crate) fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
+    let sandbox_id = cwd.file_name()?.to_string_lossy().into_owned();
+    let workspaces_dir = cwd.parent()?;
+    if workspaces_dir.file_name().and_then(|n| n.to_str()) == Some("workspaces") {
+        let base_dir = workspaces_dir.parent()?.to_path_buf();
+        Some((sandbox_id, base_dir))
+    } else {
+        None
+    }
+}
+
+async fn read_stable_firecracker_stat(pid: u32) -> Option<ProcessStat> {
+    let before = read_process_stat(pid).await?;
+    let argv = read_cmdline(pid).await?;
+    let after = read_process_stat(pid).await?;
+    stable_live_firecracker_stat(&before, &argv, after)
+}
+
+fn process_stat_identity_matches(left: &ProcessStat, right: &ProcessStat) -> bool {
+    left.pgid == right.pgid && left.starttime == right.starttime
+}
+
+fn stable_live_firecracker_stat(
+    before: &ProcessStat,
+    argv: &[String],
+    after: ProcessStat,
+) -> Option<ProcessStat> {
+    if process_stat_is_live(before)
+        && process_stat_is_live(&after)
+        && process_stat_identity_matches(before, &after)
+        && is_firecracker_cmdline(argv)
+    {
+        Some(after)
+    } else {
+        None
+    }
+}
+
+fn should_keep_unidentified_firecracker_candidate(
+    stat: &ProcessStat,
+    argv: Option<&[String]>,
+) -> bool {
+    if !process_stat_is_live(stat) {
+        return false;
+    }
+    match argv {
+        Some(argv) => is_firecracker_cmdline(argv),
+        None => true,
+    }
+}
+
+fn unidentified_firecracker_process(pid: u32, ppid: Option<u32>) -> FirecrackerProcessInfo {
+    FirecrackerProcessInfo {
+        pid,
+        ppid,
+        sandbox_id: format!("pid-{pid}"),
+        base_dir: None,
+        identity: None,
+    }
+}
+
+async fn unidentified_firecracker_if_present(pid: u32) -> Option<FirecrackerProcessInfo> {
+    let stat = read_process_stat(pid).await?;
+    let argv = read_cmdline(pid).await;
+    if !should_keep_unidentified_firecracker_candidate(&stat, argv.as_deref()) {
+        return None;
+    }
+    Some(unidentified_firecracker_process(pid, read_ppid(pid).await))
+}
+
+/// Scan `/proc` once for sandbox child process facts.
+///
+/// Live runner identity is published by `live_runner_instances`; this scan
+/// intentionally does not infer runner identity from argv.
+pub async fn discover_all() -> DiscoveredProcesses {
+    let procs = scan_proc_cmdlines().await;
+
+    let mut firecrackers = Vec::new();
+    let mut mitmdumps = Vec::new();
+    let mut dnsmasqs = Vec::new();
+
+    for (pid, argv) in &procs {
+        if is_firecracker_cmdline(argv) {
+            firecrackers.push(*pid);
+        }
+        if let Some(port) = parse_mitmdump_cmdline(argv) {
+            mitmdumps.push((*pid, port));
+        }
+        if let Some(port) = parse_dnsmasq_cmdline(argv) {
+            dnsmasqs.push(DnsmasqProcessInfo { pid: *pid, port });
+        }
+    }
+
+    // Resolve sandbox_id + base_dir + ppid from CWD for firecracker processes
+    let mut fc_infos = Vec::with_capacity(firecrackers.len());
+    for pid in firecrackers {
+        let Some(initial_stat) = read_stable_firecracker_stat(pid).await else {
+            if let Some(info) = unidentified_firecracker_if_present(pid).await {
+                fc_infos.push(info);
+            }
+            continue;
+        };
+        let cwd_info = read_cwd(pid)
+            .await
+            .and_then(|cwd| parse_workspace_cwd(&cwd));
+        let ppid = read_ppid(pid).await;
+        let Some(process_stat) = read_stable_firecracker_stat(pid).await else {
+            if let Some(info) = unidentified_firecracker_if_present(pid).await {
+                fc_infos.push(info);
+            }
+            continue;
+        };
+        if !process_stat_identity_matches(&initial_stat, &process_stat) {
+            fc_infos.push(unidentified_firecracker_process(pid, ppid));
+            continue;
+        }
+        let (sandbox_id, base_dir) = match cwd_info {
+            Some((id, bd)) => (id, Some(bd)),
+            None => (format!("pid-{pid}"), None),
+        };
+        let identity = Some(FirecrackerProcessIdentity {
+            pid,
+            pgid: process_stat.pgid,
+            starttime: process_stat.starttime,
+            sandbox_id: sandbox_id.clone(),
+            base_dir: base_dir.clone(),
+        });
+        fc_infos.push(FirecrackerProcessInfo {
+            pid,
+            ppid,
+            sandbox_id,
+            base_dir,
+            identity,
+        });
+    }
+
+    // Resolve ppid for mitmdump processes
+    let mut mitm_infos = Vec::with_capacity(mitmdumps.len());
+    for (pid, port) in mitmdumps {
+        let ppid = read_ppid(pid).await;
+        mitm_infos.push(MitmproxyProcessInfo { pid, ppid, port });
+    }
+
+    DiscoveredProcesses {
+        firecrackers: fc_infos,
+        mitmdumps: mitm_infos,
+        dnsmasqs,
+    }
+}
+
+/// Return true when the discovered Firecracker list contains `sandbox_id`.
+pub fn firecracker_process_exists_for_sandbox_id(
+    firecrackers: &[FirecrackerProcessInfo],
+    sandbox_id: &str,
+) -> bool {
+    firecrackers
+        .iter()
+        .any(|process| process.sandbox_id == sandbox_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn is_firecracker_bare_name() {
+        assert!(is_firecracker_cmdline(&argv(&[
+            "firecracker",
+            "--api-sock",
+            "/run/vm0/sock/abc/api.sock",
+        ])));
+    }
+
+    #[test]
+    fn is_firecracker_full_path() {
+        assert!(is_firecracker_cmdline(&argv(&[
+            "/var/lib/vm0-runner/firecracker/v1.10.1/firecracker",
+            "--no-api",
+        ])));
+    }
+
+    #[test]
+    fn is_firecracker_not_runner() {
+        assert!(!is_firecracker_cmdline(&argv(&[
+            "runner",
+            "start",
+            "--config",
+            "/data/config.yaml",
+        ])));
+    }
+
+    #[test]
+    fn is_firecracker_empty() {
+        assert!(!is_firecracker_cmdline(&[]));
+    }
+
+    #[test]
+    fn firecracker_process_exists_for_sandbox_id_matches_exact_id() {
+        let processes = vec![FirecrackerProcessInfo {
+            pid: 42,
+            ppid: Some(1),
+            sandbox_id: "sandbox-a".to_string(),
+            base_dir: None,
+            identity: None,
+        }];
+
+        assert!(firecracker_process_exists_for_sandbox_id(
+            &processes,
+            "sandbox-a"
+        ));
+        assert!(!firecracker_process_exists_for_sandbox_id(
+            &processes, "sandbox"
+        ));
+    }
+
+    #[test]
+    fn parse_mitmdump_listen_port() {
+        let a = argv(&[
+            "mitmdump",
+            "--mode",
+            "transparent",
+            "--listen-port",
+            "8080",
+            "--set",
+            "vm0_proxy_registry_path=/data/runner-01/proxy-registry.json",
+        ]);
+        assert_eq!(parse_mitmdump_cmdline(&a), Some(8080));
+    }
+
+    #[test]
+    fn parse_mitmdump_registry_path_with_spaces() {
+        // Regression for #10479.
+        let a = argv(&[
+            "mitmdump",
+            "--listen-port",
+            "8080",
+            "--set",
+            "vm0_proxy_registry_path=/data/my runner/proxy-registry.json",
+        ]);
+        assert_eq!(parse_mitmdump_cmdline(&a), Some(8080));
+    }
+
+    #[test]
+    fn parse_mitmdump_no_registry_returns_none() {
+        let a = argv(&["mitmdump", "--mode", "transparent", "--listen-port", "8080"]);
+        assert!(parse_mitmdump_cmdline(&a).is_none());
+    }
+
+    #[test]
+    fn parse_mitmdump_no_listen_port_returns_none() {
+        let a = argv(&[
+            "mitmdump",
+            "--set",
+            "vm0_proxy_registry_path=/data/proxy-registry.json",
+        ]);
+        assert!(parse_mitmdump_cmdline(&a).is_none());
+    }
+
+    #[test]
+    fn parse_dnsmasq_port() {
+        let a = argv(&[
+            "dnsmasq",
+            "--no-daemon",
+            "--no-resolv",
+            "--port",
+            "5353",
+            "--server",
+            "8.8.8.8",
+        ]);
+        assert_eq!(parse_dnsmasq_cmdline(&a), Some(5353));
+    }
+
+    #[test]
+    fn parse_dnsmasq_not_dnsmasq_returns_none() {
+        assert!(parse_dnsmasq_cmdline(&argv(&["mitmdump", "--port", "5353"])).is_none());
+    }
+
+    #[test]
+    fn parse_dnsmasq_no_port_returns_none() {
+        assert!(parse_dnsmasq_cmdline(&argv(&["dnsmasq", "--no-daemon"])).is_none());
+    }
+
+    #[test]
+    fn parse_workspace_cwd_valid() {
+        let cwd = Path::new("/data/runner-01/workspaces/550e8400");
+        let (sandbox_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(sandbox_id, "550e8400");
+        assert_eq!(base_dir, Path::new("/data/runner-01"));
+    }
+
+    #[test]
+    fn parse_workspace_cwd_uuid() {
+        let cwd = Path::new("/data/r1/workspaces/550e8400-e29b-41d4-a716-446655440000");
+        let (sandbox_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(sandbox_id, "550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(base_dir, Path::new("/data/r1"));
+    }
+
+    #[test]
+    fn parse_workspace_cwd_non_workspace() {
+        assert!(parse_workspace_cwd(Path::new("/tmp/something")).is_none());
+    }
+
+    #[test]
+    fn process_stat_identity_ignores_state_changes() {
+        let sleeping = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let running = ProcessStat {
+            state: 'R',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let different_group = ProcessStat {
+            state: 'S',
+            pgid: 2200,
+            starttime: 123456,
+        };
+        let different_start = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 654321,
+        };
+
+        assert!(process_stat_identity_matches(&sleeping, &running));
+        assert!(!process_stat_identity_matches(&sleeping, &different_group));
+        assert!(!process_stat_identity_matches(&sleeping, &different_start));
+    }
+
+    #[test]
+    fn stable_live_firecracker_stat_accepts_live_stable_firecracker() {
+        let before = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let after = ProcessStat {
+            state: 'R',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert_eq!(
+            stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after.clone()),
+            Some(after)
+        );
+    }
+
+    #[test]
+    fn stable_live_firecracker_stat_rejects_zombie_firecracker() {
+        let before = ProcessStat {
+            state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let after = ProcessStat {
+            state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert_eq!(
+            stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
+            None
+        );
+    }
+
+    #[test]
+    fn stable_live_firecracker_stat_rejects_dead_firecracker() {
+        let before = ProcessStat {
+            state: 'X',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let after = ProcessStat {
+            state: 'x',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert_eq!(
+            stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
+            None
+        );
+    }
+
+    #[test]
+    fn stable_live_firecracker_stat_rejects_exit_during_read() {
+        let before = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let after = ProcessStat {
+            state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert_eq!(
+            stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
+            None
+        );
+    }
+
+    #[test]
+    fn unidentified_firecracker_candidate_keeps_uncertain_live_processes() {
+        let stat = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert!(should_keep_unidentified_firecracker_candidate(&stat, None));
+        assert!(should_keep_unidentified_firecracker_candidate(
+            &stat,
+            Some(&argv(&["firecracker"]))
+        ));
+    }
+
+    #[test]
+    fn unidentified_firecracker_candidate_rejects_known_non_firecracker() {
+        let stat = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert!(!should_keep_unidentified_firecracker_candidate(
+            &stat,
+            Some(&argv(&["bash"]))
+        ));
+    }
+
+    #[test]
+    fn unidentified_firecracker_candidate_rejects_zombie_processes() {
+        let stat = ProcessStat {
+            state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert!(!should_keep_unidentified_firecracker_candidate(&stat, None));
+        assert!(!should_keep_unidentified_firecracker_candidate(
+            &stat,
+            Some(&argv(&["firecracker"]))
+        ));
+    }
+
+    #[test]
+    fn unidentified_firecracker_candidate_rejects_dead_processes() {
+        let stat = ProcessStat {
+            state: 'X',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert!(!should_keep_unidentified_firecracker_candidate(&stat, None));
+        assert!(!should_keep_unidentified_firecracker_candidate(
+            &stat,
+            Some(&argv(&["firecracker"]))
+        ));
+    }
+}

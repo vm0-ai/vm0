@@ -1,0 +1,2 @@
+ALTER TABLE "zero_runs" ADD COLUMN "chat_thread_id" uuid;--> statement-breakpoint
+ALTER TABLE "zero_runs" ADD CONSTRAINT "zero_runs_chat_thread_id_chat_threads_id_fk" FOREIGN KEY ("chat_thread_id") REFERENCES "public"."chat_threads"("id") ON DELETE set null ON UPDATE no action;

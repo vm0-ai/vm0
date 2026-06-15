@@ -1,0 +1,125 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import chalk from "chalk";
+import { server } from "../../../../mocks/server";
+import {
+  MODEL_PROVIDER_SET_GUIDANCE,
+  setCommand,
+  zeroModelProviderCommand,
+} from "../index";
+
+const MODEL_POLICIES_RESPONSE = {
+  workspaceDefaultModel: "claude-sonnet-4-6",
+  workspaceDefaultPolicyId: "00000000-0000-4000-8000-000000000001",
+  policies: [
+    {
+      id: "00000000-0000-4000-8000-000000000001",
+      model: "claude-sonnet-4-6",
+      modelLabel: "Claude Sonnet 4.6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+      routeStatus: "valid",
+      routeStatusReason: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000002",
+      model: "gpt-5.4",
+      modelLabel: "GPT-5.4",
+      isDefault: false,
+      defaultProviderType: "openai-api-key",
+      credentialScope: "org",
+      modelProviderId: "00000000-0000-4000-8000-000000000102",
+      routeStatus: "valid",
+      routeStatusReason: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000003",
+      model: "gpt-5.5",
+      modelLabel: "GPT-5.5",
+      isDefault: false,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
+      routeStatus: "missing_provider",
+      routeStatusReason: "No personal subscription connected",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ],
+};
+
+describe("zero model-provider command", () => {
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+  beforeEach(() => {
+    chalk.level = 0;
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+    mockConsoleLog.mockClear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("should expose provider routing subcommands", () => {
+    expect(zeroModelProviderCommand.name()).toBe("model-provider");
+    expect(zeroModelProviderCommand.description()).toBe(
+      "Inspect model provider routing",
+    );
+    expect(
+      zeroModelProviderCommand.commands.map((command) => {
+        return command.name();
+      }),
+    ).toEqual(["list", "set"]);
+  });
+
+  it("should list each allowed model's provider route", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/model-policies", () => {
+        return HttpResponse.json(MODEL_POLICIES_RESPONSE);
+      }),
+    );
+
+    await zeroModelProviderCommand.parseAsync(["node", "cli", "ls"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Model Provider Routes:");
+    expect(logCalls).toContain("Claude Sonnet 4.6");
+    expect(logCalls).toContain("provider: built-in");
+    expect(logCalls).toContain("GPT-5.4");
+    expect(logCalls).toContain("provider: api key");
+    expect(logCalls).toContain("GPT-5.5");
+    expect(logCalls).toContain("provider: subscription");
+    expect(logCalls).toContain("No personal subscription connected");
+  });
+
+  it("should show web-app provider routing guidance in set help", async () => {
+    const helpChunks: string[] = [];
+    setCommand.configureOutput({
+      writeOut: (value) => {
+        helpChunks.push(value);
+      },
+    });
+    setCommand.outputHelp();
+
+    const helpText = helpChunks.join("");
+    expect(helpText).toContain(
+      "Model provider routing is configured in the web app",
+    );
+    expect(helpText).toContain("top-left organization menu");
+    expect(helpText).toContain("Preferences / Personal Models");
+
+    await setCommand.parseAsync(["node", "cli"]);
+
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toBe(
+      MODEL_PROVIDER_SET_GUIDANCE,
+    );
+  });
+});

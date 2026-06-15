@@ -1,0 +1,1 @@
+DROP TABLE "zero_agent_sessions" CASCADE;

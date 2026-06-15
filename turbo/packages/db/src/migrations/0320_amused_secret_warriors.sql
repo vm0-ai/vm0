@@ -1,0 +1,3 @@
+CREATE INDEX "idx_agent_runs_completed_org_user" ON "agent_runs" USING btree ("completed_at" DESC NULLS LAST,"org_id","user_id") WHERE "agent_runs"."completed_at" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX "idx_credit_usage_processed_org_user" ON "credit_usage" USING btree ("processed_at" DESC NULLS LAST,"org_id","user_id") WHERE "credit_usage"."status" = 'processed' AND "credit_usage"."processed_at" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX "idx_usage_event_processed_org_user" ON "usage_event" USING btree ("processed_at" DESC NULLS LAST,"org_id","user_id") WHERE "usage_event"."status" = 'processed' AND "usage_event"."processed_at" IS NOT NULL;

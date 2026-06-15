@@ -1,0 +1,14 @@
+[package]
+name = "api-contracts"
+version = "0.2.7"
+edition.workspace = true
+description = "Generated Rust bindings for selected TypeScript API contracts"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

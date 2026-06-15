@@ -1,0 +1,368 @@
+name: "Web/API Vercel Environment"
+description: "Render the shared Web and API Vercel environment into a key=value file"
+
+outputs:
+  file:
+    description: "Path to the rendered environment file"
+    value: ${{ steps.render.outputs.file }}
+
+inputs:
+  app:
+    description: "App receiving the environment (web or api)"
+    required: true
+  environment:
+    description: "Deployment environment (preview or production)"
+    required: true
+  database-url:
+    description: "Database URL for the deployment"
+    required: false
+    default: ""
+  job-ref:
+    description: "Preview job reference, such as pr-123 or staging"
+    required: false
+    default: ""
+  web-url:
+    description: "Preview or production web URL"
+    required: false
+    default: ""
+  app-url:
+    description: "Preview or production platform app URL"
+    required: false
+    default: ""
+  api-url:
+    description: "Preview or production API URL"
+    required: false
+    default: ""
+  api-backend-url:
+    description: "Backend API URL used by web proxy routes"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Render environment file
+      id: render
+      shell: bash
+      env:
+        INPUT_APP: ${{ inputs.app }}
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_DATABASE_URL: ${{ inputs.database-url }}
+        INPUT_JOB_REF: ${{ inputs.job-ref }}
+        INPUT_WEB_URL: ${{ inputs.web-url }}
+        INPUT_APP_URL: ${{ inputs.app-url }}
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_API_BACKEND_URL: ${{ inputs.api-backend-url }}
+      run: |
+        set -euo pipefail
+
+        if [[ "$INPUT_APP" != "web" && "$INPUT_APP" != "api" ]]; then
+          echo "::error::app must be web or api"
+          exit 1
+        fi
+
+        if [[ "$INPUT_ENVIRONMENT" != "preview" && "$INPUT_ENVIRONMENT" != "production" ]]; then
+          echo "::error::environment must be preview or production"
+          exit 1
+        fi
+
+        vars_json="${REPO_VARS_JSON:-}"
+        secrets_json="${REPO_SECRETS_JSON:-}"
+        doppler_secrets_json="${DOPPLER_SECRETS_JSON:-}"
+        if [[ -z "$vars_json" ]]; then
+          vars_json="{}"
+        fi
+        if [[ -z "$secrets_json" ]]; then
+          secrets_json="{}"
+        fi
+        if [[ -z "$doppler_secrets_json" ]]; then
+          doppler_secrets_json="{}"
+        fi
+        env_file="${RUNNER_TEMP}/web-api-${INPUT_APP}-${INPUT_ENVIRONMENT}.env"
+        : > "$env_file"
+
+        json_get() {
+          local json="$1"
+          local key="$2"
+          jq -r --arg key "$key" '.[$key] // ""' <<< "$json"
+        }
+
+        repo_var() {
+          json_get "$vars_json" "$1"
+        }
+
+        repo_secret() {
+          json_get "$secrets_json" "$1"
+        }
+
+        doppler_secret() {
+          json_get "$doppler_secrets_json" "$1"
+        }
+
+        first_non_empty() {
+          local value
+          for value in "$@"; do
+            if [[ -n "$value" ]]; then
+              printf '%s' "$value"
+              return
+            fi
+          done
+        }
+
+        add_env() {
+          local key="$1"
+          local value="${2:-}"
+          printf '%s=%s\n' "$key" "$value" >> "$env_file"
+        }
+
+        add_var() {
+          add_env "$1" "$(repo_var "$2")"
+        }
+
+        add_secret() {
+          add_env "$1" "$(repo_secret "$2")"
+        }
+
+        add_oauth_client_config_key() {
+          local key="$1"
+          local value
+          value="$(doppler_secret "$key")"
+          if [[ -z "$value" ]]; then
+            echo "::error::${key} is missing from Doppler OAuth config"
+            exit 1
+          fi
+          add_env "$key" "$value"
+        }
+
+        add_oauth_client_config() {
+          local prefix="$1"
+          add_oauth_client_config_key "${prefix}_OAUTH_CLIENT_ID"
+          add_oauth_client_config_key "${prefix}_OAUTH_CLIENT_SECRET"
+        }
+
+        if [[ -n "$INPUT_DATABASE_URL" ]]; then
+          add_env DATABASE_URL "$INPUT_DATABASE_URL"
+        fi
+
+        if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
+          web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
+          app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
+          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL)" "https://so.vm0.ai")"
+          api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
+          api_backend_url="$(first_non_empty "$INPUT_API_BACKEND_URL" "$(repo_var VM0_API_BACKEND_URL)")"
+          axiom_dataset_suffix="prod"
+          deploy_env="production"
+          runner_default_group="vm0/production"
+          concurrent_run_limit_cap="10"
+          slack_redirect_base_url="$(repo_var SLACK_REDIRECT_BASE_URL)"
+          plausible_script_url="$(first_non_empty "$(repo_var PLAUSIBLE_SCRIPT_URL_PROD)" "$(repo_var PLAUSIBLE_SCRIPT_URL)")"
+          strapi_url="$(repo_var STRAPI_URL)"
+          user_artifacts_bucket="$(repo_var R2_USER_ARTIFACTS_BUCKET_NAME)"
+          user_artifacts_access_key_id="$(repo_secret R2_USER_ARTIFACTS_ACCESS_KEY_ID)"
+          user_artifacts_secret_access_key="$(repo_secret R2_USER_ARTIFACTS_SECRET_ACCESS_KEY)"
+          public_artifacts_base_url="$(repo_var PUBLIC_ARTIFACTS_BASE_URL)"
+          atom_url="$(repo_var ATOM_URL)"
+          machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
+        else
+          web_url="$INPUT_WEB_URL"
+          app_url="$INPUT_APP_URL"
+          # Only the dedicated "staging" preview has a matching paid-onboarding
+          # origin; ad-hoc PR previews have none, so leave it unset there.
+          if [[ "$INPUT_JOB_REF" == "staging" ]]; then
+            paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL_STAGING)" "https://staging-so.vm6.ai")"
+          else
+            paid_onboarding_url=""
+          fi
+          api_url="$INPUT_API_URL"
+          api_backend_url="$INPUT_API_BACKEND_URL"
+          axiom_dataset_suffix="dev"
+          deploy_env="preview"
+          runner_default_group="vm0/development-${INPUT_JOB_REF}"
+          concurrent_run_limit_cap="0"
+          slack_redirect_base_url="$INPUT_WEB_URL"
+          plausible_script_url="$(repo_var PLAUSIBLE_SCRIPT_URL)"
+          strapi_url=""
+          user_artifacts_bucket="$(first_non_empty "$(repo_var R2_USER_ARTIFACTS_BUCKET_NAME_DEV)" "$(repo_var R2_USER_ARTIFACTS_BUCKET_NAME)" "user-artifact-dev")"
+          user_artifacts_access_key_id="$(first_non_empty "$(repo_secret R2_USER_ARTIFACTS_ACCESS_KEY_ID)" "$(repo_secret R2_ACCESS_KEY_ID)")"
+          user_artifacts_secret_access_key="$(first_non_empty "$(repo_secret R2_USER_ARTIFACTS_SECRET_ACCESS_KEY)" "$(repo_secret R2_SECRET_ACCESS_KEY)")"
+          public_artifacts_base_url="$(first_non_empty "$(repo_var PUBLIC_ARTIFACTS_BASE_URL_DEV)" "$(repo_var PUBLIC_ARTIFACTS_BASE_URL)" "https://cdn.vm7.io")"
+          atom_url="https://tunnel-yuma-atom-api.vm7.ai"
+          machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
+        fi
+
+        add_env VM0_API_URL "$api_url"
+        if [[ -n "$api_backend_url" ]]; then
+          add_env VM0_API_BACKEND_URL "$api_backend_url"
+        fi
+        if [[ "$INPUT_APP" == "api" ]]; then
+          add_env VM0_WEB_URL "$web_url"
+          add_env ENV "$deploy_env"
+          if [[ "$INPUT_ENVIRONMENT" == "preview" && -n "$INPUT_JOB_REF" ]]; then
+            add_env VM0_PREVIEW_JOB_REF "$INPUT_JOB_REF"
+          fi
+          if [[ -n "$atom_url" ]]; then
+            add_env ATOM_URL "$atom_url"
+          fi
+          if [[ -n "$machine_secret_key" ]]; then
+            add_env VM0_MACHINE_SECRET_KEY "$machine_secret_key"
+          fi
+        fi
+        # Inject the workflow head commit explicitly so OTel / Sentry can tag
+        # service.version and release on every deploy. Vercel CLI prebuilt
+        # deploys do not reliably populate Vercel's own VERCEL_GIT_* system
+        # vars, and we don't want runtime to depend on Vercel auto-injection.
+        add_env GIT_COMMIT_SHA "${GITHUB_SHA:-}"
+        add_env BLOG_BASE_URL "$web_url"
+        add_env STRAPI_URL "$strapi_url"
+        add_var CLERK_PUBLISHABLE_KEY CLERK_PUBLISHABLE_KEY
+        add_secret CLERK_SECRET_KEY CLERK_SECRET_KEY
+        add_secret E2B_API_KEY E2B_API_KEY
+        add_var CF_ACCOUNT_ID CF_ACCOUNT_ID
+        add_var R2_ACCOUNT_ID R2_ACCOUNT_ID
+        add_secret R2_ACCESS_KEY_ID R2_ACCESS_KEY_ID
+        add_secret R2_SECRET_ACCESS_KEY R2_SECRET_ACCESS_KEY
+        add_var R2_USER_STORAGES_BUCKET_NAME R2_USER_STORAGES_BUCKET_NAME
+        add_env R2_USER_ARTIFACTS_BUCKET_NAME "$user_artifacts_bucket"
+        add_env R2_USER_ARTIFACTS_ACCESS_KEY_ID "$user_artifacts_access_key_id"
+        add_env R2_USER_ARTIFACTS_SECRET_ACCESS_KEY "$user_artifacts_secret_access_key"
+        add_env PUBLIC_ARTIFACTS_BASE_URL "$public_artifacts_base_url"
+        add_var R2_HOSTED_SITES_BUCKET_NAME R2_HOSTED_SITES_BUCKET_NAME
+        add_secret R2_HOSTED_SITES_ACCESS_KEY_ID R2_HOSTED_SITES_ACCESS_KEY_ID
+        add_secret R2_HOSTED_SITES_SECRET_ACCESS_KEY R2_HOSTED_SITES_SECRET_ACCESS_KEY
+        add_var ZERO_HOST_DOMAIN ZERO_HOST_DOMAIN
+        add_var ZERO_HOST_SCHEME ZERO_HOST_SCHEME
+        add_secret SECRETS_ENCRYPTION_KEY SECRETS_ENCRYPTION_KEY
+        add_secret SECRETS_KMS_KEY_ID SECRETS_KMS_KEY_ID
+        add_var AWS_REGION AWS_REGION
+        add_secret AWS_ACCESS_KEY_ID AWS_ACCESS_KEY_ID
+        add_secret AWS_SECRET_ACCESS_KEY AWS_SECRET_ACCESS_KEY
+        add_secret OFFICIAL_RUNNER_SECRET OFFICIAL_RUNNER_SECRET
+        add_env RUNNER_DEFAULT_GROUP "$runner_default_group"
+        add_secret AXIOM_TOKEN_SESSIONS AXIOM_TOKEN_SESSIONS
+        add_secret AXIOM_TOKEN_TELEMETRY AXIOM_TOKEN_TELEMETRY
+        add_env AXIOM_DATASET_SUFFIX "$axiom_dataset_suffix"
+        if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
+          add_env USE_MOCK_CLAUDE "true"
+        fi
+        add_secret CRON_SECRET CRON_SECRET
+        add_secret ABLY_API_KEY ABLY_API_KEY
+        add_secret OPENROUTER_API_KEY OPENROUTER_API_KEY
+        add_secret OPENAI_API_KEY OPENAI_API_KEY
+        add_secret FAL_KEY FAL_KEY
+        add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
+        add_var VAPID_PUBLIC_KEY VAPID_PUBLIC_KEY
+        add_secret VAPID_PRIVATE_KEY VAPID_PRIVATE_KEY
+        add_env CONCURRENT_RUN_LIMIT_CAP "$concurrent_run_limit_cap"
+        if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
+          add_env VM0_DEBUG "*"
+        fi
+        add_var CLAUDE_CODE_VERSION_URL CLAUDE_CODE_VERSION_URL
+        add_secret SLACK_SIGNING_SECRET SLACK_SIGNING_SECRET
+        add_secret TELEGRAM_OFFICIAL_BOT_TOKEN TELEGRAM_OFFICIAL_BOT_TOKEN
+        add_var TELEGRAM_OFFICIAL_BOT_USERNAME TELEGRAM_OFFICIAL_BOT_USERNAME
+        add_secret TELEGRAM_OFFICIAL_WEBHOOK_SECRET TELEGRAM_OFFICIAL_WEBHOOK_SECRET
+        add_env SLACK_REDIRECT_BASE_URL "$slack_redirect_base_url"
+        if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
+          add_env E2E_SLACK_MOCK_ENABLED "1"
+          add_env E2E_TELEGRAM_MOCK_ENABLED "1"
+        fi
+        add_env PLAUSIBLE_SCRIPT_URL "$plausible_script_url"
+        if [[ "$INPUT_APP" == "web" && "$INPUT_ENVIRONMENT" == "production" ]]; then
+          add_var POSTHOG_KEY POSTHOG_KEY
+          add_var POSTHOG_HOST POSTHOG_HOST
+        fi
+        add_secret SENTRY_DSN_WEB SENTRY_DSN_WEB
+        if [[ "$INPUT_APP" == "api" ]]; then
+          sentry_dsn="$(first_non_empty "$(repo_secret SENTRY_DSN_API)" "$(repo_secret SENTRY_DSN_WEB)" "$(repo_secret SENTRY_DSN)")"
+          add_env SENTRY_DSN_API "$sentry_dsn"
+          add_env SENTRY_DSN "$sentry_dsn"
+          add_env SENTRY_PROJECT "$(first_non_empty "$(repo_var SENTRY_PROJECT_API)" "$(repo_var SENTRY_PROJECT_WEB)")"
+        else
+          add_var SENTRY_PROJECT SENTRY_PROJECT_WEB
+        fi
+        add_secret SENTRY_AUTH_TOKEN SENTRY_AUTH_TOKEN
+        add_var SENTRY_ORG SENTRY_ORG
+
+        oauth_client_config_prefixes=(
+          GH
+          SLACK
+          NOTION
+          GOOGLE
+          MICROSOFT
+          LINEAR
+          FIGMA
+          DEEL
+          DOCUSIGN
+          DROPBOX
+          NEON
+          REDDIT
+          STRAVA
+          X
+          VERCEL
+          SENTRY
+          INTERVALS_ICU
+          SUPABASE
+          XERO
+          MONDAY
+          WEBFLOW
+          CANVA
+          CLOUDFLARE
+          HUBSPOT
+          CLOSE
+          META_ADS
+          AHREFS
+          AIRTABLE
+          TODOIST
+          ASANA
+          POSTHOG
+          GUMROAD
+          MERCURY
+          SPOTIFY
+          STRIPE
+        )
+        for prefix in "${oauth_client_config_prefixes[@]}"; do
+          add_oauth_client_config "$prefix"
+        done
+
+        add_secret GOOGLE_ADS_DEVELOPER_TOKEN GOOGLE_ADS_DEVELOPER_TOKEN
+        add_secret GOOGLE_ADS_LOGIN_CUSTOMER_ID GOOGLE_ADS_LOGIN_CUSTOMER_ID
+        add_secret ZERO_MAPS_GOOGLE_MAPS_TOKEN ZERO_MAPS_GOOGLE_MAPS_TOKEN
+        add_secret FINICITY_APP_KEY FINICITY_APP_KEY
+        add_secret FINICITY_APP_SECRET FINICITY_APP_SECRET
+        add_var FINICITY_PARTNER_ID FINICITY_PARTNER_ID
+        add_var VERCEL_INTEGRATION_SLUG VERCEL_INTEGRATION_SLUG
+        add_var MONDAY_OAUTH_APP_ID MONDAY_OAUTH_APP_ID
+        add_secret STRIPE_SECRET_KEY STRIPE_SECRET_KEY
+        add_secret STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_SECRET
+        add_secret CLERK_WEBHOOK_SIGNING_SECRET CLERK_WEBHOOK_SIGNING_SECRET
+        add_secret ZERO_PRICE ZERO_PRICE
+        add_var ZERO_ONE_TIME_CAMPAIGN ZERO_ONE_TIME_CAMPAIGN
+        add_secret AGENTPHONE_API_KEY AGENTPHONE_API_KEY
+        add_var AGENTPHONE_API_BASE_URL AGENTPHONE_API_BASE_URL
+        add_var AGENTPHONE_AGENT_ID AGENTPHONE_AGENT_ID
+        add_var AGENTPHONE_PHONE_NUMBER AGENTPHONE_PHONE_NUMBER
+        add_secret AGENTPHONE_WEBHOOK_SECRET AGENTPHONE_WEBHOOK_SECRET
+        add_secret PLAIN_API_KEY PLAIN_API_KEY
+        add_env APP_URL "$app_url"
+        if [[ -n "$paid_onboarding_url" ]]; then
+          add_env PAID_ONBOARDING_URL "$paid_onboarding_url"
+        fi
+        add_secret RESEND_API_KEY RESEND_API_KEY
+        add_secret RESEND_WEBHOOK_SECRET RESEND_WEBHOOK_SECRET
+        add_var RESEND_FROM_DOMAIN RESEND_FROM_DOMAIN
+        add_var VM0_DEFAULT_AGENT VM0_DEFAULT_AGENT
+        add_var GITHUB_APP_SLUG VM0_GITHUB_APP_SLUG
+        add_var GITHUB_APP_ID VM0_GITHUB_APP_ID
+        add_var GITHUB_APP_CLIENT_ID VM0_GITHUB_APP_CLIENT_ID
+        add_secret GITHUB_APP_CLIENT_SECRET VM0_GITHUB_APP_CLIENT_SECRET
+        add_secret GITHUB_APP_WEBHOOK_SECRET VM0_GITHUB_APP_WEBHOOK_SECRET
+        add_secret GITHUB_APP_PRIVATE_KEY VM0_GITHUB_APP_PRIVATE_KEY
+        add_var GCP_PROJECT_ID GCP_PROJECT_ID
+        add_var GCP_PROJECT_NUMBER GCP_PROJECT_NUMBER
+        add_var GCP_SERVICE_ACCOUNT_EMAIL GCP_SERVICE_ACCOUNT_EMAIL
+        add_var GCP_WORKLOAD_IDENTITY_POOL_ID GCP_WORKLOAD_IDENTITY_POOL_ID
+        add_var GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID
+        add_secret VERCEL_AUTOMATION_BYPASS_SECRET VERCEL_AUTOMATION_BYPASS_SECRET
+
+        echo "file=$env_file" >> "$GITHUB_OUTPUT"
+        echo "Rendered $(wc -l < "$env_file") Web/API environment variables to $env_file"

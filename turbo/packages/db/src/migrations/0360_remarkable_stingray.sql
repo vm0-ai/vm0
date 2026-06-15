@@ -1,0 +1,1 @@
+ALTER TABLE "org_members_metadata" ADD COLUMN "selected_model" varchar(255);

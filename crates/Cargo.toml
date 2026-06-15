@@ -1,0 +1,130 @@
+[workspace]
+resolver = "3"
+members = [
+    "ably-subscriber",
+    "agent-diagnostics",
+    "api-contracts",
+    "guest-agent",
+    "guest-contracts",
+    "process-control-ipc",
+    "guest-common",
+    "guest-download",
+    "guest-init",
+    "guest-mock-claude",
+    "guest-mock-codex",
+    "guest-reseed",
+    "guest-write-file",
+    "nbd-cow",
+    "runner",
+    "sandbox",
+    "sandbox-fc",
+    "sandbox-mock",
+    "tracing-test-support",
+    "vsock-guest",
+    "vsock-host",
+    "vsock-proto",
+    "vsock-test",
+]
+
+[workspace.package]
+edition = "2024"
+
+[workspace.dependencies]
+# Internal crates
+ably-subscriber = { path = "ably-subscriber" }
+agent-diagnostics = { path = "agent-diagnostics" }
+api-contracts = { path = "api-contracts" }
+guest-agent = { path = "guest-agent" }
+guest-contracts = { path = "guest-contracts" }
+process-control-ipc = { path = "process-control-ipc" }
+guest-common = { path = "guest-common" }
+guest-download = { path = "guest-download" }
+guest-init = { path = "guest-init" }
+guest-mock-claude = { path = "guest-mock-claude" }
+guest-mock-codex = { path = "guest-mock-codex" }
+guest-reseed = { path = "guest-reseed" }
+guest-write-file = { path = "guest-write-file" }
+nbd-cow = { path = "nbd-cow" }
+sandbox = { path = "sandbox" }
+sandbox-fc = { path = "sandbox-fc" }
+sandbox-mock = { path = "sandbox-mock" }
+tracing-test-support = { path = "tracing-test-support" }
+vsock-guest = { path = "vsock-guest" }
+vsock-host = { path = "vsock-host" }
+vsock-proto = { path = "vsock-proto" }
+
+# External dependencies
+aho-corasick = "1"
+async-trait = "0.1"
+aws-sdk-s3 = { version = "1", default-features = false }
+aws-smithy-mocks = "0.2"
+base64 = "0.22"
+bitvec = "1"
+bytes = "1"
+chrono = { version = "0.4", default-features = false }
+clap = "4"
+flate2 = "1"
+futures-util = "0.3"
+hex = "0.4"
+hmac = "0.13.0"
+httpmock = "0.8"
+libc = "0.2"
+nix = { version = "0.31", default-features = false }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+rmp-serde = "1"
+rmpv = "1"
+sentry = { version = "0.48", default-features = false }
+serde = "1"
+serde_json = "1"
+serde_path_to_error = "0.1"
+serde_yaml_ng = "0.10"
+sha2 = "0.11"
+tar = "0.4"
+tempfile = "3"
+thiserror = "2"
+tokio = "1"
+tokio-tungstenite = { version = "0.29", default-features = false }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = "0.3"
+ureq = "3"
+url = "2"
+uuid = "1"
+which = "8"
+zstd = { version = "0.13", default-features = false }
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
+
+# Faster runner image build profile for CI and local dev-runner deploys.
+# Production runner releases still use the release profile.
+[profile.ci]
+inherits = "release"
+lto = "thin"
+codegen-units = 4
+
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.rustdoc]
+bare_urls = "deny"
+broken_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+invalid_html_tags = "deny"
+invalid_rust_codeblocks = "deny"
+private_intra_doc_links = "deny"
+redundant_explicit_links = "deny"
+
+# See clippy.toml for test-specific overrides (allow-unwrap-in-tests etc.)
+[workspace.lints.clippy]
+all = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"

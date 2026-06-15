@@ -1,0 +1,2 @@
+ALTER TABLE "chat_threads" ADD COLUMN "computer_use_host_id" uuid;--> statement-breakpoint
+ALTER TABLE "chat_threads" ADD CONSTRAINT "chat_threads_computer_use_host_id_computer_use_hosts_id_fk" FOREIGN KEY ("computer_use_host_id") REFERENCES "public"."computer_use_hosts"("id") ON DELETE set null ON UPDATE no action;

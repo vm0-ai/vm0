@@ -1,0 +1,1 @@
+ALTER TABLE "agent_runs" ADD COLUMN "selected_model" varchar(255);

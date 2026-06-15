@@ -1,0 +1,1964 @@
+#!/usr/bin/env python3
+"""
+mitmproxy addon for VM0 runner-level network proxy.
+
+This addon runs on the runner HOST (not inside VMs) and:
+1. Intercepts all HTTPS requests from VMs
+2. Looks up the source VM's runId from the proxy registry
+3. Injects auth headers for configured firewall rules (proxy-side token replacement)
+4. Logs network activity per-run to JSONL files
+5. Reports model-provider and connector usage
+6. Participates in runner-triggered usage drain before proxy shutdown
+"""
+
+import asyncio
+import functools
+import json
+import os
+import signal
+import tempfile
+import threading
+import time
+import urllib.parse
+from collections.abc import Callable
+from contextlib import suppress
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final, Literal, TypeVar
+
+from mitmproxy import connection, ctx, http, tcp, tls
+from mitmproxy.addonmanager import Loader
+
+# --- Sub-module imports ---
+#
+# auth_base_forwarder/body_capture/matching/registry/response_streaming/usage
+# are imported by module
+# (not selective `from X import ...`)
+# so that:
+#   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
+#      ``body_capture.X(...)`` / ``builtin_connector_diagnostics.X(...)`` /
+#      ``matching.X(...)`` / ``registry.X(...)`` /
+#      ``response_streaming.X(...)`` / ``usage.X(...)``,
+#      making the module boundary visible at call sites.
+#   2. Tests can patch names on the owning module object and affect all
+#      callers — no mock-placement pitfalls from copied function bindings.
+import auth_base_forwarder
+import body_capture
+import builtin_connector_diagnostics
+import flow_metadata_keys as metadata_keys
+import matching
+import network_log_sanitization
+import registry
+import response_streaming
+import usage
+from auth import (
+    FirewallAuthHandlingResult,
+    clear_cached_firewall_headers,
+    handle_firewall_request,
+    is_billable_firewall,
+    mark_auth_base_request_length_required,
+    mark_auth_base_request_too_large,
+    prepare_firewall_metadata,
+    request_force_refresh,
+)
+from logging_utils import (
+    add_firewall_metadata,
+    flush_log_path,
+    log_network_entry,
+    log_proxy_entry,
+    shutdown_log_writer,
+)
+from url_utils import AuthorityValidationError, get_trusted_authority
+
+# HTTP status boundaries used in response-phase classification.
+_HTTP_STATUS_UNAUTHORIZED = 401
+_HTTP_STATUS_FORBIDDEN = 403
+_HTTP_STATUS_BAD_GATEWAY = 502
+_HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
+_HTTP_DEFAULT_PORT = 80
+_HTTPS_DEFAULT_PORT = 443
+_BROWSER_USER_AGENT_MARKERS = (
+    " chrome/",
+    " chromium/",
+    " crios/",
+    " edg/",
+    " firefox/",
+    " fxios/",
+    " headlesschrome/",
+    " opr/",
+    " safari/",
+)
+_MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
+_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
+_TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
+_TCP_REQUEST_SIZE = "_tcp_request_size"
+_TCP_RESPONSE_SIZE = "_tcp_response_size"
+_USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES = "_connector_diagnostic_auth_header_names"
+_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES = "_connector_diagnostic_auth_query_param_names"
+_GENERIC_AUTH_HEADER_NAMES = frozenset(
+    (
+        "authorization",
+        "x-api-key",
+        "api-key",
+    )
+)
+_GENERIC_AUTH_QUERY_PARAM_NAMES = frozenset(
+    (
+        "access_token",
+        "api_key",
+        "apikey",
+        "app_key",
+        "auth",
+        "authorization",
+        "key",
+        "token",
+    )
+)
+_AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
+    (
+        "api-key",
+        "apikey",
+        "basic",
+        "bearer",
+        "digest",
+        "key",
+        "oauth",
+        "oauth2",
+        "token",
+    )
+)
+_AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
+# Network log size fields are consumed as JavaScript numbers downstream.
+_MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
+_MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
+_TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
+_TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
+_TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
+_STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
+
+_TlsAdmissionKind = Literal[
+    "valid_registry_vm",
+    "invalid_registry_vm",
+    "registry_unavailable",
+]
+_RequestClassificationKind = Literal[
+    "no_client_ip",
+    "pass_through",
+    "registry_unavailable",
+    "stale_tls_admission",
+    "invalid_registry_vm",
+    "authority_denied",
+    "api_allow",
+    "browser_allow",
+    "firewall_block",
+    "firewall_allow",
+    "allow",
+]
+_AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
+_REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
+
+
+@dataclass(frozen=True)
+class _TlsAdmission:
+    client_ip: str
+    kind: _TlsAdmissionKind
+    run_id: str | None = None
+
+
+@dataclass(frozen=True)
+class _RequestClassification:
+    kind: _RequestClassificationKind
+    vm_info: dict | None = None
+    registry_unavailable: registry.RegistryUnavailable | None = None
+    invalid_vm: registry.InvalidVmEntry | None = None
+    authority_error: AuthorityValidationError | None = None
+    firewall_block: matching.FirewallBlock | None = None
+    firewall_allow: matching.FirewallAllow | None = None
+    stale_tls_reason: str = ""
+
+
+@dataclass(frozen=True)
+class _AuthBaseBodyCheck:
+    kind: _AuthBaseBodyCheckKind
+    observed_size: int = 0
+    reason: str = ""
+
+
+_tls_admissions: dict[str, _TlsAdmission] = {}
+
+# Runner-triggered flush protocols:
+# - Rust writes `usage-flush-request` with the active usageStateId and a fresh
+#   flushRequestId, then sends SIGUSR1 to this addon process.
+# - This addon flushes buffered usage and writes `usage-pending` with the
+#   matching flushRequestId so the runner can observe a fresh snapshot.
+# - Rust performs a bounded wait for the acknowledged snapshot to have zero
+#   flows, buffered events, and reports before stopping the proxy.
+# - Rust may also write `jsonl-flush-request` for a concrete network log path.
+#   This addon drains accepted JSONL writes for that path and acknowledges with
+#   `jsonl-flush-state` before the runner uploads the file.
+#
+# Keep this in sync with usage/counters.py and the Rust wait path in
+# crates/runner/src/proxy.rs plus crates/runner/src/cmd/start/mod.rs.
+_RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
+_usage_flush_requested = threading.Event()
+_usage_flush_signal_lock = threading.Lock()
+_jsonl_flush_state_write_lock = threading.Lock()
+_last_jsonl_flush_request_id: str | None = None
+_JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
+_JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
+
+# ============================================================================
+# Addon Configuration
+# ============================================================================
+
+
+def load(loader: Loader) -> None:
+    """Register custom options for the addon."""
+    signal.signal(_RUNNER_USAGE_FLUSH_SIGNAL, _handle_runner_usage_flush_signal)
+    loader.add_option(
+        name="vm0_api_url",
+        typespec=str,
+        default="https://www.vm0.ai",
+        help="VM0 API URL for proxy endpoint",
+    )
+    loader.add_option(
+        name="vm0_proxy_registry_path",
+        typespec=str,
+        # This default is a placeholder shown in `mitmdump --help`; the runner
+        # always passes `--set vm0_proxy_registry_path=<per-runner path>` (see
+        # crates/runner/src/proxy.rs:362), so the default is never used in
+        # production. Computed via tempfile.gettempdir() so that standalone
+        # debugging works on platforms where /tmp is not the system temp dir.
+        default=str(Path(tempfile.gettempdir()) / "proxy-registry.json"),
+        help="Path to proxy registry file",
+    )
+    loader.add_option(
+        name="vm0_usage_state_id",
+        typespec=str,
+        default="",
+        help="Runner-generated usage-pending state id",
+    )
+    loader.add_option(
+        name="vm0_usage_flush_interval_seconds",
+        typespec=float,
+        default=usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
+        help="Usage-event buffer flush interval in seconds",
+    )
+
+
+def configure(updated: set[str]) -> None:
+    if "vm0_usage_flush_interval_seconds" in updated:
+        usage.configure_usage_buffer(
+            flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
+        )
+    if "vm0_usage_state_id" in updated:
+        # Custom --set options are deferred until after load() registers them,
+        # so initialize this file here where ctx.options has the runner value.
+        usage.set_pending_path(
+            str(Path(__file__).resolve().parent / "usage-pending"),
+            usage_state_id=ctx.options.vm0_usage_state_id or None,
+        )
+
+
+def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
+    """Schedule runner-requested flush work from the SIGUSR1 handler.
+
+    Keep this handler minimal: it may interrupt mitmproxy's event loop, so it
+    only records that work is needed and lets the background worker perform
+    file I/O, usage flushing, and JSONL flushing.
+    """
+    del signum
+    _usage_flush_requested.set()
+    _start_usage_flush_worker()
+
+
+def _start_usage_flush_worker() -> None:
+    """Start one flush worker, coalescing repeated signals while active."""
+    if not _usage_flush_signal_lock.acquire(blocking=False):
+        return
+
+    thread = threading.Thread(
+        target=_run_usage_flush_worker,
+        name="runner-flush-request",
+        daemon=True,
+    )
+    started = False
+    try:
+        thread.start()
+        started = True
+    finally:
+        if not started:
+            _usage_flush_signal_lock.release()
+
+
+def _run_usage_flush_worker() -> None:
+    """Drain coalesced runner flush requests under the worker lock.
+
+    The event can be set again while a flush is running. Loop until no request
+    is pending, and restart after releasing the lock if a signal arrives during
+    the worker exit path.
+    """
+    try:
+        while True:
+            _usage_flush_requested.clear()
+            _flush_usage_for_runner_request()
+            _flush_jsonl_for_runner_request()
+            if not _usage_flush_requested.is_set():
+                return
+    finally:
+        _usage_flush_signal_lock.release()
+        if _usage_flush_requested.is_set():
+            _start_usage_flush_worker()
+
+
+def _flush_usage_for_runner_request() -> None:
+    """Flush buffered usage and acknowledge the runner's current request.
+
+    The pending snapshot is written in ``finally`` so the runner can observe
+    fresh counters and the current flushRequestId even if usage flushing fails.
+    """
+    flush_request_id = usage.read_usage_flush_request_id()
+    try:
+        usage.flush_usage_events(trigger="runner")
+    except Exception as exc:
+        ctx.log.warn(f"Failed to flush usage events after runner request ({type(exc).__name__})")
+    finally:
+        usage.write_pending_snapshot(flush_request_id=flush_request_id)
+
+
+def _flush_jsonl_for_runner_request() -> None:
+    global _last_jsonl_flush_request_id
+
+    request = _read_jsonl_flush_request()
+    if request is None:
+        return
+
+    log_path, flush_request_id = request
+    pending = 0
+    try:
+        flush_log_path(log_path)
+    except Exception as exc:
+        pending = 1
+        ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
+    finally:
+        state_written = _write_jsonl_flush_state(log_path, flush_request_id, pending=pending)
+        if pending == 0 and state_written:
+            _last_jsonl_flush_request_id = flush_request_id
+
+
+def _read_jsonl_flush_request() -> tuple[str, str] | None:
+    marker_path = Path(__file__).resolve().parent / _JSONL_FLUSH_REQUEST_FILE
+    try:
+        marker = json.loads(marker_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(marker, dict):
+        return None
+    if marker.get("usageStateId") != usage.current_usage_state_id():
+        return None
+    flush_request_id = marker.get("flushRequestId")
+    if (
+        not isinstance(flush_request_id, str)
+        or not flush_request_id
+        or not _is_safe_jsonl_flush_request_id(flush_request_id)
+        or flush_request_id == _last_jsonl_flush_request_id
+    ):
+        return None
+    log_path = marker.get("path")
+    if not isinstance(log_path, str) or not log_path:
+        return None
+    return log_path, flush_request_id
+
+
+def _is_safe_jsonl_flush_request_id(flush_request_id: str) -> bool:
+    return all(
+        ("a" <= char <= "z") or ("A" <= char <= "Z") or ("0" <= char <= "9") or char in "-_"
+        for char in flush_request_id
+    )
+
+
+def _write_jsonl_flush_state(log_path: str, flush_request_id: str, *, pending: int = 0) -> bool:
+    state_path = Path(__file__).resolve().parent / _JSONL_FLUSH_STATE_FILE
+    state = {
+        "pid": os.getpid(),
+        "usageStateId": usage.current_usage_state_id(),
+        "updatedAtMs": int(time.time() * 1000),
+        "flushRequestId": flush_request_id,
+        "path": log_path,
+        "pending": pending,
+    }
+    tmp_path = state_path.with_name(f"{state_path.name}.{flush_request_id}.tmp")
+    with _jsonl_flush_state_write_lock:
+        try:
+            with tmp_path.open("w") as f:
+                json.dump(state, f, separators=(",", ":"))
+            tmp_path.replace(state_path)
+            return True
+        except OSError as exc:
+            with suppress(OSError):
+                tmp_path.unlink()
+            ctx.log.warn(f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}")
+            return False
+
+
+def get_api_url() -> str:
+    """Get API URL from options."""
+    return ctx.options.vm0_api_url
+
+
+def get_registry_path() -> str:
+    """Get registry path from options."""
+    return ctx.options.vm0_proxy_registry_path
+
+
+def _elapsed_ms(start_time: float | None) -> int:
+    if not start_time:
+        return 0
+    return max(0, int((time.monotonic() - start_time) * 1000))
+
+
+def _set_network_log_target(flow: http.HTTPFlow, *, url: str, host: str, port: int) -> None:
+    flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
+        "url": url,
+        "host": host,
+        "port": port,
+    }
+
+
+def _fallback_network_log_host_port(flow: http.HTTPFlow, original_url: str) -> tuple[str, int]:
+    try:
+        parsed_url = urllib.parse.urlparse(original_url)
+        host = parsed_url.hostname or flow.request.pretty_host
+        port = parsed_url.port or (
+            _HTTPS_DEFAULT_PORT if parsed_url.scheme == "https" else _HTTP_DEFAULT_PORT
+        )
+    except ValueError:
+        host = flow.request.pretty_host
+        port = flow.request.port
+    return host, port
+
+
+def _set_network_log_target_from_url(flow: http.HTTPFlow, url: str) -> None:
+    host, port = _fallback_network_log_host_port(flow, url)
+    _set_network_log_target(flow, url=url, host=host, port=port)
+
+
+def _is_browser_user_agent(user_agent: str | None) -> bool:
+    if not user_agent:
+        return False
+
+    normalized = f" {user_agent.lower()}"
+    return "mozilla/" in normalized and any(
+        marker in normalized for marker in _BROWSER_USER_AGENT_MARKERS
+    )
+
+
+def _is_browser_request(flow: http.HTTPFlow) -> bool:
+    # This is only a browser-looking User-Agent heuristic. It is not trusted
+    # browser provenance: any sandbox client can set this header.
+    return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
+
+
+def _active_firewall_names(vm_info: dict) -> set[str]:
+    raw_firewalls = vm_info.get("firewalls")
+    if not isinstance(raw_firewalls, list):
+        return set()
+
+    names: set[str] = set()
+    for firewall in raw_firewalls:
+        if not isinstance(firewall, dict):
+            continue
+        name = firewall.get("name")
+        if isinstance(name, str) and name:
+            names.add(name)
+    return names
+
+
+def _store_registered_request_metadata(
+    flow: http.HTTPFlow,
+    *,
+    vm_info: dict,
+    run_id: str,
+) -> None:
+    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
+    flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
+    flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
+    flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info.get("cliAgentType") or "claude-code"
+
+
+def _store_trusted_authority_metadata(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+    host: str,
+    port: int,
+) -> None:
+    flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = host
+    _set_network_log_target(
+        flow,
+        url=original_url,
+        host=host,
+        port=port,
+    )
+
+
+def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
+    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    tls_admission = _tls_admission_for_client(flow.client_conn)
+
+    if not client_ip:
+        if tls_admission is not None:
+            return _RequestClassification(
+                kind="stale_tls_admission",
+                stale_tls_reason="client_ip_missing",
+            )
+        return _RequestClassification(kind="no_client_ip")
+
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return _RequestClassification(
+            kind="registry_unavailable",
+            registry_unavailable=registry_state,
+        )
+
+    if tls_admission is not None and tls_admission.client_ip != client_ip:
+        return _RequestClassification(
+            kind="stale_tls_admission",
+            stale_tls_reason="client_ip_mismatch",
+        )
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        invalid_vm = registry_state.invalid_vms.get(client_ip)
+        if invalid_vm is not None:
+            return _RequestClassification(
+                kind="invalid_registry_vm",
+                invalid_vm=invalid_vm,
+            )
+        if tls_admission is not None:
+            return _RequestClassification(
+                kind="stale_tls_admission",
+                stale_tls_reason="registry_entry_missing",
+            )
+        return _RequestClassification(kind="pass_through")
+
+    run_id = vm_info.get("runId", "")
+    if (
+        tls_admission is not None
+        and tls_admission.run_id is not None
+        and tls_admission.run_id != run_id
+    ):
+        return _RequestClassification(
+            kind="stale_tls_admission",
+            vm_info=vm_info,
+            stale_tls_reason="run_id_mismatch",
+        )
+
+    _store_registered_request_metadata(flow, vm_info=vm_info, run_id=run_id)
+
+    if _is_browser_request(flow):
+        flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
+
+    try:
+        trusted_authority = get_trusted_authority(flow)
+    except AuthorityValidationError as e:
+        return _RequestClassification(
+            kind="authority_denied",
+            vm_info=vm_info,
+            authority_error=e,
+        )
+
+    original_url = trusted_authority.url
+    _store_trusted_authority_metadata(
+        flow,
+        original_url=original_url,
+        host=trusted_authority.host,
+        port=trusted_authority.port,
+    )
+
+    hostname = trusted_authority.host.lower()
+    api_url = get_api_url()
+    if api_url:
+        parsed_api = urllib.parse.urlparse(api_url)
+        api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
+        if (
+            api_hostname
+            and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
+            and not flow.request.path.startswith("/api/test/")
+        ):
+            return _RequestClassification(kind="api_allow", vm_info=vm_info)
+
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+        return _RequestClassification(kind="browser_allow", vm_info=vm_info)
+
+    compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
+    compiled_network_policies = registry_state.compiled_network_policies[client_ip]
+    if compiled_firewalls:
+        result = matching.match_compiled_firewall_request(
+            original_url,
+            flow.request.method,
+            compiled_firewalls,
+            compiled_network_policies,
+        )
+        if isinstance(result, matching.FirewallBlock):
+            return _RequestClassification(
+                kind="firewall_block",
+                vm_info=vm_info,
+                firewall_block=result,
+            )
+        if isinstance(result, matching.FirewallAllow):
+            return _RequestClassification(
+                kind="firewall_allow",
+                vm_info=vm_info,
+                firewall_allow=result,
+            )
+
+    return _RequestClassification(kind="allow", vm_info=vm_info)
+
+
+def _classification_needs_request_timing(classification: _RequestClassification) -> bool:
+    return classification.kind in (
+        "authority_denied",
+        "api_allow",
+        "browser_allow",
+        "firewall_block",
+        "firewall_allow",
+        "allow",
+    )
+
+
+def _start_request_timing(flow: http.HTTPFlow) -> None:
+    if metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata:
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
+
+
+def _firewall_allow_auth_base(allow: matching.FirewallAllow) -> str | None:
+    auth_config = allow.api_entry.get("auth", {})
+    auth_base = auth_config.get("base") if isinstance(auth_config, dict) else None
+    return auth_base if isinstance(auth_base, str) and auth_base else None
+
+
+def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
+    if flow.request.headers.get_all("Transfer-Encoding"):
+        return _AuthBaseBodyCheck(kind="length_required", reason="transfer_encoding")
+
+    raw_content_lengths = flow.request.headers.get_all("Content-Length")
+    if not raw_content_lengths:
+        if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
+            return _AuthBaseBodyCheck(kind="length_required", reason="missing_content_length")
+        return _AuthBaseBodyCheck(kind="ok")
+
+    parsed_length: int | None = None
+    for raw_content_length in raw_content_lengths:
+        for part in raw_content_length.split(","):
+            candidate = _parse_auth_base_content_length_part(part)
+            if candidate is None:
+                return _AuthBaseBodyCheck(kind="length_required", reason="invalid_content_length")
+            if parsed_length is None:
+                parsed_length = candidate
+            elif parsed_length != candidate:
+                return _AuthBaseBodyCheck(
+                    kind="length_required",
+                    reason="conflicting_content_length",
+                )
+
+    observed_size = parsed_length if parsed_length is not None else 0
+    if observed_size > auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES:
+        return _AuthBaseBodyCheck(kind="too_large", observed_size=observed_size)
+    return _AuthBaseBodyCheck(kind="ok", observed_size=observed_size)
+
+
+def _parse_auth_base_content_length_part(value: str) -> int | None:
+    value = value.strip(" \t")
+    if not value:
+        return None
+    if not value.isascii() or not value.isdecimal():
+        return None
+    normalized = value.lstrip("0") or "0"
+    limit_text = str(auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES)
+    if len(normalized) > len(limit_text):
+        return auth_base_forwarder.MAX_AUTH_BASE_REQUEST_BODY_BYTES + 1
+    return int(normalized)
+
+
+def _record_connector_diagnostic_candidate(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+) -> None:
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = candidate.connector_type
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = candidate.reason
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = list(candidate.env_names)
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = candidate.base
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES] = candidate.auth_header_names
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES] = candidate.auth_query_param_names
+
+
+def _connector_diagnostic_candidate_from_flow(
+    flow: http.HTTPFlow,
+) -> builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None:
+    meta = flow.metadata
+    connector_type = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE)
+    reason = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_REASON)
+    base = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_BASE)
+    if not (
+        isinstance(connector_type, str)
+        and connector_type
+        and isinstance(reason, str)
+        and reason
+        and isinstance(base, str)
+        and base
+    ):
+        return None
+
+    env_names = _metadata_str_tuple(meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES))
+    auth_header_names = _metadata_str_tuple(meta.get(_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES))
+    auth_query_param_names = _metadata_str_tuple(
+        meta.get(_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES)
+    )
+    return builtin_connector_diagnostics.ConnectorDiagnosticCandidate(
+        connector_type=connector_type,
+        reason=reason,
+        env_names=env_names,
+        base=base,
+        auth_header_names=auth_header_names,
+        auth_query_param_names=auth_query_param_names,
+    )
+
+
+def _metadata_str_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return ()
+        result.append(item)
+    return tuple(result)
+
+
+def _set_connector_diagnostic_failure_metadata(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_BASE] = candidate.base
+    flow.metadata[metadata_keys.FIREWALL_NAME] = candidate.connector_type
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = ""
+    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = ""
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "connector_not_configured_for_run"
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = candidate.connector_type
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = candidate.reason
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = list(candidate.env_names)
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = candidate.base
+
+
+def _connector_diagnostic_response_body(
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    *,
+    upstream_status: int,
+) -> bytes:
+    body = {
+        "error": "connector_not_configured_for_run",
+        "connector": candidate.connector_type,
+        "reason": candidate.reason,
+        "message": _connector_diagnostic_message(candidate),
+        "envNames": list(candidate.env_names),
+        "base": candidate.base,
+        "upstreamStatus": upstream_status,
+    }
+    return json.dumps(body, separators=(",", ":")).encode()
+
+
+def _connector_diagnostic_message(
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+) -> str:
+    if not candidate.env_names:
+        return (
+            f"{candidate.connector_type} is not configured for this run. "
+            "Credentials cannot be injected."
+        )
+    env_names = ", ".join(candidate.env_names)
+    verb = "is" if len(candidate.env_names) == 1 else "are"
+    return (
+        f"{candidate.connector_type} is not configured for this run. "
+        f"{env_names} {verb} unavailable, so credentials cannot be injected."
+    )
+
+
+def _request_has_connector_auth_material(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    original_url: str,
+) -> bool:
+    configured_headers = {name.lower() for name in candidate.auth_header_names}
+    auth_headers = configured_headers | _GENERIC_AUTH_HEADER_NAMES
+    for name in auth_headers:
+        if _request_header_has_auth_material(flow, name):
+            return True
+
+    configured_query_params = set(candidate.auth_query_param_names)
+    normalized_configured_query_params = {name.lower() for name in candidate.auth_query_param_names}
+    try:
+        parsed = urllib.parse.urlparse(original_url)
+    except ValueError:
+        return False
+    for name, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
+        normalized_name = name.lower()
+        is_auth_param = (
+            name in configured_query_params
+            or normalized_name in normalized_configured_query_params
+            or normalized_name in _GENERIC_AUTH_QUERY_PARAM_NAMES
+        )
+        if is_auth_param and _query_param_has_auth_material(value):
+            return True
+    return False
+
+
+def _request_header_has_auth_material(flow: http.HTTPFlow, name: str) -> bool:
+    return any(
+        _header_value_has_auth_material(name, value) for value in flow.request.headers.get_all(name)
+    )
+
+
+def _header_value_has_auth_material(name: str, value: str) -> bool:
+    stripped = value.strip()
+    if not stripped:
+        return False
+    if name.lower() not in ("authorization", "proxy-authorization"):
+        return True
+
+    return _scheme_auth_value_has_credential(stripped)
+
+
+def _scheme_auth_value_has_credential(stripped: str) -> bool:
+    parts = stripped.split(None, 1)
+    if len(parts) == 1:
+        return parts[0].lower() not in _AUTH_SCHEMES_REQUIRING_CREDENTIAL
+    return bool(parts[1].strip())
+
+
+def _query_param_has_auth_material(value: str) -> bool:
+    return bool(value.strip())
+
+
+def _replace_connector_diagnostic_response_content(
+    flow: http.HTTPFlow,
+    candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
+    *,
+    upstream_status: int,
+) -> None:
+    if flow.response is None:
+        return
+    flow.metadata.pop(metadata_keys.STREAM_BUFFER, None)
+    flow.metadata.pop(metadata_keys.STREAM_BUFFER_STATE, None)
+    for header in ("content-encoding", "transfer-encoding"):
+        if header in flow.response.headers:
+            del flow.response.headers[header]
+    flow.response.headers["Content-Type"] = "application/json"
+    flow.response.content = _connector_diagnostic_response_body(
+        candidate,
+        upstream_status=upstream_status,
+    )
+
+
+def _log_connector_diagnostic_proxy_entry(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+    upstream_status: int,
+) -> None:
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is None:
+        return
+    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+    log_proxy_entry(
+        flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
+        "warn",
+        f"{candidate.connector_type} is not configured for this run: {safe_url}",
+        type="connector_diagnostic",
+        connector=candidate.connector_type,
+        reason=candidate.reason,
+        upstream_status=upstream_status,
+        url=original_url,
+    )
+
+
+def _maybe_replace_connector_diagnostic_response(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+) -> None:
+    if flow.response is None:
+        return
+    if flow.response.status_code not in (
+        _HTTP_STATUS_UNAUTHORIZED,
+        _HTTP_STATUS_FORBIDDEN,
+    ):
+        return
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+        return
+
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is None:
+        return
+    upstream_status = flow.response.status_code
+    if _request_has_connector_auth_material(flow, candidate, original_url):
+        return
+
+    _set_connector_diagnostic_failure_metadata(flow, candidate)
+    _replace_connector_diagnostic_response_content(
+        flow,
+        candidate,
+        upstream_status=upstream_status,
+    )
+    _log_connector_diagnostic_proxy_entry(
+        flow,
+        original_url=original_url,
+        upstream_status=upstream_status,
+    )
+
+
+def _maybe_make_connector_diagnostic_error_response(
+    flow: http.HTTPFlow,
+    *,
+    original_url: str,
+) -> None:
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+        return
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is None:
+        return
+    if _request_has_connector_auth_material(flow, candidate, original_url):
+        return
+    _set_connector_diagnostic_failure_metadata(flow, candidate)
+    flow.response = http.Response.make(
+        _HTTP_STATUS_BAD_GATEWAY,
+        _connector_diagnostic_response_body(candidate, upstream_status=0),
+        {"Content-Type": "application/json"},
+    )
+    _log_connector_diagnostic_proxy_entry(
+        flow,
+        original_url=original_url,
+        upstream_status=0,
+    )
+
+
+def _should_buffer_connector_diagnostic_response(flow: http.HTTPFlow) -> bool:
+    if flow.response is None:
+        return False
+    if flow.response.status_code not in (
+        _HTTP_STATUS_UNAUTHORIZED,
+        _HTTP_STATUS_FORBIDDEN,
+    ):
+        return False
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_request(flow):
+        return False
+
+    candidate = _connector_diagnostic_candidate_from_flow(flow)
+    if candidate is None:
+        return False
+    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(original_url, str):
+        return False
+    return not _request_has_connector_auth_material(flow, candidate, original_url)
+
+
+def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
+    target = flow.metadata.get(metadata_keys.NETWORK_LOG_TARGET)
+    if target is not None:
+        return target["url"], target["host"], target["port"]
+
+    host, port = _fallback_network_log_host_port(flow, original_url)
+    return original_url, host, port
+
+
+def _http_network_log_entry(
+    flow: http.HTTPFlow,
+    *,
+    action: str,
+    original_url: str,
+    status_code: int,
+    latency_ms: int,
+    request_size: int,
+    response_size: int,
+) -> dict:
+    url, host, port = _network_log_target(flow, original_url)
+    entry = {
+        "type": "http",
+        "action": action,
+        "host": host,
+        "port": port,
+        "method": flow.request.method,
+        "url": network_log_sanitization.sanitize_url_for_network_log(url),
+        "status": status_code,
+        "latency_ms": latency_ms,
+        "request_size": request_size,
+        "response_size": response_size,
+    }
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+        entry["browser_user_agent"] = True
+    return entry
+
+
+def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValidationError) -> None:
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    flow.metadata[metadata_keys.ORIGINAL_URL] = error.fallback_url
+    _set_network_log_target_from_url(flow, error.fallback_url)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = error.reason
+
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        error.message,
+        type="authority_validation",
+        reason=error.reason,
+        sni=error.sni,
+        request_host=error.request_host,
+        host_header=error.host_header,
+        request_port=error.request_port,
+    )
+
+    flow.response = http.Response.make(
+        403,
+        json.dumps(
+            {
+                "error": error.reason,
+                "message": error.message,
+                "sni": error.sni,
+                "request_host": error.request_host,
+                "host_header": error.host_header,
+                "request_port": error.request_port,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def _block_registry_unavailable(
+    flow: http.HTTPFlow,
+    unavailable: registry.RegistryUnavailable,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "registry_unavailable"
+    flow.response = http.Response.make(
+        503,
+        json.dumps(
+            {
+                "error": "registry_unavailable",
+                "message": "Proxy registry is unavailable",
+                "reason": unavailable.reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def _block_invalid_registry_vm(
+    flow: http.HTTPFlow,
+    invalid_vm: registry.InvalidVmEntry,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "invalid_registry_vm"
+    flow.response = http.Response.make(
+        503,
+        json.dumps(
+            {
+                "error": "invalid_registry_vm",
+                "message": invalid_vm.message,
+                "reason": invalid_vm.reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = _STALE_TLS_ADMISSION_ERROR
+    flow.response = http.Response.make(
+        503,
+        json.dumps(
+            {
+                "error": _STALE_TLS_ADMISSION_ERROR,
+                "message": (
+                    "Request blocked: TLS admission is no longer backed by a valid "
+                    "proxy registry VM"
+                ),
+                "reason": reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def _client_connection_id(client: object) -> str | None:
+    client_id = getattr(client, "id", None)
+    if isinstance(client_id, str) and client_id:
+        return client_id
+    return None
+
+
+def _record_tls_admission(client: object, admission: _TlsAdmission) -> None:
+    client_id = _client_connection_id(client)
+    if client_id is not None:
+        _tls_admissions[client_id] = admission
+
+
+def _tls_admission_for_client(client: object) -> _TlsAdmission | None:
+    client_id = _client_connection_id(client)
+    if client_id is None:
+        return None
+    return _tls_admissions.get(client_id)
+
+
+def _forget_tls_admission(client: object) -> None:
+    client_id = _client_connection_id(client)
+    if client_id is not None:
+        _tls_admissions.pop(client_id, None)
+
+
+def reset_tls_admission_state_for_tests() -> None:
+    _tls_admissions.clear()
+
+
+# ============================================================================
+# TLS ClientHello Handler
+# ============================================================================
+
+
+def tls_clienthello(data: tls.ClientHelloData) -> None:
+    """
+    Handle TLS ClientHello — decide whether to MITM intercept.
+    All registered VMs use MITM mode for HTTP-level filtering and logging.
+    Unregistered IPs are passed through without interception.
+    """
+    client_ip = data.context.client.peername[0] if data.context.client.peername else None
+    if not client_ip:
+        return
+
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        _record_tls_admission(
+            data.context.client,
+            _TlsAdmission(
+                client_ip=client_ip,
+                kind=_TLS_ADMISSION_REGISTRY_UNAVAILABLE,
+            ),
+        )
+        return
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is not None:
+        _record_tls_admission(
+            data.context.client,
+            _TlsAdmission(
+                client_ip=client_ip,
+                kind=_TLS_ADMISSION_VALID_REGISTRY_VM,
+                run_id=vm_info.get("runId", ""),
+            ),
+        )
+        return
+
+    if client_ip in registry_state.invalid_vms:
+        _record_tls_admission(
+            data.context.client,
+            _TlsAdmission(
+                client_ip=client_ip,
+                kind=_TLS_ADMISSION_INVALID_REGISTRY_VM,
+            ),
+        )
+        return
+
+    # Not a registered VM - pass through without MITM interception.
+    # This is critical for CIDR-based rules where all VM traffic is redirected.
+    _forget_tls_admission(data.context.client)
+    data.ignore_connection = True
+
+
+def client_disconnected(client: connection.Client) -> None:
+    _forget_tls_admission(client)
+
+
+# ============================================================================
+# HTTP Request Handler (MITM mode)
+# ============================================================================
+
+
+def requestheaders(flow: http.HTTPFlow) -> None:
+    """Terminate unsafe auth.base request bodies before mitmproxy buffers them."""
+    body_check = _auth_base_body_header_check(flow)
+    if body_check.kind == "ok":
+        return
+
+    classification = _classify_request(flow)
+    allow = classification.firewall_allow
+    vm_info = classification.vm_info
+    if classification.kind != "firewall_allow" or allow is None or vm_info is None:
+        return
+    if not _firewall_allow_auth_base(allow):
+        return
+
+    _start_request_timing(flow)
+    prepare_firewall_metadata(flow, allow, vm_info)
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+    if body_check.kind == "too_large":
+        mark_auth_base_request_too_large(
+            flow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+            observed_size=body_check.observed_size,
+        )
+    else:
+        mark_auth_base_request_length_required(
+            flow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+            reason=body_check.reason,
+        )
+    flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+    flow.kill()
+
+
+def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    if result.reason == "malformed_network_policy":
+        block_message = "malformed network policy"
+        response_message = "Request blocked: malformed network policy"
+    elif result.reason == "unsafe_path":
+        block_message = "unsafe path"
+        response_message = "Request blocked: unsafe path"
+    else:
+        block_message = "no matching permission"
+        response_message = "Request blocked: no matching permission rule"
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        f"Firewall {result.name}: {block_message} for {result.method} {result.path}",
+        type="firewall_block",
+        name=result.name,
+        reason=result.reason,
+    )
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
+    flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
+    flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
+    error_body = json.dumps(
+        {
+            "error": "permission_denied",
+            "message": response_message,
+            "method": result.method,
+            "path": result.path,
+            "name": result.name,
+            "permissions": list(result.permissions),
+            "reason": result.reason,
+            "base": result.base,
+        }
+    )
+    flow.response = http.Response.make(
+        403,
+        error_body.encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+async def request(flow: http.HTTPFlow) -> None:
+    """
+    Intercept request: inject firewall auth headers for configured firewall rules.
+
+    Order:
+    1. Registry gate (block unavailable or invalid registered VM state)
+    2. VM0 API auto-allow (agent must always reach the platform)
+    3. Firewall match (inject auth headers for allowed requests)
+    """
+    if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
+        return
+
+    classification = _classify_request(flow)
+
+    if _classification_needs_request_timing(classification):
+        _start_request_timing(flow)
+
+    try:
+        if classification.kind == "no_client_ip":
+            ctx.log.warn("No client IP available, passing through")
+            return
+        if classification.kind == "registry_unavailable":
+            unavailable = classification.registry_unavailable
+            if unavailable is not None:
+                _block_registry_unavailable(flow, unavailable)
+            return
+        if classification.kind == "stale_tls_admission":
+            _block_stale_tls_admission(flow, reason=classification.stale_tls_reason)
+            return
+        if classification.kind == "invalid_registry_vm":
+            invalid_vm = classification.invalid_vm
+            if invalid_vm is not None:
+                _block_invalid_registry_vm(flow, invalid_vm)
+            return
+        if classification.kind == "pass_through":
+            return
+        if classification.kind == "authority_denied":
+            authority_error = classification.authority_error
+            if authority_error is not None:
+                _block_authority_validation_error(flow, authority_error)
+            return
+        if classification.kind == "api_allow":
+            flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+            return
+        if classification.kind == "browser_allow":
+            # User-Agent is client-controlled. This is a business passthrough
+            # for browser-looking traffic, not proof of trusted browser
+            # provenance. Registry and authority validation have already run,
+            # but firewall matching, credential fetch, and auth injection do not.
+            flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+            return
+        if classification.kind == "firewall_block":
+            firewall_block = classification.firewall_block
+            if firewall_block is not None:
+                _set_firewall_block_response(flow, firewall_block)
+            return
+        if classification.kind == "firewall_allow":
+            allow = classification.firewall_allow
+            vm_info = classification.vm_info
+            if allow is None or vm_info is None:
+                return
+            _maybe_track_usage_flow(
+                flow,
+                is_billable_firewall(allow.name, vm_info),
+                _is_model_provider_usage_observable(allow.name, vm_info),
+            )
+            auth_result = await handle_firewall_request(flow, allow, vm_info)
+            if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
+                # Local firewall/auth errors never reach a provider. They only
+                # need pre-tracking to keep shutdown from racing while auth is
+                # resolving, so release as soon as the local response exists.
+                _release_tracked_usage_flow(flow)
+            return
+
+        vm_info = classification.vm_info
+        if vm_info is None:
+            return
+        original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
+        if not flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+            candidate = builtin_connector_diagnostics.find_candidate(
+                original_url,
+                flow.request.method,
+                active_firewall_names=_active_firewall_names(vm_info),
+            )
+            if candidate is not None:
+                _record_connector_diagnostic_candidate(flow, candidate)
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    except (asyncio.CancelledError, Exception):
+        flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
+        _release_tracked_usage_flow(flow)
+        raise
+
+
+def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bool:
+    """Return whether a firewall can produce model usage observations."""
+    return firewall_name.startswith("model-provider:") and bool(vm_info.get("modelUsageProvider"))
+
+
+def _maybe_track_usage_flow(
+    flow: http.HTTPFlow, firewall_billable: bool, model_usage_observable: bool
+) -> None:
+    """Track usage flows before provider work can outlive shutdown.
+
+    This closes the shutdown drain gap before standard upstream dispatch and
+    before auth.base URL rewrites, where the addon itself forwards upstream.
+    Normal HTTP flows release from response/error.  Model-provider WebSocket
+    upgrades release from websocket_end/error because the 101 response does not
+    complete the usage reporting lifecycle.
+    """
+    if flow.metadata.get(_USAGE_FLOW_TRACKED):
+        return
+    if firewall_billable or model_usage_observable:
+        usage.increment_in_flight_flows()
+        flow.metadata[_USAGE_FLOW_TRACKED] = True
+
+
+def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
+    if flow.metadata.pop(_USAGE_FLOW_TRACKED, False):
+        usage.decrement_in_flight_flows()
+
+
+def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
+    """Avoid duplicate usage webhook enqueue if response/error both fire."""
+    if flow.metadata.get(_MODEL_PROVIDER_USAGE_REPORTED, False):
+        return
+    reported_usage = usage.report_model_provider_usage(flow, run_id)
+    reported_observation = usage.report_model_provider_usage_observation(flow, run_id)
+    if reported_usage or reported_observation:
+        flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
+
+
+_ScheduledFlow = TypeVar("_ScheduledFlow", http.HTTPFlow, tcp.TCPFlow)
+
+
+def _call_soon(callback: Callable[[_ScheduledFlow], None], flow: _ScheduledFlow) -> None:
+    asyncio.get_running_loop().call_soon(callback, flow)
+
+
+def _is_model_websocket_usage_flow(flow: http.HTTPFlow) -> bool:
+    return bool(flow.websocket and response_streaming.is_model_websocket_usage_enabled(flow))
+
+
+def _trim_model_websocket_messages(flow: http.HTTPFlow) -> None:
+    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
+    if not _is_model_websocket_usage_flow(flow):
+        return
+    if not flow.websocket or not flow.websocket.messages:
+        return
+    flow.websocket.messages[:] = flow.websocket.messages[-1:]
+
+
+def _clear_model_websocket_messages(flow: http.HTTPFlow) -> None:
+    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
+    if _is_model_websocket_usage_flow(flow) and flow.websocket:
+        flow.websocket.messages.clear()
+
+
+def _schedule_model_websocket_message_trim(flow: http.HTTPFlow) -> None:
+    if flow.metadata.get(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, False):
+        return
+    flow.metadata[_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED] = True
+    _call_soon(_trim_model_websocket_messages, flow)
+
+
+# ============================================================================
+# HTTP Response Handlers
+# ============================================================================
+
+
+def responseheaders(flow: http.HTTPFlow) -> None:
+    """Install response stream buffering and incremental body parsers."""
+    if _should_buffer_connector_diagnostic_response(flow):
+        return
+    response_streaming.configure_response_stream(flow)
+
+
+def websocket_message(flow: http.HTTPFlow) -> None:
+    """Feed server-side WebSocket frames into model-provider usage parsers."""
+    if not flow.websocket or not flow.websocket.messages:
+        return
+    if not flow.metadata.get(metadata_keys.VM_RUN_ID, ""):
+        return
+    if not response_streaming.is_model_websocket_usage_enabled(flow):
+        return
+
+    message = flow.websocket.messages[-1]
+    if getattr(message, "from_client", False):
+        _schedule_model_websocket_message_trim(flow)
+        return
+    response_streaming.feed_model_websocket_usage(flow, message.content)
+    _schedule_model_websocket_message_trim(flow)
+
+
+def _response_size(flow: http.HTTPFlow) -> int:
+    if flow.response is None:
+        return 0
+
+    streamed_size = response_streaming.streamed_response_size(flow)
+    if streamed_size is not None:
+        return streamed_size
+
+    return _content_length_response_size(flow.response.headers.get("content-length"))
+
+
+def _content_length_response_size(content_length: str | None) -> int:
+    if content_length is None:
+        return 0
+
+    response_size: int | None = None
+    start = 0
+    while True:
+        comma = content_length.find(",", start)
+        end = len(content_length) if comma == -1 else comma
+        parsed_size = _single_content_length_response_size(content_length, start, end)
+        if parsed_size is None:
+            return 0
+        if response_size is None:
+            response_size = parsed_size
+        elif response_size != parsed_size:
+            return 0
+        if comma == -1:
+            break
+        start = comma + 1
+
+    return response_size if response_size is not None else 0
+
+
+def _single_content_length_response_size(content_length: str, start: int, end: int) -> int | None:
+    while start < end and content_length[start] in (" ", "\t"):
+        start += 1
+    while end > start and content_length[end - 1] in (" ", "\t"):
+        end -= 1
+    if start == end:
+        return None
+
+    while start < end and content_length[start] == "0":
+        start += 1
+    if start == end:
+        return 0
+
+    significant_start = start
+    if end - significant_start > _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS:
+        return None
+    for index in range(significant_start, end):
+        char = content_length[index]
+        if char < "0" or char > "9":
+            return None
+
+    response_size = int(content_length[significant_start:end])
+    if response_size > _MAX_SAFE_NETWORK_LOG_SIZE:
+        return None
+    return response_size
+
+
+def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
+    if release_tracking:
+        _clear_model_websocket_messages(flow)
+        if response_streaming.is_model_websocket_usage_enabled(flow):
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
+    response_streaming.release_response_stream_state(flow)
+    if release_tracking:
+        _release_tracked_usage_flow(flow)
+
+
+def _track_usage_flow(fn):
+    """Decorator ensuring tracked usage flows release after terminal hooks.
+
+    Pairs with ``increment_in_flight_flows()`` in ``request()``. Uses ``pop`` so
+    duplicate terminal hooks decrement at most once.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(flow: http.HTTPFlow, *args, **kwargs):
+        try:
+            return fn(flow, *args, **kwargs)
+        finally:
+            _release_usage_hook_state(flow, release_tracking=True)
+
+    return wrapper
+
+
+def _track_response_usage_flow(fn):
+    """Decorator for response() where a 101 WebSocket upgrade is not terminal."""
+
+    @functools.wraps(fn)
+    def wrapper(flow: http.HTTPFlow, *args, **kwargs):
+        release_tracking = True
+        try:
+            result = fn(flow, *args, **kwargs)
+            release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+            return result
+        finally:
+            _release_usage_hook_state(flow, release_tracking=release_tracking)
+
+    return wrapper
+
+
+@_track_usage_flow
+def websocket_end(flow: http.HTTPFlow) -> None:
+    """Report model-provider usage extracted from a WebSocket-upgraded response."""
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    if run_id:
+        _report_model_provider_usage_once(flow, run_id)
+
+
+@_track_response_usage_flow
+def response(flow: http.HTTPFlow) -> None:
+    """
+    Handle response and log network activity.
+    """
+    # Pop before any early return so tracked flows consume timing exactly once.
+    start_time = flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
+
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    if not run_id:
+        # Unregistered VM: the request handler returned before populating
+        # metadata, so none of this handler's work applies.
+        return
+
+    latency_ms = _elapsed_ms(start_time)
+    original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
+    firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
+
+    _maybe_replace_connector_diagnostic_response(flow, original_url=original_url)
+
+    request_size = len(flow.request.raw_content or b"")
+    stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
+    status_code = flow.response.status_code if flow.response else 0
+
+    # Log HTTP network entry for this run. DNS/kmsg rows are produced by the
+    # Rust runner; api-contracts is the shared network-log schema boundary.
+    # [NETWORK_LOG_FIELDS]
+    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    if network_log_path:
+        response_size = _response_size(flow)
+        log_entry = _http_network_log_entry(
+            flow,
+            action=firewall_action,
+            original_url=original_url,
+            status_code=status_code,
+            latency_ms=latency_ms,
+            request_size=request_size,
+            response_size=response_size,
+        )
+
+        # Add firewall match info if this was a firewall request
+        firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
+        if firewall_base:
+            add_firewall_metadata(flow, log_entry)
+
+        # Add captured header names, selected safe header values, and bodies when enabled
+        if flow.metadata.get(metadata_keys.CAPTURE_BODY):
+            body_capture.add_capture_fields(flow, log_entry)
+
+        log_network_entry(network_log_path, log_entry)
+
+    response_streaming.finalize_model_sse_usage(flow)
+    response_streaming.finalize_model_json_usage(flow, proxy_log_path)
+
+    # Report proxy-extracted usage for model provider responses.
+    # For non-streaming responses, fall back to extracting usage from the
+    # buffered JSON body only for legacy/test flows that did not pass through
+    # responseheaders() and therefore have no incremental extractor.
+    if (
+        not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
+        and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
+        and stream_buf
+        and usage.is_model_provider_usage_observable(flow)
+    ):
+        if response_streaming.uses_openai_responses_usage_protocol(flow):
+            json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
+                bytes(stream_buf),
+                flow.response.headers if flow.response else None,
+            )
+        else:
+            json_usage, json_error = usage.extract_anthropic_messages_usage_with_error_from_json(
+                bytes(stream_buf),
+                flow.response.headers if flow.response else None,
+            )
+        if json_usage:
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
+        elif json_error is not None:
+            log_proxy_entry(
+                proxy_log_path,
+                "warn",
+                "Model provider JSON usage extraction failed",
+                type="usage_event",
+                error=json_error,
+            )
+    _report_model_provider_usage_once(flow, run_id)
+
+    # Billable connector usage observation (issue #9504, stage 0).
+    response_streaming.finalize_connector_response_state(flow)
+    usage.report_connector_usage(flow, run_id)
+
+    # Invalidate firewall header cache on 401 so next request gets fresh headers.
+    # Also request a force-refresh so the next /firewall/auth fetch refreshes
+    # the access token regardless of DB tokenExpiresAt — the provider just told
+    # us the token is no longer valid, overriding whatever the DB believes.
+    # request_force_refresh enforces a cooldown so a persistent non-token 401
+    # can't amplify into a loop of provider refresh calls (#9860).
+    if (
+        flow.response
+        and flow.response.status_code == _HTTP_STATUS_UNAUTHORIZED
+        and flow.metadata.get(metadata_keys.FIREWALL_BASE)
+    ):
+        api_id = flow.metadata.get(metadata_keys.FIREWALL_API_ID, "")
+        if api_id:
+            cache_key = (run_id, api_id)
+            clear_cached_firewall_headers(cache_key)
+            request_force_refresh(cache_key)
+
+    # Log errors to per-job proxy log and mitmproxy console
+    if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
+        safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            f"Response {flow.response.status_code}: {safe_url}",
+            type="http_error",
+            status=flow.response.status_code,
+        )
+
+
+@_track_usage_flow
+def error(flow: http.HTTPFlow) -> None:
+    """
+    Log connection-level errors (timeout, RST, TLS failure) to the
+    per-run JSONL network log and clean up request tracking state.
+    """
+    start_time = flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
+
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+
+    if not run_id or not network_log_path:
+        return
+
+    latency_ms = _elapsed_ms(start_time)
+    original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
+    firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
+
+    _maybe_make_connector_diagnostic_error_response(flow, original_url=original_url)
+
+    request_size = len(flow.request.raw_content or b"")
+    error_msg = flow.error.msg if flow.error else "unknown error"
+
+    # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.
+    log_entry = _http_network_log_entry(
+        flow,
+        action=firewall_action,
+        original_url=original_url,
+        status_code=0,
+        latency_ms=latency_ms,
+        request_size=request_size,
+        response_size=0,
+    )
+    log_entry["error"] = error_msg
+
+    # Add firewall context if available
+    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
+    if firewall_base:
+        add_firewall_metadata(flow, log_entry)
+
+    log_network_entry(network_log_path, log_entry)
+
+    # Report proxy-extracted usage for model provider responses.
+    # The SSE parser may have partially populated model_provider_usage before the
+    # connection error occurred.  Partial data is better than none.
+    response_streaming.finalize_model_sse_usage(flow)
+    _report_model_provider_usage_once(flow, run_id)
+
+    # Billable connector usage for X NDJSON streams that crash mid-flight
+    # (issue #9534): the incremental parser populated x_ndjson_state during
+    # chunks; log what was observed so partial streams aren't silently
+    # dropped from billing.  Do not run the generic connector fallback for
+    # non-streaming JSON errors: partial bodies could otherwise be treated
+    # as unparseable successes and billed from request-side hints.
+    if flow.metadata.get(metadata_keys.X_NDJSON_STATE) is not None:
+        response_streaming.finalize_connector_response_state(flow)
+        usage.report_connector_usage(flow, run_id)
+
+    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        f"Error: {error_msg}: {safe_url}",
+        type="connection_error",
+        error=error_msg,
+    )
+
+
+# ============================================================================
+# Graceful Shutdown
+# ============================================================================
+
+
+def done():
+    """Flush pending usage reports and forwarding workers before mitmproxy exits.
+
+    Runner-triggered flush workers and shutdown flush share
+    ``_usage_flush_signal_lock``. Waiting here keeps shutdown from closing the
+    executor while a SIGUSR1 worker is still converting buffered usage into
+    webhook reports. After that, ``shutdown(wait=True)`` drains submitted
+    webhook futures during graceful stop. Auth.base forwarding does not need
+    to finish queued work during shutdown, so its executor cancels queued
+    futures without waiting for slow upstream responses.
+    """
+    try:
+        # Wait for any in-flight runner-triggered flush before closing the
+        # executor used by webhook report delivery.
+        with _usage_flush_signal_lock:
+            usage.flush_usage_events(trigger="shutdown")
+    finally:
+        try:
+            usage.webhook.usage_executor.shutdown(wait=True)
+        finally:
+            try:
+                auth_base_forwarder.shutdown_forward_request_executor(wait=False)
+            finally:
+                shutdown_log_writer()
+
+
+# ============================================================================
+# TCP Connection Handlers
+# ============================================================================
+
+
+def tcp_start(flow: tcp.TCPFlow) -> None:
+    """Track TCP connection start time and look up VM info."""
+    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    if not client_ip:
+        return
+
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        flow.kill()
+        return
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        if client_ip in registry_state.invalid_vms:
+            flow.kill()
+        return
+
+    flow.metadata[metadata_keys.VM_RUN_ID] = vm_info.get("runId", "")
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
+    flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
+    flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
+
+
+def tcp_message(flow: tcp.TCPFlow) -> None:
+    """Schedule bounded retention cleanup for registered TCP flows."""
+    _schedule_tcp_message_drain(flow)
+
+
+def tcp_end(flow: tcp.TCPFlow) -> None:
+    """Log TCP connection details when it closes."""
+    _log_tcp(flow)
+
+
+def tcp_error(flow: tcp.TCPFlow) -> None:
+    """Log TCP connection errors."""
+    _log_tcp(flow)
+
+
+def _is_registered_tcp_log_flow(flow: tcp.TCPFlow) -> bool:
+    return bool(
+        flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+        and flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    )
+
+
+def _tcp_counter_value(flow: tcp.TCPFlow, key: str) -> int:
+    value = flow.metadata.get(key)
+    if type(value) is not int:
+        return 0
+    return max(0, min(value, _MAX_SAFE_NETWORK_LOG_SIZE))
+
+
+def _has_tcp_size_counters(flow: tcp.TCPFlow) -> bool:
+    return (
+        type(flow.metadata.get(_TCP_REQUEST_SIZE)) is int
+        or type(flow.metadata.get(_TCP_RESPONSE_SIZE)) is int
+    )
+
+
+def _add_tcp_size(flow: tcp.TCPFlow, key: str, delta: int) -> None:
+    flow.metadata[key] = min(
+        _MAX_SAFE_NETWORK_LOG_SIZE,
+        _tcp_counter_value(flow, key) + delta,
+    )
+
+
+def _schedule_tcp_message_drain(flow: tcp.TCPFlow) -> None:
+    if not _is_registered_tcp_log_flow(flow):
+        return
+    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False):
+        return
+    flow.metadata[_TCP_MESSAGE_DRAIN_SCHEDULED] = True
+    _call_soon(_drain_tcp_messages, flow)
+
+
+def _drain_tcp_messages(flow: tcp.TCPFlow) -> None:
+    flow.metadata.pop(_TCP_MESSAGE_DRAIN_SCHEDULED, None)
+    if not _is_registered_tcp_log_flow(flow):
+        return
+    if not flow.messages:
+        return
+
+    for message in flow.messages:
+        key = _TCP_REQUEST_SIZE if message.from_client else _TCP_RESPONSE_SIZE
+        _add_tcp_size(flow, key, len(message.content))
+    flow.messages.clear()
+
+
+def _sum_tcp_messages(flow: tcp.TCPFlow) -> tuple[int, int]:
+    request_size = 0
+    response_size = 0
+    for message in flow.messages:
+        if message.from_client:
+            request_size = min(
+                _MAX_SAFE_NETWORK_LOG_SIZE,
+                request_size + len(message.content),
+            )
+        else:
+            response_size = min(
+                _MAX_SAFE_NETWORK_LOG_SIZE,
+                response_size + len(message.content),
+            )
+    return request_size, response_size
+
+
+def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
+    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False) or _has_tcp_size_counters(flow):
+        _drain_tcp_messages(flow)
+        return (
+            _tcp_counter_value(flow, _TCP_REQUEST_SIZE),
+            _tcp_counter_value(flow, _TCP_RESPONSE_SIZE),
+        )
+
+    request_size, response_size = _sum_tcp_messages(flow)
+    flow.messages.clear()
+    return request_size, response_size
+
+
+def _log_tcp(flow: tcp.TCPFlow) -> None:
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    if not run_id or not network_log_path:
+        return
+
+    start_time = flow.metadata.get(metadata_keys.TCP_START_MONOTONIC)
+    latency_ms = _elapsed_ms(start_time)
+
+    request_size, response_size = _tcp_log_sizes(flow)
+
+    server_addr = flow.server_conn.address if flow.server_conn else None
+    host = server_addr[0] if server_addr else "unknown"
+    port = server_addr[1] if server_addr else 0
+
+    # [NETWORK_LOG_FIELDS] — TCP fields; api-contracts is the shared schema boundary.
+    log_entry = {
+        "type": "tcp",
+        "host": host,
+        "port": port,
+        "latency_ms": latency_ms,
+        "request_size": request_size,
+        "response_size": response_size,
+    }
+
+    if flow.error:
+        log_entry["error"] = flow.error.msg
+
+    log_network_entry(network_log_path, log_entry)
+
+
+# mitmproxy addon registration
+addons = [
+    tls_clienthello,
+    client_disconnected,
+    request,
+    responseheaders,
+    websocket_message,
+    websocket_end,
+    response,
+    error,
+    tcp_start,
+    tcp_message,
+    tcp_end,
+    tcp_error,
+]

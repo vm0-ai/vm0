@@ -1,0 +1,2 @@
+ALTER TABLE "chat_messages" ADD COLUMN "run_lifecycle_event" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "chat_messages_run_lifecycle_unique" ON "chat_messages" USING btree ("run_id") WHERE "chat_messages"."run_lifecycle_event" IS NOT NULL;

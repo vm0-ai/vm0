@@ -1,0 +1,122 @@
+import { z } from "zod";
+import { authHeadersSchema, initContract } from "./base";
+import { apiErrorSchema } from "./errors";
+
+const c = initContract();
+
+const agentIdSchema = z.string().uuid();
+const connectorRefSchema = z.string().min(1).max(64);
+const permissionSchema = z.string().min(1).max(128);
+
+export const userPermissionGrantActionSchema = z.enum(["allow", "deny"]);
+export const userPermissionGrantExpiresInSchema = z.enum([
+  "1h",
+  "24h",
+  "7d",
+  "always",
+]);
+
+export const userPermissionGrantResponseSchema = z.object({
+  agentId: agentIdSchema,
+  connectorRef: connectorRefSchema,
+  permission: permissionSchema,
+  action: userPermissionGrantActionSchema,
+  expiresAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const listUserPermissionGrantsQuerySchema = z.object({
+  agentId: agentIdSchema,
+});
+
+export const resetUserPermissionGrantsQuerySchema = z.object({
+  agentId: agentIdSchema,
+  connectorRef: connectorRefSchema,
+});
+
+const upsertUserPermissionGrantBaseRequestSchema = z.object({
+  agentId: agentIdSchema,
+  connectorRef: connectorRefSchema,
+  permission: permissionSchema,
+});
+
+export const upsertUserPermissionGrantRequestSchema = z.discriminatedUnion(
+  "action",
+  [
+    upsertUserPermissionGrantBaseRequestSchema.extend({
+      action: z.literal("allow"),
+      expiresIn: userPermissionGrantExpiresInSchema.optional(),
+    }),
+    upsertUserPermissionGrantBaseRequestSchema.extend({
+      action: z.literal("deny"),
+      expiresIn: z.never().optional(),
+    }),
+  ],
+);
+
+export const zeroUserPermissionGrantsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/user-permission-grants",
+    headers: authHeadersSchema,
+    query: listUserPermissionGrantsQuerySchema,
+    responses: {
+      200: z.array(userPermissionGrantResponseSchema),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List current user's active permission grants for an agent",
+  },
+  upsert: {
+    method: "PUT",
+    path: "/api/zero/user-permission-grants",
+    headers: authHeadersSchema,
+    body: upsertUserPermissionGrantRequestSchema,
+    responses: {
+      200: userPermissionGrantResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Upsert current user's permission grant for an agent",
+  },
+  reset: {
+    method: "DELETE",
+    path: "/api/zero/user-permission-grants",
+    headers: authHeadersSchema,
+    query: resetUserPermissionGrantsQuerySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Reset current user's connector permission grants for an agent",
+  },
+});
+
+export type UserPermissionGrantAction = z.infer<
+  typeof userPermissionGrantActionSchema
+>;
+export type UserPermissionGrantExpiresIn = z.infer<
+  typeof userPermissionGrantExpiresInSchema
+>;
+export type UserPermissionGrantResponse = z.infer<
+  typeof userPermissionGrantResponseSchema
+>;
+export type ListUserPermissionGrantsQuery = z.infer<
+  typeof listUserPermissionGrantsQuerySchema
+>;
+export type ResetUserPermissionGrantsQuery = z.infer<
+  typeof resetUserPermissionGrantsQuerySchema
+>;
+export type UpsertUserPermissionGrantRequest = z.infer<
+  typeof upsertUserPermissionGrantRequestSchema
+>;
+export type ZeroUserPermissionGrantsContract =
+  typeof zeroUserPermissionGrantsContract;

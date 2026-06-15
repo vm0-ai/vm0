@@ -1,0 +1,1 @@
+ALTER TABLE "zero_runs" ADD COLUMN "summary" text;

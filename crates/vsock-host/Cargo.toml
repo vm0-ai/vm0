@@ -1,0 +1,19 @@
+[package]
+name = "vsock-host"
+version = "0.17.29"
+edition.workspace = true
+description = "Vsock host client for Firecracker VM communication"
+
+[dependencies]
+nix = { workspace = true, features = ["net"] }
+tokio = { workspace = true, features = ["net", "io-util", "time", "rt", "macros", "sync", "fs"] }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+vsock-proto.workspace = true
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
+tracing-test-support.workspace = true
+
+[lints]
+workspace = true

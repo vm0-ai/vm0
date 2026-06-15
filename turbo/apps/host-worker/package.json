@@ -1,0 +1,21 @@
+{
+  "name": "@vm0/host-worker",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint && eslint . --max-warnings 0",
+    "deploy": "wrangler deploy --env=\"\"",
+    "deploy:production": "wrangler deploy --env=\"\"",
+    "deploy:test": "wrangler deploy --env test"
+  },
+  "devDependencies": {
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "oxlint": "^1.57.0",
+    "typescript": "6.0.3",
+    "wrangler": "^4.90.1"
+  }
+}

@@ -1,0 +1,1 @@
+ALTER TABLE "usage_event" ADD COLUMN "billing_error" varchar(50);

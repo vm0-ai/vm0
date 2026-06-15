@@ -1,0 +1,2 @@
+ALTER TABLE "chat_threads" ADD COLUMN "session_id" uuid;--> statement-breakpoint
+ALTER TABLE "chat_threads" ADD CONSTRAINT "chat_threads_session_id_agent_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."agent_sessions"("id") ON DELETE set null ON UPDATE no action;

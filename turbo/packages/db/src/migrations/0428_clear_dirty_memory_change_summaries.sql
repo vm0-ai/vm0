@@ -1,0 +1,11 @@
+-- One-off data cleanup: wipe every row written by the buggy Memory Activity
+-- daily-summary cron. The initial deployment summarized against the user's
+-- all-time-first version over a 14-day backfill window, so existing cards
+-- report the user's ENTIRE memory history (e.g. "Learned 103") instead of the
+-- single-day delta, and were generated for users who cannot even see the
+-- feature.
+--
+-- Deleting memory_change_summaries cascades to memory_change_items via the
+-- ON DELETE CASCADE FK, so this single statement clears both tables. The
+-- corrected cron repopulates yesterday's row on its next hourly run.
+DELETE FROM memory_change_summaries;

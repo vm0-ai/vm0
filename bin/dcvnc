@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -eu
+
+if [ $# -eq 0 ]; then
+    echo "Usage: dcvnc <vm_name>"
+    echo "Example: dcvnc vm01"
+    exit 1
+fi
+
+vm_name="$1"
+
+# Find container by hostname (set via --hostname in devcontainer.json)
+container_id=$(docker ps -q --filter "name=." | while read -r cid; do
+    if [ "$(docker inspect -f '{{.Config.Hostname}}' "$cid")" = "$vm_name" ]; then
+        echo "$cid"
+        break
+    fi
+done)
+
+if [ -z "$container_id" ]; then
+    echo "Error: No running container with hostname '${vm_name}'"
+    echo "Available containers:"
+    docker ps --format "table {{.Names}}\t{{.Config.Hostname}}\t{{.Ports}}" 2>/dev/null \
+        || docker ps --format "table {{.Names}}\t{{.Ports}}"
+    exit 1
+fi
+
+# Extract the host port mapped to container port 6080
+port=$(docker port "$container_id" 6080 2>/dev/null | head -n1 | sed 's/.*://')
+
+if [ -z "$port" ]; then
+    echo "Error: Container '${vm_name}' has no port 6080 mapping"
+    echo "Add \"-p\", \"6080\" to runArgs in devcontainer.json and rebuild"
+    exit 1
+fi
+
+url="http://127.0.0.1:${port}/vnc.html"
+echo "Opening noVNC: ${url}"
+open "${url}"

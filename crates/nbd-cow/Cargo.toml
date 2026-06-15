@@ -1,0 +1,21 @@
+[package]
+name = "nbd-cow"
+version = "0.4.37"
+edition.workspace = true
+
+[dependencies]
+bitvec = { workspace = true }
+libc = { workspace = true }
+nix = { workspace = true, features = ["fs", "socket"] }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+nix = { workspace = true, features = ["user"] }
+
+[lints]
+workspace = true

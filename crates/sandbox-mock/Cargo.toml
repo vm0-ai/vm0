@@ -1,0 +1,16 @@
+[package]
+name = "sandbox-mock"
+version = "0.7.6"
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+sandbox = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
+[lints]
+workspace = true

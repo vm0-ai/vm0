@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en" translate="no">
+  <head>
+    <title>Zero</title>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        margin: 0;
+      }
+
+      #root {
+        display: none;
+      }
+
+      .browser-upgrade {
+        background: #ffffff;
+        box-sizing: border-box;
+        color: #14171d;
+        display: flex;
+        font-family:
+          "Noto Sans",
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        overflow: hidden;
+        padding: 24px;
+        position: relative;
+        width: 100%;
+      }
+
+      .browser-upgrade * {
+        box-sizing: border-box;
+      }
+
+      .browser-upgrade::before {
+        background-image: radial-gradient(
+          ellipse 120% 80% at 50% -20%,
+          rgba(248, 249, 251, 0.9),
+          transparent 50%
+        );
+        background-size: 100% 100%;
+        content: "";
+        inset: 0;
+        position: absolute;
+        z-index: 0;
+      }
+
+      [data-browser-supported="true"] #root {
+        display: block;
+      }
+
+      [data-browser-supported="true"] .browser-upgrade {
+        display: none;
+      }
+
+      .browser-upgrade__center {
+        position: relative;
+        width: 100%;
+        z-index: 1;
+      }
+
+      .browser-upgrade__panel {
+        background: #ffffff;
+        border: 0.7px solid #dce1e8;
+        border-radius: 16px;
+        box-shadow:
+          0 2px 12px rgba(113, 120, 133, 0.04),
+          0 0 0 0.5px rgba(113, 120, 133, 0.02);
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        align-items: center;
+        margin: 0 auto;
+        max-width: 384px;
+        padding: 32px;
+        text-align: center;
+      }
+
+      .browser-upgrade__icon {
+        align-items: center;
+        display: flex;
+        height: 40px;
+        justify-content: center;
+        width: 40px;
+      }
+
+      .browser-upgrade__icon img {
+        display: block;
+        height: 40px;
+        width: 40px;
+      }
+
+      .browser-upgrade__copy {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .browser-upgrade h1 {
+        color: #14171d;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: 0;
+        line-height: 24px;
+        margin: 0;
+      }
+
+      .browser-upgrade p {
+        color: #5d6572;
+        font-size: 14px;
+        line-height: 22px;
+        margin: 0;
+      }
+
+      .browser-upgrade__actions {
+        width: 100%;
+      }
+
+      .browser-upgrade a {
+        background: #ed4e01;
+        border: 1px solid #ed4e01;
+        border-radius: 8px;
+        box-sizing: border-box;
+        color: #ffffff;
+        display: inline-block;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 20px;
+        min-height: 40px;
+        padding: 9px 14px;
+        text-align: center;
+        text-decoration: none;
+        width: 100%;
+      }
+
+      .browser-upgrade a:hover {
+        background: #d94600;
+        border-color: #d94600;
+      }
+
+      @media (max-width: 520px) {
+        .browser-upgrade__panel {
+          padding: 24px 20px;
+        }
+      }
+    </style>
+    <script>
+      (function () {
+        var ua = navigator.userAgent || "";
+        var supported = true;
+        var upgradeTarget = {
+          actionLabel: "Update browser",
+          actionUrl: "https://www.google.com/chrome/",
+          description:
+            "Zero does not support your current browser version. Update your browser to continue.",
+          title: "Update your browser to continue",
+        };
+        var iosPattern = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/;
+        var iosMatch = iosPattern.exec(ua);
+        var chromiumMatch = /\bChromium\/(\d+)/.exec(ua);
+        var chromeMatch = /\b(?:Chrome|CriOS|HeadlessChrome)\/(\d+)/.exec(ua);
+
+        if (iosMatch) {
+          upgradeTarget = {
+            actionLabel: "Update iOS",
+            actionUrl: "https://support.apple.com/HT204204",
+            description:
+              "Zero does not support your current browser version. Update iOS to continue.",
+            title: "Update iOS to continue",
+          };
+          var iosMajor = parseInt(iosMatch[1], 10);
+          var iosMinor = iosMatch[2] ? parseInt(iosMatch[2], 10) : 0;
+          if (!isNaN(iosMajor) && !isNaN(iosMinor)) {
+            supported = iosMajor > 16 || (iosMajor === 16 && iosMinor >= 4);
+          }
+        } else if (
+          (chromiumMatch || chromeMatch) &&
+          !/\b(?:Edg|OPR|SamsungBrowser)\//.test(ua)
+        ) {
+          var chromiumBrowser = !!chromiumMatch;
+          upgradeTarget = {
+            actionLabel: chromiumBrowser ? "Update Chromium" : "Update Chrome",
+            actionUrl: chromiumBrowser
+              ? "https://www.chromium.org/getting-involved/download-chromium/"
+              : "https://www.google.com/chrome/",
+            description:
+              "Zero does not support your current browser version. Update " +
+              (chromiumBrowser ? "Chromium" : "Chrome") +
+              " to continue.",
+            title:
+              "Update " +
+              (chromiumBrowser ? "Chromium" : "Chrome") +
+              " to continue",
+          };
+          var chromeMajor = parseInt(
+            chromiumBrowser ? chromiumMatch[1] : chromeMatch[1],
+            10,
+          );
+          if (!isNaN(chromeMajor)) {
+            supported = chromeMajor >= 111;
+          }
+        } else {
+          var safariMatch = /\bVersion\/(\d+)(?:\.(\d+))?.*\bSafari\//.exec(ua);
+          if (
+            safariMatch &&
+            !/\b(?:Chrome|CriOS|Chromium|Edg|OPR|FxiOS)\//.test(ua)
+          ) {
+            upgradeTarget = {
+              actionLabel: "Update Safari",
+              actionUrl: "https://support.apple.com/safari",
+              description:
+                "Zero does not support your current browser version. Update Safari to continue.",
+              title: "Update Safari to continue",
+            };
+            var safariMajor = parseInt(safariMatch[1], 10);
+            var safariMinor = safariMatch[2] ? parseInt(safariMatch[2], 10) : 0;
+            if (!isNaN(safariMajor) && !isNaN(safariMinor)) {
+              supported =
+                safariMajor > 16 || (safariMajor === 16 && safariMinor >= 4);
+            }
+          }
+        }
+
+        window.__vm0BrowserUpgrade = upgradeTarget;
+        window.__vm0BrowserSupported = supported;
+        document.documentElement.setAttribute(
+          "data-browser-supported",
+          supported ? "true" : "false",
+        );
+      })();
+    </script>
+    <script>
+      (function () {
+        if ("%VITE_VERCEL_ENV%" !== "production") return;
+
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () {
+          window.dataLayer.push(arguments);
+        };
+        window.gtag("js", new Date());
+        window.gtag("config", "AW-18144854014");
+
+        var gtagScript = document.createElement("script");
+        gtagScript.async = true;
+        gtagScript.src =
+          "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
+        document.head.appendChild(gtagScript);
+
+        var linkedInPartnerId = "9378804";
+        window._linkedin_data_partner_ids =
+          window._linkedin_data_partner_ids || [];
+        window._linkedin_data_partner_ids.push(linkedInPartnerId);
+
+        (function (l) {
+          if (!l) {
+            window.lintrk = function (a, b) {
+              window.lintrk.q.push([a, b]);
+            };
+            window.lintrk.q = [];
+          }
+          var s = document.getElementsByTagName("script")[0];
+          var b = document.createElement("script");
+          b.type = "text/javascript";
+          b.async = true;
+          b.src = "https://snap.licdn.com/li.lms-analytics/insight.min.js";
+          s.parentNode.insertBefore(b, s);
+        })(window.lintrk);
+      })();
+    </script>
+    <script>
+      // Mark <head> parse start as early as possible so we can measure the
+      // total white-screen duration up to the first `hideAppSkeleton$` call.
+      window.__appBootstrapStart = performance.now();
+    </script>
+    <script>
+      // Preconnect to the Clerk Frontend API host so the DNS+TCP+TLS
+      // handshake overlaps with bundle download. The publishable key is
+      // shaped pk_<env>_<base64(host$)>; decoding it here avoids hard-coding
+      // the FAPI domain per environment.
+      (function () {
+        var k = "%VITE_CLERK_PUBLISHABLE_KEY%";
+        var m = /^pk_(?:test|live)_(.+)$/.exec(k);
+        if (!m) return;
+        var host = atob(m[1]).replace(/\$+$/, "");
+        if (!/^[a-z0-9.-]+$/i.test(host)) return;
+        var l = document.createElement("link");
+        l.rel = "preconnect";
+        l.href = "https://" + host;
+        l.crossOrigin = "anonymous";
+        document.head.appendChild(l);
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://cdn.vm0.io" crossorigin />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Zero" />
+    <meta
+      name="description"
+      content="Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Zero" />
+    <meta property="og:title" content="Zero — Your AI coworker from vm0" />
+    <meta
+      property="og:description"
+      content="Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools."
+    />
+    <meta property="og:image" content="https://www.vm0.ai/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Zero — Your AI coworker from vm0" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@vm0_ai" />
+    <meta name="twitter:title" content="Zero — Your AI coworker from vm0" />
+    <meta
+      name="twitter:description"
+      content="Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools."
+    />
+    <meta name="twitter:image" content="https://www.vm0.ai/og-image.png" />
+    <meta name="google" content="notranslate" />
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#19191b"
+      media="(prefers-color-scheme: dark)"
+    />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <script>
+      // Inline theme detection — mirrors signals/theme.ts resolveTheme() + applyTheme()
+      (function () {
+        var p = localStorage.getItem("theme");
+        var t =
+          p === "dark" || p === "light"
+            ? p
+            : window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        document.documentElement.dataset.theme = t;
+        if (t === "dark") document.documentElement.classList.add("dark");
+      })();
+    </script>
+    <script type="module">
+      if (window.__vm0BrowserSupported === true) {
+        import("/src/main.ts");
+      }
+    </script>
+    <script>
+      function __initPlausible() {
+        var url = "%VITE_PLAUSIBLE_SCRIPT_URL%";
+        if (url && url.indexOf("plausible") !== -1) {
+          var s = document.createElement("script");
+          s.async = true;
+          s.src = url;
+          document.head.appendChild(s);
+          ((window.plausible =
+            window.plausible ||
+            function () {
+              (plausible.q = plausible.q || []).push(arguments);
+            }),
+            (plausible.init =
+              plausible.init ||
+              function (i) {
+                plausible.o = i || {};
+              }));
+          plausible.init({
+            transformRequest: function (payload) {
+              payload.u = payload.u.replace(
+                /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+                "/:id",
+              );
+              return payload;
+            },
+          });
+        }
+      }
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(__initPlausible, { timeout: 3000 });
+      } else {
+        setTimeout(__initPlausible, 100);
+      }
+    </script>
+  </head>
+  <body>
+    <div class="browser-upgrade" role="status" aria-live="polite">
+      <div class="browser-upgrade__center">
+        <div class="browser-upgrade__panel">
+          <div class="browser-upgrade__icon" aria-hidden="true">
+            <img src="/icon.svg" alt="" />
+          </div>
+          <div class="browser-upgrade__copy">
+            <h1 id="browser-upgrade-title">Update your browser to continue</h1>
+            <p id="browser-upgrade-description">
+              Zero does not support your current browser version. Update your
+              browser to continue.
+            </p>
+          </div>
+          <div class="browser-upgrade__actions">
+            <a
+              id="browser-upgrade-action"
+              href="https://www.google.com/chrome/"
+            >
+              Update browser
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var target = window.__vm0BrowserUpgrade;
+        if (!target) return;
+
+        var title = document.getElementById("browser-upgrade-title");
+        var description = document.getElementById(
+          "browser-upgrade-description",
+        );
+        var action = document.getElementById("browser-upgrade-action");
+
+        if (title) title.textContent = target.title;
+        if (description) description.textContent = target.description;
+        if (action) {
+          action.textContent = target.actionLabel;
+          action.href = target.actionUrl;
+        }
+      })();
+    </script>
+    <div id="root">
+      <style>
+        :root {
+          --zero-viewport-height: 100dvh;
+        }
+        @supports (height: 100lvh) {
+          @media (display-mode: standalone) {
+            :root {
+              --zero-viewport-height: 100lvh;
+            }
+          }
+        }
+        html,
+        body {
+          margin: 0;
+        }
+        html,
+        body,
+        #root {
+          width: 100%;
+          height: var(--zero-viewport-height);
+          min-height: var(--zero-viewport-height);
+          overflow: hidden;
+        }
+        #root {
+          position: fixed;
+          top: 0;
+          right: 0;
+          left: 0;
+        }
+        .sk {
+          height: var(--zero-viewport-height);
+          min-height: var(--zero-viewport-height);
+          background: #fdfdfe;
+        }
+        [data-theme="dark"] .sk {
+          background: #19191b;
+        }
+      </style>
+      <div class="sk"></div>
+    </div>
+    <script
+      src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
+      integrity="sha384-PeueJ613SmtgegJQz/JL0K6uh1Q5Q4os+b/FZsvK9GoMFvyFlyBv8FiP62B3rilT"
+      crossorigin="anonymous"
+      defer
+    ></script>
+  </body>
+</html>

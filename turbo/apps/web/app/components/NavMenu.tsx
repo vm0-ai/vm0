@@ -1,0 +1,171 @@
+"use client";
+
+import * as React from "react";
+import Image from "next/image";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { IconArrowUpRight, IconChevronDown } from "@tabler/icons-react";
+import { Link } from "../../navigation";
+
+export interface NavMenuItem {
+  label: string;
+  description: string;
+  href: string;
+  icon: string;
+  external?: boolean;
+}
+
+interface NavMenuProps {
+  id: string;
+  label: string;
+  alignOffset?: number;
+  items: NavMenuItem[];
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onSelect: () => void;
+  onCancelClose: () => void;
+  onScheduleClose: () => void;
+}
+
+export function NavMenu({
+  id,
+  label,
+  items,
+  alignOffset = 0,
+  open,
+  onOpen,
+  onClose,
+  onSelect,
+  onCancelClose,
+  onScheduleClose,
+}: NavMenuProps) {
+  const handleSelect = () => {
+    onSelect();
+  };
+
+  return (
+    <PopoverPrimitive.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          onOpen();
+          return;
+        }
+        onClose();
+      }}
+    >
+      <PopoverPrimitive.Trigger
+        type="button"
+        className={`nav-trigger${open ? " nav-trigger-active" : ""}`}
+        data-nav-menu-id={id}
+        onPointerEnter={onOpen}
+        onFocus={onOpen}
+        onBlur={onScheduleClose}
+        onClick={(event) => {
+          // The menu is hover/focus driven; a click must never toggle it shut.
+          // preventDefault stops Radix's onOpenToggle from closing an already
+          // open menu, then we keep it open explicitly (covers touch taps too).
+          event.preventDefault();
+          onOpen();
+        }}
+      >
+        {label}
+        <IconChevronDown
+          size={12}
+          strokeWidth={1.8}
+          className="nav-trigger-caret"
+        />
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          align="center"
+          alignOffset={alignOffset}
+          sideOffset={8}
+          className="nav-popover"
+          data-nav-popover-id={id}
+          onPointerEnter={onCancelClose}
+          onPointerLeave={onScheduleClose}
+          onOpenAutoFocus={(event: Event) => {
+            event.preventDefault();
+          }}
+          onCloseAutoFocus={(event: Event) => {
+            event.preventDefault();
+          }}
+        >
+          {items.map((item) => {
+            return (
+              <NavMenuRow key={item.href} item={item} onSelect={handleSelect} />
+            );
+          })}
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
+}
+
+interface NavMenuRowProps {
+  item: NavMenuItem;
+  onSelect: () => void;
+}
+
+function NavMenuRow({ item, onSelect }: NavMenuRowProps) {
+  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    // Modifier or non-primary clicks open the link in a new tab/window; keep
+    // the menu open so several items can be opened in a row without re-hovering.
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    ) {
+      return;
+    }
+    onSelect();
+  };
+
+  const body = (
+    <>
+      <Image
+        src={item.icon}
+        alt=""
+        width={26}
+        height={26}
+        className="nav-popover-icon"
+      />
+      <span className="nav-popover-text">
+        <span className="nav-popover-title-row">
+          <span className="nav-popover-title">{item.label}</span>
+          {item.external && (
+            <IconArrowUpRight
+              size={11}
+              strokeWidth={1.8}
+              className="nav-popover-ext"
+            />
+          )}
+        </span>
+        <span className="nav-popover-desc">{item.description}</span>
+      </span>
+    </>
+  );
+
+  if (item.external) {
+    return (
+      <a
+        href={item.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="nav-popover-item"
+        onClick={handleClick}
+      >
+        {body}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={item.href} className="nav-popover-item" onClick={handleClick}>
+      {body}
+    </Link>
+  );
+}

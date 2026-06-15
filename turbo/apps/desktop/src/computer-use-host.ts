@@ -1,0 +1,909 @@
+import os from "node:os";
+import type {
+  ComputerUseCommand,
+  ComputerUseCommandExecutionResult,
+} from "./computer-use-accessibility";
+import { SUPPORTED_COMPUTER_USE_CAPABILITIES } from "./computer-use-accessibility";
+import type {
+  ComputerUseHostRuntimeState,
+  ComputerUseLocalCommandLogEntry,
+  ComputerUsePermissionState,
+  ComputerUseRuntimeAuditEvent,
+  ComputerUseRuntimeErrorLogEntry,
+  ComputerUseRuntimeRecoveryPhase,
+  ComputerUseRuntimeErrorSource,
+} from "./computer-use-types";
+import {
+  COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
+  COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
+} from "./computer-use-startup-gate";
+
+const ONLINE_POLL_MS = 2_000;
+const RECOVERY_RETRY_BASE_MS = 2_000;
+const RECOVERY_RETRY_MAX_MS = 60_000;
+const RECOVERY_RETRY_AFTER_MAX_MS = 5 * 60_000;
+const COMMAND_COMPLETION_RETRY_DELAY_MS = 2_000;
+const COMMAND_COMPLETION_MAX_ATTEMPTS = 3;
+const AUTH_ME_PATH = "/api/auth/me";
+const ERROR_LOG_LIMIT = 20;
+
+export type ComputerUseHostFetch = (
+  input: string,
+  init?: RequestInit,
+) => Promise<Response>;
+
+type MaybePromise<T> = T | Promise<T>;
+
+interface ComputerUseHostRuntimeOptions {
+  readonly platformUrl: URL;
+  readonly hostName: string;
+  readonly appVersion: string;
+  readonly sessionFetch: ComputerUseHostFetch;
+  readonly hostFetch: ComputerUseHostFetch;
+  readonly getPermissions: () => MaybePromise<ComputerUsePermissionState>;
+  readonly executeCommand: (
+    command: ComputerUseCommand,
+    permissions: ComputerUsePermissionState,
+  ) => Promise<ComputerUseCommandExecutionResult>;
+  readonly onChange?: () => void;
+  readonly setTimeout?: typeof setTimeout;
+  readonly clearTimeout?: typeof clearTimeout;
+}
+
+interface ComputerUseHostStartResponse {
+  readonly hostId: string;
+  readonly hostToken: string;
+}
+
+interface ComputerUseAuditEventsResponse {
+  readonly auditEvents: readonly ComputerUseRuntimeAuditEvent[];
+}
+
+interface ComputerUseHostNextIdleResponse {
+  readonly status: "idle";
+}
+
+interface ComputerUseHostNextCommandResponse {
+  readonly status: "command";
+  readonly command: ComputerUseCommand;
+}
+
+type ComputerUseHostNextResponse =
+  | ComputerUseHostNextIdleResponse
+  | ComputerUseHostNextCommandResponse;
+
+type RuntimeErrorStateUpdate = Partial<
+  Pick<
+    ComputerUseHostRuntimeState,
+    | "hostId"
+    | "lastHeartbeatAt"
+    | "lastCommandAt"
+    | "recovery"
+    | "recentAuditEvents"
+    | "localCommandLog"
+  >
+>;
+
+class ComputerUseHttpError extends Error {
+  readonly status: number;
+  readonly retryAfterMs: number | null;
+
+  constructor(message: string, response: Response) {
+    super(message);
+    this.name = "ComputerUseHttpError";
+    this.status = response.status;
+    this.retryAfterMs = retryAfterDelayMs(response);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function retryDelayForAttempt(attempt: number): number {
+  return Math.min(
+    RECOVERY_RETRY_MAX_MS,
+    RECOVERY_RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1),
+  );
+}
+
+function retryAfterDelayMs(response: Response): number | null {
+  const value = response.headers.get("retry-after");
+  if (!value) {
+    return null;
+  }
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1_000, RECOVERY_RETRY_AFTER_MAX_MS);
+  }
+
+  const retryAtMs = Date.parse(value);
+  if (Number.isNaN(retryAtMs)) {
+    return null;
+  }
+  return Math.min(
+    Math.max(0, retryAtMs - Date.now()),
+    RECOVERY_RETRY_AFTER_MAX_MS,
+  );
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function isRetryableRuntimeError(error: unknown): boolean {
+  if (error instanceof ComputerUseHttpError) {
+    return isRetryableStatus(error.status);
+  }
+  if (
+    error instanceof Error &&
+    error.message === "Computer Use host token is not available"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function retryAfterMsFromError(error: unknown): number | null {
+  if (error instanceof ComputerUseHttpError) {
+    return error.retryAfterMs;
+  }
+  return null;
+}
+
+function commandFailureFromError(
+  error: unknown,
+): ComputerUseCommandExecutionResult {
+  return {
+    status: "failed",
+    error: {
+      code: "accessibility_unavailable",
+      message: errorMessage(error),
+    },
+  };
+}
+
+function replaceHostPrefix(hostname: string, target: string): string {
+  return hostname.replace(/(^|-)(api|app|platform|www)\./, `$1${target}.`);
+}
+
+export function resolveComputerUseApiBaseUrl(platformUrl: URL): string {
+  const url = new URL(platformUrl.toString());
+  url.hostname = replaceHostPrefix(url.hostname, "api");
+  return url.toString().replace(/\/$/, "");
+}
+
+export function buildComputerUseRuntimeBody(args: {
+  readonly hostName: string;
+  readonly appVersion: string;
+  readonly permissions: ComputerUsePermissionState;
+}): Record<string, unknown> {
+  return {
+    hostName: args.hostName,
+    appVersion: args.appVersion,
+    osVersion: `${os.type()} ${os.release()}`,
+    supportedCapabilities: [...SUPPORTED_COMPUTER_USE_CAPABILITIES],
+    permissions: args.permissions,
+  };
+}
+
+export function readSystemHostName(fallback: string): string {
+  const hostName = os.hostname().trim().replace(/\s+/g, " ");
+  return hostName || fallback;
+}
+
+export class ComputerUseHostRuntime {
+  private readonly apiBaseUrl: string;
+  private readonly hostName: string;
+  private readonly appVersion: string;
+  private readonly sessionFetch: ComputerUseHostFetch;
+  private readonly hostFetchRequest: ComputerUseHostFetch;
+  private readonly getPermissions: ComputerUseHostRuntimeOptions["getPermissions"];
+  private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
+  private readonly onChange: () => void;
+  private readonly scheduleTimeout: typeof setTimeout;
+  private readonly clearScheduledTimeout: typeof clearTimeout;
+  private running = false;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private commandTimer: NodeJS.Timeout | null = null;
+  private recoveryTimer: NodeJS.Timeout | null = null;
+  private commandExecutionRunning = false;
+  private hostToken: string | null = null;
+  private nextErrorLogId = 0;
+  private state: ComputerUseHostRuntimeState = {
+    status: "offline",
+    hostId: null,
+    lastHeartbeatAt: null,
+    lastCommandAt: null,
+    lastError: null,
+    recovery: null,
+    errorLog: [],
+    recentAuditEvents: [],
+    localCommandLog: [],
+  };
+
+  constructor(options: ComputerUseHostRuntimeOptions) {
+    this.apiBaseUrl = resolveComputerUseApiBaseUrl(options.platformUrl);
+    this.hostName = options.hostName;
+    this.appVersion = options.appVersion;
+    this.sessionFetch = options.sessionFetch;
+    this.hostFetchRequest = options.hostFetch;
+    this.getPermissions = options.getPermissions;
+    this.executeCommand = options.executeCommand;
+    this.onChange = options.onChange ?? (() => {});
+    this.scheduleTimeout = options.setTimeout ?? setTimeout;
+    this.clearScheduledTimeout = options.clearTimeout ?? clearTimeout;
+  }
+
+  async start(): Promise<void> {
+    if (this.running) {
+      return;
+    }
+    this.running = true;
+    try {
+      const nextDelay = await this.startHost();
+      if (nextDelay === null) {
+        this.running = false;
+        return;
+      }
+      this.scheduleHeartbeat(nextDelay);
+      this.scheduleCommandPoll(nextDelay);
+    } catch (error) {
+      this.handleRuntimeFailure("start", error);
+    }
+  }
+
+  async stop(): Promise<void> {
+    this.running = false;
+    this.clearHeartbeatTimer();
+    this.clearCommandTimer();
+    this.clearRecoveryTimer();
+    const hostToken = this.hostToken;
+    this.setState({
+      status: "offline",
+      hostId: null,
+      lastError: null,
+      recovery: null,
+    });
+    if (!hostToken) {
+      return;
+    }
+    this.hostToken = null;
+    try {
+      await this.stopHost(hostToken);
+    } catch (error) {
+      this.setRuntimeErrorState("stop", error);
+    }
+  }
+
+  getState(): ComputerUseHostRuntimeState {
+    return this.state;
+  }
+
+  private async runtimeBody(): Promise<Record<string, unknown>> {
+    return buildComputerUseRuntimeBody({
+      hostName: this.hostName,
+      appVersion: this.appVersion,
+      permissions: await this.getPermissions(),
+    });
+  }
+
+  private setState(update: Partial<ComputerUseHostRuntimeState>): void {
+    this.state = { ...this.state, ...update };
+    this.onChange();
+  }
+
+  private appendRuntimeErrorLog(
+    source: ComputerUseRuntimeErrorSource,
+    error: unknown,
+    hostId = this.state.hostId,
+  ): ComputerUseRuntimeErrorLogEntry {
+    const message = errorMessage(error);
+    const occurredAt = new Date().toISOString();
+    const entry: ComputerUseRuntimeErrorLogEntry = {
+      id: `${occurredAt}-${this.nextErrorLogId++}`,
+      source,
+      message,
+      occurredAt,
+      hostId,
+      status: "error",
+    };
+    this.setState({
+      errorLog: [entry, ...this.state.errorLog].slice(0, ERROR_LOG_LIMIT),
+    });
+    return entry;
+  }
+
+  private setRuntimeErrorState(
+    source: ComputerUseRuntimeErrorSource,
+    error: unknown,
+    update: RuntimeErrorStateUpdate = {},
+  ): void {
+    const hostId =
+      "hostId" in update ? (update.hostId ?? null) : this.state.hostId;
+    const entry = this.appendRuntimeErrorLog(source, error, hostId);
+    this.setState({
+      ...update,
+      status: "error",
+      hostId,
+      lastError: entry.message,
+      recovery: null,
+    });
+  }
+
+  private deactivateInvalidHostToken(
+    source: ComputerUseRuntimeErrorSource,
+  ): void {
+    this.hostToken = null;
+    this.running = false;
+    this.clearHeartbeatTimer();
+    this.clearCommandTimer();
+    this.clearRecoveryTimer();
+    const entry = this.appendRuntimeErrorLog(
+      source,
+      COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
+      null,
+    );
+    this.setState({
+      status: "unauthenticated",
+      hostId: null,
+      lastError: entry.message,
+      recovery: null,
+    });
+  }
+
+  private setRuntimeRecoveryState(
+    phase: ComputerUseRuntimeRecoveryPhase,
+    error: unknown,
+    retryDelayMs: number,
+  ): void {
+    const entry = this.appendRuntimeErrorLog(phase, error);
+    const lastRetryAt = new Date();
+    this.setState({
+      status: "recovering",
+      lastError: entry.message,
+      recovery: {
+        phase,
+        attempt:
+          this.state.recovery?.phase === phase
+            ? this.state.recovery.attempt + 1
+            : 1,
+        lastRetryAt: lastRetryAt.toISOString(),
+        nextRetryAt: new Date(
+          lastRetryAt.getTime() + retryDelayMs,
+        ).toISOString(),
+        retryDelayMs,
+      },
+    });
+  }
+
+  private startLocalCommandLogEntry(
+    command: ComputerUseCommand,
+    startedAt: string,
+  ): void {
+    const app = command.payload.app;
+    const entry: ComputerUseLocalCommandLogEntry = {
+      commandId: command.id,
+      kind: command.kind,
+      app: typeof app === "string" ? app : null,
+      status: "running",
+      payload: command.payload,
+      result: null,
+      error: null,
+      startedAt,
+      completedAt: null,
+      durationMs: null,
+    };
+    this.setState({
+      localCommandLog: [
+        entry,
+        ...this.state.localCommandLog.filter((candidate) => {
+          return candidate.commandId !== command.id;
+        }),
+      ],
+    });
+  }
+
+  private finishLocalCommandLogEntry(args: {
+    readonly commandId: string;
+    readonly status: "succeeded" | "failed";
+    readonly result: Record<string, unknown> | null;
+    readonly error: Record<string, unknown> | null;
+    readonly completedAt: string;
+    readonly durationMs: number;
+  }): void {
+    this.setState({
+      localCommandLog: this.state.localCommandLog.map((entry) => {
+        if (entry.commandId !== args.commandId) {
+          return entry;
+        }
+        return {
+          ...entry,
+          status: args.status,
+          result: args.result,
+          error: args.error,
+          completedAt: args.completedAt,
+          durationMs: args.durationMs,
+        };
+      }),
+    });
+  }
+
+  private clearHeartbeatTimer(): void {
+    if (!this.heartbeatTimer) {
+      return;
+    }
+    this.clearScheduledTimeout(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+  }
+
+  private clearCommandTimer(): void {
+    if (!this.commandTimer) {
+      return;
+    }
+    this.clearScheduledTimeout(this.commandTimer);
+    this.commandTimer = null;
+  }
+
+  private clearRecoveryTimer(): void {
+    if (!this.recoveryTimer) {
+      return;
+    }
+    this.clearScheduledTimeout(this.recoveryTimer);
+    this.recoveryTimer = null;
+  }
+
+  private scheduleRecovery(
+    phase: ComputerUseRuntimeRecoveryPhase,
+    error: unknown,
+  ): void {
+    if (!this.running) {
+      return;
+    }
+    this.clearRecoveryTimer();
+    const nextAttempt =
+      this.state.recovery?.phase === phase
+        ? this.state.recovery.attempt + 1
+        : 1;
+    const retryDelayMs =
+      retryAfterMsFromError(error) ?? retryDelayForAttempt(nextAttempt);
+    this.setRuntimeRecoveryState(phase, error, retryDelayMs);
+    this.recoveryTimer = this.scheduleTimeout(() => {
+      this.recoveryTimer = null;
+      void this.recoverRuntime(phase);
+    }, retryDelayMs);
+  }
+
+  private handleRuntimeFailure(
+    phase: ComputerUseRuntimeRecoveryPhase,
+    error: unknown,
+  ): "scheduled_recovery" | "stopped" {
+    if (!this.running) {
+      return "stopped";
+    }
+    if (!isRetryableRuntimeError(error)) {
+      this.setRuntimeErrorState(phase, error);
+      this.running = false;
+      this.clearHeartbeatTimer();
+      this.clearCommandTimer();
+      this.clearRecoveryTimer();
+      return "stopped";
+    }
+
+    if (phase !== "command_poll") {
+      this.clearCommandTimer();
+    }
+    this.scheduleRecovery(phase, error);
+    return "scheduled_recovery";
+  }
+
+  private clearRecoveryState(phase: ComputerUseRuntimeRecoveryPhase): void {
+    if (this.state.recovery?.phase !== phase) {
+      return;
+    }
+    this.clearRecoveryTimer();
+    this.setState({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+  }
+
+  private async recoverRuntime(
+    phase: ComputerUseRuntimeRecoveryPhase,
+  ): Promise<void> {
+    if (!this.running) {
+      return;
+    }
+    if (phase === "start") {
+      await this.recoverStart();
+      return;
+    }
+    if (phase === "heartbeat") {
+      await this.recoverHeartbeat();
+      return;
+    }
+    await this.commandLoop();
+  }
+
+  private async recoverStart(): Promise<void> {
+    try {
+      const nextDelay = await this.startHost();
+      if (nextDelay === null) {
+        this.running = false;
+        return;
+      }
+      this.scheduleHeartbeat(nextDelay);
+      this.scheduleCommandPoll(nextDelay);
+    } catch (error) {
+      this.handleRuntimeFailure("start", error);
+    }
+  }
+
+  private async recoverHeartbeat(): Promise<void> {
+    try {
+      if (!this.hostToken || !(await this.heartbeat())) {
+        this.running = false;
+        this.clearCommandTimer();
+        return;
+      }
+      this.scheduleHeartbeat(ONLINE_POLL_MS);
+      this.scheduleCommandPoll(0);
+    } catch (error) {
+      this.handleRuntimeFailure("heartbeat", error);
+    }
+  }
+
+  private scheduleHeartbeat(delayMs: number): void {
+    if (!this.running) {
+      return;
+    }
+    this.heartbeatTimer = this.scheduleTimeout(() => {
+      this.heartbeatTimer = null;
+      void this.heartbeatLoop();
+    }, delayMs);
+  }
+
+  private scheduleCommandPoll(delayMs: number): void {
+    if (!this.running || this.commandTimer) {
+      return;
+    }
+    this.commandTimer = this.scheduleTimeout(() => {
+      this.commandTimer = null;
+      void this.commandLoop();
+    }, delayMs);
+  }
+
+  private async heartbeatLoop(): Promise<void> {
+    try {
+      if (!this.hostToken || !(await this.heartbeat())) {
+        this.running = false;
+        this.clearCommandTimer();
+        return;
+      }
+      this.scheduleHeartbeat(ONLINE_POLL_MS);
+    } catch (error) {
+      this.handleRuntimeFailure("heartbeat", error);
+    }
+  }
+
+  private async commandLoop(): Promise<void> {
+    if (this.commandExecutionRunning) {
+      return;
+    }
+    this.commandExecutionRunning = true;
+    let scheduleNextPoll = true;
+    try {
+      await this.claimAndExecuteCommand();
+    } catch (error) {
+      scheduleNextPoll =
+        this.handleRuntimeFailure("command_poll", error) !==
+        "scheduled_recovery";
+    } finally {
+      this.commandExecutionRunning = false;
+      if (
+        scheduleNextPoll &&
+        this.running &&
+        this.hostToken &&
+        this.state.recovery?.phase !== "command_poll"
+      ) {
+        this.scheduleCommandPoll(ONLINE_POLL_MS);
+      }
+    }
+  }
+
+  private async startHost(): Promise<number | null> {
+    this.setState({ status: "connecting", lastError: null });
+    const response = await this.sessionFetch(
+      `${this.apiBaseUrl}/api/zero/computer-use/hosts/start`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(await this.runtimeBody()),
+      },
+    );
+    if (response.status === 401) {
+      if (await this.hasAuthenticatedSession()) {
+        this.setState({
+          status: "needs_organization",
+          lastError: COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
+          recovery: null,
+        });
+      } else {
+        this.setState({
+          status: "unauthenticated",
+          lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
+          recovery: null,
+        });
+      }
+      return null;
+    }
+    if (response.status === 403) {
+      this.setState({
+        status: "disabled",
+        lastError: "Computer Use is disabled for this account.",
+        recovery: null,
+      });
+      return null;
+    }
+    if (response.status === 409) {
+      this.setRuntimeErrorState(
+        "start",
+        "Computer Use is already active in another Zero Desktop session.",
+        { hostId: null },
+      );
+      return null;
+    }
+    if (!response.ok) {
+      throw new ComputerUseHttpError(
+        `Failed to start Computer Use host: ${response.status}`,
+        response,
+      );
+    }
+
+    const body = (await response.json()) as ComputerUseHostStartResponse;
+    this.hostToken = body.hostToken;
+    this.clearRecoveryTimer();
+    this.setState({
+      status: "online",
+      hostId: body.hostId,
+      lastHeartbeatAt: new Date().toISOString(),
+      lastError: null,
+      recovery: null,
+    });
+    return ONLINE_POLL_MS;
+  }
+
+  private async hasAuthenticatedSession(): Promise<boolean> {
+    const response = await this.sessionFetch(
+      `${this.apiBaseUrl}${AUTH_ME_PATH}`,
+      {
+        method: "GET",
+      },
+    );
+    return response.ok;
+  }
+
+  private async heartbeat(): Promise<boolean> {
+    const response = await this.hostFetch("/api/zero/computer-use/heartbeat", {
+      method: "POST",
+      body: JSON.stringify(await this.runtimeBody()),
+    });
+    if (response.status === 401) {
+      this.deactivateInvalidHostToken("heartbeat");
+      return false;
+    }
+    if (response.status === 409) {
+      this.hostToken = null;
+      this.setRuntimeErrorState(
+        "heartbeat",
+        "Computer Use is already active in another Zero Desktop session.",
+        { hostId: null },
+      );
+      return false;
+    }
+    if (!response.ok) {
+      throw new ComputerUseHttpError(
+        `Computer Use heartbeat failed: ${response.status}`,
+        response,
+      );
+    }
+    const commandPollRecovery =
+      this.state.recovery?.phase === "command_poll"
+        ? this.state.recovery
+        : null;
+    this.setState({
+      status: commandPollRecovery ? "recovering" : "online",
+      lastHeartbeatAt: new Date().toISOString(),
+      lastError: commandPollRecovery ? this.state.lastError : null,
+      recovery: commandPollRecovery,
+    });
+    await this.refreshAuditEvents();
+    return true;
+  }
+
+  private async refreshAuditEvents(): Promise<void> {
+    const hostId = this.state.hostId;
+    if (!hostId) {
+      return;
+    }
+
+    const url = new URL(
+      `${this.apiBaseUrl}/api/zero/computer-use/audit-events`,
+    );
+    url.searchParams.set("hostId", hostId);
+    url.searchParams.set("limit", "25");
+
+    const response = await this.sessionFetch(url.toString(), { method: "GET" });
+    if (response.status === 401 || response.status === 403) {
+      this.setState({ recentAuditEvents: [] });
+      return;
+    }
+    if (!response.ok) {
+      this.appendRuntimeErrorLog(
+        "audit",
+        `Computer Use audit history refresh failed: ${response.status}`,
+      );
+      return;
+    }
+
+    const body = (await response.json()) as ComputerUseAuditEventsResponse;
+    this.setState({
+      recentAuditEvents: body.auditEvents,
+    });
+  }
+
+  private async claimAndExecuteCommand(): Promise<void> {
+    const next = await this.hostFetch(
+      "/api/zero/computer-use/host/commands/next",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          supportedCapabilities: [...SUPPORTED_COMPUTER_USE_CAPABILITIES],
+        }),
+      },
+    );
+    if (next.status === 401) {
+      this.deactivateInvalidHostToken("command_poll");
+      return;
+    }
+    if (!next.ok) {
+      throw new ComputerUseHttpError(
+        `Computer Use command claim failed: ${next.status}`,
+        next,
+      );
+    }
+    const body = (await next.json()) as ComputerUseHostNextResponse;
+    if (body.status === "idle") {
+      if (!this.running || !this.hostToken) {
+        return;
+      }
+      this.clearRecoveryState("command_poll");
+      return;
+    }
+
+    const startedAtMs = Date.now();
+    const startedAt = new Date(startedAtMs).toISOString();
+    this.startLocalCommandLogEntry(body.command, startedAt);
+
+    let completed: ComputerUseCommandExecutionResult;
+    try {
+      completed = await this.executeCommand(
+        body.command,
+        await this.getPermissions(),
+      );
+    } catch (error) {
+      completed = commandFailureFromError(error);
+    }
+    const completedAtMs = Date.now();
+    this.finishLocalCommandLogEntry({
+      commandId: body.command.id,
+      status: completed.status,
+      result: completed.status === "succeeded" ? completed.result : null,
+      error: completed.status === "failed" ? completed.error : null,
+      completedAt: new Date(completedAtMs).toISOString(),
+      durationMs: completedAtMs - startedAtMs,
+    });
+    if (!this.running || !this.hostToken) {
+      return;
+    }
+    await this.completeCommandWithRetry(body.command.id, completed);
+    if (!this.running || !this.hostToken) {
+      return;
+    }
+    this.setState({
+      status: "online",
+      lastCommandAt: new Date().toISOString(),
+      lastError: null,
+      recovery: null,
+    });
+    await this.refreshAuditEvents();
+  }
+
+  private async completeCommandWithRetry(
+    commandId: string,
+    completed: ComputerUseCommandExecutionResult,
+  ): Promise<void> {
+    let lastError: Error | null = null;
+    for (
+      let attempt = 1;
+      attempt <= COMMAND_COMPLETION_MAX_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        const response = await this.hostFetch(
+          `/api/zero/computer-use/host/commands/${commandId}/complete`,
+          {
+            method: "POST",
+            body: JSON.stringify(completed),
+          },
+        );
+        if (response.ok) {
+          return;
+        }
+        if (response.status === 401) {
+          this.deactivateInvalidHostToken("command_poll");
+          return;
+        }
+        lastError = new ComputerUseHttpError(
+          `Computer Use command completion failed: ${response.status}`,
+          response,
+        );
+      } catch (error) {
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error(
+                `Computer Use command completion failed: ${String(error)}`,
+              );
+      }
+
+      if (attempt < COMMAND_COMPLETION_MAX_ATTEMPTS) {
+        await this.sleep(COMMAND_COMPLETION_RETRY_DELAY_MS);
+      }
+    }
+
+    throw lastError ?? new Error("Computer Use command completion failed");
+  }
+
+  private sleep(delayMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      this.scheduleTimeout(resolve, delayMs);
+    });
+  }
+
+  private hostFetch(path: string, init: RequestInit): Promise<Response> {
+    if (!this.hostToken) {
+      throw new Error("Computer Use host token is not available");
+    }
+    return this.hostFetchRequest(`${this.apiBaseUrl}${path}`, {
+      ...init,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${this.hostToken}`,
+        ...init.headers,
+      },
+    });
+  }
+
+  private async stopHost(hostToken: string): Promise<void> {
+    const response = await this.hostFetchRequest(
+      `${this.apiBaseUrl}/api/zero/computer-use/host/stop`,
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${hostToken}`,
+        },
+      },
+    );
+    if (response.status === 401) {
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(`Computer Use host stop failed: ${response.status}`);
+    }
+  }
+}

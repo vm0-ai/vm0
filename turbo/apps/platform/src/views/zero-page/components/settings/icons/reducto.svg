@@ -1,0 +1,10 @@
+<svg aria-hidden="true" width="32" height="32" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="reducto-mark-gradient" x1="52" y1="48" x2="127" y2="132" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8AA7F"/>
+      <stop offset="1" stop-color="#DFBADC"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" fill="#5B0F5C"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M15.4552 1.12207H0.554688V17.9151H9.72298L15.4552 12.1376V1.12207ZM2.01357 2.58095H13.9963V9.81022H8.42687V16.4562H2.01401V9.81022H2.01357V2.58095Z" fill="url(#reducto-mark-gradient)" transform="translate(49.226 42.388) scale(5.002)"/>
+</svg>

@@ -1,0 +1,11 @@
+{"type":"thread.started","thread_id":"00000000-0000-0000-0000-000000000001"}
+{"type":"item.started","item":{"id":"item-cmd-1","type":"command_execution","status":"in_progress","command":"echo hello"}}
+{"type":"item.completed","item":{"id":"item-cmd-1","type":"command_execution","status":"completed","command":"echo hello","exit_code":0,"aggregated_output":"hello\n"}}
+{"type":"item.started","item":{"id":"item-edit-1","type":"file_edit","status":"in_progress","path":"/tmp/edit-target.txt"}}
+{"type":"item.completed","item":{"id":"item-edit-1","type":"file_edit","status":"completed","path":"/tmp/edit-target.txt","diff":"@@ -1 +1 @@\n-old\n+new\n"}}
+{"type":"item.started","item":{"id":"item-read-1","type":"file_read","status":"in_progress","path":"/tmp/read-target.txt"}}
+{"type":"item.completed","item":{"id":"item-read-1","type":"file_read","status":"completed","path":"/tmp/read-target.txt"}}
+{"type":"item.completed","item":{"id":"item-change-1","type":"file_change","changes":[{"kind":"add","path":"/tmp/created.txt"},{"kind":"modify","path":"/tmp/modified.txt"},{"kind":"delete","path":"/tmp/removed.txt"}]}}
+{"type":"item.completed","item":{"id":"item-think-1","type":"reasoning","text":"Considering the request before acting"}}
+{"type":"item.completed","item":{"id":"item-msg-1","type":"agent_message","text":"Fixture event walkthrough complete"}}
+{"type":"turn.completed","usage":{"input_tokens":50,"output_tokens":100}}

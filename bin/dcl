@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+set -eu
+
+docker ps | grep vsc- | while read -r line; do
+    # Extract vm name from image name (2nd field)
+    image=$(echo "$line" | awk '{print $2}')
+    vm_name=$(echo "$image" | sed -E 's/vsc-([^-]+)-.*/\1/')
+
+    # Extract port number
+    port=$(echo "$line" | ggrep -oP '0\.0\.0\.0:\K[0-9]+(?=->8443)')
+
+    # Extract creation time (between quoted string and "Up")
+    time=$(echo "$line" | gsed -E 's/.*…"[[:space:]]+([^[:space:]].*)[[:space:]]+Up.*/\1/')
+
+    # Construct URL
+    url="https://www.vm7.ai:${port}"
+
+    # Print result
+    printf "%-6s %-30s %s\n" "$vm_name" "$url" "$time"
+done | sort -V

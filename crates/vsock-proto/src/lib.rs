@@ -1,0 +1,101 @@
+//! Vsock binary protocol for host-guest communication.
+//!
+//! ## Wire Format
+//!
+//! ```text
+//! [4-byte length][1-byte type][4-byte seq][payload]
+//! ```
+//!
+//! - **length**: big-endian u32, size of (type + seq + payload)
+//! - **type**: u8 message type
+//! - **seq**: big-endian u32, sequence number. Request-scoped replies and
+//!   lifecycle frames use the original request sequence; 0 is reserved for
+//!   unsolicited frames.
+//! - **payload**: type-specific binary data
+//!
+//! ## Message Types
+//!
+//! Non-error message types are continuous and grouped by protocol domain:
+//! connection lifecycle, operation gates, file operations, exec operations, and
+//! the generic protocol error sentinel at `0xFF`.
+//!
+//! | Type | Direction | Name              | Payload |
+//! |------|-----------|-------------------|---------|
+//! | 0x00 | G→H       | ready             | (empty) |
+//! | 0x01 | H→G       | ping              | (empty) |
+//! | 0x02 | G→H       | pong              | (empty) |
+//! | 0x03 | H→G       | shutdown          | (empty) |
+//! | 0x04 | G→H       | shutdown_ack      | (empty) |
+//! | 0x05 | H→G       | quiesce_operations  | (empty) |
+//! | 0x06 | G→H       | operations_quiesced    | (empty) |
+//! | 0x07 | H→G       | resume_operations | (empty) |
+//! | 0x08 | G→H       | operations_resumed | (empty) |
+//! | 0x09 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
+//! | 0x0A | G→H       | write_file_result | `[1B success][2B error_len][error]` |
+//! | 0x0B | H→G       | exec_start     | `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy][stdin_policy]` |
+//! | 0x0C | G→H       | exec_started | `[4B pid]` |
+//! | 0x0D | G→H       | exec_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
+//! | 0x0E | G→H       | exec_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
+//! | 0x0F | H→G       | exec_cancel    | (empty) |
+//! | 0x10 | H→G       | exec_control | `[4B target_seq][4B request_timeout_ms][16B nonce][2B message_id_len][message_id][4B payload_len][payload]` |
+//! | 0x11 | G→H       | exec_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
+//! | 0xFF | G→H       | error             | `[2B error_len][error]` |
+//!
+//! Request-scoped operation messages must use non-zero sequence numbers. This
+//! covers `write_file`, `exec_start`, `exec_cancel`, and `exec_control`; guest
+//! exec lifecycle frames reuse the original non-zero request sequence.
+//! `exec_output.output_seq` is per exec operation and starts at 0,
+//! incrementing by 1 for each output frame across stdout and stderr.
+//! `exec_start.lifecycle` uses 0=one_shot and 1=supervised.
+//! `exec_start.timeout_policy` uses 0=`[4B positive timeout_ms]` and
+//! 1=no timeout.
+//! `exec_start.flags` currently uses `SUDO=0x01`.
+//! `exec_start.expected_exit_count` may be zero, but the count field is
+//! always present.
+//! `exec_start.control_policy` uses 0=disabled, or 1 followed by
+//! `[1B control_flags][16B nonce]` where `control_flags` uses `SINK=0x01`.
+//! `exec_start.stdin_policy` uses 0=no explicit stdin, or 1 followed by
+//! `[4B stdin_len][stdin_bytes]` with a bounded payload.
+//! `write_file_result.success` uses 0=false and 1=true.
+//! `exec_control_result.status` is an [`ExecControlStatus`] wire value.
+//! `exec_control.request_timeout_ms` is the caller-visible budget, counted
+//! from guest receipt through local sink connection, request write, and response
+//! read. Host encoders round non-zero sub-millisecond durations up to 1ms and
+//! saturate values that do not fit in `u32`.
+
+#![deny(missing_docs)]
+
+mod error;
+mod frame;
+mod payloads;
+mod read;
+mod wire;
+
+pub use error::ProtocolError;
+pub use frame::{BorrowedRawMessage, DecodeWithError, Decoder, RawMessage, encode};
+pub use payloads::empty::decode_empty_payload;
+pub use payloads::error::{decode_error, encode_error};
+pub use payloads::exec_control::{
+    EXEC_CONTROL_MAX_PAYLOAD_BYTES, EXEC_CONTROL_NONCE_LEN, ExecControlNonce, ExecControlStatus,
+};
+pub use payloads::exec_operation::{
+    DecodedExecControl, DecodedExecControlResult, DecodedExecOutput, DecodedExecResult,
+    DecodedExecStart, DecodedExecStarted, ExecCapturedOutput, ExecControlPolicy,
+    ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest,
+    ExecTermination, ExecTimeoutPolicy, MAX_EXEC_STDIN_BYTES, decode_exec_cancel,
+    decode_exec_control, decode_exec_control_result, decode_exec_output, decode_exec_result,
+    decode_exec_start, decode_exec_started, encode_exec_cancel, encode_exec_control,
+    encode_exec_control_result, encode_exec_output, encode_exec_result, encode_exec_start,
+    encode_exec_start_with_expected_exit_codes, encode_exec_started,
+};
+pub use payloads::write_file::{
+    decode_write_file, decode_write_file_result, encode_write_file, encode_write_file_result,
+};
+pub use wire::{
+    EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
+    MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
+    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO,
+};

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <defs>
+    <clipPath id="clearbit-icon-clip">
+      <rect width="180" height="180" rx="30"/>
+    </clipPath>
+    <linearGradient id="clearbit-left" x1="0" x2="90" y1="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#21A5FD"/>
+      <stop offset="1" stop-color="#1591FD"/>
+    </linearGradient>
+    <linearGradient id="clearbit-top" x1="90" x2="180" y1="0" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4FB9FD"/>
+      <stop offset="1" stop-color="#62BDFD"/>
+    </linearGradient>
+    <linearGradient id="clearbit-bottom" x1="90" x2="180" y1="90" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B9E1FE"/>
+      <stop offset="1" stop-color="#DDF2FE"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#clearbit-icon-clip)">
+    <rect width="90" height="180" fill="url(#clearbit-left)"/>
+    <rect x="90" width="90" height="90" fill="url(#clearbit-top)"/>
+    <rect x="90" y="90" width="90" height="90" fill="url(#clearbit-bottom)"/>
+  </g>
+</svg>

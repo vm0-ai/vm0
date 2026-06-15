@@ -1,0 +1,255 @@
+//! The [`Sandbox`] trait — the core backend abstraction of this crate.
+//!
+//! A sandbox is a process-isolation environment (a Firecracker VM in
+//! production, a mock harness in tests) that runs guest workloads on
+//! behalf of the runner. Implementations are created by a
+//! [`SandboxFactory`](crate::SandboxFactory) and handed to callers as
+//! `Box<dyn Sandbox>`.
+//!
+//! # Lifecycle
+//! ```text
+//!   created  ──start()──▶  running  ──stop()/kill()──▶  stopped
+//!                             │  ▲
+//!                             └──┤ park()/unpark()
+//! ```
+//! - [`start`](Sandbox::start) boots the guest and must be called before
+//!   any operation; subsequent `start` calls on the same instance fail.
+//! - [`stop`](Sandbox::stop) asks the guest to shut down gracefully, then
+//!   kills the backing process. [`kill`](Sandbox::kill) skips the graceful
+//!   step. Both are idempotent and both end in the stopped state.
+//! - [`park`](Sandbox::park) / [`unpark`](Sandbox::unpark) reclaim guest
+//!   resources while the sandbox is idle; a parked sandbox must be
+//!   unparked before further operations.
+//!
+//! # Operations
+//! Once running, callers invoke [`exec`](Sandbox::exec) /
+//! [`read_file`](Sandbox::read_file) / [`copy_file`](Sandbox::copy_file) /
+//! [`write_file`](Sandbox::write_file) / [`start_process`](Sandbox::start_process) /
+//! [`wait_process`](Sandbox::wait_process) via the host-to-guest IPC channel
+//! (vsock, in the Firecracker backend). Operations race against a crash
+//! notifier so that a dying backend process surfaces as a specific
+//! "backend crashed" error rather than an opaque IPC timeout.
+
+use std::any::Any;
+use std::path::Path;
+use std::time::Duration;
+
+use async_trait::async_trait;
+
+use crate::error::Result;
+use crate::types::{
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
+    StartProcessRequest,
+};
+
+/// A process-isolation environment that runs guest workloads for the runner.
+///
+/// Implementations are created by a [`SandboxFactory`](crate::SandboxFactory)
+/// and consumed as `Box<dyn Sandbox>`.
+///
+/// # Lifecycle
+/// ```text
+///   created  ──start()──▶  running  ──stop()/kill()──▶  stopped
+///                             │  ▲
+///                             └──┤ park()/unpark()
+/// ```
+/// - [`start`](Self::start) boots the guest; it must be called exactly
+///   once and must precede any operation.
+/// - [`stop`](Self::stop) asks the guest to shut down gracefully, then
+///   kills the backing process. [`kill`](Self::kill) skips the graceful
+///   step. Both are idempotent and both end in the stopped state.
+/// - [`park`](Self::park) / [`unpark`](Self::unpark) reclaim guest
+///   resources while idle; a parked sandbox must be unparked before
+///   further operations.
+///
+/// # Operations
+/// Once running, callers invoke [`exec`](Self::exec) /
+/// [`read_file`](Self::read_file) / [`copy_file`](Self::copy_file) /
+/// [`write_file`](Self::write_file) / [`start_process`](Self::start_process) /
+/// [`wait_process`](Self::wait_process) via the host-to-guest IPC channel
+/// (vsock, in the Firecracker backend). Operations race against a crash
+/// notifier so that a dying backend process surfaces as a specific
+/// error rather than an opaque IPC timeout.
+///
+/// # Thread-safety and trait objects
+/// Implementations are consumed as `Box<dyn Sandbox>` and shared across
+/// tasks, hence `Send + Sync`. The `Any` bound allows
+/// [`SandboxFactory::destroy()`](crate::SandboxFactory::destroy) to
+/// downcast back to the concrete type for backend-specific cleanup.
+///
+/// # Panic/drop cleanup contract
+/// Production backends must make dropping an active sandbox a best-effort
+/// emergency cleanup path. If runner-side code unwinds before calling
+/// [`SandboxFactory::destroy()`](crate::SandboxFactory::destroy), `Drop`
+/// must not silently leave a VM process and associated host resources alive.
+/// This fallback is only a safety net: callers must not treat drop-triggered
+/// cleanup as proof that explicit destroy completed.
+#[async_trait]
+pub trait Sandbox: Send + Sync + Any {
+    // -- identity --
+
+    /// Stable identifier for this sandbox, unique within the runner
+    /// process. Used in logs, metrics, and socket/path derivation.
+    fn id(&self) -> &str;
+    /// The network-visible source IP address for this sandbox.
+    /// Used as the key for proxy VM registration.
+    fn source_ip(&self) -> &str;
+    /// PID of the sandbox's main process (e.g. firecracker).
+    /// Used for host-side diagnostics like OOM detection.
+    fn process_pid(&self) -> Option<u32> {
+        None
+    }
+
+    // -- lifecycle --
+
+    /// Boot the guest and make the sandbox ready to serve operations.
+    ///
+    /// Must only be called once per instance. Implementations must leave
+    /// no leaked processes, sockets, or mounts on failure — a failed
+    /// `start` is equivalent to a sandbox that was never started, and
+    /// the caller may drop the instance without calling `stop`/`kill`.
+    async fn start(&mut self) -> Result<()>;
+    /// Shut the guest down gracefully, then terminate the backing process.
+    ///
+    /// The guest is first notified via the IPC channel (with an
+    /// implementation-defined timeout) so user workloads can clean up;
+    /// the backing process is killed regardless of whether the guest
+    /// acknowledged. For a parked sandbox the graceful step is skipped
+    /// (vCPUs are paused and cannot process the message) and the
+    /// sandbox goes straight to force-kill — no user workload is lost
+    /// because a parked sandbox is idle by definition.
+    ///
+    /// Idempotent: calling `stop` on an already-stopped (or concurrently
+    /// stopping) sandbox returns `Ok(())` without side effects.
+    async fn stop(&mut self) -> Result<()>;
+    /// Terminate the backing process immediately, without a graceful
+    /// guest shutdown. Prefer [`stop`](Self::stop) for normal teardown;
+    /// reach for `kill` when the guest is unresponsive or the caller is
+    /// already abandoning any in-flight work.
+    ///
+    /// Idempotent: calling `kill` on an already-stopped (or concurrently
+    /// stopping) sandbox returns `Ok(())` without side effects.
+    async fn kill(&mut self) -> Result<()>;
+
+    // -- idle transitions --
+
+    /// Transition the sandbox into the idle/parked state.
+    ///
+    /// Implementations may reclaim guest memory (e.g. balloon inflate)
+    /// and pause vCPUs to eliminate idle CPU overhead. A parked sandbox's
+    /// `stop()` must handle the paused state (e.g. skip graceful guest
+    /// shutdown and go straight to force-kill, since vCPUs cannot process
+    /// vsock messages).
+    ///
+    /// Note: after a partial `unpark()` failure (e.g. vCPU resume
+    /// succeeded but balloon deflate failed), the sandbox is flagged as
+    /// "still parked" even though vCPUs may actually be running. `stop()`
+    /// implementations must tolerate this — skipping graceful shutdown is
+    /// still correct because the sandbox was idle with no user workload.
+    ///
+    /// Must be idempotent for a healthy already-parked sandbox: calling
+    /// `park()` again returns `Ok(())` without side effects. Implementations
+    /// may still return `Err` if lifecycle guards detect that the sandbox is
+    /// internally dirty or otherwise not safe to reuse.
+    ///
+    /// On `Err`, the caller must not dispatch further work to the sandbox.
+    /// The sandbox may be partially parked or marked internally dirty; the
+    /// lifecycle owner should destroy it, or perform an explicit retry only
+    /// when the implementation documents that retry as safe.
+    async fn park(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Transition the sandbox back to the active state.
+    ///
+    /// Must be called before any further work is dispatched via `exec` /
+    /// `start_process` on a previously parked sandbox. Implementations
+    /// should restore whatever state `park()` altered (resume vCPUs,
+    /// balloon deflate, respawn background tickers, etc).
+    ///
+    /// Must be idempotent for a healthy active sandbox: calling `unpark()`
+    /// on a sandbox that was never parked — or calling it repeatedly —
+    /// returns `Ok(())` without side effects. Implementations may still
+    /// return `Err` if lifecycle guards detect that the sandbox is internally
+    /// dirty or otherwise not safe to reuse.
+    ///
+    /// On `Err`, the caller must not dispatch further work to the sandbox.
+    /// The sandbox may still be parked, partially unparked, or marked
+    /// internally dirty; the lifecycle owner should destroy it, or perform an
+    /// explicit retry only when the implementation documents that retry as
+    /// safe.
+    async fn unpark(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    // -- operations --
+    //
+    // Operations that start new guest work require the sandbox to be running
+    // (post-`start`, pre-`stop`/`kill`) and, if it was previously parked,
+    // unparked. They race the guest IPC call against a crash notifier so a
+    // dying backend process surfaces as a specific error rather than an opaque
+    // IPC timeout.
+    //
+    // `wait_process` is the exception: it consumes a `GuestProcessHandle` returned by
+    // `start_process` and observes that handle's already-started backend exit
+    // operation instead of starting new guest work.
+
+    /// Run `request.cmd` in the guest, block until it exits or the
+    /// request timeout expires, and return the captured output.
+    ///
+    /// Returns an error if the sandbox is not running or if the backing
+    /// process crashes during execution.
+    ///
+    /// Implementations must honor the selected capture budget or report
+    /// truncation explicitly in [`ExecResult`].
+    async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
+
+    /// Read a small file from the guest.
+    ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
+    /// `max_bytes` must be positive and is subject to the backend read limit.
+    ///
+    /// Missing files return `Ok(None)`. Other read failures return an error.
+    async fn read_file(&self, path: &str, max_bytes: u64) -> Result<Option<Vec<u8>>>;
+
+    /// Stream a guest file to a host path and publish copied contents.
+    ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
+    ///
+    /// If [`CopyFileOptions::missing_ok`] is enabled, a backend result that
+    /// reports the path does not resolve to a regular file is treated as
+    /// success with `bytes_copied == 0` without publishing a host file or
+    /// replacing an existing host file. Host-side setup and validation errors
+    /// can still fail the operation.
+    async fn copy_file(
+        &self,
+        path: &str,
+        host_path: &Path,
+        options: CopyFileOptions,
+    ) -> Result<CopyFileResult>;
+
+    /// Write `content` to `path` inside the guest, creating parent
+    /// directories and truncating the file as needed. Returns an error if
+    /// the sandbox is not running or if the backing process crashes.
+    async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;
+    /// Start `request.cmd` in the guest and return a handle for later
+    /// supervision via [`wait_process`](Self::wait_process).
+    ///
+    /// `request.output` controls whether stdout is buffered into the final
+    /// [`ProcessExit`] or streamed in real time through
+    /// [`GuestProcessHandle::take_stdout_receiver`]. Callers that take the
+    /// receiver are responsible for draining it while the process runs.
+    async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle>;
+    /// Wait for the process behind `handle` to exit, up to `timeout`.
+    ///
+    /// Consumes the handle. If `stdout_rx` was not taken before waiting, the
+    /// stream is discarded instead of being buffered without a reader. Returns
+    /// an error if the backend exit operation is no longer available, if the
+    /// backing process crashes before an exit result is delivered, or if the
+    /// timeout elapses before the guest process exits.
+    async fn wait_process(
+        &self,
+        handle: GuestProcessHandle,
+        timeout: Duration,
+    ) -> Result<ProcessExit>;
+}

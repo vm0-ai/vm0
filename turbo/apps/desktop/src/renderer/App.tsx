@@ -1,0 +1,1386 @@
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  IconActivityHeartbeat,
+  IconAlertCircle,
+  IconBuilding,
+  IconChevronDown,
+  IconCheck,
+  IconChevronRight,
+  IconCode,
+  IconExternalLink,
+  IconHistory,
+  IconLoader2,
+  IconLogout,
+  IconMaximize,
+  IconPhoto,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconRefresh,
+  IconShieldCheck,
+  IconUserCircle,
+  IconX,
+} from "@tabler/icons-react";
+import { useLastLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import type { DesktopAuthState } from "../desktop-bridge";
+import { hasReadyDesktopAuth } from "../computer-use-startup-gate";
+import {
+  hasRequiredComputerUsePermissions,
+  type DesktopComputerUseState,
+} from "../computer-use-types";
+import {
+  computerUseData$,
+  desktopAuthData$,
+  hasDesktopAuthBridge,
+  hasDesktopComputerUseBridge,
+  openAccessibilitySettings$,
+  openDesktopOrgSelection$,
+  openDesktopSignIn$,
+  openScreenRecordingSettings$,
+  refreshComputerUse$,
+  requestAccessibilityPermission$,
+  requestScreenRecordingPermission$,
+  setKeepAwakeEnabled$,
+  signOutDesktop$,
+  setupComputerUseBridge$,
+  startComputerUse$,
+  stopComputerUse$,
+} from "./computer-use-state";
+
+type HostStatus = DesktopComputerUseState["host"]["status"];
+type CommandLogEntry =
+  DesktopComputerUseState["host"]["localCommandLog"][number];
+type RuntimeErrorEntry = DesktopComputerUseState["host"]["errorLog"][number];
+
+interface ScreenshotPreview {
+  readonly src: string;
+  readonly title: string;
+  readonly meta: string;
+}
+
+const STATUS_LABELS = {
+  offline: "Offline",
+  connecting: "Connecting",
+  online: "Online",
+  recovering: "Recovering",
+  unauthenticated: "Signed out",
+  needs_organization: "Select workspace",
+  disabled: "Disabled",
+  error: "Error",
+} as const satisfies Record<HostStatus, string>;
+
+const COMMAND_STATUS_LABELS = {
+  running: "Running",
+  succeeded: "Succeeded",
+  failed: "Failed",
+} as const satisfies Record<CommandLogEntry["status"], string>;
+
+const RUNTIME_ERROR_SOURCE_LABELS = {
+  audit: "Audit history",
+  start: "Start",
+  stop: "Stop",
+  heartbeat: "Heartbeat",
+  command_poll: "Command poll",
+} as const satisfies Record<RuntimeErrorEntry["source"], string>;
+
+const RECOVERY_PHASE_LABELS = {
+  start: "Start",
+  heartbeat: "Heartbeat",
+  command_poll: "Command poll",
+} as const satisfies Record<
+  NonNullable<DesktopComputerUseState["host"]["recovery"]>["phase"],
+  string
+>;
+
+const RESULT_SUMMARY_KEYS_TO_SKIP = new Set([
+  "appState",
+  "elements",
+  "screenshot",
+  "visibleElements",
+]);
+const RESULT_APP_STATE_PREVIEW_LABEL = "[shown in App State]";
+
+function BridgeSubscription() {
+  const setupBridge = useSet(setupComputerUseBridge$);
+  useEffect(() => {
+    if (!hasDesktopComputerUseBridge()) {
+      return undefined;
+    }
+    const controller = new AbortController();
+    setupBridge(controller.signal);
+    return () => {
+      controller.abort();
+    };
+  }, [setupBridge]);
+  return null;
+}
+
+function IconButton({
+  children,
+  disabled,
+  icon,
+  onClick,
+  tone = "secondary",
+}: {
+  readonly children: ReactNode;
+  readonly disabled?: boolean;
+  readonly icon: ReactNode;
+  readonly onClick: () => void;
+  readonly tone?: "primary" | "secondary" | "danger";
+}) {
+  return (
+    <button
+      type="button"
+      className={`button button-${tone}`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <span>{children}</span>
+    </button>
+  );
+}
+
+function CheckboxRow({
+  checked,
+  disabled,
+  meta,
+  onChange,
+  subtitle,
+  title,
+}: {
+  readonly checked: boolean;
+  readonly disabled?: boolean;
+  readonly meta: string;
+  readonly onChange: (checked: boolean) => void;
+  readonly subtitle: string;
+  readonly title: string;
+}) {
+  return (
+    <label className="checkbox-row">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => {
+          onChange(event.currentTarget.checked);
+        }}
+      />
+      <span className="checkbox-row-copy">
+        <span className="row-title">{title}</span>
+        <span className="row-meta">{subtitle}</span>
+      </span>
+      <span className="checkbox-row-meta">{meta}</span>
+    </label>
+  );
+}
+
+function Panel({
+  children,
+  title,
+  icon,
+}: {
+  readonly children: ReactNode;
+  readonly title: string;
+  readonly icon?: ReactNode;
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        {icon}
+        <h2>{title}</h2>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function StatusBadge({ status }: { readonly status: HostStatus }) {
+  return (
+    <span className={`status-badge status-${status}`}>
+      {STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) {
+    return "Never";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatDuration(value: number | null): string {
+  if (value === null) {
+    return "In progress";
+  }
+  if (value < 1_000) {
+    return `${value} ms`;
+  }
+  return `${(value / 1_000).toFixed(1)} s`;
+}
+
+function formatRecoveryDelay(value: number): string {
+  if (value < 1_000) {
+    return "now";
+  }
+  if (value < 60_000) {
+    return `${Math.ceil(value / 1_000)}s`;
+  }
+  return `${Math.ceil(value / 60_000)}m`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function recordStringValue(
+  record: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const value = record?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function recordNumberValue(
+  record: Record<string, unknown> | null,
+  key: string,
+): number | null {
+  const value = record?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatJson(value: unknown): string {
+  return JSON.stringify(value, null, 2) ?? "";
+}
+
+function previewValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "None";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return formatJson(value);
+}
+
+function visibleElementRecords(
+  result: Record<string, unknown> | null,
+): readonly Record<string, unknown>[] {
+  const value = result?.visibleElements;
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord);
+}
+
+function jsonDisplayRecord(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (
+      key === "screenshot" &&
+      typeof entry === "string" &&
+      entry.startsWith("data:image/")
+    ) {
+      next[key] = `[image data URL, ${entry.length} characters]`;
+    } else {
+      next[key] = jsonDisplayValue(entry);
+    }
+  }
+  return next;
+}
+
+function jsonDisplayValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => {
+      return jsonDisplayValue(entry);
+    });
+  }
+  if (isRecord(value)) {
+    return jsonDisplayRecord(value);
+  }
+  return value;
+}
+
+function resultSummaryRecord(
+  result: Record<string, unknown>,
+): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(result)) {
+    if (!RESULT_SUMMARY_KEYS_TO_SKIP.has(key)) {
+      summary[key] = jsonDisplayValue(value);
+    }
+  }
+  if (recordStringValue(result, "appState")) {
+    summary.appState = RESULT_APP_STATE_PREVIEW_LABEL;
+  }
+  if (recordStringValue(result, "screenshot")) {
+    summary.screenshot = "[shown as image]";
+  }
+  const elements = result.elements;
+  if (Array.isArray(elements)) {
+    summary.elements = `${elements.length} elements`;
+  }
+  const visibleElements = result.visibleElements;
+  if (Array.isArray(visibleElements)) {
+    summary.visibleElements = `${visibleElements.length} visible elements`;
+  }
+  return summary;
+}
+
+function screenshotMeta(result: Record<string, unknown> | null): string {
+  const sourceName = recordStringValue(result, "screenshotSourceName");
+  const width = recordNumberValue(result, "screenshotWidth");
+  const height = recordNumberValue(result, "screenshotHeight");
+  const dimensions =
+    width !== null && height !== null ? `${width}x${height}` : null;
+  return [sourceName, dimensions].filter(Boolean).join(" - ");
+}
+
+function KeyValueList({
+  emptyLabel,
+  value,
+}: {
+  readonly emptyLabel: string;
+  readonly value: Record<string, unknown>;
+}) {
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return <div className="compact-empty">{emptyLabel}</div>;
+  }
+  return (
+    <dl className="key-value-list">
+      {entries.map(([key, entry]) => {
+        return (
+          <div key={key}>
+            <dt>{key}</dt>
+            <dd>{previewValue(entry)}</dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
+function StepIndex({
+  step,
+  tone = "active",
+}: {
+  readonly step: number;
+  readonly tone?: "active" | "pending" | "ready";
+}) {
+  return (
+    <span className={`step-index step-index-${tone}`}>
+      {tone === "ready" ? <IconCheck size={14} /> : step}
+    </span>
+  );
+}
+
+function AuthStepCard({
+  authLoading,
+  authState,
+}: {
+  readonly authLoading: boolean;
+  readonly authState: DesktopAuthState | null;
+}) {
+  const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
+  const [orgSelectionLoadable, selectOrg] = useLoadableSet(
+    openDesktopOrgSelection$,
+  );
+  const [signOutLoadable, signOut] = useLoadableSet(signOutDesktop$);
+  const signedInAuth = authState?.status === "signed_in" ? authState : null;
+  const activeOrganization = signedInAuth?.organization ?? null;
+  const signingIn =
+    authState?.status === "signing_in" || signInLoadable.state === "loading";
+  const authBridgeAvailable = hasDesktopAuthBridge();
+
+  if (signedInAuth && activeOrganization) {
+    return (
+      <section className="step-card step-card-compact">
+        <div className="compact-step-main">
+          <StepIndex step={1} tone="ready" />
+          <IconUserCircle size={17} />
+          <span className="compact-step-copy">
+            <strong>Signed in</strong>
+            <span>
+              {signedInAuth.user.email} - {activeOrganization.name}
+            </span>
+          </span>
+        </div>
+        <div className="row-actions">
+          <IconButton
+            icon={<IconBuilding size={15} />}
+            onClick={() => {
+              void selectOrg();
+            }}
+            disabled={orgSelectionLoadable.state === "loading"}
+          >
+            Switch workspace
+          </IconButton>
+          <IconButton
+            tone="danger"
+            icon={<IconLogout size={15} />}
+            onClick={() => {
+              void signOut();
+            }}
+            disabled={signOutLoadable.state === "loading"}
+          >
+            Sign out
+          </IconButton>
+        </div>
+      </section>
+    );
+  }
+
+  const title = authLoading
+    ? "Checking sign-in"
+    : signedInAuth
+      ? "Select a workspace"
+      : signingIn
+        ? "Finish signing in"
+        : "Sign in to Zero";
+  const description = signedInAuth
+    ? "Choose the workspace that should receive this Mac as a Computer Use runtime."
+    : "Connect this Mac to a Zero account before Computer Use can register a runtime.";
+
+  return (
+    <section className="step-card step-card-expanded">
+      <div className="step-card-main">
+        <div className="step-kicker">
+          <StepIndex step={1} />
+          <span>Account</span>
+        </div>
+        <div className="step-heading">
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <div className="step-actions">
+          {signedInAuth ? (
+            <>
+              <IconButton
+                tone="primary"
+                icon={<IconBuilding size={15} />}
+                onClick={() => {
+                  void selectOrg();
+                }}
+                disabled={orgSelectionLoadable.state === "loading"}
+              >
+                Select workspace
+              </IconButton>
+              <IconButton
+                tone="danger"
+                icon={<IconLogout size={15} />}
+                onClick={() => {
+                  void signOut();
+                }}
+                disabled={signOutLoadable.state === "loading"}
+              >
+                Sign out
+              </IconButton>
+            </>
+          ) : (
+            <IconButton
+              tone="primary"
+              icon={<IconExternalLink size={15} />}
+              onClick={() => {
+                void signIn();
+              }}
+              disabled={authLoading || signingIn || !authBridgeAvailable}
+            >
+              {signingIn ? "Signing in..." : "Sign in"}
+            </IconButton>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PermissionSetupRow({
+  granted,
+  meta,
+  onOpenSettings,
+  onRequest,
+  requestLoading,
+  title,
+}: {
+  readonly granted: boolean;
+  readonly meta: string;
+  readonly onOpenSettings: () => void;
+  readonly onRequest: () => void;
+  readonly requestLoading: boolean;
+  readonly title: string;
+}) {
+  return (
+    <div className="permission-row">
+      <div>
+        <div className="row-title">{title}</div>
+        <div className="row-meta">{granted ? "Granted" : meta}</div>
+      </div>
+      <div className="row-actions">
+        {granted ? (
+          <span className="check-pill">
+            <IconCheck size={14} />
+            Ready
+          </span>
+        ) : (
+          <IconButton
+            icon={<IconShieldCheck size={15} />}
+            onClick={onRequest}
+            disabled={requestLoading}
+          >
+            Request
+          </IconButton>
+        )}
+        <IconButton
+          icon={<IconExternalLink size={15} />}
+          onClick={onOpenSettings}
+        >
+          Settings
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
+function PermissionsStepCard({
+  authReady,
+  state,
+}: {
+  readonly authReady: boolean;
+  readonly state: DesktopComputerUseState;
+}) {
+  const [requestLoadable, requestPermission] = useLoadableSet(
+    requestAccessibilityPermission$,
+  );
+  const [screenRecordingRequestLoadable, requestScreenRecording] =
+    useLoadableSet(requestScreenRecordingPermission$);
+  const [, openAccessibility] = useLoadableSet(openAccessibilitySettings$);
+  const [, openScreenRecording] = useLoadableSet(openScreenRecordingSettings$);
+  const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
+  const accessibilityGranted = state.permissions.accessibility;
+  const screenRecordingGranted = state.permissions.screenRecording;
+  const permissionsReady = hasRequiredComputerUsePermissions(state.permissions);
+
+  if (!authReady) {
+    return (
+      <section className="step-card step-card-locked">
+        <div className="step-card-main">
+          <div className="step-kicker">
+            <StepIndex step={2} tone="pending" />
+            <span>Permissions</span>
+          </div>
+          <div className="step-heading">
+            <h2>Allow Computer Use permissions</h2>
+            <p>Sign in and select a workspace first.</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (permissionsReady) {
+    return (
+      <section className="step-card step-card-compact">
+        <div className="compact-step-main">
+          <StepIndex step={2} tone="ready" />
+          <IconShieldCheck size={17} />
+          <span className="compact-step-copy">
+            <strong>Permissions ready</strong>
+            <span>Accessibility and Screen Recording granted</span>
+          </span>
+        </div>
+        <div className="row-actions">
+          <IconButton
+            icon={<IconExternalLink size={15} />}
+            onClick={() => {
+              void openAccessibility();
+            }}
+          >
+            Accessibility Settings
+          </IconButton>
+          <IconButton
+            icon={<IconExternalLink size={15} />}
+            onClick={() => {
+              void openScreenRecording();
+            }}
+          >
+            Screen Recording Settings
+          </IconButton>
+          <IconButton
+            icon={<IconRefresh size={15} />}
+            onClick={() => {
+              void refresh();
+            }}
+            disabled={refreshLoadable.state === "loading"}
+          >
+            Refresh
+          </IconButton>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="step-card step-card-expanded">
+      <div className="step-card-main">
+        <div className="step-kicker">
+          <StepIndex step={2} />
+          <span>Permissions</span>
+        </div>
+        <div className="step-heading">
+          <h2>Allow Computer Use permissions</h2>
+          <p>
+            Zero needs macOS permission to inspect the screen and control UI
+            elements on this Mac.
+          </p>
+        </div>
+        <div className="permission-list">
+          <PermissionSetupRow
+            title="Accessibility"
+            meta="Required for clicking, typing, and reading UI structure"
+            granted={accessibilityGranted}
+            requestLoading={requestLoadable.state === "loading"}
+            onRequest={() => {
+              void requestPermission();
+            }}
+            onOpenSettings={() => {
+              void openAccessibility();
+            }}
+          />
+          <PermissionSetupRow
+            title="Screen Recording"
+            meta="Required for screenshots and visual context"
+            granted={screenRecordingGranted}
+            requestLoading={screenRecordingRequestLoadable.state === "loading"}
+            onRequest={() => {
+              void requestScreenRecording();
+            }}
+            onOpenSettings={() => {
+              void openScreenRecording();
+            }}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
+  const [startLoadable, start] = useLoadableSet(startComputerUse$);
+  const [stopLoadable, stop] = useLoadableSet(stopComputerUse$);
+  const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
+  const [keepAwakeLoadable, setKeepAwakeEnabled] =
+    useLoadableSet(setKeepAwakeEnabled$);
+  const [errorDetailsOpen, setErrorDetailsOpen] = useState(false);
+  const startDisabled =
+    state.host.status === "connecting" ||
+    state.host.status === "online" ||
+    state.host.status === "recovering" ||
+    startLoadable.state === "loading";
+  const stopDisabled =
+    (state.host.status !== "online" && state.host.status !== "recovering") ||
+    stopLoadable.state === "loading";
+  const hasErrorDetails =
+    (state.host.status === "error" || state.host.status === "recovering") &&
+    (state.host.lastError !== null || state.host.errorLog.length > 0);
+
+  return (
+    <Panel title="Runtime" icon={<IconActivityHeartbeat size={18} />}>
+      <div className="runtime-grid">
+        <div>
+          <span>Status</span>
+          <strong className="runtime-status-value">
+            <StatusBadge status={state.host.status} />
+            {hasErrorDetails && (
+              <button
+                type="button"
+                className="status-error-button"
+                aria-label="Show error details"
+                title="Show error details"
+                onClick={() => {
+                  setErrorDetailsOpen(true);
+                }}
+              >
+                <IconAlertCircle size={15} />
+              </button>
+            )}
+          </strong>
+        </div>
+        <div>
+          <span>Host ID</span>
+          <strong>{state.host.hostId ?? "Not registered"}</strong>
+        </div>
+        <div>
+          <span>Last heartbeat</span>
+          <strong>{formatTimestamp(state.host.lastHeartbeatAt)}</strong>
+        </div>
+        <div>
+          <span>Last command</span>
+          <strong>{formatTimestamp(state.host.lastCommandAt)}</strong>
+        </div>
+      </div>
+      {state.host.recovery && <RuntimeRecoveryAlert state={state} />}
+      <CheckboxRow
+        title="Keep Mac awake"
+        subtitle="Prevents automatic system sleep and display sleep."
+        meta={state.keepAwake.active ? "Active" : "Off"}
+        checked={state.keepAwake.enabled}
+        disabled={keepAwakeLoadable.state === "loading"}
+        onChange={(enabled) => {
+          void setKeepAwakeEnabled(enabled);
+        }}
+      />
+      <div className="panel-actions">
+        <IconButton
+          tone="primary"
+          icon={<IconPlayerPlay size={15} />}
+          onClick={() => {
+            void start();
+          }}
+          disabled={startDisabled}
+        >
+          Start
+        </IconButton>
+        <IconButton
+          tone="danger"
+          icon={<IconPlayerStop size={15} />}
+          onClick={() => {
+            void stop();
+          }}
+          disabled={stopDisabled}
+        >
+          Stop
+        </IconButton>
+        <IconButton
+          icon={<IconRefresh size={15} />}
+          onClick={() => {
+            void refresh();
+          }}
+          disabled={refreshLoadable.state === "loading"}
+        >
+          Refresh
+        </IconButton>
+      </div>
+      {errorDetailsOpen && hasErrorDetails && (
+        <RuntimeErrorDetailsModal
+          state={state}
+          onClose={() => {
+            setErrorDetailsOpen(false);
+          }}
+        />
+      )}
+    </Panel>
+  );
+}
+
+function RuntimeRecoveryAlert({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const recovery = state.host.recovery;
+  if (!recovery) {
+    return null;
+  }
+  return (
+    <div className="inline-alert">
+      <IconRefresh size={16} />
+      <span>
+        {`${RECOVERY_PHASE_LABELS[recovery.phase]} retry attempt ${
+          recovery.attempt
+        }; next retry in ${formatRecoveryDelay(recovery.retryDelayMs)}.`}
+      </span>
+    </div>
+  );
+}
+
+function RuntimeErrorDetailsModal({
+  onClose,
+  state,
+}: {
+  readonly onClose: () => void;
+  readonly state: DesktopComputerUseState;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  const latestError =
+    state.host.lastError ?? state.host.errorLog[0]?.message ?? "Unknown error";
+  const rawDiagnostics = {
+    status: state.host.status,
+    hostId: state.host.hostId,
+    lastHeartbeatAt: state.host.lastHeartbeatAt,
+    lastCommandAt: state.host.lastCommandAt,
+    lastError: state.host.lastError,
+    recovery: state.host.recovery,
+    errorLog: state.host.errorLog,
+  };
+
+  return (
+    <div className="runtime-error-modal" role="presentation" onClick={onClose}>
+      <div
+        className="runtime-error-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Error details"
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <div className="runtime-error-header">
+          <div>
+            <strong>Error details</strong>
+            <span>Local Computer Use runtime logs</span>
+          </div>
+          <button
+            type="button"
+            className="icon-only-button"
+            aria-label="Close error details"
+            onClick={onClose}
+          >
+            <IconX size={18} />
+          </button>
+        </div>
+        <div className="runtime-error-body">
+          <section className="runtime-error-section">
+            <h3>Summary</h3>
+            <KeyValueList
+              emptyLabel="No runtime summary available."
+              value={{
+                Status: STATUS_LABELS[state.host.status],
+                "Host ID": state.host.hostId ?? "Not registered",
+                "Last heartbeat": formatTimestamp(state.host.lastHeartbeatAt),
+                "Last command": formatTimestamp(state.host.lastCommandAt),
+                Recovery: state.host.recovery
+                  ? `${RECOVERY_PHASE_LABELS[state.host.recovery.phase]} attempt ${
+                      state.host.recovery.attempt
+                    }`
+                  : "None",
+                "Captured errors": state.host.errorLog.length,
+              }}
+            />
+          </section>
+          <section className="runtime-error-section">
+            <h3>Latest error</h3>
+            <div className="runtime-error-message">{latestError}</div>
+          </section>
+          <section className="runtime-error-section">
+            <h3>Recent error log</h3>
+            {state.host.errorLog.length === 0 ? (
+              <div className="compact-empty">
+                No local error log entries were captured.
+              </div>
+            ) : (
+              <div className="runtime-error-log-list">
+                {state.host.errorLog.map((entry) => {
+                  return <RuntimeErrorLogRow key={entry.id} entry={entry} />;
+                })}
+              </div>
+            )}
+          </section>
+          <details className="raw-log-details">
+            <summary>Raw diagnostics</summary>
+            <pre className="json-block">{formatJson(rawDiagnostics)}</pre>
+          </details>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RuntimeErrorLogRow({ entry }: { readonly entry: RuntimeErrorEntry }) {
+  return (
+    <div className="runtime-error-log-row">
+      <div>
+        <strong>{RUNTIME_ERROR_SOURCE_LABELS[entry.source]}</strong>
+        <span>
+          {formatTimestamp(entry.occurredAt)} - {entry.hostId ?? "No host id"}
+        </span>
+      </div>
+      <p>{entry.message}</p>
+    </div>
+  );
+}
+
+function CommandStatusBadge({
+  status,
+}: {
+  readonly status: CommandLogEntry["status"];
+}) {
+  return (
+    <span className={`command-status command-status-${status}`}>
+      {COMMAND_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function CommandLogSection({
+  children,
+  collapsible = false,
+  icon,
+  title,
+}: {
+  readonly children: ReactNode;
+  readonly collapsible?: boolean;
+  readonly icon: ReactNode;
+  readonly title: string;
+}) {
+  const titleContent = (
+    <>
+      {collapsible && (
+        <span className="command-log-section-disclosure">
+          <IconChevronRight size={14} />
+        </span>
+      )}
+      {icon}
+      <h3>{title}</h3>
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <details className="command-log-section command-log-section-details">
+        <summary className="command-log-section-title">{titleContent}</summary>
+        {children}
+      </details>
+    );
+  }
+
+  return (
+    <section className="command-log-section">
+      <div className="command-log-section-title">{titleContent}</div>
+      {children}
+    </section>
+  );
+}
+
+function VisibleElements({
+  elements,
+}: {
+  readonly elements: readonly Record<string, unknown>[];
+}) {
+  if (elements.length === 0) {
+    return null;
+  }
+  const preview = elements.slice(0, 8);
+  return (
+    <CommandLogSection title="Visible Elements" icon={<IconCode size={15} />}>
+      <div className="visible-elements-list">
+        {preview.map((element, index) => {
+          const label =
+            recordStringValue(element, "text") ??
+            recordStringValue(element, "elementId") ??
+            `Element ${index + 1}`;
+          const elementIndex = recordNumberValue(element, "elementIndex");
+          const role = recordStringValue(element, "role");
+          const meta = [
+            elementIndex !== null ? `#${elementIndex.toString()}` : null,
+            role,
+          ]
+            .filter((value): value is string => {
+              return value !== null;
+            })
+            .join(" - ");
+          return (
+            <div
+              className="visible-element-row"
+              key={`${label}-${index.toString()}`}
+            >
+              <span>{label}</span>
+              {meta && <code>{meta}</code>}
+            </div>
+          );
+        })}
+      </div>
+      {elements.length > preview.length && (
+        <div className="compact-empty">
+          {elements.length - preview.length} more elements in raw result
+        </div>
+      )}
+    </CommandLogSection>
+  );
+}
+
+function ScreenshotBlock({
+  entry,
+  onPreview,
+  screenshot,
+}: {
+  readonly entry: CommandLogEntry;
+  readonly onPreview: (preview: ScreenshotPreview) => void;
+  readonly screenshot: string;
+}) {
+  const meta = screenshotMeta(entry.result);
+  return (
+    <CommandLogSection title="Screenshot" icon={<IconPhoto size={15} />}>
+      <button
+        type="button"
+        className="screenshot-thumbnail"
+        onClick={() => {
+          onPreview({
+            src: screenshot,
+            title: `${entry.kind} screenshot`,
+            meta,
+          });
+        }}
+      >
+        <img src={screenshot} alt={`${entry.kind} screenshot`} />
+        <span>
+          <IconMaximize size={14} />
+          Open
+        </span>
+      </button>
+      {meta && <div className="row-meta">{meta}</div>}
+    </CommandLogSection>
+  );
+}
+
+function CommandLogRow({
+  entry,
+  expanded,
+  onPreviewScreenshot,
+  onToggle,
+}: {
+  readonly entry: CommandLogEntry;
+  readonly expanded: boolean;
+  readonly onPreviewScreenshot: (preview: ScreenshotPreview) => void;
+  readonly onToggle: () => void;
+}) {
+  const resultAppState = recordStringValue(entry.result, "appState");
+  const screenshot = recordStringValue(entry.result, "screenshot");
+  const visibleElements = visibleElementRecords(entry.result);
+  const completedAt = entry.completedAt ?? entry.startedAt;
+  return (
+    <article className="command-log-row">
+      <button
+        type="button"
+        className="command-log-summary"
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <span className="command-log-chevron">
+          {expanded ? (
+            <IconChevronDown size={16} />
+          ) : (
+            <IconChevronRight size={16} />
+          )}
+        </span>
+        <span className="command-log-main">
+          <span className="row-title">{entry.kind}</span>
+          <span className="row-meta">
+            {entry.app ?? "No target app"} - {formatTimestamp(completedAt)} -{" "}
+            {formatDuration(entry.durationMs)}
+          </span>
+        </span>
+        <CommandStatusBadge status={entry.status} />
+      </button>
+      {expanded && (
+        <div className="command-log-details">
+          <CommandLogSection title="Parameters" icon={<IconCode size={15} />}>
+            <KeyValueList
+              value={entry.payload}
+              emptyLabel="No parameters were sent."
+            />
+          </CommandLogSection>
+          {entry.error && (
+            <CommandLogSection
+              title="Error"
+              icon={<IconAlertCircle size={15} />}
+            >
+              <pre className="json-block">{formatJson(entry.error)}</pre>
+            </CommandLogSection>
+          )}
+          {entry.result && (
+            <CommandLogSection
+              title="Result"
+              icon={<IconCheck size={15} />}
+              collapsible
+            >
+              <KeyValueList
+                value={resultSummaryRecord(entry.result)}
+                emptyLabel="No result fields were returned."
+              />
+            </CommandLogSection>
+          )}
+          {resultAppState && (
+            <CommandLogSection title="App State" icon={<IconCode size={15} />}>
+              <pre className="agent-state-block">{resultAppState}</pre>
+            </CommandLogSection>
+          )}
+          {screenshot && (
+            <ScreenshotBlock
+              entry={entry}
+              screenshot={screenshot}
+              onPreview={onPreviewScreenshot}
+            />
+          )}
+          <VisibleElements elements={visibleElements} />
+          <details className="raw-log-details">
+            <summary>Raw Log Entry</summary>
+            <pre className="json-block">
+              {formatJson(jsonDisplayValue(entry))}
+            </pre>
+          </details>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ScreenshotLightbox({
+  onClose,
+  preview,
+}: {
+  readonly onClose: () => void;
+  readonly preview: ScreenshotPreview | null;
+}) {
+  useEffect(() => {
+    if (!preview) {
+      return undefined;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, preview]);
+
+  if (!preview) {
+    return null;
+  }
+
+  return (
+    <div className="screenshot-lightbox" role="presentation" onClick={onClose}>
+      <div
+        className="screenshot-lightbox-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={preview.title}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <div className="screenshot-lightbox-header">
+          <div>
+            <strong>{preview.title}</strong>
+            {preview.meta && <span>{preview.meta}</span>}
+          </div>
+          <button type="button" className="icon-only-button" onClick={onClose}>
+            <IconX size={18} />
+          </button>
+        </div>
+        <img src={preview.src} alt={preview.title} />
+      </div>
+    </div>
+  );
+}
+
+function CommandLogPanel({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const entries = state.host.localCommandLog;
+  const [expandedCommandIds, setExpandedCommandIds] = useState<
+    readonly string[]
+  >([]);
+  const [screenshotPreview, setScreenshotPreview] =
+    useState<ScreenshotPreview | null>(null);
+  const toggleCommand = (commandId: string) => {
+    setExpandedCommandIds((current) => {
+      if (current.includes(commandId)) {
+        return current.filter((candidate) => {
+          return candidate !== commandId;
+        });
+      }
+      return [commandId, ...current];
+    });
+  };
+
+  return (
+    <Panel title="Command Log" icon={<IconHistory size={18} />}>
+      {entries.length === 0 ? (
+        <div className="empty-state">No local native commands have run.</div>
+      ) : (
+        <div className="command-log-list">
+          {entries.map((entry) => {
+            return (
+              <CommandLogRow
+                key={entry.commandId}
+                entry={entry}
+                expanded={expandedCommandIds.includes(entry.commandId)}
+                onPreviewScreenshot={setScreenshotPreview}
+                onToggle={() => {
+                  toggleCommand(entry.commandId);
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+      <ScreenshotLightbox
+        preview={screenshotPreview}
+        onClose={() => {
+          setScreenshotPreview(null);
+        }}
+      />
+    </Panel>
+  );
+}
+
+function UnsupportedPanel({ platform }: { readonly platform: string }) {
+  return (
+    <Panel title="Unsupported Platform" icon={<IconAlertCircle size={18} />}>
+      <div className="empty-state">
+        Computer Use is available on macOS. Current platform: {platform}.
+      </div>
+    </Panel>
+  );
+}
+
+function StartupLoadingScreen() {
+  return (
+    <section className="startup-loading" aria-live="polite">
+      <div className="startup-loading-mark" aria-hidden="true">
+        <IconLoader2 size={22} />
+      </div>
+      <div className="startup-loading-copy">
+        <h2>Preparing Computer Use</h2>
+        <p>Checking your Zero account and workspace before setup begins.</p>
+      </div>
+    </section>
+  );
+}
+
+function ComputerUseContent({
+  authLoading,
+  authState,
+  state,
+}: {
+  readonly authLoading: boolean;
+  readonly authState: DesktopAuthState | null;
+  readonly state: DesktopComputerUseState;
+}) {
+  const authReady = hasReadyDesktopAuth(authState);
+  const permissionsReady = hasRequiredComputerUsePermissions(state.permissions);
+
+  return (
+    <>
+      {!state.supported ? (
+        <UnsupportedPanel platform={state.platform} />
+      ) : (
+        <>
+          <AuthStepCard authLoading={authLoading} authState={authState} />
+          <PermissionsStepCard authReady={authReady} state={state} />
+          {authReady && permissionsReady && (
+            <>
+              <RuntimePanel state={state} />
+              <CommandLogPanel state={state} />
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+function ComputerUsePage() {
+  const loadable = useLastLoadable(computerUseData$);
+  const authLoadable = useLastLoadable(desktopAuthData$);
+  const authState = authLoadable.state === "hasData" ? authLoadable.data : null;
+  const authLoading = authLoadable.state === "loading";
+  const authInitialLoading = authLoading && authState === null;
+
+  if (!hasDesktopComputerUseBridge()) {
+    return (
+      <Panel title="Desktop Bridge" icon={<IconAlertCircle size={18} />}>
+        <div className="empty-state">Desktop bridge unavailable.</div>
+      </Panel>
+    );
+  }
+
+  if (loadable.state === "hasData") {
+    if (authInitialLoading) {
+      return <StartupLoadingScreen />;
+    }
+
+    return (
+      <ComputerUseContent
+        authLoading={authLoading}
+        authState={authState}
+        state={loadable.data}
+      />
+    );
+  }
+
+  if (loadable.state === "hasError") {
+    return (
+      <Panel title="Computer Use" icon={<IconAlertCircle size={18} />}>
+        <div className="inline-alert">
+          <IconAlertCircle size={16} />
+          <span>
+            {loadable.error instanceof Error
+              ? loadable.error.message
+              : String(loadable.error)}
+          </span>
+        </div>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel title="Computer Use">
+      <div className="empty-state">Loading...</div>
+    </Panel>
+  );
+}
+
+function Header() {
+  return (
+    <header className="app-header">
+      <div className="titlebar-title">
+        <h1>Zero Computer Use</h1>
+      </div>
+    </header>
+  );
+}
+
+export function App() {
+  return (
+    <div className="app-shell">
+      <BridgeSubscription />
+      <Header />
+      <main className="content">
+        <ComputerUsePage />
+      </main>
+    </div>
+  );
+}

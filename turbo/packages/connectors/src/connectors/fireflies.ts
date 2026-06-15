@@ -1,0 +1,37 @@
+import type { ConnectorConfig } from "../connectors";
+
+export const fireflies = {
+  fireflies: {
+    label: "Fireflies",
+    category: "meetings-scheduling",
+    helpText:
+      "Connect your Fireflies.ai account to transcribe and analyze meetings",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Fireflies](https://fireflies.ai)\n2. Navigate to the **Integrations** section\n3. Click on **Fireflies API**\n4. Copy your API key and store it securely",
+        storage: {
+          secrets: ["FIREFLIES_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            FIREFLIES_TOKEN: {
+              label: "API Token",
+              required: true,
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            FIREFLIES_TOKEN: "$secrets.FIREFLIES_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    },
+  },
+} as const satisfies Record<string, ConnectorConfig>;

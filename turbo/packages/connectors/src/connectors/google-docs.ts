@@ -1,0 +1,51 @@
+import type { ConnectorConfig } from "../connectors";
+
+export const googleDocs = {
+  "google-docs": {
+    label: "Google Docs",
+    category: "docs-files-knowledge",
+    helpText: "Connect your Google account to access and manage documents",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant Google Docs access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["GOOGLE_DOCS_ACCESS_TOKEN", "GOOGLE_DOCS_REFRESH_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "auth-code",
+          scopes: [
+            "https://www.googleapis.com/auth/documents",
+            "https://www.googleapis.com/auth/userinfo.email",
+          ],
+          outputs: {
+            accessToken: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+            refreshToken: "$secrets.GOOGLE_DOCS_REFRESH_TOKEN",
+          },
+        },
+        access: {
+          kind: "refresh-token",
+          inputs: {
+            refreshToken: "$secrets.GOOGLE_DOCS_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+            refreshToken: "$secrets.GOOGLE_DOCS_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["GOOGLE_DOCS_ACCESS_TOKEN"],
+          envBindings: {
+            GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    },
+  },
+} as const satisfies Record<string, ConnectorConfig>;

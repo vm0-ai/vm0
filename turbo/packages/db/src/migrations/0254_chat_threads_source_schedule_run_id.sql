@@ -1,0 +1,1 @@
+ALTER TABLE "chat_threads" ADD COLUMN "source_schedule_run_id" uuid;

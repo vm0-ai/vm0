@@ -1,0 +1,23 @@
+[package]
+name = "vsock-test"
+version = "0.9.88"
+edition.workspace = true
+
+[dependencies]
+guest-write-file.workspace = true
+
+[dev-dependencies]
+libc.workspace = true
+nix = { workspace = true, features = ["inotify"] }
+tempfile.workspace = true
+vsock-guest = { workspace = true, features = ["test-support"] }
+vsock-host.workspace = true
+vsock-proto.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "time", "fs", "net"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+[lints]
+workspace = true

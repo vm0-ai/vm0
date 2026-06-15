@@ -1,0 +1,1 @@
+ALTER TABLE "chat_threads" ADD COLUMN "pending_message_client_id" uuid;

@@ -1,0 +1,108 @@
+{
+  "name": "@vm0/connectors",
+  "version": "1.75.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./connector-utils": {
+      "import": "./src/connector-utils.ts",
+      "types": "./src/connector-utils.ts"
+    },
+    "./connector-search": {
+      "import": "./src/connector-search.ts",
+      "types": "./src/connector-search.ts"
+    },
+    "./connectors": {
+      "import": "./src/connectors.ts",
+      "types": "./src/connectors.ts"
+    },
+    "./connectors/*": {
+      "import": "./src/connectors/*.ts",
+      "types": "./src/connectors/*.ts"
+    },
+    "./feature-switch-key": {
+      "import": "./src/feature-switch-key.ts",
+      "types": "./src/feature-switch-key.ts"
+    },
+    "./firewall-expander": {
+      "import": "./src/firewall-expander.ts",
+      "types": "./src/firewall-expander.ts"
+    },
+    "./firewall-rule-matcher": {
+      "import": "./src/firewall-rule-matcher.ts",
+      "types": "./src/firewall-rule-matcher.ts"
+    },
+    "./firewall-types": {
+      "import": "./src/firewall-types.ts",
+      "types": "./src/firewall-types.ts"
+    },
+    "./firewalls": {
+      "import": "./src/firewalls/index.ts",
+      "types": "./src/firewalls/index.ts"
+    },
+    "./firewalls/*": {
+      "import": "./src/firewalls/*.ts",
+      "types": "./src/firewalls/*.ts"
+    },
+    "./auth-providers": {
+      "import": "./src/auth-providers/connector-auth.ts",
+      "types": "./src/auth-providers/connector-auth.ts"
+    },
+    "./auth-providers/model-provider-auth": {
+      "import": "./src/auth-providers/model-provider-auth.ts",
+      "types": "./src/auth-providers/model-provider-auth.ts"
+    },
+    "./auth-providers/provider-env": {
+      "import": "./src/auth-providers/provider-env.ts",
+      "types": "./src/auth-providers/provider-env.ts"
+    },
+    "./auth-providers/provider-flow-types": {
+      "import": "./src/auth-providers/provider-flow-types.ts",
+      "types": "./src/auth-providers/provider-flow-types.ts"
+    },
+    "./auth-providers/provider-error": {
+      "import": "./src/auth-providers/provider-error.ts",
+      "types": "./src/auth-providers/provider-error.ts"
+    },
+    "./auth-providers/types": {
+      "import": "./src/auth-providers/types.ts",
+      "types": "./src/auth-providers/types.ts"
+    },
+    "./auth-providers/connectors/*": {
+      "import": "./src/auth-providers/connectors/*.ts",
+      "types": "./src/auth-providers/connectors/*.ts"
+    },
+    "./auth-providers/model-providers/*": {
+      "import": "./src/auth-providers/model-providers/*.ts",
+      "types": "./src/auth-providers/model-providers/*.ts"
+    },
+    "./auth-providers/oauth/*": {
+      "import": "./src/auth-providers/oauth/*.ts",
+      "types": "./src/auth-providers/oauth/*.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "msw": "^2.13.2",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "0.23.0",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

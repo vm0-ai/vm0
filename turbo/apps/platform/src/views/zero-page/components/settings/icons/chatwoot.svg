@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <circle cx="96" cy="96" r="96" fill="url(#chatwoot-gradient)"/>
+  <path d="M136.995 136.996H92.499C67.965 136.996 47.999 117.04 47.999 92.5C47.999 67.397 67.965 48.001 92.499 48.001C117.04 48.001 136.995 67.397 136.995 92.5V136.996Z" fill="#FFFFFF"/>
+  <defs>
+    <linearGradient id="chatwoot-gradient" x1="96" x2="96" y1="0" y2="192" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#52B5FA"/>
+      <stop offset="1" stop-color="#339CF1"/>
+    </linearGradient>
+  </defs>
+</svg>

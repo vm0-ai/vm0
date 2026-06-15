@@ -1,0 +1,6003 @@
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
+import { createPortal } from "react-dom";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+  useLoadable,
+} from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
+import {
+  runUsagePopoverOpenRunId$,
+  setRunUsagePopoverOpenRunId$,
+} from "../../signals/chat-page/run-usage-popover.ts";
+import {
+  IconAlertCircle,
+  IconArrowsDiagonal,
+  IconArrowsDiagonalMinimize2,
+  IconHandStop,
+  IconPhoto,
+  IconChartLine,
+  IconPlayerPlay,
+  IconVideo,
+  IconCopy,
+  IconCheck,
+  IconArrowDown,
+  IconArrowUpRight,
+  IconChevronRight,
+  IconGitBranch,
+  IconLink,
+  IconLoader2,
+  IconMessageCircle,
+  IconPackage,
+  IconPresentation,
+  IconSearch,
+  IconTag,
+  IconX,
+  IconClock,
+  IconCoins,
+} from "@tabler/icons-react";
+import {
+  cn,
+  isEditableTarget,
+  matchShortcut,
+  Skeleton,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
+import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import type {
+  ChatThreadArtifactFile,
+  ChatMessageUsagePayload,
+  GenerationTemplateRequest,
+  ChatThreadGithubPr,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_ITEMS,
+  r2ImageTransformUrl,
+  VIDEO_STYLE_PRESETS,
+} from "@vm0/core";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
+import type {
+  UserPermissionGrantExpiresIn,
+  UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import emptyChatImg from "./assets/empty-chat.webp";
+import emptyArtifactImg from "./assets/empty-artifact.webp";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
+import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { Markdown } from "../components/markdown.tsx";
+import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import {
+  captureRecommendedFollowupSelected,
+  captureRecommendedFollowupsShown,
+} from "../../lib/posthog.ts";
+import {
+  AttachmentLightbox,
+  FileAttachmentChip,
+  PreviewableAudioAttachmentChip,
+  PreviewableFileAttachmentChip,
+  publicAttachmentUrl,
+} from "./zero-attachment-chips.tsx";
+import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
+import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
+import {
+  classifyChatAttachment,
+  contentTypeForBodyPreviewKind,
+  enrichBlocksWithTextPreviews,
+  parseBodyRenderBlocks,
+  type BodyRenderBlock,
+} from "../../signals/chat-page/parse-body-blocks.ts";
+import {
+  activeChatConnectorAction$,
+  closeChatConnectorActionConnectDialog$,
+  completeChatConnectorActionConnect$,
+  type ConnectorActionBlock,
+} from "../../signals/chat-page/connector-action-block.ts";
+import {
+  completedWorkExpandedKeys$,
+  toggleCompletedWorkExpanded$,
+} from "../../signals/chat-page/completed-work-folding.ts";
+import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
+import { AttachmentPreview } from "./zero-attachment-preview.tsx";
+import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
+import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
+  permissionGrantExpiresInByScope$,
+  permissionGrantExpiryText,
+  requestedUserPermissionGrantExpirationAlreadyApplies,
+  setPermissionGrantExpiresIn$,
+} from "../../signals/permission-allow/permission-grant-expiration.ts";
+import {
+  artifactFullscreen$,
+  artifactInboxQuery$,
+  artifactInboxSearchOpen$,
+  artifactInboxSection$,
+  ARTIFACT_PANEL_MIN_THREAD_WIDTH,
+  ARTIFACT_PANEL_MIN_WIDTH,
+  artifactPanelResizing$,
+  artifactPanelWidth$,
+  backToArtifactInbox$,
+  type ArtifactInboxSection,
+  type ArtifactRef,
+  closeArtifact$,
+  closePresentationEditor$,
+  currentArtifactInboxThreadId$,
+  currentArtifactRef$,
+  currentPresentationEditorUrl$,
+  openArtifactFromInbox$,
+  openArtifactInbox$,
+  setArtifactInboxQuery$,
+  setArtifactInboxSection$,
+  setArtifactPanelResizing$,
+  setArtifactPanelWidth$,
+  openImageLightboxOrArtifact$ as openAttachmentImageLightbox$,
+  openVideoLightboxOrArtifact$ as openAttachmentVideoLightbox$,
+  toggleArtifactFullscreen$,
+  toggleArtifactInboxSearch$,
+} from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  chatShortcutHelpOpen$,
+  setChatShortcutHelpOpen$,
+} from "../../signals/chat-page/chat-shortcut-help.ts";
+import {
+  agentGithubPrTrackingAvailable$,
+  githubPrTrackingOpenThreadId$,
+  chatThreadGithubPrs$,
+  githubPrTrackingLabelOptions$,
+  setGithubPrTrackingOpenThreadId$,
+} from "../../signals/chat-page/github-pr-tracking.ts";
+import {
+  headerAutomationMenu$,
+  reloadHeaderAutomationMenu$,
+  automationsForThread,
+  type HeaderAutomationEntry,
+} from "../../signals/chat-page/header-automation-menu.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
+import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
+import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
+
+import type {
+  EnrichedChatMessage,
+  GroupedChatMessageGroup,
+  PagedChatMessage,
+} from "../../signals/chat-page/chat-message.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThread } from "../../signals/agent-chat.ts";
+import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import {
+  ZeroChatComposer,
+  type QueuedComposerItem,
+  type ComposerFeedback,
+} from "./zero-chat-composer.tsx";
+import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
+import {
+  feedbackItemsValue$,
+  feedbackThreadIdValue$,
+  feedbackSendCountValue$,
+  setFeedbackItemNote$,
+  removeFeedbackItem$,
+  submitFeedback$,
+  dismissFeedback$,
+} from "../../signals/zero-page/chat-feedback.ts";
+import {
+  setThreadGenerationTemplate$,
+  threadGenerationTemplate$,
+} from "../../signals/zero-page/zero-chat-composer.ts";
+import {
+  onlineComputerUseHosts$,
+  reloadOnlineComputerUseHosts$,
+  selectedOnlineComputerUseHostId,
+  ZERO_DESKTOP_DOWNLOAD_URL,
+} from "../../signals/zero-page/computer-use-hosts.ts";
+import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
+import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
+import {
+  resolveChatComposerSubmitBlocker,
+  usePersonalOauthConfigurationAction,
+} from "./model-first-oauth-submit-blocker.ts";
+import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import { Link } from "../router/link.tsx";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import {
+  setActiveOrgManageTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
+import { agentById } from "../../signals/agent.ts";
+import {
+  extractPermissions,
+  resolveUserPermissionGrantPolicy,
+  upsertUserPermissionGrant$,
+  userPermissionGrantsByAgent,
+} from "../../signals/permission-allow/permission-allow-signals.ts";
+import {
+  billingStatusAsync$,
+  type CreditCheckoutSelection,
+  startCheckout$,
+  startCreditCheckout$,
+} from "../../signals/zero-page/billing.ts";
+import {
+  imageLoadStatusByKey$,
+  imageLoadStatusRef$,
+  setImageLoadStatus$,
+} from "../../signals/view-component-state.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+} from "../../signals/chat-page/chat-thread-panes.ts";
+import {
+  navigateToAdjacentThread$,
+  scrollCurrentThread$,
+  setChatKeyboardScrollRoot$,
+} from "../../signals/chat-page/chat-keyboard.ts";
+import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
+import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
+import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
+
+type RecommendedFollowup = NonNullable<
+  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+>[number];
+
+const CHAT_SHORTCUT_SECTIONS = [
+  {
+    title: "Global",
+    shortcuts: [
+      { key: "shift+/", label: "Show shortcuts" },
+      { key: "mod+b", label: "Toggle sidebar" },
+      { key: "mod+shift+o", label: "New chat" },
+      { key: "f2", label: "Rename chat" },
+    ],
+  },
+  {
+    title: "Messages",
+    shortcuts: [
+      { key: "mod+arrowup", label: "Scroll to top" },
+      { key: "mod+arrowdown", label: "Scroll to bottom" },
+      { key: "mod+shift+arrowup", label: "Previous thread" },
+      { key: "mod+shift+arrowdown", label: "Next thread" },
+    ],
+  },
+  {
+    title: "Composer",
+    shortcuts: [
+      { key: "enter", label: "Send message" },
+      { key: "escape", label: "Blur composer" },
+    ],
+  },
+] as const;
+
+function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
+  return <ArtifactsButtonInner thread={thread} />;
+}
+
+function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const reloadArtifacts = useSet(thread.reloadArtifacts$);
+  const openInbox = useSet(openArtifactInbox$);
+  const open = inboxThreadId === thread.threadId;
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => {
+              reloadArtifacts();
+              openInbox(thread.threadId);
+            }}
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              open
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+            )}
+            aria-label="Open artifacts"
+            aria-pressed={open}
+          >
+            <IconPackage size={17} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Open artifacts</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function githubPrRollupLabel(rollup: ChatThreadGithubPr["rollup"]): string {
+  switch (rollup) {
+    case "success": {
+      return "Success";
+    }
+    case "failure": {
+      return "Failed";
+    }
+    case "pending": {
+      return "Pending";
+    }
+    case "none": {
+      return "No actions";
+    }
+    case "unknown": {
+      return "Unknown";
+    }
+  }
+}
+
+function githubPrRollupClassName(rollup: ChatThreadGithubPr["rollup"]): string {
+  switch (rollup) {
+    case "success": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+    case "failure": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "pending": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+    case "none": {
+      return "bg-muted text-muted-foreground";
+    }
+    case "unknown": {
+      return "bg-muted text-muted-foreground";
+    }
+  }
+}
+
+function githubPrMergeStatusLabel(
+  mergeStatus: NonNullable<ChatThreadGithubPr["mergeStatus"]>,
+): string {
+  switch (mergeStatus) {
+    case "ready": {
+      return "Ready to merge";
+    }
+    case "conflicts": {
+      return "Conflicts";
+    }
+    case "blocked": {
+      return "Blocked";
+    }
+    case "draft": {
+      return "Draft";
+    }
+  }
+}
+
+function githubPrMergeStatusClassName(
+  mergeStatus: NonNullable<ChatThreadGithubPr["mergeStatus"]>,
+): string {
+  switch (mergeStatus) {
+    case "ready": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+    case "conflicts": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "blocked": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+    case "draft": {
+      return "bg-muted text-muted-foreground";
+    }
+  }
+}
+
+function githubPrStatusLabel(pr: ChatThreadGithubPr): string {
+  if (pr.mergeStatus === "conflicts" || pr.mergeStatus === "draft") {
+    return githubPrMergeStatusLabel(pr.mergeStatus);
+  }
+  if (pr.rollup === "failure" || pr.rollup === "pending") {
+    return githubPrRollupLabel(pr.rollup);
+  }
+  if (pr.mergeStatus) {
+    return githubPrMergeStatusLabel(pr.mergeStatus);
+  }
+  return githubPrRollupLabel(pr.rollup);
+}
+
+function githubPrStatusClassName(pr: ChatThreadGithubPr): string {
+  if (pr.mergeStatus === "conflicts" || pr.mergeStatus === "draft") {
+    return githubPrMergeStatusClassName(pr.mergeStatus);
+  }
+  if (pr.rollup === "failure" || pr.rollup === "pending") {
+    return githubPrRollupClassName(pr.rollup);
+  }
+  if (pr.mergeStatus) {
+    return githubPrMergeStatusClassName(pr.mergeStatus);
+  }
+  return githubPrRollupClassName(pr.rollup);
+}
+
+function githubPrStatusSortPriority(pr: ChatThreadGithubPr): number {
+  if (pr.mergeStatus === "conflicts" || pr.rollup === "failure") {
+    return 0;
+  }
+  if (pr.rollup === "pending" || pr.mergeStatus === "blocked") {
+    return 1;
+  }
+  if (pr.mergeStatus === "draft") {
+    return 2;
+  }
+  if (pr.rollup === "success" || pr.mergeStatus === "ready") {
+    return 3;
+  }
+  return 4;
+}
+
+function sortGithubPrsByStatus(
+  prs: readonly ChatThreadGithubPr[],
+): readonly ChatThreadGithubPr[] {
+  return prs
+    .map((pr, index) => {
+      return { pr, index };
+    })
+    .sort((left, right) => {
+      const priorityDiff =
+        githubPrStatusSortPriority(left.pr) -
+        githubPrStatusSortPriority(right.pr);
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => {
+      return entry.pr;
+    });
+}
+
+function githubCheckResult(
+  check: ChatThreadGithubPr["checks"][number],
+): "success" | "failed" | "pending" {
+  if (check.status !== "completed") {
+    return "pending";
+  }
+
+  if (check.conclusion === "success") {
+    return "success";
+  }
+
+  const failureConclusions = new Set([
+    "failure",
+    "timed_out",
+    "action_required",
+    "cancelled",
+    "startup_failure",
+    "stale",
+  ]);
+  if (check.conclusion && failureConclusions.has(check.conclusion)) {
+    return "failed";
+  }
+
+  return "success";
+}
+
+function githubCheckResultLabel(
+  result: ReturnType<typeof githubCheckResult>,
+): string {
+  switch (result) {
+    case "success": {
+      return "Success";
+    }
+    case "failed": {
+      return "Failed";
+    }
+    case "pending": {
+      return "Pending";
+    }
+  }
+}
+
+function githubCheckResultClassName(
+  result: ReturnType<typeof githubCheckResult>,
+): string {
+  switch (result) {
+    case "success": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+    case "failed": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "pending": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+  }
+}
+
+function githubCheckResultSortPriority(
+  result: ReturnType<typeof githubCheckResult>,
+): number {
+  switch (result) {
+    case "failed": {
+      return 0;
+    }
+    case "pending": {
+      return 1;
+    }
+    case "success": {
+      return 2;
+    }
+  }
+}
+
+function sortGithubChecksByStatus(
+  checks: readonly ChatThreadGithubPr["checks"][number][],
+): readonly ChatThreadGithubPr["checks"][number][] {
+  return checks
+    .map((check, index) => {
+      return { check, index };
+    })
+    .sort((left, right) => {
+      const priorityDiff =
+        githubCheckResultSortPriority(githubCheckResult(left.check)) -
+        githubCheckResultSortPriority(githubCheckResult(right.check));
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => {
+      return entry.check;
+    });
+}
+
+function githubCheckStatusText(
+  check: ChatThreadGithubPr["checks"][number],
+): string {
+  if (check.status === "completed") {
+    return check.conclusion ?? "completed";
+  }
+  return check.status;
+}
+
+function githubCheckTimeText(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function githubCheckRunKey(
+  check: ChatThreadGithubPr["checks"][number],
+): string {
+  return [
+    check.name,
+    check.status,
+    check.conclusion ?? "",
+    check.url ?? "",
+    check.startedAt ?? "",
+    check.completedAt ?? "",
+  ].join("|");
+}
+
+function GithubPrCheckRunRow({
+  check,
+}: {
+  check: ChatThreadGithubPr["checks"][number];
+}) {
+  const statusText = githubCheckStatusText(check);
+  const result = githubCheckResult(check);
+
+  return (
+    <details
+      className="group rounded-md bg-muted/40 text-xs"
+      title={check.name}
+    >
+      <summary className="flex w-full cursor-pointer list-none items-center gap-2 px-2 py-1.5 text-left [&::-webkit-details-marker]:hidden">
+        <IconChevronRight
+          size={13}
+          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+        />
+        <span className="min-w-0 flex-1 truncate text-foreground">
+          {check.name}
+        </span>
+        <span
+          className={cn(
+            "shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 font-medium",
+            githubCheckResultClassName(result),
+          )}
+        >
+          {githubCheckResultLabel(result)}
+        </span>
+      </summary>
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-border/60 px-2 py-2 text-muted-foreground">
+        <dt className="whitespace-nowrap">Status</dt>
+        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
+          {statusText}
+        </dd>
+        <dt className="whitespace-nowrap">Conclusion</dt>
+        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
+          {check.conclusion ?? "-"}
+        </dd>
+        <dt className="whitespace-nowrap">Started</dt>
+        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
+          {githubCheckTimeText(check.startedAt)}
+        </dd>
+        <dt className="whitespace-nowrap">Completed</dt>
+        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
+          {githubCheckTimeText(check.completedAt)}
+        </dd>
+        {check.url && (
+          <>
+            <dt className="whitespace-nowrap">Link</dt>
+            <dd className="min-w-0 text-right">
+              <a
+                href={check.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-end gap-1 text-primary hover:underline"
+              >
+                <IconLink size={12} />
+                Open action
+              </a>
+            </dd>
+          </>
+        )}
+      </dl>
+    </details>
+  );
+}
+
+function GithubPrActions({
+  pr,
+  labelOptions,
+  disabled,
+  onPrompt,
+}: {
+  pr: ChatThreadGithubPr;
+  labelOptions: readonly string[];
+  disabled: boolean;
+  onPrompt: (prompt: string) => void;
+}) {
+  const showFixConflict = pr.mergeStatus === "conflicts";
+  const showLabels = labelOptions.length > 0;
+
+  if (!showFixConflict && !showLabels) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      {showFixConflict && (
+        <button
+          type="button"
+          disabled={disabled}
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-destructive/20 bg-destructive/5 px-2 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-60"
+          onClick={() => {
+            onPrompt(`fix pr ${pr.number} conflict & push`);
+          }}
+        >
+          <IconGitBranch size={13} />
+          Fix conflict
+        </button>
+      )}
+      {showLabels && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              disabled={disabled}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
+              aria-label={`Add label to PR ${pr.number}`}
+            >
+              <IconTag size={13} />
+              Add label
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="max-h-64 overflow-y-auto"
+          >
+            {labelOptions.map((labelName) => {
+              return (
+                <DropdownMenuItem
+                  key={labelName}
+                  onSelect={() => {
+                    onPrompt(`add label "${labelName}" to pr ${pr.number}`);
+                  }}
+                >
+                  {labelName}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  );
+}
+
+function GithubPrTrackingSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading GitHub PR status"
+      className="flex flex-col gap-3"
+    >
+      {[0, 1].map((cardIndex) => {
+        return (
+          <div
+            key={cardIndex}
+            className="rounded-md border border-border bg-background p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-3 w-28 rounded" />
+                <Skeleton className="h-4 w-[72%] rounded" />
+              </div>
+              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Skeleton className="h-7 w-24 rounded-md" />
+              <Skeleton className="h-7 w-20 rounded-md" />
+            </div>
+            <div className="mt-3 flex flex-col gap-2">
+              {[0, 1, 2].map((rowIndex) => {
+                return (
+                  <Skeleton key={rowIndex} className="h-8 w-full rounded-md" />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GithubPrTrackingContent({ thread }: { thread: ChatThreadSignals }) {
+  const githubPrs$ = chatThreadGithubPrs$(thread.threadId);
+  const loadable = useLoadable(githubPrs$);
+  const lastResolvedPrs = useLastResolved(githubPrs$);
+  const labelsLoadable = useLastLoadable(githubPrTrackingLabelOptions$);
+  const modelSelection = useLastResolved(thread.modelSelection$);
+  const [sendActionLoadable, sendAction] = useLoadableSet(thread.sendMessage$);
+  const rootSignal = useGet(rootSignal$);
+  const labelOptions =
+    labelsLoadable.state === "hasData" ? labelsLoadable.data : [];
+  const actionDisabled =
+    sendActionLoadable.state === "loading" || modelSelection === undefined;
+  const sendPrompt = (prompt: string) => {
+    if (modelSelection === undefined) {
+      return;
+    }
+    detach(
+      sendAction(prompt, modelSelection, undefined, rootSignal),
+      Reason.DomCallback,
+    );
+  };
+  const prs = loadable.state === "hasData" ? loadable.data : lastResolvedPrs;
+
+  if (loadable.state === "loading" && prs === undefined) {
+    return <GithubPrTrackingSkeleton />;
+  }
+
+  if (loadable.state === "hasError" && prs === undefined) {
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+        <IconAlertCircle size={16} className="mt-0.5 shrink-0" />
+        Failed to load GitHub PR status.
+      </div>
+    );
+  }
+
+  if (prs === undefined) {
+    return null;
+  }
+
+  if (prs.length === 0) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        No GitHub PRs found in this chat.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {sortGithubPrsByStatus(prs).map((pr) => {
+        const sortedChecks = sortGithubChecksByStatus(pr.checks);
+        return (
+          <div
+            key={`${pr.repo}#${pr.number}`}
+            className="rounded-md border border-border bg-background p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">
+                  {pr.repo} #{pr.number}
+                </div>
+                <a
+                  href={pr.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 line-clamp-2 text-sm font-medium text-foreground hover:underline"
+                >
+                  {pr.title}
+                </a>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+                  githubPrStatusClassName(pr),
+                )}
+              >
+                {githubPrStatusLabel(pr)}
+              </span>
+            </div>
+            <GithubPrActions
+              pr={pr}
+              labelOptions={labelOptions}
+              disabled={actionDisabled}
+              onPrompt={sendPrompt}
+            />
+            <div className="mt-3 flex flex-col gap-2">
+              {sortedChecks.length === 0 ? (
+                <div className="text-xs text-muted-foreground">
+                  No GitHub Actions checks.
+                </div>
+              ) : (
+                <div className="flex max-h-72 flex-col gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                  {sortedChecks.map((check) => {
+                    return (
+                      <GithubPrCheckRunRow
+                        key={githubCheckRunKey(check)}
+                        check={check}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GithubPrTrackingButton({
+  thread,
+  agentId,
+}: {
+  thread: ChatThreadSignals;
+  agentId: string;
+}) {
+  const availableLoadable = useLastLoadable(
+    agentGithubPrTrackingAvailable$(agentId),
+  );
+  const openThreadId = useGet(githubPrTrackingOpenThreadId$);
+  const setOpenThreadId = useSet(setGithubPrTrackingOpenThreadId$);
+  const pageSignal = useGet(pageSignal$);
+  const open = openThreadId === thread.threadId;
+
+  if (
+    availableLoadable.state !== "hasData" ||
+    availableLoadable.data !== true
+  ) {
+    return null;
+  }
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => {
+              if (open) {
+                setOpenThreadId(null);
+                return;
+              }
+              setOpenThreadId(thread.threadId, pageSignal);
+            }}
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              open
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+            )}
+            aria-label="Open GitHub PR tracking"
+            aria-pressed={open}
+          >
+            <IconGitBranch size={18} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Track GitHub PRs</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// Second line shown under each automation in the header menu: the next upcoming
+// run time, or a note that the automation is inactive when it has been disabled.
+function automationMenuSubline(automation: HeaderAutomationEntry): string {
+  if (!automation.enabled) {
+    return "Automation inactive";
+  }
+  if (!automation.nextRunAt) {
+    return "No upcoming run";
+  }
+  const nextRun = new Date(automation.nextRunAt).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  return `Next run ${nextRun}`;
+}
+
+// Loads automations and only renders once this thread has at least one linked
+// automation.
+export function AutomationMenuButton({
+  threadId,
+  ariaLabel = "Automations",
+}: {
+  threadId: string;
+  ariaLabel?: string;
+}) {
+  const navigate = useSet(detachedNavigateTo$);
+  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const automationsLoadable = useLastLoadable(headerAutomationMenu$);
+  const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
+  const allAutomations =
+    automationsLoadable.state === "hasData"
+      ? automationsLoadable.data
+      : (lastResolvedAutomations ?? []);
+  const automations = automationsForThread(allAutomations, threadId);
+
+  if (automations.length === 0) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) {
+          reloadAutomations();
+        }
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
+          aria-label={ariaLabel}
+        >
+          <IconClock size={18} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        {automations.map((automation) => {
+          return (
+            <DropdownMenuItem
+              key={automation.id}
+              onClick={() => {
+                navigate("/automations/:automationId", {
+                  pathParams: { automationId: automation.id },
+                });
+              }}
+              className="items-start gap-2"
+            >
+              <IconClock
+                size={15}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate">{automation.title}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {automationMenuSubline(automation)}
+                </span>
+              </div>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
+  const setOpenThreadId = useSet(setGithubPrTrackingOpenThreadId$);
+
+  return (
+    <aside
+      aria-label="GitHub PR tracking"
+      className="pointer-events-none absolute inset-y-0 right-0 z-20 flex px-3 pt-3"
+      style={{
+        width: `var(--github-pr-tracking-dock-width, ${GITHUB_PR_TRACKING_DOCK_WIDTH})`,
+        paddingBottom: "calc(max(0.5rem, var(--sab)) + 0.5rem)",
+      }}
+    >
+      <div className="pointer-events-auto flex min-h-0 w-full flex-col rounded-lg border border-border bg-background shadow-sm">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground">
+              GitHub PRs
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Pull requests mentioned in this chat thread.
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close GitHub PR tracking"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={() => {
+              setOpenThreadId(null);
+            }}
+          >
+            <IconX size={16} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <GithubPrTrackingContent thread={thread} />
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
+  const threadDataLoadable = useLastLoadable(thread.threadData$);
+  const features = useLastResolved(featureSwitch$);
+  const githubPrTrackingEnabled =
+    features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
+  const usageEnabled = features?.[FeatureSwitchKey.ChatRunUsage] ?? false;
+  const agentId =
+    threadDataLoadable.state === "hasData"
+      ? (threadDataLoadable.data?.agentId ?? null)
+      : null;
+  const threadTitle =
+    threadDataLoadable.state === "hasData"
+      ? (threadDataLoadable.data?.title?.trim() ?? "")
+      : "";
+
+  return (
+    <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
+      <div className="flex items-center gap-3">
+        {threadDataLoadable.state === "loading" ? (
+          <Skeleton className="h-5 w-48 rounded" />
+        ) : (
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            {threadTitle}
+          </span>
+        )}
+      </div>
+      <div className="hidden sm:flex items-center gap-0.5">
+        {usageEnabled && <ThreadUsageChip thread={thread} />}
+        <AutomationMenuButton threadId={thread.threadId} />
+        <ArtifactsButton thread={thread} />
+        {githubPrTrackingEnabled && agentId && (
+          <GithubPrTrackingButton thread={thread} agentId={agentId} />
+        )}
+      </div>
+    </header>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB"] as const;
+  let value = bytes / 1024;
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i]!;
+    if (value < 1024 || i === units.length - 1) {
+      return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
+    }
+    value = value / 1024;
+  }
+  return `${bytes} B`;
+}
+
+function formatArtifactTime(value: string): string {
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+type ChatArtifactItem = {
+  runId: string;
+  file: ChatThreadArtifactFile;
+};
+
+type ArtifactPreviewKind = "image" | "video" | "audio" | "document" | "file";
+
+const ARTIFACT_INBOX_SECTIONS = [
+  { key: "all", label: "All" },
+  { key: "media", label: "Media" },
+  { key: "docs", label: "Docs" },
+  { key: "sites", label: "Sites" },
+] as const satisfies readonly {
+  key: ArtifactInboxSection;
+  label: string;
+}[];
+
+type ArtifactInboxSectionEntry = (typeof ARTIFACT_INBOX_SECTIONS)[number];
+
+function artifactItemKey(item: ChatArtifactItem): string {
+  return `${item.runId}:${item.file.id}:${item.file.url}`;
+}
+
+function getArtifactPreviewKind(
+  file: ChatThreadArtifactFile,
+): ArtifactPreviewKind {
+  const kind = classifyChatAttachment({
+    filename: file.filename,
+    url: file.url,
+    contentType: file.contentType,
+  });
+
+  if (kind === "image") {
+    return "image";
+  }
+  if (kind === "video") {
+    return "video";
+  }
+  if (kind === "audio") {
+    return "audio";
+  }
+  if (
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv" ||
+    kind === "pdf" ||
+    kind === "html"
+  ) {
+    return "document";
+  }
+  return "file";
+}
+
+function flattenArtifactRuns(
+  runs: { runId: string; files: ChatThreadArtifactFile[] }[],
+): ChatArtifactItem[] {
+  return runs.flatMap((run) => {
+    return run.files.map((file) => {
+      return { runId: run.runId, file };
+    });
+  });
+}
+
+function artifactFileKindLabel(file: ChatThreadArtifactFile): string {
+  if (file.artifactKind === "presentation-html") {
+    return "Presentation";
+  }
+  const documentKind = getArtifactDocumentPreviewKind(file);
+  if (documentKind === "html") {
+    return "Hosted site";
+  }
+  if (documentKind === "pdf") {
+    return "PDF";
+  }
+  if (documentKind === "markdown") {
+    return "Markdown";
+  }
+  if (documentKind === "json") {
+    return "JSON";
+  }
+  if (documentKind === "csv") {
+    return "Data";
+  }
+  if (documentKind === "text") {
+    return "Text";
+  }
+
+  const previewKind = getArtifactPreviewKind(file);
+  switch (previewKind) {
+    case "image": {
+      return "Image";
+    }
+    case "video": {
+      return "Video";
+    }
+    case "audio": {
+      return "Audio";
+    }
+    case "document": {
+      return "Document";
+    }
+    case "file": {
+      return "File";
+    }
+  }
+}
+
+function artifactMatchesInboxSection(
+  item: ChatArtifactItem,
+  section: ArtifactInboxSection,
+): boolean {
+  if (section === "all") {
+    return true;
+  }
+
+  const documentKind = getArtifactDocumentPreviewKind(item.file);
+  if (section === "sites") {
+    return documentKind === "html";
+  }
+  if (section === "docs") {
+    return documentKind !== null && documentKind !== "html";
+  }
+
+  const previewKind = getArtifactPreviewKind(item.file);
+  return (
+    previewKind === "image" ||
+    previewKind === "video" ||
+    previewKind === "audio"
+  );
+}
+
+function artifactInboxSectionsForItems(
+  items: readonly ChatArtifactItem[],
+): readonly ArtifactInboxSectionEntry[] {
+  return ARTIFACT_INBOX_SECTIONS.filter((entry) => {
+    return (
+      entry.key === "all" ||
+      items.some((item) => {
+        return artifactMatchesInboxSection(item, entry.key);
+      })
+    );
+  });
+}
+
+function resolveVisibleArtifactInboxSection(
+  section: ArtifactInboxSection,
+  sections: readonly ArtifactInboxSectionEntry[],
+): ArtifactInboxSection {
+  return sections.some((entry) => {
+    return entry.key === section;
+  })
+    ? section
+    : "all";
+}
+
+function artifactMatchesSearch(item: ChatArtifactItem, query: string): boolean {
+  if (query.length === 0) {
+    return true;
+  }
+  const haystack =
+    `${item.file.filename} ${item.file.contentType}`.toLowerCase();
+  return haystack.includes(query);
+}
+
+function ArtifactFileIcon({
+  file,
+  size = "sm",
+}: {
+  file: ChatThreadArtifactFile;
+  size?: "sm" | "md";
+}) {
+  return (
+    <FilePreviewIcon
+      filename={file.filename}
+      contentType={file.contentType}
+      size={size}
+      testId="artifact-file-icon"
+    />
+  );
+}
+
+function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
+  const previewKind = getArtifactPreviewKind(file);
+  const publicUrl = publicAttachmentUrl(file.url);
+
+  if (previewKind === "image") {
+    return (
+      <img
+        src={r2ImageTransformUrl(publicUrl, { width: 96, height: 96 })}
+        alt=""
+        aria-hidden="true"
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+
+  if (previewKind === "video") {
+    return (
+      <video
+        src={videoPosterFrameUrl(publicUrl)}
+        preload="metadata"
+        muted
+        playsInline
+        aria-hidden="true"
+        className="h-full w-full object-cover"
+        data-testid="artifact-video-preview-badge"
+      />
+    );
+  }
+
+  if (getArtifactDocumentPreviewKind(file) === "html") {
+    return (
+      <span
+        className="relative block h-full w-full overflow-hidden bg-background"
+        aria-hidden="true"
+        data-testid="artifact-html-preview-badge"
+      >
+        <iframe
+          src={publicUrl}
+          title={`${file.filename} artifact thumbnail`}
+          sandbox="allow-scripts"
+          tabIndex={-1}
+          loading="lazy"
+          scrolling="no"
+          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25] border-0 bg-background"
+        />
+      </span>
+    );
+  }
+
+  return <ArtifactFileIcon file={file} />;
+}
+
+type ArtifactTextPreviewKind = "markdown" | "text" | "json" | "csv";
+type ArtifactDocumentPreviewKind = ArtifactTextPreviewKind | "pdf" | "html";
+
+function getArtifactTextPreviewKind(
+  file: ChatThreadArtifactFile,
+): ArtifactTextPreviewKind | null {
+  const kind = classifyChatAttachment({
+    filename: file.filename,
+    url: file.url,
+    contentType: file.contentType,
+  });
+
+  if (
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv"
+  ) {
+    return kind;
+  }
+
+  if (/\.log$/i.test(file.filename)) {
+    return "text";
+  }
+
+  return null;
+}
+
+function getArtifactDocumentPreviewKind(
+  file: ChatThreadArtifactFile,
+): ArtifactDocumentPreviewKind | null {
+  const textKind = getArtifactTextPreviewKind(file);
+  if (textKind) {
+    return textKind;
+  }
+
+  const contentType = file.contentType.toLowerCase();
+  const filename = file.filename.toLowerCase();
+  if (contentType === "application/pdf" || filename.endsWith(".pdf")) {
+    return "pdf";
+  }
+  if (
+    contentType === "text/html" ||
+    filename.endsWith(".html") ||
+    filename.endsWith(".htm")
+  ) {
+    return "html";
+  }
+
+  return null;
+}
+
+type ChatImagePreviewLinkProps = {
+  alt: string;
+  ariaLabel: string;
+  imageClassName: string;
+  linkClassName: string;
+  onPreview: () => void;
+  placeholderClassName: string;
+  url: string;
+};
+
+const CHAT_INLINE_MEDIA_PREVIEW_CLASS =
+  "inline-flex aspect-[16/10] w-[min(100%,400px)] items-center justify-center rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+
+// Images render at their natural aspect ratio so screenshots that are not 16:10
+// no longer letterbox against a muted fill (the gray edges). The hairline border
+// hugs the actual image; width and height are capped to keep the thread tidy.
+const CHAT_INLINE_IMAGE_PREVIEW_CLASS =
+  "max-h-[360px] max-w-[min(100%,400px)] rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+
+function ChatImagePreviewLink({
+  alt,
+  ariaLabel,
+  imageClassName,
+  linkClassName,
+  onPreview,
+  placeholderClassName,
+  url,
+}: ChatImagePreviewLinkProps) {
+  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const imageUrl = publicAttachmentUrl(url);
+  const previewImageUrl = r2ImageTransformUrl(imageUrl, {
+    width: 800,
+    height: 720,
+  });
+  const imageLoadKey = `chat-image-preview:${previewImageUrl}`;
+  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
+
+  const showPlaceholder = imageStatus !== "loaded";
+
+  const openPreview = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    ) {
+      return;
+    }
+    event.preventDefault();
+    onPreview();
+  };
+
+  return (
+    <a
+      href={imageUrl}
+      onClick={openPreview}
+      className={cn(
+        "group/image-preview relative inline-block overflow-hidden",
+        linkClassName,
+      )}
+      aria-label={ariaLabel}
+    >
+      {showPlaceholder && (
+        <span
+          data-testid="chat-image-preview-loading"
+          className={cn(
+            "flex items-center justify-center bg-muted/70 text-muted-foreground",
+            placeholderClassName,
+          )}
+        >
+          {imageStatus === "loading" ? (
+            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+          ) : (
+            <IconPhoto size={18} stroke={1.5} />
+          )}
+        </span>
+      )}
+      <img
+        key={imageLoadKey}
+        ref={imageLoadStatusRef}
+        src={previewImageUrl}
+        alt={alt}
+        data-image-load-key={imageLoadKey}
+        loading="lazy"
+        onLoad={() => {
+          setImageLoadStatus(imageLoadKey, "loaded");
+        }}
+        onError={() => {
+          setImageLoadStatus(imageLoadKey, "error");
+        }}
+        className={cn(
+          imageClassName,
+          showPlaceholder && "absolute inset-0 opacity-0",
+        )}
+      />
+      <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100">
+        <IconPhoto
+          size={18}
+          className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
+        />
+      </span>
+    </a>
+  );
+}
+
+type ChatVideoPreviewButtonProps = {
+  ariaLabel: string;
+  buttonClassName: string;
+  filename: string;
+  onPreview: () => void;
+  posterClassName: string;
+  url: string;
+  videoClassName: string;
+};
+
+function videoPosterFrameUrl(url: string): string {
+  const hashIndex = url.indexOf("#");
+  const urlWithoutHash = hashIndex === -1 ? url : url.slice(0, hashIndex);
+  return `${urlWithoutHash}#t=0.001`;
+}
+
+function ChatVideoPreviewButton({
+  ariaLabel,
+  buttonClassName,
+  filename,
+  onPreview,
+  posterClassName,
+  url,
+  videoClassName,
+}: ChatVideoPreviewButtonProps) {
+  const videoUrl = publicAttachmentUrl(url);
+  const posterVideoUrl = videoPosterFrameUrl(videoUrl);
+
+  return (
+    <button
+      type="button"
+      onClick={onPreview}
+      title={filename}
+      aria-label={ariaLabel}
+      className={cn(
+        "group/video-preview relative overflow-hidden bg-black",
+        buttonClassName,
+      )}
+    >
+      <span
+        data-testid="chat-video-preview-poster"
+        className={cn(
+          "flex items-center justify-center bg-black text-white/70",
+          posterClassName,
+        )}
+      >
+        <IconVideo size={22} stroke={1.5} />
+      </span>
+      <video
+        src={posterVideoUrl}
+        preload="metadata"
+        muted
+        playsInline
+        aria-hidden="true"
+        className={cn("absolute inset-0", videoClassName)}
+      />
+      <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors group-hover/video-preview:bg-black/35">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
+          <IconPlayerPlay size={17} stroke={1.8} />
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function ChatArtifactInboxHeader({
+  count,
+  fullscreen,
+  searchOpen,
+  onClose,
+  onToggleSearch,
+  onToggleFullscreen,
+}: {
+  count: number | null;
+  fullscreen: boolean;
+  searchOpen: boolean;
+  onClose: () => void;
+  onToggleSearch: () => void;
+  onToggleFullscreen: () => void;
+}) {
+  return (
+    <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <h2 className="truncate text-sm font-medium text-foreground">
+          Artifacts
+        </h2>
+        {count !== null && (
+          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {count}
+          </span>
+        )}
+      </div>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleSearch}
+              aria-label="Search artifacts"
+              aria-pressed={searchOpen}
+              className={cn(
+                "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+                searchOpen && "bg-muted/60 text-foreground",
+              )}
+            >
+              <IconSearch size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Search artifacts</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              data-testid="artifact-inbox-fullscreen-toggle"
+              className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
+            >
+              {fullscreen ? (
+                <IconArrowsDiagonalMinimize2 size={16} />
+              ) : (
+                <IconArrowsDiagonal size={16} />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close artifacts"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <IconX size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Close artifacts</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+}
+
+function ArtifactInboxTabs({
+  section,
+  sections,
+  setSection,
+}: {
+  section: ArtifactInboxSection;
+  sections: readonly ArtifactInboxSectionEntry[];
+  setSection: (value: ArtifactInboxSection) => void;
+}) {
+  return (
+    <div
+      className="grid rounded-lg bg-muted/70 p-1"
+      style={{
+        gridTemplateColumns: `repeat(${sections.length}, minmax(0, 1fr))`,
+      }}
+      role="tablist"
+      aria-label="Artifact sections"
+    >
+      {sections.map((entry) => {
+        const selected = section === entry.key;
+        return (
+          <button
+            key={entry.key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => {
+              setSection(entry.key);
+            }}
+            className={cn(
+              "h-8 rounded-md px-2 text-xs font-medium transition-colors",
+              selected
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {entry.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArtifactInboxSearch({
+  query,
+  setQuery,
+}: {
+  query: string;
+  setQuery: (value: string) => void;
+}) {
+  return (
+    <label className="relative block">
+      <span className="sr-only">Search artifacts</span>
+      <IconSearch
+        size={15}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+      />
+      <input
+        value={query}
+        onChange={(event) => {
+          setQuery(event.currentTarget.value);
+        }}
+        className="h-9 w-full rounded-lg border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
+        placeholder="Search"
+        autoComplete="off"
+        autoFocus
+      />
+    </label>
+  );
+}
+
+function ArtifactInboxRow({
+  item,
+  onOpen,
+}: {
+  item: ChatArtifactItem;
+  onOpen: () => void;
+}) {
+  const { file } = item;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open artifact ${file.filename}`}
+      className="group flex w-full min-w-0 items-center gap-3 rounded-lg border border-border/60 bg-background/80 p-3 text-left shadow-sm transition-colors hover:border-foreground/20 hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
+        <ArtifactPreviewBadge file={file} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-sm font-medium text-foreground"
+          title={file.filename}
+        >
+          {file.filename}
+        </span>
+        <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span>{artifactFileKindLabel(file)}</span>
+          <span aria-hidden>·</span>
+          <span>{formatBytes(file.size)}</span>
+          <span aria-hidden>·</span>
+          <span>{formatArtifactTime(file.createdAt)}</span>
+        </span>
+      </span>
+      <IconChevronRight
+        size={16}
+        className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+      />
+    </button>
+  );
+}
+
+function ChatArtifactInboxBody({ thread }: { thread: ChatThreadSignals }) {
+  const loadable = useLastLoadable(thread.artifacts$);
+  const section = useGet(artifactInboxSection$);
+  const query = useGet(artifactInboxQuery$);
+  const searchOpen = useGet(artifactInboxSearchOpen$);
+  const setSection = useSet(setArtifactInboxSection$);
+  const setQuery = useSet(setArtifactInboxQuery$);
+  const openArtifact = useSet(openArtifactFromInbox$);
+
+  if (loadable.state === "loading") {
+    return (
+      <div className="flex flex-col gap-3">
+        {Array.from({ length: 5 }, (_, i) => {
+          return <Skeleton key={i} className="h-[74px] rounded-lg" />;
+        })}
+      </div>
+    );
+  }
+
+  if (loadable.state === "hasError") {
+    return (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+        Failed to load artifacts
+      </div>
+    );
+  }
+
+  if (loadable.state !== "hasData") {
+    return null;
+  }
+
+  const items = flattenArtifactRuns(loadable.data);
+  if (items.length === 0) {
+    return (
+      <div className="flex h-full min-h-[360px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 p-8 text-center">
+        <img
+          src={emptyArtifactImg}
+          alt=""
+          role="presentation"
+          loading="lazy"
+          className="h-24 w-24 object-contain opacity-80"
+        />
+        <p className="text-sm text-muted-foreground">
+          No uploaded files in this chat yet.
+        </p>
+      </div>
+    );
+  }
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const sections = artifactInboxSectionsForItems(items);
+  const activeSection = resolveVisibleArtifactInboxSection(section, sections);
+  const visibleItems = items.filter((item) => {
+    return (
+      artifactMatchesInboxSection(item, activeSection) &&
+      artifactMatchesSearch(item, normalizedQuery)
+    );
+  });
+
+  return (
+    <div className="flex min-h-full flex-col gap-4">
+      <ArtifactInboxTabs
+        section={activeSection}
+        sections={sections}
+        setSection={setSection}
+      />
+      {(searchOpen || query.length > 0) && (
+        <ArtifactInboxSearch query={query} setQuery={setQuery} />
+      )}
+      {visibleItems.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
+          No artifacts match this view.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {visibleItems.map((item) => {
+            return (
+              <ArtifactInboxRow
+                key={artifactItemKey(item)}
+                item={item}
+                onOpen={() => {
+                  openArtifact({
+                    threadId: thread.threadId,
+                    url: item.file.url,
+                  });
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
+  const loadable = useLastLoadable(thread.artifacts$);
+  const setArtifactsRealtimeRef = useSet(thread.setArtifactsRealtimeRef$);
+  const fullscreen = useGet(artifactFullscreen$);
+  const searchOpen = useGet(artifactInboxSearchOpen$);
+  const toggleFullscreen = useSet(toggleArtifactFullscreen$);
+  const toggleSearch = useSet(toggleArtifactInboxSearch$);
+  const close = useSet(closeArtifact$);
+  const count =
+    loadable.state === "hasData"
+      ? flattenArtifactRuns(loadable.data).length
+      : null;
+
+  const inbox = (
+    <div
+      className={cn(
+        fullscreen
+          ? "fixed inset-0 z-[100] flex flex-col bg-background"
+          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0",
+        "animate-in fade-in duration-[180ms] ease",
+      )}
+      data-testid="artifact-inbox"
+    >
+      <ChatArtifactInboxHeader
+        count={count}
+        fullscreen={fullscreen}
+        searchOpen={searchOpen}
+        onToggleSearch={toggleSearch}
+        onToggleFullscreen={toggleFullscreen}
+        onClose={close}
+      />
+      <div
+        ref={setArtifactsRealtimeRef}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+      >
+        <ChatArtifactInboxBody thread={thread} />
+      </div>
+    </div>
+  );
+  return fullscreen && typeof document !== "undefined"
+    ? createPortal(inbox, document.body)
+    : inbox;
+}
+
+function ChatArtifactInboxSlot({
+  artifactRef,
+  leftThread,
+  rightThread,
+}: {
+  artifactRef: ArtifactRef | null;
+  leftThread: ChatThreadSignals | null;
+  rightThread: ChatThreadSignals | null;
+}) {
+  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const backToInbox = useSet(backToArtifactInbox$);
+  const close = useSet(closeArtifact$);
+  const thread =
+    [leftThread, rightThread].find((candidate) => {
+      return candidate?.threadId === inboxThreadId;
+    }) ??
+    leftThread ??
+    rightThread;
+
+  if (artifactRef) {
+    return (
+      <ArtifactSidebar
+        artifactRef={artifactRef}
+        thread={thread ?? undefined}
+        onBack={inboxThreadId ? backToInbox : undefined}
+        onClose={close}
+      />
+    );
+  }
+
+  if (!thread || !inboxThreadId) {
+    return null;
+  }
+
+  return <ChatArtifactInboxList thread={thread} />;
+}
+
+// ---------------------------------------------------------------------------
+// ZeroSessionChatPage — real conversation backed by agent runs
+// ---------------------------------------------------------------------------
+
+function ChatThread({
+  thread,
+  onKeyDown,
+}: {
+  thread: ChatThreadSignals;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
+}) {
+  const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (matchShortcut("f2", event)) {
+      event.preventDefault();
+      openRenameDialog();
+      return;
+    }
+    onKeyDown(event);
+  };
+
+  return (
+    <section
+      aria-label="Chat thread"
+      className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
+      data-chat-thread-container-id={thread.threadId}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+    >
+      <ChatThreadContent thread={thread} />
+    </section>
+  );
+}
+
+function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
+  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
+  const threadData = useLastResolved(thread.threadData$);
+  return () => {
+    openRenameChatThreadDialog({
+      threadId: thread.threadId,
+      title: threadData?.title,
+    });
+  };
+}
+
+// Drag the divider to resize the artifact preview against the chat thread.
+// The preview panel is the right-most child, so its right edge coincides with
+// the container's right edge; the width is the gap from the pointer to it.
+function startArtifactPanelResize(
+  event: ReactPointerEvent<HTMLDivElement>,
+  setWidth: (width: number) => void,
+  setResizing: (resizing: boolean) => void,
+): void {
+  const container = event.currentTarget.parentElement;
+  if (!container) {
+    return;
+  }
+  event.preventDefault();
+  const rect = container.getBoundingClientRect();
+  const maxWidth = Math.max(
+    ARTIFACT_PANEL_MIN_WIDTH,
+    rect.width - ARTIFACT_PANEL_MIN_THREAD_WIDTH,
+  );
+  setResizing(true);
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+
+  function onMove(moveEvent: PointerEvent): void {
+    const next = Math.min(
+      Math.max(rect.right - moveEvent.clientX, ARTIFACT_PANEL_MIN_WIDTH),
+      maxWidth,
+    );
+    setWidth(next);
+  }
+  function onUp(): void {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    document.body.style.removeProperty("cursor");
+    document.body.style.removeProperty("user-select");
+    setResizing(false);
+  }
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+}
+
+// Resolve the artifact panel's CSS width and transition from the persisted
+// width and the live drag state. A null width means "never resized" -> keep
+// the responsive default; once resized, the stored px is clamped against the
+// live container so the chat thread always keeps ARTIFACT_PANEL_MIN_THREAD_WIDTH.
+// The transition is dropped mid-drag so the panel tracks the pointer 1:1.
+function artifactPanelLayout(
+  width: number | null,
+  resizing: boolean,
+): { style: CSSProperties; transition: string } {
+  const widthValue =
+    width === null
+      ? "min(760px, 48vw)"
+      : `clamp(${ARTIFACT_PANEL_MIN_WIDTH}px, ${width}px, calc(100% - ${ARTIFACT_PANEL_MIN_THREAD_WIDTH}px))`;
+  return {
+    style: { "--artifact-panel-width": widthValue } as CSSProperties,
+    transition: resizing
+      ? ""
+      : "transition-[flex-basis,width] duration-[240ms] ease",
+  };
+}
+
+function ArtifactResizeHandle() {
+  const setWidth = useSet(setArtifactPanelWidth$);
+  const setResizing = useSet(setArtifactPanelResizing$);
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize preview panel"
+      className="group relative hidden xl:flex w-1 shrink-0 cursor-col-resize items-stretch justify-center"
+      onPointerDown={(event) => {
+        startArtifactPanelResize(event, setWidth, setResizing);
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60 transition-colors group-hover:bg-border"
+      />
+    </div>
+  );
+}
+
+export function ZeroChatThreadPage() {
+  const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
+  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
+  const artifactRef = useGet(currentArtifactRef$);
+  const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
+  const closePresentationEditor = useSet(closePresentationEditor$);
+  const artifactFullscreen = useGet(artifactFullscreen$);
+  const features = useLastResolved(featureSwitch$);
+  const presentationHtmlEditorEnabled = Boolean(
+    features?.[FeatureSwitchKey.PresentationHtmlPptxDownload],
+  );
+  const activePresentationEditorUrl = presentationHtmlEditorEnabled
+    ? presentationEditorUrl
+    : null;
+  const artifactPanelOpen =
+    artifactRef !== null || artifactInboxThreadId !== null;
+  const { style: artifactPanelStyle, transition: artifactTransition } =
+    artifactPanelLayout(
+      useGet(artifactPanelWidth$),
+      useGet(artifactPanelResizing$),
+    );
+  // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
+  // snapshot survives keyed ChatThread remounts during thread navigation.
+  // Otherwise a second mod+shift+arrow press lands on a freshly mounted
+  // ChatThread whose useLastResolved has no cached value yet, leading to an
+  // empty threads list and a silently dropped keypress.
+  const makeChatThreadKeyDown = useChatThreadKeyDownFactory();
+  const presentationEditor = activePresentationEditorUrl ? (
+    <div
+      className={cn(
+        "flex min-w-0 bg-background",
+        artifactFullscreen ? "fixed inset-0 z-[100] min-h-0" : "w-full flex-1",
+      )}
+    >
+      <PresentationHtmlEditor
+        url={activePresentationEditorUrl}
+        onClose={closePresentationEditor}
+      />
+    </div>
+  ) : null;
+
+  const threadArea = (
+    <div
+      ref={setKeyboardScrollRoot}
+      className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
+    >
+      {activePresentationEditorUrl ? (
+        !artifactFullscreen || typeof document === "undefined" ? (
+          presentationEditor
+        ) : null
+      ) : (
+        <>
+          {leftThread && (
+            <ChatThread
+              key={leftThread.threadId}
+              thread={leftThread}
+              onKeyDown={makeChatThreadKeyDown(leftThread)}
+            />
+          )}
+          {rightThread && (
+            <>
+              <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+              <ChatThread
+                key={rightThread.threadId}
+                thread={rightThread}
+                onKeyDown={makeChatThreadKeyDown(rightThread)}
+              />
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {/* Keep the wrapper structure stable across artifact open/close so the
+          thread area's React subtree (and its scroll/keyboard state) never
+          unmounts when the sidebar appears. Only the wrapper className and
+          the optional sidebar sibling change with state. Below xl: the
+          thread half hides so the sidebar fills the pane (no toggle, the
+          50/50 split needs each half ~640px to clear the composer's sm:
+          breakpoint, below which the model picker collapses to icons). */}
+      <div
+        className="flex flex-1 min-h-0 bg-transparent"
+        style={artifactPanelStyle}
+      >
+        <div
+          className={cn(
+            "min-w-0 min-h-0",
+            artifactTransition,
+            artifactPanelOpen ? "hidden xl:flex flex-1 basis-0" : "flex flex-1",
+          )}
+        >
+          {threadArea}
+        </div>
+        {artifactPanelOpen && <ArtifactResizeHandle />}
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 overflow-hidden",
+            artifactTransition,
+            artifactPanelOpen
+              ? "flex-1 basis-0 xl:w-[var(--artifact-panel-width)] xl:flex-none xl:basis-[var(--artifact-panel-width)]"
+              : "pointer-events-none w-0 flex-none basis-0",
+          )}
+          aria-hidden={!artifactPanelOpen}
+        >
+          {artifactPanelOpen && (
+            <ChatArtifactInboxSlot
+              artifactRef={artifactRef}
+              leftThread={leftThread}
+              rightThread={rightThread}
+            />
+          )}
+        </div>
+      </div>
+      {lightboxUrl && <AttachmentLightbox />}
+      {activePresentationEditorUrl &&
+        artifactFullscreen &&
+        typeof document !== "undefined" &&
+        presentationEditor &&
+        createPortal(presentationEditor, document.body)}
+      <ShortcutHelpDialog
+        open={shortcutHelpOpen}
+        onOpenChange={setShortcutHelpOpen}
+        description="Available shortcuts on this page"
+        sections={CHAT_SHORTCUT_SECTIONS}
+      />
+      <ChatConnectorActionConnectModal />
+    </>
+  );
+}
+
+type LoadableValue<T> =
+  | { state: "loading" }
+  | { state: "hasData"; data: T }
+  | { state: "hasError"; error: unknown };
+
+function resolveSessionError(
+  threadDataLoadable: LoadableValue<ChatThread | null>,
+  groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
+): string | null {
+  if (threadDataLoadable.state === "hasError") {
+    return threadDataLoadable.error instanceof Error
+      ? threadDataLoadable.error.message
+      : "Failed to load chat";
+  }
+  if (groupsLoadable.state === "hasError") {
+    return groupsLoadable.error instanceof Error
+      ? groupsLoadable.error.message
+      : "Failed to load messages";
+  }
+  if (
+    threadDataLoadable.state === "hasData" &&
+    threadDataLoadable.data === null
+  ) {
+    return "Chat not found";
+  }
+  return null;
+}
+
+type GithubPrTrackingLayoutStyle = CSSProperties &
+  Record<
+    "--github-pr-tracking-dock-width" | "--github-pr-tracking-content-inset",
+    string
+  >;
+
+const CHAT_THREAD_CONTENT_MAIN_CLASS =
+  "items-center py-4 pl-4 pr-[calc(var(--github-pr-tracking-content-inset)_+_1rem)] sm:pl-6 sm:pr-[calc(var(--github-pr-tracking-content-inset)_+_1.5rem)] @container";
+const GITHUB_PR_TRACKING_DOCK_WIDTH =
+  "min(400px, max(280px, calc(100% - 760px)))";
+
+function githubPrTrackingLayoutStyle(
+  githubPrTrackingOpen: boolean,
+): GithubPrTrackingLayoutStyle {
+  return {
+    "--github-pr-tracking-dock-width": GITHUB_PR_TRACKING_DOCK_WIDTH,
+    "--github-pr-tracking-content-inset": githubPrTrackingOpen
+      ? "calc(var(--github-pr-tracking-dock-width) + 0.75rem)"
+      : "0px",
+  };
+}
+
+function useGithubPrTrackingOpen(
+  thread: ChatThreadSignals,
+  threadDataLoadable: LoadableValue<ChatThread | null>,
+): boolean {
+  const openGithubPrTrackingThreadId = useGet(githubPrTrackingOpenThreadId$);
+  const features = useLastResolved(featureSwitch$);
+  const githubPrTrackingEnabled =
+    features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
+  const agentId =
+    threadDataLoadable.state === "hasData"
+      ? (threadDataLoadable.data?.agentId ?? null)
+      : null;
+
+  return (
+    githubPrTrackingEnabled &&
+    openGithubPrTrackingThreadId === thread.threadId &&
+    agentId !== null
+  );
+}
+
+function ChatThreadMessagesMain({
+  thread,
+  groups,
+  activeGroups,
+  sessionError,
+  skeletonVisible,
+  hasOlderHistory,
+  loadingHistory,
+  messagesLoading,
+  onLoadHistory,
+}: {
+  thread: ChatThreadSignals;
+  groups: GroupedChatMessageGroup[];
+  activeGroups: GroupedChatMessageGroup[];
+  sessionError: string | null;
+  skeletonVisible: boolean;
+  hasOlderHistory: boolean;
+  loadingHistory: boolean;
+  messagesLoading: boolean;
+  onLoadHistory: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+}) {
+  const showEmptyState =
+    !sessionError &&
+    groups.length === 0 &&
+    !messagesLoading &&
+    !skeletonVisible;
+  const completedWorkFolding = buildCompletedWorkFolding(activeGroups);
+  const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
+  const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
+  const visibleGroups = completedWorkFolding?.visibleGroups ?? activeGroups;
+
+  return (
+    <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
+      <div
+        data-message-container
+        className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
+        style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
+      >
+        {!sessionError && !skeletonVisible && hasOlderHistory && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              disabled={loadingHistory}
+              onClick={onLoadHistory}
+              className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Load history
+            </button>
+          </div>
+        )}
+        {sessionError && (
+          <div className="flex-1 flex items-center justify-center py-16">
+            <div className="flex items-center gap-2 text-destructive">
+              <IconAlertCircle size={16} />
+              <p className="text-sm">{sessionError}</p>
+            </div>
+          </div>
+        )}
+        {showEmptyState && (
+          <div className="flex-1 flex flex-col items-center justify-center py-16 gap-3">
+            <img
+              src={emptyChatImg}
+              alt=""
+              role="presentation"
+              loading="lazy"
+              className="h-24 w-24 object-contain opacity-80"
+            />
+            <p className="text-sm text-muted-foreground">
+              Send a message to start the conversation
+            </p>
+          </div>
+        )}
+        <ChatThreadMessageGroups
+          thread={thread}
+          groups={visibleGroups}
+          completedWorkFolding={completedWorkFolding}
+          completedWorkExpandedKeys={completedWorkExpandedKeys}
+          onToggleCompletedWork={toggleCompletedWorkExpanded}
+        />
+        <ThinkingIndicator thread={thread} groups={activeGroups} />
+      </div>
+    </main>
+  );
+}
+
+function ChatThreadMessageGroups({
+  thread,
+  groups,
+  completedWorkFolding,
+  completedWorkExpandedKeys,
+  onToggleCompletedWork,
+}: {
+  thread: ChatThreadSignals;
+  groups: readonly GroupedChatMessageGroup[];
+  completedWorkFolding: CompletedWorkFolding | null;
+  completedWorkExpandedKeys: ReadonlySet<string>;
+  onToggleCompletedWork: (key: string) => void;
+}) {
+  return (
+    <>
+      {groups.map((group) => {
+        const completedWorkFold =
+          completedWorkFolding !== null
+            ? (group.messages
+                .map((message) => {
+                  return completedWorkFolding.foldsByFinalMessageId.get(
+                    message.id,
+                  );
+                })
+                .find((fold) => {
+                  return fold !== undefined;
+                }) ?? null)
+            : null;
+        const completedWorkExpanded =
+          completedWorkFold !== null &&
+          completedWorkExpandedKeys.has(completedWorkFold.key);
+        return (
+          <div key={group.beginMessageId} className="contents">
+            <PagedGroupRow
+              group={group}
+              thread={thread}
+              completedWorkFold={
+                completedWorkFold !== null
+                  ? {
+                      groups: completedWorkFold.labelGroups,
+                      hiddenGroups: completedWorkFold.hiddenGroups,
+                      expanded: completedWorkExpanded,
+                      onToggle: () => {
+                        onToggleCompletedWork(completedWorkFold.key);
+                      },
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function groupMessagesByRole(
+  messages: readonly EnrichedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const groups: GroupedChatMessageGroup[] = [];
+  for (const message of messages) {
+    const last = groups[groups.length - 1];
+    if (last && last.role === message.role) {
+      last.messages.push(message);
+      continue;
+    }
+    groups.push({
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    });
+  }
+  return groups;
+}
+
+interface CompletedWorkFold {
+  key: string;
+  finalMessageId: string;
+  hiddenGroups: GroupedChatMessageGroup[];
+  labelGroups: GroupedChatMessageGroup[];
+}
+
+interface CompletedWorkFolding {
+  visibleGroups: GroupedChatMessageGroup[];
+  foldsByFinalMessageId: Map<string, CompletedWorkFold>;
+}
+
+function groupMessagesForCompletedWorkDisplay(
+  messages: readonly EnrichedChatMessage[],
+  foldFinalMessageIds: ReadonlySet<string>,
+): GroupedChatMessageGroup[] {
+  const groups: GroupedChatMessageGroup[] = [];
+  for (const message of messages) {
+    const forceStandalone = foldFinalMessageIds.has(message.id);
+    const last = groups[groups.length - 1];
+    const lastHasFoldFinal =
+      last?.messages.some((candidate) => {
+        return foldFinalMessageIds.has(candidate.id);
+      }) ?? false;
+
+    if (
+      !forceStandalone &&
+      last &&
+      last.role === message.role &&
+      !lastHasFoldFinal
+    ) {
+      last.messages.push(message);
+      continue;
+    }
+
+    groups.push({
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    });
+  }
+  return groups;
+}
+
+function firstRunIdForMessages(
+  messages: readonly EnrichedChatMessage[],
+): string | undefined {
+  return messages.find((message) => {
+    return message.runId !== undefined;
+  })?.runId;
+}
+
+function usageByRunIdFromGroups(
+  groups: readonly GroupedChatMessageGroup[],
+): Map<string, ChatMessageUsagePayload> {
+  const usageByRunId = new Map<string, ChatMessageUsagePayload>();
+  for (const group of groups) {
+    if (group.role !== "assistant" || group.usage === undefined) {
+      continue;
+    }
+    const runId = firstRunIdForMessages(group.messages);
+    if (runId !== undefined) {
+      usageByRunId.set(runId, group.usage);
+    }
+  }
+  return usageByRunId;
+}
+
+function attachUsageToCompletedWorkGroups(
+  groups: readonly GroupedChatMessageGroup[],
+  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+): GroupedChatMessageGroup[] {
+  return groups.map((group) => {
+    if (group.role !== "assistant") {
+      return group;
+    }
+    const runId = firstRunIdForMessages(group.messages);
+    const usage = runId === undefined ? undefined : usageByRunId.get(runId);
+    return usage === undefined ? group : { ...group, usage };
+  });
+}
+
+function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    (Boolean(message.content) || Boolean(message.error))
+  );
+}
+
+function terminatedRunIdsForCompletedWork(
+  messages: readonly EnrichedChatMessage[],
+): Set<string> {
+  const terminatedRunIds = new Set<string>();
+  for (const message of messages) {
+    if (message.interruptsRunId !== undefined) {
+      terminatedRunIds.add(message.interruptsRunId);
+    }
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      message.runLifecycleEvent !== undefined
+    ) {
+      terminatedRunIds.add(message.runId);
+    }
+  }
+  return terminatedRunIds;
+}
+
+function buildCompletedWorkFolding(
+  groups: readonly GroupedChatMessageGroup[],
+): CompletedWorkFolding | null {
+  const usageByRunId = usageByRunIdFromGroups(groups);
+  const messages = groups.flatMap((group) => {
+    return group.messages;
+  });
+  const terminatedRunIds = terminatedRunIdsForCompletedWork(messages);
+  const visibleMessages: EnrichedChatMessage[] = [];
+  const folds: CompletedWorkFold[] = [];
+
+  for (let index = 0; index < messages.length; ) {
+    const runId = messages[index]!.runId;
+    if (runId === undefined) {
+      visibleMessages.push(messages[index]!);
+      index++;
+      continue;
+    }
+
+    let endIndex = index + 1;
+    while (endIndex < messages.length && messages[endIndex]!.runId === runId) {
+      endIndex++;
+    }
+
+    const runMessages = messages.slice(index, endIndex);
+    if (!terminatedRunIds.has(runId)) {
+      visibleMessages.push(...runMessages);
+      index = endIndex;
+      continue;
+    }
+
+    let finalMessageIndex = -1;
+    for (let offset = runMessages.length - 1; offset >= 0; offset--) {
+      if (isRenderableAssistantMessage(runMessages[offset]!)) {
+        finalMessageIndex = offset;
+        break;
+      }
+    }
+    const finalMessage =
+      finalMessageIndex >= 0 ? runMessages[finalMessageIndex]! : undefined;
+    const precedingMessages =
+      finalMessageIndex > 0 ? runMessages.slice(0, finalMessageIndex) : [];
+    const hiddenMessages = precedingMessages.filter((message) => {
+      return message.role !== "user";
+    });
+    const trailingMessages =
+      finalMessageIndex >= 0 ? runMessages.slice(finalMessageIndex + 1) : [];
+    const trailingMessagesAreMarkers = trailingMessages.every((message) => {
+      return (
+        message.role === "assistant" && !isRenderableAssistantMessage(message)
+      );
+    });
+    if (
+      finalMessage !== undefined &&
+      hiddenMessages.length > 0 &&
+      trailingMessagesAreMarkers
+    ) {
+      visibleMessages.push(
+        ...precedingMessages.filter((message) => {
+          return message.role === "user";
+        }),
+        finalMessage,
+      );
+      folds.push({
+        key: `${runId}:${finalMessage.id}`,
+        finalMessageId: finalMessage.id,
+        hiddenGroups: groupMessagesByRole(hiddenMessages),
+        labelGroups: groupMessagesByRole(runMessages),
+      });
+    } else {
+      visibleMessages.push(...runMessages);
+    }
+
+    index = endIndex;
+  }
+
+  if (folds.length === 0) {
+    return null;
+  }
+
+  const foldFinalMessageIds = new Set(
+    folds.map((fold) => {
+      return fold.finalMessageId;
+    }),
+  );
+  return {
+    visibleGroups: attachUsageToCompletedWorkGroups(
+      groupMessagesForCompletedWorkDisplay(
+        visibleMessages,
+        foldFinalMessageIds,
+      ),
+      usageByRunId,
+    ),
+    foldsByFinalMessageId: new Map(
+      folds.map((fold) => {
+        return [fold.finalMessageId, fold];
+      }),
+    ),
+  };
+}
+
+function parseMessageTime(value: string): number | null {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function formatCompactDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+  const totalHours = Math.round(totalMinutes / 60);
+  return `${totalHours}h`;
+}
+
+function completedWorkLabel(
+  groups: readonly GroupedChatMessageGroup[],
+): string {
+  const timestamps = groups.flatMap((group) => {
+    return group.messages.flatMap((message) => {
+      const timestamp = parseMessageTime(message.createdAt);
+      return timestamp === null ? [] : [timestamp];
+    });
+  });
+  if (timestamps.length < 2) {
+    return "Worked";
+  }
+  const elapsedSeconds = Math.max(
+    1,
+    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 1000),
+  );
+  return `Worked for ${formatCompactDuration(elapsedSeconds)}`;
+}
+
+const RUN_SECTION_LABEL_CLASS =
+  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
+
+function CompletedWorkFoldRow({
+  groups,
+  expanded,
+  onToggle,
+}: {
+  groups: readonly GroupedChatMessageGroup[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const label = completedWorkLabel(groups);
+  return (
+    <div data-chat-completed-work-fold className="-mx-2">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={expanded ? "Collapse work history" : "Expand work history"}
+        onClick={onToggle}
+        className="flex h-9 w-full flex-col justify-center gap-1.5 rounded-lg px-2 text-left transition-colors hover:bg-muted/40"
+      >
+        <span className="flex items-center gap-2">
+          <span className={RUN_SECTION_LABEL_CLASS}>{label}</span>
+          <span aria-hidden className="h-px flex-1 bg-border/40" />
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function ChatThreadSkeletonOverlay({
+  sessionError,
+  skeletonVisible,
+}: {
+  sessionError: string | null;
+  skeletonVisible: boolean;
+}) {
+  if (!skeletonVisible || sessionError) {
+    return null;
+  }
+
+  return (
+    <div
+      data-chat-skeleton
+      className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
+    >
+      <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
+        <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
+          <ChatSkeleton />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// Lifted to ZeroChatThreadPage so the useLastResolved(sidebarChatThreads$)
+// snapshot survives keyed ChatThread remounts during thread navigation.
+function useChatThreadKeyDownFactory() {
+  const pageSignal = useGet(pageSignal$);
+  const scrollCurrentThread = useSet(scrollCurrentThread$);
+  const navigateToAdjacentThread = useSet(navigateToAdjacentThread$);
+  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
+  // Snapshot the sidebar list on the read side so the keyboard command stays
+  // sync — awaiting `sidebarChatThreads$` inside the command would block the
+  // keypress on whatever async work that signal is currently doing
+  // (e.g. an IDB miss + remote refetch).
+  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
+
+  return (thread: ChatThreadSignals) => {
+    return onDomEventFn(async (event: ReactKeyboardEvent<HTMLElement>) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (matchShortcut("mod+arrowup", event)) {
+        event.preventDefault();
+        scrollCurrentThread(thread, "top");
+        return;
+      }
+      if (matchShortcut("mod+arrowdown", event)) {
+        event.preventDefault();
+        scrollCurrentThread(thread, "bottom");
+        return;
+      }
+      if (matchShortcut("mod+shift+arrowup", event)) {
+        event.preventDefault();
+        await navigateToAdjacentThread(
+          {
+            currentThreadId: thread.threadId,
+            direction: "prev",
+            threads: sidebarThreads,
+          },
+          pageSignal,
+        );
+        return;
+      }
+      if (matchShortcut("mod+shift+arrowdown", event)) {
+        event.preventDefault();
+        await navigateToAdjacentThread(
+          {
+            currentThreadId: thread.threadId,
+            direction: "next",
+            threads: sidebarThreads,
+          },
+          pageSignal,
+        );
+        return;
+      }
+
+      if (matchShortcut("shift+/", event) && !isEditableTarget(event.target)) {
+        event.preventDefault();
+        setShortcutHelpOpen(true);
+      }
+    });
+  };
+}
+
+function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
+  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const hasOlderHistory = useLastResolved(thread.hasOlderHistory$) ?? false;
+  const [loadHistoryLoadable, loadHistory] = useLoadableSet(
+    thread.loadHistory$,
+  );
+  const threadDataLoadable = useLastLoadable(thread.threadData$);
+  const sessionError = resolveSessionError(threadDataLoadable, groupsLoadable);
+  const messagesLoading = groupsLoadable.state === "loading";
+  const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
+  const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
+  const setScrollContainer = useSet(thread.setScrollContainer$);
+  const skeletonVisible = useGet(thread.skeletonVisible$);
+  const loadingHistory = loadHistoryLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+  const features = useLastResolved(featureSwitch$);
+  const inlineFeedbackEnabled =
+    features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
+  const onLoadHistory = onDomEventFn(() => {
+    return loadHistory(pageSignal);
+  });
+  const githubPrTrackingOpen = useGithubPrTrackingOpen(
+    thread,
+    threadDataLoadable,
+  );
+
+  return (
+    <>
+      <ChatThreadHeader thread={thread} />
+
+      <div
+        className="relative min-h-0 flex-1"
+        style={githubPrTrackingLayoutStyle(githubPrTrackingOpen)}
+      >
+        <div className="flex h-full min-w-0 flex-col">
+          <div className="flex-1 min-h-0 relative isolate">
+            <div
+              ref={setScrollContainer}
+              data-scroll-container
+              tabIndex={-1}
+              className="absolute inset-0 overflow-y-auto focus:outline-none [scrollbar-gutter:stable]"
+            >
+              <ChatThreadMessagesMain
+                thread={thread}
+                groups={groups}
+                activeGroups={activeGroups}
+                sessionError={sessionError}
+                skeletonVisible={skeletonVisible}
+                hasOlderHistory={hasOlderHistory}
+                loadingHistory={loadingHistory}
+                messagesLoading={messagesLoading}
+                onLoadHistory={onLoadHistory}
+              />
+            </div>
+            <ChatThreadSkeletonOverlay
+              sessionError={sessionError}
+              skeletonVisible={skeletonVisible}
+            />
+            <ScrollToBottomButton
+              thread={thread}
+              skeletonVisible={skeletonVisible}
+              sessionError={sessionError}
+            />
+          </div>
+
+          <ChatThreadComposer thread={thread} />
+        </div>
+
+        {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
+      </div>
+
+      {inlineFeedbackEnabled && <ChatFeedbackSelection />}
+    </>
+  );
+}
+
+function ScrollToBottomButton({
+  thread,
+  skeletonVisible,
+  sessionError,
+}: {
+  thread: ChatThreadSignals;
+  skeletonVisible: boolean;
+  sessionError: string | null;
+}) {
+  const awayFromBottom = useGet(thread.awayFromBottom$);
+  const scrollToBottom = useSet(thread.scrollToBottom$);
+
+  if (!awayFromBottom || skeletonVisible || sessionError) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      data-scroll-to-bottom
+      aria-label="Scroll to bottom"
+      onClick={() => {
+        scrollToBottom();
+      }}
+      className="absolute bottom-4 right-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+    >
+      <IconArrowDown size={18} />
+    </button>
+  );
+}
+
+interface RecommendedFollowupSource {
+  readonly messageId: string;
+  readonly followups: readonly RecommendedFollowup[];
+}
+
+function latestRecommendedFollowups(
+  groups: readonly GroupedChatMessageGroup[],
+): RecommendedFollowupSource | null {
+  for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex -= 1) {
+    const group = groups[groupIndex];
+    if (!group || group.role !== "assistant") {
+      continue;
+    }
+
+    for (
+      let messageIndex = group.messages.length - 1;
+      messageIndex >= 0;
+      messageIndex -= 1
+    ) {
+      const message = group.messages[messageIndex];
+      if (!message || message.role !== "assistant") {
+        continue;
+      }
+
+      const content = message.content?.trim();
+      if (content) {
+        return null;
+      }
+
+      const followups = message.recommendedFollowups ?? [];
+      if (followups.length > 0) {
+        return { messageId: message.id, followups };
+      }
+    }
+  }
+
+  return null;
+}
+
+function RecommendedFollowupIcon({
+  followup,
+}: {
+  followup: RecommendedFollowup;
+}) {
+  if (followup.kind !== "generate") {
+    return <IconMessageCircle size={14} stroke={1.8} />;
+  }
+
+  if (followup.generationType === "image") {
+    return <IconPhoto size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "video") {
+    return <IconVideo size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "presentation") {
+    return <IconChartLine size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "website") {
+    return <IconLink size={14} stroke={1.8} />;
+  }
+  return <IconPackage size={14} stroke={1.8} />;
+}
+
+function recommendedFollowupShownKey(
+  source: RecommendedFollowupSource,
+): string {
+  return [
+    source.messageId,
+    source.followups.length,
+    ...source.followups.map((followup) => {
+      return `${followup.kind}:${followup.generationType ?? ""}`;
+    }),
+  ].join("|");
+}
+
+function reportRecommendedFollowupsShown(
+  element: HTMLDivElement | null,
+  source: RecommendedFollowupSource,
+): void {
+  if (!element) {
+    return;
+  }
+
+  const shownKey = recommendedFollowupShownKey(source);
+  if (element.dataset.recommendedFollowupsShownKey === shownKey) {
+    return;
+  }
+  element.dataset.recommendedFollowupsShownKey = shownKey;
+
+  captureRecommendedFollowupsShown({
+    messageId: source.messageId,
+    followups: source.followups,
+  });
+}
+
+function RecommendedFollowupList({
+  thread,
+  source,
+}: {
+  thread: ChatThreadSignals;
+  source: RecommendedFollowupSource;
+}) {
+  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
+  const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
+  const rootSignal = useGet(rootSignal$);
+  const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
+    reportRecommendedFollowupsShown(element, source);
+  };
+
+  const handleSelect = (
+    followup: RecommendedFollowup,
+    followupIndex: number,
+  ) => {
+    captureRecommendedFollowupSelected({
+      messageId: source.messageId,
+      followupIndex,
+      followupCount: source.followups.length,
+      followup,
+    });
+    detach(
+      sendMessage(
+        followup.prompt,
+        modelSelection,
+        {
+          includeDraftAttachments: false,
+        },
+        rootSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div ref={handleRecommendedFollowupsRef} className="-mx-2">
+      {source.followups.map((followup, followupIndex) => {
+        return (
+          <button
+            key={followup.prompt}
+            type="button"
+            title={followup.prompt}
+            className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40"
+            onClick={() => {
+              handleSelect(followup, followupIndex);
+            }}
+          >
+            <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
+              <RecommendedFollowupIcon followup={followup} />
+            </span>
+            <span className="min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 text-muted-foreground group-hover:text-foreground">
+              {followup.prompt}
+            </span>
+            <IconArrowUpRight
+              size={14}
+              stroke={1.8}
+              className="shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function splitQueuedMessagesForThinkingIndicator(
+  groups: GroupedChatMessageGroup[],
+): {
+  activeGroups: GroupedChatMessageGroup[];
+  queuedGroups: GroupedChatMessageGroup[];
+} {
+  const activeGroups: GroupedChatMessageGroup[] = [];
+  const queuedMessages: EnrichedChatMessage[] = [];
+
+  for (const group of groups) {
+    if (group.role !== "user") {
+      activeGroups.push(group);
+      continue;
+    }
+
+    const activeMessages: EnrichedChatMessage[] = [];
+    for (const message of group.messages) {
+      if (message.isQueued) {
+        queuedMessages.push(message);
+      } else {
+        activeMessages.push(message);
+      }
+    }
+
+    if (activeMessages.length > 0) {
+      activeGroups.push({
+        ...group,
+        beginMessageId: activeMessages[0]!.id,
+        messages: activeMessages,
+      });
+    }
+  }
+
+  return {
+    activeGroups,
+    queuedGroups:
+      queuedMessages.length > 0
+        ? [
+            {
+              beginMessageId: queuedMessages[0]!.id,
+              role: "user",
+              messages: queuedMessages,
+            },
+          ]
+        : [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Composer wrapper — reads chat signals from thread prop
+// ---------------------------------------------------------------------------
+
+function canQueueMessage({ sending }: { sending: boolean }): boolean {
+  return sending;
+}
+
+function shouldAutoFocusComposer({
+  autoFocus,
+  hasMessages,
+}: {
+  autoFocus: boolean;
+  hasMessages: boolean;
+}): boolean {
+  return (
+    autoFocus && !hasMessages && !window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
+interface ChatComposerModelPickerConfig {
+  value: ModelProviderSelection | null;
+  onChange: (value: ModelProviderSelection | null) => void;
+  disabled: boolean;
+  defaultSelection: ModelProviderSelection | null;
+}
+
+function resolveChatComposerModelPicker(params: {
+  modelSelection: ModelProviderSelection | null;
+  setModelSelection: (value: ModelProviderSelection | null) => void;
+  disabled: boolean;
+  defaultSelection: ModelProviderSelection | null;
+}): ChatComposerModelPickerConfig {
+  return {
+    value: params.modelSelection,
+    onChange: params.setModelSelection,
+    disabled: params.disabled,
+    defaultSelection: params.defaultSelection,
+  };
+}
+
+function useChatComposerQueue(
+  thread: ChatThreadSignals,
+  groups: GroupedChatMessageGroup[],
+) {
+  const recallMessage = useSet(thread.recallMessage$);
+  const focusInput = useSet(thread.focusInput$);
+  const pageSignal = useGet(pageSignal$);
+
+  const { queuedGroups } = splitQueuedMessagesForThinkingIndicator(groups);
+  const queuedMessagesById = new Map(
+    queuedGroups.flatMap((group) => {
+      return group.messages.map((message) => {
+        return [message.id, message] as const;
+      });
+    }),
+  );
+  const queuedItems: QueuedComposerItem[] = Array.from(
+    queuedMessagesById.values(),
+  ).map((message) => {
+    return {
+      id: message.id,
+      text: (message.content ?? "").trim(),
+    };
+  });
+
+  const onRemoveQueuedItem = (id: string) => {
+    const message = queuedMessagesById.get(id);
+    if (!message) {
+      return;
+    }
+    detach(
+      (async () => {
+        await recallMessage(message, pageSignal);
+        focusInput();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return { queuedItems, onRemoveQueuedItem };
+}
+
+function useChatComposerModel(
+  thread: ChatThreadSignals,
+  pageSignal: AbortSignal,
+) {
+  // Per-thread composer state lives in ccstate signals on the factory so the
+  // initial value seeds from threadData once it resolves (a React useState
+  // initializer would snapshot `undefined` on first render). `modelSelection$`
+  // internally flips to a user-override once `setModelSelection$` is called,
+  // so unsaved edits survive subsequent threadData$ reloads. Read with
+  // useLastResolved so the picker keeps the previous value during the
+  // threadData$ refetches triggered by chatThreadRunUpdated Ably events —
+  // otherwise the picker briefly flips to a skeleton on every run change.
+  const threadDataResolved = useLastResolved(thread.threadData$);
+  const modelSelectionResolved = useLastResolved(thread.modelSelection$);
+  const defaultModelSelectionResolved = useLastResolved(
+    thread.defaultModelSelection$,
+  );
+  const modelSelection = modelSelectionResolved ?? null;
+  const defaultModelSelection = defaultModelSelectionResolved ?? null;
+  const setModelSelection = useSet(thread.setModelSelection$);
+  const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
+  const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
+
+  const handleModelSelectionChange = (
+    selection: ModelProviderSelection | null,
+  ): void => {
+    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
+  };
+
+  const modelPicker = resolveChatComposerModelPicker({
+    modelSelection,
+    setModelSelection: handleModelSelectionChange,
+    disabled: false,
+    defaultSelection: defaultModelSelection,
+  });
+  // Skeleton only on cold start (nothing has ever resolved). Once we have any
+  // resolved value, refetches reuse the cached value instead of flashing.
+  const modelPickerLoading =
+    threadDataResolved === undefined ||
+    modelSelectionResolved === undefined ||
+    defaultModelSelectionResolved === undefined;
+  const submitBlockerProps = resolveChatComposerSubmitBlocker({
+    state: modelFirstOauthState,
+    modelSelection,
+    onAction: openPersonalOauthConfiguration,
+  });
+
+  return {
+    modelPicker,
+    modelPickerLoading,
+    submitBlockerProps,
+    modelSelection,
+  };
+}
+
+function useChatThreadComposerSendState({
+  thread,
+  modelSelection,
+  computerUseHostId,
+  setInput,
+}: {
+  thread: ChatThreadSignals;
+  modelSelection: ModelProviderSelection | null;
+  computerUseHostId: string | null;
+  setInput: (text: string) => void;
+}) {
+  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
+  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const rootSignal = useGet(rootSignal$);
+  const generationTemplateState = useGet(threadGenerationTemplate$);
+  const generationTemplate =
+    generationTemplateState?.threadId === thread.threadId
+      ? generationTemplateState.value
+      : undefined;
+  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
+  const clearGenerationTemplate = () => {
+    setGenerationTemplate(thread.threadId, undefined);
+  };
+
+  const handleSend = (
+    text: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => {
+    setInput("");
+    clearGenerationTemplate();
+    detach(
+      (async () => {
+        await send(
+          text,
+          modelSelection,
+          {
+            ...(selectedGenerationTemplate
+              ? { generationTemplate: selectedGenerationTemplate }
+              : {}),
+            computerUseHostId,
+          },
+          rootSignal,
+        );
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleQueue = (
+    text: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => {
+    setInput("");
+    clearGenerationTemplate();
+    detach(
+      (async () => {
+        await queueMessage(
+          text,
+          selectedGenerationTemplate,
+          computerUseHostId,
+          rootSignal,
+        );
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return {
+    handleSend,
+    handleQueue,
+    sendLoading: sendLoadable.state === "loading",
+    templatePicker: {
+      value: generationTemplate,
+      onChange: (value: GenerationTemplateRequest | undefined) => {
+        setGenerationTemplate(thread.threadId, value);
+      },
+    },
+  };
+}
+
+function useChatThreadComputerUse(thread: ChatThreadSignals) {
+  const features = useLastResolved(featureSwitch$);
+  const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
+  const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
+  const lastResolvedComputerUseHosts =
+    useLastResolved(onlineComputerUseHosts$) ?? [];
+  const computerUseHosts =
+    computerUseHostsLoadable.state === "hasData"
+      ? computerUseHostsLoadable.data
+      : lastResolvedComputerUseHosts;
+  const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
+  const reloadComputerUseHosts = useSet(reloadOnlineComputerUseHosts$);
+  const selectedComputerUseHostId =
+    computerUseHostsLoadable.state === "hasData" || computerUseHosts.length > 0
+      ? selectedOnlineComputerUseHostId(
+          computerUseHosts,
+          storedComputerUseHostId,
+        )
+      : (storedComputerUseHostId ?? null);
+  const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
+
+  return {
+    selectedComputerUseHostId: computerUseEnabled
+      ? selectedComputerUseHostId
+      : null,
+    computerUse: computerUseEnabled
+      ? {
+          hosts: computerUseHosts,
+          loading:
+            computerUseHostsLoadable.state === "loading" &&
+            computerUseHosts.length === 0,
+          selectedHostId: selectedComputerUseHostId,
+          onChange: setComputerUseHostId,
+          onRefresh: reloadComputerUseHosts,
+          downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+        }
+      : undefined,
+  };
+}
+
+// Bridges the global inline-feedback signals to the composer's `feedback` prop.
+// Returns undefined when the feature is off, so the composer keeps its textarea.
+function useChatThreadComposerFeedback(
+  thread: ChatThreadSignals,
+  modelSelection: ModelProviderSelection | null,
+): ComposerFeedback | undefined {
+  const features = useLastResolved(featureSwitch$);
+  const inlineFeedbackEnabled =
+    features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
+  const items = useGet(feedbackItemsValue$);
+  const feedbackThreadId = useGet(feedbackThreadIdValue$);
+  const sendCount = useGet(feedbackSendCountValue$);
+  const setNote = useSet(setFeedbackItemNote$);
+  const removeItem = useSet(removeFeedbackItem$);
+  const compose = useSet(submitFeedback$);
+  const dismiss = useSet(dismissFeedback$);
+  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
+  const rootSignal = useGet(rootSignal$);
+  // A feedback turn can also carry the composer's template + attachments, so
+  // read the same per-thread template selection the normal send path uses.
+  const generationTemplateState = useGet(threadGenerationTemplate$);
+  const generationTemplate =
+    generationTemplateState?.threadId === thread.threadId
+      ? generationTemplateState.value
+      : undefined;
+  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
+
+  // Feedback is owned by the thread it was drafted in; other threads keep their
+  // own composer textarea so a draft never bleeds across chats.
+  if (!inlineFeedbackEnabled || feedbackThreadId !== thread.threadId) {
+    return undefined;
+  }
+  return {
+    items,
+    sendCount,
+    onChangeNote: (id, note) => {
+      setNote({ id, note });
+    },
+    onRemove: (id) => {
+      removeItem(id);
+    },
+    onSubmit: () => {
+      const prompt = compose();
+      if (prompt === null) {
+        return;
+      }
+      detach(
+        sendMessage(
+          prompt,
+          modelSelection,
+          {
+            includeDraftAttachments: true,
+            ...(generationTemplate ? { generationTemplate } : {}),
+          },
+          rootSignal,
+        ),
+        Reason.DomCallback,
+      );
+      setGenerationTemplate(thread.threadId, undefined);
+      dismiss();
+    },
+    onDismiss: () => {
+      dismiss();
+    },
+  };
+}
+
+function ChatThreadComposer({
+  thread,
+  autoFocus: autoFocusProp = true,
+}: {
+  thread: ChatThreadSignals;
+  autoFocus?: boolean;
+}) {
+  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
+  const hasMessages = groups.length > 0;
+  const messagesResolved = groupsLoadable.state === "hasData";
+  const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
+  // useLastResolved (not useLastLoadable) so refetches keep the previously
+  // resolved value instead of flipping `sending` and the placeholder. Before
+  // the first resolution, avoid showing a Stop button for a thread that may
+  // already be idle.
+  const allFinishedResolvedValue = useLastResolved(thread.allFinished$);
+  const allFinishedResolved = allFinishedResolvedValue !== undefined;
+  const allFinished = allFinishedResolvedValue ?? false;
+  const input = useGet(thread.draft.input$);
+  const setInput = useSet(thread.draft.setInput$);
+  const cancelRun = useSet(thread.cancelRun$);
+  const setInputRef = useSet(thread.setInputRef$);
+  const queueDraftSync = useSet(thread.queueDraftSync$);
+  const pageSignal = useGet(pageSignal$);
+  const { selectedComputerUseHostId, computerUse } =
+    useChatThreadComputerUse(thread);
+
+  const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
+    thread,
+    groups,
+  );
+  const {
+    modelPicker,
+    modelPickerLoading,
+    submitBlockerProps,
+    modelSelection,
+  } = useChatComposerModel(thread, pageSignal);
+  const { handleSend, handleQueue, sendLoading, templatePicker } =
+    useChatThreadComposerSendState({
+      thread,
+      modelSelection,
+      computerUseHostId: selectedComputerUseHostId,
+      setInput,
+    });
+  const sending = (allFinishedResolved && !allFinished) || sendLoading;
+  const skeletonVisible = useGet(thread.skeletonVisible$);
+  const lastGroup = groups[groups.length - 1];
+  const lastIsAssistant = lastGroup?.role === "assistant";
+  const lastAssistantMessage =
+    lastIsAssistant && lastGroup
+      ? lastGroup.messages[lastGroup.messages.length - 1]
+      : undefined;
+  const lastAssistantCancelled =
+    isCancelledAssistantMessage(lastAssistantMessage);
+  const composerSending = sending && !lastAssistantCancelled;
+  const queueWhileSending = canQueueMessage({
+    sending: composerSending,
+  });
+
+  const handleInputChange = (text: string) => {
+    setInput(text);
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
+  };
+
+  const handleDraftChange = () => {
+    detach(queueDraftSync(pageSignal), Reason.DomCallback);
+  };
+
+  const feedback = useChatThreadComposerFeedback(thread, modelSelection);
+
+  return (
+    <footer
+      data-chat-composer
+      className="relative shrink-0 bg-[hsl(var(--background))]"
+      style={{ paddingBottom: "max(0.5rem, var(--sab))" }}
+    >
+      <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
+      <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] pt-3 sm:pl-6 sm:pr-[calc(var(--github-pr-tracking-content-inset,0px)_+_1.5rem)]">
+        <div className="mx-auto max-w-[900px]">
+          <ZeroChatComposer
+            className="w-full min-w-0"
+            input={input}
+            onInputChange={handleInputChange}
+            onSend={handleSend}
+            onQueue={handleQueue}
+            sending={composerSending}
+            queueWhileSending={queueWhileSending}
+            onCancel={
+              allFinishedResolved
+                ? () => {
+                    detach(cancelRun(pageSignal), Reason.DomCallback);
+                  }
+                : undefined
+            }
+            displayName={displayName}
+            autoFocus={shouldAutoFocusComposer({
+              autoFocus: autoFocusProp,
+              hasMessages,
+            })}
+            onDraftChange={handleDraftChange}
+            draft={thread.draft}
+            composerFileInput$={thread.composerFileInput$}
+            setComposerFileInput$={thread.setComposerFileInput$}
+            setInputRef={setInputRef}
+            actionsLoading={skeletonVisible}
+            modelPicker={modelPicker}
+            templatePicker={templatePicker}
+            computerUse={computerUse}
+            modelPickerLoading={modelPickerLoading || !messagesResolved}
+            submitBlocker={submitBlockerProps}
+            queuedItems={queuedItems}
+            onRemoveQueuedItem={onRemoveQueuedItem}
+            feedback={feedback}
+          />
+          <PersonalClaudeCodeDeviceAuthDialog />
+          <PersonalCodexDeviceAuthDialog />
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton placeholder while session loads
+// ---------------------------------------------------------------------------
+
+function ChatSkeleton() {
+  return (
+    <>
+      {/* User bubble skeleton */}
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-[60%] rounded-xl" />
+      </div>
+      {/* Assistant bubble skeleton */}
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-[90%] rounded-lg" />
+          <Skeleton className="h-4 w-[75%] rounded-lg" />
+          <Skeleton className="h-4 w-[40%] rounded-lg" />
+        </div>
+      </div>
+      {/* User bubble skeleton */}
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-[45%] rounded-xl" />
+      </div>
+      {/* Assistant bubble skeleton */}
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-[85%] rounded-lg" />
+          <Skeleton className="h-4 w-[60%] rounded-lg" />
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Thinking indicator — shown the entire time a run is active
+// ---------------------------------------------------------------------------
+
+function isCancelledAssistantMessage(
+  message: EnrichedChatMessage | undefined,
+): boolean {
+  return (
+    message?.role === "assistant" &&
+    (message.runLifecycleEvent === "cancelled" ||
+      message.error?.trim().toLowerCase() === "run cancelled")
+  );
+}
+
+function shouldRenderThinkingIndicator({
+  lastGroup,
+  lastIsAssistant,
+  running,
+  lastAssistantCancelled,
+}: {
+  lastGroup: GroupedChatMessageGroup | undefined;
+  lastIsAssistant: boolean;
+  running: boolean;
+  lastAssistantCancelled: boolean;
+}): boolean {
+  if (!lastGroup) {
+    return false;
+  }
+  if (lastAssistantCancelled && !running) {
+    return false;
+  }
+  return lastIsAssistant || running;
+}
+
+function ThinkingLabel({
+  isQueued,
+  rotatingLabel,
+}: {
+  isQueued: boolean;
+  rotatingLabel: string;
+}) {
+  const openQueueDrawer = useSet(openQueueDrawer$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (isQueued) {
+    return (
+      <p className="zero-shimmer-text text-[0.8125rem] truncate">
+        Waiting in{" "}
+        <button
+          type="button"
+          onClick={() => {
+            openQueueDrawer(pageSignal);
+          }}
+          className="cursor-pointer underline underline-offset-2"
+        >
+          queue...
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <p className="zero-shimmer-text text-[0.8125rem] truncate">
+      {rotatingLabel}
+    </p>
+  );
+}
+
+function InlineThinkingRow({
+  blockStyle,
+  isQueued,
+  rotatingLabel,
+}: {
+  blockStyle: CSSProperties;
+  isQueued: boolean;
+  rotatingLabel: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 h-5">
+      <span className="zero-blocks shrink-0" style={blockStyle}>
+        <span />
+        <span />
+        <span />
+      </span>
+      <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+    </div>
+  );
+}
+
+function FinishedRunRow({
+  thread,
+  label,
+  source,
+}: {
+  thread: ChatThreadSignals;
+  label: string;
+  source: RecommendedFollowupSource | null;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex h-5 flex-col justify-center gap-1.5">
+        <div className="h-px w-full bg-border/40" />
+        <div className="flex items-center gap-2">
+          <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
+          <div className="h-px flex-1 bg-border/40" />
+        </div>
+      </div>
+      {source ? (
+        <RecommendedFollowupList thread={thread} source={source} />
+      ) : null}
+    </div>
+  );
+}
+
+function WaitingForAssistantResponse({
+  thread,
+  blockStyle,
+  isQueued,
+  rotatingLabel,
+}: {
+  thread: ChatThreadSignals;
+  blockStyle: CSSProperties;
+  isQueued: boolean;
+  rotatingLabel: string;
+}) {
+  return (
+    <div
+      data-thinking-indicator
+      data-role="assistant"
+      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-[1.7] min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="zero-blocks shrink-0" style={blockStyle}>
+              <span />
+              <span />
+              <span />
+            </span>
+            <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+          </div>
+        </div>
+      </div>
+      <div
+        aria-hidden
+        className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+      >
+        <div className="hidden @[900px]:block" />
+        <div className="flex items-center py-2 gap-1 -ml-1" />
+      </div>
+    </div>
+  );
+}
+
+function AssistantThinkingStatusRow({
+  running,
+  blockStyle,
+  isQueued,
+  rotatingLabel,
+  thread,
+  doneLabel,
+  recommendedFollowupSource,
+}: {
+  running: boolean;
+  blockStyle: CSSProperties;
+  isQueued: boolean;
+  rotatingLabel: string;
+  thread: ChatThreadSignals;
+  doneLabel: string;
+  recommendedFollowupSource: RecommendedFollowupSource | null;
+}) {
+  const thinkingIndicatorProps = running
+    ? { "data-thinking-indicator": true }
+    : {};
+
+  return (
+    <div
+      {...thinkingIndicatorProps}
+      data-role="assistant-thinking"
+      className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
+    >
+      <div className="hidden @[900px]:block" />
+      <div className="min-w-0">
+        {running ? (
+          <InlineThinkingRow
+            blockStyle={blockStyle}
+            isQueued={isQueued}
+            rotatingLabel={rotatingLabel}
+          />
+        ) : (
+          <FinishedRunRow
+            thread={thread}
+            label={doneLabel}
+            source={recommendedFollowupSource}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ThinkingIndicator({
+  thread,
+  groups,
+}: {
+  thread: ChatThreadSignals;
+  groups: GroupedChatMessageGroup[];
+}) {
+  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
+  const allFinishedResolved = allFinishedLoadable.state === "hasData";
+  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
+  const [c1, c2, c3] = useGet(thread.blockColors$);
+  const blockStyle = {
+    "--zb-c1": c1,
+    "--zb-c2": c2,
+    "--zb-c3": c3,
+  } as CSSProperties;
+
+  const lastGroup = groups[groups.length - 1];
+  const lastIsAssistant = lastGroup?.role === "assistant";
+  const lastAssistantMessage =
+    lastIsAssistant && lastGroup
+      ? lastGroup.messages[lastGroup.messages.length - 1]
+      : undefined;
+  const lastAssistantCancelled =
+    isCancelledAssistantMessage(lastAssistantMessage);
+  const runActive =
+    allFinishedResolved && !allFinished && !lastAssistantCancelled;
+  const waitingForAssistant =
+    lastGroup?.role === "user" &&
+    lastGroup.messages.length > 0 &&
+    (!allFinishedResolved ||
+      lastGroup.messages.some((message) => {
+        return message.isOptimisticRun || message.runId !== undefined;
+      }));
+  const running = runActive || waitingForAssistant;
+  const rotatingLabel = useGet(thread.rotatingPhrase$);
+  const donePhrase = useGet(thread.donePhrase$);
+  const latestRunStatus = useLastResolved(thread.latestRunStatus$);
+  const isQueued = latestRunStatus === "queued";
+  const recommendedFollowupSource = latestRecommendedFollowups(groups);
+  const doneLabel = recommendedFollowupSource ? "Keep going" : donePhrase;
+
+  if (
+    !shouldRenderThinkingIndicator({
+      lastGroup,
+      lastIsAssistant,
+      running,
+      lastAssistantCancelled,
+    })
+  ) {
+    return null;
+  }
+
+  // Shared inline row with fixed h-5 to prevent layout jump on transition
+  if (lastIsAssistant || !running) {
+    return (
+      <AssistantThinkingStatusRow
+        running={running}
+        blockStyle={blockStyle}
+        isQueued={isQueued}
+        rotatingLabel={rotatingLabel}
+        thread={thread}
+        doneLabel={doneLabel}
+        recommendedFollowupSource={recommendedFollowupSource}
+      />
+    );
+  }
+
+  // Waiting for first assistant response — show bubble with avatar
+  return (
+    <WaitingForAssistantResponse
+      thread={thread}
+      blockStyle={blockStyle}
+      isQueued={isQueued}
+      rotatingLabel={rotatingLabel}
+    />
+  );
+}
+
+/**
+ * Parse inline attachment lines from message content.
+ * Matches `[Attached file: name](url)` optionally followed by a curl line.
+ * Returns the cleaned content and parsed attachments.
+ */
+function parseInlineAttachments(content: string): {
+  cleanContent: string;
+  parsed: { filename: string; url: string }[];
+} {
+  const parsed: { filename: string; url: string }[] = [];
+  const cleaned = content.replace(
+    /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
+    (_match, filename: string, url: string) => {
+      parsed.push({ filename, url });
+      return "";
+    },
+  );
+  return { cleanContent: cleaned.trim(), parsed };
+}
+
+function BodyContentBlocks({
+  blocks,
+  openLightbox,
+  hardBreaks,
+}: {
+  blocks: BodyRenderBlock[];
+  openLightbox: (url: string) => void;
+  hardBreaks: boolean;
+}) {
+  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {blocks.map((block) => {
+        if (block.type === "markdown") {
+          return (
+            <Markdown
+              key={block.id}
+              source={
+                hardBreaks
+                  ? block.content.replace(/\n/g, "  \n")
+                  : block.content
+              }
+              mediaPreview
+              mathEnabled
+              style={{ fontSize: "inherit", lineHeight: "inherit" }}
+            />
+          );
+        }
+
+        if (block.type === "connector-action") {
+          return <ConnectorActionCard key={block.id} block={block} />;
+        }
+
+        if (block.type === "permission-action") {
+          return <PermissionActionCard key={block.id} block={block} />;
+        }
+
+        if (block.preview.kind === "image") {
+          return (
+            <ChatImagePreviewLink
+              key={block.id}
+              alt={block.preview.filename}
+              ariaLabel={`Preview ${block.preview.filename}`}
+              imageClassName="block h-auto w-auto max-h-[360px] max-w-full object-contain"
+              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
+              onPreview={() => {
+                openLightbox(block.preview.url);
+              }}
+              placeholderClassName="aspect-[4/3] w-[min(100%,260px)]"
+              url={block.preview.url}
+            />
+          );
+        }
+
+        if (block.preview.kind === "video") {
+          return (
+            <ChatVideoPreviewButton
+              key={block.id}
+              ariaLabel={`Preview ${block.preview.filename}`}
+              buttonClassName={CHAT_INLINE_MEDIA_PREVIEW_CLASS}
+              filename={block.preview.filename}
+              onPreview={() => {
+                openVideoLightbox({
+                  url: block.preview.url,
+                  filename: block.preview.filename,
+                });
+              }}
+              posterClassName="h-full w-full"
+              url={block.preview.url}
+              videoClassName="h-full w-full object-contain"
+            />
+          );
+        }
+
+        return (
+          <AttachmentPreview
+            key={block.id}
+            attachment={{
+              filename: block.preview.filename,
+              url: block.preview.url,
+              contentType: contentTypeForBodyPreviewKind(block.preview.kind),
+            }}
+            text$={block.preview.text$}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
+  const pageSignal = useGet(pageSignal$);
+  const available = useLastResolved(block.available$) ?? false;
+  const complete = useLastResolved(block.complete$) ?? false;
+  const [activateLoadable, activate] = useLoadableSet(block.activate$);
+  const activating = activateLoadable.state === "loading";
+  const config = CONNECTOR_TYPES[block.connectorType];
+
+  if (!available) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid="connector-action-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <ConnectorIcon type={block.connectorType} size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
+            {config.label}
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            {config.helpText}
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        disabled={complete || activating}
+        onClick={() => {
+          detach(activate(pageSignal), Reason.DomCallback);
+        }}
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+      >
+        {activating && <IconLoader2 size={15} className="animate-spin" />}
+        {complete ? "Connected" : "Connect"}
+      </button>
+    </div>
+  );
+}
+
+interface PermissionActionButtonState {
+  hasAgent: boolean;
+  hasPermission: boolean;
+  loading: boolean;
+  loadError: boolean;
+  saving: boolean;
+  saveDone: boolean;
+  alreadyApplied: boolean;
+}
+
+type PermissionAction = "allow" | "deny";
+
+type PermissionActionUserGrant = UserPermissionGrantResponse;
+
+interface LoadableLike<T> {
+  state: string;
+  data?: T;
+}
+
+type UpsertUserPermissionGrantFn = (
+  params: {
+    agentId: string;
+    connectorRef: string;
+    permission: string;
+    action: PermissionAction;
+    expiresIn?: UserPermissionGrantExpiresIn;
+  },
+  signal: AbortSignal,
+) => Promise<UserPermissionGrantResponse>;
+
+function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
+  return loadable.state === "hasData" ? loadable.data : undefined;
+}
+
+function permissionActionVerb(action: PermissionAction): string {
+  return action === "allow" ? "Allow" : "Deny";
+}
+
+function permissionActionButtonLabel(
+  state: PermissionActionButtonState,
+): string {
+  if (state.loading) {
+    return "Checking permissions";
+  }
+  if (state.loadError) {
+    return "Failed to load permissions";
+  }
+  if (!state.hasPermission) {
+    return "Unknown permission";
+  }
+  if (state.saving) {
+    return "Saving...";
+  }
+  return "Confirm";
+}
+
+function permissionActionButtonDisabled(
+  state: PermissionActionButtonState,
+): boolean {
+  return (
+    state.loading ||
+    state.loadError ||
+    state.saving ||
+    !state.hasAgent ||
+    !state.hasPermission
+  );
+}
+
+function permissionActionStatusText(
+  state: PermissionActionButtonState,
+  action: "allow" | "deny",
+): { label: string; className: string } | null {
+  if (state.saveDone || state.alreadyApplied) {
+    return action === "allow"
+      ? { label: "Permissions updated", className: "text-green-600" }
+      : { label: "Permission denied", className: "text-destructive" };
+  }
+  return null;
+}
+
+function PermissionActionButton({
+  state,
+  action,
+  onClick,
+}: {
+  state: PermissionActionButtonState;
+  action: "allow" | "deny";
+  onClick: () => void;
+}) {
+  const status = permissionActionStatusText(state, action);
+  if (status) {
+    return (
+      <span
+        className={`shrink-0 text-[0.9375rem] font-medium ${status.className}`}
+      >
+        {status.label}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={permissionActionButtonDisabled(state)}
+      onClick={onClick}
+      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+    >
+      {state.saving && <IconLoader2 size={15} className="animate-spin" />}
+      {permissionActionButtonLabel(state)}
+    </button>
+  );
+}
+
+function isPermissionActionLoading(params: {
+  agentLoading: boolean;
+  userGrantsLoading: boolean;
+}): boolean {
+  return params.agentLoading || params.userGrantsLoading;
+}
+
+function isPermissionActionSaving(params: { grantLoading: boolean }): boolean {
+  return params.grantLoading;
+}
+
+function isPermissionActionLoadError(params: {
+  agentError: boolean;
+  userGrantsError: boolean;
+}): boolean {
+  return params.agentError || params.userGrantsError;
+}
+
+function isPermissionActionAlreadyApplied(params: {
+  hasAgent: boolean;
+  userGrantPolicy: FirewallPolicyValue | undefined;
+  action: "allow" | "deny";
+  expirationAvailable: boolean;
+  requestedExpiresIn: UserPermissionGrantExpiresIn | null;
+  currentExpiresAt: string | null | undefined;
+}): boolean {
+  if (!params.hasAgent) {
+    return false;
+  }
+  if (params.userGrantPolicy !== params.action) {
+    return false;
+  }
+  if (!params.expirationAvailable || params.action !== "allow") {
+    return true;
+  }
+  return requestedUserPermissionGrantExpirationAlreadyApplies({
+    expiresIn: params.requestedExpiresIn,
+    currentExpiresAt: params.currentExpiresAt,
+  });
+}
+
+function findPermissionActionPermission(block: PermissionActionBlock) {
+  return extractPermissions(block.connectorRef).find((permission) => {
+    return permission.name === block.permission;
+  });
+}
+
+function permissionActionUserGrantPolicy(
+  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
+  block: PermissionActionBlock,
+): FirewallPolicyValue | undefined {
+  const grants = loadableData(loadable);
+  if (!grants) {
+    return undefined;
+  }
+  return resolveUserPermissionGrantPolicy(
+    grants,
+    block.connectorRef,
+    block.permission,
+  );
+}
+
+function permissionActionUserGrant(
+  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
+  block: PermissionActionBlock,
+): PermissionActionUserGrant | undefined {
+  const grants = loadableData(loadable);
+  if (!grants) {
+    return undefined;
+  }
+  return grants.find((grant) => {
+    return (
+      grant.connectorRef === block.connectorRef &&
+      grant.permission === block.permission &&
+      grant.action === block.action
+    );
+  });
+}
+
+function createPermissionActionButtonState(params: {
+  hasAgent: boolean;
+  hasPermission: boolean;
+  loading: boolean;
+  loadError: boolean;
+  saving: boolean;
+  alreadyApplied: boolean;
+  saveDone: boolean;
+}): PermissionActionButtonState {
+  return {
+    hasAgent: params.hasAgent,
+    hasPermission: params.hasPermission,
+    loading: params.loading,
+    loadError: params.loadError,
+    saving: params.saving,
+    saveDone: params.saveDone,
+    alreadyApplied: params.alreadyApplied,
+  };
+}
+
+function createPermissionActionCardButtonState(params: {
+  hasAgent: boolean;
+  focusedPermission: { name: string } | undefined;
+  loading: boolean;
+  loadError: boolean;
+  saving: boolean;
+  saveDone: boolean;
+  alreadyApplied: boolean;
+}): PermissionActionButtonState {
+  return createPermissionActionButtonState({
+    hasAgent: params.hasAgent,
+    hasPermission: Boolean(params.focusedPermission),
+    loading: params.loading,
+    loadError: params.loadError,
+    saving: params.saving,
+    saveDone: params.saveDone,
+    alreadyApplied: params.alreadyApplied,
+  });
+}
+
+function createPermissionActionCardViewState(params: {
+  block: PermissionActionBlock;
+  hasAgent: boolean;
+  agentLoadableState: string;
+  userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
+  grantLoadableState: string;
+  expirationAvailable: boolean;
+  currentGrantExpiresAt: string | null | undefined;
+}) {
+  const focusedPermission = findPermissionActionPermission(params.block);
+  const actionLabel = permissionActionVerb(params.block.action);
+  const loading = isPermissionActionLoading({
+    agentLoading: params.agentLoadableState === "loading",
+    userGrantsLoading: params.userGrantsLoadable.state === "loading",
+  });
+  const loadError = isPermissionActionLoadError({
+    agentError: params.agentLoadableState === "hasError",
+    userGrantsError: params.userGrantsLoadable.state === "hasError",
+  });
+  const saving = isPermissionActionSaving({
+    grantLoading: params.grantLoadableState === "loading",
+  });
+  const userGrantPolicy = permissionActionUserGrantPolicy(
+    params.userGrantsLoadable,
+    params.block,
+  );
+  const alreadyApplied = isPermissionActionAlreadyApplied({
+    hasAgent: params.hasAgent,
+    userGrantPolicy,
+    action: params.block.action,
+    expirationAvailable: params.expirationAvailable,
+    requestedExpiresIn: params.block.expiresIn,
+    currentExpiresAt: params.currentGrantExpiresAt,
+  });
+  const saveDone = params.grantLoadableState === "hasData";
+  const buttonState = createPermissionActionCardButtonState({
+    hasAgent: params.hasAgent,
+    focusedPermission,
+    loading,
+    loadError,
+    saving,
+    saveDone,
+    alreadyApplied,
+  });
+  return {
+    actionLabel,
+    buttonState,
+    focusedPermission,
+    finished: saveDone,
+  };
+}
+
+function runPermissionAction(params: {
+  hasAgent: boolean;
+  focusedPermission: { name: string } | undefined;
+  state: PermissionActionButtonState;
+  finished: boolean;
+  runUserGrant: () => void;
+}): void {
+  if (
+    !params.hasAgent ||
+    !params.focusedPermission ||
+    params.state.loading ||
+    params.state.loadError ||
+    params.state.saving ||
+    params.state.alreadyApplied ||
+    params.finished
+  ) {
+    return;
+  }
+
+  params.runUserGrant();
+}
+
+function createPermissionActionHandler(params: {
+  block: PermissionActionBlock;
+  pageSignal: AbortSignal;
+  hasAgent: boolean;
+  focusedPermission: { name: string } | undefined;
+  state: PermissionActionButtonState;
+  finished: boolean;
+  expirationAvailable: boolean;
+  expiresIn: UserPermissionGrantExpiresIn;
+  upsertGrant: UpsertUserPermissionGrantFn;
+}): () => void {
+  return () => {
+    const permissionName =
+      params.focusedPermission?.name ?? params.block.permission;
+    runPermissionAction({
+      hasAgent: params.hasAgent,
+      focusedPermission: params.focusedPermission,
+      state: params.state,
+      finished: params.finished,
+      runUserGrant: () => {
+        detach(
+          params.upsertGrant(
+            {
+              agentId: params.block.agentId,
+              connectorRef: params.block.connectorRef,
+              permission: permissionName,
+              action: params.block.action,
+              ...(params.expirationAvailable
+                ? { expiresIn: params.expiresIn }
+                : {}),
+            },
+            params.pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      },
+    });
+  };
+}
+
+function PermissionActionCardContent({
+  block,
+  connectorLabel,
+  actionLabel,
+  permissionName,
+  buttonState,
+  expirationAvailable,
+  expiresIn,
+  onExpiresInChange,
+  expiresAt,
+  onClick,
+}: {
+  block: PermissionActionBlock;
+  connectorLabel: string;
+  actionLabel: string;
+  permissionName: string;
+  buttonState: PermissionActionButtonState;
+  expirationAvailable: boolean;
+  expiresIn: UserPermissionGrantExpiresIn;
+  onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
+  expiresAt: string | null;
+  onClick: () => void;
+}) {
+  const expiryText = expirationAvailable
+    ? permissionGrantExpiryText(expiresAt)
+    : null;
+  const showDurationSelect =
+    expirationAvailable && !buttonState.alreadyApplied && !buttonState.saveDone;
+  return (
+    <div
+      data-testid="permission-action-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <ConnectorIcon type={block.connectorRef} size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
+            {connectorLabel} permissions
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            {actionLabel} {permissionName}
+          </div>
+          {expiryText && (
+            <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              {expiryText}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+        {showDurationSelect && (
+          <PermissionGrantDurationSelect
+            value={expiresIn}
+            onValueChange={onExpiresInChange}
+            disabled={buttonState.loading || buttonState.saving}
+            ariaLabel="Permission duration"
+          />
+        )}
+        <PermissionActionButton
+          state={buttonState}
+          action={block.action}
+          onClick={onClick}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
+  const pageSignal = useGet(pageSignal$);
+  const config = CONNECTOR_TYPES[block.connectorRef];
+  const expirationAvailable = block.action === "allow";
+  const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
+  const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
+  const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
+  const expiresIn =
+    expiresInByScope[durationScope] ??
+    block.expiresIn ??
+    DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
+  const agentLoadable = useLastLoadable(agentById(block.agentId));
+  const [grantLoadable, upsertGrant] = useLoadableSet(
+    upsertUserPermissionGrant$,
+  );
+  const userGrantsLoadable = useLoadable(
+    userPermissionGrantsByAgent({
+      agentId: block.agentId,
+    }),
+  );
+  const hasAgent =
+    agentLoadable.state === "hasData" && Boolean(agentLoadable.data);
+  const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
+  const actionState = createPermissionActionCardViewState({
+    block,
+    hasAgent,
+    agentLoadableState: agentLoadable.state,
+    userGrantsLoadable,
+    grantLoadableState: grantLoadable.state,
+    expirationAvailable,
+    currentGrantExpiresAt: existingGrant?.expiresAt,
+  });
+  const grantExpiresAt =
+    grantLoadable.state === "hasData"
+      ? grantLoadable.data.expiresAt
+      : (existingGrant?.expiresAt ?? null);
+
+  return (
+    <PermissionActionCardContent
+      block={block}
+      connectorLabel={config.label}
+      actionLabel={actionState.actionLabel}
+      permissionName={actionState.focusedPermission?.name ?? block.permission}
+      buttonState={actionState.buttonState}
+      expirationAvailable={expirationAvailable}
+      expiresIn={expiresIn}
+      onExpiresInChange={(value) => {
+        setExpiresInForScope(durationScope, value);
+      }}
+      expiresAt={grantExpiresAt}
+      onClick={createPermissionActionHandler({
+        block,
+        pageSignal,
+        hasAgent,
+        focusedPermission: actionState.focusedPermission,
+        state: actionState.buttonState,
+        finished: actionState.finished,
+        expirationAvailable,
+        expiresIn,
+        upsertGrant,
+      })}
+    />
+  );
+}
+
+function ChatConnectorActionConnectModal() {
+  const active = useGet(activeChatConnectorAction$);
+  const close = useSet(closeChatConnectorActionConnectDialog$);
+  const [, complete] = useLoadableSet(completeChatConnectorActionConnect$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (!active) {
+    return null;
+  }
+
+  return (
+    <ConnectModal
+      onClose={close}
+      onSuccess={() => {
+        return complete(pageSignal);
+      }}
+    />
+  );
+}
+
+function isImageFilename(filename: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif|heic|heif|tiff?|psd)$/i.test(
+    filename,
+  );
+}
+
+const CREDITS_PER_DOLLAR = 1000;
+const CREDIT_TOP_UP_OPTIONS = [100_000, 200_000, 300_000] as const;
+
+function formatCreditsUsd(credits: number): string {
+  const dollars = credits / CREDITS_PER_DOLLAR;
+  return dollars.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: Number.isInteger(dollars) ? 0 : 2,
+  });
+}
+
+function customCreditsFromForm(form: HTMLFormElement | null): number | null {
+  const element = form?.elements.namedItem("customUsd");
+  if (!(element instanceof HTMLInputElement)) {
+    return null;
+  }
+
+  const usd = Number(element.value);
+  const credits = usd * CREDITS_PER_DOLLAR;
+  if (!Number.isInteger(credits) || credits < 1000 || credits > 10_000_000) {
+    return null;
+  }
+  return credits;
+}
+
+function CreditsAvailableMessage() {
+  return (
+    <div className="max-w-md">
+      <p className="text-[0.9375rem] font-medium text-emerald-700 dark:text-emerald-300">
+        Credits available
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Your credits have been added. You can continue chatting with Zero.
+      </p>
+    </div>
+  );
+}
+
+function insufficientCreditsCopy(params: {
+  readonly isFree: boolean;
+  readonly requiresPro: boolean;
+  readonly roleResolved: boolean;
+  readonly canManageBilling: boolean;
+}): { readonly headline: string; readonly helper: string } {
+  const headline = params.requiresPro
+    ? "Upgrade to Pro to run Zero"
+    : params.isFree
+      ? "You've used your free credits"
+      : "You're out of credits";
+  if (!params.roleResolved) {
+    return { headline, helper: "Checking billing permissions..." };
+  }
+  if (!params.canManageBilling) {
+    return {
+      headline,
+      helper:
+        params.requiresPro || params.isFree
+          ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
+          : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
+    };
+  }
+  return {
+    headline,
+    helper:
+      params.requiresPro || params.isFree
+        ? "Upgrade to Pro to keep chatting with Zero."
+        : "Add credits to keep chatting with Zero.",
+  };
+}
+
+function PaidCreditCheckoutActions({
+  redirecting,
+  handleCreditClick,
+}: {
+  readonly redirecting: boolean;
+  readonly handleCreditClick: (
+    selection: CreditCheckoutSelection,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => void;
+}) {
+  const handleCustomCreditClick = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    const credits = customCreditsFromForm(event.currentTarget.form);
+    if (credits === null) {
+      toast.error("Enter between $1 and $10,000");
+      return;
+    }
+    handleCreditClick({ credits, customAmount: true }, event);
+  };
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">
+        {CREDIT_TOP_UP_OPTIONS.map((credits) => {
+          return (
+            <button
+              key={credits}
+              type="button"
+              onClick={(event) => {
+                handleCreditClick({ credits }, event);
+              }}
+              disabled={redirecting}
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            >
+              {formatCreditsUsd(credits)}
+            </button>
+          );
+        })}
+        <details>
+          <summary
+            role="button"
+            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
+          >
+            Custom
+          </summary>
+          <form className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">$</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              name="customUsd"
+              defaultValue="100"
+              onInput={(event) => {
+                event.currentTarget.value = event.currentTarget.value.replace(
+                  /\D/g,
+                  "",
+                );
+              }}
+              aria-label="Custom dollar amount"
+              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
+            />
+            <button
+              type="button"
+              onClick={handleCustomCreditClick}
+              disabled={redirecting}
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            >
+              {redirecting ? "Redirecting..." : "Buy"}
+            </button>
+          </form>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+function InsufficientCreditsCard() {
+  const billingLoadable = useLoadable(billingStatusAsync$);
+  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
+  const [creditCheckoutLoadable, creditCheckout] =
+    useLoadableSet(startCreditCheckout$);
+  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
+  const setTab = useSet(setActiveOrgManageTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const pageSignal = useGet(pageSignal$);
+
+  const tier =
+    billingLoadable.state === "hasData" ? billingLoadable.data.tier : null;
+  const credits =
+    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
+  const roleResolved = isAdminLoadable.state === "hasData";
+  const canManageBilling = roleResolved ? isAdminLoadable.data : false;
+  const requiresPro = tier === "pro-suspend";
+  const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
+  const isFree = tier === "free" || tier === null;
+  const shouldStartProCheckout = requiresPro || isFree;
+  const redirecting =
+    checkoutLoadable.state === "loading" ||
+    creditCheckoutLoadable.state === "loading";
+
+  if (hasAvailableCredits) {
+    return <CreditsAvailableMessage />;
+  }
+
+  const { headline, helper } = insufficientCreditsCopy({
+    isFree,
+    requiresPro,
+    roleResolved,
+    canManageBilling,
+  });
+
+  const openBilling = () => {
+    setTab("billing");
+    setSubPage(false);
+    detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+  };
+
+  const handleUpgradeClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (shouldStartProCheckout) {
+      const newTab = event.metaKey || event.ctrlKey;
+      detach(
+        checkout("pro", newTab, undefined, pageSignal),
+        Reason.DomCallback,
+      );
+      return;
+    }
+    openBilling();
+  };
+
+  const handleCreditClick = (
+    selection: CreditCheckoutSelection,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    const newTab = event.metaKey || event.ctrlKey;
+    detach(creditCheckout(selection, newTab, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
+      <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
+      {!canManageBilling ? null : shouldStartProCheckout ? (
+        <button
+          type="button"
+          onClick={handleUpgradeClick}
+          disabled={redirecting}
+          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+        >
+          {redirecting ? "Redirecting..." : "Upgrade to Pro"}
+        </button>
+      ) : (
+        <PaidCreditCheckoutActions
+          redirecting={redirecting}
+          handleCreditClick={handleCreditClick}
+        />
+      )}
+    </div>
+  );
+}
+
+function AssistantErrorContent({ error }: { error: string }) {
+  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
+  const setTab = useSet(setActiveOrgManageTab$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (error === "insufficient_credits") {
+    return <InsufficientCreditsCard />;
+  }
+
+  if (error.trim().toLowerCase() === "run cancelled") {
+    return (
+      <div
+        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[0.9375rem] text-muted-foreground"
+        style={{
+          border: "0.7px solid hsl(var(--border))",
+          borderRadius: "12px",
+        }}
+      >
+        <IconHandStop size={14} stroke={1.75} className="shrink-0" />
+        <span>Paused mid-thought — pick it back up whenever.</span>
+      </div>
+    );
+  }
+
+  const noProviderGuidance = RUN_ERROR_GUIDANCE.NO_MODEL_PROVIDER;
+  const isNoModelProvider =
+    noProviderGuidance !== undefined &&
+    error.toLowerCase().includes(noProviderGuidance.title.toLowerCase());
+
+  if (isNoModelProvider) {
+    return (
+      <div className="flex items-start gap-2 text-foreground">
+        <IconAlertCircle
+          size={16}
+          className="shrink-0 mt-[3px] text-amber-500"
+        />
+        <span>
+          No model provider configured yet.{" "}
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+            onClick={() => {
+              setTab("providers");
+              detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+            }}
+          >
+            Set one up in Workspace Settings
+          </button>{" "}
+          to get started.
+        </span>
+      </div>
+    );
+  }
+
+  const incompatibleGuidance = RUN_ERROR_GUIDANCE.PROVIDER_INCOMPATIBLE;
+  const isProviderIncompatible =
+    (incompatibleGuidance !== undefined &&
+      error.toLowerCase().includes(incompatibleGuidance.title.toLowerCase())) ||
+    error.includes("Cannot continue session") ||
+    error.includes("Invalid signature in thinking block");
+
+  if (isProviderIncompatible) {
+    return (
+      <div className="flex items-start gap-2 text-foreground">
+        <IconAlertCircle
+          size={16}
+          className="shrink-0 mt-[3px] text-amber-500"
+        />
+        <span>
+          This session was started with a different model provider and
+          can&apos;t be continued with the current one.{" "}
+          <Link
+            pathname="/"
+            className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+          >
+            Start a new session
+          </Link>
+        </span>
+      </div>
+    );
+  }
+
+  const deletedGuidance = RUN_ERROR_GUIDANCE.PROVIDER_DELETED;
+  const isProviderDeleted =
+    deletedGuidance !== undefined &&
+    (error.toLowerCase().includes(deletedGuidance.title.toLowerCase()) ||
+      error.toLowerCase().includes(deletedGuidance.guidance.toLowerCase()));
+
+  if (isProviderDeleted) {
+    return (
+      <div className="flex items-start gap-2 text-foreground">
+        <IconAlertCircle
+          size={16}
+          className="shrink-0 mt-[3px] text-amber-500"
+        />
+        <span>
+          The model provider used by this thread has been deleted.{" "}
+          <Link
+            pathname="/"
+            className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+          >
+            Start a new chat thread
+          </Link>{" "}
+          to continue.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2 text-destructive">
+      <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
+      <Markdown
+        source={error}
+        style={{ fontSize: "inherit", lineHeight: "inherit" }}
+      />
+    </div>
+  );
+}
+
+function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
+  const agentId = useLastResolved(thread.agentId$) ?? "";
+  return (
+    <Link
+      pathname="/agents/:agentId"
+      options={{ pathParams: { agentId } }}
+      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      aria-label="View agent profile"
+    >
+      <AgentAvatarImg
+        name={agentId}
+        alt=""
+        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
+      />
+    </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Paged message rendering — renders from groupedChatMessages$ (flat data,
+// no signal-based run loops).
+// ---------------------------------------------------------------------------
+
+function PagedGroupRow({
+  group,
+  thread,
+  completedWorkFold,
+}: {
+  group: GroupedChatMessageGroup;
+  thread: ChatThreadSignals;
+  completedWorkFold?: {
+    groups: readonly GroupedChatMessageGroup[];
+    hiddenGroups: readonly GroupedChatMessageGroup[];
+    expanded: boolean;
+    onToggle: () => void;
+  };
+}) {
+  if (group.role === "user") {
+    return <PagedUserGroup group={group} thread={thread} />;
+  }
+  return (
+    <PagedAssistantGroup
+      group={group}
+      thread={thread}
+      completedWorkFold={completedWorkFold}
+    />
+  );
+}
+
+function PagedUserGroup({
+  group,
+  thread,
+}: {
+  group: GroupedChatMessageGroup;
+  thread: ChatThreadSignals;
+}) {
+  return (
+    <>
+      {group.messages.map((msg) => {
+        return <PagedUserMessage key={msg.id} message={msg} thread={thread} />;
+      })}
+    </>
+  );
+}
+
+function isAutomationUserMessage(
+  message: EnrichedChatMessage,
+): message is EnrichedChatMessage & { role: "user" } {
+  return (
+    message.role === "user" &&
+    (message.automationSnapshot !== undefined ||
+      message.automationTitle !== undefined ||
+      message.automationId !== undefined)
+  );
+}
+
+function automationMessageLabel(
+  message: EnrichedChatMessage & { role: "user" },
+): string {
+  return (
+    message.automationSnapshot?.description?.trim() ||
+    message.automationSnapshot?.title?.trim() ||
+    message.automationTitle?.trim() ||
+    "Automation run"
+  );
+}
+
+function resolveAttachments(
+  message: PagedChatMessage,
+  parsed: { filename: string; url: string }[],
+) {
+  const source =
+    message.attachFiles && message.attachFiles.length > 0
+      ? message.attachFiles
+      : parsed;
+  return source.map((f) => {
+    const contentType =
+      "contentType" in f && typeof f.contentType === "string"
+        ? f.contentType
+        : undefined;
+    const kind = classifyChatAttachment({
+      filename: f.filename,
+      url: f.url,
+      contentType,
+    });
+    return {
+      filename: f.filename,
+      url: f.url,
+      contentType,
+      isImage: kind === "image" || isImageFilename(f.filename),
+      kind,
+    };
+  });
+}
+
+function attachmentIdFromUrl(url: string): string | null {
+  if (!URL.canParse(url, window.location.origin)) {
+    return null;
+  }
+  const parsed = new URL(url, window.location.origin);
+  const match = parsed.pathname.match(/^\/f\/[^/]+\/([^/]+)\/[^/]+$/);
+  return match?.[1] ?? null;
+}
+
+function inferAttachmentContentType(filename: string, kind: string): string {
+  const contentTypesByExtension: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    bmp: "image/bmp",
+    avif: "image/avif",
+    heic: "image/heic",
+    heif: "image/heif",
+    tif: "image/tiff",
+    tiff: "image/tiff",
+    psd: "image/vnd.adobe.photoshop",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    mp3: "audio/mpeg",
+    mpga: "audio/mpeg",
+    wav: "audio/wav",
+    wave: "audio/wave",
+    m4a: "audio/mp4",
+    aac: "audio/aac",
+    ogg: "audio/ogg",
+    oga: "audio/ogg",
+    opus: "audio/opus",
+    flac: "audio/flac",
+    pdf: "application/pdf",
+    txt: "text/plain",
+    log: "text/plain",
+    csv: "text/csv",
+    md: "text/markdown",
+    html: "text/html",
+    htm: "text/html",
+    json: "application/json",
+    xml: "application/xml",
+    yaml: "application/yaml",
+    yml: "application/yaml",
+    tsv: "text/tab-separated-values",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    docm: "application/vnd.ms-word.document.macroenabled.12",
+    dotm: "application/vnd.ms-word.template.macroenabled.12",
+    dotx: "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+    odt: "application/vnd.oasis.opendocument.text",
+    rtf: "application/rtf",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xlsb: "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+    xlsm: "application/vnd.ms-excel.sheet.macroenabled.12",
+    xltm: "application/vnd.ms-excel.template.macroenabled.12",
+    xltx: "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    potm: "application/vnd.ms-powerpoint.template.macroenabled.12",
+    potx: "application/vnd.openxmlformats-officedocument.presentationml.template",
+    odp: "application/vnd.oasis.opendocument.presentation",
+    ppsx: "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+    ppsm: "application/vnd.ms-powerpoint.slideshow.macroenabled.12",
+    pptm: "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+    zip: "application/zip",
+    rar: "application/vnd.rar",
+    "7z": "application/x-7z-compressed",
+    tar: "application/x-tar",
+    gz: "application/gzip",
+    tgz: "application/gzip",
+    bz2: "application/x-bzip2",
+    xz: "application/x-xz",
+    pages: "application/vnd.apple.pages",
+    numbers: "application/vnd.apple.numbers",
+    key: "application/vnd.apple.keynote",
+    parquet: "application/vnd.apache.parquet",
+    sqlite: "application/vnd.sqlite3",
+    sqlite3: "application/vnd.sqlite3",
+    db: "application/vnd.sqlite3",
+    epub: "application/epub+zip",
+    ai: "application/postscript",
+  };
+  const lower = filename.toLowerCase();
+  const extension = lower.includes(".") ? lower.split(".").pop() : undefined;
+  const contentType =
+    extension === undefined ? undefined : contentTypesByExtension[extension];
+  if (contentType !== undefined) {
+    return contentType;
+  }
+  switch (kind) {
+    case "markdown": {
+      return "text/markdown";
+    }
+    case "text": {
+      return "text/plain";
+    }
+    case "json": {
+      return "application/json";
+    }
+    case "csv": {
+      return "text/csv";
+    }
+    case "pdf": {
+      return "application/pdf";
+    }
+    case "html": {
+      return "text/html";
+    }
+    default: {
+      return "application/octet-stream";
+    }
+  }
+}
+
+function clipboardAttachmentsFromMessage(
+  message: PagedChatMessage,
+  parsed: { filename: string; url: string }[],
+): ChatClipboardAttachment[] {
+  const source =
+    message.attachFiles && message.attachFiles.length > 0
+      ? message.attachFiles
+      : parsed;
+  return source.map((f) => {
+    const contentType =
+      "contentType" in f && typeof f.contentType === "string"
+        ? f.contentType
+        : undefined;
+    const kind = classifyChatAttachment({
+      filename: f.filename,
+      url: f.url,
+      contentType,
+    });
+    return {
+      id:
+        "id" in f && typeof f.id === "string"
+          ? f.id
+          : attachmentIdFromUrl(f.url),
+      filename: f.filename,
+      url: f.url,
+      contentType: contentType ?? inferAttachmentContentType(f.filename, kind),
+      size: "size" in f && typeof f.size === "number" ? f.size : 0,
+    };
+  });
+}
+
+function UserMessageAttachments({
+  attachments,
+  onImageClick,
+}: {
+  attachments: ReturnType<typeof resolveAttachments>;
+  onImageClick: (url: string) => void;
+}) {
+  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
+      {attachments.map((a) => {
+        if (a.isImage) {
+          return (
+            <ChatImagePreviewLink
+              key={a.url}
+              alt={a.filename}
+              ariaLabel={`Preview ${a.filename}`}
+              imageClassName="block h-auto w-auto max-h-[360px] max-w-full object-contain"
+              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
+              onPreview={() => {
+                onImageClick(a.url);
+              }}
+              placeholderClassName="aspect-[4/3] w-[min(100%,260px)]"
+              url={a.url}
+            />
+          );
+        }
+        if (a.kind === "video") {
+          return (
+            <ChatVideoPreviewButton
+              key={a.url}
+              ariaLabel={`Preview ${a.filename}`}
+              buttonClassName={CHAT_INLINE_MEDIA_PREVIEW_CLASS}
+              filename={a.filename}
+              onPreview={() => {
+                openVideoLightbox({
+                  url: a.url,
+                  filename: a.filename,
+                });
+              }}
+              posterClassName="h-full w-full"
+              url={a.url}
+              videoClassName="h-full w-full object-contain"
+            />
+          );
+        }
+        if (
+          a.kind === "markdown" ||
+          a.kind === "text" ||
+          a.kind === "json" ||
+          a.kind === "csv" ||
+          a.kind === "pdf" ||
+          a.kind === "html"
+        ) {
+          return (
+            <PreviewableFileAttachmentChip
+              key={a.url}
+              filename={a.filename}
+              url={a.url}
+              kind={a.kind}
+            />
+          );
+        }
+        if (a.kind === "audio") {
+          return (
+            <PreviewableAudioAttachmentChip
+              key={a.url}
+              filename={a.filename}
+              url={a.url}
+              contentType={a.contentType}
+            />
+          );
+        }
+        return (
+          <FileAttachmentChip
+            key={a.url}
+            filename={a.filename}
+            url={a.url}
+            contentType={a.contentType}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function UserMessageActions({
+  canCopy,
+  copied,
+  onCopy,
+}: {
+  canCopy: boolean;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  if (!canCopy) {
+    return null;
+  }
+  return (
+    <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      <button
+        type="button"
+        onClick={onCopy}
+        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+        aria-label="Copy message"
+      >
+        {copied ? (
+          <IconCheck size={18} stroke={1.5} />
+        ) : (
+          <IconCopy size={18} stroke={1.5} />
+        )}
+      </button>
+    </div>
+  );
+}
+
+function formatTemplateIdLabel(templateId: string): string {
+  const label = templateId
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
+    .replace(/-/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function generationTemplateLabel(
+  value: GenerationTemplateRequest | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  if (value.type === "video") {
+    const item = VIDEO_STYLE_PRESETS.find((candidate) => {
+      return candidate.id === value.selection.stylePresetId;
+    });
+    return item?.nameEn ?? formatTemplateIdLabel(value.selection.stylePresetId);
+  }
+  if (value.type === "illustration") {
+    const item = ILLUSTRATION_TEMPLATE_ITEMS.find((candidate) => {
+      return (
+        candidate.illustrationStyleId === value.selection.illustrationStyleId
+      );
+    });
+    return (
+      item?.title ?? formatTemplateIdLabel(value.selection.illustrationStyleId)
+    );
+  }
+  const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+    return (
+      candidate.designSystemId === value.selection.designSystemId &&
+      candidate.templateId === value.selection.templateId
+    );
+  });
+  return item?.title ?? formatTemplateIdLabel(value.selection.templateId);
+}
+
+function generationTemplateTypeLabel(
+  value: GenerationTemplateRequest | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  if (value.type === "video") {
+    return "Video";
+  }
+  if (value.type === "illustration") {
+    return "Illustration";
+  }
+  return "Presentation";
+}
+
+function UserMessageGenerationTemplate({
+  generationTemplate,
+}: {
+  generationTemplate: GenerationTemplateRequest | undefined;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const templateLabelEnabled =
+    generationTemplate?.type === "video"
+      ? (features?.[FeatureSwitchKey.VideoTemplatePicker] ?? false)
+      : (features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false);
+  if (!templateLabelEnabled) {
+    return null;
+  }
+  const label = generationTemplateLabel(generationTemplate);
+  const typeLabel = generationTemplateTypeLabel(generationTemplate);
+  if (!label || !typeLabel) {
+    return null;
+  }
+  return (
+    <div
+      aria-label={`Message template ${label}`}
+      className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
+      title={`${typeLabel} · ${label}`}
+    >
+      {generationTemplate?.type === "video" ? (
+        <IconVideo size={15} stroke={1.8} className="shrink-0" />
+      ) : generationTemplate?.type === "illustration" ? (
+        <IconPhoto size={15} stroke={1.8} className="shrink-0" />
+      ) : (
+        <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      )}
+      <span className="shrink-0">{typeLabel}</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">{label}</span>
+    </div>
+  );
+}
+
+function AutomationUserMessage({
+  automationId,
+  automationLabel,
+}: {
+  automationId: string | undefined;
+  automationLabel: string;
+}) {
+  const cardClassName =
+    "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
+  const body = (
+    <>
+      <IconClock size={15} className="shrink-0" />
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {automationLabel}
+      </span>
+    </>
+  );
+  return (
+    <div data-role="user" className="group">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex w-full flex-col items-end">
+          {automationId ? (
+            <Link
+              pathname="/automations/:automationId"
+              options={{ pathParams: { automationId } }}
+              className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
+              aria-label={`Open automation ${automationLabel}`}
+            >
+              {body}
+            </Link>
+          ) : (
+            <div className={cardClassName}>{body}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PagedUserMessage({
+  message,
+  thread,
+}: {
+  message: EnrichedChatMessage;
+  thread: ChatThreadSignals;
+}) {
+  const content = message.content ?? "";
+  // Two attachment sources coexist: the structured `attachFiles` field
+  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
+  // over from messages sent before #10243 split the flows. Use the structured
+  // source when it's present and fall back to inline parsing otherwise.
+  const { cleanContent, parsed } = parseInlineAttachments(content);
+  // `ATTACH_ONLY_PLACEHOLDER` is the server-side placeholder stored when the
+  // user sent only files with no typed text — strip it so the bubble shows
+  // just the attachments.
+  const strippedContent =
+    message.attachFiles &&
+    message.attachFiles.length > 0 &&
+    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+      ? ""
+      : cleanContent;
+  const bodyBlocks = enrichBlocksWithTextPreviews(
+    parseBodyRenderBlocks(strippedContent, { previews: false }).blocks,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const openImageLightbox = useSet(openAttachmentImageLightbox$);
+  const openLightbox = (url: string) => {
+    openImageLightbox(url);
+  };
+  const copiedId = useGet(thread.copiedMessageId$);
+  const copied = copiedId === message.id;
+  const copyMessage = useSet(thread.copyMessage$);
+  const allAttachments = resolveAttachments(message, parsed);
+  const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
+  const copyText = strippedContent;
+  const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
+
+  const handleCopy = () => {
+    if (!canCopy) {
+      return;
+    }
+    detach(
+      copyMessage(
+        message.id,
+        { text: copyText, attachments: clipboardAttachments },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  if (isAutomationUserMessage(message)) {
+    return (
+      <AutomationUserMessage
+        automationId={message.automationId}
+        automationLabel={automationMessageLabel(message)}
+      />
+    );
+  }
+
+  return (
+    <div data-role="user" className="group">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex flex-col items-end w-full">
+          <UserMessageGenerationTemplate
+            generationTemplate={message.generationTemplate}
+          />
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+            {bodyBlocks.length > 0 && (
+              <div className="px-4 py-3">
+                <BodyContentBlocks
+                  blocks={bodyBlocks}
+                  openLightbox={openLightbox}
+                  hardBreaks
+                />
+              </div>
+            )}
+            <UserMessageAttachments
+              attachments={allAttachments}
+              onImageClick={openLightbox}
+            />
+          </div>
+          <UserMessageActions
+            canCopy={canCopy}
+            copied={copied}
+            onCopy={handleCopy}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PagedAssistantGroup({
+  group,
+  thread,
+  completedWorkFold,
+}: {
+  group: GroupedChatMessageGroup;
+  thread: ChatThreadSignals;
+  completedWorkFold?: {
+    groups: readonly GroupedChatMessageGroup[];
+    hiddenGroups: readonly GroupedChatMessageGroup[];
+    expanded: boolean;
+    onToggle: () => void;
+  };
+}) {
+  const groupElementId = `chat-message-group-${group.beginMessageId}`;
+  const fullContent = group.messages
+    .map((m) => {
+      return m.content;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  return (
+    <div
+      id={groupElementId}
+      data-role="assistant"
+      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="relative flex flex-col gap-3">
+          {completedWorkFold && (
+            <CompletedWorkFoldRow
+              groups={completedWorkFold.groups}
+              expanded={completedWorkFold.expanded}
+              onToggle={completedWorkFold.onToggle}
+            />
+          )}
+          {completedWorkFold?.expanded
+            ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
+                return (
+                  <div key={hiddenGroup.beginMessageId} className="contents">
+                    {hiddenGroup.messages.map((msg) => {
+                      return (
+                        <PagedAssistantMessageItem key={msg.id} message={msg} />
+                      );
+                    })}
+                  </div>
+                );
+              })
+            : null}
+          {group.messages.map((msg) => {
+            return <PagedAssistantMessageItem key={msg.id} message={msg} />;
+          })}
+        </div>
+      </div>
+      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+    </div>
+  );
+}
+
+function PagedAssistantMessageItem({
+  message,
+}: {
+  message: EnrichedChatMessage;
+}) {
+  const openImageLightbox = useSet(openAttachmentImageLightbox$);
+  const openLightbox = (url: string) => {
+    openImageLightbox(url);
+  };
+
+  if (message.error) {
+    return (
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
+        <AssistantErrorContent error={message.error} />
+      </div>
+    );
+  }
+
+  if (message.content) {
+    const { blocks } = message;
+    return (
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
+        {blocks.length > 0 ? (
+          <BodyContentBlocks
+            blocks={blocks}
+            openLightbox={openLightbox}
+            hardBreaks={false}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function formatCredits(value: number): string {
+  return value.toLocaleString("en-US");
+}
+
+interface RunUsageDisplayRow {
+  readonly key: string;
+  readonly label: string;
+  readonly credits: number;
+}
+
+function titleCaseUsageToken(token: string): string {
+  const upper = token.toUpperCase();
+  if (["AI", "API", "GLM", "GPT", "ID", "SQL", "URL", "VM0"].includes(upper)) {
+    return upper;
+  }
+
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+
+function formatUsageIdentifier(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    return "Usage";
+  }
+
+  return normalized
+    .split(/[/._-]+/)
+    .filter((token) => {
+      return token.length > 0;
+    })
+    .map(titleCaseUsageToken)
+    .join(" ");
+}
+
+function usageDisplayLabel(kind: string, provider: string): string {
+  if (kind === "model") {
+    return getModelDisplayName(provider);
+  }
+
+  if (provider && provider !== "unknown") {
+    return formatUsageIdentifier(provider);
+  }
+
+  return formatUsageIdentifier(kind);
+}
+
+function parseUsageKind(kind: string): {
+  readonly kind: string;
+  readonly provider?: string;
+} {
+  const parts = kind.split("/");
+  const parsedKind = parts[0];
+  if (parsedKind === "model" && parts.length >= 3) {
+    const categoryIndex = parts.findIndex((part, index) => {
+      return index > 1 && part.startsWith("tokens.");
+    });
+    const providerParts =
+      categoryIndex > 1 ? parts.slice(1, categoryIndex) : parts.slice(1, 2);
+    const provider = providerParts.join("/");
+    if (provider) {
+      return { kind: parsedKind, provider };
+    }
+  }
+
+  return { kind };
+}
+
+function buildRunUsageDisplayRows(
+  usage: ChatMessageUsagePayload,
+): readonly RunUsageDisplayRow[] {
+  const rows = new Map<string, RunUsageDisplayRow>();
+
+  for (const kindBreakdown of usage.breakdown) {
+    const parsed = parseUsageKind(kindBreakdown.kind);
+    for (const providerBreakdown of kindBreakdown.providers) {
+      const provider = parsed.provider ?? providerBreakdown.provider;
+      const key = `${parsed.kind}:${provider}`;
+      const existing = rows.get(key);
+      const credits = Math.max(0, providerBreakdown.credits);
+      rows.set(key, {
+        key,
+        label: existing?.label ?? usageDisplayLabel(parsed.kind, provider),
+        credits: (existing?.credits ?? 0) + credits,
+      });
+    }
+  }
+
+  return Array.from(rows.values());
+}
+
+function UsageChip({
+  usage,
+  title,
+  ariaLabel,
+  contentAlign = "start",
+  open,
+  setOpen,
+}: {
+  usage: ChatMessageUsagePayload;
+  title: string;
+  ariaLabel: string;
+  contentAlign?: "start" | "center" | "end";
+  open: boolean;
+  setOpen: (open: boolean) => void;
+}) {
+  const total = formatCredits(usage.totalCredits);
+  const displayRows = buildRunUsageDisplayRows(usage);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-accent hover:text-foreground transition-colors duration-150"
+          aria-label={`${ariaLabel} ${total}`}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          onClick={() => {
+            setOpen(true);
+          }}
+          onFocus={() => {
+            setOpen(true);
+          }}
+          onBlur={() => {
+            setOpen(false);
+          }}
+          onMouseEnter={() => {
+            setOpen(true);
+          }}
+          onMouseLeave={() => {
+            setOpen(false);
+          }}
+          onPointerEnter={() => {
+            setOpen(true);
+          }}
+          onPointerLeave={() => {
+            setOpen(false);
+          }}
+        >
+          <IconCoins size={17} stroke={1.5} />
+          <span>{total}</span>
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        side="bottom"
+        align={contentAlign}
+        className="w-72 p-3"
+        onPointerEnter={() => {
+          setOpen(true);
+        }}
+        onPointerLeave={() => {
+          setOpen(false);
+        }}
+        onMouseEnter={() => {
+          setOpen(true);
+        }}
+        onMouseLeave={() => {
+          setOpen(false);
+        }}
+      >
+        <div className="flex items-center justify-between gap-3 text-sm font-medium">
+          <span>{title}</span>
+          <span>{total}</span>
+        </div>
+        <div className="mt-3 flex flex-col gap-1.5">
+          {displayRows.map((row) => {
+            return (
+              <div
+                key={row.key}
+                className="flex items-center justify-between gap-3 text-xs"
+              >
+                <span className="min-w-0 truncate text-muted-foreground">
+                  {row.label}
+                </span>
+                <span className="shrink-0 text-foreground">
+                  {formatCredits(row.credits)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+const THREAD_USAGE_POPOVER_ID = "__thread_credit_usage__";
+
+export function ThreadUsageChip({
+  thread,
+  contentAlign,
+  popoverId = THREAD_USAGE_POPOVER_ID,
+}: {
+  thread: ChatThreadSignals;
+  contentAlign?: "start" | "center" | "end";
+  popoverId?: string;
+}) {
+  const usageLoadable = useLastLoadable(thread.threadUsage$);
+  const openRunId = useGet(runUsagePopoverOpenRunId$);
+  const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
+  const usage =
+    usageLoadable.state === "hasData" ? usageLoadable.data : undefined;
+
+  if (usage === undefined) {
+    return null;
+  }
+
+  return (
+    <UsageChip
+      usage={usage}
+      title="Thread credit usage"
+      ariaLabel="Thread credit usage"
+      contentAlign={contentAlign}
+      open={openRunId === popoverId}
+      setOpen={(open) => {
+        setOpenRunId(open ? popoverId : null);
+      }}
+    />
+  );
+}
+
+function RunUsageChip({
+  runId,
+  usage,
+}: {
+  runId: string;
+  usage: ChatMessageUsagePayload;
+}) {
+  const openRunId = useGet(runUsagePopoverOpenRunId$);
+  const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
+
+  return (
+    <UsageChip
+      usage={usage}
+      title="Credit usage"
+      ariaLabel="Credit usage"
+      open={openRunId === runId}
+      setOpen={(open) => {
+        setOpenRunId(open ? runId : null);
+      }}
+    />
+  );
+}
+
+function PagedGroupPrimaryActions({
+  firstRunId,
+  hasContent,
+  usage,
+  copied,
+  onCopy,
+}: {
+  firstRunId: string | undefined;
+  hasContent: boolean;
+  usage: ChatMessageUsagePayload | undefined;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1" data-testid="chat-message-actions">
+      {firstRunId && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                pathname="/activities/:activityRunId"
+                options={{
+                  pathParams: { activityRunId: firstRunId },
+                }}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="View run logs"
+              >
+                <IconChartLine size={18} stroke={1.5} />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">View activity logs</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {hasContent && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onCopy}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="Copy message"
+              >
+                {copied ? (
+                  <IconCheck size={18} stroke={1.5} />
+                ) : (
+                  <IconCopy size={18} stroke={1.5} />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {copied ? "Copied!" : "Copy message"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      {usage && firstRunId && <RunUsageChip runId={firstRunId} usage={usage} />}
+    </div>
+  );
+}
+
+function PagedGroupActions({
+  group,
+  content,
+  thread,
+}: {
+  group: GroupedChatMessageGroup;
+  content: string;
+  thread: ChatThreadSignals;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const copiedId = useGet(thread.copiedMessageId$);
+  const copied = copiedId === group.beginMessageId;
+  const copyMessage = useSet(thread.copyMessage$);
+
+  const features = useLastResolved(featureSwitch$);
+  const usageEnabled = features?.[FeatureSwitchKey.ChatRunUsage] ?? false;
+  const firstRunId = group.messages.find((m) => {
+    return m.runId;
+  })?.runId;
+  const usage = usageEnabled ? group.usage : undefined;
+  const hasContent = content.length > 0;
+
+  if (group.role === "user") {
+    return null;
+  }
+
+  const handleCopy = () => {
+    if (!content) {
+      return;
+    }
+    detach(
+      copyMessage(
+        group.beginMessageId,
+        { text: content, attachments: [] },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+      <div className="hidden @[900px]:block" />
+      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+        <PagedGroupPrimaryActions
+          firstRunId={firstRunId}
+          hasContent={hasContent}
+          usage={usage}
+          copied={copied}
+          onCopy={handleCopy}
+        />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,10 @@
+node_modules/
+*.log
+.env
+.env.local
+debug-*.png
+lighthouse/lighthouse-reports/
+playwright/.auth/
+playwright/.clerk/
+playwright-report/
+test-results/

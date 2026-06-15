@@ -1,0 +1,16 @@
+node_modules
+.pnpm-store/
+dist
+packages/sandbox-scripts/src/dist/bundled.ts
+packages/connectors/src/firewalls/*.generated.ts
+pnpm-lock.yaml
+coverage
+.claude
+CHANGELOG.md
+.source
+Caddyfile
+.dev-process-pid
+**/codereviews/**
+apps/web/src/db/migrations/
+packages/db/src/migrations/
+packages/db/scripts/migrations/

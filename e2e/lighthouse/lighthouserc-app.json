@@ -1,0 +1,17 @@
+{
+  "ci": {
+    "collect": {
+      "numberOfRuns": 3,
+      "url": [],
+      "settings": {
+        "onlyCategories": ["performance", "accessibility", "best-practices"],
+        "chromeFlags": "--no-sandbox --headless",
+        "maxWaitForLoad": 60000
+      },
+      "puppeteerScript": "./puppeteer-auth.js"
+    },
+    "upload": {
+      "target": "temporary-public-storage"
+    }
+  }
+}

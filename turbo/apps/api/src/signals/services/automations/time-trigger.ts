@@ -1,0 +1,175 @@
+import { automationTriggers } from "@vm0/db/schema/automation";
+import { Cron } from "croner";
+import { and, eq } from "drizzle-orm";
+
+import type { Db } from "../../external/db";
+
+type TriggerRow = typeof automationTriggers.$inferSelect;
+
+/**
+ * Computes the next fire time for a cron expression in the given timezone,
+ * starting the search from `fromDate`. Returns null when the expression has no
+ * further occurrences.
+ */
+export function calculateNextRun(
+  cronExpression: string,
+  timezone: string,
+  fromDate: Date,
+): Date | null {
+  return new Cron(cronExpression, { timezone }).nextRun(fromDate);
+}
+
+/**
+ * Deploy-time recurrence inputs needed to resolve a trigger's type and first
+ * run. A thin structural view of the deploy request so the trigger does not
+ * depend on the contract type.
+ */
+interface TriggerSpec {
+  readonly cronExpression?: string;
+  readonly atTime?: string;
+  readonly timezone: string;
+  readonly enabled?: boolean;
+}
+
+/**
+ * Resolved trigger shape for persistence at deploy time: the discriminating
+ * trigger type and the first `nextRunAt` (null when nothing is scheduled, e.g. a
+ * disabled loop).
+ */
+interface ResolvedTrigger {
+  readonly triggerType: "cron" | "once" | "loop";
+  readonly nextRunAt: Date | null;
+}
+
+/**
+ * Time-based trigger: owns the scheduling math (next-run calculation and the
+ * optimistic-lock claim) for `automation_triggers` time rows. The interpreter
+ * is keyed off the Automation; this trigger is keyed off time and is the only
+ * trigger implementation today (YAGNI — no registry).
+ */
+export class TimeTrigger {
+  /**
+   * Resolve the trigger type and first run from a deploy request. Cron resolves
+   * to the next cron occurrence; a one-time `atTime` resolves to that instant; a
+   * loop is due immediately when enabled, otherwise unscheduled.
+   */
+  resolve(spec: TriggerSpec, currentTime: Date): ResolvedTrigger {
+    if (spec.cronExpression) {
+      return {
+        triggerType: "cron",
+        nextRunAt: calculateNextRun(
+          spec.cronExpression,
+          spec.timezone,
+          currentTime,
+        ),
+      };
+    }
+    if (spec.atTime) {
+      return { triggerType: "once", nextRunAt: new Date(spec.atTime) };
+    }
+    return {
+      triggerType: "loop",
+      nextRunAt: spec.enabled ? currentTime : null,
+    };
+  }
+
+  /**
+   * Next run after a completion callback (the run finished, success or failure).
+   * Cron advances from the cron expression captured at dispatch (null when the
+   * one-time callback carried no expression); a loop advances by the trigger's
+   * interval and requires one to be present. Disabling collapses the next run to
+   * null.
+   */
+  advanceAfterCompletion(args: {
+    readonly triggerType: "cron" | "loop";
+    readonly cronExpression: string | undefined;
+    readonly intervalSeconds: number | null;
+    readonly timezone: string;
+    readonly completedAt: Date;
+    readonly shouldDisable: boolean;
+  }): Date | null {
+    if (args.shouldDisable) {
+      return null;
+    }
+    if (args.triggerType === "cron") {
+      return args.cronExpression
+        ? calculateNextRun(args.cronExpression, args.timezone, args.completedAt)
+        : null;
+    }
+    if (args.intervalSeconds === null) {
+      throw new Error("Loop trigger is missing intervalSeconds");
+    }
+    return new Date(args.completedAt.getTime() + args.intervalSeconds * 1000);
+  }
+
+  /**
+   * Next recurrence for an `automation_triggers` time row, computed from its kind:
+   * cron advances to the next occurrence; loop advances by its interval; once does
+   * not recur, applied to a trigger row.
+   * `null` is returned when the kind cannot recur (once, or a malformed time row).
+   */
+  private static nextTriggerRun(
+    trigger: TriggerRow,
+    fromDate: Date,
+  ): Date | null {
+    if (trigger.kind === "cron" && trigger.cronExpression) {
+      return calculateNextRun(
+        trigger.cronExpression,
+        trigger.timezone,
+        fromDate,
+      );
+    }
+    if (trigger.kind === "loop" && trigger.intervalSeconds) {
+      return new Date(fromDate.getTime() + trigger.intervalSeconds * 1000);
+    }
+    return null;
+  }
+
+  /**
+   * Claim a due `automation_triggers` time row via an optimistic lock on
+   * `nextRunAt`: clear the next run, stamp `lastRunAt`, and disable one-time
+   * triggers. The recurrence advance happens in the trigger completion
+   * callback (or `advanceTriggerAfterPreRunFailure` when the run was never
+   * created). Returns the claimed row, or null when another invocation won
+   * the race (the row's `nextRunAt` already moved).
+   */
+  async evaluateTrigger(args: {
+    readonly db: Db;
+    readonly trigger: TriggerRow;
+    readonly currentTime: Date;
+  }): Promise<TriggerRow | null> {
+    const [claimed] = await args.db
+      .update(automationTriggers)
+      .set({
+        nextRunAt: null,
+        lastRunAt: args.currentTime,
+        updatedAt: args.currentTime,
+        ...(args.trigger.kind === "once" ? { enabled: false } : {}),
+      })
+      .where(
+        and(
+          eq(automationTriggers.id, args.trigger.id),
+          eq(automationTriggers.nextRunAt, args.trigger.nextRunAt!),
+        ),
+      )
+      .returning();
+    return claimed ?? null;
+  }
+
+  /**
+   * Next run for an `automation_triggers` time row after a pre-run failure in
+   * the poller (the run was never created). Cron advances to the next
+   * occurrence; a loop advances by its interval; once and interval-less loops
+   * do not reschedule. Disabling collapses the next run to null.
+   */
+  advanceTriggerAfterPreRunFailure(args: {
+    readonly trigger: TriggerRow;
+    readonly failureTime: Date;
+    readonly shouldDisable: boolean;
+  }): Date | null {
+    if (args.shouldDisable) {
+      return null;
+    }
+    return TimeTrigger.nextTriggerRun(args.trigger, args.failureTime);
+  }
+}

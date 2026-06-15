@@ -1,0 +1,2 @@
+ALTER TABLE "runner_job_queue" ADD COLUMN "session_id" varchar(255);--> statement-breakpoint
+CREATE INDEX "runner_job_queue_session_id_unclaimed_idx" ON "runner_job_queue" USING btree ("session_id") WHERE claimed_at IS NULL AND session_id IS NOT NULL;

@@ -1,0 +1,38 @@
+import type { ConnectorConfig } from "../connectors";
+
+export const square = {
+  square: {
+    label: "Square",
+    category: "sales-crm-business-operations",
+    helpText:
+      "Connect your Square account to manage payments, refunds, orders, customers, catalog, invoices, and inventory",
+    authMethods: {
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          "1. Sign in to the [Square Developer Console](https://developer.squareup.com/apps)\n2. Open (or create) an application\n3. In the left pane, choose **Credentials**\n4. At the top of the page, select **Production**\n5. Copy the **Production Access token** (format: `EAAA...`)",
+        storage: {
+          secrets: ["SQUARE_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            SQUARE_TOKEN: {
+              label: "Access Token",
+              required: true,
+              placeholder: "EAAA...",
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            SQUARE_TOKEN: "$secrets.SQUARE_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    },
+  },
+} as const satisfies Record<string, ConnectorConfig>;

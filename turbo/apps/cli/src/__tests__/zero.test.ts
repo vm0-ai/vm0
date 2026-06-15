@@ -1,0 +1,70 @@
+import { describe, it, expect } from "vitest";
+import { program, registerZeroCommands } from "../zero";
+
+describe("zero CLI program", () => {
+  registerZeroCommands(program);
+  const commandNames = program.commands.map((cmd) => {
+    return cmd.name();
+  });
+
+  it("should be named 'zero'", () => {
+    expect(program.name()).toBe("zero");
+  });
+
+  it("should register all expected zero commands", () => {
+    const expectedCommands = [
+      "org",
+      "model",
+      "model-provider",
+      "agent",
+      "connector",
+      "credit",
+      "doctor",
+      "logs",
+      "search",
+      "preference",
+      "schedule",
+      "automation",
+      "secret",
+      "skill",
+      "slack",
+      "telegram",
+      "github",
+      "phone",
+      "variable",
+      "whoami",
+      "developer-support",
+      "computer-use",
+      "generate",
+      "web",
+      "video",
+      "host",
+      "maps",
+      "banking",
+    ];
+    for (const name of expectedCommands) {
+      expect(commandNames).toContain(name);
+    }
+  });
+
+  it("should not include infrastructure or utility commands", () => {
+    const excludedCommands = [
+      "auth",
+      "compose",
+      "volume",
+      "artifact",
+      "run",
+
+      "init",
+      "upgrade",
+      "info",
+    ];
+    for (const name of excludedCommands) {
+      expect(commandNames).not.toContain(name);
+    }
+  });
+
+  it("should have exactly 28 commands", () => {
+    expect(commandNames).toHaveLength(28);
+  });
+});

@@ -1,0 +1,337 @@
+//! Session-history reader — abstracts over Claude (literal jsonl path) and
+//! codex (`CODEX_SEARCH:{dir}:{id}` marker → recursive scan + optional zstd decode).
+//!
+//! The event metadata capture path writes one of two payloads to
+//! `paths::session_history_path_file()`:
+//!
+//! - Claude: a literal filesystem path to the `.jsonl` history file.
+//! - Codex:  a `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker. The codex
+//!   CLI only writes the session file out at turn-completion time, so we
+//!   defer resolution until checkpoint time when the file is on disk.
+//!
+//! `read_session_history` is the single entry point used by `checkpoint.rs`.
+//! It returns the history bytes, decompressing legacy `.zst` files when needed.
+//!
+//! See parent epic #11386, sub-issue #11419 for the design rationale.
+//!
+//! The codex sessions layout is `${CODEX_HOME}/sessions/YYYY/MM/DD/<file>.jsonl[.zst]`.
+//! Filenames are not stably keyed to thread_id in the real codex CLI
+//! (the `rollout-` prefix mangles dashes), so we match by dash-stripped
+//! UUID substring. If no filename matches, we fail fast — silently picking
+//! "the most recent file in the tree" would risk uploading an unrelated
+//! session as the resume context, which is a multi-tenant correctness
+//! hazard. The descriptive `Codex session file not found` error from
+//! `read_session_history` surfaces the failure without logging the session id.
+
+use crate::error::AgentError;
+#[cfg(target_os = "linux")]
+use crate::nofollow_fs::Dir;
+use std::ffi::OsStr;
+use std::io;
+use std::path::{Path, PathBuf};
+
+#[cfg(target_os = "linux")]
+use std::{fs::File, io::Read};
+
+const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
+
+/// Read the session history bytes pointed to by `path_file`.
+///
+/// The file content is either a literal path (Claude) or a
+/// `CODEX_SEARCH:{dir}:{id}` marker (codex). Returns the file contents,
+/// decompressed if the resolved path ends in `.zst`.
+pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
+    let raw = std::fs::read_to_string(path_file).map_err(|e| {
+        AgentError::Checkpoint(format!("Failed to read history-path file {path_file}: {e}"))
+    })?;
+    let trimmed = raw.trim();
+
+    if let Some((sessions_dir, thread_id)) = decode_marker(trimmed) {
+        return read_codex_session_history(&sessions_dir, thread_id)?.ok_or_else(|| {
+            AgentError::Checkpoint(format!(
+                "Codex session file not found under {}",
+                sessions_dir.display()
+            ))
+        });
+    }
+
+    let session_path = PathBuf::from(trimmed);
+    read_history_bytes(&session_path)
+}
+
+/// Parse `CODEX_SEARCH:{dir}:{thread_id}` into `(dir, thread_id)`. Returns
+/// `None` for any input that doesn't carry the prefix (Claude path).
+fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
+    let rest = content.strip_prefix(CODEX_MARKER_PREFIX)?;
+    let last_colon = rest.rfind(':')?;
+    let (dir, id_with_colon) = rest.split_at(last_colon);
+    let thread_id = &id_with_colon[1..];
+    if dir.is_empty() || thread_id.is_empty() {
+        return None;
+    }
+    Some((PathBuf::from(dir), thread_id))
+}
+
+fn read_codex_session_history(
+    sessions_dir: &Path,
+    thread_id: &str,
+) -> Result<Option<Vec<u8>>, AgentError> {
+    let Some(id_norm) = normalize_codex_thread_id(thread_id) else {
+        return Ok(None);
+    };
+    if !codex_sessions_parent_is_usable(sessions_dir)? {
+        return Ok(None);
+    }
+    read_codex_session_history_impl(sessions_dir, &id_norm)
+}
+
+pub(crate) fn normalize_codex_thread_id(thread_id: &str) -> Option<String> {
+    Some(canonical_codex_thread_id(thread_id)?.replace('-', ""))
+}
+
+pub(crate) fn canonical_codex_thread_id(thread_id: &str) -> Option<String> {
+    uuid::Uuid::parse_str(thread_id)
+        .ok()
+        .map(|uuid| uuid.to_string())
+}
+
+fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentError> {
+    let Some(parent) = sessions_dir.parent() else {
+        return Ok(true);
+    };
+    if parent.as_os_str().is_empty() {
+        return Ok(true);
+    }
+    match std::fs::symlink_metadata(parent) {
+        Ok(metadata) => Ok(metadata.file_type().is_dir()),
+        Err(err) if should_skip_unusable_codex_entry(&err) => Ok(false),
+        Err(err) => Err(read_history_error(parent, err)),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn read_codex_session_history_impl(
+    sessions_dir: &Path,
+    id_norm: &str,
+) -> Result<Option<Vec<u8>>, AgentError> {
+    match std::fs::symlink_metadata(sessions_dir) {
+        Ok(metadata) if metadata.file_type().is_dir() => {}
+        Ok(_) => return Ok(None),
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(None),
+        Err(err) => return Err(read_history_error(sessions_dir, err)),
+    }
+
+    let mut found = None;
+    find_codex_session_file_recursive(sessions_dir, sessions_dir, id_norm, &mut found)?;
+    found
+        .map(|session| read_history_bytes(&session.path))
+        .transpose()
+}
+
+#[cfg(not(target_os = "linux"))]
+/// DFS walk of `dir`, recording a single matching real file. Symlinks
+/// are skipped because the Codex sessions tree is user-controlled
+/// filesystem state and checkpoint lookup must not follow it outside the
+/// expected history directory.
+fn find_codex_session_file_recursive(
+    root: &Path,
+    dir: &Path,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+) -> Result<(), AgentError> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(dir, err)),
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(dir, err)),
+        };
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
+        if file_type.is_dir() {
+            find_codex_session_file_recursive(root, &path, id_norm, found)?;
+        } else if file_type.is_file()
+            && path
+                .file_name()
+                .is_some_and(|name| codex_session_filename_matches(name, id_norm))
+        {
+            if found.is_some() {
+                return Err(duplicate_codex_session_error(root));
+            }
+            *found = Some(ResolvedCodexSession { path });
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn read_codex_session_history_impl(
+    sessions_dir: &Path,
+    id_norm: &str,
+) -> Result<Option<Vec<u8>>, AgentError> {
+    let root = match Dir::open(sessions_dir) {
+        Ok(root) => root,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(None),
+        Err(err) => return Err(read_history_error(sessions_dir, err)),
+    };
+    let mut found = None;
+    find_and_read_codex_session_file_recursive(
+        &root,
+        sessions_dir,
+        sessions_dir,
+        id_norm,
+        &mut found,
+    )?;
+    found
+        .map(|session| read_history_bytes_from_file(&session.path, session.file))
+        .transpose()
+}
+
+#[cfg(target_os = "linux")]
+fn find_and_read_codex_session_file_recursive(
+    dir: &Dir,
+    root_path: &Path,
+    dir_path: &Path,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+) -> Result<(), AgentError> {
+    let entries = match dir.read_dir() {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(dir_path, err)),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(dir_path, err)),
+        };
+        let name = entry.file_name();
+        let path = dir_path.join(&name);
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
+        if file_type.is_dir() {
+            let child = match dir.open_child_dir(&name) {
+                Ok(child) => child,
+                Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+                Err(err) => return Err(read_history_error(&path, err)),
+            };
+            find_and_read_codex_session_file_recursive(&child, root_path, &path, id_norm, found)?;
+        } else if file_type.is_file() && codex_session_filename_matches(&name, id_norm) {
+            let file = match dir.open_child_file(&name) {
+                Ok(file) => file,
+                Err(e) if should_skip_unusable_codex_entry(&e) => continue,
+                Err(e) => return Err(read_history_error(&path, e)),
+            };
+            let metadata = file
+                .metadata()
+                .map_err(|err| read_history_error(&path, err))?;
+            if !metadata.file_type().is_file() {
+                continue;
+            }
+            if found.is_some() {
+                return Err(duplicate_codex_session_error(root_path));
+            }
+            *found = Some(ResolvedCodexSession { path, file });
+        }
+    }
+
+    Ok(())
+}
+
+struct ResolvedCodexSession {
+    path: PathBuf,
+    #[cfg(target_os = "linux")]
+    file: File,
+}
+
+fn duplicate_codex_session_error(root: &Path) -> AgentError {
+    AgentError::Checkpoint(format!(
+        "Multiple Codex session files found under {}",
+        root.display()
+    ))
+}
+
+fn codex_session_filename_matches(name: &OsStr, id_norm: &str) -> bool {
+    let name = name.to_string_lossy();
+    if !(name.ends_with(".jsonl") || name.ends_with(".jsonl.zst")) {
+        return false;
+    }
+
+    let name_norm = name.replace('-', "").to_ascii_lowercase();
+    name_norm.contains(id_norm)
+}
+
+fn should_skip_unusable_codex_entry(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+    ) || is_filesystem_loop_error(err)
+}
+
+#[cfg(target_os = "linux")]
+fn is_filesystem_loop_error(err: &io::Error) -> bool {
+    err.raw_os_error() == Some(libc::ELOOP)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_filesystem_loop_error(_: &io::Error) -> bool {
+    false
+}
+
+/// Read the bytes at `path`, decompressing legacy zstd files if the extension is `.zst`.
+fn read_history_bytes(path: &Path) -> Result<Vec<u8>, AgentError> {
+    let raw = std::fs::read(path).map_err(|e| read_history_error(path, e))?;
+    decode_history_bytes(path, raw)
+}
+
+#[cfg(target_os = "linux")]
+fn read_history_bytes_from_file(path: &Path, mut file: File) -> Result<Vec<u8>, AgentError> {
+    let mut raw = Vec::new();
+    file.read_to_end(&mut raw)
+        .map_err(|e| read_history_error(path, e))?;
+    decode_history_bytes(path, raw)
+}
+
+fn read_history_error(_path: &Path, source: io::Error) -> AgentError {
+    AgentError::Checkpoint(format!("Failed to read session history: {source}"))
+}
+
+fn decode_history_bytes(path: &Path, raw: Vec<u8>) -> Result<Vec<u8>, AgentError> {
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zst"))
+    {
+        zstd::decode_all(raw.as_slice()).map_err(|e| {
+            AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
+        })
+    } else {
+        Ok(raw)
+    }
+}
+
+// Note: integration coverage for the public `read_session_history` entry
+// (both Claude literal-path and codex marker → recursive scan + zstd
+// decode) lives in `crates/guest-agent/tests/codex_session_resume.rs`,
+// driven via the `send_event` → checkpoint flow. The internal helpers
+// (`read_codex_session_history`, `codex_session_filename_matches`,
+// `read_history_bytes`, `decode_marker`) are exercised transitively by
+// those integration tests, in line with the project's "integration
+// tests only" policy (`docs/testing.md`, `CLAUDE.md`).
+//
+// `decode_marker` is the one piece of non-trivial parsing logic; if it
+// regresses, the integration tests will catch it because the codex flow
+// can't resolve a session without a valid marker.

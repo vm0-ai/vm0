@@ -1,0 +1,38 @@
+import type { ConnectorConfig } from "../connectors";
+
+export const supermemory = {
+  supermemory: {
+    label: "Supermemory",
+    category: "ai-memory-tracing-eval",
+    helpText:
+      "Connect to Supermemory for AI agent memory, semantic recall, and managed RAG.",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "Go to [console.supermemory.ai](https://console.supermemory.ai) → **API Keys** → create or copy your key.",
+        storage: {
+          secrets: ["SUPERMEMORY_API_KEY"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            SUPERMEMORY_API_KEY: {
+              label: "API Key",
+              required: true,
+              placeholder: "sm_...",
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            SUPERMEMORY_API_KEY: "$secrets.SUPERMEMORY_API_KEY",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    },
+  },
+} as const satisfies Record<string, ConnectorConfig>;

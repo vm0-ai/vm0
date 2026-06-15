@@ -1,0 +1,3 @@
+# Firewall configs produced by @vm0/firewalls-generator at install time.
+src/firewalls/*
+!src/firewalls/index.ts

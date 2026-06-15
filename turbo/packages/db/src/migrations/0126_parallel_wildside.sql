@@ -1,0 +1,1 @@
+CREATE INDEX "idx_org_cache_slug" ON "org_cache" USING btree ("slug");

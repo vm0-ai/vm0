@@ -1,0 +1,38 @@
+import type { ConnectorConfig } from "../connectors";
+
+export const brevo = {
+  brevo: {
+    label: "Brevo",
+    category: "communication-collaboration",
+    helpText:
+      "Connect your Brevo account to manage email campaigns, transactional emails, and CRM contacts",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Brevo](https://app.brevo.com)\n2. Go to **Settings** → **SMTP & API** → **API Keys**\n3. Copy your API key",
+        storage: {
+          secrets: ["BREVO_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "manual",
+          fields: {
+            BREVO_TOKEN: {
+              label: "API Key",
+              required: true,
+              placeholder: "xkeysib-...",
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            BREVO_TOKEN: "$secrets.BREVO_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+    },
+  },
+} as const satisfies Record<string, ConnectorConfig>;

@@ -1,0 +1,1038 @@
+import { createHash } from "node:crypto";
+
+import { command } from "ccstate";
+import {
+  type GeneratePresentationSpeakerNotesRequest,
+  type HostedArtifactKind,
+  type HostedSiteFilesResponse,
+  type HostedSitePrepareRequest,
+  type HostedSiteRedeployPresentationHtmlRequest,
+  type PresentationSpeakerNotesPatch,
+  presentationSpeakerNotesPatchSchema,
+} from "@vm0/api-contracts/contracts/zero-host";
+import {
+  hostedDeployments,
+  hostedSites,
+  type HostedSiteManifest,
+  type HostedSiteManifestFile,
+} from "@vm0/db/schema/hosted-site";
+import { and, eq, isNull } from "drizzle-orm";
+
+import { env } from "../../lib/env";
+import { type Db, writeDb$ } from "../external/db";
+import { generateText } from "../external/openrouter";
+import {
+  copyHostedSitesS3Object,
+  generateHostedSitesPresignedGetUrl,
+  generateHostedSitesPresignedPutUrl,
+  hostedSitesS3ObjectExists,
+  putHostedSitesS3Object,
+} from "../external/s3";
+import { nowDate } from "../external/time";
+import { safeJsonParse } from "../utils";
+import { recordHostedSiteArtifact$ } from "./run-uploaded-files.service";
+
+const PUT_URL_TTL_SECONDS = 3600;
+const GET_URL_TTL_SECONDS = 3600;
+const MAX_HOSTED_SITE_TOTAL_BYTES = 512 * 1024 * 1024;
+const MAX_HOSTED_SITE_FILE_BYTES = 100 * 1024 * 1024;
+const MAX_PUBLIC_SLUG_ATTEMPTS = 5;
+const PRESENTATION_SPEAKER_NOTES_MODEL = "openai/gpt-4.1-mini";
+
+interface PrepareDeploymentArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId?: string;
+  readonly body: HostedSitePrepareRequest;
+}
+
+interface CompleteDeploymentArgs {
+  readonly orgId: string;
+  readonly deploymentId: string;
+}
+
+interface RedeployPresentationHtmlArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly body: HostedSiteRedeployPresentationHtmlRequest;
+}
+
+interface GeneratePresentationSpeakerNotesArgs {
+  readonly body: GeneratePresentationSpeakerNotesRequest;
+}
+
+interface GetHostedSiteFilesArgs {
+  readonly orgId: string;
+  readonly publicSlug: string;
+}
+
+type PrepareDeploymentResult =
+  | {
+      readonly status: "ok";
+      readonly body: {
+        readonly siteId: string;
+        readonly deploymentId: string;
+        readonly publicSlug: string;
+        readonly url: string;
+        readonly uploads: readonly {
+          readonly path: string;
+          readonly uploadUrl: string;
+        }[];
+      };
+    }
+  | { readonly status: "bad_request"; readonly message: string }
+  | { readonly status: "conflict"; readonly message: string }
+  | { readonly status: "config_error"; readonly message: string };
+
+type CompleteDeploymentResult =
+  | {
+      readonly status: "ok";
+      readonly body: {
+        readonly siteId: string;
+        readonly deploymentId: string;
+        readonly publicSlug: string;
+        readonly url: string;
+        readonly status: "ready";
+      };
+    }
+  | { readonly status: "not_found"; readonly message: string }
+  | { readonly status: "conflict"; readonly message: string }
+  | { readonly status: "bad_request"; readonly message: string }
+  | { readonly status: "config_error"; readonly message: string };
+
+type RedeployPresentationHtmlResult = CompleteDeploymentResult;
+
+type GeneratePresentationSpeakerNotesResult =
+  | { readonly status: "ok"; readonly body: PresentationSpeakerNotesPatch }
+  | { readonly status: "bad_request"; readonly message: string }
+  | { readonly status: "config_error"; readonly message: string };
+
+type GetHostedSiteFilesResult =
+  | {
+      readonly status: "ok";
+      readonly body: HostedSiteFilesResponse;
+    }
+  | { readonly status: "not_found"; readonly message: string }
+  | { readonly status: "conflict"; readonly message: string }
+  | { readonly status: "config_error"; readonly message: string };
+
+type RedeployPresentationTargetResult =
+  | {
+      readonly status: "ok";
+      readonly activeDeployment: HostedDeploymentRow;
+      readonly site: HostedSiteRow;
+    }
+  | { readonly status: "not_found"; readonly message: string }
+  | { readonly status: "bad_request"; readonly message: string };
+
+interface ActiveSitePointer {
+  readonly version: 1;
+  readonly publicSlug: string;
+  readonly siteId: string;
+  readonly deploymentId: string;
+  readonly prefix: string;
+  readonly manifestKey: string;
+  readonly spaFallback: boolean;
+  readonly updatedAt: string;
+}
+
+type HostedSiteRow = typeof hostedSites.$inferSelect;
+type HostedDeploymentRow = typeof hostedDeployments.$inferSelect;
+type HostedSiteFile = HostedSitePrepareRequest["files"][number];
+
+type SiteDeploymentCreationResult =
+  | {
+      readonly kind: "ok";
+      readonly site: HostedSiteRow;
+      readonly deployment: HostedDeploymentRow;
+    }
+  | { readonly kind: "slug_conflict" };
+type CreatedSiteDeployment = Extract<
+  SiteDeploymentCreationResult,
+  { readonly kind: "ok" }
+>;
+
+interface CreateHostedSiteDeploymentContext {
+  readonly now: Date;
+  readonly publicSlug: string;
+  readonly url: string;
+  readonly allowExistingPublicSlug: boolean;
+}
+
+interface HostedR2Config {
+  readonly bucket: string;
+}
+
+type HostedR2ConfigResult =
+  | { readonly status: "ok"; readonly config: HostedR2Config }
+  | { readonly status: "config_error"; readonly message: string };
+
+function hostedR2Config(): HostedR2ConfigResult {
+  const bucket = env("R2_HOSTED_SITES_BUCKET_NAME");
+  if (!bucket) {
+    return {
+      status: "config_error",
+      message: "R2_HOSTED_SITES_BUCKET_NAME is not configured",
+    };
+  }
+  if (!env("R2_HOSTED_SITES_ACCESS_KEY_ID")) {
+    return {
+      status: "config_error",
+      message: "R2_HOSTED_SITES_ACCESS_KEY_ID is not configured",
+    };
+  }
+  if (!env("R2_HOSTED_SITES_SECRET_ACCESS_KEY")) {
+    return {
+      status: "config_error",
+      message: "R2_HOSTED_SITES_SECRET_ACCESS_KEY is not configured",
+    };
+  }
+  return { status: "ok", config: { bucket } };
+}
+
+function presentationSpeakerNotesPrompt(html: string): readonly {
+  readonly role: "system" | "user";
+  readonly content: string;
+}[] {
+  return [
+    {
+      role: "system",
+      content:
+        "You add speaker notes to the user's own HTML presentation. Treat the HTML as read-only context. Return valid JSON matching the requested schema. Write speaker notes as spoken presenter scripts in the same primary language as each slide.",
+    },
+    {
+      role: "user",
+      content: `Generate speaker notes only for empty notes in this existing HTML presentation.
+
+Output:
+- Return only JSON.
+- Output shape: {"kind":"presentation-speaker-notes-patch","version":1,"slides":[{"slideId":"...","speakerNotes":"..."}]}.
+- Use slide IDs from data-slide-id when present.
+- If a slide has no data-slide-id, use its 1-based DOM order fallback: slide-1, slide-2, etc.
+- Include every slide whose speaker notes are empty or missing.
+- Leave slides with existing non-empty speaker notes out of the response.
+
+Writing brief:
+- Write each speakerNotes value as a presenter script the user can read aloud.
+- Start directly with what the speaker would say.
+- For cover or title slides, write a natural opening that introduces the topic, scope, and why it matters.
+- For content slides, turn the visible details into a coherent spoken explanation.
+- Match each slide's primary language and tone. Use plain text.
+
+HTML:
+${html}`,
+    },
+  ];
+}
+
+function jsonObjectText(value: string): string {
+  const trimmed = value.trim();
+  if (safeJsonParse(trimmed) !== null) {
+    return trimmed;
+  }
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    return trimmed;
+  }
+  return trimmed.slice(start, end + 1);
+}
+
+function parsePresentationSpeakerNotesPatch(
+  text: string,
+): PresentationSpeakerNotesPatch | null {
+  const parsed = safeJsonParse(jsonObjectText(text));
+  const result = presentationSpeakerNotesPatchSchema.safeParse(parsed);
+  return result.success ? result.data : null;
+}
+
+function publicUrl(publicSlug: string): string {
+  return `${env("ZERO_HOST_SCHEME")}://${publicSlug}.${env("ZERO_HOST_DOMAIN")}`;
+}
+
+function publicSlugFromHostedSiteUrl(value: string): string | null {
+  if (!URL.canParse(value)) {
+    return null;
+  }
+  const url = new URL(value);
+  const hostDomain = env("ZERO_HOST_DOMAIN");
+  if (url.hostname === hostDomain || !url.hostname.endsWith(`.${hostDomain}`)) {
+    return null;
+  }
+  const publicSlug = url.hostname.slice(0, -(hostDomain.length + ".".length));
+  return publicSlug || null;
+}
+
+function activePointerKey(publicSlug: string): string {
+  return `sites/${publicSlug}/active.json`;
+}
+
+function deploymentPrefix(publicSlug: string, deploymentId: string): string {
+  return `sites/${publicSlug}/deployments/${deploymentId}`;
+}
+
+function orgSlugHash(orgId: string): string {
+  return createHash("sha256").update(orgId).digest("hex").substring(0, 8);
+}
+
+function randomSlugSuffix(): string {
+  return crypto.randomUUID().replaceAll("-", "").substring(0, 8);
+}
+
+function publicSlugForSite(
+  site: string,
+  orgId: string,
+  slugSuffix: string,
+): string {
+  return `${site}-${orgSlugHash(orgId)}-${slugSuffix}`;
+}
+
+function fileKey(prefix: string, path: string): string {
+  return `${prefix}${path}`;
+}
+
+function isSafeSitePath(path: string): boolean {
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    return false;
+  }
+  if (path.includes("\\") || path.includes("\0")) {
+    return false;
+  }
+  const segments = path.split("/").filter((segment) => {
+    return segment.length > 0;
+  });
+  return !segments.some((segment) => {
+    return segment === "." || segment === "..";
+  });
+}
+
+function hashJson(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function contentHash(files: readonly HostedSiteManifestFile[]): string {
+  const hash = createHash("sha256");
+  for (const file of [...files].sort((a, b) => {
+    return a.path.localeCompare(b.path);
+  })) {
+    hash.update(file.path);
+    hash.update("\0");
+    hash.update(file.sha256);
+    hash.update("\0");
+    hash.update(String(file.size));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function hostedSiteFileForContent(
+  path: string,
+  content: string,
+  contentType: string,
+): HostedSitePrepareRequest["files"][number] {
+  const bytes = Buffer.from(content, "utf8");
+  return {
+    path,
+    size: bytes.byteLength,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    contentType,
+  };
+}
+
+async function findPresentationRedeployTarget(
+  writeDb: Db,
+  args: {
+    readonly orgId: string;
+    readonly publicSlug: string;
+  },
+  signal: AbortSignal,
+): Promise<RedeployPresentationTargetResult> {
+  const [site] = await writeDb
+    .select()
+    .from(hostedSites)
+    .where(
+      and(
+        eq(hostedSites.publicSlug, args.publicSlug),
+        eq(hostedSites.orgId, args.orgId),
+        isNull(hostedSites.deletedAt),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (!site) {
+    return { status: "not_found", message: "Hosted site not found" };
+  }
+  if (!site.activeDeploymentId) {
+    return {
+      status: "bad_request",
+      message: "Hosted site has no active deployment",
+    };
+  }
+
+  const [activeDeployment] = await writeDb
+    .select()
+    .from(hostedDeployments)
+    .where(
+      and(
+        eq(hostedDeployments.id, site.activeDeploymentId),
+        eq(hostedDeployments.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (!activeDeployment) {
+    return {
+      status: "not_found",
+      message: "Active hosted deployment not found",
+    };
+  }
+  if (activeDeployment.manifest.artifactKind !== "presentation-html") {
+    return {
+      status: "bad_request",
+      message: "Hosted site is not a presentation HTML artifact",
+    };
+  }
+  return { status: "ok", activeDeployment, site };
+}
+
+function validateFiles(
+  files: readonly HostedSitePrepareRequest["files"][number][],
+): string | null {
+  const seen = new Set<string>();
+  let totalSize = 0;
+  for (const file of files) {
+    if (!isSafeSitePath(file.path)) {
+      return `Invalid hosted-site path: ${file.path}`;
+    }
+    if (seen.has(file.path)) {
+      return `Duplicate hosted-site path: ${file.path}`;
+    }
+    seen.add(file.path);
+    if (file.size > MAX_HOSTED_SITE_FILE_BYTES) {
+      return `Hosted-site file too large: ${file.path}`;
+    }
+    totalSize += file.size;
+    if (totalSize > MAX_HOSTED_SITE_TOTAL_BYTES) {
+      return "Hosted-site deployment is too large";
+    }
+  }
+  if (!seen.has("/index.html")) {
+    return "Hosted-site deployment must include /index.html";
+  }
+  return null;
+}
+
+function buildManifest(args: {
+  readonly deploymentId: string;
+  readonly siteId: string;
+  readonly publicSlug: string;
+  readonly artifactKind: HostedArtifactKind;
+  readonly spaFallback: boolean;
+  readonly files: readonly HostedSiteFile[];
+  readonly createdAt: Date;
+}): HostedSiteManifest {
+  const manifestFiles: Record<string, HostedSiteManifestFile> = {};
+  for (const file of args.files) {
+    manifestFiles[file.path] = {
+      path: file.path,
+      size: file.size,
+      sha256: file.sha256,
+      contentType: file.contentType,
+      immutable: file.immutable,
+    };
+  }
+  return {
+    version: 1,
+    deploymentId: args.deploymentId,
+    siteId: args.siteId,
+    publicSlug: args.publicSlug,
+    createdAt: args.createdAt.toISOString(),
+    artifactKind: args.artifactKind,
+    spaFallback: args.spaFallback,
+    files: manifestFiles,
+  };
+}
+
+function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
+  const artifactKind = deployment.manifest.artifactKind ?? "hosted-site";
+  return {
+    runId: deployment.runId,
+    userId: deployment.userId,
+    orgId: deployment.orgId,
+    artifactKind,
+    siteId: deployment.siteId,
+    deploymentId: deployment.id,
+    publicSlug: deployment.manifest.publicSlug,
+    url: deployment.url,
+    fileCount: deployment.fileCount,
+    sizeBytes: deployment.sizeBytes,
+    entrypoint: deployment.entrypoint,
+    spaFallback: deployment.spaFallback,
+  };
+}
+
+function createHostedSiteDeployment(
+  writeDb: Db,
+  args: PrepareDeploymentArgs,
+  context: CreateHostedSiteDeploymentContext,
+): Promise<SiteDeploymentCreationResult> {
+  return writeDb.transaction(async (tx) => {
+    const [existingPublicSite] = await tx
+      .select()
+      .from(hostedSites)
+      .where(
+        and(
+          eq(hostedSites.publicSlug, context.publicSlug),
+          isNull(hostedSites.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (
+      existingPublicSite &&
+      (!context.allowExistingPublicSlug ||
+        existingPublicSite.orgId !== args.orgId ||
+        existingPublicSite.slug !== args.body.site)
+    ) {
+      return { kind: "slug_conflict" };
+    }
+
+    const [site] = await tx
+      .insert(hostedSites)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        slug: args.body.site,
+        publicSlug: context.publicSlug,
+        createdFromRunId: args.runId,
+        updatedAt: context.now,
+      })
+      .onConflictDoUpdate({
+        target: [hostedSites.orgId, hostedSites.slug],
+        set: { publicSlug: context.publicSlug, updatedAt: context.now },
+      })
+      .returning();
+    if (!site) {
+      throw new Error("Failed to create hosted site");
+    }
+
+    const deploymentId = crypto.randomUUID();
+    const prefix = deploymentPrefix(context.publicSlug, deploymentId);
+    const manifest = buildManifest({
+      deploymentId,
+      siteId: site.id,
+      publicSlug: context.publicSlug,
+      artifactKind: args.body.artifactKind,
+      spaFallback: args.body.spaFallback,
+      files: args.body.files,
+      createdAt: context.now,
+    });
+    const files = Object.values(manifest.files);
+    const [deployment] = await tx
+      .insert(hostedDeployments)
+      .values({
+        id: deploymentId,
+        siteId: site.id,
+        orgId: args.orgId,
+        userId: args.userId,
+        runId: args.runId,
+        status: "uploading",
+        r2Prefix: prefix,
+        manifest,
+        manifestHash: hashJson(manifest),
+        contentHash: contentHash(files),
+        entrypoint: "/index.html",
+        spaFallback: args.body.spaFallback,
+        fileCount: files.length,
+        sizeBytes: files.reduce((sum, file) => {
+          return sum + file.size;
+        }, 0),
+        url: context.url,
+        updatedAt: context.now,
+      })
+      .returning();
+    if (!deployment) {
+      throw new Error("Failed to create hosted deployment");
+    }
+
+    return { kind: "ok", site, deployment };
+  });
+}
+
+export const prepareHostedSiteDeployment$ = command(
+  async (
+    { get, set },
+    args: PrepareDeploymentArgs,
+    signal: AbortSignal,
+  ): Promise<PrepareDeploymentResult> => {
+    const hostedR2 = hostedR2Config();
+    if (hostedR2.status === "config_error") {
+      return hostedR2;
+    }
+
+    const fileError = validateFiles(args.body.files);
+    if (fileError) {
+      return { status: "bad_request", message: fileError };
+    }
+
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+    let siteAndDeployment: CreatedSiteDeployment | null = null;
+    let publicSlug = "";
+    let url = "";
+
+    if (args.body.slugSuffix) {
+      publicSlug = publicSlugForSite(
+        args.body.site,
+        args.orgId,
+        args.body.slugSuffix,
+      );
+      url = publicUrl(publicSlug);
+      const result = await createHostedSiteDeployment(writeDb, args, {
+        now,
+        publicSlug,
+        url,
+        allowExistingPublicSlug: true,
+      });
+      signal.throwIfAborted();
+      if (result.kind === "slug_conflict") {
+        return {
+          status: "conflict",
+          message: `Hosted site slug is already in use: ${publicSlug}`,
+        };
+      }
+      siteAndDeployment = result;
+    } else {
+      for (let attempt = 0; attempt < MAX_PUBLIC_SLUG_ATTEMPTS; attempt += 1) {
+        publicSlug = publicSlugForSite(
+          args.body.site,
+          args.orgId,
+          randomSlugSuffix(),
+        );
+        url = publicUrl(publicSlug);
+        const result = await createHostedSiteDeployment(writeDb, args, {
+          now,
+          publicSlug,
+          url,
+          allowExistingPublicSlug: false,
+        });
+        signal.throwIfAborted();
+        if (result.kind === "ok") {
+          siteAndDeployment = result;
+          break;
+        }
+      }
+    }
+
+    if (!siteAndDeployment) {
+      return {
+        status: "conflict",
+        message: "Unable to allocate a unique hosted site slug",
+      };
+    }
+
+    const uploads = await Promise.all(
+      Object.values(siteAndDeployment.deployment.manifest.files).map(
+        async (file) => {
+          const uploadUrl = await get(
+            generateHostedSitesPresignedPutUrl(
+              hostedR2.config.bucket,
+              fileKey(siteAndDeployment.deployment.r2Prefix, file.path),
+              file.contentType,
+              PUT_URL_TTL_SECONDS,
+              true,
+            ),
+          );
+          return { path: file.path, uploadUrl };
+        },
+      ),
+    );
+    signal.throwIfAborted();
+
+    return {
+      status: "ok",
+      body: {
+        siteId: siteAndDeployment.site.id,
+        deploymentId: siteAndDeployment.deployment.id,
+        publicSlug,
+        url,
+        uploads,
+      },
+    };
+  },
+);
+
+export const completeHostedSiteDeployment$ = command(
+  async (
+    { get, set },
+    args: CompleteDeploymentArgs,
+    signal: AbortSignal,
+  ): Promise<CompleteDeploymentResult> => {
+    const hostedR2 = hostedR2Config();
+    if (hostedR2.status === "config_error") {
+      return hostedR2;
+    }
+
+    const writeDb = set(writeDb$);
+    const [deployment] = await writeDb
+      .select()
+      .from(hostedDeployments)
+      .where(
+        and(
+          eq(hostedDeployments.id, args.deploymentId),
+          eq(hostedDeployments.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!deployment) {
+      return { status: "not_found", message: "Hosted deployment not found" };
+    }
+    if (deployment.status !== "uploading" && deployment.status !== "ready") {
+      return {
+        status: "conflict",
+        message: `Hosted deployment is ${deployment.status}`,
+      };
+    }
+
+    const missingPath = await (async () => {
+      for (const file of Object.values(deployment.manifest.files)) {
+        const exists = await get(
+          hostedSitesS3ObjectExists(
+            hostedR2.config.bucket,
+            fileKey(deployment.r2Prefix, file.path),
+          ),
+        );
+        signal.throwIfAborted();
+        if (!exists) {
+          return file.path;
+        }
+      }
+      return null;
+    })();
+    signal.throwIfAborted();
+
+    if (missingPath) {
+      return {
+        status: "bad_request",
+        message: `Hosted deployment file was not uploaded: ${missingPath}`,
+      };
+    }
+
+    const manifestKey = `${deployment.r2Prefix}/manifest.json`;
+    await get(
+      putHostedSitesS3Object(
+        hostedR2.config.bucket,
+        manifestKey,
+        JSON.stringify(deployment.manifest, null, 2),
+        "application/json",
+      ),
+    );
+    signal.throwIfAborted();
+
+    const readyAt = nowDate();
+    await writeDb.transaction(async (tx) => {
+      await tx
+        .update(hostedDeployments)
+        .set({
+          status: "ready",
+          readyAt,
+          updatedAt: readyAt,
+          error: null,
+        })
+        .where(eq(hostedDeployments.id, deployment.id));
+      await tx
+        .update(hostedSites)
+        .set({
+          activeDeploymentId: deployment.id,
+          updatedAt: readyAt,
+        })
+        .where(eq(hostedSites.id, deployment.siteId));
+    });
+    signal.throwIfAborted();
+
+    const pointer: ActiveSitePointer = {
+      version: 1,
+      publicSlug: deployment.manifest.publicSlug,
+      siteId: deployment.siteId,
+      deploymentId: deployment.id,
+      prefix: deployment.r2Prefix,
+      manifestKey,
+      spaFallback: deployment.spaFallback,
+      updatedAt: readyAt.toISOString(),
+    };
+    await get(
+      putHostedSitesS3Object(
+        hostedR2.config.bucket,
+        activePointerKey(deployment.manifest.publicSlug),
+        JSON.stringify(pointer, null, 2),
+        "application/json",
+      ),
+    );
+    signal.throwIfAborted();
+
+    await set(
+      recordHostedSiteArtifact$,
+      hostedSiteArtifactArgs(deployment),
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return {
+      status: "ok",
+      body: {
+        siteId: deployment.siteId,
+        deploymentId: deployment.id,
+        publicSlug: deployment.manifest.publicSlug,
+        url: deployment.url,
+        status: "ready",
+      },
+    };
+  },
+);
+
+export const getHostedSiteFiles$ = command(
+  async (
+    { get, set },
+    args: GetHostedSiteFilesArgs,
+    signal: AbortSignal,
+  ): Promise<GetHostedSiteFilesResult> => {
+    const writeDb = set(writeDb$);
+    const [site] = await writeDb
+      .select()
+      .from(hostedSites)
+      .where(
+        and(
+          eq(hostedSites.publicSlug, args.publicSlug),
+          eq(hostedSites.orgId, args.orgId),
+          isNull(hostedSites.deletedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!site) {
+      return { status: "not_found", message: "Hosted site not found" };
+    }
+    if (!site.activeDeploymentId) {
+      return {
+        status: "conflict",
+        message: "Hosted site has no active deployment",
+      };
+    }
+
+    const [deployment] = await writeDb
+      .select()
+      .from(hostedDeployments)
+      .where(
+        and(
+          eq(hostedDeployments.id, site.activeDeploymentId),
+          eq(hostedDeployments.siteId, site.id),
+          eq(hostedDeployments.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!deployment) {
+      return {
+        status: "not_found",
+        message: "Active hosted deployment not found",
+      };
+    }
+    if (deployment.status !== "ready") {
+      return {
+        status: "conflict",
+        message: `Hosted deployment is ${deployment.status}`,
+      };
+    }
+
+    const manifestFiles = Object.values(deployment.manifest.files).sort(
+      (a, b) => {
+        return a.path.localeCompare(b.path);
+      },
+    );
+    signal.throwIfAborted();
+
+    const hostedR2 = hostedR2Config();
+    if (hostedR2.status === "config_error") {
+      return hostedR2;
+    }
+
+    const files = await Promise.all(
+      manifestFiles.map(async (file) => {
+        const downloadUrl = await get(
+          generateHostedSitesPresignedGetUrl(
+            hostedR2.config.bucket,
+            fileKey(deployment.r2Prefix, file.path),
+            GET_URL_TTL_SECONDS,
+            true,
+          ),
+        );
+        return { ...file, downloadUrl };
+      }),
+    );
+    signal.throwIfAborted();
+
+    return {
+      status: "ok",
+      body: {
+        siteId: site.id,
+        deploymentId: deployment.id,
+        publicSlug: site.publicSlug,
+        url: deployment.url,
+        fileCount: deployment.fileCount,
+        size: deployment.sizeBytes,
+        files,
+      },
+    };
+  },
+);
+
+export const redeployPresentationHtml$ = command(
+  async (
+    { get, set },
+    args: RedeployPresentationHtmlArgs,
+    signal: AbortSignal,
+  ): Promise<RedeployPresentationHtmlResult> => {
+    const hostedR2 = hostedR2Config();
+    if (hostedR2.status === "config_error") {
+      return hostedR2;
+    }
+
+    const publicSlug = publicSlugFromHostedSiteUrl(args.body.url);
+    if (!publicSlug) {
+      return {
+        status: "bad_request",
+        message: "URL is not a hosted site URL",
+      };
+    }
+
+    const writeDb = set(writeDb$);
+    const target = await findPresentationRedeployTarget(
+      writeDb,
+      {
+        orgId: args.orgId,
+        publicSlug,
+      },
+      signal,
+    );
+    if (target.status !== "ok") {
+      return target;
+    }
+    const { activeDeployment, site } = target;
+
+    const indexFile = hostedSiteFileForContent(
+      "/index.html",
+      args.body.html,
+      "text/html; charset=utf-8",
+    );
+    const files = [
+      indexFile,
+      ...Object.values(activeDeployment.manifest.files).filter((file) => {
+        return file.path !== indexFile.path;
+      }),
+    ];
+    const fileError = validateFiles(files);
+    if (fileError) {
+      return { status: "bad_request", message: fileError };
+    }
+
+    const now = nowDate();
+    const result = await createHostedSiteDeployment(
+      writeDb,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        body: {
+          site: site.slug,
+          artifactKind: "presentation-html",
+          spaFallback: activeDeployment.spaFallback,
+          files,
+        },
+      },
+      {
+        now,
+        publicSlug,
+        url: publicUrl(publicSlug),
+        allowExistingPublicSlug: true,
+      },
+    );
+    signal.throwIfAborted();
+
+    if (result.kind === "slug_conflict") {
+      return {
+        status: "conflict",
+        message: `Hosted site slug is already in use: ${publicSlug}`,
+      };
+    }
+
+    await Promise.all(
+      files
+        .filter((file) => {
+          return file.path !== indexFile.path;
+        })
+        .map((file) => {
+          return get(
+            copyHostedSitesS3Object(
+              hostedR2.config.bucket,
+              fileKey(activeDeployment.r2Prefix, file.path),
+              fileKey(result.deployment.r2Prefix, file.path),
+            ),
+          );
+        }),
+    );
+    signal.throwIfAborted();
+
+    await get(
+      putHostedSitesS3Object(
+        hostedR2.config.bucket,
+        fileKey(result.deployment.r2Prefix, indexFile.path),
+        Buffer.from(args.body.html, "utf8"),
+        indexFile.contentType,
+      ),
+    );
+    signal.throwIfAborted();
+
+    return set(
+      completeHostedSiteDeployment$,
+      {
+        orgId: args.orgId,
+        deploymentId: result.deployment.id,
+      },
+      signal,
+    );
+  },
+);
+
+export const generatePresentationSpeakerNotes$ = command(
+  async (
+    _,
+    args: GeneratePresentationSpeakerNotesArgs,
+    signal: AbortSignal,
+  ): Promise<GeneratePresentationSpeakerNotesResult> => {
+    const generated = await generateText(
+      PRESENTATION_SPEAKER_NOTES_MODEL,
+      presentationSpeakerNotesPrompt(args.body.html),
+      4096,
+    );
+    signal.throwIfAborted();
+    if (!generated) {
+      return {
+        status: "config_error",
+        message: "Speaker notes generation is not configured",
+      };
+    }
+    const patch = parsePresentationSpeakerNotesPatch(generated);
+    if (!patch) {
+      return {
+        status: "bad_request",
+        message: "Speaker notes generation returned invalid JSON",
+      };
+    }
+    return { status: "ok", body: patch };
+  },
+);

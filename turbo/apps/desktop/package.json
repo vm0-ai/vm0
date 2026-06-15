@@ -1,0 +1,56 @@
+{
+  "name": "@vm0/desktop",
+  "version": "0.12.0",
+  "private": true,
+  "productName": "Zero Computer Use",
+  "description": "Zero desktop shell",
+  "main": "dist/main.js",
+  "bin": {
+    "vm0-computer": "dist/vm0-computer.js"
+  },
+  "scripts": {
+    "build": "pnpm build:native && pnpm build:electron && pnpm build:cli && pnpm build:renderer",
+    "build:cli": "tsup src/vm0-computer.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --external electron && chmod +x dist/vm0-computer.js",
+    "build:electron": "tsup --config tsup.electron.config.js",
+    "build:native": "node scripts/build-native-helper.js",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "check-types": "tsc --noEmit",
+    "computer-use:eval": "pnpm build:native && pnpm build:cli && pnpm exec tsx scripts/computer-use-eval.ts",
+    "dev": "pnpm build && electron-forge start",
+    "dev:packaged": "pnpm package && node scripts/run-packaged-app.js",
+    "lint": "oxlint src --deny-warnings",
+    "make": "pnpm build && VM0_DESKTOP_NOTARIZE=true electron-forge make --platform darwin",
+    "package": "pnpm build && electron-forge package --platform darwin",
+    "start": "electron-forge start",
+    "test": "vitest run",
+    "test:native": "node scripts/test-native-helper.js",
+    "vm0-computer": "pnpm build:cli && node dist/vm0-computer.js"
+  },
+  "dependencies": {
+    "@tabler/icons-react": "^3.36.1",
+    "ccstate": "^5.3.0",
+    "ccstate-react": "^5.3.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "update-electron-app": "3.2.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
+    "@electron/notarize": "3.1.1",
+    "@electron/osx-sign": "2.4.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "24.3.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vm0/typescript-config": "workspace:*",
+    "electron": "42.3.3",
+    "happy-dom": "^20.9.0",
+    "oxlint": "^1.57.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.8"
+  }
+}

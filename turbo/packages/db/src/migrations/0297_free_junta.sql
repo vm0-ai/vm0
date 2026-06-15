@@ -1,0 +1,2 @@
+ALTER TABLE "feature_candidate_voice_chat_sessions" ADD COLUMN "last_reasoning_started_at" timestamp;--> statement-breakpoint
+ALTER TABLE "feature_candidate_voice_chat_sessions" ADD COLUMN "last_reasoning_duration_ms" integer;

@@ -1,0 +1,197 @@
+import { command } from "ccstate";
+import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { eq } from "drizzle-orm";
+
+import { optionalEnv } from "../../lib/env";
+import { billingRedirectAllowed } from "../../lib/billing-redirect";
+import { badRequestMessage, providerUnavailable } from "../../lib/error";
+import { organizationAuthContext$ } from "../auth/auth-context";
+import { authRoute } from "../auth/auth-route";
+import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
+import {
+  activePriceId,
+  completeCheckoutSession$,
+  checkoutTierConflictMessage,
+  checkoutWouldReplaceWithSameOrLowerTier,
+  createCheckoutSession$,
+} from "../services/zero-billing-checkout.service";
+import type { RouteEntry } from "../route";
+
+const adminRequired = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Only org admins can manage billing",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (auth.orgRole !== "admin") {
+    return adminRequired;
+  }
+  signal.throwIfAborted();
+
+  const bodyResult = await get(
+    bodyResultOf(zeroBillingCheckoutContract.create),
+  );
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  const { tier, successUrl, cancelUrl, trialDays, adAttribution } =
+    bodyResult.data;
+
+  if (
+    !billingRedirectAllowed(successUrl) ||
+    !billingRedirectAllowed(cancelUrl)
+  ) {
+    return badRequestMessage(
+      "successUrl and cancelUrl must match the platform origin",
+    );
+  }
+
+  const priceId = activePriceId(tier);
+  if (!priceId) {
+    return badRequestMessage(`Price not configured for ${tier} tier`);
+  }
+
+  const db = get(db$);
+  const [metadata] = await db
+    .select({
+      onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, auth.orgId))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: metadata?.tier,
+      targetTier: tier,
+    })
+  ) {
+    return badRequestMessage(
+      checkoutTierConflictMessage({
+        currentTier: metadata?.tier,
+        targetTier: tier,
+      }),
+    );
+  }
+
+  if (trialDays !== undefined) {
+    if (tier !== "pro") {
+      return badRequestMessage("Trial checkout is only available for Pro tier");
+    }
+    if (metadata?.onboardingPaymentPending !== true) {
+      return badRequestMessage(
+        "Pro trial checkout is only available during onboarding",
+      );
+    }
+  }
+
+  const url = await set(
+    createCheckoutSession$,
+    {
+      orgId: auth.orgId,
+      tier,
+      priceId,
+      trialDays,
+      successUrl,
+      cancelUrl,
+      adAttribution,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { url } };
+});
+
+const checkout$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return providerUnavailable("Billing not configured");
+  }
+
+  return await set(
+    authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      checkoutAuthed$,
+    ),
+    signal,
+  );
+});
+
+const checkoutCompleteAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    signal.throwIfAborted();
+
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingCheckoutContract.complete),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      completeCheckoutSession$,
+      { orgId: auth.orgId, sessionId: bodyResult.data.sessionId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "customer_mismatch") {
+      return badRequestMessage(
+        "Checkout session does not belong to current organization",
+      );
+    }
+    if (result.status === "tier_conflict") {
+      return badRequestMessage(
+        checkoutTierConflictMessage({
+          currentTier: result.currentTier,
+          targetTier: result.targetTier,
+        }),
+      );
+    }
+
+    return {
+      status: 200 as const,
+      body: { completed: result.status === "completed" },
+    };
+  },
+);
+
+const checkoutComplete$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return providerUnavailable("Billing not configured");
+  }
+
+  return await set(
+    authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      checkoutCompleteAuthed$,
+    ),
+    signal,
+  );
+});
+
+export const zeroBillingCheckoutRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroBillingCheckoutContract.create,
+    handler: checkout$,
+  },
+  {
+    route: zeroBillingCheckoutContract.complete,
+    handler: checkoutComplete$,
+  },
+];

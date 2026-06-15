@@ -1,0 +1,1 @@
+ALTER TABLE "org_members_metadata" ADD COLUMN "capture_network_bodies_remaining" integer DEFAULT 0;

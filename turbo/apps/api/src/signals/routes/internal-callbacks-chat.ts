@@ -1,0 +1,1663 @@
+import { randomBytes } from "node:crypto";
+
+import { command } from "ccstate";
+import {
+  chatCallbackPayloadSchema,
+  internalCallbacksChatContract,
+} from "@vm0/api-contracts/contracts/internal-callbacks-chat";
+import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import {
+  chatMessages,
+  type ChatMessageAttachFileMetadata,
+  type ChatMessageGenerationTemplate,
+  type ChatMessageRecommendedFollowups,
+} from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from "drizzle-orm";
+
+import {
+  callbackPayload$,
+  callbackRoute,
+} from "../../lib/callback-route/callback-route";
+import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
+import { escapeAplString } from "../../lib/axiom-apl";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
+import { logger } from "../../lib/log";
+import { now, nowDate } from "../../lib/time";
+import type { RouteEntry } from "../route";
+import { waitUntil } from "../context/wait-until";
+import { getDatasetName, queryAxiomDirect } from "../external/axiom";
+import { writeDb$, type Db } from "../external/db";
+import {
+  publishThreadListChanged,
+  publishUserSignal,
+} from "../external/realtime";
+import { recordSandboxOperation } from "../external/sandbox-op-log";
+import { saveRunSummary$ } from "../services/run-summary.service";
+import {
+  formatChatRunErrorMessage,
+  insertAssistantEventMessages$,
+  resolveAttachFileMetadataUrls,
+  resolveAttachFileUrls,
+  touchChatThreadLastMessageAt,
+  visibleChatMessageCondition,
+} from "../services/zero-chat-thread.service";
+import { sendUserPushNotifications } from "../services/zero-push-notifications.service";
+import {
+  generateAndPersistChatThreadTitleFromCallback,
+  generateChatThreadRecommendedFollowups,
+  generateChatNotificationSummary,
+} from "../services/zero-chat-title.service";
+import { createZeroRun$ } from "../services/zero-runs-create.service";
+import { settle, tapError } from "../utils";
+import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
+
+const log = logger("callback:chat");
+const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
+const RECENT_CHAT_RUN_LIMIT = 10;
+const PRIOR_MESSAGE_CHAR_CAP = 4000;
+const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
+
+interface ContentBlock {
+  readonly type?: string;
+  readonly text?: string;
+}
+
+interface CodexItem {
+  readonly type?: string;
+  readonly text?: string;
+}
+
+interface AxiomChatOutputEvent {
+  readonly eventType?: string;
+  readonly sequenceNumber?: number;
+  readonly eventData?: {
+    readonly message?: { readonly content?: readonly ContentBlock[] };
+    readonly item?: CodexItem;
+    readonly result?: string;
+    readonly sequenceNumber?: number;
+  };
+}
+
+interface AssistantEventItem {
+  readonly sequenceNumber: number;
+  readonly content: string;
+}
+
+interface ResultEventItem {
+  readonly sequenceNumber: number;
+  readonly content: string;
+}
+
+interface IncompleteRoundRow {
+  readonly runId: string;
+  readonly runStatus: "cancelled" | "failed" | "timeout";
+  readonly role: "user" | "assistant";
+  readonly content: string | null;
+  readonly error: string | null;
+  readonly attachFiles: readonly string[] | null;
+}
+
+interface IncompleteRound {
+  readonly runId: string;
+  readonly status: "cancelled" | "failed" | "timeout";
+  readonly messages: IncompleteRoundMessage[];
+}
+
+interface IncompleteRoundMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string | null;
+  readonly error: string | null;
+  readonly attachFiles: readonly string[] | null;
+}
+
+interface PriorRunMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+  readonly attachFiles: readonly string[] | null;
+}
+
+interface PriorRun {
+  readonly runId: string;
+  readonly status: string;
+  readonly prompt: string;
+  readonly messages: readonly PriorRunMessage[];
+}
+
+interface LatestThreadSession {
+  readonly sessionId: string;
+  readonly selectedModel: string | null;
+}
+
+interface QueuedUserMessage {
+  readonly id: string;
+  readonly content: string | null;
+  readonly attachFiles: readonly string[] | null;
+  readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
+  readonly modelProviderId: string | null;
+  readonly modelProviderType: string | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly selectedModel: string | null;
+}
+
+interface AgentForAutoSend {
+  readonly id: string;
+  readonly orgId: string;
+}
+
+interface ResolvedAttachFile {
+  readonly id: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly size: number;
+  readonly url: string;
+}
+
+type ResolveAttachFiles = (
+  userId: string,
+  fileIds: readonly string[],
+) => Promise<readonly ResolvedAttachFile[]>;
+
+interface ChatThreadForRunRow {
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly orgId: string;
+}
+
+interface ChatRunInfo {
+  readonly prompt: string;
+  readonly error: string | null;
+  readonly lastEventSequence: number | null;
+}
+
+interface CreateQueuedChatRunInput {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly prompt: string;
+  readonly sessionId: string | null;
+  readonly appendSystemPrompt: string;
+  readonly threadId: string;
+  readonly queuedMessage: QueuedUserMessage;
+}
+
+function generateCallbackSecret(): string {
+  return randomBytes(32).toString("hex");
+}
+
+function chatCallbackUrl(): string {
+  return new URL(
+    "/api/internal/callbacks/chat",
+    internalApiBaseUrl(),
+  ).toString();
+}
+
+function parseModelProviderCredentialScope(
+  value: string | null,
+): ModelProviderCredentialScope | null {
+  if (value === null || value === "org" || value === "member") {
+    return value;
+  }
+  throw new Error(`Unknown model provider credential scope "${value}"`);
+}
+
+function buildQueuedCreateZeroRunArgs(
+  input: CreateQueuedChatRunInput,
+  apiStartTime: number,
+) {
+  return {
+    auth: {
+      tokenType: "session" as const,
+      userId: input.userId,
+      orgId: input.orgId,
+      orgRole: "member" as const,
+    },
+    apiStartTime,
+    chatThreadId: input.threadId,
+    modelProviderId: input.queuedMessage.modelProviderId ?? undefined,
+    modelProviderCredentialScope:
+      input.queuedMessage.modelProviderCredentialScope ?? undefined,
+    selectedModelOverride: input.queuedMessage.selectedModel ?? undefined,
+    callbacks: [
+      {
+        url: chatCallbackUrl(),
+        secret: generateCallbackSecret(),
+        payload: {
+          threadId: input.threadId,
+          agentId: input.agentId,
+        },
+      },
+    ],
+    triggerSource: "web" as const,
+    appendSystemPrompt: input.appendSystemPrompt,
+    body: {
+      prompt: input.prompt,
+      agentId: input.agentId,
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.queuedMessage.modelProviderType
+        ? { modelProvider: input.queuedMessage.modelProviderType }
+        : {}),
+    },
+  };
+}
+
+function extractAnthropicContent(
+  blocks: readonly ContentBlock[],
+): string | null {
+  const parts = blocks.flatMap((block) => {
+    return block.type === "text" &&
+      typeof block.text === "string" &&
+      block.text.trim().length > 0
+      ? [block.text]
+      : [];
+  });
+  if (parts.length === 0) {
+    return null;
+  }
+  return parts.length === 1 ? parts[0]! : parts.join("\n\n");
+}
+
+function extractCodexAgentMessageContent(item: CodexItem): string | null {
+  if (
+    item.type !== "agent_message" ||
+    typeof item.text !== "string" ||
+    item.text.trim().length === 0
+  ) {
+    return null;
+  }
+  return item.text;
+}
+
+function extractAssistantContent(event: AxiomChatOutputEvent): string | null {
+  const content = event.eventData?.message?.content;
+  if (content) {
+    return extractAnthropicContent(content);
+  }
+  const item = event.eventData?.item;
+  if (item) {
+    return extractCodexAgentMessageContent(item);
+  }
+  return null;
+}
+
+function extractResultFallback(
+  sequenceNumber: number,
+  event: AxiomChatOutputEvent,
+): ResultEventItem | null {
+  const result = event.eventData?.result;
+  if (typeof result !== "string") {
+    return null;
+  }
+  if (!result.trim()) {
+    return null;
+  }
+  return { sequenceNumber, content: result };
+}
+
+async function queryChatOutputEvents(args: {
+  readonly runId: string;
+  readonly lastEventSequence: number | null;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly assistantItems: readonly AssistantEventItem[];
+  readonly resultFallback: ResultEventItem | null;
+}> {
+  await waitForRunEventWatermarkVisible(args.runId, args.lastEventSequence);
+  args.signal.throwIfAborted();
+
+  const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
+  const apl = `['${dataset}']
+| where runId == "${escapeAplString(args.runId)}"
+| where eventType == "assistant" or eventType == "result" or eventType == "item.completed"
+| order by sequenceNumber asc
+| limit 200`;
+
+  const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
+    noCache: true,
+  });
+  args.signal.throwIfAborted();
+
+  const assistantItems: AssistantEventItem[] = [];
+  let resultFallback: ResultEventItem | null = null;
+  for (const event of events) {
+    const sequenceNumber =
+      event.sequenceNumber ?? event.eventData?.sequenceNumber;
+    if (typeof sequenceNumber !== "number") {
+      continue;
+    }
+
+    const assistant = extractAssistantContent(event);
+    if (assistant !== null) {
+      assistantItems.push({ sequenceNumber, content: assistant });
+      continue;
+    }
+
+    const fallback = extractResultFallback(sequenceNumber, event);
+    if (fallback !== null) {
+      resultFallback = fallback;
+    }
+  }
+
+  return { assistantItems, resultFallback };
+}
+
+async function latestEventBackedAssistantMessage(
+  db: Db,
+  runId: string,
+): Promise<{ readonly content: string } | null> {
+  const [message] = await db
+    .select({ content: chatMessages.content })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.runId, runId),
+        eq(chatMessages.role, "assistant"),
+        isNotNull(chatMessages.sequenceNumber),
+        isNotNull(chatMessages.content),
+        sql<boolean>`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
+      ),
+    )
+    .orderBy(desc(chatMessages.sequenceNumber))
+    .limit(1);
+
+  if (!message || message.content === null) {
+    return null;
+  }
+  return { content: message.content };
+}
+
+async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
+  const [run] = await db
+    .select({ completedAt: agentRuns.completedAt })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run?.completedAt) {
+    return;
+  }
+
+  const [message] = await db
+    .select({
+      lastEventAt: sql<Date | null>`MAX(${chatMessages.createdAt})`,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.runId, runId),
+        eq(chatMessages.role, "assistant"),
+        isNotNull(chatMessages.sequenceNumber),
+      ),
+    );
+  if (!message?.lastEventAt) {
+    return;
+  }
+
+  const lastEventMs =
+    message.lastEventAt instanceof Date
+      ? message.lastEventAt.getTime()
+      : new Date(message.lastEventAt).getTime();
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "last_event_to_complete",
+    durationMs: Math.max(0, run.completedAt.getTime() - lastEventMs),
+    success: true,
+    runId,
+  });
+}
+
+async function insertAssistantErrorMessage(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly prompt: string;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly lifecycleEvent: "failed" | "cancelled";
+  readonly getFormattedError: () => Promise<string>;
+}): Promise<boolean> {
+  const displayErrorMessage = await args.getFormattedError();
+  const inserted = await args.db.transaction(async (tx) => {
+    const message = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: displayErrorMessage,
+        runId: args.runId,
+        error: displayErrorMessage,
+        runLifecycleEvent: args.lifecycleEvent,
+      })
+      .onConflictDoNothing({
+        target: chatMessages.runId,
+        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+      })
+      .returning({ id: chatMessages.id });
+    if (message.length === 0) {
+      return false;
+    }
+    await touchChatThreadLastMessageAt(tx, args.threadId);
+    return true;
+  });
+  if (!inserted) {
+    return false;
+  }
+
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
+  );
+  await publishThreadListChanged(args.userId);
+  await sendUserPushNotifications({
+    db: args.db,
+    userId: args.userId,
+    notification: {
+      title: args.prompt.slice(0, 60),
+      body: `Task failed: ${displayErrorMessage.slice(0, 80)}`,
+      url: `/chats/${args.threadId}`,
+    },
+  });
+  return true;
+}
+
+async function insertRunLifecycleMarker(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly event: "completed" | "cancelled";
+  readonly recommendedFollowups?: ChatMessageRecommendedFollowups;
+}): Promise<boolean> {
+  const markerCreatedAt = nowDate();
+  const inserted = await args.db.transaction(async (tx) => {
+    const marker = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: null,
+        runId: args.runId,
+        runLifecycleEvent: args.event,
+        recommendedFollowups:
+          args.event === "completed" ? args.recommendedFollowups : undefined,
+        createdAt: markerCreatedAt,
+      })
+      .onConflictDoNothing({
+        target: chatMessages.runId,
+        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+      })
+      .returning({ id: chatMessages.id });
+    if (marker.length === 0) {
+      return false;
+    }
+    const [assistantText] = await tx
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.runId, args.runId),
+          eq(chatMessages.role, "assistant"),
+          isNotNull(chatMessages.content),
+          sql`${chatMessages.content} <> ''`,
+        ),
+      )
+      .limit(1);
+    if (assistantText) {
+      await touchChatThreadLastMessageAt(tx, args.threadId);
+    }
+    return true;
+  });
+  if (!inserted) {
+    return false;
+  }
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
+  );
+  await publishThreadListChanged(args.userId);
+  return true;
+}
+
+async function generateRecommendedFollowupsForCompletedRun(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<ChatMessageRecommendedFollowups | undefined> {
+  args.signal.throwIfAborted();
+  const suggestions = await generateChatThreadRecommendedFollowups({
+    db: args.db,
+    threadId: args.threadId,
+  });
+  args.signal.throwIfAborted();
+  return suggestions.length > 0 ? suggestions : undefined;
+}
+
+async function handleCompletedChatCallback(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly run: ChatRunInfo;
+  readonly chatThread: ChatThreadForRunRow;
+  readonly signal: AbortSignal;
+  readonly insertAssistantItems: (
+    items: readonly AssistantEventItem[],
+  ) => Promise<void>;
+  readonly saveRunSummary: (resultText: string) => Promise<void>;
+}): Promise<void> {
+  const { assistantItems, resultFallback } = await queryChatOutputEvents({
+    runId: args.runId,
+    lastEventSequence: args.run.lastEventSequence,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
+  if (assistantItems.length > 0) {
+    await args.insertAssistantItems(assistantItems);
+    args.signal.throwIfAborted();
+  }
+
+  let lastResultText =
+    assistantItems.length > 0
+      ? assistantItems[assistantItems.length - 1]!.content
+      : null;
+  if (lastResultText === null) {
+    const existingAssistant = await latestEventBackedAssistantMessage(
+      args.db,
+      args.runId,
+    );
+    args.signal.throwIfAborted();
+
+    if (existingAssistant) {
+      lastResultText = existingAssistant.content;
+    } else if (resultFallback) {
+      await args.insertAssistantItems([resultFallback]);
+      args.signal.throwIfAborted();
+      lastResultText = resultFallback.content;
+    }
+  }
+
+  waitUntil(
+    tapError(recordLastEventToComplete(args.db, args.runId), (error) => {
+      log.warn("Failed to record last_event_to_complete", {
+        runId: args.runId,
+        error,
+      });
+    }),
+  );
+
+  // The remaining post-processing steps are mutually independent. They used to
+  // run serially, which stacked several sequential LLM round trips onto the
+  // request tail. Run the independent groups concurrently; steps that depend on
+  // each other (followups -> lifecycle marker, notification summary -> push)
+  // stay ordered within their own group.
+  const saveSummaryStep = args.saveRunSummary(lastResultText ?? "");
+
+  const titleStep = generateAndPersistChatThreadTitleFromCallback({
+    db: args.db,
+    threadId: args.chatThread.chatThreadId,
+    userId: args.chatThread.userId,
+    runId: args.runId,
+    prompt: args.run.prompt,
+    currentAssistantReply: lastResultText ?? undefined,
+  });
+
+  const lifecycleMarkerStep = (async () => {
+    const recommendedFollowups =
+      await generateRecommendedFollowupsForCompletedRun({
+        db: args.db,
+        threadId: args.chatThread.chatThreadId,
+        signal: args.signal,
+      });
+    await insertRunLifecycleMarker({
+      db: args.db,
+      runId: args.runId,
+      threadId: args.chatThread.chatThreadId,
+      userId: args.chatThread.userId,
+      event: "completed",
+      recommendedFollowups,
+    });
+  })();
+
+  const pushStep = (async () => {
+    let summary: string | null = null;
+    if (lastResultText) {
+      const generated = await settle(
+        generateChatNotificationSummary(args.run.prompt, lastResultText),
+      );
+      if (generated.ok) {
+        summary = generated.value;
+      } else {
+        log.warn("Failed to generate notification summary", {
+          runId: args.runId,
+          error: generated.error,
+        });
+      }
+    }
+
+    await sendUserPushNotifications({
+      db: args.db,
+      userId: args.chatThread.userId,
+      notification: {
+        title: args.run.prompt.slice(0, 60),
+        body: summary ?? "Your task is complete",
+        url: `/chats/${args.chatThread.chatThreadId}`,
+      },
+    });
+  })();
+
+  await Promise.all([
+    saveSummaryStep,
+    titleStep,
+    lifecycleMarkerStep,
+    pushStep,
+  ]);
+}
+
+async function handleFailedChatCallback(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly run: ChatRunInfo;
+  readonly chatThread: ChatThreadForRunRow;
+  readonly errorMessage: string;
+  readonly getFormattedError: () => Promise<string>;
+}): Promise<void> {
+  const lifecycleEvent =
+    args.errorMessage.trim().toLowerCase() === "run cancelled"
+      ? "cancelled"
+      : "failed";
+  await insertAssistantErrorMessage({
+    db: args.db,
+    runId: args.runId,
+    prompt: args.run.prompt,
+    threadId: args.chatThread.chatThreadId,
+    userId: args.chatThread.userId,
+    lifecycleEvent,
+    getFormattedError: args.getFormattedError,
+  });
+}
+
+function buildWebChatPrompt(): string {
+  return [
+    "# Current Integration\nYou are currently running inside: Web",
+    "You are communicating with the user through the web chat UI.",
+  ].join("\n\n");
+}
+
+function buildWebAttachFilesPrompt(
+  files: readonly {
+    readonly id: string;
+    readonly filename: string;
+    readonly contentType: string;
+  }[],
+): string {
+  return files
+    .map((file) => {
+      return `[Web file] ${file.filename} (${file.contentType})\n   [ID] ${file.id}`;
+    })
+    .join("\n");
+}
+
+function buildAppendSystemPrompt(
+  incompleteContext: string,
+  priorContext: string,
+  generationTemplatePrompt: string,
+): string {
+  return [
+    buildWebChatPrompt(),
+    priorContext,
+    incompleteContext,
+    generationTemplatePrompt,
+  ]
+    .filter((part) => {
+      return part.length > 0;
+    })
+    .join("\n\n");
+}
+
+function formatAttachFileIds(
+  ids: readonly string[] | null | undefined,
+): string {
+  if (!ids || ids.length === 0) {
+    return "";
+  }
+  return ids
+    .map((id) => {
+      return `[Web file]\n   [ID] ${id}`;
+    })
+    .join("\n");
+}
+
+function truncatePrior(value: string): string {
+  if (value.length <= PRIOR_MESSAGE_CHAR_CAP) {
+    return value;
+  }
+  return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
+}
+
+function truncateIncomplete(value: string): string {
+  if (value.length <= INCOMPLETE_MESSAGE_CHAR_CAP) {
+    return value;
+  }
+  return `${value.slice(0, INCOMPLETE_MESSAGE_CHAR_CAP)}...[truncated]`;
+}
+
+function formatPriorRunMessage(message: PriorRunMessage): string {
+  const roleLabel = message.role === "user" ? "User" : "Assistant";
+  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const attach = formatAttachFileIds(message.attachFiles);
+  return attach ? `${body}\n${attach}` : body;
+}
+
+function buildWebChatPriorRunsContext(runs: readonly PriorRun[]): string {
+  if (runs.length === 0) {
+    return "";
+  }
+  const sections = runs.map((run, index) => {
+    const renderedMessages = run.messages.map(formatPriorRunMessage);
+    const transcript =
+      renderedMessages.length > 0
+        ? renderedMessages.join("\n\n")
+        : [
+            `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
+            "Assistant: [no visible assistant message recorded]",
+          ].join("\n\n");
+    return [
+      `## Recent Run ${index + 1}`,
+      `- RUN_ID: ${run.runId}`,
+      `- RUN_STATUS: ${run.status}`,
+      `- LOG_COMMAND: zero logs ${run.runId} --all`,
+      "",
+      transcript,
+    ].join("\n");
+  });
+  return [
+    "# Web Chat Run Context",
+    "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
+    "Use these messages as context for the user's current request.",
+    "- Treat the newest run below as the most recent prior round.",
+    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
+    "",
+    ...sections,
+  ].join("\n");
+}
+
+function formatIncompleteMessage(message: IncompleteRoundMessage): string {
+  const attach = formatAttachFileIds(message.attachFiles);
+  if (message.role === "user") {
+    const body =
+      message.content !== null && message.content !== ""
+        ? truncateIncomplete(message.content)
+        : "[empty message]";
+    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
+  }
+  if (message.content !== null && message.content !== "") {
+    return `Assistant (partial): ${truncateIncomplete(message.content)}`;
+  }
+  return "Assistant: [no response before run ended]";
+}
+
+function buildWebChatIncompleteContext(
+  rounds: readonly IncompleteRound[],
+): string {
+  if (rounds.length === 0) {
+    return "";
+  }
+  const total = rounds.length;
+  const blocks = rounds.map((round, index) => {
+    const relativeIndex = index - total + 1;
+    const rendered = round.messages.map(formatIncompleteMessage);
+    const hasAssistant = round.messages.some((message) => {
+      return message.role === "assistant";
+    });
+    if (!hasAssistant) {
+      rendered.push("Assistant: [no response before run ended]");
+    }
+    return [
+      "---",
+      "",
+      `- RELATIVE_INDEX: ${relativeIndex}`,
+      `- RUN_STATUS: ${round.status}`,
+      "",
+      ...rendered,
+    ].join("\n");
+  });
+  return [
+    "# Incomplete Rounds Context",
+    "",
+    "The rounds below were sent in this thread but their runs did not complete",
+    "(cancelled, failed, or timed out), so the CLI session history does not",
+    "contain them. Treat them as part of the conversation you are having with",
+    "the user. RELATIVE_INDEX 0 is the most recent incomplete round.",
+    "",
+    blocks.join("\n\n"),
+    "",
+    "---",
+  ].join("\n");
+}
+
+function isIncompleteRunStatus(
+  value: string | null,
+): value is "cancelled" | "failed" | "timeout" {
+  return value === "cancelled" || value === "failed" || value === "timeout";
+}
+
+function groupIncompleteRoundsByRunId(
+  rows: readonly IncompleteRoundRow[],
+): readonly IncompleteRound[] {
+  const byRunId = new Map<string, IncompleteRound>();
+  const order: string[] = [];
+  for (const row of rows) {
+    let round = byRunId.get(row.runId);
+    if (!round) {
+      round = {
+        runId: row.runId,
+        status: row.runStatus,
+        messages: [],
+      };
+      byRunId.set(row.runId, round);
+      order.push(row.runId);
+    }
+    round.messages.push({
+      role: row.role,
+      content: row.content,
+      error: row.error,
+      attachFiles: row.attachFiles,
+    });
+  }
+  return order.map((runId) => {
+    const round = byRunId.get(runId);
+    if (!round) {
+      throw new Error("Incomplete round grouping lost run id");
+    }
+    return round;
+  });
+}
+
+async function getIncompleteRoundsSinceLastSuccess(
+  db: Db,
+  threadId: string,
+  maxRounds = 20,
+): Promise<readonly IncompleteRoundRow[]> {
+  const rows = await db
+    .select({
+      runId: chatMessages.runId,
+      role: chatMessages.role,
+      content: chatMessages.content,
+      error: chatMessages.error,
+      attachFiles: chatMessages.attachFiles,
+      createdAt: chatMessages.createdAt,
+      sequenceNumber: chatMessages.sequenceNumber,
+      runStatus: agentRuns.status,
+    })
+    .from(chatMessages)
+    .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        visibleChatMessageCondition(),
+        inArray(agentRuns.status, ["cancelled", "failed", "timeout"]),
+        inArray(chatMessages.role, ["user", "assistant"]),
+        sql`${chatMessages.createdAt} > COALESCE(
+          (
+            SELECT MAX(cm2.created_at)
+            FROM chat_messages cm2
+            INNER JOIN agent_runs ar2 ON ar2.id = cm2.run_id
+            WHERE cm2.chat_thread_id = ${threadId}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM chat_messages revoker2
+                WHERE revoker2.revokes_message_id = cm2.id
+              )
+              AND ar2.result ? 'agentSessionId'
+              AND jsonb_typeof(ar2.result->'agentSessionId') = 'string'
+          ),
+          '-infinity'::timestamptz
+        )`,
+      ),
+    )
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+
+  const candidates: IncompleteRoundRow[] = [];
+  for (const row of rows) {
+    if (row.runId === null || !isIncompleteRunStatus(row.runStatus)) {
+      continue;
+    }
+    if (row.role !== "user" && row.role !== "assistant") {
+      continue;
+    }
+    candidates.push({
+      runId: row.runId,
+      runStatus: row.runStatus,
+      role: row.role,
+      content: row.content,
+      error: row.error,
+      attachFiles: row.attachFiles,
+    });
+  }
+
+  const orderedRunIds: string[] = [];
+  const seen = new Set<string>();
+  for (const row of candidates) {
+    if (!seen.has(row.runId)) {
+      seen.add(row.runId);
+      orderedRunIds.push(row.runId);
+    }
+  }
+  if (orderedRunIds.length <= maxRounds) {
+    return candidates;
+  }
+
+  const keep = new Set(orderedRunIds.slice(orderedRunIds.length - maxRounds));
+  return candidates.filter((row) => {
+    return keep.has(row.runId);
+  });
+}
+
+async function nextQueuedUserMessage(
+  db: Db,
+  threadId: string,
+): Promise<QueuedUserMessage | null> {
+  const [message] = await db
+    .select({
+      id: chatMessages.id,
+      content: chatMessages.content,
+      attachFiles: chatMessages.attachFiles,
+      attachFileMetadata: chatMessages.attachFileMetadata,
+      generationTemplate: chatMessages.generationTemplate,
+      modelProviderId: sql<null>`NULL`,
+      modelProviderType: sql<null>`NULL`,
+      modelProviderCredentialScope: sql<null>`NULL`,
+      selectedModel: chatThreads.selectedModel,
+    })
+    .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        eq(chatMessages.role, "user"),
+        isNull(chatMessages.runId),
+        isNull(chatMessages.revokesMessageId),
+        isNull(chatMessages.interruptsRunId),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM ${chatMessages} AS revoker
+          WHERE revoker.revokes_message_id = ${chatMessages.id}
+        )`,
+      ),
+    )
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+    .limit(1);
+
+  return message ?? null;
+}
+
+async function getLatestRunsByThreadId(
+  db: Db,
+  threadId: string,
+  limit: number,
+): Promise<PriorRun[]> {
+  const runRows = await db
+    .select({
+      runId: zeroRuns.id,
+      status: agentRuns.status,
+      prompt: agentRuns.prompt,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.chatThreadId, threadId))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(limit);
+
+  const orderedRuns = runRows.reverse();
+  const runIds = orderedRuns.map((run) => {
+    return run.runId;
+  });
+  if (runIds.length === 0) {
+    return [];
+  }
+
+  const messageRows = await db
+    .select({
+      runId: chatMessages.runId,
+      role: chatMessages.role,
+      content: chatMessages.content,
+      attachFiles: chatMessages.attachFiles,
+      createdAt: chatMessages.createdAt,
+      sequenceNumber: chatMessages.sequenceNumber,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        isNotNull(chatMessages.content),
+        inArray(chatMessages.runId, runIds),
+        inArray(chatMessages.role, ["user", "assistant"]),
+        visibleChatMessageCondition(),
+      ),
+    )
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+
+  const messagesByRunId = new Map<string, PriorRunMessage[]>();
+  for (const row of messageRows) {
+    if (
+      row.runId === null ||
+      row.content === null ||
+      (row.role !== "user" && row.role !== "assistant")
+    ) {
+      continue;
+    }
+    const existing = messagesByRunId.get(row.runId) ?? [];
+    existing.push({
+      role: row.role,
+      content: row.content,
+      attachFiles: row.attachFiles,
+    });
+    messagesByRunId.set(row.runId, existing);
+  }
+
+  return orderedRuns.map((run) => {
+    return {
+      runId: run.runId,
+      status: run.status,
+      prompt: run.prompt,
+      messages: messagesByRunId.get(run.runId) ?? [],
+    };
+  });
+}
+
+async function resolveQueuedMessageModelPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly queuedMessage: QueuedUserMessage;
+}): Promise<QueuedUserMessage> {
+  if (!params.queuedMessage.selectedModel) {
+    return params.queuedMessage;
+  }
+
+  const [policy] = await params.db
+    .select({
+      model: orgModelPolicies.model,
+      defaultProviderType: orgModelPolicies.defaultProviderType,
+      credentialScope: orgModelPolicies.credentialScope,
+      modelProviderId: orgModelPolicies.modelProviderId,
+    })
+    .from(orgModelPolicies)
+    .where(
+      and(
+        eq(orgModelPolicies.orgId, params.orgId),
+        eq(orgModelPolicies.model, params.queuedMessage.selectedModel),
+      ),
+    )
+    .limit(1);
+
+  if (!policy) {
+    return params.queuedMessage;
+  }
+
+  return {
+    ...params.queuedMessage,
+    modelProviderId: policy.modelProviderId ?? null,
+    modelProviderType: policy.defaultProviderType,
+    modelProviderCredentialScope: parseModelProviderCredentialScope(
+      policy.credentialScope,
+    ),
+    selectedModel: policy.model,
+  };
+}
+
+async function chatThreadForRunFromDb(
+  db: Db,
+  runId: string,
+): Promise<ChatThreadForRunRow | null> {
+  const [row] = await db
+    .select({
+      chatThreadId: zeroRuns.chatThreadId,
+      userId: chatThreads.userId,
+      orgId: agentRuns.orgId,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+
+  if (!row?.chatThreadId) {
+    return null;
+  }
+  return {
+    chatThreadId: row.chatThreadId,
+    userId: row.userId,
+    orgId: row.orgId,
+  };
+}
+
+function hasAgentSessionId(
+  value: unknown,
+): value is { readonly agentSessionId: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "agentSessionId" in value &&
+    typeof (value as { readonly agentSessionId: unknown }).agentSessionId ===
+      "string"
+  );
+}
+
+async function latestSessionForThreadFromDb(
+  db: Db,
+  threadId: string,
+): Promise<LatestThreadSession | null> {
+  const rows = await db
+    .select({
+      result: agentRuns.result,
+      selectedModel: zeroRuns.selectedModel,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
+    // D7 session-continuity exclusion (see latestSessionForThread in
+    // zero-chat-messages.ts): only web-source runs join the chain, so an
+    // autoSend follow-up resumes the latest web session, not an automation one.
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        eq(zeroRuns.triggerSource, "web"),
+      ),
+    )
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(5);
+
+  for (const row of rows) {
+    if (hasAgentSessionId(row.result)) {
+      return {
+        sessionId: row.result.agentSessionId,
+        selectedModel: row.selectedModel,
+      };
+    }
+  }
+  return null;
+}
+
+function shouldStartNewSessionForQueuedMessage(params: {
+  readonly latestSession: LatestThreadSession | null;
+  readonly queuedMessage: QueuedUserMessage;
+}): boolean {
+  return (
+    params.latestSession?.selectedModel !== undefined &&
+    params.latestSession.selectedModel !== null &&
+    params.queuedMessage.selectedModel !== null &&
+    params.latestSession.selectedModel !== params.queuedMessage.selectedModel
+  );
+}
+
+async function loadAgentForAutoSend(
+  db: Db,
+  agentId: string,
+): Promise<AgentForAutoSend | null> {
+  const [agent] = await db
+    .select({ id: zeroAgents.id, orgId: zeroAgents.orgId })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  return agent ?? null;
+}
+
+function fallbackAttachFiles(
+  ids: readonly string[] | null,
+): readonly ResolvedAttachFile[] {
+  return (ids ?? []).map((id) => {
+    return {
+      id,
+      filename: id,
+      contentType: "application/octet-stream",
+      size: 0,
+      url: "",
+    };
+  });
+}
+
+async function buildQueuedPriorContext(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly startNewSession: boolean;
+  readonly incompleteContext: string;
+}): Promise<string> {
+  if (!args.startNewSession || args.incompleteContext.length > 0) {
+    return "";
+  }
+  return buildWebChatPriorRunsContext(
+    await getLatestRunsByThreadId(
+      args.db,
+      args.threadId,
+      RECENT_CHAT_RUN_LIMIT,
+    ),
+  );
+}
+
+function resolveQueuedAttachFiles(args: {
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly userId: string;
+}): Promise<readonly ResolvedAttachFile[]> {
+  if (
+    args.queuedMessage.attachFileMetadata &&
+    args.queuedMessage.attachFileMetadata.length > 0
+  ) {
+    return Promise.resolve(
+      resolveAttachFileMetadataUrls(args.queuedMessage.attachFileMetadata),
+    );
+  }
+  if (
+    args.queuedMessage.attachFiles &&
+    args.queuedMessage.attachFiles.length > 0
+  ) {
+    return args.getResolvedAttachFiles(
+      args.userId,
+      args.queuedMessage.attachFiles,
+    );
+  }
+  return Promise.resolve([]);
+}
+
+async function buildQueuedFullPrompt(args: {
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly userId: string;
+}): Promise<string> {
+  const resolvedAttachFiles = await resolveQueuedAttachFiles(args);
+  const attachFiles =
+    resolvedAttachFiles.length > 0
+      ? resolvedAttachFiles
+      : fallbackAttachFiles(args.queuedMessage.attachFiles);
+  const content = args.queuedMessage.content ?? "";
+  if (attachFiles.length === 0) {
+    return content;
+  }
+  return `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
+}
+
+async function buildCreateQueuedChatRunInput(args: {
+  readonly db: Db;
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly agent: AgentForAutoSend;
+  readonly queuedMessage: QueuedUserMessage;
+}): Promise<CreateQueuedChatRunInput> {
+  const resolvedQueuedMessage = await resolveQueuedMessageModelPin({
+    db: args.db,
+    orgId: args.agent.orgId,
+    queuedMessage: args.queuedMessage,
+  });
+
+  const [latestSession, incompleteRows] = await Promise.all([
+    latestSessionForThreadFromDb(args.db, args.threadId),
+    getIncompleteRoundsSinceLastSuccess(args.db, args.threadId),
+  ]);
+  const startNewSession = shouldStartNewSessionForQueuedMessage({
+    latestSession,
+    queuedMessage: resolvedQueuedMessage,
+  });
+  const incompleteContext = startNewSession
+    ? ""
+    : buildWebChatIncompleteContext(
+        groupIncompleteRoundsByRunId(incompleteRows),
+      );
+  const priorContext = await buildQueuedPriorContext({
+    db: args.db,
+    threadId: args.threadId,
+    startNewSession,
+    incompleteContext,
+  });
+  const generationTemplatePrompt = buildGenerationTemplatePrompt(
+    resolvedQueuedMessage.generationTemplate,
+  );
+
+  return {
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    agentId: args.agent.id,
+    prompt: await buildQueuedFullPrompt({
+      getResolvedAttachFiles: args.getResolvedAttachFiles,
+      queuedMessage: resolvedQueuedMessage,
+      userId: args.userId,
+    }),
+    sessionId: startNewSession ? null : (latestSession?.sessionId ?? null),
+    appendSystemPrompt: buildAppendSystemPrompt(
+      incompleteContext,
+      priorContext,
+      generationTemplatePrompt.status === "resolved"
+        ? generationTemplatePrompt.prompt
+        : "",
+    ),
+    threadId: args.threadId,
+    queuedMessage: resolvedQueuedMessage,
+  };
+}
+
+async function claimQueuedUserMessage(args: {
+  readonly db: Db;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly runId: string;
+  readonly threadId: string;
+}): Promise<boolean> {
+  const claimed = await args.db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: args.threadId,
+      role: "user",
+      content: args.queuedMessage.content,
+      runId: args.runId,
+      attachFiles: args.queuedMessage.attachFiles
+        ? [...args.queuedMessage.attachFiles]
+        : null,
+      attachFileMetadata: args.queuedMessage.attachFileMetadata
+        ? [...args.queuedMessage.attachFileMetadata]
+        : null,
+      generationTemplate: args.queuedMessage.generationTemplate,
+      revokesMessageId: args.queuedMessage.id,
+    })
+    .onConflictDoNothing({ target: chatMessages.revokesMessageId })
+    .returning({ id: chatMessages.id });
+
+  if (claimed.length > 0) {
+    return true;
+  }
+
+  await args.db
+    .update(agentRuns)
+    .set({ status: "cancelled", error: "Queued message already claimed" })
+    .where(eq(agentRuns.id, args.runId));
+  log.warn("Auto-send created a run for an already-claimed message", {
+    threadId: args.threadId,
+    runId: args.runId,
+    userMessageId: args.queuedMessage.id,
+  });
+  return false;
+}
+
+async function autoSendQueuedMessageOnRunComplete(args: {
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly createRun: (
+    input: CreateQueuedChatRunInput,
+  ) => Promise<{ readonly runId: string } | null>;
+  readonly db: Db;
+  readonly runId: string;
+  readonly agentId: string;
+}): Promise<void> {
+  const chatThread = await chatThreadForRunFromDb(args.db, args.runId);
+  if (!chatThread) {
+    return;
+  }
+  const { chatThreadId: threadId, userId } = chatThread;
+
+  const queuedMessage = await nextQueuedUserMessage(args.db, threadId);
+  if (!queuedMessage) {
+    return;
+  }
+
+  const agent = await loadAgentForAutoSend(args.db, args.agentId);
+  if (!agent) {
+    log.warn("Auto-send aborted: agent not found", {
+      threadId,
+      agentId: args.agentId,
+    });
+    return;
+  }
+
+  const runInput = await buildCreateQueuedChatRunInput({
+    db: args.db,
+    getResolvedAttachFiles: args.getResolvedAttachFiles,
+    threadId,
+    userId,
+    agent,
+    queuedMessage,
+  });
+  const run = await args.createRun(runInput);
+  if (!run) {
+    return;
+  }
+
+  const claimed = await claimQueuedUserMessage({
+    db: args.db,
+    queuedMessage,
+    runId: run.runId,
+    threadId,
+  });
+  if (!claimed) {
+    return;
+  }
+
+  await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+  await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
+  await publishThreadListChanged(userId);
+}
+
+async function createQueuedChatRun(args: {
+  readonly db: Db;
+  readonly input: CreateQueuedChatRunInput;
+  readonly signal: AbortSignal;
+  readonly createRun: (
+    input: CreateQueuedChatRunInput,
+  ) => Promise<{ readonly runId: string } | null>;
+}): Promise<{ readonly runId: string } | null> {
+  const created = await args.createRun(args.input);
+  args.signal.throwIfAborted();
+  if (!created) {
+    return null;
+  }
+
+  await args.db
+    .update(zeroRuns)
+    .set({
+      modelProvider: args.input.queuedMessage.modelProviderType,
+      modelProviderId: args.input.queuedMessage.modelProviderId,
+      modelProviderCredentialScope:
+        args.input.queuedMessage.modelProviderCredentialScope,
+      selectedModel: args.input.queuedMessage.selectedModel,
+    })
+    .where(eq(zeroRuns.id, created.runId));
+  args.signal.throwIfAborted();
+
+  return created;
+}
+
+async function loadTerminalChatCallback(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly callbackStatus: "completed" | "failed";
+  readonly payloadThreadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly run: ChatRunInfo;
+  readonly chatThread: ChatThreadForRunRow;
+} | null> {
+  const [run] = await args.db
+    .select({
+      prompt: agentRuns.prompt,
+      error: agentRuns.error,
+      lastEventSequence: agentRuns.lastEventSequence,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, args.runId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!run) {
+    return null;
+  }
+
+  const chatThread = await chatThreadForRunFromDb(args.db, args.runId);
+  args.signal.throwIfAborted();
+  if (!chatThread) {
+    log.debug("Skipping terminal chat callback for missing chat thread", {
+      runId: args.runId,
+      status: args.callbackStatus,
+      payloadThreadId: args.payloadThreadId,
+    });
+    return null;
+  }
+
+  if (chatThread.chatThreadId !== args.payloadThreadId) {
+    log.warn("Chat callback payload thread does not match run mapping", {
+      runId: args.runId,
+      payloadThreadId: args.payloadThreadId,
+      chatThreadId: chatThread.chatThreadId,
+    });
+  }
+
+  return { run, chatThread };
+}
+
+const handleChatCallback$ = command(({ get, set }, signal: AbortSignal) => {
+  const apiStartTime = now();
+  const callback = get(callbackPayload$);
+  const payload = chatCallbackPayloadSchema.safeParse(callback.payload);
+  if (!payload.success) {
+    return {
+      status: 400 as const,
+      body: { error: "Invalid or missing payload" },
+    };
+  }
+
+  if (callback.status === "progress") {
+    return { status: 200 as const, body: { success: true as const } };
+  }
+
+  const db = set(writeDb$);
+  const runId = callback.runId;
+  const callbackStatus = callback.status;
+
+  // The webhook sender (dispatchRunCallbacks) awaits this response only to
+  // record delivery; it does not retry and nothing downstream reads the body.
+  // The frontend learns about new messages through Ably realtime signals, not
+  // this HTTP response. So acknowledge immediately and run the heavy terminal
+  // processing (Axiom watermark wait, message persistence, LLM generation,
+  // push delivery) in the background, mirroring webhooks-agent-complete.
+  waitUntil(
+    tapError(
+      (async () => {
+        const loaded = await loadTerminalChatCallback({
+          db,
+          runId,
+          callbackStatus,
+          payloadThreadId: payload.data.threadId,
+          signal,
+        });
+        if (!loaded) {
+          return;
+        }
+        const { run, chatThread } = loaded;
+
+        if (callbackStatus === "completed") {
+          await handleCompletedChatCallback({
+            db,
+            runId,
+            run,
+            chatThread,
+            signal,
+            insertAssistantItems: async (items) => {
+              await set(
+                insertAssistantEventMessages$,
+                {
+                  runId,
+                  threadId: chatThread.chatThreadId,
+                  userId: chatThread.userId,
+                  items,
+                },
+                signal,
+              );
+            },
+            saveRunSummary: (resultText) => {
+              return set(
+                saveRunSummary$,
+                {
+                  runId,
+                  triggerSource: "chat",
+                  prompt: run.prompt,
+                  resultText,
+                },
+                signal,
+              );
+            },
+          });
+        } else {
+          const errorMessage = callback.error ?? run.error ?? "Run failed";
+          await handleFailedChatCallback({
+            db,
+            runId,
+            run,
+            chatThread,
+            errorMessage,
+            getFormattedError: () => {
+              return get(
+                formatChatRunErrorMessage({
+                  chatThreadId: chatThread.chatThreadId,
+                  runId,
+                  errorMessage,
+                }),
+              );
+            },
+          });
+        }
+
+        await autoSendQueuedMessageOnRunComplete({
+          db,
+          runId,
+          agentId: payload.data.agentId,
+          getResolvedAttachFiles: (userId, fileIds) => {
+            return get(resolveAttachFileUrls(userId, fileIds));
+          },
+          createRun: (input) => {
+            return createQueuedChatRun({
+              db,
+              input,
+              signal,
+              createRun: async (runInput) => {
+                const runResult = await set(
+                  createZeroRun$,
+                  buildQueuedCreateZeroRunArgs(runInput, apiStartTime),
+                  signal,
+                );
+                if (runResult.status !== 201) {
+                  log.warn("Auto-send failed to create run", {
+                    threadId: runInput.threadId,
+                    status: runResult.status,
+                  });
+                  return null;
+                }
+                return { runId: runResult.body.runId };
+              },
+            });
+          },
+        });
+      })(),
+      (error) => {
+        log.error("Failed to process terminal chat callback", {
+          runId,
+          status: callbackStatus,
+          error,
+        });
+      },
+    ),
+  );
+
+  return { status: 200 as const, body: { success: true as const } };
+});
+
+export const internalCallbacksChatRoutes: readonly RouteEntry[] = [
+  {
+    route: internalCallbacksChatContract.post,
+    handler: callbackRoute(handleChatCallback$),
+  },
+];

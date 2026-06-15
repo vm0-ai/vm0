@@ -1,0 +1,13 @@
+name: "Toolchain Init"
+description: "Initialize toolchain container environment with git config and dependencies"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Configure git safe directory
+      shell: bash
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+    - name: Install dependencies
+      shell: bash
+      run: cd turbo && pnpm install --frozen-lockfile --strict-peer-dependencies

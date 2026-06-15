@@ -1,0 +1,891 @@
+import os from "node:os";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  ComputerUseHostRuntime,
+  readSystemHostName,
+  type ComputerUseHostFetch,
+} from "./computer-use-host";
+import type {
+  ComputerUseCommand,
+  ComputerUseCommandExecutionResult,
+} from "./computer-use-accessibility";
+import type { ComputerUsePermissionState } from "./computer-use-types";
+
+function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { "content-type": "application/json" },
+    ...init,
+  });
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
+function createRuntime(
+  options: {
+    readonly sessionFetch?: ComputerUseHostFetch;
+    readonly hostFetch?: ComputerUseHostFetch;
+    readonly executeCommand?: (
+      command: ComputerUseCommand,
+      permissions: ComputerUsePermissionState,
+    ) => Promise<ComputerUseCommandExecutionResult>;
+  } = {},
+) {
+  const sessionFetch =
+    options.sessionFetch ??
+    vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.includes("/api/zero/computer-use/audit-events")) {
+        return jsonResponse({ auditEvents: [] });
+      }
+      return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
+    });
+  const hostFetch =
+    options.hostFetch ??
+    vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      return jsonResponse({ status: "idle" });
+    });
+  const runtime = new ComputerUseHostRuntime({
+    platformUrl: new URL("https://app.vm0.ai"),
+    hostName: "lancy-macbook-pro.local",
+    appVersion: "1.2.3",
+    sessionFetch,
+    hostFetch,
+    getPermissions() {
+      return { accessibility: true, screenRecording: false };
+    },
+    async executeCommand(command, permissions) {
+      if (options.executeCommand) {
+        return options.executeCommand(command, permissions);
+      }
+      return { status: "succeeded", result: {} };
+    },
+  });
+  return { runtime, sessionFetch, hostFetch };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+describe("ComputerUseHostRuntime", () => {
+  it("reads the system hostname with an app-name fallback", () => {
+    const hostname = vi
+      .spyOn(os, "hostname")
+      .mockReturnValue(" lancy-macbook-pro.local ");
+
+    expect(readSystemHostName("Zero Computer Use")).toBe(
+      "lancy-macbook-pro.local",
+    );
+
+    hostname.mockReturnValue(" ");
+    expect(readSystemHostName("Zero Computer Use")).toBe("Zero Computer Use");
+  });
+
+  it("does not register a host until manually started", async () => {
+    vi.useFakeTimers();
+    const { runtime, sessionFetch, hostFetch } = createRuntime();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(runtime.getState().status).toBe("offline");
+    expect(sessionFetch).not.toHaveBeenCalled();
+    expect(hostFetch).not.toHaveBeenCalled();
+  });
+
+  it("registers the host on manual start without requiring Screen Recording", async () => {
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async () => {
+      return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
+    });
+    const { runtime, hostFetch } = createRuntime({ sessionFetch });
+
+    await runtime.start();
+
+    expect(sessionFetch).toHaveBeenCalledOnce();
+    const call = sessionFetch.mock.calls[0];
+    if (!call) {
+      throw new Error("Expected Computer Use host registration request");
+    }
+    const [url, init] = call;
+    expect(url).toBe("https://api.vm0.ai/api/zero/computer-use/hosts/start");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      hostName: "lancy-macbook-pro.local",
+      appVersion: "1.2.3",
+      permissions: {
+        accessibility: true,
+        screenRecording: false,
+      },
+    });
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      hostId: "host-1",
+      lastError: null,
+    });
+    expect(hostFetch).not.toHaveBeenCalled();
+
+    await runtime.stop();
+  });
+
+  it("uses the host bearer token for polling after registration", async () => {
+    vi.useFakeTimers();
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.includes("/api/zero/computer-use/audit-events")) {
+        return jsonResponse({ auditEvents: [] });
+      }
+      return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
+    });
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      return jsonResponse({ status: "idle" });
+    });
+    const { runtime } = createRuntime({ sessionFetch, hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    const heartbeatCall = hostFetch.mock.calls.find(([url]) => {
+      return url.endsWith("/api/zero/computer-use/heartbeat");
+    });
+    if (!heartbeatCall) {
+      throw new Error("Expected Computer Use heartbeat request");
+    }
+    const headers = new Headers(heartbeatCall[1]?.headers);
+    expect(headers.get("authorization")).toBe("Bearer token-1");
+    expect(headers.get("cookie")).toBeNull();
+    expect(sessionFetch.mock.calls[0]?.[0]).toBe(
+      "https://api.vm0.ai/api/zero/computer-use/hosts/start",
+    );
+
+    await runtime.stop();
+  });
+
+  it("clears command polling recovery when the next idle claim succeeds", async () => {
+    vi.useFakeTimers();
+    const heartbeat = deferred<Response>();
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return heartbeat.promise;
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? new Response("{}", { status: 500 })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/stop")) {
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Computer Use command claim failed: 500",
+      recovery: {
+        phase: "command_poll",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("keeps heartbeat deactivation when a late idle command poll resolves", async () => {
+    vi.useFakeTimers();
+    const heartbeat = deferred<Response>();
+    const commandPoll = deferred<Response>();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return heartbeat.promise;
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return commandPoll.promise;
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    heartbeat.resolve(new Response("{}", { status: 401 }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+    });
+
+    commandPoll.resolve(jsonResponse({ status: "idle" }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+    });
+  });
+
+  it("deactivates for restart when command polling rejects the host token", async () => {
+    vi.useFakeTimers();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return new Response("{}", { status: 401 });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+      errorLog: [
+        {
+          source: "command_poll",
+          hostId: null,
+          message:
+            "Desktop host could not authenticate with the API session. Sign in and retry.",
+          status: "error",
+        },
+      ],
+    });
+  });
+
+  it("deactivates for restart when command completion rejects the host token", async () => {
+    vi.useFakeTimers();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return jsonResponse({
+          status: "command",
+          command: {
+            id: "cmd-1",
+            kind: "app.state",
+            payload: { app: "Safari" },
+          },
+        });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        return new Response("{}", { status: 401 });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastCommandAt: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+      errorLog: [
+        {
+          source: "command_poll",
+          hostId: null,
+          message:
+            "Desktop host could not authenticate with the API session. Sign in and retry.",
+          status: "error",
+        },
+      ],
+    });
+  });
+
+  it("records local native command payloads and results", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-25T08:00:00.000Z"));
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return jsonResponse({
+          status: "claimed",
+          command: {
+            id: "cmd-1",
+            kind: "app.state",
+            payload: { app: "Things" },
+          },
+        });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({ status: "idle" });
+    });
+    const executeCommand = vi.fn<
+      (
+        command: ComputerUseCommand,
+        permissions: ComputerUsePermissionState,
+      ) => Promise<ComputerUseCommandExecutionResult>
+    >(async () => {
+      return {
+        status: "succeeded",
+        result: {
+          appState: "0 standard window Inbox",
+          screenshot: "data:image/png;base64,abc123",
+          screenshotWidth: 800,
+          screenshotHeight: 600,
+          screenshotSourceName: "Inbox",
+        },
+      };
+    });
+    const { runtime } = createRuntime({ hostFetch, executeCommand });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    const [entry] = runtime.getState().localCommandLog;
+    expect(entry).toMatchObject({
+      commandId: "cmd-1",
+      kind: "app.state",
+      app: "Things",
+      status: "succeeded",
+      payload: { app: "Things" },
+      result: {
+        appState: "0 standard window Inbox",
+        screenshot: "data:image/png;base64,abc123",
+        screenshotWidth: 800,
+        screenshotHeight: 600,
+        screenshotSourceName: "Inbox",
+      },
+      error: null,
+      durationMs: 0,
+    });
+    expect(executeCommand).toHaveBeenCalledWith(
+      {
+        id: "cmd-1",
+        kind: "app.state",
+        payload: { app: "Things" },
+      },
+      { accessibility: true, screenRecording: false },
+    );
+    const completionCall = hostFetch.mock.calls.find(([url]) => {
+      return url.endsWith(
+        "/api/zero/computer-use/host/commands/cmd-1/complete",
+      );
+    });
+    if (!completionCall) {
+      throw new Error("Expected Computer Use command completion request");
+    }
+    expect(JSON.parse(String(completionCall[1]?.body))).toMatchObject({
+      status: "succeeded",
+      result: {
+        appState: "0 standard window Inbox",
+        screenshot: "data:image/png;base64,abc123",
+      },
+    });
+
+    await runtime.stop();
+  });
+
+  it("keeps heartbeats running while a command is executing", async () => {
+    vi.useFakeTimers();
+    const command: ComputerUseCommand = {
+      id: "cmd-1",
+      kind: "keyboard.type_text",
+      payload: { app: "Chrome", text: "https://mail.google.com/" },
+    };
+    const execution = deferred<ComputerUseCommandExecutionResult>();
+    let nextCalls = 0;
+    let completeCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? jsonResponse({ status: "command", command })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        completeCalls++;
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const executeCommand = vi.fn<
+      (
+        command: ComputerUseCommand,
+        permissions: ComputerUsePermissionState,
+      ) => Promise<ComputerUseCommandExecutionResult>
+    >(async () => {
+      return await execution.promise;
+    });
+    const { runtime } = createRuntime({ hostFetch, executeCommand });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(executeCommand).toHaveBeenCalledOnce();
+    expect(completeCalls).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    const heartbeatCalls = hostFetch.mock.calls.filter(([url]) => {
+      return url.endsWith("/api/zero/computer-use/heartbeat");
+    });
+    expect(heartbeatCalls.length).toBeGreaterThan(1);
+    expect(completeCalls).toBe(0);
+
+    execution.resolve({ status: "succeeded", result: {} });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(completeCalls).toBe(1);
+
+    await runtime.stop();
+  });
+
+  it("retries transient command completion failures", async () => {
+    vi.useFakeTimers();
+    let nextCalls = 0;
+    let completeCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? jsonResponse({
+              status: "command",
+              command: {
+                id: "cmd-1",
+                kind: "app.state",
+                payload: { app: "Chrome" },
+              },
+            })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        completeCalls++;
+        return completeCalls === 1
+          ? new Response("{}", { status: 503 })
+          : jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(completeCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(completeCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("retries transient start failures with recovery state", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
+    let startCalls = 0;
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.includes("/api/zero/computer-use/audit-events")) {
+        return jsonResponse({ auditEvents: [] });
+      }
+      startCalls++;
+      return startCalls === 1
+        ? new Response("{}", { status: 503 })
+        : jsonResponse({ hostId: "host-1", hostToken: "token-1" });
+    });
+    const { runtime } = createRuntime({ sessionFetch });
+
+    await runtime.start();
+
+    expect(startCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Failed to start Computer Use host: 503",
+      recovery: {
+        phase: "start",
+        attempt: 1,
+        retryDelayMs: 2_000,
+        nextRetryAt: "2026-06-10T10:00:02.000Z",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(startCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(startCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      hostId: "host-1",
+      lastError: null,
+      recovery: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("recovers heartbeat failures before polling for more commands", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
+    let heartbeatCalls = 0;
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        heartbeatCalls++;
+        return heartbeatCalls === 1
+          ? new Response("{}", { status: 503 })
+          : jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(heartbeatCalls).toBe(1);
+    expect(nextCalls).toBe(0);
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Computer Use heartbeat failed: 503",
+      recovery: {
+        phase: "heartbeat",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(heartbeatCalls).toBe(2);
+    expect(nextCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("backs off command claim failures and clears recovery after idle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? new Response("{}", { status: 500 })
+          : jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(1);
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      lastError: "Computer Use command claim failed: 500",
+      recovery: {
+        phase: "command_poll",
+        attempt: 1,
+        retryDelayMs: 2_000,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(nextCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+    });
+
+    await runtime.stop();
+  });
+
+  it("honors Retry-After when command claim is rate limited", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
+    let nextCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? new Response("{}", {
+              status: 429,
+              headers: { "retry-after": "7" },
+            })
+          : jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "recovering",
+      recovery: {
+        phase: "command_poll",
+        attempt: 1,
+        retryDelayMs: 7_000,
+        nextRetryAt: "2026-06-10T10:00:09.000Z",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(6_999);
+    expect(nextCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(nextCalls).toBe(2);
+
+    await runtime.stop();
+  });
+
+  it("keeps the runtime online when audit history refresh fails", async () => {
+    vi.useFakeTimers();
+    let heartbeatCalls = 0;
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.includes("/api/zero/computer-use/audit-events")) {
+        return new Response("{}", { status: 503 });
+      }
+      return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
+    });
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        heartbeatCalls++;
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        return jsonResponse({ status: "idle" });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ sessionFetch, hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
+      recovery: null,
+      errorLog: [
+        {
+          source: "audit",
+          message: "Computer Use audit history refresh failed: 503",
+        },
+      ],
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(heartbeatCalls).toBe(2);
+
+    await runtime.stop();
+  });
+
+  it("stops the registered host through the host API", async () => {
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async () => {
+      return jsonResponse({ ok: true, hostId: "host-1" });
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await runtime.stop();
+
+    const stopCall = hostFetch.mock.calls.find(([url]) => {
+      return url.endsWith("/api/zero/computer-use/host/stop");
+    });
+    if (!stopCall) {
+      throw new Error("Expected Computer Use host stop request");
+    }
+    const headers = new Headers(stopCall[1]?.headers);
+    expect(stopCall[1]?.method).toBe("POST");
+    expect(headers.get("authorization")).toBe("Bearer token-1");
+    expect(runtime.getState()).toMatchObject({
+      status: "offline",
+      hostId: null,
+      lastError: null,
+    });
+  });
+
+  it("reports heartbeat active host conflicts without retrying", async () => {
+    vi.useFakeTimers();
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse(
+          {
+            error: { message: "A Desktop Computer Use host is already active" },
+          },
+          { status: 409 },
+        );
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(hostFetch).toHaveBeenCalledOnce();
+    expect(hostFetch.mock.calls[0]?.[0]).toBe(
+      "https://api.vm0.ai/api/zero/computer-use/heartbeat",
+    );
+    expect(runtime.getState()).toMatchObject({
+      status: "error",
+      hostId: null,
+      lastError:
+        "Computer Use is already active in another Zero Desktop session.",
+      errorLog: [
+        {
+          source: "heartbeat",
+          hostId: null,
+          message:
+            "Computer Use is already active in another Zero Desktop session.",
+          status: "error",
+        },
+      ],
+    });
+  });
+
+  it("stops after a 401 registration response so retry stays manual", async () => {
+    vi.useFakeTimers();
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async () => {
+      return new Response("{}", { status: 401 });
+    });
+    const { runtime } = createRuntime({ sessionFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sessionFetch).toHaveBeenCalledTimes(2);
+    expect(sessionFetch.mock.calls[0]?.[0]).toBe(
+      "https://api.vm0.ai/api/zero/computer-use/hosts/start",
+    );
+    expect(sessionFetch.mock.calls[1]?.[0]).toBe(
+      "https://api.vm0.ai/api/auth/me",
+    );
+    expect(runtime.getState()).toMatchObject({
+      status: "unauthenticated",
+      hostId: null,
+      lastError:
+        "Desktop host could not authenticate with the API session. Sign in and retry.",
+    });
+  });
+
+  it("reports missing organization when the Electron session is signed in", async () => {
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async (input) => {
+      if (input.endsWith("/api/auth/me")) {
+        return jsonResponse({ userId: "user-1", email: "user@example.com" });
+      }
+      return new Response("{}", { status: 401 });
+    });
+    const { runtime } = createRuntime({ sessionFetch });
+
+    await runtime.start();
+
+    expect(runtime.getState()).toMatchObject({
+      status: "needs_organization",
+      hostId: null,
+      lastError:
+        "Zero Desktop is signed in but no workspace is active. Select a workspace and retry.",
+    });
+  });
+
+  it("reports an active host conflict without retrying registration", async () => {
+    vi.useFakeTimers();
+    const sessionFetch = vi.fn<ComputerUseHostFetch>(async () => {
+      return jsonResponse(
+        { error: { message: "A Desktop Computer Use host is already active" } },
+        { status: 409 },
+      );
+    });
+    const { runtime } = createRuntime({ sessionFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sessionFetch).toHaveBeenCalledOnce();
+    expect(runtime.getState()).toMatchObject({
+      status: "error",
+      hostId: null,
+      lastError:
+        "Computer Use is already active in another Zero Desktop session.",
+      errorLog: [
+        {
+          source: "start",
+          hostId: null,
+          message:
+            "Computer Use is already active in another Zero Desktop session.",
+          status: "error",
+        },
+      ],
+    });
+  });
+});

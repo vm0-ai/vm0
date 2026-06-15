@@ -1,0 +1,59 @@
+name: "Vercel Promote"
+description: "Promote a Staged production deployment to serve live traffic (no rebuild)"
+
+inputs:
+  vercel-token:
+    description: "Vercel authentication token"
+    required: true
+  vercel-org-id:
+    description: "Vercel organization ID"
+    required: true
+  vercel-project-id:
+    description: "Vercel project ID"
+    required: true
+  deployment-url:
+    description: "Staged Vercel deployment URL to promote (produced by vercel-deploy with skip-domain=true)"
+    required: true
+  timeout:
+    description: "Max duration to wait for the promotion to complete (e.g. 60s, 2m). Vercel CLI default is 3m."
+    required: false
+    default: "60s"
+
+outputs:
+  url:
+    description: "The promoted deployment URL (same as input deployment-url on success)"
+    value: ${{ steps.promote.outputs.url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Vercel
+      uses: ./.github/actions/vercel-setup
+      with:
+        vercel-token: ${{ inputs.vercel-token }}
+        vercel-org-id: ${{ inputs.vercel-org-id }}
+        vercel-project-id: ${{ inputs.vercel-project-id }}
+
+    - name: Promote deployment
+      id: promote
+      shell: bash
+      env:
+        VERCEL_TOKEN: ${{ inputs.vercel-token }}
+        VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+        DEPLOYMENT_URL: ${{ inputs.deployment-url }}
+        TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        if [ -z "$DEPLOYMENT_URL" ]; then
+          echo "::error::deployment-url input is empty; cannot promote"
+          exit 1
+        fi
+
+        echo "Promoting deployment: ${DEPLOYMENT_URL} (timeout=${TIMEOUT})"
+
+        vercel promote "${DEPLOYMENT_URL}" \
+          --token="${VERCEL_TOKEN}" \
+          --scope="${VERCEL_ORG_ID}" \
+          --timeout="${TIMEOUT}"
+
+        echo "url=${DEPLOYMENT_URL}" >> "$GITHUB_OUTPUT"
+        echo "Promote complete: ${DEPLOYMENT_URL}"

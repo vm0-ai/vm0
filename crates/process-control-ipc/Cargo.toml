@@ -1,0 +1,10 @@
+[package]
+name = "process-control-ipc"
+version = "0.2.1"
+edition.workspace = true
+
+[dependencies]
+libc.workspace = true
+
+[lints]
+workspace = true

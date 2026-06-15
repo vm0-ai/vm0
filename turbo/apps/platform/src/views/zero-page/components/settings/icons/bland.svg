@@ -1,0 +1,12 @@
+<svg
+  width="256"
+  height="256"
+  viewBox="0 0 256 256"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <!-- Official compact mark source: https://www.bland.ai/images/webclip.png -->
+  <rect width="256" height="256" fill="#CA071A" />
+  <path d="M64 48H108V69H160C180 69 196 85 196 105V113H64V48Z" fill="#FFFDF5" />
+  <path d="M64 157H196V169C196 187 181 202 163 202H64V157Z" fill="#FFFDF5" />
+</svg>
