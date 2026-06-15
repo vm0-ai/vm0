@@ -125,6 +125,7 @@ pub(super) struct ExecStartFrame {
     pub(super) label: String,
     pub(super) sudo: bool,
     pub(super) stdout: ExecOutputPolicy,
+    pub(super) stderr: ExecOutputPolicy,
     pub(super) expected_exit_codes: Vec<i32>,
 }
 
@@ -137,7 +138,7 @@ impl ExecStartFrame {
 pub(super) async fn expect_exec_start(guest: &mut UnixStream) -> ExecStartFrame {
     let msg = read_guest_message(guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
-    let (command, label, sudo, stdout, expected_exit_codes) = {
+    let (command, label, sudo, stdout, stderr, expected_exit_codes) = {
         let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
         exec_start_frame_fields(decoded)
     };
@@ -147,18 +148,27 @@ pub(super) async fn expect_exec_start(guest: &mut UnixStream) -> ExecStartFrame 
         label,
         sudo,
         stdout,
+        stderr,
         expected_exit_codes,
     }
 }
 
 fn exec_start_frame_fields(
     decoded: DecodedExecStart<'_>,
-) -> (String, String, bool, ExecOutputPolicy, Vec<i32>) {
+) -> (
+    String,
+    String,
+    bool,
+    ExecOutputPolicy,
+    ExecOutputPolicy,
+    Vec<i32>,
+) {
     (
         decoded.command.to_string(),
         decoded.label.to_string(),
         decoded.sudo,
         decoded.stdout,
+        decoded.stderr,
         decoded.expected_exit_codes,
     )
 }

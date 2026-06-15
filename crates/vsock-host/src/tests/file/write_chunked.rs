@@ -7,7 +7,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use vsock_proto::{ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
+use vsock_proto::{ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
 
 use super::super::support::{
     MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
@@ -18,8 +18,8 @@ use super::support::{
     ExecStartFrame, WriteFileFrame, expect_exec_start, expect_write_file, send_guest_error,
     send_write_file_failure, send_write_file_success, spawn_write_file,
 };
-use crate::file as file_impl;
 use crate::{FrameWriteObserver, VsockHost, operation_tracker::NormalOperationReadiness};
+use crate::{exec_operation, file as file_impl};
 
 struct ChunkedWriteFixture {
     host: Arc<VsockHost>,
@@ -84,6 +84,7 @@ impl ChunkedWriteFixture {
         let frame = expect_exec_start(&mut self.guest).await;
         assert_eq!(frame.label, "write-file-rename");
         assert_eq!(frame.sudo, self.sudo);
+        assert_helper_exec_capture_policy(&frame);
         assert_eq!(frame.command, self.expected_rename_command());
         frame
     }
@@ -92,6 +93,7 @@ impl ChunkedWriteFixture {
         let frame = expect_exec_start(&mut self.guest).await;
         assert_eq!(frame.label, "exec-cleanup");
         assert_eq!(frame.sudo, self.sudo);
+        assert_helper_exec_capture_policy(&frame);
         assert_eq!(frame.command, self.expected_cleanup_command());
         frame
     }
@@ -114,6 +116,19 @@ impl ChunkedWriteFixture {
 
     fn temp_path(&self) -> &str {
         self.temp_path.as_deref().expect("temp path")
+    }
+}
+
+fn assert_helper_exec_capture_policy(frame: &ExecStartFrame) {
+    let capture_policy = helper_exec_capture_policy();
+    assert_eq!(frame.stdout, capture_policy);
+    assert_eq!(frame.stderr, capture_policy);
+    assert!(frame.expected_exit_codes.is_empty());
+}
+
+fn helper_exec_capture_policy() -> ExecOutputPolicy {
+    ExecOutputPolicy::Capture {
+        limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
     }
 }
 
@@ -732,6 +747,10 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
                         format!("rm -f -- {}", shell_quote_for_test(temp_path));
                     assert_eq!(decoded.command, expected_cleanup_command.as_str());
                     assert_eq!(decoded.label, "exec-cleanup");
+                    assert!(!decoded.sudo);
+                    assert_eq!(decoded.stdout, helper_exec_capture_policy());
+                    assert_eq!(decoded.stderr, helper_exec_capture_policy());
+                    assert!(decoded.expected_exit_codes.is_empty());
                     if let Some(tx) = cleanup_tx.take() {
                         let _ = tx.send(decoded.command.to_string());
                     }
