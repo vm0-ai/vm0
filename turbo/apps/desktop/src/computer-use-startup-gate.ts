@@ -30,6 +30,16 @@ export function hasReadyDesktopAuth(
   return authState?.status === "signed_in" && authState.organization !== null;
 }
 
+export function isComputerUseSetupRequired(args: {
+  readonly authState: DesktopAuthState | null;
+  readonly permissions: ComputerUsePermissionState;
+}): boolean {
+  return (
+    !hasReadyDesktopAuth(args.authState) ||
+    !hasRequiredComputerUsePermissions(args.permissions)
+  );
+}
+
 export function resolveComputerUseStartupGate(args: {
   readonly authState: DesktopAuthState;
   readonly permissions: ComputerUsePermissionState;
