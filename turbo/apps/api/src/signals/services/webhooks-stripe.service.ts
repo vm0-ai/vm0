@@ -252,6 +252,7 @@ function subscriptionCreditExpiresAt(
 }
 
 const CREDITS_PER_DOLLAR = 1000;
+const CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY = "creditsExpiresAt";
 
 function creditsFromAmountCents(
   amountCents: number | null | undefined,
@@ -286,6 +287,35 @@ function checkoutSessionInvoiceId(
 
 function autoRechargeNeverExpiresAt(): Date {
   return new Date("2999-12-31T00:00:00Z");
+}
+
+function parseMetadataDate(value: string): Date | null {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const parsedDate = /^\d+$/.test(trimmedValue)
+    ? new Date(Number(trimmedValue) * 1000)
+    : new Date(trimmedValue);
+
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
+function creditPurchaseExpiresAt(
+  metadata: Readonly<Record<string, string>>,
+): Date | null {
+  const expiresAtValue = metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY];
+  if (!expiresAtValue) {
+    return autoRechargeNeverExpiresAt();
+  }
+
+  const expiresAt = parseMetadataDate(expiresAtValue);
+  if (!expiresAt || expiresAt.getTime() <= now()) {
+    return null;
+  }
+
+  return expiresAt;
 }
 
 function stripePreviewMetadataForEvent(
@@ -551,12 +581,23 @@ async function handleCreditPurchaseInvoicePaid(
     return { handled: true, drainOrgId: null };
   }
 
+  const expiresAt = creditPurchaseExpiresAt(metadata);
+  if (!expiresAt) {
+    L.warn("credit_purchase invoice has invalid credits expiration metadata", {
+      invoiceId: invoice.id,
+      orgId,
+      creditsExpiresAt:
+        metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY] ?? null,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
   await db.transaction(async (tx) => {
     const inserted = await createExpiresRecord(tx, orgId, {
       source: "auto_recharge",
       stripeInvoiceId: invoice.id,
       amount: creditsAmount,
-      expiresAt: autoRechargeNeverExpiresAt(),
+      expiresAt,
     });
 
     if (!inserted) {
@@ -652,12 +693,23 @@ async function handleCreditPurchaseCompleted(
     return null;
   }
 
+  const expiresAt = creditPurchaseExpiresAt(metadata);
+  if (!expiresAt) {
+    L.warn("credit_purchase checkout has invalid credits expiration metadata", {
+      sessionId: session.id,
+      orgId,
+      creditsExpiresAt:
+        metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY] ?? null,
+    });
+    return null;
+  }
+
   await db.transaction(async (tx) => {
     const inserted = await createExpiresRecord(tx, orgId, {
       source: "auto_recharge",
       stripeInvoiceId: session.id,
       amount: creditsAmount,
-      expiresAt: autoRechargeNeverExpiresAt(),
+      expiresAt,
     });
 
     if (!inserted) {
