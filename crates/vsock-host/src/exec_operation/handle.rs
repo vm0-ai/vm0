@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::Instant;
 use vsock_proto::{
     ExecControlNonce, ExecControlStatus, ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
 };
@@ -13,7 +14,7 @@ use super::EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT;
 use super::diagnostics::ExecOperationDiagnostic;
 use super::frame::{
     clear_exec_operation_stream_sender, exec_cancel_write_observer,
-    mark_pending_exec_control_possible_guest_write, send_supervised_exec_cancel_frame, write_frame,
+    mark_pending_exec_control_possible_guest_write, send_exec_cancel_frame, write_frame,
     write_frame_with_pre_write,
 };
 use super::state::{PendingExecControl, PendingExecControlGuard};
@@ -53,21 +54,101 @@ pub(in crate::exec_operation) struct ExecCancelWaitResult {
     pub(in crate::exec_operation) cancel_seq: Option<u32>,
 }
 
-impl ExecWaitCore {
-    fn operation_closed_message(lifecycle: ExecWaitLifecycle) -> &'static str {
-        match lifecycle {
+impl ExecWaitLifecycle {
+    fn operation_closed_message(self) -> &'static str {
+        match self {
             ExecWaitLifecycle::OneShot => "exec operation closed",
             ExecWaitLifecycle::Supervised => "supervised exec operation closed",
         }
     }
 
-    fn timeout_error_message(lifecycle: ExecWaitLifecycle) -> &'static str {
-        match lifecycle {
+    fn timeout_error_message(self) -> &'static str {
+        match self {
             ExecWaitLifecycle::OneShot => "exec operation timeout",
             ExecWaitLifecycle::Supervised => "supervised exec operation timeout",
         }
     }
 
+    pub(in crate::exec_operation) fn log_cancel_sent(
+        self,
+        seq: u32,
+        diagnostic: &ExecOperationDiagnostic,
+    ) {
+        match self {
+            ExecWaitLifecycle::OneShot => {
+                tracing::info!(
+                    seq = seq,
+                    label = %diagnostic.label_log,
+                    elapsed_ms = diagnostic.elapsed_ms(),
+                    "exec operation cancel sent"
+                );
+            }
+            ExecWaitLifecycle::Supervised => {
+                tracing::info!(
+                    seq = seq,
+                    label = %diagnostic.label_log,
+                    elapsed_ms = diagnostic.elapsed_ms(),
+                    "supervised exec operation cancel sent"
+                );
+            }
+        }
+    }
+
+    fn log_cancel_completed(self, seq: u32, label: &str, registered_at: Instant) {
+        match self {
+            ExecWaitLifecycle::OneShot => {
+                tracing::info!(
+                    seq = seq,
+                    label = %label,
+                    elapsed_ms = registered_at.elapsed().as_millis(),
+                    "exec operation cancel completed"
+                );
+            }
+            ExecWaitLifecycle::Supervised => {
+                tracing::info!(
+                    seq = seq,
+                    label = %label,
+                    elapsed_ms = registered_at.elapsed().as_millis(),
+                    "supervised exec operation cancel completed"
+                );
+            }
+        }
+    }
+
+    fn unexpected_cancel_terminal_state_message(self, termination: ExecTermination) -> String {
+        match self {
+            ExecWaitLifecycle::OneShot => {
+                format!("exec cancel returned terminal state: {termination:?}")
+            }
+            ExecWaitLifecycle::Supervised => {
+                format!("supervised exec cancel returned terminal state: {termination:?}")
+            }
+        }
+    }
+}
+
+impl ExecCancelWaitResult {
+    fn into_expected_cancel_result(
+        self,
+        lifecycle: ExecWaitLifecycle,
+        cancel_label_log: &str,
+        registered_at: Instant,
+    ) -> io::Result<ExecOperationResult> {
+        let Some(seq) = self.cancel_seq else {
+            return Ok(self.result);
+        };
+        if self.result.termination == ExecTermination::Cancelled {
+            lifecycle.log_cancel_completed(seq, cancel_label_log, registered_at);
+            return Ok(self.result);
+        }
+
+        Err(io::Error::other(
+            lifecycle.unexpected_cancel_terminal_state_message(self.result.termination),
+        ))
+    }
+}
+
+impl ExecWaitCore {
     fn log_timeout(&self, seq: u32, poison_on_timeout: bool, lifecycle: ExecWaitLifecycle) {
         match lifecycle {
             ExecWaitLifecycle::OneShot => {
@@ -162,11 +243,11 @@ impl ExecWaitCore {
         poison_on_timeout: bool,
         lifecycle: ExecWaitLifecycle,
     ) -> io::Result<ExecOperationResult> {
-        let seq = self.active_seq_or_closed(Self::operation_closed_message(lifecycle))?;
+        let seq = self.active_seq_or_closed(lifecycle.operation_closed_message())?;
         let rx = self.result_rx.as_mut().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::ConnectionReset,
-                Self::operation_closed_message(lifecycle),
+                lifecycle.operation_closed_message(),
             )
         })?;
 
@@ -190,7 +271,7 @@ impl ExecWaitCore {
                 }
                 Err(io::Error::new(
                     io::ErrorKind::TimedOut,
-                    Self::timeout_error_message(lifecycle),
+                    lifecycle.timeout_error_message(),
                 ))
             }
         }
@@ -224,25 +305,13 @@ impl ExecOperationHandle {
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
         let registered_at = self.wait_core.diagnostic().registered_at;
-        let wait_result = self.cancel_and_wait_for_terminal_status(timeout).await?;
-        if wait_result.cancel_seq.is_none()
-            || wait_result.result.termination == ExecTermination::Cancelled
-        {
-            if let Some(seq) = wait_result.cancel_seq {
-                tracing::info!(
-                    seq = seq,
-                    label = %cancel_label_log,
-                    elapsed_ms = registered_at.elapsed().as_millis(),
-                    "exec operation cancel completed"
-                );
-            }
-            return Ok(wait_result.result);
-        }
-
-        Err(io::Error::other(format!(
-            "exec cancel returned terminal state: {:?}",
-            wait_result.result.termination
-        )))
+        self.cancel_and_wait_for_terminal_status(timeout)
+            .await?
+            .into_expected_cancel_result(
+                ExecWaitLifecycle::OneShot,
+                &cancel_label_log,
+                registered_at,
+            )
     }
 
     pub(crate) async fn cancel_and_wait_for_terminal(
@@ -267,26 +336,14 @@ impl ExecOperationHandle {
 
         let seq = self
             .wait_core
-            .active_seq_or_closed(ExecWaitCore::operation_closed_message(
-                ExecWaitLifecycle::OneShot,
-            ))?;
-        let payload = vsock_proto::encode_exec_cancel();
-        write_frame(
+            .active_seq_or_closed(ExecWaitLifecycle::OneShot.operation_closed_message())?;
+        send_exec_cancel_frame(
             self.wait_core.shared(),
-            MSG_EXEC_CANCEL,
             seq,
-            &payload,
-            Some(self.wait_core.diagnostic().frame("cancel")),
-            None,
-            exec_cancel_write_observer(self.wait_core.shared(), seq),
+            self.wait_core.diagnostic(),
+            ExecWaitLifecycle::OneShot,
         )
         .await?;
-        tracing::info!(
-            seq = seq,
-            label = %self.wait_core.diagnostic().label_log,
-            elapsed_ms = self.wait_core.diagnostic().elapsed_ms(),
-            "exec operation cancel sent"
-        );
 
         let result = self
             .wait_core
@@ -344,7 +401,12 @@ impl SupervisedExecCancelHandle {
     pub async fn cancel(self, timeout: Duration) -> io::Result<()> {
         tokio::time::timeout(
             timeout,
-            send_supervised_exec_cancel_frame(&self.shared, self.seq, &self.diagnostic),
+            send_exec_cancel_frame(
+                &self.shared,
+                self.seq,
+                &self.diagnostic,
+                ExecWaitLifecycle::Supervised,
+            ),
         )
         .await
         .unwrap_or_else(|_| {
@@ -443,25 +505,13 @@ impl SupervisedExecHandle {
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.wait_core.diagnostic().label_log.clone();
         let registered_at = self.wait_core.diagnostic().registered_at;
-        let wait_result = self.cancel_and_wait_for_terminal_status(timeout).await?;
-        if wait_result.cancel_seq.is_none()
-            || wait_result.result.termination == ExecTermination::Cancelled
-        {
-            if let Some(seq) = wait_result.cancel_seq {
-                tracing::info!(
-                    seq = seq,
-                    label = %cancel_label_log,
-                    elapsed_ms = registered_at.elapsed().as_millis(),
-                    "supervised exec operation cancel completed"
-                );
-            }
-            return Ok(wait_result.result);
-        }
-
-        Err(io::Error::other(format!(
-            "supervised exec cancel returned terminal state: {:?}",
-            wait_result.result.termination
-        )))
+        self.cancel_and_wait_for_terminal_status(timeout)
+            .await?
+            .into_expected_cancel_result(
+                ExecWaitLifecycle::Supervised,
+                &cancel_label_log,
+                registered_at,
+            )
     }
 
     pub(in crate::exec_operation) async fn cancel_and_wait_for_terminal_status(
@@ -477,13 +527,12 @@ impl SupervisedExecHandle {
 
         let seq = self
             .wait_core
-            .active_seq_or_closed(ExecWaitCore::operation_closed_message(
-                ExecWaitLifecycle::Supervised,
-            ))?;
-        send_supervised_exec_cancel_frame(
+            .active_seq_or_closed(ExecWaitLifecycle::Supervised.operation_closed_message())?;
+        send_exec_cancel_frame(
             self.wait_core.shared(),
             seq,
             self.wait_core.diagnostic(),
+            ExecWaitLifecycle::Supervised,
         )
         .await?;
 
