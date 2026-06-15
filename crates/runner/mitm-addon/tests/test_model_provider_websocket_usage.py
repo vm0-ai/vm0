@@ -214,6 +214,45 @@ class TestModelProviderWebSocketUsage:
             "tokens.output": 12,
         }
 
+    def test_model_websocket_late_same_id_frame_can_add_new_category_after_release(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 20},
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_1",
+                        "model": "gpt-5.5",
+                        "usage": {"output_tokens": 12},
+                    },
+                }
+            ).encode(),
+        )
+
+        assert _model_websocket_usage_sources(flow) == {}
+        assert _sum_quantities_by_category(webhook.usage_events()) == {
+            "tokens.input": 20,
+            "tokens.output": 12,
+        }
+        assert _sum_quantities_by_category(webhook.model_usage_observation_events()) == {
+            "tokens.input": 20,
+            "tokens.output": 12,
+        }
+
     def test_full_pipeline_model_websocket_separates_response_id_models(self, tmp_path, real_flow):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
 
