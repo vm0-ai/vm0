@@ -273,20 +273,16 @@ pub async fn execute_cli(
 
     let mut child = cmd.spawn()?;
 
-    if behavior.uses_stream_json_stdin() {
+    let initial_prompt_stdin = if behavior.uses_stream_json_stdin() {
         let Some(stdin) = child.stdin.take() else {
             let _ = child.start_kill();
             heartbeat_handle.abort();
             return Err(AgentError::Execution("no stdin".into()));
         };
-        if let Err(error) =
-            write_claude_initial_prompt_to_stdin(stdin, env::run_id(), env::prompt()).await
-        {
-            let _ = child.start_kill();
-            heartbeat_handle.abort();
-            return Err(error);
-        }
-    }
+        Some(stdin)
+    } else {
+        None
+    };
 
     let stdout = child
         .stdout
@@ -300,6 +296,14 @@ pub async fn execute_cli(
     // Stderr collector
     let mut stderr_handle =
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
+
+    let mut initial_prompt_write_handle = initial_prompt_stdin.map(|stdin| {
+        let run_id = env::run_id().to_string();
+        let prompt = env::prompt().to_string();
+        tokio::spawn(
+            async move { write_claude_initial_prompt_to_stdin(stdin, &run_id, &prompt).await },
+        )
+    });
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
     //
@@ -405,8 +409,61 @@ pub async fn execute_cli(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut failure_diagnostic = None;
-    let event_result: Result<(), AgentError> = loop {
+    let mut event_result: Result<(), AgentError> = loop {
         tokio::select! {
+            prompt_write_result = async {
+                match initial_prompt_write_handle.as_mut() {
+                    Some(handle) => Some(handle.await),
+                    None => std::future::pending().await,
+                }
+            }, if initial_prompt_write_handle.is_some() => {
+                initial_prompt_write_handle = None;
+                match prompt_write_result {
+                    Some(Ok(Ok(()))) => {}
+                    Some(Ok(Err(error))) if termination_error.is_none() => {
+                        log_warn!(
+                            LOG_TAG,
+                            "Failed to write initial prompt to Claude stdin, SIGTERM pgid={}: {error}",
+                            pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                        );
+                        if let Some(pid) = pgid {
+                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        }
+                        termination_error = Some(error);
+                        termination_state = TerminationState::SigkillPending {
+                            reason: TerminationReason::InitialPromptStdin,
+                        };
+                        termination_deadline.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                        );
+                    }
+                    Some(Ok(Err(_))) => {}
+                    Some(Err(error)) if termination_error.is_none() => {
+                        let error = AgentError::Execution(format!(
+                            "initial prompt stdin task failed: {error}"
+                        ));
+                        log_warn!(
+                            LOG_TAG,
+                            "Initial prompt stdin task failed, SIGTERM pgid={}",
+                            pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                        );
+                        if let Some(pid) = pgid {
+                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        }
+                        termination_error = Some(error);
+                        termination_state = TerminationState::SigkillPending {
+                            reason: TerminationReason::InitialPromptStdin,
+                        };
+                        termination_deadline.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                        );
+                    }
+                    Some(Err(_)) => {}
+                    None => {}
+                }
+            }
             line_result = reader.next_line(), if !stdout_eof => {
                 match line_result {
                     Ok(Some(line)) => {
@@ -753,6 +810,32 @@ pub async fn execute_cli(
             }
         }
     };
+
+    if let Some(handle) = initial_prompt_write_handle.take() {
+        if handle.is_finished() {
+            match handle.await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) if event_result.is_ok() => {
+                    event_result = Err(error);
+                }
+                Ok(Err(_)) => {}
+                Err(error) if event_result.is_ok() => {
+                    event_result = Err(AgentError::Execution(format!(
+                        "initial prompt stdin task failed: {error}"
+                    )));
+                }
+                Err(_) => {}
+            }
+        } else {
+            handle.abort();
+            let _ = handle.await;
+            if event_result.is_ok() {
+                event_result = Err(AgentError::Execution(
+                    "initial prompt stdin task did not finish before CLI loop exited".into(),
+                ));
+            }
+        }
+    }
 
     let event_result = match termination_error {
         Some(err) => Err(err),
