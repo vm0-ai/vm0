@@ -27,9 +27,9 @@ pub const HTTP_UPLOAD_TIMEOUT_SECS: u64 = 60;
 
 /// Workaround for Claude Code bug where WebSearch/WebFetch hang indefinitely.
 /// Kill the CLI process if a network tool hasn't returned a result within
-/// this duration.  Override with `VM0_STUCK_TOOL_TIMEOUT_SECS` env var.
+/// this duration. Override with `VM0_STUCK_TOOL_TIMEOUT_SECS` env var.
 /// See: https://github.com/anthropics/claude-code/issues/11650
-pub const STUCK_TOOL_TIMEOUT_SECS: u64 = 180;
+pub const STUCK_TOOL_TIMEOUT_SECS: u64 = 300;
 
 /// How often (in seconds) to check for stuck tools in the select loop.
 pub const STUCK_TOOL_CHECK_INTERVAL_SECS: u64 = 5;
