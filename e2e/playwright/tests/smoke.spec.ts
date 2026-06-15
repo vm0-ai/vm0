@@ -32,7 +32,7 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
 
   // Complete onboarding if needed
   if (page.url().includes("/onboarding")) {
-    await signInThroughExternalOnboardingGate(page, email, appUrl);
+    await signInThroughExternalOnboardingGate(page, email);
     await completeOnboarding(page);
   }
 
@@ -50,7 +50,6 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
 async function signInThroughExternalOnboardingGate(
   page: Page,
   email: string,
-  appUrl: string,
 ): Promise<void> {
   const continueToSignUp = page.getByRole("link", {
     name: "Continue to sign up",
@@ -82,16 +81,6 @@ async function signInThroughExternalOnboardingGate(
     timeout: 60_000,
     waitUntil: "domcontentloaded",
   });
-
-  const stillOnExternalGate = await continueToSignUp
-    .waitFor({ state: "visible", timeout: 5_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (stillOnExternalGate) {
-    await page.goto(new URL("/onboarding", appUrl).toString(), {
-      waitUntil: "domcontentloaded",
-    });
-  }
 }
 
 function isOnboardingOrChatUrl(url: URL): boolean {
