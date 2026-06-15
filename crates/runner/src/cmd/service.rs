@@ -1240,18 +1240,45 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     );
     cmd.args(&command_args);
 
-    let status = cmd
-        .status()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("spawn systemd-run: {e}")))?;
+    let status = match cmd.status().await {
+        Ok(status) => status,
+        Err(e) => {
+            cleanup_failed_transient_start_service_secrets(
+                &unit,
+                &args.name,
+                service_secrets_file.is_some(),
+            )
+            .await;
+            return Err(RunnerError::Internal(format!("spawn systemd-run: {e}")));
+        }
+    };
 
     if !status.success() {
+        cleanup_failed_transient_start_service_secrets(
+            &unit,
+            &args.name,
+            service_secrets_file.is_some(),
+        )
+        .await;
         return Err(RunnerError::Internal(format!(
             "systemd-run failed: {status}"
         )));
     }
     info!(unit = %unit, "transient service started");
     Ok(())
+}
+
+async fn cleanup_failed_transient_start_service_secrets(unit: &str, suffix: &str, staged: bool) {
+    if !staged || unit_file_path(unit).exists() {
+        return;
+    }
+    if let Err(e) = remove_service_secrets_for_suffix(suffix).await {
+        warn!(
+            unit = %unit,
+            error = %e,
+            "failed to remove service secrets file after transient start failure"
+        );
+    }
 }
 
 /// `service stop` — stop the named unit.

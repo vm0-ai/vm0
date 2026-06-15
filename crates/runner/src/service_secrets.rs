@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -156,18 +157,67 @@ pub(crate) async fn stage_service_secrets_file(
         ))
     })?;
     crate::private_fs::ensure_private_dir(parent).await?;
+    remove_stale_service_secrets_staging_files(parent).await?;
     crate::private_fs::write_private_file(destination, secrets.to_file_contents().as_bytes()).await
 }
 
 pub(crate) async fn remove_service_secrets_file(path: &Path) -> RunnerResult<()> {
-    match tokio::fs::remove_file(path).await {
+    let remove_result = match tokio::fs::remove_file(path).await {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(RunnerError::Config(format!(
             "remove service secrets file {}: {e}",
             path.display()
         ))),
+    };
+
+    let cleanup_result = match path.parent() {
+        Some(parent) => remove_stale_service_secrets_staging_files(parent).await,
+        None => Ok(()),
+    };
+    remove_result?;
+    cleanup_result
+}
+
+async fn remove_stale_service_secrets_staging_files(parent: &Path) -> RunnerResult<()> {
+    let mut entries = match tokio::fs::read_dir(parent).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(RunnerError::Config(format!(
+                "read service secrets directory {}: {e}",
+                parent.display()
+            )));
+        }
+    };
+
+    while let Some(entry) = entries.next_entry().await.map_err(|e| {
+        RunnerError::Config(format!(
+            "read service secrets directory entry {}: {e}",
+            parent.display()
+        ))
+    })? {
+        if !is_service_secrets_staging_file_name(&entry.file_name()) {
+            continue;
+        }
+        let path = entry.path();
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(RunnerError::Config(format!(
+                    "remove stale service secrets staging file {}: {e}",
+                    path.display()
+                )));
+            }
+        }
     }
+    Ok(())
+}
+
+fn is_service_secrets_staging_file_name(name: &OsStr) -> bool {
+    let name = name.to_string_lossy();
+    name.starts_with(".service-secrets.env.") && name.ends_with(".tmp")
 }
 
 async fn read_private_service_secrets(path: &Path) -> RunnerResult<ServiceSecrets> {
@@ -440,6 +490,70 @@ mod tests {
         let loaded = read_private_service_secrets(&destination).await.unwrap();
         assert_eq!(loaded.sentry_dsn(), Some("sentry"));
         assert_eq!(loaded.axiom_dataset_suffix(), Some("prod"));
+    }
+
+    #[tokio::test]
+    async fn stage_service_secrets_file_removes_stale_staging_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.env");
+        let destination = dir
+            .path()
+            .join("runners")
+            .join("v0.1.0")
+            .join(SERVICE_SECRETS_FILE_NAME);
+        let parent = destination.parent().unwrap();
+        tokio::fs::create_dir_all(parent).await.unwrap();
+        tokio::fs::write(&source, "SENTRY_DSN=sentry\n")
+            .await
+            .unwrap();
+        let stale_tmp = parent.join(".service-secrets.env.crashed.tmp");
+        let unrelated_tmp = parent.join(".runner.yaml.crashed.tmp");
+        tokio::fs::write(&stale_tmp, "SENTRY_DSN=old-secret\n")
+            .await
+            .unwrap();
+        tokio::fs::write(&unrelated_tmp, "runner config")
+            .await
+            .unwrap();
+
+        stage_service_secrets_file(&source, &destination)
+            .await
+            .unwrap();
+
+        assert!(!stale_tmp.exists());
+        assert!(unrelated_tmp.exists());
+        assert_eq!(
+            tokio::fs::read_to_string(&destination).await.unwrap(),
+            "SENTRY_DSN=sentry\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_service_secrets_file_removes_canonical_and_stale_staging_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir
+            .path()
+            .join("runners")
+            .join("v0.1.0")
+            .join(SERVICE_SECRETS_FILE_NAME);
+        let parent = destination.parent().unwrap();
+        tokio::fs::create_dir_all(parent).await.unwrap();
+        let stale_tmp = parent.join(".service-secrets.env.crashed.tmp");
+        let unrelated_tmp = parent.join(".runner.yaml.crashed.tmp");
+        tokio::fs::write(&destination, "SENTRY_DSN=sentry\n")
+            .await
+            .unwrap();
+        tokio::fs::write(&stale_tmp, "SENTRY_DSN=old-secret\n")
+            .await
+            .unwrap();
+        tokio::fs::write(&unrelated_tmp, "runner config")
+            .await
+            .unwrap();
+
+        remove_service_secrets_file(&destination).await.unwrap();
+
+        assert!(!destination.exists());
+        assert!(!stale_tmp.exists());
+        assert!(unrelated_tmp.exists());
     }
 
     #[cfg(unix)]
