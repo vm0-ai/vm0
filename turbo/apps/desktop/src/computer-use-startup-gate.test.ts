@@ -4,6 +4,7 @@ import {
   COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
   COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
   hasReadyDesktopAuth,
+  isComputerUseSetupRequired,
   resolveComputerUseStartupGate,
 } from "./computer-use-startup-gate";
 import type { ComputerUsePermissionState } from "./computer-use-types";
@@ -33,6 +34,35 @@ describe("hasReadyDesktopAuth", () => {
       false,
     );
     expect(hasReadyDesktopAuth(signedInAuth)).toBe(true);
+  });
+});
+
+describe("isComputerUseSetupRequired", () => {
+  it("requires auth and local permissions to be ready", () => {
+    expect(
+      isComputerUseSetupRequired({
+        authState: signedOutAuth,
+        permissions: grantedPermissions,
+      }),
+    ).toBe(true);
+    expect(
+      isComputerUseSetupRequired({
+        authState: { ...signedInAuth, organization: null },
+        permissions: grantedPermissions,
+      }),
+    ).toBe(true);
+    expect(
+      isComputerUseSetupRequired({
+        authState: signedInAuth,
+        permissions: { accessibility: true, screenRecording: false },
+      }),
+    ).toBe(true);
+    expect(
+      isComputerUseSetupRequired({
+        authState: signedInAuth,
+        permissions: grantedPermissions,
+      }),
+    ).toBe(false);
   });
 });
 
