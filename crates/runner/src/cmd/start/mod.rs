@@ -1582,13 +1582,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         warn!("usage flush did not complete, some reports may be lost");
                     }
                 } else {
-                    error!(
-                        r#type = "usage_underbilling",
-                        reason = "usage_flush_request_failed",
-                        underbilling_class = "risk",
-                        component = "runner",
-                        "failed to request proxy usage flush, skipping usage wait"
-                    );
+                    warn!("failed to request proxy usage flush, skipping usage wait");
                 }
             }
             Err(e) => {
