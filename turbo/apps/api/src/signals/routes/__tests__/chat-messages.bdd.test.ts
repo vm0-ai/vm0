@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
@@ -23,6 +23,7 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { secrets } from "@vm0/db/schema/secret";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -1318,6 +1319,82 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(thread.modelProviderId ?? null).toBeNull();
 
     await api.requestCancelRun(actor, run.runId, [200]);
+  }, 90_000);
+
+  it("prefers dev-seed vm0 managed keys over concurrent test keys", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const keySuffix = randomUUID();
+    const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
+    const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
+    const writeDb = store.set(writeDb$);
+
+    await writeDb.insert(vm0ApiKeys).values([
+      {
+        vendor: "openrouter",
+        model: "z-ai/glm-5.1",
+        apiKey: fakeKey,
+        label: `bdd-fake-${keySuffix}`,
+      },
+      {
+        vendor: "openrouter",
+        model: "z-ai/glm-5.1",
+        apiKey: devSeedKey,
+        label: "dev-seed",
+      },
+    ]);
+
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "vm0",
+    });
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with the selected vm0 provider",
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "glm-5.1",
+      },
+    });
+
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    const environment = claimEnvironment(claim);
+    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
+      modelProviderSecretPlaceholder(
+        "openrouter-api-key",
+        "OPENROUTER_API_KEY",
+      ),
+    );
+    expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
+    expect(environment.ANTHROPIC_MODEL).toBe("z-ai/glm-5.1");
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected vm0 claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      sandboxHeaders,
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected vm0 firewall auth to resolve");
+    }
+    expect(resolved.body.headers.Authorization).toBe(`Bearer ${devSeedKey}`);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await writeDb
+      .delete(vm0ApiKeys)
+      .where(
+        or(eq(vm0ApiKeys.apiKey, fakeKey), eq(vm0ApiKeys.apiKey, devSeedKey)),
+      );
   }, 90_000);
 
   it("rejects legacy blank OpenRouter provider secrets before runner claim", async () => {
