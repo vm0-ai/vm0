@@ -526,6 +526,7 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
         let failed_temp = temp_by_marker
             .get(&failure_marker)
             .expect("failed temp path");
+        assert_ne!(success_temp, failed_temp);
 
         match decoded.label {
             "write-file-rename" => {
