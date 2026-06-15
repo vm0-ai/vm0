@@ -82,6 +82,36 @@ describe("throwOAuthError", () => {
     expect(isOAuthProviderHttpError(error) ? error.oauthError : null).toBe(
       "invalid_grant",
     );
+    expect(
+      isOAuthProviderHttpError(error) ? error.oauthErrorSubtype : null,
+    ).toBeUndefined();
+  });
+
+  it("preserves provider-specific OAuth error subtype", async () => {
+    const response = makeResponse(
+      400,
+      JSON.stringify({
+        error: "invalid_grant",
+        error_description: "Session control expired",
+        error_subtype: "invalid_rapt",
+      }),
+    );
+
+    const error = await throwOAuthError(
+      "Google Cloud",
+      "refresh",
+      response,
+    ).catch((e: unknown) => {
+      return e;
+    });
+
+    expect(isOAuthProviderHttpError(error)).toBe(true);
+    if (!isOAuthProviderHttpError(error)) {
+      throw new Error("Expected OAuthProviderHttpError");
+    }
+    expect(error.oauthError).toBe("invalid_grant");
+    expect(error.oauthErrorSubtype).toBe("invalid_rapt");
+    expect(error.message).toContain("Session control expired");
   });
 
   it("truncates long response bodies", async () => {
@@ -104,6 +134,27 @@ describe("throwOAuthError", () => {
     expect(detail.length).toBeLessThanOrEqual(504); // 500 + "..."
   });
 
+  it("truncates long OAuth error descriptions", async () => {
+    const longDescription = "x".repeat(600);
+    const response = makeResponse(
+      400,
+      JSON.stringify({
+        error: "invalid_grant",
+        error_description: longDescription,
+      }),
+    );
+
+    const error = await throwOAuthError("Notion", "refresh", response).catch(
+      (e: Error) => {
+        return e;
+      },
+    );
+
+    expect(error.message).toBe(
+      `Notion token refresh failed: 400 invalid_grant (${"x".repeat(500)}...)`,
+    );
+  });
+
   it("includes full JSON body when no standard error fields", async () => {
     const response = makeResponse(
       400,
@@ -112,6 +163,16 @@ describe("throwOAuthError", () => {
 
     await expect(
       throwOAuthError("Stripe", "refresh", response),
-    ).rejects.toThrow("Stripe token refresh failed: 400 ");
+    ).rejects.toThrow(
+      'Stripe token refresh failed: 400 {"message":"something went wrong","code":123}',
+    );
+  });
+
+  it("includes valid JSON scalar response bodies", async () => {
+    const response = makeResponse(400, JSON.stringify("temporarily down"));
+
+    await expect(
+      throwOAuthError("Stripe", "refresh", response),
+    ).rejects.toThrow('Stripe token refresh failed: 400 "temporarily down"');
   });
 });
