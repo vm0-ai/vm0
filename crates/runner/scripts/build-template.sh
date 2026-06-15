@@ -366,26 +366,26 @@ install_packages() {
   rm -rf /var/lib/apt/lists/* /var/cache/apt/*
   '
 
-  # Chromium from Debian Bookworm security (Ubuntu 24.04 snap stub does not work).
+  # Chromium from Debian Trixie security (Ubuntu 24.04 snap stub does not work).
   # Installed separately to avoid cross-distro dependency conflicts.
   sudo chroot "$ROOTFS_DIR" bash -c 'set -e
     export DEBIAN_FRONTEND=noninteractive
     {
-      curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc
-      curl -fsSL https://ftp-master.debian.org/keys/archive-key-12-security.asc
+      curl -fsSL https://ftp-master.debian.org/keys/archive-key-13.asc
+      curl -fsSL https://ftp-master.debian.org/keys/archive-key-13-security.asc
     } \
-      | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg
-    cat > /etc/apt/sources.list.d/debian-bookworm.list <<EOF
-deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main
-deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://security.debian.org/debian-security bookworm-security main
+      | gpg --dearmor -o /usr/share/keyrings/debian-trixie.gpg
+    cat > /etc/apt/sources.list.d/debian-trixie.list <<EOF
+deb [signed-by=/usr/share/keyrings/debian-trixie.gpg] http://deb.debian.org/debian trixie main
+deb [signed-by=/usr/share/keyrings/debian-trixie.gpg] http://security.debian.org/debian-security trixie-security main
 EOF
     apt-get update
-    apt-get install -y -t bookworm \
-      chromium/bookworm-security \
-      chromium-common/bookworm-security \
-      chromium-sandbox/bookworm-security
-    rm -f /etc/apt/sources.list.d/debian-bookworm.list \
-         /usr/share/keyrings/debian-bookworm.gpg
+    apt-get install -y -t trixie \
+      chromium/trixie-security \
+      chromium-common/trixie-security \
+      chromium-sandbox/trixie-security
+    rm -f /etc/apt/sources.list.d/debian-trixie.list \
+         /usr/share/keyrings/debian-trixie.gpg
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
   '
 
